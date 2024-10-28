@@ -23,7 +23,7 @@
 
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_op.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/legalization.h"
 
@@ -38,7 +38,7 @@ class BatchMatmulOpLegalization : public Legalization {
     return std::make_unique<BatchMatmulOpLegalization>();
   }
 
-  LiteRtStatus LegalizeOp(LiteRtOpManager& src, Qnn_OpConfig_t& dest,
+  LiteRtStatus LegalizeOp(const litert::Op& src, Qnn_OpConfig_t& dest,
                           GraphMapper& graph_mapper);
 
  private:

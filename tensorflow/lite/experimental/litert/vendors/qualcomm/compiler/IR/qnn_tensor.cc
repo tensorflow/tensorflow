@@ -22,28 +22,25 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_support.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_tensor.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 
 namespace litert::qnn {
 
-using ::litert::LiteRtTensorManager;
-
 namespace {
 
-LiteRtStatus LegalizeShapeInfo(const LiteRtTensorManager& src,
-                               Qnn_Tensor_t& dest) {
+LiteRtStatus LegalizeShapeInfo(const litert::Layout& src, Qnn_Tensor_t& dest) {
   LITERT_ENSURE_SUPPORTED(!src.HasStrides(), "Strides not yet supported");
 
   dest.v2.rank = src.Rank();
   dest.v2.dimensions = new uint32_t[dest.v2.rank];
   for (int i = 0; i < dest.v2.rank; ++i) {
-    const auto src_dim = src.Dims()[i];
+    const auto src_dim = src.Dimensions()[i];
     LITERT_ENSURE(src_dim >= 1, kLiteRtStatusErrorInvalidArgument,
                   "Cannot pass dim < 1 to QNN Tensor.");
 
-    dest.v2.dimensions[i] = src.Dims()[i];
+    dest.v2.dimensions[i] = src.Dimensions()[i];
   }
   return kLiteRtStatusOk;
 }
@@ -114,21 +111,22 @@ uint32_t MoveToId(Qnn_Tensor_t& tensor) {
   return id;
 }
 
-LiteRtStatus LegalizeTensor(LiteRtTensor src, Qnn_Tensor_t& dest) {
-  ResetTensor(dest);
+LiteRtStatus LegalizeTensor(const litert::Tensor& src, Qnn_Tensor_t& dest) {
+  if (src.TypeId() != kLiteRtRankedTensorType) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
 
-  LiteRtTensorManager::Unique src_tensor;
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      LiteRtTensorManager::MakeFromTensor(src, src_tensor));
+  ResetTensor(dest);
 
   Qnn_DataType_t* qnn_data_type = &dest.v2.dataType;
   LITERT_RETURN_STATUS_IF_NOT_OK(
-      LegalizeElementType(src_tensor->ElementType(), qnn_data_type));
+      LegalizeElementType(src.RankedTensorType().ElementType(), qnn_data_type));
 
-  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeShapeInfo(*src_tensor, dest));
+  LITERT_RETURN_STATUS_IF_NOT_OK(
+      LegalizeShapeInfo(src.RankedTensorType().Layout(), dest));
 
-  const bool is_subgraph_in = src_tensor->IsSubgraphInput();
-  const bool is_subgraph_out = src_tensor->IsSubgraphOutput();
+  const bool is_subgraph_in = src.IsSubgraphInput();
+  const bool is_subgraph_out = src.IsSubgraphOutput();
 
   LITERT_ENSURE(!(is_subgraph_in && is_subgraph_out),
                 kLiteRtStatusErrorInvalidArgument,

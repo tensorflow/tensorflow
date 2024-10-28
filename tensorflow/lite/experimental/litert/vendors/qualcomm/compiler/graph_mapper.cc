@@ -98,7 +98,8 @@ Qnn_GraphHandle_t& GraphMapper::QnnGraph() { return qnn_graph_; }
 
 LiteRtStatus GraphMapper::LegalizeAndRegister(LiteRtTensor litert_tensor,
                                               Qnn_Tensor_t& qnn_tensor) {
-  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeTensor(litert_tensor, qnn_tensor));
+  litert::Tensor tensor(litert_tensor);
+  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeTensor(tensor, qnn_tensor));
   LITERT_RETURN_STATUS_IF_NOT_OK(AssignTensorName(qnn_tensor));
   LITERT_RETURN_STATUS_IF_QNN_NOT_OK(
       qnn_.Api()->tensorCreateGraphTensor(QnnGraph(), &qnn_tensor));

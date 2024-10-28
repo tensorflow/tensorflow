@@ -120,11 +120,11 @@ LiteRtStatus LiteRtPluginPartitionModel(LiteRtCompilerPlugin compiler_plugin,
 
   for (auto op : ops) {
     LiteRtOpCode op_code;
-    LITERT_RETURN_STATUS_IF_NOT_OK(GetOpCode(op, &op_code));
+    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtGetOpCode(op, &op_code));
     if (op_code != kLiteRtOpCodeTflMul) {
       continue;
     }
-    LITERT_RETURN_STATUS_IF_NOT_OK(PushOp(selected_ops, op));
+    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op));
   }
   return kLiteRtStatusOk;
 }
@@ -141,7 +141,7 @@ LiteRtStatus CompileSinglePartition(LiteRtParamIndex partition_index,
   for (auto op : ops) {
     LiteRtOpCode op_code;
 
-    LITERT_RETURN_STATUS_IF_NOT_OK(GetOpCode(op, &op_code));
+    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtGetOpCode(op, &op_code));
     if (op_code != kLiteRtOpCodeTflMul) {
       return kLiteRtStatusErrorUnsupported;
     }

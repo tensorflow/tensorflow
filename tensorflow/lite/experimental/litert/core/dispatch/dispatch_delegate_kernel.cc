@@ -322,8 +322,7 @@ TfLiteStatus DispatchDelegateKernel::SetBuffer(
 
   LiteRtTensorBufferHandle buffer_handle;
   if (auto status = LiteRtDispatchRegisterTensorBuffer(
-          device_context_, static_cast<LiteRtTensorBuffer>(tensor_buffer),
-          &buffer_handle);
+          device_context_, tensor_buffer.Get(), &buffer_handle);
       status != kLiteRtStatusOk) {
     LITERT_LOG(LITERT_ERROR, "Failed to register tensor buffer: %d", status);
     return kTfLiteError;

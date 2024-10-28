@@ -45,7 +45,7 @@
 
 #define _D_MATCH_EQ(lhs, rhs)                      \
   {                                                \
-    if (lhs != rhs) {                              \
+    if ((lhs) != (rhs)) {                          \
       LITERT_LOG(LITERT_ERROR, "Failed MATCH_EQ"); \
       return false;                                \
     }                                              \
@@ -56,9 +56,9 @@
     if (!(v)) return false; \
   }
 
-#define _MATCH_EQ(lhs, rhs)       \
-  {                               \
-    if (lhs != rhs) return false; \
+#define _MATCH_EQ(lhs, rhs)           \
+  {                                   \
+    if ((lhs) != (rhs)) return false; \
   }
 #ifndef NDEBUG
 #define MATCH_EQ(lhs, rhs) _D_MATCH_EQ(lhs, rhs)
@@ -90,7 +90,7 @@ inline LiteRtResult<llvm::SmallVector<TensorUseInfo>> GetTensorUses(
   LiteRtOpArray users = nullptr;
 
   LITERT_RETURN_RESULT_IF_NOT_OK(
-      GetTensorUses(tensor, &num_uses, &users, &use_user_arg_ind),
+      LiteRtGetTensorUses(tensor, &num_uses, &users, &use_user_arg_ind),
       llvm::SmallVector<TensorUseInfo>);
 
   llvm::ArrayRef<LiteRtOp> users_arr(users, num_uses);
@@ -119,7 +119,7 @@ inline LiteRtResult<llvm::ArrayRef<LiteRtTensor>> GetOpIns(LiteRtOp op) {
   LiteRtParamIndex num_inputs;
   LiteRtTensorArray inputs = nullptr;
 
-  LITERT_RETURN_RESULT_IF_NOT_OK(GetOpInputs(op, &num_inputs, &inputs),
+  LITERT_RETURN_RESULT_IF_NOT_OK(LiteRtGetOpInputs(op, &num_inputs, &inputs),
                                  llvm::ArrayRef<LiteRtTensor>);
 
   return LiteRtResult<llvm::ArrayRef<LiteRtTensor>>::FromValue(
@@ -142,7 +142,7 @@ inline LiteRtResult<llvm::ArrayRef<LiteRtTensor>> GetOpOuts(LiteRtOp op) {
   LiteRtParamIndex num_outputs;
   LiteRtTensorArray outputs = nullptr;
 
-  LITERT_RETURN_RESULT_IF_NOT_OK(GetOpOutputs(op, &num_outputs, &outputs),
+  LITERT_RETURN_RESULT_IF_NOT_OK(LiteRtGetOpOutputs(op, &num_outputs, &outputs),
                                  llvm::ArrayRef<LiteRtTensor>);
 
   return LiteRtResult<llvm::ArrayRef<LiteRtTensor>>::FromValue(
@@ -165,7 +165,7 @@ inline LiteRtResult<llvm::ArrayRef<LiteRtOp>> GetSubgraphOps(
     LiteRtSubgraph subgraph) {
   LiteRtParamIndex num_ops;
   LiteRtOpArray ops = nullptr;
-  LITERT_RETURN_RESULT_IF_NOT_OK(GetSubgraphOps(subgraph, &num_ops, &ops),
+  LITERT_RETURN_RESULT_IF_NOT_OK(LiteRtGetSubgraphOps(subgraph, &num_ops, &ops),
                                  llvm::ArrayRef<LiteRtOp>);
 
   return LiteRtResult<llvm::ArrayRef<LiteRtOp>>::FromValue(
@@ -178,7 +178,7 @@ inline LiteRtResult<llvm::ArrayRef<LiteRtTensor>> GetSubgraphInputs(
   LiteRtParamIndex num_inputs;
   LiteRtTensorArray inputs = nullptr;
   LITERT_RETURN_RESULT_IF_NOT_OK(
-      GetSubgraphInputs(subgraph, &num_inputs, &inputs),
+      LiteRtGetSubgraphInputs(subgraph, &num_inputs, &inputs),
       llvm::ArrayRef<LiteRtTensor>);
 
   return LiteRtResult<llvm::ArrayRef<LiteRtTensor>>::FromValue(
@@ -191,7 +191,7 @@ inline LiteRtResult<llvm::ArrayRef<LiteRtTensor>> GetSubgraphOutputs(
   LiteRtParamIndex num_outputs;
   LiteRtTensorArray outputs = nullptr;
   LITERT_RETURN_RESULT_IF_NOT_OK(
-      GetSubgraphOutputs(subgraph, &num_outputs, &outputs),
+      LiteRtGetSubgraphOutputs(subgraph, &num_outputs, &outputs),
       llvm::ArrayRef<LiteRtTensor>);
 
   return LiteRtResult<llvm::ArrayRef<LiteRtTensor>>::FromValue(
@@ -203,8 +203,8 @@ inline LiteRtResult<llvm::ArrayRef<LiteRtTensor>> GetSubgraphOutputs(
 // TODO: b/365299994 - Add multi-subgraph getters for graph tools.
 inline LiteRtResult<LiteRtSubgraph> GetSubgraph(LiteRtModel model) {
   LiteRtParamIndex num_subgraphs;
-  LITERT_RETURN_RESULT_IF_NOT_OK(GetModelNumSubgraphs(model, &num_subgraphs),
-                                 LiteRtSubgraph);
+  LITERT_RETURN_RESULT_IF_NOT_OK(
+      LiteRtGetNumModelSubgraphs(model, &num_subgraphs), LiteRtSubgraph);
 
   if (num_subgraphs != 1) {
     return LiteRtResult<LiteRtSubgraph>::FromStatus(
@@ -212,7 +212,7 @@ inline LiteRtResult<LiteRtSubgraph> GetSubgraph(LiteRtModel model) {
   }
 
   LiteRtSubgraph subgraph = nullptr;
-  LITERT_RETURN_RESULT_IF_NOT_OK(GetModelSubgraph(model, 0, &subgraph),
+  LITERT_RETURN_RESULT_IF_NOT_OK(LiteRtGetModelSubgraph(model, 0, &subgraph),
                                  LiteRtSubgraph);
 
   return LiteRtResult<LiteRtSubgraph>::FromValue(subgraph);
@@ -225,7 +225,7 @@ inline LiteRtResult<BufferRef<uint8_t>> GetMetadata(
   const uint8_t* buf;
   size_t size;
   LITERT_RETURN_RESULT_IF_NOT_OK(
-      LiteRtModelGetMetadata(model, key.data(),
+      LiteRtGetModelMetadata(model, key.data(),
                              reinterpret_cast<const void**>(&buf), &size),
       BufferRef<uint8_t>);
   return ResT::FromValue(BufferRef(buf, size));
@@ -240,12 +240,12 @@ inline bool MatchRankedTensorType(LiteRtTensor tensor,
                                   LiteRtElementType element_type,
                                   llvm::ArrayRef<int32_t> shape) {
   LiteRtTensorTypeId type_id;
-  LITERT_RETURN_VAL_IF_NOT_OK(GetTensorTypeId(tensor, &type_id), false);
+  LITERT_RETURN_VAL_IF_NOT_OK(LiteRtGetTensorTypeId(tensor, &type_id), false);
   MATCH_EQ(type_id, kLiteRtRankedTensorType);
 
   LiteRtRankedTensorType ranked_tensor_type;
-  LITERT_RETURN_VAL_IF_NOT_OK(GetRankedTensorType(tensor, &ranked_tensor_type),
-                              false);
+  LITERT_RETURN_VAL_IF_NOT_OK(
+      LiteRtGetRankedTensorType(tensor, &ranked_tensor_type), false);
   MATCH_EQ(ranked_tensor_type.element_type, element_type);
   MATCH_EQ(ranked_tensor_type.layout.rank, shape.size());
 
@@ -279,7 +279,7 @@ inline bool MatchTensorNoUses(LiteRtTensor tensor) {
   LiteRtOpArray users = nullptr;
 
   LITERT_RETURN_VAL_IF_NOT_OK(
-      GetTensorUses(tensor, &num_uses, &users, &use_user_arg_ind), false);
+      LiteRtGetTensorUses(tensor, &num_uses, &users, &use_user_arg_ind), false);
 
   return num_uses == 0;
 }
@@ -288,15 +288,15 @@ inline bool MatchTensorNoUses(LiteRtTensor tensor) {
 inline bool MatchTensorDefiningOp(LiteRtTensor tensor,
                                   LiteRtParamIndex expected_defining_op_out_ind,
                                   LiteRtOp expected_defining_op) {
-  LiteRtOp defining_op = nullptr;
-  LiteRtParamIndex defining_op_out_ind;
-
+  bool has_defining_op;
+  LiteRtTensorDefiningOp defining_op;
   LITERT_RETURN_VAL_IF_NOT_OK(
-      GetTensorDefiningOp(tensor, &defining_op, &defining_op_out_ind), false);
-  MATCH_EQ(defining_op, expected_defining_op);
+      LiteRtGetTensorDefiningOp(tensor, &has_defining_op, &defining_op), false);
+  MATCH_EQ(has_defining_op, expected_defining_op != nullptr);
 
   return expected_defining_op == nullptr ||
-         expected_defining_op_out_ind == defining_op_out_ind;
+         (expected_defining_op == defining_op.op &&
+          expected_defining_op_out_ind == defining_op.op_output_index);
 }
 
 // Matches a tensor that is not the output of an op (subgraph inputs/consts).
@@ -310,7 +310,7 @@ inline bool MatchOpType(LiteRtOp op,
                         llvm::ArrayRef<RankedTypeInfo> output_type_info,
                         LiteRtOpCode code) {
   LiteRtOpCode actual_code;
-  LITERT_RETURN_VAL_IF_NOT_OK(GetOpCode(op, &actual_code), false);
+  LITERT_RETURN_VAL_IF_NOT_OK(LiteRtGetOpCode(op, &actual_code), false);
   MATCH_EQ(actual_code, code);
 
   const auto exptected_num_inputs = input_type_info.size();
@@ -352,11 +352,11 @@ inline bool ValidateTopology(llvm::ArrayRef<LiteRtOp> ops) {
 template <typename T>
 inline LiteRtResult<llvm::ArrayRef<T>> GetWeights(LiteRtTensor tensor) {
   LiteRtWeights weights = nullptr;
-  LITERT_RETURN_RESULT_IF_NOT_OK(GetTensorWeights(tensor, &weights),
+  LITERT_RETURN_RESULT_IF_NOT_OK(LiteRtGetTensorWeights(tensor, &weights),
                                  llvm::ArrayRef<T>);
   size_t size;
   const void* data = nullptr;
-  LITERT_RETURN_RESULT_IF_NOT_OK(GetWeightsInfo(weights, &size, &data),
+  LITERT_RETURN_RESULT_IF_NOT_OK(LiteRtGetWeightsBytes(weights, &data, &size),
                                  llvm::ArrayRef<T>);
   return LiteRtResult<llvm::ArrayRef<T>>::FromValue(
       llvm::ArrayRef<T>(static_cast<const T*>(data), size));
@@ -366,12 +366,13 @@ inline LiteRtResult<llvm::ArrayRef<T>> GetWeights(LiteRtTensor tensor) {
 template <typename T>
 inline bool MatchWeights(LiteRtTensor tensor, llvm::ArrayRef<T> expected_data) {
   LiteRtWeights weights = nullptr;
-  LITERT_RETURN_VAL_IF_NOT_OK(GetTensorWeights(tensor, &weights), false);
+  LITERT_RETURN_VAL_IF_NOT_OK(LiteRtGetTensorWeights(tensor, &weights), false);
   MATCH_TRUE(weights != nullptr);
 
   size_t size;
   const void* data = nullptr;
-  LITERT_RETURN_VAL_IF_NOT_OK(GetWeightsInfo(weights, &size, &data), false);
+  LITERT_RETURN_VAL_IF_NOT_OK(LiteRtGetWeightsBytes(weights, &data, &size),
+                              false);
   MATCH_TRUE(data != nullptr);
 
   MATCH_EQ(size, expected_data.size() * sizeof(T));
@@ -382,15 +383,17 @@ inline bool MatchWeights(LiteRtTensor tensor, llvm::ArrayRef<T> expected_data) {
 // Match given tensor having no (empty) weights.
 inline bool MatchNoWeights(LiteRtTensor tensor) {
   LiteRtWeights weights = nullptr;
-  LITERT_RETURN_VAL_IF_NOT_OK(GetTensorWeights(tensor, &weights), false);
+  LITERT_RETURN_VAL_IF_NOT_OK(LiteRtGetTensorWeights(tensor, &weights), false);
   MATCH_TRUE(weights != nullptr);
 
   size_t size;
   const void* data = nullptr;
-  LITERT_RETURN_VAL_IF_NOT_OK(GetWeightsInfo(weights, &size, &data), false);
+  LITERT_RETURN_VAL_IF_NOT_OK(LiteRtGetWeightsBytes(weights, &data, &size),
+                              false);
 
   return size == 0;
 }
+
 }  // namespace graph_tools
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_GRAPH_TOOLS_H_

@@ -78,8 +78,7 @@ TEST(TensorBufferRequirements, NotOwned) {
   ASSERT_TRUE(size.ok());
   ASSERT_EQ(*size, kBufferSize);
 
-  ASSERT_EQ(static_cast<LiteRtTensorBufferRequirements>(requirements),
-            litert_requirements);
+  ASSERT_EQ(requirements.Get(), litert_requirements);
 
   LiteRtDestroyTensorBufferRequirements(litert_requirements);
 }

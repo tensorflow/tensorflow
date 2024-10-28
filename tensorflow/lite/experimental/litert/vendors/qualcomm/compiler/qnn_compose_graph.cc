@@ -27,7 +27,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_support.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_op.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_op.h"
@@ -95,13 +95,12 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
 
   // Use simple traversal for now.
   // TODO: Drive traversal here.
-  for (auto op : graph_mapper.LiteRtSubgraphOps()) {
+  for (auto litert_op : graph_mapper.LiteRtSubgraphOps()) {
     Qnn_OpConfig_t qnn_op = BuildDefaultOp();
-    LiteRtOpManager::Unique op_manager;
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtOpManager::MakeFromOp(op, op_manager));
+    Op op(litert_op);
     for (auto it = legalizations.begin(); it != legalizations.end(); ++it) {
       LITERT_RETURN_STATUS_IF_NOT_OK_OR_NOT_MATCHED(
-          (*it)->LegalizeOp(*op_manager, qnn_op, graph_mapper));
+          (*it)->LegalizeOp(op, qnn_op, graph_mapper));
     }
   }
 

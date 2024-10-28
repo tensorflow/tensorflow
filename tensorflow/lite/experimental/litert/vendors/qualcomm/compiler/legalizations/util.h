@@ -18,7 +18,7 @@
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_op.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
 
 namespace litert::qnn {
@@ -28,11 +28,11 @@ namespace litert::qnn {
 // mapped
 // 2. Assigning params to destination OP does not depending on input tensor of
 // source OP.
-LiteRtStatus LegalizeSimpleOp(LiteRtOpManager& src, Qnn_OpConfig_t& dest,
+LiteRtStatus LegalizeSimpleOp(const Op& src, Qnn_OpConfig_t& dest,
                               GraphMapper& graph_mapper);
 
 // Dump source Op details.
-void DumpLegalization(LiteRtOpT& op);
+void DumpLegalization(const LiteRtOpT& op);
 
 }  // namespace litert::qnn
 

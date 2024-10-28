@@ -26,6 +26,7 @@ cc_library(
     deps = [
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
     ],
 )
 

@@ -20,6 +20,7 @@
 #include <memory>
 #include <variant>
 
+#include "absl/log/absl_check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"  // IWYU pragma: keep
@@ -218,5 +219,17 @@ class LiteRtResult {
     LITERT_LOG(LITERT_ERROR, "%s", msg);    \
     return fail_stat;                       \
   }
+
+namespace litert {
+namespace internal {
+
+template <typename... Args>
+void AssertGet(LiteRtStatus (*get)(Args...), Args... args) {
+  auto status = get(args...);
+  ABSL_CHECK_EQ(status, kLiteRtStatusOk);
+}
+
+}  // namespace internal
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_SUPPORT_H_

@@ -181,7 +181,7 @@ class ModelUnpacker {
 
   LiteRtStatus UnpackSubgraph(LiteRtSubgraph target);
 
-  LiteRtOpCode GetOpCode(uint32_t ind) {
+  LiteRtOpCode LiteRtGetOpCode(uint32_t ind) {
     return static_cast<LiteRtOpCode>(Fb().operator_codes[ind]->builtin_code);
   }
 
@@ -222,7 +222,7 @@ LiteRtStatus ModelUnpacker::ConvertTensor(const tflite::TensorT& tensor,
 LiteRtStatus ModelUnpacker::ConvertOp(const tflite::OperatorT& op,
                                       std::vector<LiteRtTensor>& tensors,
                                       LiteRtOp target) {
-  target->op_code = GetOpCode(op.opcode_index);
+  target->op_code = LiteRtGetOpCode(op.opcode_index);
 
   for (auto input : op.inputs) {
     // Skipping optional input tensor.

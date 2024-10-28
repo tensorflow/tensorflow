@@ -18,6 +18,7 @@
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
 namespace litert::qnn {
 
@@ -62,7 +63,7 @@ uint32_t MoveToId(Qnn_Tensor_t& tensor);
 //
 
 // Map src tensor onto dest. Resets dest before doing anything.
-LiteRtStatus LegalizeTensor(LiteRtTensor src, Qnn_Tensor_t& dest);
+LiteRtStatus LegalizeTensor(const litert::Tensor& src, Qnn_Tensor_t& dest);
 
 }  // namespace litert::qnn
 

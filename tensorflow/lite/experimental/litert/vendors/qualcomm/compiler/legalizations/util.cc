@@ -20,7 +20,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_op.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/core/graph_tools.h"
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
@@ -34,7 +34,7 @@ using ::litert::internal::Dump;
 using ::litert::internal::DumpOptions;
 
 // Dump source Op details.
-void DumpLegalization(LiteRtOpT& op) {
+void DumpLegalization(const LiteRtOpT& op) {
   std::ostringstream dump;
   Dump(op, dump);
   DumpOptions(op, dump);
@@ -42,12 +42,12 @@ void DumpLegalization(LiteRtOpT& op) {
   LITERT_LOG(LITERT_INFO, "%s", s.data());
 }
 
-LiteRtStatus LegalizeSimpleOp(LiteRtOpManager& src, Qnn_OpConfig_t& dest,
+LiteRtStatus LegalizeSimpleOp(const Op& src, Qnn_OpConfig_t& dest,
                               GraphMapper& graph_mapper) {
-  DumpLegalization(*src.Op());
+  DumpLegalization(*src.Get());
   // Look up op input tensors in scope.
   LITERT_ASSIGN_OR_RETURN_STATUS(auto op_ins,
-                                 ::graph_tools::GetOpIns(src.Op()));
+                                 ::graph_tools::GetOpIns(src.Get()));
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, op_ins.size(), QNN_TENSOR_INIT);
 
   Qnn_Tensor_t* cur_qnn_op_in = qnn_op_ins;
@@ -60,7 +60,7 @@ LiteRtStatus LegalizeSimpleOp(LiteRtOpManager& src, Qnn_OpConfig_t& dest,
   // Legalize op outputs and update scope.
 
   LITERT_ASSIGN_OR_RETURN_STATUS(auto op_outs,
-                                 ::graph_tools::GetOpOuts(src.Op()));
+                                 ::graph_tools::GetOpOuts(src.Get()));
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs, op_outs.size(),
                      QNN_TENSOR_INIT);
 
