@@ -1178,10 +1178,13 @@ cc_library(
     ]),
     deps = [
         ":rocm_driver_wrapper",
+        ":rocm_kernel",
         ":rocm_status",
         "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:launch_dim",
         "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "@com_google_absl//absl/base",

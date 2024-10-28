@@ -231,17 +231,6 @@ class GpuDriver {
   // https://docs.amd.com/projects/HIP/en/docs-5.0.0/doxygen/html/group___graph.html#gaf006701d98164ed3492755bbb19bab83
   static absl::StatusOr<size_t> GraphGetNodeCount(GpuGraphHandle graph);
 
-  // Sets the parameters for a kernel node in the given graph exec.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gd84243569e4c3d6356b9f2eea20ed48c
-  // https://docs.amd.com/projects/HIP/en/docs-5.0.0/doxygen/html/group___graph.html#ga5b1918dae65224863b7370e6d4ad3f2a
-  static absl::Status GraphExecKernelNodeSetParams(
-      GpuGraphExecHandle exec, GpuGraphNodeHandle node,
-      absl::string_view kernel_name, GpuFunctionHandle function,
-      unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
-      unsigned int block_dim_x, unsigned int block_dim_y,
-      unsigned int block_dim_z, unsigned int shared_mem_bytes,
-      void** kernel_params, void** extra);
-
   // The CUDA stream callback type signature.
   // The data passed to AddStreamCallback is subsequently passed to this
   // callback when it fires.

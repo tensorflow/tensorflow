@@ -397,6 +397,19 @@ class GpuCommandBuffer : public CommandBuffer {
   // error if the given node has not been created as a child node.
   virtual absl::Status UpdateChildNode(GraphNodeHandle node_handle,
                                        const CommandBuffer& nested) = 0;
+
+  // Adds a new kernel launch node to the graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateKernelNode(
+      const Dependencies& dependencies, const ThreadDim& threads,
+      const BlockDim& blocks, const Kernel& kernel,
+      const KernelArgsPackedArrayBase& args) = 0;
+
+  // Updates the kernel launch node with the given parameters. Will return an
+  // error if the given node has not been created as a kernel launch node.
+  virtual absl::Status UpdateKernelNode(
+      GraphNodeHandle node_handle, const ThreadDim& threads,
+      const BlockDim& blocks, const Kernel& kernel,
+      const KernelArgsPackedArrayBase& args) = 0;
 };
 
 }  // namespace stream_executor::gpu

@@ -28,6 +28,8 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 
 namespace stream_executor::gpu {
 
@@ -79,6 +81,16 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
 
   absl::Status UpdateChildNode(GraphNodeHandle node_handle,
                                const CommandBuffer& nested) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateKernelNode(
+      const Dependencies& dependencies, const ThreadDim& threads,
+      const BlockDim& blocks, const Kernel& kernel,
+      const KernelArgsPackedArrayBase& args) override;
+
+  absl::Status UpdateKernelNode(GraphNodeHandle node_handle,
+                                const ThreadDim& threads,
+                                const BlockDim& blocks, const Kernel& kernel,
+                                const KernelArgsPackedArrayBase& args) override;
 
   // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
   // barriers, updating conditional handles, etc.).

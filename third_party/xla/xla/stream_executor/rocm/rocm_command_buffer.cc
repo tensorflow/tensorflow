@@ -32,7 +32,10 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
+#include "xla/stream_executor/rocm/rocm_kernel.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
@@ -240,4 +243,92 @@ absl::Status RocmCommandBuffer::UpdateChildNode(GraphNodeHandle node_handle,
                       exec_, ToHipGraphHandle(node_handle), child_graph),
                   "Failed to set HIP graph child node params");
 }
+
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
+    const Dependencies& dependencies, const ThreadDim& threads,
+    const BlockDim& blocks, const Kernel& kernel,
+    const KernelArgsPackedArrayBase& args) {
+  const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
+
+  VLOG(2) << "Add kernel node to a graph " << graph_
+          << "; kernel: " << kernel.name() << "; gdx: " << blocks.x
+          << " gdy: " << blocks.y << " gdz: " << blocks.z
+          << " bdx: " << threads.x << " bdy: " << threads.y
+          << " bdz: " << threads.z << "; shmem: " << shared_mem_bytes
+          << "; deps: " << dependencies.size();
+
+  hipKernelNodeParams params{};
+
+  hipFunction_t function =
+      static_cast<const RocmKernel&>(kernel).gpu_function();
+  params.func = function;
+  params.gridDim.x = blocks.x;
+  params.gridDim.z = blocks.y;
+  params.gridDim.z = blocks.z;
+  params.blockDim.x = threads.x;
+  params.blockDim.y = threads.y;
+  params.blockDim.z = threads.z;
+  params.sharedMemBytes = shared_mem_bytes;
+  params.kernelParams = const_cast<void**>(args.argument_addresses().data());
+  params.extra = nullptr;
+
+  if (shared_mem_bytes != 0) {
+    TF_RETURN_IF_ERROR(ToStatus(
+        wrap::hipFuncSetAttribute(function,
+                                  hipFuncAttributeMaxDynamicSharedMemorySize,
+                                  shared_mem_bytes),
+        "Failed to set shared memory size"));
+  }
+
+  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+
+  hipGraphNode_t node_handle = nullptr;
+  TF_RETURN_IF_ERROR(
+      ToStatus(wrap::hipGraphAddKernelNode(&node_handle, graph_, deps.data(),
+                                           deps.size(), &params),
+               "Failed to add kernel node to a HIP graph"));
+
+  return FromHipGraphHandle(node_handle);
+}
+
+absl::Status RocmCommandBuffer::UpdateKernelNode(
+    GraphNodeHandle node_handle, const ThreadDim& threads,
+    const BlockDim& blocks, const Kernel& kernel,
+    const KernelArgsPackedArrayBase& args) {
+  const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
+
+  VLOG(2) << "Set kernel node params " << node_handle << " in graph executable "
+          << exec_ << "; kernel: " << kernel.name() << "; gdx: " << blocks.x
+          << " gdy: " << blocks.y << " gdz: " << blocks.z
+          << " bdx: " << threads.x << " bdy: " << threads.y
+          << " bdz: " << threads.z << "; shmem: " << shared_mem_bytes;
+
+  hipKernelNodeParams params{};
+
+  hipFunction_t function =
+      static_cast<const RocmKernel&>(kernel).gpu_function();
+  params.func = function;
+  params.gridDim.x = blocks.x;
+  params.gridDim.z = blocks.y;
+  params.gridDim.z = blocks.z;
+  params.blockDim.x = threads.x;
+  params.blockDim.y = threads.y;
+  params.blockDim.z = threads.z;
+  params.sharedMemBytes = shared_mem_bytes;
+  params.kernelParams = const_cast<void**>(args.argument_addresses().data());
+  params.extra = nullptr;
+
+  if (shared_mem_bytes != 0) {
+    TF_RETURN_IF_ERROR(ToStatus(
+        wrap::hipFuncSetAttribute(function,
+                                  hipFuncAttributeMaxDynamicSharedMemorySize,
+                                  shared_mem_bytes),
+        "Failed to set shared memory size"));
+  }
+
+  return ToStatus(wrap::hipGraphExecKernelNodeSetParams(
+                      exec_, ToHipGraphHandle(node_handle), &params),
+                  "Failed to set HIP graph kernel node params");
+}
+
 }  // namespace stream_executor::gpu

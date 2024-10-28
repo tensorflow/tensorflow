@@ -473,34 +473,20 @@ absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
   CHECK_EQ(kernel.Arity() + (packed_args.number_of_shared_bytes() > 0),
            packed_args.number_of_arguments());
 
-  const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
-  GpuFunctionHandle gpu_func = gpu_kernel->gpu_function();
-
-  void** kernel_params =
-      const_cast<void**>(packed_args.argument_addresses().data());
-
   // Adds a new kernel node to the graph under construction.
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeHandle node_handle = nullptr;
-    TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
-        &node_handle, graph_, ToPlatformSpecificHandles(barrier), kernel.name(),
-        gpu_func, blocks.x, blocks.y, blocks.z, threads.x, threads.y, threads.z,
-        packed_args.number_of_shared_bytes(), kernel_params,
-        /*extra=*/nullptr));
-    execution_scope.nodes.emplace_back().handle =
-        FromPlatformSpecificHandle(node_handle);
+    TF_ASSIGN_OR_RETURN(
+        execution_scope.nodes.emplace_back().handle,
+        CreateKernelNode(barrier, threads, blocks, kernel, packed_args));
     return absl::OkStatus();
   }
 
   // Updates kernel node in the executable graph.
   if (state_ == State::kUpdate) {
-    GraphNodeHandle node =
-        execution_scope.nodes[execution_scope.update_state.node_idx++].handle;
-    return GpuDriver::GraphExecKernelNodeSetParams(
-        exec_, ToPlatformSpecificHandle(node), kernel.name(), gpu_func,
-        blocks.x, blocks.y, blocks.z, threads.x, threads.y, threads.z,
-        packed_args.number_of_shared_bytes(), kernel_params, /*extra=*/nullptr);
+    return UpdateKernelNode(
+        execution_scope.nodes[execution_scope.update_state.node_idx++].handle,
+        threads, blocks, kernel, packed_args);
   }
 
   return UnsupportedStateError(state_);

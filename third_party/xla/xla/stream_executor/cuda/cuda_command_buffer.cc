@@ -30,10 +30,13 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/command_buffer_kernels.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
+#include "xla/stream_executor/cuda/cuda_kernel.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/typed_kernel_factory.h"  // IWYU pragma: keep
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
@@ -303,4 +306,94 @@ absl::Status CudaCommandBuffer::UpdateChildNode(GraphNodeHandle node_handle,
                             exec_, ToCudaGraphHandle(node_handle), child_graph),
                         "Failed to set CUDA graph child node params");
 }
+
+absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
+    const Dependencies& dependencies, const ThreadDim& threads,
+    const BlockDim& blocks, const Kernel& kernel,
+    const KernelArgsPackedArrayBase& args) {
+  const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
+
+  VLOG(2) << "Add kernel node to a graph " << graph_
+          << "; kernel: " << kernel.name() << "; gdx: " << blocks.x
+          << " gdy: " << blocks.y << " gdz: " << blocks.z
+          << " bdx: " << threads.x << " bdy: " << threads.y
+          << " bdz: " << threads.z << "; shmem: " << shared_mem_bytes
+          << "; deps: " << dependencies.size();
+
+  CUDA_KERNEL_NODE_PARAMS params{};
+
+  CUfunction function = static_cast<const CudaKernel&>(kernel).gpu_function();
+  params.func = function;
+  params.gridDimX = blocks.x;
+  params.gridDimY = blocks.y;
+  params.gridDimZ = blocks.z;
+  params.blockDimX = threads.x;
+  params.blockDimY = threads.y;
+  params.blockDimZ = threads.z;
+  params.sharedMemBytes = shared_mem_bytes;
+  params.kernelParams = const_cast<void**>(args.argument_addresses().data());
+  params.extra = nullptr;
+
+  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
+  // should be moved one level up to se::Kernel level, and done just once (or
+  // updated once we get a new larger shared memory request).
+  if (shared_mem_bytes != 0) {
+    TF_RETURN_IF_ERROR(cuda::ToStatus(
+        cuFuncSetAttribute(function,
+                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                           shared_mem_bytes),
+        "Failed to set shared memory size"));
+  }
+
+  std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
+
+  CUgraphNode node_handle = nullptr;
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuGraphAddKernelNode(&node_handle, graph_, deps.data(),
+                                          deps.size(), &params),
+                     "Failed to add kernel node to a CUDA graph"));
+  return FromCudaGraphHandle(node_handle);
+}
+
+absl::Status CudaCommandBuffer::UpdateKernelNode(
+    GraphNodeHandle node_handle, const ThreadDim& threads,
+    const BlockDim& blocks, const Kernel& kernel,
+    const KernelArgsPackedArrayBase& args) {
+  const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
+
+  VLOG(2) << "Set kernel node params " << node_handle << " in graph executable "
+          << exec_ << "; kernel: " << kernel.name() << "; gdx: " << blocks.x
+          << " gdy: " << blocks.y << " gdz: " << blocks.z
+          << " bdx: " << threads.x << " bdy: " << threads.y
+          << " bdz: " << threads.z << "; shmem: " << shared_mem_bytes;
+
+  CUDA_KERNEL_NODE_PARAMS params{};
+  CUfunction function = static_cast<const CudaKernel&>(kernel).gpu_function();
+  params.func = function;
+  params.gridDimX = blocks.x;
+  params.gridDimY = blocks.y;
+  params.gridDimZ = blocks.z;
+  params.blockDimX = threads.x;
+  params.blockDimY = threads.y;
+  params.blockDimZ = threads.z;
+  params.sharedMemBytes = shared_mem_bytes;
+  params.kernelParams = const_cast<void**>(args.argument_addresses().data());
+  params.extra = nullptr;
+
+  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
+  // should be moved one level up to se::Kernel level, and done just once (or
+  // updated once we get a new larger shared memory request).
+  if (shared_mem_bytes != 0) {
+    TF_RETURN_IF_ERROR(cuda::ToStatus(
+        cuFuncSetAttribute(function,
+                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                           shared_mem_bytes),
+        "Failed to set shared memory size"));
+  }
+
+  return cuda::ToStatus(cuGraphExecKernelNodeSetParams(
+                            exec_, ToCudaGraphHandle(node_handle), &params),
+                        "Failed to set CUDA graph kernel node params");
+}
+
 }  // namespace stream_executor::gpu

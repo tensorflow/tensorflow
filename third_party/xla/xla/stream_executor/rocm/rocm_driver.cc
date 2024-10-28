@@ -310,45 +310,6 @@ absl::StatusOr<size_t> GpuDriver::GraphGetNodeCount(hipGraph_t graph) {
   return numNodes;
 }
 
-/*static*/ absl::Status GpuDriver::GraphExecKernelNodeSetParams(
-    GpuGraphExecHandle exec, GpuGraphNodeHandle node,
-    absl::string_view kernel_name, hipFunction_t function,
-    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
-    unsigned int block_dim_x, unsigned int block_dim_y,
-    unsigned int block_dim_z, unsigned int shared_mem_bytes,
-    void** kernel_params, void** extra) {
-  VLOG(2) << "Set kernel node params " << node << " in graph executabe " << exec
-          << "; kernel: " << kernel_name << "; gdx: " << grid_dim_x
-          << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
-          << " bdx: " << block_dim_x << " bdy: " << block_dim_y
-          << " bdz: " << block_dim_z << "; shmem: " << shared_mem_bytes;
-
-  hipKernelNodeParams params;
-  memset(&params, 0, sizeof(params));
-
-  params.func = function;
-  params.gridDim.x = grid_dim_x;
-  params.gridDim.y = grid_dim_y;
-  params.gridDim.z = grid_dim_z;
-  params.blockDim.x = block_dim_x;
-  params.blockDim.y = block_dim_y;
-  params.blockDim.z = block_dim_z;
-  params.sharedMemBytes = shared_mem_bytes;
-  params.kernelParams = kernel_params;
-  params.extra = extra;
-
-  if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(ToStatus(
-        wrap::hipFuncSetAttribute(function,
-                                  hipFuncAttributeMaxDynamicSharedMemorySize,
-                                  shared_mem_bytes),
-        "Failed to set shared memory size"));
-  }
-
-  return ToStatus(wrap::hipGraphExecKernelNodeSetParams(exec, node, &params),
-                  "Failed to set HIP graph kernel node params");
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   hipError_t res = wrap::hipGetDeviceCount(&device_count);
