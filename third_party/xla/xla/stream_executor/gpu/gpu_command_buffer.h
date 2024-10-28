@@ -26,7 +26,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -162,9 +161,6 @@ class GpuCommandBuffer : public CommandBuffer {
   }
 
  private:
-  absl::Status Trace(Stream* stream,
-                     absl::AnyInvocable<absl::Status()> function) override;
-
   // We track the total number of allocated and alive executable graphs in the
   // process to track the command buffers resource usage. Executable graph
   // allocates resources on a GPU devices (rule of thumb is ~8kb per node), so
@@ -285,10 +281,12 @@ class GpuCommandBuffer : public CommandBuffer {
       const BlockDim& blocks, const Kernel& kernel,
       const KernelArgsPackedArrayBase& packed_args);
 
+ protected:
   // Returns OK status if command buffer is not finalized and it is still
   // possible to add new commands to it, otherwise returns internal error.
   absl::Status CheckNotFinalized();
 
+ private:
   // Returns OK status if the number of command buffers is equal to the expected
   // one, otherwise returns internal error.
   absl::Status CheckNumCommandBuffers(

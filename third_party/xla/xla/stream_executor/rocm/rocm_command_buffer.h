@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "rocm/include/hip/hip_runtime.h"
@@ -94,6 +95,9 @@ class RocmCommandBuffer : public GpuCommandBuffer {
 
   absl::StatusOr<GraphNodeHandle> CreateBarrierNode(
       const Dependencies& dependencies) override;
+
+  absl::Status Trace(Stream* stream,
+                     absl::AnyInvocable<absl::Status()> function) override;
 
   GpuExecutor* parent_;
 };

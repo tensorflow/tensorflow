@@ -67,54 +67,6 @@ absl::Status GpuDriver::DestroyGraph(hipGraph_t graph) {
   return ToStatus(wrap::hipGraphDestroy(graph), "Failed to destroy HIP graph");
 }
 
-static std::string_view StreamCaptureModeToString(
-    GpuDriver::StreamCaptureMode mode) {
-  switch (mode) {
-    case GpuDriver::StreamCaptureMode::kGlobal:
-      return "global";
-    case GpuDriver::StreamCaptureMode::kThreadLocal:
-      return "threadlocal";
-    case GpuDriver::StreamCaptureMode::kRelaxed:
-      return "relaxed";
-  }
-}
-
-absl::Status GpuDriver::StreamBeginCapture(GpuStreamHandle stream,
-                                           StreamCaptureMode mode) {
-  hipStreamCaptureMode hip_mode;
-  switch (mode) {
-    case StreamCaptureMode::kGlobal:
-      hip_mode = hipStreamCaptureModeGlobal;
-      break;
-    case StreamCaptureMode::kThreadLocal:
-      hip_mode = hipStreamCaptureModeThreadLocal;
-      break;
-    case StreamCaptureMode::kRelaxed:
-      hip_mode = hipStreamCaptureModeRelaxed;
-      break;
-  }
-
-  VLOG(2) << "Beging stream " << stream << " capture in "
-          << StreamCaptureModeToString(mode) << " mode";
-  return ToStatus(wrap::hipStreamBeginCapture(stream, hip_mode),
-                  "Failed to begin stream capture");
-}
-
-absl::Status GpuDriver::StreamBeginCaptureToGraph(GpuStreamHandle stream,
-                                                  GpuGraphHandle graph,
-                                                  StreamCaptureMode mode) {
-  return absl::UnimplementedError(
-      "StreamBeginCaptureToGraph is not implemented");
-}
-
-absl::Status GpuDriver::StreamEndCapture(GpuStreamHandle stream,
-                                         hipGraph_t* graph) {
-  VLOG(2) << "End stream " << stream << " capture";
-
-  return ToStatus(wrap::hipStreamEndCapture(stream, graph),
-                  "Failed to end stream capture");
-}
-
 absl::Status GpuDriver::GraphInstantiate(hipGraphExec_t* exec, hipGraph_t graph,
                                          const GraphInstantiateFlags& flags) {
   VLOG(2) << "Instantiate HIP executable graph from graph " << graph << " ("

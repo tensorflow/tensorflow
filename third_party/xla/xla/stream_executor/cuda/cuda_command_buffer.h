@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream.h"
 
 namespace stream_executor::gpu {
 
@@ -94,6 +96,9 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
 
   absl::StatusOr<GraphNodeHandle> CreateBarrierNode(
       const Dependencies& dependencies) override;
+
+  absl::Status Trace(Stream* stream,
+                     absl::AnyInvocable<absl::Status()> function) override;
 
   // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
   // barriers, updating conditional handles, etc.).

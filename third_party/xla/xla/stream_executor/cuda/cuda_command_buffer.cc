@@ -22,8 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/bit_pattern.h"
@@ -35,11 +39,13 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/typed_kernel_factory.h"  // IWYU pragma: keep
 #include "tsl/platform/casts.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -419,6 +425,53 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateBarrierNode(
       "Failed to add empty node to a CUDA graph"));
 
   return FromCudaGraphHandle(barrier_handle);
+}
+
+absl::Status CudaCommandBuffer::Trace(
+    Stream* stream, absl::AnyInvocable<absl::Status()> function) {
+  if (parent_->GetDeviceDescription().driver_version() <
+      SemanticVersion{12, 3, 0}) {
+    return absl::UnimplementedError(
+        "StreamBeginCaptureToGraph is not implemented for CUDA below version "
+        "12.3. Therefore tracing is not supported.");
+  }
+
+  TF_RETURN_IF_ERROR(CheckNotFinalized());
+
+  VLOG(5) << "Trace into GPU command buffer graph " << graph_
+          << " on a stream: " << stream;
+
+  CUstream stream_handle = AsGpuStreamValue(stream);
+
+  // Switch stream into the capture mode.
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
+
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuStreamBeginCaptureToGraph(stream_handle, graph_,
+                                  /*dependencies=*/nullptr,
+                                  /*dependencyData=*/nullptr,
+                                  /*numDependencies=*/0,
+                                  CU_STREAM_CAPTURE_MODE_THREAD_LOCAL),
+      "Failed to begin stream capture to graph"));
+  auto traced = function();
+
+  // Always stop capturing the stream before checking `traced` result.
+  VLOG(5) << "End stream " << stream << " capture";
+  CUgraph captured_graph;
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuStreamEndCapture(stream_handle, &captured_graph),
+                     "Failed to end stream capture"));
+  DCHECK(captured_graph == graph_) << "Stream capture should update graph_";
+  uint64_t end_nanos = tsl::Env::Default()->NowNanos();
+
+  if (!traced.ok())
+    return absl::InternalError(
+        absl::StrCat("Failed to capture gpu graph: ", traced.message()));
+
+  VLOG(5) << "Traced into the GPU command buffer graph " << graph_ << " (took "
+          << (end_nanos - start_nanos) / 1000 << " μs)";
+
+  return absl::OkStatus();
 }
 
 }  // namespace stream_executor::gpu

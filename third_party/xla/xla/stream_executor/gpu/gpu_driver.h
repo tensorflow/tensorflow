@@ -67,26 +67,6 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
   static absl::Status DestroyGraph(GpuGraphHandle graph);
 
-  // Begins graph capture on a stream.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g767167da0bbf07157dc20b6c258a2143
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
-  enum class StreamCaptureMode { kGlobal, kThreadLocal, kRelaxed };
-  static absl::Status StreamBeginCapture(GpuStreamHandle stream,
-                                         StreamCaptureMode mode);
-
-  // Begins graph capture on a stream to an existing graph.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1gac495e0527d1dd6437f95ee482f61865
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
-  static absl::Status StreamBeginCaptureToGraph(GpuStreamHandle stream,
-                                                GpuGraphHandle graph,
-                                                StreamCaptureMode mode);
-
-  // Ends capture on a stream, returning the captured graph.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g03dab8b2ba76b00718955177a929970c
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
-  static absl::Status StreamEndCapture(GpuStreamHandle stream,
-                                       GpuGraphHandle* graph);
-
   // Graph instantiation flags.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g070bf5517d3a7915667c256eefce4956
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#cuda-driver-data-types
