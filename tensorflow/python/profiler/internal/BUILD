@@ -201,6 +201,7 @@ tsl_pybind_extension(
         "//tensorflow/python/profiler:__pkg__",
     ]),
     deps = [
+        "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:protos_all_cc_impl",
         "//tensorflow/core/framework:attr_value_proto_cc_impl",
         "//tensorflow/core/framework:op",
@@ -208,8 +209,6 @@ tsl_pybind_extension(
         "//tensorflow/core/profiler/convert:repository",
         "//tensorflow/core/profiler/convert:tool_options",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
-        "//tensorflow/python/lib/core:py_exception_registry",
-        "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:env_impl",
         "@local_tsl//tsl/profiler/protobuf:profiler_analysis_proto_cc_impl",
