@@ -29,10 +29,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/numeric/int128.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
@@ -47,10 +45,6 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -108,9 +102,13 @@ void VisitSummands(mlir::AffineExpr expr, const Fn& visit) {
 
 class AffineExprSimplifier {
  public:
-  explicit AffineExprSimplifier(RangeEvaluator* range_evaluator)
+  explicit AffineExprSimplifier(
+      RangeEvaluator* range_evaluator,
+      IndexingMap::SimplifyPointDimensions simplify_point_dimensions =
+          IndexingMap::SimplifyPointDimensions::kReplace)
       : range_evaluator_(range_evaluator),
-        zero_(getAffineConstantExpr(0, range_evaluator_->GetMLIRContext())) {}
+        zero_(getAffineConstantExpr(0, range_evaluator_->GetMLIRContext())),
+        simplify_point_dimensions_(simplify_point_dimensions) {}
 
   // Simplifies the map as much as possible.
   mlir::AffineMap Simplify(mlir::AffineMap affine_map);
@@ -179,6 +177,7 @@ class AffineExprSimplifier {
 
   RangeEvaluator* range_evaluator_;
   AffineExpr zero_;
+  IndexingMap::SimplifyPointDimensions simplify_point_dimensions_;
 };
 
 AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
@@ -571,10 +570,13 @@ AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
     return expr;
   }
 
-  auto bounds = range_evaluator_->ComputeExpressionRange(expr);
-  if (bounds.IsPoint()) {
-    return getAffineConstantExpr(bounds.lower,
-                                 range_evaluator_->GetMLIRContext());
+  if (simplify_point_dimensions_ ==
+      IndexingMap::SimplifyPointDimensions::kReplace) {
+    auto bounds = range_evaluator_->ComputeExpressionRange(expr);
+    if (bounds.IsPoint()) {
+      return getAffineConstantExpr(bounds.lower,
+                                   range_evaluator_->GetMLIRContext());
+    }
   }
 
   switch (expr.getKind()) {
@@ -979,10 +981,11 @@ std::vector<IndexingMap::Variable> DimVarsFromTensorSizes(
   std::vector<IndexingMap::Variable> ranges;
   ranges.reserve(tensor_sizes.size());
   for (int64_t size : tensor_sizes) {
-    ranges.push_back(IndexingMap::Variable{0, size - 1});
+    ranges.emplace_back(0, size - 1);
   }
   return ranges;
 }
+
 std::vector<IndexingMap::Variable> DimVarsFromGPUGrid(
     absl::Span<const int64_t> grid_sizes) {
   CHECK_EQ(grid_sizes.size(), 6)
@@ -999,12 +1002,7 @@ std::vector<IndexingMap::Variable> DimVarsFromGPUGrid(
 
 std::vector<IndexingMap::Variable> RangeVarsFromTensorSizes(
     absl::Span<const int64_t> tensor_sizes) {
-  std::vector<IndexingMap::Variable> ranges;
-  ranges.reserve(tensor_sizes.size());
-  for (int64_t size : tensor_sizes) {
-    ranges.push_back({IndexingMap::Variable{0, size - 1}});
-  }
-  return ranges;
+  return DimVarsFromTensorSizes(tensor_sizes);
 }
 
 IndexingMap::IndexingMap(
@@ -1307,7 +1305,7 @@ bool IndexingMap::Verify(std::ostream& out) const {
 // RangeEvaluator for every constraint. Note that we start with "expr"
 // simplification, because the ranges of constraints were already optimized once
 // when IndexingMap was constructed.
-bool IndexingMap::Simplify() {
+bool IndexingMap::Simplify(SimplifyPointDimensions simplify_point_dimensions) {
   if (IsUndefined() || IsKnownEmpty()) return false;
 
   // Simplify constraints to shrink the lower/upper bounds of dims and symbols.
@@ -1332,7 +1330,8 @@ bool IndexingMap::Simplify() {
   RangeEvaluator range_evaluator(*this, GetMLIRContext(),
                                  /*use_constraints=*/true);
   AffineMap simplified_affine_map =
-      AffineExprSimplifier(&range_evaluator).Simplify(affine_map_);
+      AffineExprSimplifier(&range_evaluator, simplify_point_dimensions)
+          .Simplify(affine_map_);
   bool affine_map_was_simplified = simplified_affine_map != affine_map_;
   if (affine_map_was_simplified) {
     affine_map_ = simplified_affine_map;

@@ -678,7 +678,7 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
       /*range_vars=*/reference.GetRangeVars(),
       /*rt_vars=*/reference.GetRTVars(),
       /*constraints=*/reference.GetConstraints());
-  tmp_indexing_map.Simplify();
+  tmp_indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
 
   CHECK_EQ(tmp_indexing_map.GetAffineMap().getResults().size(), 1);
   return tmp_indexing_map.GetAffineMap().getResults().back();
@@ -1017,7 +1017,8 @@ void ConstraintExpression::Simplify() {
   // Let's try to simplify the indexing map, because the constraints my be
   // redundant.
   // TODO(bchetioui): Consider doing the simplification in the caller, not here.
-  bool did_simplify = indexing_map.Simplify();
+  bool did_simplify =
+      indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
   VLOG(1) << "did_simplify: " << did_simplify;
   if (indexing_map.GetConstraintsCount() != 0) {
     VLOG(1) << "Deriving symbolic tile from indexing map with pre-existing "
