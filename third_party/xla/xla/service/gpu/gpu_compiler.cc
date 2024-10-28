@@ -191,6 +191,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/gpu/transforms/dot_dimension_sorter.h"
+#include "xla/service/gpu/transforms/dot_normalizer.h"
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
@@ -1506,6 +1507,11 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
     const auto* rocm_cc = std::get_if<se::RocmComputeCapability>(&gpu_version);
 
+    // Make sure that dots have at least 1 contracting dimension in the
+    // operands. Needs to happen shortly before the dot rewrite, as otherwise
+    // AlgebraicSimplifier will simplify it away again.
+    // TODO(b/375566188): Figure out whether we can get rid of this pass.
+    pipeline.AddPass<DotNormalizer>();
     if (debug_options.xla_gpu_enable_triton_gemm() &&
         (cuda_cc != nullptr &&
          cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE))) {

@@ -1250,6 +1250,10 @@ ENTRY main {
 
 class PassOrderTest : public GpuCompilerTest {
  public:
+  struct PassRange {
+    int first_pass_run_index;
+    int second_pass_run_index;
+  };
   void SetDebugOptions(const DebugOptions& options) {
     HloModuleConfig config = GetModuleConfigForTest();
     config.set_debug_options(options);
@@ -1257,10 +1261,13 @@ class PassOrderTest : public GpuCompilerTest {
   }
 
   // Fails if any of the passes with names matching the regular expression
-  // first_pass_regex run after any of the passes matching last_pass_regex or if
-  // none of the executed passes matches first_pass_regex or last_pass_regex.
-  void VerifyPassOrder(absl::string_view first_pass_regex,
-                       absl::string_view last_pass_regex) {
+  // `first_pass_regex` run after any of the passes matching `last_pass_regex`
+  // or if none of the executed passes matches `first_pass_regex` or
+  // `last_pass_regex`. Returns a PassRange with the latest run index of any
+  // passes with names matching `first_pass_regex` and the earliest run index of
+  // any passes with names matching 'last_pass_regex'.
+  PassRange VerifyPassOrder(absl::string_view first_pass_regex,
+                            absl::string_view last_pass_regex) {
     if (!optimized_module_) {
       CompileModule(GetModuleConfigForTest());
     }
@@ -1289,6 +1296,25 @@ class PassOrderTest : public GpuCompilerTest {
     EXPECT_LE(first_pass_latest_run, last_pass_earliest_run)
         << "One or more passes matching " << first_pass_regex
         << " ran after passes matching " << last_pass_regex;
+    return {first_pass_latest_run, last_pass_earliest_run};
+  }
+
+  // Checks that no pass that matches `pass_regex` runs strictly in between
+  // `pass_range.first_pass_run_index` and `pass_range.second_pass_run_index`.
+  void VerifyNotRunInBetween(const PassRange& pass_range,
+                             absl::string_view pass_regex) {
+    int run_index = 0;
+    for (const HloPassMetadata& pass_metadata :
+         optimized_module_->metadata()->proto().pass_metadata()) {
+      if (run_index >= pass_range.second_pass_run_index) {
+        break;
+      }
+      if (run_index++ <= pass_range.first_pass_run_index) {
+        continue;
+      }
+      EXPECT_FALSE(RE2::FullMatch(pass_metadata.pass_name(), pass_regex))
+          << "Ran " << pass_metadata.pass_name() << " in the given range";
+    }
   }
 
  private:
@@ -1345,12 +1371,33 @@ TEST_F(PassOrderTest, CollectivePipelinerRunsAfterCollectiveQuantizer) {
 
 TEST_F(PassOrderTest,
        AllGatherDynamicSliceSimplifierRunsAfterAllGatherOptimizer) {
-  DebugOptions options = GetDebugOptionsForTest();
-  SetDebugOptions(options);
-
   VerifyPassOrder(
       /*first_pass_regex=*/".*all-gather-optimizer.*",
       /*last_pass_regex=*/".*all-gather-dynamic-slice-simplifier.*");
+}
+
+TEST_F(PassOrderTest, GemmFusionRunsAfterDotNormalizer) {
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+  if (!cc.IsAtLeastAmpere()) {
+    GTEST_SKIP() << "GemmFusion requires Ampere+ to run.";
+  }
+  DebugOptions options = GetDebugOptionsForTest();
+  options.set_xla_gpu_enable_triton_gemm(true);
+  SetDebugOptions(options);
+  auto pass_range = VerifyPassOrder(
+      /*first_pass_regex=*/"dot_normalizer",
+      /*last_pass_regex=*/"triton-gemm-rewriter");
+  VerifyNotRunInBetween(pass_range, /*pass_regex=*/"algsimp");
+}
+
+TEST_F(PassOrderTest, GemmRewriterRunsAfterDotNormalizer) {
+  auto pass_range = VerifyPassOrder(
+      /*first_pass_regex=*/"dot_normalizer",
+      /*last_pass_regex=*/"cublas-gemm-rewriter");
+  VerifyNotRunInBetween(pass_range, /*pass_regex=*/"algsimp");
 }
 
 }  // namespace
