@@ -43,12 +43,25 @@ namespace stream_executor::gpu {
 // GpuCommandBuffer provides platform-specific CommandBuffer implementation
 // (it's backed by CUDA or HIP graphs on NVIDIA and AMD devices).
 class GpuCommandBuffer : public CommandBuffer {
+  // GraphNodeHandleOpaque is an opaque type that won't be ODR used, hence
+  // doesn't need to fully defined. It's an implementation detail of the
+  // GraphNodeHandle defined below.
+  struct GraphNodeHandleOpaque;
+
  public:
+  // A graph node handle is an opaque handle that identifies a graph node in the
+  // graph associated with a command buffer. GraphNodeHandles are created by
+  // node factory functions and can be referenced in node update functions.
+  // The handle has the same properties as a pointer (can be constructed from a
+  // nullptr, trivial copyable, POD, etc.), that's why we use a pointer to
+  // define it.
+  using GraphNodeHandle = GraphNodeHandleOpaque*;
+
   // A handle to a Gpu graph node and a metadata describing its properties. Each
   // command (launch, memcpy, etc.) creates one or more graph nodes.
   struct GpuGraphNodeInfo {
     // A handle to the gpu graph node corresponding to a command.
-    GpuGraphNodeHandle handle = nullptr;
+    GraphNodeHandle handle{};
   };
 
   // A handle to Gpu graph barrier and metadata describing its properties. Each
@@ -58,7 +71,7 @@ class GpuCommandBuffer : public CommandBuffer {
     // It can be a handle to a `GpuGraphNodeInfo` node or a handle to an empty
     // node created to be a barrier. We try to reuse existing nodes as barriers
     // if possible to reduce the size of constructed gpu graphs.
-    GpuGraphNodeHandle handle = nullptr;
+    GraphNodeHandle handle{};
 
     // If `true` it means `handle` corresponds to an empty node specifically
     // created to act as an execution barrier, otherwise `handle` points to one
@@ -160,7 +173,7 @@ class GpuCommandBuffer : public CommandBuffer {
   static int64_t AliveExecs();
 
  private:
-  using Dependencies = absl::InlinedVector<GpuGraphNodeHandle, 1>;
+  using Dependencies = absl::InlinedVector<GraphNodeHandle, 1>;
 
  protected:
   using NoOpKernel = TypedKernel<>;
@@ -283,7 +296,7 @@ class GpuCommandBuffer : public CommandBuffer {
       const ConditionalCommandBuffers& cmd_buffers, size_t num_cmd_buffers);
 
   // Creates a new no-op node acting as a barrier.
-  absl::StatusOr<GpuGraphNodeHandle> CreateBarrierNode(
+  absl::StatusOr<GraphNodeHandle> CreateBarrierNode(
       const Dependencies& dependencies);
 
   // Collects a set of dependencies for a new barrier.
