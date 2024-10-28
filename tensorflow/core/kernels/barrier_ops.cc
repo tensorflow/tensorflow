@@ -283,8 +283,10 @@ class Barrier : public ResourceBase {
   const string& name() const { return name_; }
   int num_components() const { return value_component_types_.size(); }
   DataType component_type(int i) const {
-    CHECK_GE(i, 0);
-    CHECK_LT(static_cast<size_t>(i), value_component_types_.size());
+    OP_REQUIRES(context, i >= 0,
+                errors::InvalidArgument("Index must be non-negative"));
+    OP_REQUIRES(context, static_cast<size_t>(i) < value_component_types_.size(),
+                errors::InvalidArgument("Index ", i, " is out of range"));
     return value_component_types_[i];
   }
   const DataTypeVector component_types() const {
