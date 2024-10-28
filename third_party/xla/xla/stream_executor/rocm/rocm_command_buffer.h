@@ -99,6 +99,10 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   absl::Status Trace(Stream* stream,
                      absl::AnyInvocable<absl::Status()> function) override;
 
+  absl::Status SetNodeExecutionEnabled(GraphNodeHandle node_handle,
+                                       CommandBuffer& root_command_buffer,
+                                       bool enabled) override;
+
   GpuExecutor* parent_;
 };
 

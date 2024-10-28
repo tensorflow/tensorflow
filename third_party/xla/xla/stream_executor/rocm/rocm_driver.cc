@@ -86,16 +86,6 @@ absl::Status GpuDriver::GraphLaunch(hipGraphExec_t exec,
                   "Failed to launch HIP graph");
 }
 
-absl::Status GpuDriver::GraphNodeSetEnabled(hipGraphExec_t exec,
-                                            hipGraphNode_t node, bool enabled) {
-  // Node is enabled if value != 0, otherwise the node is disabled.
-  unsigned value = enabled ? 1 : 0;
-  VLOG(2) << "Set HIP executable graph " << exec << " node " << node
-          << " enabled flag to " << value;
-  return ToStatus(wrap::hipGraphNodeSetEnabled(exec, node, value),
-                  "Failed to set HIP graph node enabled flag");
-}
-
 absl::Status GpuDriver::GraphExecUpdate(hipGraphExec_t exec, hipGraph_t graph,
                                         GraphExecUpdateResultInfo* result) {
   VLOG(2) << "Update HIP graph executable " << exec << " with graph " << graph;

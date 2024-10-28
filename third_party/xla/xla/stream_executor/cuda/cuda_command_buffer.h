@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/bit_pattern.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -99,6 +100,10 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
 
   absl::Status Trace(Stream* stream,
                      absl::AnyInvocable<absl::Status()> function) override;
+
+  absl::Status SetNodeExecutionEnabled(GraphNodeHandle node_handle,
+                                       CommandBuffer& root_command_buffer,
+                                       bool enabled) override;
 
   // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
   // barriers, updating conditional handles, etc.).

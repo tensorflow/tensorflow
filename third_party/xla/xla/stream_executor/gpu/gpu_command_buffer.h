@@ -273,7 +273,9 @@ class GpuCommandBuffer : public CommandBuffer {
   // conditional command buffers). This is work around the fact that we can't
   // use empty nodes inside conditional CUDA graphs and instead we add no-op
   // kernel nodes, however large number of no-op kernels impacts performance.
-  absl::Status DisableBarriersExecution(GpuGraphExecHandle exec);
+  // The function needs access to the root command buffer which holds the
+  // executable graph.
+  absl::Status DisableBarriersExecution(CommandBuffer& root_command_buffer);
 
   // Launches CUDA kernels with packed arguments.
   absl::Status LaunchWithPackedArgs(
@@ -408,6 +410,14 @@ class GpuCommandBuffer : public CommandBuffer {
   // Creates a new no-op node acting as a barrier and adds it to the graph.
   virtual absl::StatusOr<GraphNodeHandle> CreateBarrierNode(
       const Dependencies& dependencies) = 0;
+
+  // Enables or disables the execution of the given node in the graph.
+  // `root_command_buffer` is the root command buffer that holds the executable
+  // graph. Note that `this` must either by the same as the
+  // `root_command_buffer` or be a nested command buffer.
+  virtual absl::Status SetNodeExecutionEnabled(
+      GraphNodeHandle node_handle, CommandBuffer& root_command_buffer,
+      bool enabled) = 0;
 };
 
 }  // namespace stream_executor::gpu

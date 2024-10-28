@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -195,23 +197,22 @@ GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
 }
 
 absl::Status GpuCommandBuffer::DisableBarriersExecution(
-    GpuGraphExecHandle exec) {
-#if !defined(TENSORFLOW_USE_ROCM)
+    CommandBuffer& root_command_buffer) {
   ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
 
   for (GpuGraphBarrierInfo& barrier : execution_scope.barriers) {
     if (barrier.is_barrier_node) {
-      TF_RETURN_IF_ERROR(GpuDriver::GraphNodeSetEnabled(
-          exec, ToPlatformSpecificHandle(barrier.handle), false));
+      TF_RETURN_IF_ERROR(
+          SetNodeExecutionEnabled(barrier.handle, root_command_buffer, false));
     }
   }
   for (ConditionalCommandBuffers& cmd_buffers :
        execution_scope.conditional_command_buffers) {
     for (auto& cmd_buffer : cmd_buffers.command_buffers) {
-      TF_RETURN_IF_ERROR(cmd_buffer->DisableBarriersExecution(exec));
+      TF_RETURN_IF_ERROR(
+          cmd_buffer->DisableBarriersExecution(root_command_buffer));
     }
   }
-#endif  // TENSORFLOW_USE_ROCM
   return absl::OkStatus();
 }
 
@@ -916,9 +917,11 @@ absl::Status GpuCommandBuffer::Finalize() {
             << "; conditionals: " << num_cond_cmd_buffers
             << "; alive executable graphs: " << AliveExecs();
 
-#if !defined(TENSORFLOW_USE_ROCM) && CUDA_VERSION < 12040
-    TF_RETURN_IF_ERROR(DisableBarriersExecution(exec_));
-#endif
+    if (parent_->GetPlatform()->id() == cuda::kCudaPlatformId &&
+        parent_->GetDeviceDescription().driver_version() <
+            SemanticVersion(12, 4, 0)) {
+      TF_RETURN_IF_ERROR(DisableBarriersExecution(*this));
+    }
 
   } else if (mode_ == Mode::kPrimary && state_ == State::kUpdate) {
     // If this is a finalization after update, we don't have to do anything as

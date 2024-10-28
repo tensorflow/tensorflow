@@ -395,4 +395,18 @@ absl::Status RocmCommandBuffer::Trace(
   return absl::OkStatus();
 }
 
+absl::Status RocmCommandBuffer::SetNodeExecutionEnabled(
+    GraphNodeHandle node_handle, CommandBuffer& root_command_buffer,
+    bool enabled) {
+  // Node is enabled if value != 0, otherwise the node is disabled.
+  unsigned value = enabled ? 1 : 0;
+  hipGraphExec_t exec =
+      static_cast<RocmCommandBuffer&>(root_command_buffer).exec_;
+  VLOG(2) << "Set HIP executable graph " << exec << " node " << node_handle
+          << " enabled flag to " << value;
+  return ToStatus(
+      wrap::hipGraphNodeSetEnabled(exec, ToHipGraphHandle(node_handle), value),
+      "Failed to set HIP graph node enabled flag");
+}
+
 }  // namespace stream_executor::gpu

@@ -103,16 +103,6 @@ absl::Status GpuDriver::GraphLaunch(CUgraphExec exec, CUstream stream) {
                         "Failed to launch CUDA graph");
 }
 
-absl::Status GpuDriver::GraphNodeSetEnabled(CUgraphExec exec, CUgraphNode node,
-                                            bool enabled) {
-  // Node is enabled if value != 0, otherwise the node is disabled.
-  unsigned value = enabled ? 1 : 0;
-  VLOG(2) << "Set CUDA executable graph " << exec << " node " << node
-          << " enabled flag to " << value;
-  return cuda::ToStatus(cuGraphNodeSetEnabled(exec, node, value),
-                        "Failed to set CUDA graph node enabled flag");
-}
-
 absl::Status GpuDriver::GraphExecUpdate(CUgraphExec exec, CUgraph graph,
                                         GraphExecUpdateResultInfo* result) {
   VLOG(2) << "Update CUDA graph executable " << exec << " with graph " << graph;
