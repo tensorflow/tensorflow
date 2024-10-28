@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "rocm/include/hip/hip_runtime.h"
-#include "xla/stream_executor/bit_pattern.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -73,6 +73,12 @@ class RocmCommandBuffer : public GpuCommandBuffer {
                                    DeviceMemoryBase destination,
                                    DeviceMemoryBase source,
                                    uint64_t size) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateChildNode(
+      const Dependencies& dependencies, const CommandBuffer& nested) override;
+
+  absl::Status UpdateChildNode(GraphNodeHandle node_handle,
+                               const CommandBuffer& nested) override;
 
   GpuExecutor* parent_;
 };

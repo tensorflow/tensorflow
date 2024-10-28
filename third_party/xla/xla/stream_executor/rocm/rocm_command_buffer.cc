@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -210,4 +211,33 @@ absl::Status RocmCommandBuffer::UpdateMemcpyD2DNode(
       "Failed to set memcpy d2d node params");
 }
 
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateChildNode(
+    const Dependencies& dependencies, const CommandBuffer& nested) {
+  hipGraph_t child_graph =
+      tensorflow::down_cast<const RocmCommandBuffer&>(nested).graph_;
+  VLOG(2) << "Create a new node by cloning the child graph " << child_graph
+          << " and add it to " << graph_ << "; deps: " << dependencies.size();
+
+  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+
+  hipGraphNode_t node_handle = nullptr;
+  TF_RETURN_IF_ERROR(ToStatus(
+      wrap::hipGraphAddChildGraphNode(&node_handle, graph_, deps.data(),
+                                      deps.size(), child_graph),
+      "Failed to create a child graph node and add it to a HIP graph"));
+  return FromHipGraphHandle(node_handle);
+}
+
+absl::Status RocmCommandBuffer::UpdateChildNode(GraphNodeHandle node_handle,
+                                                const CommandBuffer& nested) {
+  hipGraph_t child_graph =
+      tensorflow::down_cast<const RocmCommandBuffer&>(nested).graph_;
+
+  VLOG(2) << "Set child node params " << node_handle << " in graph executable "
+          << exec_ << "to params contained in " << child_graph;
+
+  return ToStatus(wrap::hipGraphExecChildGraphNodeSetParams(
+                      exec_, ToHipGraphHandle(node_handle), child_graph),
+                  "Failed to set HIP graph child node params");
+}
 }  // namespace stream_executor::gpu

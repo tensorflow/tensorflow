@@ -138,7 +138,6 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status Submit(Stream* stream) override;
 
   GpuGraphExecHandle executable() const { return exec_; }
-  GpuGraphHandle graph() const { return graph_; }
 
   Mode mode() const override { return mode_; }
   State state() const override { return state_; }
@@ -389,6 +388,15 @@ class GpuCommandBuffer : public CommandBuffer {
                                            DeviceMemoryBase destination,
                                            DeviceMemoryBase source,
                                            uint64_t size) = 0;
+
+  // Adds a new nested command buffer node to the graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateChildNode(
+      const Dependencies& dependencies, const CommandBuffer& nested) = 0;
+
+  // Associate another command buffer with this child node. Will return an
+  // error if the given node has not been created as a child node.
+  virtual absl::Status UpdateChildNode(GraphNodeHandle node_handle,
+                                       const CommandBuffer& nested) = 0;
 };
 
 }  // namespace stream_executor::gpu

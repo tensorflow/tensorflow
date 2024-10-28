@@ -542,16 +542,11 @@ absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
 
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
-  GpuGraphHandle child_graph = GpuCommandBuffer::Cast(&nested)->graph();
-
   // Adds a child graph node to the graph under construction.
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeHandle node_handle = nullptr;
-    TF_RETURN_IF_ERROR(GpuDriver::GraphAddChildNode(
-        &node_handle, graph_, ToPlatformSpecificHandles(barrier), child_graph));
-    execution_scope.nodes.emplace_back().handle =
-        FromPlatformSpecificHandle(node_handle);
+    TF_ASSIGN_OR_RETURN(execution_scope.nodes.emplace_back().handle,
+                        CreateChildNode(barrier, nested));
     return absl::OkStatus();
   }
 
@@ -559,8 +554,7 @@ absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
   if (state_ == State::kUpdate) {
     GraphNodeHandle node =
         execution_scope.nodes[execution_scope.update_state.node_idx++].handle;
-    return GpuDriver::GraphExecChildNodeSetParams(
-        exec_, ToPlatformSpecificHandle(node), child_graph);
+    return UpdateChildNode(node, nested);
   }
 
   return UnsupportedStateError(state_);

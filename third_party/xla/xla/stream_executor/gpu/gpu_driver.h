@@ -242,18 +242,6 @@ class GpuDriver {
       unsigned int block_dim_z, unsigned int shared_mem_bytes,
       void** kernel_params, void** extra);
 
-  // Creates a child graph node and adds it to a graph.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gde52afbcf91a8c79d4d7efbe0e3b6844
-  static absl::Status GraphAddChildNode(
-      GpuGraphNodeHandle* node, GpuGraphHandle graph,
-      absl::Span<const GpuGraphNodeHandle> deps, GpuGraphHandle child);
-
-  // Sets the parameters for a child graph node in the given graph exec.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g8f2d9893f6b899f992db1a2942ec03ff
-  static absl::Status GraphExecChildNodeSetParams(GpuGraphExecHandle exec,
-                                                  GpuGraphNodeHandle node,
-                                                  GpuGraphHandle child);
-
   // The CUDA stream callback type signature.
   // The data passed to AddStreamCallback is subsequently passed to this
   // callback when it fires.

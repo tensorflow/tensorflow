@@ -349,28 +349,6 @@ absl::StatusOr<size_t> GpuDriver::GraphGetNodeCount(hipGraph_t graph) {
                   "Failed to set HIP graph kernel node params");
 }
 
-absl::Status GpuDriver::GraphAddChildNode(hipGraphNode_t* node,
-                                          hipGraph_t graph,
-                                          absl::Span<const hipGraphNode_t> deps,
-                                          hipGraph_t child) {
-  VLOG(2) << "Create a new node by cloning the child graph " << child
-          << " and add it to " << graph << "; deps: " << deps.size();
-
-  return ToStatus(
-      wrap::hipGraphAddChildGraphNode(node, graph, deps.data(), deps.size(),
-                                      child),
-      "Failed to create a child graph node and add it to a HIP graph");
-}
-
-/*static*/ absl::Status GpuDriver::GraphExecChildNodeSetParams(
-    GpuGraphExecHandle exec, GpuGraphNodeHandle node, GpuGraphHandle child) {
-  VLOG(2) << "Set child node params " << node << " in graph executable " << exec
-          << "to params contained in " << child;
-
-  return ToStatus(wrap::hipGraphExecChildGraphNodeSetParams(exec, node, child),
-                  "Failed to set HIP graph child node params");
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   hipError_t res = wrap::hipGetDeviceCount(&device_count);

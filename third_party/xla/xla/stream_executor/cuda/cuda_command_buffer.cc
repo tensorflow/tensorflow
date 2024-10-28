@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/bit_pattern.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/command_buffer_kernels.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
@@ -273,4 +274,33 @@ absl::Status CudaCommandBuffer::UpdateMemcpyD2DNode(
       "Failed to set memcpy d2d node params");
 }
 
+absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateChildNode(
+    const Dependencies& dependencies, const CommandBuffer& nested) {
+  CUgraph child_graph =
+      tensorflow::down_cast<const CudaCommandBuffer&>(nested).graph_;
+  VLOG(2) << "Create a new node by cloning the child graph " << child_graph
+          << " and add it to " << graph_ << "; deps: " << dependencies.size();
+
+  std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
+
+  CUgraphNode node_handle;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuGraphAddChildGraphNode(&node_handle, graph_, deps.data(), deps.size(),
+                               child_graph),
+      "Failed to create a child graph node and add it to a CUDA graph"));
+
+  return FromCudaGraphHandle(node_handle);
+}
+
+absl::Status CudaCommandBuffer::UpdateChildNode(GraphNodeHandle node_handle,
+                                                const CommandBuffer& nested) {
+  CUgraph child_graph =
+      tensorflow::down_cast<const CudaCommandBuffer&>(nested).graph_;
+  VLOG(2) << "Set child node params " << node_handle << " in graph executable "
+          << exec_ << "to params contained in " << child_graph;
+
+  return cuda::ToStatus(cuGraphExecChildGraphNodeSetParams(
+                            exec_, ToCudaGraphHandle(node_handle), child_graph),
+                        "Failed to set CUDA graph child node params");
+}
 }  // namespace stream_executor::gpu

@@ -1339,6 +1339,7 @@ cc_library(
         ":cuda_context",
         ":cuda_status",
         "//xla/stream_executor:bit_pattern",
+        "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/gpu:gpu_command_buffer",

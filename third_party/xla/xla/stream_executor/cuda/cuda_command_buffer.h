@@ -74,6 +74,12 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
                                    DeviceMemoryBase source,
                                    uint64_t size) override;
 
+  absl::StatusOr<GraphNodeHandle> CreateChildNode(
+      const Dependencies& dependencies, const CommandBuffer& nested) override;
+
+  absl::Status UpdateChildNode(GraphNodeHandle node_handle,
+                               const CommandBuffer& nested) override;
+
   // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
   // barriers, updating conditional handles, etc.).
   SetIfConditionKernel set_if_condition_kernel_;

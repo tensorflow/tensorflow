@@ -456,27 +456,6 @@ absl::Status GpuDriver::GraphAddKernelNode(
                         "Failed to set CUDA graph kernel node params");
 }
 
-absl::Status GpuDriver::GraphAddChildNode(CUgraphNode* node, CUgraph graph,
-                                          absl::Span<const CUgraphNode> deps,
-                                          CUgraph child) {
-  VLOG(2) << "Create a new node by cloning the child graph " << child
-          << " and add it to " << graph << "; deps: " << deps.size();
-
-  return cuda::ToStatus(
-      cuGraphAddChildGraphNode(node, graph, deps.data(), deps.size(), child),
-      "Failed to create a child graph node and add it to a CUDA graph");
-}
-
-/*static*/ absl::Status GpuDriver::GraphExecChildNodeSetParams(CUgraphExec exec,
-                                                               CUgraphNode node,
-                                                               CUgraph child) {
-  VLOG(2) << "Set child node params " << node << " in graph executable " << exec
-          << "to params contained in " << child;
-
-  return cuda::ToStatus(cuGraphExecChildGraphNodeSetParams(exec, node, child),
-                        "Failed to set CUDA graph child node params");
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   auto status = cuda::ToStatus(cuDeviceGetCount(&device_count));
