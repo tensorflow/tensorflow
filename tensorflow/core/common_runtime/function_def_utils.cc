@@ -38,10 +38,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status FunctionDefToBodyHelper(
+absl::Status FunctionDefToBodyHelper(
     core::RefCountPtr<FunctionRecord>&& record, const AttrSlice& attrs,
     const FunctionLibraryDefinition* const lib_def,
-    const std::function<Status(const string&, const OpDef**)>& get_func_sig,
+    const std::function<absl::Status(const string&, const OpDef**)>&
+        get_func_sig,
     std::unique_ptr<FunctionBody>* fbody) {
   // Instantiates the function template into a graph def.
   InstantiationResult result;
@@ -91,10 +92,10 @@ Status FunctionDefToBodyHelper(
   return absl::OkStatus();
 }
 
-Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,
-                               const AttrSlice& attrs,
-                               const FunctionLibraryDefinition* lib_def,
-                               std::unique_ptr<FunctionBody>* fbody) {
+absl::Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,
+                                     const AttrSlice& attrs,
+                                     const FunctionLibraryDefinition* lib_def,
+                                     std::unique_ptr<FunctionBody>* fbody) {
   const auto get_func_sig = [&lib_def](const string& op, const OpDef** sig) {
     return lib_def->LookUpOpDef(op, sig);
   };
@@ -102,9 +103,10 @@ Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,
                                  get_func_sig, fbody);
 }
 
-Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
-                               const FunctionLibraryDefinition* lib_def,
-                               std::unique_ptr<FunctionBody>* fbody) {
+absl::Status FunctionDefToBodyHelper(const FunctionDef& fdef,
+                                     const AttrSlice& attrs,
+                                     const FunctionLibraryDefinition* lib_def,
+                                     std::unique_ptr<FunctionBody>* fbody) {
   core::RefCountPtr<FunctionRecord> record(
       new FunctionRecord(FunctionDef(fdef), {}, true));
   const auto get_func_sig = [&lib_def](const string& op, const OpDef** sig) {
