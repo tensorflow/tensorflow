@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/hash/hash.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -71,7 +72,8 @@ class HloInstructionPtrEq {
 }  // namespace
 
 /*static*/ FusionDeduplicationCache FusionDeduplicationCache::Create(
-    const HloModule& module) {
+    const HloModule& module,
+    absl::FunctionRef<bool(const HloInstruction&)> is_fusible_fn) {
   absl::flat_hash_map<const HloInstruction*, InstructionId,
                       HloInstructionPtrHash, HloInstructionPtrEq>
       deduplicated_id_map;
@@ -84,6 +86,10 @@ class HloInstructionPtrEq {
   int64_t next_id = 0;
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
+      if (!is_fusible_fn(*instruction)) {
+        continue;
+      }
+
       auto it = deduplicated_id_map.emplace(instruction, next_id);
       if (it.second) {
         ++next_id;

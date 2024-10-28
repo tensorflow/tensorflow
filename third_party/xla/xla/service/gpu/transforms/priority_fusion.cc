@@ -978,7 +978,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
           .xla_gpu_experimental_enable_triton_heroless_priority_fusion();
 
   FusionDeduplicationCache fusion_deduplication_cache =
-      FusionDeduplicationCache::Create(*module);
+      FusionDeduplicationCache::Create(*module, IsFusible);
 
   int changed = false;
   for (auto* computation : fusible_computations) {

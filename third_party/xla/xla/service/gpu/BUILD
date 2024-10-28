@@ -3107,6 +3107,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/hash",
     ],
 )
