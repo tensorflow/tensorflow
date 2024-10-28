@@ -117,10 +117,10 @@ void CreateNonTPULowerClusterToRuntimeOpsPassPipeline(
 
 // TODO(b/306728216): Move this out of the Bridge component and into a Host
 // runtime component.
-tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
-                                       std::string bridge_type,
-                                       tsl::DeviceType device_type,
-                                       absl::Status status) {
+absl::Status RecordIfErrorStatus(const std::string error_prefix,
+                                 std::string bridge_type,
+                                 tsl::DeviceType device_type,
+                                 absl::Status status) {
   if (status.ok()) {
     return status;
   }
