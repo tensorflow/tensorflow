@@ -743,6 +743,17 @@ class BarrierTest(test.TestCase):
       with self.assertRaisesOpError("component shapes"):
         self.evaluate(b_e_2.barrier_ref)
 
+  @test_util.run_deprecated_v1
+  def test_invalid_index_handling(self):
+    barrier = data_flow_ops.Barrier(
+        (dtypes.float32, dtypes.float32), shapes=((), ()), name="test_barrier")
+    keys = [b'key1', b'key2']
+    values_0 = [10.0, 20.0]
+    values_1 = [100.0, 200.0]
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, "Index must be non-negative"):
+        barrier.insert_many(-1, keys, values_0)
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, "Index 1000 is out of range"):
+        barrier.insert_many(1000, keys, values_1)
 
 if __name__ == "__main__":
   test.main()
