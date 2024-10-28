@@ -89,38 +89,6 @@ class GpuDriver {
                                        GpuGraphHandle graph,
                                        const GraphInstantiateFlags& flags);
 
-  // Graph update result.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g8edc8969ff6ae00b7cd5d7292f812c3c
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#cuda-driver-data-types
-  enum class GraphExecUpdateResult {
-    kSuccess,
-    kError,
-    kTopologyChanged,
-    kNodeTypeChanged,
-    kFunctionChanged,
-    kParametersChanged,
-    kNotSupported,
-    kUnsupportedFunctionChange,
-    kAttributesChanged
-  };
-
-  // Graph update result info.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/structCUgraphExecUpdateResultInfo__v1.html#structCUgraphExecUpdateResultInfo__v1
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
-  struct GraphExecUpdateResultInfo {
-    GpuGraphNodeHandle error_from_node;
-    GpuGraphNodeHandle error_node;
-    GraphExecUpdateResult result;
-  };
-
-  // Check whether an executable graph can be updated with a graph and perform
-  // the update if possible.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g96efefc56df46927da7297f122adfb9f
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
-  static absl::Status GraphExecUpdate(GpuGraphExecHandle exec,
-                                      GpuGraphHandle graph,
-                                      GraphExecUpdateResultInfo* result);
-
   // Returns a node's dependencies.
   //
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g048f4c0babcbba64a933fc277cd45083

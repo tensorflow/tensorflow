@@ -96,63 +96,6 @@ absl::Status GpuDriver::GraphInstantiate(CUgraphExec* exec, CUgraph graph,
 #endif  // CUDA_VERSION >= 12000
 }
 
-absl::Status GpuDriver::GraphExecUpdate(CUgraphExec exec, CUgraph graph,
-                                        GraphExecUpdateResultInfo* result) {
-  VLOG(2) << "Update CUDA graph executable " << exec << " with graph " << graph;
-
-#if CUDA_VERSION >= 12000
-  CUgraphExecUpdateResultInfo cu_result;
-  memset(&cu_result, 0, sizeof(cu_result));
-  CUresult err_code = cuGraphExecUpdate(exec, graph, &cu_result);
-  auto cu_result_enum = cu_result.result;
-  if (cu_result.errorFromNode) {
-    result->error_from_node = cu_result.errorFromNode;
-  }
-  if (cu_result.errorNode) {
-    result->error_node = cu_result.errorNode;
-  }
-#else
-  CUgraphExecUpdateResult cu_result;
-  CUresult err_code = cuGraphExecUpdate(exec, graph, nullptr, &cu_result);
-  auto cu_result_enum = cu_result;
-#endif  // CUDA_VERSION >= 12000
-
-  switch (cu_result_enum) {
-    case CU_GRAPH_EXEC_UPDATE_SUCCESS:
-      result->result = GraphExecUpdateResult::kSuccess;
-      break;
-    case CU_GRAPH_EXEC_UPDATE_ERROR:
-      result->result = GraphExecUpdateResult::kError;
-      break;
-    case CU_GRAPH_EXEC_UPDATE_ERROR_TOPOLOGY_CHANGED:
-      result->result = GraphExecUpdateResult::kTopologyChanged;
-      break;
-    case CU_GRAPH_EXEC_UPDATE_ERROR_NODE_TYPE_CHANGED:
-      result->result = GraphExecUpdateResult::kNodeTypeChanged;
-      break;
-    case CU_GRAPH_EXEC_UPDATE_ERROR_FUNCTION_CHANGED:
-      result->result = GraphExecUpdateResult::kFunctionChanged;
-      break;
-    case CU_GRAPH_EXEC_UPDATE_ERROR_PARAMETERS_CHANGED:
-      result->result = GraphExecUpdateResult::kParametersChanged;
-      break;
-    case CU_GRAPH_EXEC_UPDATE_ERROR_NOT_SUPPORTED:
-      result->result = GraphExecUpdateResult::kNotSupported;
-      break;
-#if CUDA_VERSION >= 12000
-    case CU_GRAPH_EXEC_UPDATE_ERROR_UNSUPPORTED_FUNCTION_CHANGE:
-      result->result = GraphExecUpdateResult::kUnsupportedFunctionChange;
-      break;
-    case CU_GRAPH_EXEC_UPDATE_ERROR_ATTRIBUTES_CHANGED:
-      result->result = GraphExecUpdateResult::kAttributesChanged;
-      break;
-#endif  // CUDA_VERSION >= 12000
-    default:
-      return absl::InternalError("Unknown graph update result");
-  }
-  return cuda::ToStatus(err_code, "Failed to update CUDA graph");
-}
-
 absl::StatusOr<std::vector<GpuGraphNodeHandle>>
 GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
   VLOG(2) << "Get CUDA graph node " << node << " dependencies";

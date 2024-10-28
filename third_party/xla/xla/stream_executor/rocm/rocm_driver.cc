@@ -78,50 +78,6 @@ absl::Status GpuDriver::GraphInstantiate(hipGraphExec_t* exec, hipGraph_t graph,
                   "Failed to instantiate HIP graph");
 }
 
-absl::Status GpuDriver::GraphExecUpdate(hipGraphExec_t exec, hipGraph_t graph,
-                                        GraphExecUpdateResultInfo* result) {
-  VLOG(2) << "Update HIP graph executable " << exec << " with graph " << graph;
-
-  hipGraphExecUpdateResult hip_result = hipGraphExecUpdateError;
-  hipGraphNode_t error_node = nullptr;
-  auto hip_error =
-      wrap::hipGraphExecUpdate(exec, graph, &error_node, &hip_result);
-
-  if (error_node) {
-    result->error_node = error_node;
-  }
-
-  switch (hip_result) {
-    case hipGraphExecUpdateSuccess:
-      result->result = GraphExecUpdateResult::kSuccess;
-      break;
-    case hipGraphExecUpdateError:
-      result->result = GraphExecUpdateResult::kError;
-      break;
-    case hipGraphExecUpdateErrorTopologyChanged:
-      result->result = GraphExecUpdateResult::kTopologyChanged;
-      break;
-    case hipGraphExecUpdateErrorNodeTypeChanged:
-      result->result = GraphExecUpdateResult::kNodeTypeChanged;
-      break;
-    case hipGraphExecUpdateErrorFunctionChanged:
-      result->result = GraphExecUpdateResult::kFunctionChanged;
-      break;
-    case hipGraphExecUpdateErrorParametersChanged:
-      result->result = GraphExecUpdateResult::kParametersChanged;
-      break;
-    case hipGraphExecUpdateErrorNotSupported:
-      result->result = GraphExecUpdateResult::kNotSupported;
-      break;
-    case hipGraphExecUpdateErrorUnsupportedFunctionChange:
-      result->result = GraphExecUpdateResult::kUnsupportedFunctionChange;
-      break;
-      // TODO: HIP hasn't GRAPH_EXEC_UPDATE_ERROR_ATTRIBUTES_CHANGED yet
-  }
-
-  return ToStatus(hip_error, "Failed to update HIP graph");
-}
-
 absl::StatusOr<std::vector<GpuGraphNodeHandle>>
 GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
   VLOG(2) << "Get HIP graph node " << node << " dependencies";
