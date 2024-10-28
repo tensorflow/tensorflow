@@ -425,5 +425,62 @@ TEST_F(WhileLoopAnalysisTest, AIVNoChain) {
   EXPECT_EQ(aux_indices[0]->tuple_index(), 1);
 }
 
+TEST_F(WhileLoopAnalysisTest, LoopFusionForLoopVariable) {
+  // This test verifies that fusions in initialization, condition and update are
+  // accepted by while loop analysis.
+  const char* hlo = R"(
+  HloModule test
+  fused_add.11 {
+    param_0.968 = s32[] parameter(0)
+    constant_1239_1 = s32[] constant(1)
+    ROOT add.1041.1 = s32[] add(param_0.968, constant_1239_1)
+  }
+  fused_add.11.clone.2 {
+    param_0.2169 = s32[] parameter(0)
+    constant_1239_4 = s32[] constant(1)
+    ROOT add.1041.4 = s32[] add(param_0.2169, constant_1239_4)
+  }
+  body {
+    param.1 = (s32[], s32[]) parameter(0)
+    loop_iter = s32[] get-tuple-element(param.1), index=0
+    data = s32[] get-tuple-element(param.1), index=1
+    loop_add_fusion.11 = s32[] fusion(loop_iter), kind=kLoop, calls=fused_add.11
+    loop_add_fusion.11.double_buffer_clone = s32[] fusion(loop_add_fusion.11), kind=kLoop, calls=fused_add.11.clone.2
+    ROOT tuple = (s32[], s32[]) tuple(loop_add_fusion.11.double_buffer_clone, data)
+  }
+  fused_compare {
+    param_0.987 = s32[] parameter(0)
+    constant_1238_1 = s32[] constant(7)
+    ROOT compare.98.1 = pred[] compare(param_0.987, constant_1238_1), direction=LT
+  }
+  condition {
+    param.2 = (s32[], s32[]) parameter(0)
+    loop_iter = s32[] get-tuple-element(param.2), index=0
+    ROOT loop_compare_fusion = pred[] fusion(loop_iter), kind=kLoop, calls=fused_compare
+  }
+  fused_add.12 {
+    param_0.968 = s32[] parameter(0)
+    constant_1239_1 = s32[] constant(1)
+    ROOT add.1041.1 = s32[] add(param_0.968, constant_1239_1)
+  }
+  ENTRY main {
+    data = s32[] parameter(0)
+    c.0 = s32[] constant(0)
+    c.1 = s32[] constant(1)
+    add.1 = s32[] add(c.0, c.1)
+    c.0.loop_double_buffer_peeled = s32[] fusion(add.1), kind=kLoop, calls=fused_add.12
+    tuple = (s32[], s32[]) tuple(c.0.loop_double_buffer_peeled, data)
+    ROOT while = while(tuple), body=body, condition=condition
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+  auto loop_induction_variable = GetLoopInductionVarTupleIdx(while_op);
+  ASSERT_TRUE(loop_induction_variable.has_value());
+  EXPECT_EQ(loop_induction_variable.value(), 0);
+  auto trip_count = ComputeWhileLoopTripCount(while_op);
+  ASSERT_TRUE(trip_count.has_value());
+  EXPECT_EQ(trip_count.value(), 3);
+}
+
 }  // namespace
 }  // namespace xla

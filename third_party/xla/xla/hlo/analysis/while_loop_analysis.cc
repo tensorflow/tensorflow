@@ -18,19 +18,35 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_reachability.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tools/hlo_extractor.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -38,66 +54,64 @@ using std::nullopt;
 using std::optional;
 namespace m = match;
 
-// Finds and returns the non-constant operand in instr.
+// Finds and returns the non-constant operand in instr, if there is only one
+// such operand.
 //
-// CHECK-fails if instr doesn't have exactly one unique non-constant operand.
+// Returns nullptr if instr doesn't have exactly one unique non-constant
+// operand.
 static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
   const HloInstruction* result = nullptr;
   for (const HloInstruction* operand : instr->operands()) {
     if (!operand->IsConstant()) {
-      if (result != nullptr) {
-        CHECK_EQ(result, operand);
+      if (result != nullptr && result != operand) {
+        return nullptr;
       }
       result = operand;
     }
   }
-  CHECK_NE(result, nullptr);
   return result;
 }
 
-// If all of instr's operands are either constants or have the form
-//   get-tuple-element(gte_operand, N)
-// for the same value N, returns N.  Otherwise, returns nullopt.
-static optional<int64_t> GetGTEOperandIndex(const HloInstruction* instr,
-                                            const HloInstruction* gte_operand) {
-  VLOG(2) << "GetGTEOperandIndex(" << instr->ToString()
-          << ", GTE Operand: " << gte_operand->ToString() << ")";
-
-  // All operands of `instr` must be either constants or of the form
-  //   get-tuple-element(gte_operand, tuple_idx)
-  // for the same value tuple_idx. We also support the case where GTE feeds a
-  // copy that is then used.
-  optional<int64_t> tuple_idx;
-  for (const HloInstruction* operand : instr->operands()) {
-    if (Match(operand, m::Constant())) {
-      continue;
-    }
-    auto possibly_gte_operand = operand;
-
-    if (operand->opcode() == HloOpcode::kCopy) {
-      possibly_gte_operand = operand->operand(0);
-    }
-
-    if (possibly_gte_operand->opcode() != HloOpcode::kGetTupleElement) {
-      return nullopt;
-    }
-
-    if (!Match(possibly_gte_operand,
-               m::GetTupleElement(m::Op().Is(gte_operand)))) {
-      return nullopt;
-    }
-
-    int64_t operand_tuple_idx = possibly_gte_operand->tuple_index();
-    // This is the first GTE we are seeing. Set tuple_idx.
-    if (!tuple_idx.has_value()) {
-      tuple_idx = operand_tuple_idx;
-    } else {
-      if (operand_tuple_idx != tuple_idx) {
-        return nullopt;
-      }
-    }
+// If `out` is a function of a single value in the tuple `in` and has no other
+// dependence, i.e. if `out=f(gte(in))`, then this function will return the
+// unique get-tuple-element index for the dependence.
+//
+// For example, in the following HLO, this function will return `1`:
+//   in = (s32[], s32[], s32[]) tuple(a,b,c)
+//   gte.1 = get-tuple-element(in), index=1
+//   out = fusion(gte.1), ...
+std::optional<int64_t> GetUniqueGTEDependenceIndex(const HloInstruction* out,
+                                                   const HloInstruction* in) {
+  if (out->parent() != in->parent() || !in->shape().IsTuple()) {
+    return std::nullopt;
   }
-  return tuple_idx;
+  std::unique_ptr<HloModule> extracted = ExtractModule(
+      /*instruction=*/out, /*height=*/-1, /*extract_selector=*/
+      [in](const HloInstruction* inst) -> bool { return inst != in; },
+      /*replace_type_selector=*/
+      [](const HloInstruction* inst) -> ReplaceType {
+        return ReplaceType::kReplaceParam;
+      });
+  HloComputation* entry = extracted->entry_computation();
+  if (entry->num_parameters() != 1 ||
+      entry->parameter_instruction(0)->shape() != in->shape()) {
+    return std::nullopt;
+  }
+  HloInstruction* param = entry->parameter_instruction(0);
+  if (param->user_count() == 0) return nullopt;
+  if (llvm::any_of(param->users(), [](const HloInstruction* inst) -> bool {
+        return inst->opcode() != HloOpcode::kGetTupleElement;
+      })) {
+    return std::nullopt;
+  }
+  int64_t candidate_index = param->users()[0]->tuple_index();
+  if (llvm::any_of(param->users(),
+                   [candidate_index](const HloInstruction* inst) -> bool {
+                     return inst->tuple_index() != candidate_index;
+                   })) {
+    return std::nullopt;
+  }
+  return candidate_index;
 }
 
 // The below function identifies a subset of all possible auxiliary
@@ -273,7 +287,7 @@ optional<int64_t> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
   auto* while_cond_root = while_cond->root_instruction();
   auto* while_cond_param = while_cond->parameter_instruction(0);
   optional<int64_t> indvar_tuple_idx =
-      GetGTEOperandIndex(while_cond_root, while_cond_param);
+      GetUniqueGTEDependenceIndex(while_cond_root, while_cond_param);
   if (!indvar_tuple_idx) {
     VLOG(2) << "Induction variable not found in loop condition: "
             << while_cond->root_instruction()->ToString();
@@ -299,7 +313,7 @@ optional<int64_t> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
   while_body_inc = while_body_root->operand(*indvar_tuple_idx);
   auto* while_body_param = while_body->parameter_instruction(0);
   optional<int64_t> while_body_indvar_tuple_idx =
-      GetGTEOperandIndex(while_body_inc, while_body_param);
+      GetUniqueGTEDependenceIndex(while_body_inc, while_body_param);
   if (!while_body_indvar_tuple_idx) {
     VLOG(2)
         << "Induction variable not found in while body increment instruction: "
@@ -371,6 +385,12 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
   auto* while_body_indvar_update =
       while_body->root_instruction()->mutable_operand(indvar_tuple_idx);
   auto* while_body_indvar = NonConstantOperand(while_body_indvar_update);
+  if (!while_body_indvar ||
+      while_body_indvar !=
+          hlo_query::GetUniqueGteInstruction(
+              while_body->parameter_instruction(0), indvar_tuple_idx)) {
+    return std::nullopt;
+  }
   HloInstruction* trip_count_increase_step_instr = nullptr;
   int64_t trip_count_step = 0;
   if (!Match(while_body_indvar_update,
@@ -415,6 +435,12 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
   auto* while_cond = while_op->while_condition();
   auto* while_cond_root = while_cond->root_instruction();
   auto* while_cond_indvar = NonConstantOperand(while_cond_root);
+  if (!while_cond_indvar ||
+      while_cond_indvar !=
+          hlo_query::GetUniqueGteInstruction(
+              while_cond->parameter_instruction(0), indvar_tuple_idx)) {
+    return std::nullopt;
+  }
   HloInstruction* while_cond_bound = nullptr;
   if (!Match(while_cond_root,
              m::Op().WithBinaryOperandsAnyOrder(
@@ -509,7 +535,9 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
   HloEvaluator evaluator(/*max_loop_iterations=*/0);
   auto* while_init = while_op->operand(0);
   auto* indvar_init = while_init->operand(*indvar_tuple_idx);
-  absl::StatusOr<Literal> indvar_init_result = evaluator.Evaluate(indvar_init);
+  absl::StatusOr<Literal> indvar_init_result =
+      evaluator.Evaluate(indvar_init, /*precomputed_analyses=*/{},
+                         /*recursively_evaluate_nonconstant_operands=*/true);
   if (!indvar_init_result.ok()) {
     VLOG(2) << "Couldn't evaluate induction variable init, "
             << indvar_init_result.status() << ", " << indvar_init->ToString();
@@ -527,16 +555,20 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
   auto* while_body = while_op->while_body();
   auto* while_body_indvar_update =
       while_body->root_instruction()->operand(*indvar_tuple_idx);
-  auto* while_body_indvar = NonConstantOperand(while_body_indvar_update);
+  auto* while_body_indvar = hlo_query::GetUniqueGteInstruction(
+      while_body->parameter_instruction(0), *indvar_tuple_idx);
 
   auto* while_cond = while_op->while_condition();
   auto* while_cond_root = while_cond->root_instruction();
-  auto* while_cond_indvar = NonConstantOperand(while_cond_root);
+  auto* while_cond_indvar = hlo_query::GetUniqueGteInstruction(
+      while_cond->parameter_instruction(0), *indvar_tuple_idx);
 
   for (int64_t trip_count = 0; trip_count != max_brute_force_iters + 1;
        ++trip_count) {
     absl::StatusOr<Literal> result = evaluator.EvaluateWithSubstitutions(
-        while_cond_root, {{while_cond_indvar, &indvar_iter_val}});
+        /*instruction=*/while_cond_root,
+        /*substitutions=*/{{while_cond_indvar, &indvar_iter_val}},
+        /*recursively_evaluate_nonconstant_operands=*/true);
     if (!result.ok()) {
       VLOG(2) << "Couldn't evaluate while cond: " << result.status();
       return nullopt;
@@ -550,7 +582,9 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
     // loop, and check whether the while condition is true with this new value.
     absl::StatusOr<Literal> indvar_next_result =
         evaluator.EvaluateWithSubstitutions(
-            while_body_indvar_update, {{while_body_indvar, &indvar_iter_val}});
+            /*instruction=*/while_body_indvar_update,
+            /*substitutions=*/{{while_body_indvar, &indvar_iter_val}},
+            /*recursively_evaluate_nonconstant_operands=*/true);
     if (!indvar_next_result.ok()) {
       VLOG(2) << "Couldn't evaluate induction variable update: "
               << indvar_next_result.status();

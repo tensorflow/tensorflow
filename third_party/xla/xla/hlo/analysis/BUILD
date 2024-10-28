@@ -1,7 +1,7 @@
 # Description:
 #   HLO analysis implementation.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//third_party/tenso1rflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
@@ -135,16 +135,25 @@ cc_library(
     srcs = ["while_loop_analysis.cc"],
     hdrs = ["while_loop_analysis.h"],
     deps = [
+        ":hlo_reachability",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_reachability",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
+        "//xla/tools:hlo_extractor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
