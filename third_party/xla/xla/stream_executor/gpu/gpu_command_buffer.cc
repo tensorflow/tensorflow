@@ -280,26 +280,6 @@ absl::Status GpuCommandBuffer::CheckNumCommandBuffers(
   return absl::OkStatus();
 }
 
-absl::StatusOr<GraphNodeHandle> GpuCommandBuffer::CreateBarrierNode(
-    const Dependencies& dependencies) {
-  GpuGraphNodeHandle barrier_handle = nullptr;
-#if !defined(TENSORFLOW_USE_ROCM) && CUDA_VERSION < 12040
-  // Instead of empty nodes we create no-op kernel nodes as barriers because
-  // CUDA 12.3 does not support empty nodes inside conditional command buffers.
-  TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel());
-
-  TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
-      &barrier_handle, graph_, ToPlatformSpecificHandles(dependencies), "noop",
-      AsGpuKernel(&**noop)->gpu_function(), 1, 1, 1, 1, 1, 1, 0,
-      /*kernel_params=*/nullptr, /*extra=*/nullptr));
-#else
-  TF_RETURN_IF_ERROR(GpuDriver::GraphAddEmptyNode(
-      &barrier_handle, graph_, ToPlatformSpecificHandles(dependencies)));
-#endif  // TENSORFLOW_USE_ROCM
-
-  return FromPlatformSpecificHandle(barrier_handle);
-}
-
 GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrierDependencies(
     ExecutionScopeId execution_scope_id) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];

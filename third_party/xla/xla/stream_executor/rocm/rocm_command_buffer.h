@@ -92,6 +92,9 @@ class RocmCommandBuffer : public GpuCommandBuffer {
                                 const BlockDim& blocks, const Kernel& kernel,
                                 const KernelArgsPackedArrayBase& args) override;
 
+  absl::StatusOr<GraphNodeHandle> CreateBarrierNode(
+      const Dependencies& dependencies) override;
+
   GpuExecutor* parent_;
 };
 

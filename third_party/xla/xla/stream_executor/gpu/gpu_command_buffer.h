@@ -294,10 +294,6 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status CheckNumCommandBuffers(
       const ConditionalCommandBuffers& cmd_buffers, size_t num_cmd_buffers);
 
-  // Creates a new no-op node acting as a barrier.
-  absl::StatusOr<GraphNodeHandle> CreateBarrierNode(
-      const Dependencies& dependencies);
-
   // Collects a set of dependencies for a new barrier.
   Dependencies GetBarrierDependencies(ExecutionScopeId execution_scope_id);
 
@@ -410,6 +406,10 @@ class GpuCommandBuffer : public CommandBuffer {
       GraphNodeHandle node_handle, const ThreadDim& threads,
       const BlockDim& blocks, const Kernel& kernel,
       const KernelArgsPackedArrayBase& args) = 0;
+
+  // Creates a new no-op node acting as a barrier and adds it to the graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateBarrierNode(
+      const Dependencies& dependencies) = 0;
 };
 
 }  // namespace stream_executor::gpu

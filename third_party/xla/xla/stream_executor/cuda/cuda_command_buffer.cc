@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/typed_kernel_factory.h"  // IWYU pragma: keep
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
@@ -394,6 +395,30 @@ absl::Status CudaCommandBuffer::UpdateKernelNode(
   return cuda::ToStatus(cuGraphExecKernelNodeSetParams(
                             exec_, ToCudaGraphHandle(node_handle), &params),
                         "Failed to set CUDA graph kernel node params");
+}
+
+absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateBarrierNode(
+    const Dependencies& dependencies) {
+  if (parent_->GetDeviceDescription().driver_version() <
+      SemanticVersion(12, 4, 0)) {
+    // Instead of empty nodes we create no-op kernel nodes as barriers because
+    // CUDA 12.3 does not support empty nodes inside conditional command
+    // buffers.
+    TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel());
+    return CreateKernelNode(dependencies, ThreadDim{1, 1, 1}, BlockDim{1, 1, 1},
+                            **noop, KernelArgsPackedArray<0>());
+  }
+
+  VLOG(2) << "Add empty node to a graph " << graph_
+          << "; deps: " << dependencies.size();
+
+  CUgraphNode barrier_handle = nullptr;
+  std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuGraphAddEmptyNode(&barrier_handle, graph_, deps.data(), deps.size()),
+      "Failed to add empty node to a CUDA graph"));
+
+  return FromCudaGraphHandle(barrier_handle);
 }
 
 }  // namespace stream_executor::gpu

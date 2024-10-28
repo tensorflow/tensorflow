@@ -92,6 +92,9 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
                                 const BlockDim& blocks, const Kernel& kernel,
                                 const KernelArgsPackedArrayBase& args) override;
 
+  absl::StatusOr<GraphNodeHandle> CreateBarrierNode(
+      const Dependencies& dependencies) override;
+
   // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
   // barriers, updating conditional handles, etc.).
   SetIfConditionKernel set_if_condition_kernel_;

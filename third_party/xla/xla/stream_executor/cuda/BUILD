@@ -1344,6 +1344,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_executor_header",

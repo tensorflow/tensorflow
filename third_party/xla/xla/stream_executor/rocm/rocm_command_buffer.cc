@@ -331,4 +331,19 @@ absl::Status RocmCommandBuffer::UpdateKernelNode(
                   "Failed to set HIP graph kernel node params");
 }
 
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateBarrierNode(
+    const Dependencies& dependencies) {
+  VLOG(2) << "Add empty node to a graph " << graph_
+          << "; deps: " << dependencies.size();
+
+  hipGraphNode_t barrier_handle = nullptr;
+  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+
+  TF_RETURN_IF_ERROR(
+      ToStatus(wrap::hipGraphAddEmptyNode(&barrier_handle, graph_, deps.data(),
+                                          deps.size()),
+               "Failed to add empty node to a HIP graph"));
+
+  return FromHipGraphHandle(barrier_handle);
+}
 }  // namespace stream_executor::gpu
