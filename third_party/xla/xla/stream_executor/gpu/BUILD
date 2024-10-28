@@ -34,6 +34,7 @@ load(
 load(
     "//xla/stream_executor:build_defs.bzl",
     "gpu_only_cc_library",
+    "stream_executor_gpu_friends",
 )
 load(
     "//xla/tests:build_defs.bzl",
@@ -49,20 +50,13 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility([
-        "//learning/dist_belief_extra/gpu:__subpackages__",
-        "//tensorflow/compiler/tf2xla:__subpackages__",
-        "//xla:__subpackages__",
-        "//tensorflow/core/kernels:__subpackages__",
-        "//xla/pjrt:__subpackages__",
-        "//xla/service/gpu:__subpackages__",
-        "//xla/stream_executor:__subpackages__",
-        "//tensorflow/core:__subpackages__",
-        "//third_party/sparse_conv:__subpackages__",
-        "//waymo/ml/compiler/triton:__subpackages__",
-        "//waymo/research/representation/threed:__subpackages__",
-    ]),
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    packages = stream_executor_gpu_friends(),
 )
 
 cc_library(
