@@ -25,12 +25,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/casts.h"
-#include "xla/stream_executor/stream.h"
-
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #endif
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -40,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -602,7 +602,7 @@ absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(
 
 absl::Status GpuCommandBuffer::Memset(ExecutionScopeId execution_scope_id,
                                       DeviceMemoryBase* dst,
-                                      CommandBuffer::BitPattern bit_pattern,
+                                      BitPattern bit_pattern,
                                       size_t num_elements) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
@@ -610,22 +610,16 @@ absl::Status GpuCommandBuffer::Memset(ExecutionScopeId execution_scope_id,
 
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeHandle node_handle = nullptr;
-    TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemsetNode(
-        parent_->gpu_context(), &node_handle, graph_,
-        ToPlatformSpecificHandles(barrier), AsDevicePtr(*dst), bit_pattern,
-        num_elements));
-    execution_scope.nodes.emplace_back().handle =
-        FromPlatformSpecificHandle(node_handle);
+    TF_ASSIGN_OR_RETURN(
+        execution_scope.nodes.emplace_back().handle,
+        CreateMemsetNode(barrier, *dst, bit_pattern, num_elements));
     return absl::OkStatus();
   }
 
   if (state_ == State::kUpdate) {
     GraphNodeHandle node =
         execution_scope.nodes[execution_scope.update_state.node_idx++].handle;
-    return GpuDriver::GraphExecMemsetNodeSetParams(
-        parent_->gpu_context(), exec_, ToPlatformSpecificHandle(node),
-        AsDevicePtr(*dst), bit_pattern, num_elements);
+    return UpdateMemsetNode(node, *dst, bit_pattern, num_elements);
   }
 
   return UnsupportedStateError(state_);

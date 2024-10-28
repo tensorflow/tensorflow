@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -227,9 +228,6 @@ class CommandBuffer {
                                     uint64_t size) {
     return MemcpyDeviceToDevice(kDefaulExecutionScope, dst, src, size);
   }
-
-  // Supported bit patterns for memset commands.
-  using BitPattern = std::variant<uint8_t, uint16_t, uint32_t>;
 
   // Adds a memset command.
   virtual absl::Status Memset(ExecutionScopeId execution_scope_id,

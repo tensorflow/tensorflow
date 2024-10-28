@@ -15,13 +15,20 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_command_buffer.h"
 
+#include <cstddef>
 #include <memory>
+#include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "rocm/include/hip/driver_types.h"
 #include "rocm/include/hip/hip_runtime.h"
+#include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
@@ -38,6 +45,37 @@ absl::StatusOr<hipGraph_t> CreateGraph() {
                               "Failed to create HIP graph"));
   VLOG(2) << "Created HIP graph " << graph;
   return graph;
+}
+
+hipDeviceptr_t AsDevicePtr(const DeviceMemoryBase& mem) {
+  return absl::bit_cast<hipDeviceptr_t>(mem.opaque());
+}
+
+using GraphNodeHandle = GpuCommandBuffer::GraphNodeHandle;
+
+// Converts a platform independent GraphNodeHandle into a HIP specific
+// hipGraphNode_t.
+hipGraphNode_t ToHipGraphHandle(GpuCommandBuffer::GraphNodeHandle handle) {
+  return absl::bit_cast<hipGraphNode_t>(handle);
+}
+
+// Converts a list of platform independent GraphNodeHandles into a list of
+// HIP specific hipGraphNode_t.
+std::vector<hipGraphNode_t> ToHipGraphHandles(
+    absl::Span<const GraphNodeHandle> opaque_handles) {
+  std::vector<hipGraphNode_t> handles;
+  handles.reserve(opaque_handles.size());
+  for (const GraphNodeHandle opaque_handle : opaque_handles) {
+    handles.push_back(ToHipGraphHandle(opaque_handle));
+  }
+  return handles;
+}
+
+// Converts a HIP specific hipGraphNode_t into a platform independent
+// GraphNodeHandle. This function will be removed once all Node factory
+// functions have been migrated into the subclasses.
+GraphNodeHandle FromHipGraphHandle(hipGraphNode_t handle) {
+  return absl::bit_cast<GpuCommandBuffer::GraphNodeHandle>(handle);
 }
 }  // namespace
 
@@ -85,4 +123,55 @@ absl::StatusOr<GpuCommandBuffer::NoOpKernel*>
 RocmCommandBuffer::GetNoOpKernel() {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
+
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemsetNode(
+    const Dependencies& dependencies, DeviceMemoryBase destination,
+    BitPattern bit_pattern, size_t num_elements) {
+  VLOG(2) << "Add memset node to a graph " << graph_
+          << "; dst: " << destination.opaque()
+          << "; bit_pattern: " << bit_pattern.ToString()
+          << "; num_elements: " << num_elements
+          << "; context: " << parent_->gpu_context()
+          << "; deps: " << dependencies.size();
+
+  hipMemsetParams params{};
+  params.dst = AsDevicePtr(destination);
+  params.elementSize = bit_pattern.GetElementSize();
+  params.height = 1;
+  params.pitch = 0;  // unused if height is 1
+  params.value = bit_pattern.GetPatternBroadcastedToUint32();
+  params.width = num_elements;
+
+  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+
+  hipGraphNode_t node_handle = nullptr;
+  TF_RETURN_IF_ERROR(
+      ToStatus(wrap::hipGraphAddMemsetNode(&node_handle, graph_, deps.data(),
+                                           deps.size(), &params),
+               "Failed to add memset node to a HIP graph"));
+  return FromHipGraphHandle(node_handle);
+}
+
+absl::Status RocmCommandBuffer::UpdateMemsetNode(GraphNodeHandle node_handle,
+                                                 DeviceMemoryBase destination,
+                                                 BitPattern bit_pattern,
+                                                 size_t num_elements) {
+  VLOG(2) << "Set memset node params " << node_handle << " in graph executable "
+          << exec_ << "; dst: " << destination.opaque()
+          << "; bit_pattern: " << bit_pattern.ToString()
+          << "; num_elements: " << num_elements;
+
+  hipMemsetParams params{};
+  params.dst = AsDevicePtr(destination);
+  params.elementSize = bit_pattern.GetElementSize();
+  params.height = 1;
+  params.pitch = 0;  // unused if height is 1
+  params.value = bit_pattern.GetPatternBroadcastedToUint32();
+  params.width = num_elements;
+
+  return ToStatus(wrap::hipGraphExecMemsetNodeSetParams(
+                      exec_, ToHipGraphHandle(node_handle), &params),
+                  "Failed to set memset node params");
+}
+
 }  // namespace stream_executor::gpu

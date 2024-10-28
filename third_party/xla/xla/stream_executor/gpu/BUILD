@@ -171,7 +171,9 @@ gpu_only_cc_library(
 gpu_only_cc_library(
     name = "gpu_command_buffer",
     srcs = ["gpu_command_buffer.cc"],
-    hdrs = ["gpu_command_buffer.h"],
+    hdrs = [
+        "gpu_command_buffer.h",
+    ],
     local_defines = if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
@@ -182,6 +184,7 @@ gpu_only_cc_library(
         ":gpu_stream",
         ":gpu_types_header",
         "//xla:util",
+        "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",

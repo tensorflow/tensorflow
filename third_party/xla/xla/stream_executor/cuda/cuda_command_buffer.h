@@ -16,17 +16,22 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_COMMAND_BUFFER_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_COMMAND_BUFFER_H_
 
+#include <cstddef>
 #include <memory>
+#include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/bit_pattern.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 
 namespace stream_executor::gpu {
 
 // This class implements GpuCommandBuffer for Nvidia GPUs.
-class CudaCommandBuffer : public GpuCommandBuffer {
+class CudaCommandBuffer final : public GpuCommandBuffer {
  public:
   // Creates a new CUDA command buffer and the underlying CUDA graph.
   static absl::StatusOr<std::unique_ptr<CudaCommandBuffer>> Create(
@@ -49,6 +54,15 @@ class CudaCommandBuffer : public GpuCommandBuffer {
 
   std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
       CUgraph graph) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateMemsetNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      BitPattern bit_pattern, size_t num_elements) override;
+
+  absl::Status UpdateMemsetNode(GraphNodeHandle node_handle,
+                                DeviceMemoryBase destination,
+                                BitPattern bit_pattern,
+                                size_t num_elements) override;
 
   // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
   // barriers, updating conditional handles, etc.).

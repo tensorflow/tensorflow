@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -172,10 +173,9 @@ class GpuCommandBuffer : public CommandBuffer {
   // we have a higher risk of OOM errors.
   static int64_t AliveExecs();
 
- private:
+ protected:
   using Dependencies = absl::InlinedVector<GraphNodeHandle, 1>;
 
- protected:
   using NoOpKernel = TypedKernel<>;
 
   // A signature of a device kernels updating conditional handle(s).
@@ -314,12 +314,16 @@ class GpuCommandBuffer : public CommandBuffer {
 
   GpuExecutor* parent_;  // not owned, must outlive *this
 
+  // TODO(hebecker): Move fields to subclasses once we have moved all GpuDriver
+  // calls.
+ protected:
   GpuGraphHandle graph_ = nullptr;  // owned if `is_owned_graph_`
   bool is_owned_graph_ = true;      // ownership of `graph_`
 
   GpuGraphExecHandle exec_ = nullptr;  // owned if `is_owned_graph_exec_`
   bool is_owned_graph_exec_ = true;    // ownership of `is_owned_graph_exec_`
 
+ private:
   // ExecutionScope holds the state of an underlying CUDA graph (nodes an
   // barriers added to a graph) for a single execution scope.
   struct ExecutionScope {
@@ -363,6 +367,18 @@ class GpuCommandBuffer : public CommandBuffer {
   // The given graph will not be owned by the created command buffer.
   virtual std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
       GpuGraphHandle graph) = 0;
+
+  // Adds a new memset node to the graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateMemsetNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      BitPattern bit_pattern, size_t num_elements) = 0;
+
+  // Updates an existing memset node. Note that `node_handle` needs to be refer
+  // to a node created by `CreateMemsetNode`.
+  virtual absl::Status UpdateMemsetNode(GraphNodeHandle node_handle,
+                                        DeviceMemoryBase destination,
+                                        BitPattern bit_pattern,
+                                        size_t num_elements) = 0;
 };
 
 }  // namespace stream_executor::gpu
