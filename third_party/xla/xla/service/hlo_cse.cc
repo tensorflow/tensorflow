@@ -227,6 +227,24 @@ absl::StatusOr<bool> HloCSE::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
+  for (auto* computation : module->computations(execution_threads)) {
+    TF_ASSIGN_OR_RETURN(bool computation_changed,
+                        RunOnComputation(computation));
+    changed |= computation_changed;
+  }
+  return changed;
+}
+
+absl::StatusOr<bool> HloCSE::RunOnComputation(HloComputation* computation) {
+  if (only_fusion_computations_ && !computation->IsFusionComputation()) {
+    return false;
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      bool changed, is_layout_sensitive_
+                        ? CombineConstants<true>(computation, only_scalars_)
+                        : CombineConstants<false>(computation, only_scalars_));
+
   const auto eq_instructions = [&](const HloInstruction* a,
                                    const HloInstruction* b) {
     if (a == b) {
@@ -251,94 +269,79 @@ absl::StatusOr<bool> HloCSE::Run(
         /*sharding_sensitive=*/true);
   };
 
-  for (auto* computation : module->computations(execution_threads)) {
-    if (only_fusion_computations_ && !computation->IsFusionComputation()) {
+  // HLO instructions are grouped into equivalency classes by using the
+  // cse_equal predicate defined above. This set holds a representative
+  // instruction for each class.
+  absl::flat_hash_set<CseKey, absl::Hash<CseKey>, decltype(cse_equal)>
+      representatives(/*N=*/computation->instruction_count() + 1,
+                      absl::Hash<CseKey>{}, cse_equal);
+  for (auto instruction : computation->MakeInstructionPostOrder()) {
+    // If the instruction has zero operands (constants, parameters, etc.) skip
+    // over it.
+    if (instruction->operand_count() == 0 &&
+        instruction->opcode() != HloOpcode::kPartitionId &&
+        instruction->opcode() != HloOpcode::kReplicaId) {
+      continue;
+    }
+    // Skip instructions which have side effects.
+    if (instruction->HasSideEffect()) {
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(
-        bool combined,
-        is_layout_sensitive_
-            ? CombineConstants<true>(computation, only_scalars_)
-            : CombineConstants<false>(computation, only_scalars_));
-    changed |= combined;
+    if (only_scalars_ && !ShapeUtil::IsScalar(instruction->shape())) {
+      continue;
+    }
 
-    // HLO instructions are grouped into equivalency classes by using the
-    // cse_equal predicate defined above. This set holds a representative
-    // instruction for each class.
-    absl::flat_hash_set<CseKey, absl::Hash<CseKey>, decltype(cse_equal)>
-        representatives(/*N=*/computation->instruction_count() + 1,
-                        absl::Hash<CseKey>{}, cse_equal);
-    for (auto instruction : computation->MakeInstructionPostOrder()) {
-      // If the instruction has zero operands (constants, parameters, etc.) skip
-      // over it.
-      if (instruction->operand_count() == 0 &&
-          instruction->opcode() != HloOpcode::kPartitionId &&
-          instruction->opcode() != HloOpcode::kReplicaId) {
+    auto pair = representatives.insert(CseKey{instruction});
+    if (!pair.second) {
+      HloInstruction* equivalent_instruction = pair.first->hlo;
+      TF_RETURN_IF_ERROR(
+          instruction->ReplaceAllUsesWith(equivalent_instruction));
+      TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
+          instruction, /*cleanup=*/std::nullopt, ignore_control_dependencies_));
+      VLOG(4) << "Replaced " << instruction->name() << " with "
+              << equivalent_instruction->name();
+      changed = true;
+      continue;
+    }
+    for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+      HloInstruction* a = instruction->mutable_operand(i);
+      if (a->opcode() != HloOpcode::kIota) {
         continue;
       }
-      // Skip instructions which have side effects.
-      if (instruction->HasSideEffect()) {
-        continue;
-      }
-
-      if (only_scalars_ && !ShapeUtil::IsScalar(instruction->shape())) {
-        continue;
-      }
-
-      auto pair = representatives.insert(CseKey{instruction});
-      if (!pair.second) {
-        HloInstruction* equivalent_instruction = pair.first->hlo;
-        TF_RETURN_IF_ERROR(
-            instruction->ReplaceAllUsesWith(equivalent_instruction));
-        TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
-            instruction, /*cleanup=*/std::nullopt,
-            ignore_control_dependencies_));
-        VLOG(4) << "Replaced " << instruction->name() << " with "
-                << equivalent_instruction->name();
-        changed = true;
-        continue;
-      }
-      for (int64_t i = 0; i < instruction->operand_count(); ++i) {
-        HloInstruction* a = instruction->mutable_operand(i);
-        if (a->opcode() != HloOpcode::kIota) {
+      for (int64_t j = i + 1; j < instruction->operand_count(); ++j) {
+        HloInstruction* b = instruction->mutable_operand(j);
+        if (a == b || !eq_instructions(a, b)) {
           continue;
         }
-        for (int64_t j = i + 1; j < instruction->operand_count(); ++j) {
-          HloInstruction* b = instruction->mutable_operand(j);
-          if (a == b || !eq_instructions(a, b)) {
-            continue;
-          }
-          TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
-          changed = true;
-          if (b->IsDead()) {
-            TF_RETURN_IF_ERROR(computation->RemoveInstruction(b));
-          }
+        TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
+        changed = true;
+        if (b->IsDead()) {
+          TF_RETURN_IF_ERROR(computation->RemoveInstruction(b));
         }
       }
     }
-    if (auto fusion = computation->FusionInstruction()) {
-      if (fusion->IsMultiOutputFusion()) {
-        // Attach users to the representative instruction, thus making the
-        // duplicate fusion roots unused. HloDCE can then cleanup the unused
-        // fusion roots.
-        absl::flat_hash_map<const HloInstruction*, int64_t>
-            root_to_unique_index;
-        int64_t root_index = 0;
-        HloInstruction* root = computation->root_instruction();
-        for (const HloInstruction* hlo : root->operands()) {
-          if (root_to_unique_index.find(hlo) == root_to_unique_index.end()) {
-            root_to_unique_index[hlo] = root_to_unique_index[hlo] = root_index;
-          }
-          ++root_index;
+  }
+  if (auto fusion = computation->FusionInstruction()) {
+    if (fusion->IsMultiOutputFusion()) {
+      // Attach users to the representative instruction, thus making the
+      // duplicate fusion roots unused. HloDCE can then cleanup the unused
+      // fusion roots.
+      absl::flat_hash_map<const HloInstruction*, int64_t> root_to_unique_index;
+      int64_t root_index = 0;
+      HloInstruction* root = computation->root_instruction();
+      for (const HloInstruction* hlo : root->operands()) {
+        if (root_to_unique_index.find(hlo) == root_to_unique_index.end()) {
+          root_to_unique_index[hlo] = root_to_unique_index[hlo] = root_index;
         }
-        if (root_to_unique_index.size() < root->operand_count()) {
-          for (HloInstruction* user : fusion->users()) {
-            if (user->opcode() == HloOpcode::kGetTupleElement) {
-              const HloInstruction* fusion_root =
-                  root->operand(user->tuple_index());
-              user->set_tuple_index(root_to_unique_index[fusion_root]);
-            }
+        ++root_index;
+      }
+      if (root_to_unique_index.size() < root->operand_count()) {
+        for (HloInstruction* user : fusion->users()) {
+          if (user->opcode() == HloOpcode::kGetTupleElement) {
+            const HloInstruction* fusion_root =
+                root->operand(user->tuple_index());
+            user->set_tuple_index(root_to_unique_index[fusion_root]);
           }
         }
       }
