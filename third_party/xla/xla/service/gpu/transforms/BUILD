@@ -524,6 +524,8 @@ xla_cc_test(
     deps = [
         ":collective_select_folder",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:collective_ops_utils",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/log",

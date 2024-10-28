@@ -88,6 +88,9 @@ std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
   // Find replica-id or partition-id op and constant op, swap if needed.
   const HloInstruction* id_op = compare->operand(0);
   const HloInstruction* constant_op = compare->operand(1);
+  if (HloPredicateIsNotOp<HloOpcode::kConstant>(constant_op)) {
+    std::swap(id_op, constant_op);
+  }
 
   // Match replica-id or partition-id.
   CollectiveOpGroupMode collective_mode;
