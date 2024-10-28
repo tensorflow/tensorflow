@@ -20,13 +20,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/shape.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -221,7 +225,7 @@ CollectiveTransformationReorder::ReorderAllGatherTransformations(
                                         original_all_gather_dimension_size);
     HloComputation* computation = all_gather_operand->parent();
     HloInstruction* new_all_gather =
-        computation->AddInstruction(HloInstruction::CreateAllGather(
+        all_gather->AddInstruction(HloInstruction::CreateAllGather(
             new_all_gather_shape, {all_gather_operand}, all_gather_dimension,
             all_gather->device_list(), all_gather->constrain_layout(),
             all_gather->channel_id(), all_gather->use_global_device_ids()));
@@ -269,7 +273,7 @@ CollectiveTransformationReorder::ReorderAllReduceTransformations(
     CHECK(!reshapes.empty());
     HloInstruction* cur_operand = reshapes.back()->mutable_operand(0);
     HloInstruction* new_all_reduce =
-        computation->AddInstruction(HloInstruction::CreateAllReduce(
+        all_reduce->AddInstruction(HloInstruction::CreateAllReduce(
             cur_operand->shape(), {cur_operand}, all_reduce->to_apply(),
             all_reduce->device_list(), all_reduce->constrain_layout(),
             all_reduce->channel_id(), all_reduce->use_global_device_ids()));

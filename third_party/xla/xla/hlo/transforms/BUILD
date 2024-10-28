@@ -2450,13 +2450,16 @@ cc_library(
     hdrs = ["collectives/collective_transformation_reorderer.h"],
     deps = [
         ":hlo_dce",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -2466,6 +2469,7 @@ xla_cc_test(
     srcs = ["collectives/collective_transformation_reorderer_test.cc"],
     deps = [
         ":collective_transformation_reorderer",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
