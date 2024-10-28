@@ -179,7 +179,11 @@ gpu_kernel_library(
         "//xla:types",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tsl/lib/math:math_util",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 xla_test(
