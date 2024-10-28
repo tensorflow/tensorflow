@@ -421,4 +421,10 @@ absl::StatusOr<size_t> RocmCommandBuffer::GetNodeCount() const {
 absl::Status RocmCommandBuffer::PrepareFinalization() {
   return absl::OkStatus();
 }
+
+absl::StatusOr<GpuCommandBuffer::GraphConditionalHandle>
+RocmCommandBuffer::CreateConditionalHandle() {
+  return absl::UnimplementedError(
+      "Graph conditionals are not yet supported on HIP graphs.");
+}
 }  // namespace stream_executor::gpu
