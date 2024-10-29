@@ -2956,27 +2956,19 @@ absl::Status LayoutAssignment::Init(HloModule* module) {
   current_priority_ = LayoutConstraint::kBeginningPriority;
   // Clear all the copies which have been added, and all the related
   // instructions (like GTE and tuples).
-  int64_t removed_copies = 0;
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction :
-         computation->MakeInstructionPostOrder()) {
-      if (instruction->opcode() == HloOpcode::kCopy &&
-          added_copies_.contains(instruction)) {
-        VLOG(5) << "Removing added copy: " << instruction->ToString();
-        TF_RETURN_IF_ERROR(
-            instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
-        ++removed_copies;
-      }
+  if (!added_copies_.empty()) {
+    for (HloInstruction* instruction : added_copies_) {
+      VLOG(5) << "Removing added copy: " << instruction->ToString();
+      HloComputation* computation = instruction->parent();
+      TF_RETURN_IF_ERROR(
+          instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
+      TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
     }
-  }
-  added_copies_.clear();
-  if (removed_copies > 0) {
+    added_copies_.clear();
     TupleSimplifier tuple_simplifier;
     HloDCE dce;
     TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
     TF_RETURN_IF_ERROR(dce.Run(module).status());
-    call_graph_ = CallGraph::Build(module);
   }
   return absl::OkStatus();
 }
