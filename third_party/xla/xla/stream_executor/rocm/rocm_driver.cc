@@ -103,26 +103,6 @@ absl::Status GpuDriver::DestroyGraphExec(hipGraphExec_t exec) {
                   "Failed to destroy HIP graph");
 }
 
-absl::StatusOr<std::string> GpuDriver::GraphDebugDotPrint(
-    hipGraph_t graph, const char* path, bool return_printed_graph) {
-  VLOG(2) << "Print HIP graph " << graph << " debug dot file to " << path;
-
-  int flags = hipGraphDebugDotFlagsVerbose;
-  TF_RETURN_IF_ERROR(ToStatus(wrap::hipGraphDebugDotPrint(graph, path, flags),
-                              "Failed to print gpu graph debug file"));
-
-  if (return_printed_graph) {
-    std::string data;
-    if (tsl::ReadFileToString(tsl::Env::Default(), path, &data).ok()) {
-      return data;
-    } else {
-      LOG(WARNING) << "failed to read gpu graph debug file " << path;
-    }
-  }
-
-  return std::string(path);
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   hipError_t res = wrap::hipGetDeviceCount(&device_count);

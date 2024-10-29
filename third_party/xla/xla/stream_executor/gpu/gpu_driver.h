@@ -100,13 +100,6 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
   static absl::Status DestroyGraphExec(GpuGraphExecHandle exec);
 
-  // Write a DOT file describing graph structure.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g0fb0c4d319477a0a98da005fcb0dacc4
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
-  static absl::StatusOr<std::string> GraphDebugDotPrint(
-      GpuGraphHandle graph, const char* path,
-      bool return_printed_graph = false);
-
   // The CUDA stream callback type signature.
   // The data passed to AddStreamCallback is subsequently passed to this
   // callback when it fires.

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/bit_pattern.h"
@@ -634,6 +635,20 @@ CudaCommandBuffer::CreateConditionalHandle() {
   return absl::UnimplementedError(
       "CUDA graph conditional nodes are not implemented");
 #endif  // CUDA_VERSION >= 12030
+}
+
+absl::Status CudaCommandBuffer::WriteGraphToDotFile(absl::string_view path) {
+#if CUDA_VERSION >= 12000
+  VLOG(2) << "Print CUDA graph " << graph_ << " debug dot file to " << path;
+
+  int flags = CU_GRAPH_DEBUG_DOT_FLAGS_VERBOSE;
+  return cuda::ToStatus(
+      cuGraphDebugDotPrint(graph_, std::string{path}.c_str(), flags),
+      "Failed to print gpu graph debug file");
+#endif  // CUDA_VERSION >= 12000
+
+  return absl::UnimplementedError(
+      "CUDA graph debug dot print is not supported.");
 }
 
 }  // namespace stream_executor::gpu

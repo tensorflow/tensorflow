@@ -121,28 +121,6 @@ absl::Status GpuDriver::DestroyGraphExec(CUgraphExec exec) {
                         "Failed to destroy CUDA executable graph");
 }
 
-absl::StatusOr<std::string> GpuDriver::GraphDebugDotPrint(
-    CUgraph graph, const char* path, bool return_printed_graph) {
-#if CUDA_VERSION >= 12000
-  VLOG(2) << "Print CUDA graph " << graph << " debug dot file to " << path;
-
-  int flags = CU_GRAPH_DEBUG_DOT_FLAGS_VERBOSE;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuGraphDebugDotPrint(graph, path, flags),
-                                    "Failed to print gpu graph debug file"));
-
-  if (return_printed_graph) {
-    std::string data;
-    if (tsl::ReadFileToString(tsl::Env::Default(), path, &data).ok()) {
-      return data;
-    } else {
-      LOG(WARNING) << "failed to read gpu graph debug file " << path;
-    }
-  }
-#endif  // CUDA_VERSION >= 12000
-
-  return std::string(path);
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   auto status = cuda::ToStatus(cuDeviceGetCount(&device_count));

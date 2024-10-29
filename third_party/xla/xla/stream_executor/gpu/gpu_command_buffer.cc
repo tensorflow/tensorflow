@@ -763,11 +763,12 @@ absl::Status GpuCommandBuffer::Finalize() {
   // Maybe dump created CUDA graph to a dot file for debugging.
   if (state_ == State::kCreate && VLOG_IS_ON(10)) {
     std::string path = tsl::io::GetTempFilename(/*extension=*/"dot");
-    auto printed = GpuDriver::GraphDebugDotPrint(
-        graph_, path.c_str(), /*return_printed_graph=*/VLOG_IS_ON(100));
-    if (VLOG_IS_ON(100) && printed.ok()) {
-      VLOG(100) << "Printed Gpu graph " << graph_ << " to: " << path << "\n"
-                << *printed;
+    TF_RETURN_IF_ERROR(WriteGraphToDotFile(path));
+    if (VLOG_IS_ON(100)) {
+      std::string dot_file_contents;
+      TF_RETURN_IF_ERROR(
+          tsl::ReadFileToString(tsl::Env::Default(), path, &dot_file_contents));
+      VLOG(100) << "Contents of " << path << " is:\n" << dot_file_contents;
     }
   }
 

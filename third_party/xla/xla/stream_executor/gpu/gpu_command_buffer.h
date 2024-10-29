@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -465,6 +466,9 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Create a new conditional handle in the underlying graph.
   virtual absl::StatusOr<GraphConditionalHandle> CreateConditionalHandle() = 0;
+
+  // Writes the underlying graph to a file in graphviz DOT format.
+  virtual absl::Status WriteGraphToDotFile(absl::string_view path) = 0;
 };
 
 }  // namespace stream_executor::gpu
