@@ -559,10 +559,13 @@ GpuCommandBuffer::CreateConditionalHandles(size_t num_handles) {
 
 absl::StatusOr<std::vector<std::unique_ptr<GpuCommandBuffer>>>
 GpuCommandBuffer::CreateConditionalCommandBuffers(
+    ExecutionScopeId execution_scope_id, ConditionType type,
     absl::Span<const GraphConditionalHandle> conditionals,
-    absl::Span<const GpuGraphHandle> graphs,
     absl::Span<const ConditionBuilder> builders) {
   std::vector<std::unique_ptr<GpuCommandBuffer>> cmd_buffers;
+
+  TF_ASSIGN_OR_RETURN(auto graphs, CreateConditionalNodes(execution_scope_id,
+                                                          type, conditionals));
 
   for (size_t i = 0; i < conditionals.size(); ++i) {
     auto command_buffer = CreateNestedCommandBuffer(graphs[i]);
@@ -645,10 +648,9 @@ absl::Status GpuCommandBuffer::AddConditionalCommandNode(
     TF_RETURN_IF_ERROR(Barrier(execution_scope_id));
 
     // Create conditional command buffer for each builder.
-    TF_ASSIGN_OR_RETURN(
-        auto graphs, CreateConditionalNodes(execution_scope_id, type, handles));
-    TF_ASSIGN_OR_RETURN(auto cmd_buffers, CreateConditionalCommandBuffers(
-                                              handles, graphs, builders));
+    TF_ASSIGN_OR_RETURN(auto cmd_buffers,
+                        CreateConditionalCommandBuffers(
+                            execution_scope_id, type, handles, builders));
 
     // Keep track of created conditional handles and command buffers.
     execution_scope.conditional_command_buffers.push_back(

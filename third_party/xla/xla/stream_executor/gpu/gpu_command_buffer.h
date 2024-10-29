@@ -231,8 +231,8 @@ class GpuCommandBuffer : public CommandBuffer {
 
   absl::StatusOr<std::vector<std::unique_ptr<GpuCommandBuffer>>>
   CreateConditionalCommandBuffers(
+      ExecutionScopeId execution_scope_id, ConditionType type,
       absl::Span<const GraphConditionalHandle> conditionals,
-      absl::Span<const GpuGraphHandle> graphs,
       absl::Span<const ConditionBuilder> builders);
 
   absl::Status UpdateConditionalCommandBuffers(
