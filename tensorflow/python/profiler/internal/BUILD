@@ -1,5 +1,3 @@
-load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
-load("@local_xla//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_portable", "tf_python_pybind_extension")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
@@ -186,60 +184,5 @@ cc_library(
         "@local_xla//xla/tsl/profiler/convert:xplane_to_trace_events",
         "@local_xla//xla/tsl/profiler/rpc/client:capture_profile",
         "@local_xla//xla/tsl/profiler/utils:session_manager",
-    ],
-)
-
-tsl_pybind_extension(
-    name = "_pywrap_profiler_plugin",
-    srcs = ["pywrap_profiler_plugin.cc"],
-    pytype_srcs = [
-        "_pywrap_profiler_plugin.pyi",
-    ],
-    visibility = internal_visibility([
-        "//tensorflow/core/profiler:internal",
-        "//tensorflow/python/eager:__pkg__",
-        "//tensorflow/python/profiler:__pkg__",
-    ]),
-    deps = [
-        "//tensorflow/core:protos_all_cc_impl",
-        "//tensorflow/core/framework:attr_value_proto_cc_impl",
-        "//tensorflow/core/framework:op",
-        "//tensorflow/core/framework:tensor",
-        "//tensorflow/core/profiler/convert:repository",
-        "//tensorflow/core/profiler/convert:tool_options",
-        "//tensorflow/core/profiler/convert:xplane_to_tools_data",
-        "//tensorflow/python/lib/core:py_exception_registry",
-        "//tensorflow/python/lib/core:pybind11_status",
-        "@com_google_protobuf//:protobuf",
-        "@local_tsl//tsl/platform:env_impl",
-        "@local_tsl//tsl/profiler/protobuf:profiler_analysis_proto_cc_impl",
-        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_monitor_result_proto_cc_impl",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc_impl",
-        "@local_xla//xla:autotune_results_proto_cc_impl",
-        "@local_xla//xla:autotuning_proto_cc_impl",
-        "@local_xla//xla:xla_data_proto_cc_impl",
-        "@local_xla//xla:xla_proto_cc_impl",
-        "@local_xla//xla/pjrt:status_casters",
-        "@local_xla//xla/service:hlo_proto_cc_impl",
-        "@local_xla//xla/service/gpu:backend_configs_cc_impl",
-        "@local_xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
-        "@local_xla//xla/stream_executor:device_description_proto_cc_impl",
-        "@local_xla//xla/tsl/framework:allocator_registry_impl",
-        "@local_xla//xla/tsl/lib/io:table",
-        "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
-        "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",
-        "@local_xla//xla/tsl/profiler/rpc:profiler_service_impl",
-        "@local_xla//xla/tsl/profiler/rpc/client:capture_profile",
-        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
-        "@local_xla//xla/tsl/profiler/utils:session_manager",
-        "@local_xla//xla/tsl/profiler/utils:time_utils_impl",
-        "@local_xla//xla/tsl/protobuf:bfc_memory_map_proto_cc_impl",
-        "@local_xla//xla/tsl/protobuf:dnn_proto_cc_impl",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc_impl",
-        "@local_xla//xla/tsl/protobuf:histogram_proto_cc_impl",
-        "@local_xla//xla/tsl/protobuf:rpc_options_proto_cc_impl",
-        "@local_xla//xla/tsl/protobuf:test_log_proto_cc_impl",
-        "@pybind11",
     ],
 )

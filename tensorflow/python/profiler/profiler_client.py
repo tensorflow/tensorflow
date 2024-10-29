@@ -15,7 +15,8 @@
 """Profiler client APIs."""
 
 from tensorflow.python.framework import errors
-from tensorflow.python.profiler.internal import _pywrap_profiler_plugin
+from tensorflow.python.profiler.internal import _pywrap_profiler
+
 from tensorflow.python.util.tf_export import tf_export
 
 _GRPC_PREFIX = 'grpc://'
@@ -125,15 +126,9 @@ def trace(service_addr,
                                       'duration_ms must be greater than zero.')
 
   opts = dict(options._asdict()) if options is not None else {}
-  _pywrap_profiler_plugin.trace(
-      _strip_addresses(service_addr, _GRPC_PREFIX),
-      logdir,
-      worker_list,
-      True,
-      duration_ms,
-      num_tracing_attempts,
-      opts,
-  )
+  _pywrap_profiler.trace(
+      _strip_addresses(service_addr, _GRPC_PREFIX), logdir, worker_list, True,
+      duration_ms, num_tracing_attempts, opts)
 
 
 @tf_export('profiler.experimental.client.monitor', v1=[])
@@ -165,9 +160,8 @@ def monitor(service_addr, duration_ms, level=1):
   ```
 
   """
-  return _pywrap_profiler_plugin.monitor(
-      _strip_prefix(service_addr, _GRPC_PREFIX), duration_ms, level, True
-  )
+  return _pywrap_profiler.monitor(
+      _strip_prefix(service_addr, _GRPC_PREFIX), duration_ms, level, True)
 
 
 def _strip_prefix(s, prefix):

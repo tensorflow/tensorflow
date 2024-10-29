@@ -16,17 +16,18 @@
 
 from tensorflow.python.eager import profiler_client
 from tensorflow.python.eager import test
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 
 
 class ProfilerClientTest(test_util.TensorFlowTestCase):
 
   def testStartTracing_ProcessInvalidAddress(self):
-    with self.assertRaises(RuntimeError):
+    with self.assertRaises(errors.UnavailableError):
       profiler_client.start_tracing('localhost:6006', '/tmp/', 2000)
 
   def testMonitor_ProcessInvalidAddress(self):
-    with self.assertRaises(RuntimeError):
+    with self.assertRaises(errors.UnavailableError):
       profiler_client.monitor('localhost:6006', 2000)
 
 

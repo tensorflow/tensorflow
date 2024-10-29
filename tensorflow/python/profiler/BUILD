@@ -27,7 +27,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/profiler/internal:_pywrap_profiler_plugin",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -88,7 +88,7 @@ py_strict_test(
     deps = [
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/profiler/internal:_pywrap_profiler_plugin",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
 

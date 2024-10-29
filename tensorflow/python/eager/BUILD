@@ -429,7 +429,7 @@ py_strict_library(
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
-        "//tensorflow/python/profiler/internal:_pywrap_profiler_plugin",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
         "//tensorflow/python/util:deprecation",
     ],
 )
