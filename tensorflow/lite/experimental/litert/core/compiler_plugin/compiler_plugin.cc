@@ -145,6 +145,7 @@ CompilerPlugin::ResultT CompilerPlugin::LoadPlugin(
     LITERT_LOG(LITERT_WARNING, "Failed to load plugin at: %s", lib_path.data());
     return ResultT::FromStatus(kLiteRtStatusErrorDynamicLoading);
   }
+  LITERT_LOG(LITERT_INFO, "Loaded plugin at: %s", lib_path.data());
 
   if (ResolvePluginApi(plugin.lib_handle_, plugin.plugin_api_) !=
       kLiteRtStatusOk) {
@@ -152,6 +153,7 @@ CompilerPlugin::ResultT CompilerPlugin::LoadPlugin(
                lib_path.data());
     return ResultT::FromStatus(kLiteRtStatusErrorDynamicLoading);
   }
+  LITERT_LOG(LITERT_INFO, "Resolved plugin api at: %s", lib_path.data());
 
   if (plugin.plugin_api_.init(&plugin.plugin_handle_) != kLiteRtStatusOk) {
     LITERT_LOG(LITERT_WARNING, "Failed to initialize plugin at: %s",

@@ -41,7 +41,8 @@ LiteRtStatus OpenLib(absl::string_view so_path, void** lib_handle) {
 #endif
 
   if (res == nullptr) {
-    LITERT_LOG(LITERT_ERROR, "Failed to load .so at path: %s\n", so_path);
+    LITERT_LOG(LITERT_ERROR, "Failed to load .so at path: %s\n",
+               so_path.data());
     LogDlError();
 
     return kLiteRtStatusErrorDynamicLoading;

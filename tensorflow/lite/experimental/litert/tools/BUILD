@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("//tensorflow/lite/experimental/litert/vendors/qualcomm:qualcomm_build_defs.bzl", "litert_cc_bin_with_qnn")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
@@ -27,13 +29,12 @@ cc_library(
         ":tool_display",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/core:byte_code_util",
         "//tensorflow/lite/experimental/litert/core:litert_model_init",
-        "//tensorflow/lite/experimental/litert/core:litert_model_serialize",
         "//tensorflow/lite/experimental/litert/core/compiler_plugin",
         "//tensorflow/lite/experimental/litert/core/compiler_plugin:algo",
         "//tensorflow/lite/experimental/litert/core/util:buffer_ref",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
-        "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
@@ -56,12 +57,11 @@ cc_test(
     deps = [
         ":apply_plugin",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/core:byte_code_util",
         "//tensorflow/lite/experimental/litert/core:graph_tools",
         "//tensorflow/lite/experimental/litert/core:litert_model_init",
-        "//tensorflow/lite/experimental/litert/core:litert_model_serialize",
         "//tensorflow/lite/experimental/litert/core:model",
-        "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
+        "//tensorflow/lite/experimental/litert/core/util:buffer_ref",
         "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings:string_view",
@@ -69,11 +69,41 @@ cc_test(
     ],
 )
 
-cc_binary(
+litert_cc_bin_with_qnn(
     name = "apply_plugin_main",
     testonly = 1,
     srcs = ["apply_plugin_main.cc"],
-    data = ["//tensorflow/lite/experimental/litert/vendors/examples:example_plugin_so"],
+    data = [
+        "//tensorflow/lite/experimental/litert/vendors/examples:example_plugin_so",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler:qnn_compiler_plugin_so",
+    ],
+    export_litert_only = 1,
+    include_system = 1,
+    linkstatic = 1,
+    tags = [
+        "noasan",
+        "nobuilder",
+        "nomsan",
+        "nosan",
+    ],
+    ungrte = True,
+    deps = [
+        ":apply_plugin",
+        "//tensorflow/lite/experimental/litert/core:byte_code_util",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+# Fork of "apply_plugin_main" without the "ungrte" so this tool can be used as part of larger
+# integration test pipelines with example_plugin.
+cc_binary(
+    name = "apply_plugin_main_for_test",
+    testonly = 1,
+    srcs = ["apply_plugin_main.cc"],
+    data = [
+        "//tensorflow/lite/experimental/litert/vendors/examples:example_plugin_so",
+    ],
     linkstatic = 1,
     tags = [
         "noasan",
@@ -82,7 +112,7 @@ cc_binary(
     ],
     deps = [
         ":apply_plugin",
-        "@com_google_absl//absl/strings:string_view",
+        "//tensorflow/lite/experimental/litert/core:byte_code_util",
         "@llvm-project//llvm:Support",
     ],
 )

@@ -48,7 +48,7 @@ inline static LiteRtStatus ResolveLibSymbol(void* lib_handle,
                                             Sym* sym_handle) {
   Sym ptr = (Sym)::dlsym(lib_handle, sym_name.data());
   if (ptr == nullptr) {
-    LITERT_LOG(LITERT_ERROR, "Faild to resolve symbol: %s\n", sym_name);
+    LITERT_LOG(LITERT_ERROR, "Faild to resolve symbol: %s\n", sym_name.data());
     LogDlError();
     return kLiteRtStatusErrorDynamicLoading;
   }

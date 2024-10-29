@@ -97,36 +97,33 @@ cc_library(
 )
 
 cc_library(
-    name = "litert_model_serialize",
-    srcs = ["litert_model_serialize.cc"],
-    hdrs = ["litert_model_serialize.h"],
+    name = "byte_code_util",
+    srcs = ["byte_code_util.cc"],
+    hdrs = ["byte_code_util.h"],
     deps = [
         ":litert_model_init",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/core/util:buffer_ref",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
 cc_test(
-    name = "litert_model_serialize_test",
-    srcs = ["litert_model_serialize_test.cc"],
+    name = "byte_code_util_test",
+    srcs = ["byte_code_util_test.cc"],
     data = [
         "//tensorflow/lite/experimental/litert/test:tflite_test_data",
     ],
     deps = [
-        ":graph_tools",
-        ":litert_model_init",
-        ":litert_model_serialize",
-        ":model",
+        ":byte_code_util",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
         "//tensorflow/lite/experimental/litert/core/util:buffer_ref",
-        "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/experimental/litert/test:common",
-        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
@@ -164,7 +161,7 @@ cc_test(
         ":api_internal",
         ":graph_tools",
         ":litert_model_init",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
@@ -195,7 +192,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
@@ -218,6 +215,7 @@ cc_library(
 #         "//testing/base/public:unique-test-directory",
 #         "@com_google_absl//absl/strings:string_view",
 #         "//tensorflow/lite/experimental/litert/c:litert_c_api",
+#         "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
 #         "//tensorflow/lite/experimental/litert/test:common",
 #     ],
 # )
