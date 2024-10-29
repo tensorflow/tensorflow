@@ -1771,5 +1771,20 @@ TEST_F(GpuFusibleTest, GetSharedMemoryUsage) {
   EXPECT_EQ(cache.GetSharedMemoryUsage(*fusion), 32 * 33 * 2 * 4);
 }
 
+TEST_F(GpuFusibleTest, IsConsumerTheOnlyNonRootUser) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+e {
+  p = s8[] parameter(0)
+  n = s8[] negate(p)
+  b = s8[1] bitcast(p)
+  t = tuple(b, n)
+})"));
+
+  const HloInstruction& p =
+      *module->entry_computation()->parameter_instruction(0);
+  const HloInstruction& n = *p.users().front();
+  EXPECT_TRUE(IsConsumerTheOnlyNonRootUser(p, n));
+}
+
 }  // namespace gpu
 }  // namespace xla
