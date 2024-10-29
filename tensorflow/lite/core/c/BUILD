@@ -312,6 +312,7 @@ cc_test(
     ],
     data = [
         "//tensorflow/lite:testdata/custom_sinh.bin",
+        "//tensorflow/lite:testdata/with_metadata.bin",
     ],
     deps = [
         ":c_api",
@@ -322,6 +323,7 @@ cc_test(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_opaque_internal",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/kernels:kernel_util",
@@ -390,13 +392,8 @@ tflite_cc_library_with_c_headers_test(
         ":operator",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:signature_runner",
-        "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:c_api_opaque_internal",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/profiling/telemetry:profiler",
-        "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
 )
 
@@ -426,16 +423,10 @@ tflite_cc_library_with_c_headers_test(
         ":operator",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite:string_util",
-        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:c_api_opaque_internal",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/profiling/telemetry:profiler",
-        "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
@@ -480,15 +471,10 @@ tflite_cc_library_with_c_headers_test(
         ":operator_without_alwayslink",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite:string_util",
-        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:c_api_opaque_internal_without_alwayslink",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/profiling/telemetry:profiler",
-        "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
 )
 
@@ -520,11 +506,7 @@ tflite_cc_library_with_c_headers_test(
         ":c_api_types",
         ":common",
         ":operator",
-        "//tensorflow/lite:string_util",
-        "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_opaque_internal",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/kernels:kernel_util",
     ],
 )
 
