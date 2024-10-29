@@ -31,7 +31,9 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/transforms/instruction_fusion.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/transforms/priority_fusion.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
@@ -303,10 +305,13 @@ TEST_F(HorizontalLoopFusionTest, HorizontalLoopFusionAfterVerticalFusion) {
   HloPassPipeline fusion("fusion");
   const se::DeviceDescription device_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/false,
-                                                 device_info);
-  fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/true,
-                                                 device_info);
+  GpuHloCostAnalysis::Options cost_analysis_options{
+      HloCostAnalysis::DefaultShapeSize,
+      /*per_second_rates=*/{},
+      /*min_latencies_seconds=*/{},
+      /*count_multiple_input_accesses=*/true};
+  fusion.AddPass<xla::gpu::PriorityFusion>(/*thread_pool=*/nullptr, device_info,
+                                           cost_analysis_options);
   EXPECT_TRUE(fusion.Run(module.get()).value());
   EXPECT_TRUE(HorizontalLoopFusion().Run(module.get()).value());
   TF_ASSERT_OK(verifier().Run(module.get()).status());
