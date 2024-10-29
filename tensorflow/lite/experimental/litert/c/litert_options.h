@@ -156,6 +156,15 @@ LiteRtStatus LiteRtSubGetFusedActivationOption(LiteRtOp op,
 LiteRtStatus LiteRtReshapeGetNewShapeOption(LiteRtOp op, int32_t** new_shape,
                                             int32_t* new_shape_size);
 
+//==============================================================================
+//
+// Get option APIs for LiteRt Sum op.
+//  Options:
+// - KeepdimsOption : bool
+//
+//==============================================================================
+LiteRtStatus LiteRtSumGetKeepdimsOption(LiteRtOp op, bool* keepdims);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

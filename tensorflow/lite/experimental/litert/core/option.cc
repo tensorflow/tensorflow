@@ -225,3 +225,12 @@ LiteRtStatus LiteRtReshapeGetNewShapeOption(LiteRtOp op, int32_t** new_shape,
   }
   return kLiteRtStatusOk;
 }
+
+LiteRtStatus LiteRtSumGetKeepdimsOption(LiteRtOp op, bool* keepdims) {
+  if (op->op_code != kLiteRtOpCodeTflSum) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  // Sum OP options is stored as ReducerOptions.
+  *keepdims = op->option.AsReducerOptions()->keep_dims;
+  return kLiteRtStatusOk;
+}

@@ -206,4 +206,16 @@ TEST(GetOpOptionTest, TestGetReshapeOptions) {
   ASSERT_EQ(new_shape_size, -1);
 }
 
+TEST(GetOpOptionTest, TestGetSumOptions) {
+  auto model = litert::testing::LoadTestFileModel("simple_sum_op.tflite");
+  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
+                          graph_tools::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
+  auto op = ops[0];
+
+  bool keepdims;
+  ASSERT_STATUS_OK(LiteRtSumGetKeepdimsOption(op, &keepdims));
+  ASSERT_EQ(keepdims, true);
+}
+
 }  // namespace
