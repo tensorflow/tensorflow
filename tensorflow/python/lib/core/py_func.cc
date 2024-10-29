@@ -23,6 +23,7 @@ limitations under the License.
 #include <Python.h>
 
 #include <array>
+#include <memory>
 
 #include "numpy/arrayobject.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -205,7 +206,7 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
         PyObject_GetAttrString(trampoline, "_ctx"), nullptr));
     CHECK_NE(ctx, nullptr);
     TF_RETURN_IF_ERROR(MakeArgTuple(call, ctx, &args));
-    new_executor.reset(new EagerExecutor(call->eager_async));
+    new_executor = std::make_unique<EagerExecutor>(call->eager_async);
     old_executor = &(tensorflow::unwrap(ctx)->Executor());
     tensorflow::unwrap(ctx)->SetExecutorForThread(new_executor.get());
   } else {
