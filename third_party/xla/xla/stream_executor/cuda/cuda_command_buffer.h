@@ -56,7 +56,7 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   absl::StatusOr<SetForConditionKernel*> GetSetForConditionKernel() override;
   absl::StatusOr<SetWhileConditionKernel*> GetSetWhileConditionKernel()
       override;
-  absl::StatusOr<NoOpKernel*> GetNoOpKernel() override;
+  absl::StatusOr<NoOpKernel*> GetNoOpKernel();
 
   std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
       CUgraph graph) override;
@@ -106,6 +106,10 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
                                        bool enabled) override;
 
   absl::Status LaunchGraph(Stream* stream) override;
+
+  absl::StatusOr<size_t> GetNodeCount() const override;
+
+  absl::Status PrepareFinalization() override;
 
   // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
   // barriers, updating conditional handles, etc.).

@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/kernel.h"
@@ -127,11 +126,6 @@ RocmCommandBuffer::GetSetForConditionKernel() {
 
 absl::StatusOr<GpuCommandBuffer::SetWhileConditionKernel*>
 RocmCommandBuffer::GetSetWhileConditionKernel() {
-  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
-}
-
-absl::StatusOr<GpuCommandBuffer::NoOpKernel*>
-RocmCommandBuffer::GetNoOpKernel() {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 
@@ -356,7 +350,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateBarrierNode(
 absl::Status RocmCommandBuffer::Trace(
     Stream* stream, absl::AnyInvocable<absl::Status()> function) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
-  TF_ASSIGN_OR_RETURN(size_t count, GpuDriver::GraphGetNodeCount(graph_));
+  TF_ASSIGN_OR_RETURN(size_t count, GetNodeCount());
   if (count != 0 || !is_owned_graph_)
     return absl::InternalError(
         "Stream can't be traced on non empty command buffer");
@@ -414,5 +408,17 @@ absl::Status RocmCommandBuffer::LaunchGraph(Stream* stream) {
           << " on a stream: " << stream;
   return ToStatus(wrap::hipGraphLaunch(exec_, AsGpuStreamValue(stream)),
                   "Failed to launch HIP graph");
+}
+absl::StatusOr<size_t> RocmCommandBuffer::GetNodeCount() const {
+  size_t numNodes;
+  TF_RETURN_IF_ERROR(
+      ToStatus(wrap::hipGraphGetNodes(graph_, /*nodes=*/nullptr, &numNodes),
+               "Failed to get HIP graph node count"));
+
+  return numNodes;
+}
+
+absl::Status RocmCommandBuffer::PrepareFinalization() {
+  return absl::OkStatus();
 }
 }  // namespace stream_executor::gpu

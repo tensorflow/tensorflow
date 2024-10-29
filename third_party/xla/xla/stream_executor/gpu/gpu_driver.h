@@ -143,23 +143,6 @@ class GpuDriver {
       absl::Span<const GpuGraphNodeHandle> deps,
       const GpuGraphNodeParams& params);
 
-  // Creates a kernel execution node and adds it to a graph.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g50d871e3bd06c1b835e52f2966ef366b
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
-  static absl::Status GraphAddKernelNode(
-      GpuGraphNodeHandle* node, GpuGraphHandle graph,
-      absl::Span<const GpuGraphNodeHandle> deps, absl::string_view kernel_name,
-      GpuFunctionHandle function, unsigned int grid_dim_x,
-      unsigned int grid_dim_y, unsigned int grid_dim_z,
-      unsigned int block_dim_x, unsigned int block_dim_y,
-      unsigned int block_dim_z, unsigned int shared_mem_bytes,
-      void** kernel_params, void** extra);
-
-  // Counts number of nodes in the graph.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gfa35a8e2d2fc32f48dbd67ba27cf27e5
-  // https://docs.amd.com/projects/HIP/en/docs-5.0.0/doxygen/html/group___graph.html#gaf006701d98164ed3492755bbb19bab83
-  static absl::StatusOr<size_t> GraphGetNodeCount(GpuGraphHandle graph);
-
   // The CUDA stream callback type signature.
   // The data passed to AddStreamCallback is subsequently passed to this
   // callback when it fires.
