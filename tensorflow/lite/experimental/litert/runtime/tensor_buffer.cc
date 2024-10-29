@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/core/tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -28,12 +28,12 @@
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
-#include "tensorflow/lite/experimental/litert/core/ahwb_buffer.h"
-#include "tensorflow/lite/experimental/litert/core/dmabuf_buffer.h"
-#include "tensorflow/lite/experimental/litert/core/event.h"
-#include "tensorflow/lite/experimental/litert/core/fastrpc_buffer.h"
-#include "tensorflow/lite/experimental/litert/core/ion_buffer.h"
 #include "tensorflow/lite/experimental/litert/core/utils.h"
+#include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/dmabuf_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/event.h"
+#include "tensorflow/lite/experimental/litert/runtime/fastrpc_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/ion_buffer.h"
 
 namespace {
 

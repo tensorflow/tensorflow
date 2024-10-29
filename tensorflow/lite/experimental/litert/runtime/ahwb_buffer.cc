@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/core/ahwb_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"
 
 #include <cstddef>
 

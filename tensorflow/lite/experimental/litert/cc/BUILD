@@ -112,7 +112,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
-        "//tensorflow/lite/experimental/litert/core:tensor_buffer",
+        "//tensorflow/lite/experimental/litert/runtime:tensor_buffer",
         "@com_google_googletest//:gtest_main",
     ],
 )

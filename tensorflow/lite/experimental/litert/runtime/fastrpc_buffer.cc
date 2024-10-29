@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/core/fastrpc_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/fastrpc_buffer.h"
 
 #include <dlfcn.h>
 

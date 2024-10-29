@@ -20,10 +20,10 @@
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/core/ahwb_buffer.h"  // IWYU pragma: keep
-#include "tensorflow/lite/experimental/litert/core/dmabuf_buffer.h"  // IWYU pragma: keep
-#include "tensorflow/lite/experimental/litert/core/fastrpc_buffer.h"  // IWYU pragma: keep
-#include "tensorflow/lite/experimental/litert/core/ion_buffer.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/runtime/dmabuf_buffer.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/runtime/fastrpc_buffer.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/runtime/ion_buffer.h"  // IWYU pragma: keep
 
 namespace {
 constexpr const float kTensorData[] = {10, 20, 30, 40};

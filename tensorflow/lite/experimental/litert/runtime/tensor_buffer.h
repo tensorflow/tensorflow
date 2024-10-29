@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_TENSOR_BUFFER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_TENSOR_BUFFER_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TENSOR_BUFFER_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TENSOR_BUFFER_H_
 
 #include <memory>
 #include <type_traits>
@@ -141,4 +141,4 @@ class LiteRtTensorBufferT {
       buffer_;
 };
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_TENSOR_BUFFER_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TENSOR_BUFFER_H_

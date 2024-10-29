@@ -12,23 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_TFL_UTILS_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_TFL_UTILS_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_FASTRPC_BUFFER_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_FASTRPC_BUFFER_H_
 
 #include "absl/status/statusor.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-
-struct TfLiteOpaqueTensor;
 
 namespace litert {
 namespace internal {
 
-absl::StatusOr<ElementType> ConvertElementType(TfLiteType tfl_type);
+struct FastRpcBuffer {
+  int fd;
+  void* addr;
 
-absl::StatusOr<RankedTensorType> ConvertTensorType(
-    const TfLiteOpaqueTensor* tfl_opaque_tensor);
+  static bool IsSupported();
+  static absl::StatusOr<FastRpcBuffer> Alloc(size_t size);
+  static void Free(void* addr);
+};
 
 }  // namespace internal
 }  // namespace litert
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_TFL_UTILS_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_FASTRPC_BUFFER_H_

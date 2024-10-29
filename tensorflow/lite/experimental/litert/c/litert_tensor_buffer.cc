@@ -24,7 +24,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/core/tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
 
 LiteRtStatus LiteRtCreateTensorBufferFromHostMemory(
     const LiteRtRankedTensorType* tensor_type, void* host_buffer_addr,

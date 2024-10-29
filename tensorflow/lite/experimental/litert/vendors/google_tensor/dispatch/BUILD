@@ -74,7 +74,6 @@ cc_test(
         ":dispatch_api",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
-        "//tensorflow/lite/experimental/litert/core/dispatch",
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:simple_model",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",

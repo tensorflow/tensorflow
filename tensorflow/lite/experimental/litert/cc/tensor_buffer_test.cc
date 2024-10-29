@@ -21,10 +21,10 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
-#include "tensorflow/lite/experimental/litert/core/ahwb_buffer.h"  // IWYU pragma: keep
-#include "tensorflow/lite/experimental/litert/core/dmabuf_buffer.h"  // IWYU pragma: keep
-#include "tensorflow/lite/experimental/litert/core/fastrpc_buffer.h"  // IWYU pragma: keep
-#include "tensorflow/lite/experimental/litert/core/ion_buffer.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/runtime/dmabuf_buffer.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/runtime/fastrpc_buffer.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/runtime/ion_buffer.h"  // IWYU pragma: keep
 
 namespace {
 constexpr const float kTensorData[] = {10, 20, 30, 40};

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/core/dispatch/dispatch_delegate_kernel.h"
+#include "tensorflow/lite/experimental/litert/runtime/dispatch/dispatch_delegate_kernel.h"
 
 #include <cstddef>
 #include <cstring>
@@ -33,9 +33,9 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
-#include "tensorflow/lite/experimental/litert/core/dispatch/dispatch_delegate_options.h"
-#include "tensorflow/lite/experimental/litert/core/tfl_utils.h"
 #include "tensorflow/lite/experimental/litert/core/utils.h"
+#include "tensorflow/lite/experimental/litert/runtime/dispatch/dispatch_delegate_options.h"
+#include "tensorflow/lite/experimental/litert/runtime/tfl_utils.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 
 namespace litert {

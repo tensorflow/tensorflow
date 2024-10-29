@@ -12,20 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_EVENT_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_EVENT_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_ION_BUFFER_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_ION_BUFFER_H_
 
-#include <cstdint>
+#include "absl/status/statusor.h"
 
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+namespace litert {
+namespace internal {
 
-struct LiteRtEventT {
-#if LITERT_HAS_SYNC_FENCE_SUPPORT
+struct IonBuffer {
   int fd;
-  bool owns_fd;
-#endif
-  ~LiteRtEventT();
-  LiteRtStatus Wait(int64_t timeout_in_ms);
+  void* addr;
+
+  static bool IsSupported();
+  static absl::StatusOr<IonBuffer> Alloc(size_t size, size_t alignment);
+  static void Free(void* addr);
 };
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_EVENT_H_
+}  // namespace internal
+}  // namespace litert
+
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_ION_BUFFER_H_

@@ -12,24 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_FASTRPC_BUFFER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_FASTRPC_BUFFER_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_DMABUF_BUFFER_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_DMABUF_BUFFER_H_
 
 #include "absl/status/statusor.h"
 
 namespace litert {
 namespace internal {
 
-struct FastRpcBuffer {
+struct DmaBufBuffer {
   int fd;
   void* addr;
 
   static bool IsSupported();
-  static absl::StatusOr<FastRpcBuffer> Alloc(size_t size);
+  static absl::StatusOr<DmaBufBuffer> Alloc(size_t size);
   static void Free(void* addr);
 };
 
 }  // namespace internal
 }  // namespace litert
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_FASTRPC_BUFFER_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_DMABUF_BUFFER_H_

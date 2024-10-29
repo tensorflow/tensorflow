@@ -21,7 +21,7 @@
 #include <cstdint>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/core/event.h"
+#include "tensorflow/lite/experimental/litert/runtime/event.h"
 
 #if LITERT_HAS_SYNC_FENCE_SUPPORT
 LiteRtStatus LiteRtEventCreateFromSyncFenceFd(int sync_fence_fd, bool owns_fd,

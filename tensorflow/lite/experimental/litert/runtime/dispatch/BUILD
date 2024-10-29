@@ -23,6 +23,8 @@ cc_library(
         "litert_dispatch.cc",
     ],
     hdrs = [
+        "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch.h",
+        "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_api.h",
     ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
@@ -30,7 +32,6 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
         "//tensorflow/lite/experimental/litert/core:utils",
-        "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
@@ -51,6 +52,7 @@ cc_library(
     hdrs = [
         "dispatch_delegate_kernel.h",
         "dispatch_delegate_options.h",
+        "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate.h",
     ],
     deps = [
         ":dispatch",
@@ -60,13 +62,12 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
-        "//tensorflow/lite/experimental/litert/core:tfl_utils",
         "//tensorflow/lite/experimental/litert/core:utils",
+        "//tensorflow/lite/experimental/litert/runtime:tfl_utils",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -93,8 +94,6 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
-        ":dispatch",
-        ":dispatch_delegate",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:common",
@@ -122,8 +121,6 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
-        ":dispatch",
-        ":dispatch_delegate",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:common",

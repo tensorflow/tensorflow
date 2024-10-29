@@ -224,40 +224,6 @@ cc_library(
 # copybara:uncomment_end
 
 cc_library(
-    name = "tensor_buffer",
-    srcs = [
-        "ahwb_buffer.cc",
-        "dmabuf_buffer.cc",
-        "event.cc",
-        "fastrpc_buffer.cc",
-        "ion_buffer.cc",
-        "tensor_buffer.cc",
-    ],
-    hdrs = [
-        "ahwb_buffer.h",
-        "dmabuf_buffer.h",
-        "event.h",
-        "fastrpc_buffer.h",
-        "ion_buffer.h",
-        "tensor_buffer.h",
-        "//tensorflow/lite/experimental/litert/c:litert_event.h",
-        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer.h",
-        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer_requirements.h",
-    ],
-    deps = [
-        ":utils",
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "utils",
     srcs = [
         "utils.cc",
@@ -267,28 +233,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "tfl_utils",
-    srcs = [
-        "tfl_utils.cc",
-    ],
-    hdrs = [
-        "tfl_utils.h",
-    ],
-    deps = [
-        "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_opaque",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

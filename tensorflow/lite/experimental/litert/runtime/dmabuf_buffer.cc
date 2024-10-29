@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/core/dmabuf_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/dmabuf_buffer.h"
 
 #include <dlfcn.h>
 #include <sys/mman.h>
