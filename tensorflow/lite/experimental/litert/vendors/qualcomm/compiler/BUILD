@@ -103,6 +103,7 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:rsqrt_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:slice_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:sub_op_legalization",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:sum_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:tanh_op_legalization",
     ],
 )

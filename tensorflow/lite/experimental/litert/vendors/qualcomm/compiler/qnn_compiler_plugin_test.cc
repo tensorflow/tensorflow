@@ -36,6 +36,7 @@ const auto kSupportedOps =
                     "rsqrt",
                     "slice",
                     "sub",
+                    "sum",
                     "tanh",
                     "reshape",
                     "batch_matmul"

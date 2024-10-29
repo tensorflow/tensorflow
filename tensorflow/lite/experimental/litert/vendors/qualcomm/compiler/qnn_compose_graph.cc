@@ -42,6 +42,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/rsqrt_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/slice_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/sub_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/sum_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/tanh_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
@@ -60,6 +61,7 @@ LiteRtStatus RegisterAllLegalizations(
   legalizations.push_back(TanhOpLegalization::Create());
   legalizations.push_back(SubOpLegalization::Create());
   legalizations.push_back(ReshapeOpLegalization::Create());
+  legalizations.push_back(SumOpLegalization::Create());
   LITERT_LOG(LITERT_INFO, "Scheduling %lu legalizations", legalizations.size());
   return kLiteRtStatusOk;
 }

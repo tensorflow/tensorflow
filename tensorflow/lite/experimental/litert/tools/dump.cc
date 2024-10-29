@@ -112,6 +112,9 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflBatchMatmul:
       out << "TFL_BATCH_MATMUL";
       break;
+    case kLiteRtOpCodeTflSum:
+      out << "TFL_SUM";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;
@@ -342,6 +345,9 @@ void DumpOptions(const LiteRtOpT& op, std::ostream& out) {
           out << new_shape[i] << " ";
         }
       }
+      break;
+    case kLiteRtOpCodeTflSum:
+      out << "keepdims: " << op.option.AsReducerOptions()->keep_dims << "\n";
       break;
     default:
       out << "No options for op code: " << op.op_code;
