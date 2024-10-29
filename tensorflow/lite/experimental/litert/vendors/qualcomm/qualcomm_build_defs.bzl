@@ -14,7 +14,7 @@
 
 """Build definitions for QualComm backend."""
 
-load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "append_rule_kwargs", "litert_lib", "make_rpaths")
+load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "append_rule_kwargs", "litert_bin", "litert_lib", "make_rpaths")
 
 _QNN_LIBCC_X86_64 = [
     # copybara:uncomment_begin(google-only)
@@ -42,19 +42,12 @@ _QNN_LIB_SYSTEM_X86_64 = [
     # copybara:uncomment_end
 ]
 
-def litert_lib_with_qnn(
-        backend = "htp",
-        include_system = False,
-        use_custom_libcc = False,
-        **litert_lib_kwargs):
-    """Creates a litert_lib target with QualComm backend dependencies.
-
-    Args:
-        backend: The backend to use. Currently only "htp" is supported.
-        include_system: Whether to include libQnnSystem.so.
-        use_custom_libcc: Whether to use a custom libcc. Not yet supported.
-        **litert_lib_kwargs: Keyword arguments passed to litert_lib.
-    """
+def _litert_with_qnn_base(
+        litert_rule,
+        backend,
+        include_system,
+        use_custom_libcc,
+        **litert_rule_kwargs):
     if backend != "htp":
         fail("Only htp currently supported")
 
@@ -72,7 +65,7 @@ def litert_lib_with_qnn(
     })
 
     append_rule_kwargs(
-        litert_lib_kwargs,
+        litert_rule_kwargs,
         data = data,
         linkopts = select({
             "//tensorflow:linux_x86_64": [make_rpaths(_QNN_LIB_RPATHS_X86_64)],
@@ -80,4 +73,46 @@ def litert_lib_with_qnn(
         }),
     )
 
-    litert_lib(**litert_lib_kwargs)
+    litert_rule(**litert_rule_kwargs)
+
+def litert_cc_lib_with_qnn(
+        backend = "htp",
+        include_system = False,
+        use_custom_libcc = False,
+        **litert_lib_kwargs):
+    """Creates a litert_lib target with QualComm backend dependencies.
+
+    Args:
+        backend: The backend to use. Currently only "htp" is supported.
+        include_system: Whether to include libQnnSystem.so.
+        use_custom_libcc: Whether to use a custom libcc. Not yet supported.
+        **litert_lib_kwargs: Keyword arguments passed to litert_lib.
+    """
+    _litert_with_qnn_base(
+        litert_lib,
+        backend,
+        include_system,
+        use_custom_libcc,
+        **litert_lib_kwargs
+    )
+
+def litert_cc_bin_with_qnn(
+        backend = "htp",
+        include_system = False,
+        use_custom_libcc = False,
+        **litert_bin_kwargs):
+    """Creates a litert_bin target with QualComm backend dependencies.
+
+    Args:
+        backend: The backend to use. Currently only "htp" is supported.
+        include_system: Whether to include libQnnSystem.so.
+        use_custom_libcc: Whether to use a custom libcc. Not yet supported.
+        **litert_bin_kwargs: Keyword arguments passed to litert_bin.
+    """
+    _litert_with_qnn_base(
+        litert_bin,
+        backend,
+        include_system,
+        use_custom_libcc,
+        **litert_bin_kwargs
+    )
