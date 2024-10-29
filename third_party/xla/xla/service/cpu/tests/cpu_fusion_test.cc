@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
