@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/layout_assignment.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -2957,7 +2958,14 @@ absl::Status LayoutAssignment::Init(HloModule* module) {
   // Clear all the copies which have been added, and all the related
   // instructions (like GTE and tuples).
   if (!added_copies_.empty()) {
-    for (HloInstruction* instruction : added_copies_) {
+    std::vector<HloInstruction*> copies_to_remove(added_copies_.begin(),
+                                                  added_copies_.end());
+    // Ensure determinism.
+    std::sort(copies_to_remove.begin(), copies_to_remove.end(),
+              [](const HloInstruction* a, const HloInstruction* b) {
+                return a->unique_id() < b->unique_id();
+              });
+    for (HloInstruction* instruction : copies_to_remove) {
       VLOG(5) << "Removing added copy: " << instruction->ToString();
       HloComputation* computation = instruction->parent();
       TF_RETURN_IF_ERROR(
