@@ -62,7 +62,7 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtReshardToCopyArraysPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtLowerShardingToXlaPass();
+CreateIfrtLowerAtomProgramMetadataToXlaPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtRemoveIfrtAttrsPass();

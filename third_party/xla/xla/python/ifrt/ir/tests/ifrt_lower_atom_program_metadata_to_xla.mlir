@@ -1,11 +1,13 @@
-// RUN: ifrt-opt %s -ifrt-lower-sharding-to-xla -split-input-file -verify-diagnostics | FileCheck %s
+// RUN: ifrt-opt %s -ifrt-lower-atom-program-metadata-to-xla -split-input-file -verify-diagnostics | FileCheck %s
 
-// CHECK-LABEL: @arg_sharding
-module @arg_sharding attributes {ifrt.num_devices = 2} {
+// CHECK-LABEL: @arg_metadata
+module @arg_metadata attributes {ifrt.num_devices = 2} {
   // CHECK: %arg0: tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-DAG:    mhlo.sharding = "{devices=[2,1]<=[2]}"
   // CHECK-DAG:    ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:    ifrt.memory_kind = "device"
+  // CHECK-DAG:    mhlo.memory_kind = "device"
   // CHECK-SAME: }
   // CHECK: %arg1: tensor<2x2xi32>
   // CHECK-SAME: {
@@ -14,7 +16,8 @@ module @arg_sharding attributes {ifrt.num_devices = 2} {
   // CHECK-SAME: }
   func.func @main(
       %arg0: tensor<2x2xi32> {
-        ifrt.sharding=#ifrt.sharding_param<2x1 to [0] on 2>},
+        ifrt.sharding=#ifrt.sharding_param<2x1 to [0] on 2>,
+        ifrt.memory_kind = "device"},
       %arg1: tensor<2x2xi32> {
         ifrt.sharding=#ifrt.sharding_param<1x1 to [0] on 2>}) {
     return
@@ -41,16 +44,19 @@ module @arg_unspecified_sharding attributes {ifrt.num_devices = 2} {
 
 // -----
 
-// CHECK-LABEL: @result_sharding
-module @result_sharding attributes {ifrt.num_devices = 2} {
+// CHECK-LABEL: @result_metadata
+module @result_metadata attributes {ifrt.num_devices = 2} {
   // CHECK: -> (tensor<2x2xi32>
   // CHECK-SAME: {
   // CHECK-DAG:    mhlo.sharding = "{devices=[2,1]<=[2]}"
   // CHECK-DAG:    ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:    ifrt.memory_kind = "device"
+  // CHECK-DAG:    mhlo.memory_kind = "device"
   // CHECK-SAME: }
   func.func @main()
       -> (tensor<2x2xi32> {
-        ifrt.sharding=#ifrt.sharding_param<2x1 to [0] on 2>}) {
+        ifrt.sharding=#ifrt.sharding_param<2x1 to [0] on 2>,
+        ifrt.memory_kind = "device"}) {
     %0 = mhlo.constant dense<1> : tensor<2x2xi32>
     return %0 : tensor<2x2xi32>
   }

@@ -35,7 +35,7 @@ namespace ifrt {
 
 namespace {
 
-#define GEN_PASS_DEF_IFRTLOWERSHARDINGTOXLAPASS
+#define GEN_PASS_DEF_IFRTLOWERATOMPROGRAMMETADATATOXLAPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
 
 // Pass that does the following:
@@ -43,13 +43,17 @@ namespace {
 // outputs to HloSharding.
 // 2) sets FuncOps input/outputs kHloShardingAttrName attribute to the
 // corresponding computed HloSharding.
-class IfrtLowerShardingToXlaPass
-    : public impl::IfrtLowerShardingToXlaPassBase<IfrtLowerShardingToXlaPass> {
+// 3) sents kHloMemoryKindAttrName attribute to the corresponding
+// memory kind if kIfrtMemoryKindAttrName is set.
+
+class IfrtLowerAtomProgramMetadataToXlaPass
+    : public impl::IfrtLowerAtomProgramMetadataToXlaPassBase<
+          IfrtLowerAtomProgramMetadataToXlaPass> {
  public:
   void runOnOperation() override;
 };
 
-void IfrtLowerShardingToXlaPass::runOnOperation() {
+void IfrtLowerAtomProgramMetadataToXlaPass::runOnOperation() {
   mlir::OpBuilder builder(&getContext());
   mlir::ModuleOp module_op = getOperation();
   const auto num_devices_attr =
@@ -121,6 +125,11 @@ void IfrtLowerShardingToXlaPass::runOnOperation() {
           i, kHloShardingAttrName,
           builder.getStringAttr(hlo_sharding.value().ToString()));
     }
+    const auto memory_kind_attr =
+        func_op.getArgAttrOfType<mlir::StringAttr>(i, kIfrtMemoryKindAttrName);
+    if (memory_kind_attr) {
+      func_op.setArgAttr(i, kHloMemoryKindAttrName, memory_kind_attr);
+    }
   }
 
   // Lower output shardings.
@@ -179,14 +188,19 @@ void IfrtLowerShardingToXlaPass::runOnOperation() {
           i, kHloShardingAttrName,
           builder.getStringAttr(hlo_sharding.value().ToString()));
     }
+    const auto memory_kind_attr = func_op.getResultAttrOfType<mlir::StringAttr>(
+        i, kIfrtMemoryKindAttrName);
+    if (memory_kind_attr) {
+      func_op.setResultAttr(i, kHloMemoryKindAttrName, memory_kind_attr);
+    }
   }
 }
 
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtLowerShardingToXlaPass() {
-  return std::make_unique<IfrtLowerShardingToXlaPass>();
+CreateIfrtLowerAtomProgramMetadataToXlaPass() {
+  return std::make_unique<IfrtLowerAtomProgramMetadataToXlaPass>();
 }
 
 }  // namespace ifrt

@@ -14,7 +14,7 @@ lit_test_suite(
             "ifrt_compile_and_propagate_shardings.mlir",
             "ifrt_duplicated_callee_elimination.mlir",
             "ifrt_lower_mpmd_reshard_to_call.mlir",
-            "ifrt_lower_sharding_to_xla.mlir",
+            "ifrt_lower_atom_program_metadata_to_xla.mlir",
             "ifrt_merge_reshards.mlir",
             "ifrt_outline_atom_program_to_module.mlir",
             "ifrt_populate_atom_program_metadata.mlir",

@@ -55,7 +55,7 @@ void CreateIfrtToOutlinedAtomProgramsPipeline(
 }
 
 void CreateIfrtCompileXlaPreprocessingPipeline(mlir::OpPassManager& pm) {
-  pm.addPass(CreateIfrtLowerShardingToXlaPass());
+  pm.addPass(CreateIfrtLowerAtomProgramMetadataToXlaPass());
   pm.addPass(CreateIfrtRemoveIfrtAttrsPass());
 }
 
