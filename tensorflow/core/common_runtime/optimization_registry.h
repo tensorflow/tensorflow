@@ -89,7 +89,7 @@ struct GraphOptimizationPassOptions {
 class GraphOptimizationPass {
  public:
   virtual ~GraphOptimizationPass() {}
-  virtual Status Run(const GraphOptimizationPassOptions& options) = 0;
+  virtual absl::Status Run(const GraphOptimizationPassOptions& options) = 0;
   void set_name(const string& name) { name_ = name; }
   string name() const { return name_; }
 
@@ -125,8 +125,8 @@ class OptimizationPassRegistry {
 
   // Run all passes in grouping, ordered by phase, with the same
   // options.
-  Status RunGrouping(Grouping grouping,
-                     const GraphOptimizationPassOptions& options);
+  absl::Status RunGrouping(Grouping grouping,
+                           const GraphOptimizationPassOptions& options);
 
   // Returns the global registry of optimization passes.
   static OptimizationPassRegistry* Global();

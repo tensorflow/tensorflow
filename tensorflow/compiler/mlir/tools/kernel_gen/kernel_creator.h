@@ -22,6 +22,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_KERNEL_CREATOR_H_
 #define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_KERNEL_CREATOR_H_
 
+#include <cstdint>
+#include <string>
 #include <utility>
 
 #include "absl/status/statusor.h"
