@@ -2796,7 +2796,9 @@ absl::StatusOr<bool> LayoutAssignment::Run(
   TF_RETURN_IF_ERROR(PropagateComputationLayouts(module->entry_computation(),
                                                  entry_computation_layout_));
 
+#ifndef NDEBUG
   TF_RETURN_IF_ERROR(CheckLayouts(module, execution_threads));
+#endif  // NDEBUG
 
   // All layouts are reset then reassigned by this pass.
   return true;
