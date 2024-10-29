@@ -297,6 +297,31 @@ triton_b {
   EXPECT_FALSE(horizontal_input_fusion_.Run(module.get()).value());
 }
 
+TEST_F(HorizontalInputFusionTest, ChangedModuleIsReportedCorrectly) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+g {
+  a = s8[] parameter(0)
+  b = s8[] parameter(1)
+  c = s8[] add(a, b)
+}
+
+f {
+  p0 = s8[8] parameter(0)
+  p1 = s8[8] parameter(1)
+  c = s8[] constant(0)
+  r1 = s8[] reduce(p0, c), dimensions={0}, to_apply=g
+  r2 = s8[] reduce(p1, c), dimensions={0}, to_apply=g
+  a = s8[] add(r1, r2)
+}
+
+e {
+  p0 = s8[8] parameter(0)
+  p1 = s8[8] parameter(1)
+  c = s8[] call(p0, p1), to_apply=f
+})"));
+  EXPECT_TRUE(horizontal_input_fusion_.Run(module.get()).value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
