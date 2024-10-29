@@ -121,17 +121,16 @@ xla_cc_test(
     srcs = ["hlo_module_test.cc"],
     deps = [
         ":hlo",
+        "//xla:shape_util",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:hlo_module_config",
-        "//xla/tests:hlo_test_base",
-        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

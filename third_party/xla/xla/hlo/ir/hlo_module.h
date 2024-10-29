@@ -63,67 +63,6 @@ using LayoutCanonicalizationCallback =
     std::function<absl::StatusOr<std::pair<std::vector<Shape>, Shape>>(
         const HloModule& module)>;
 
-// Helper class to maintain a copy-on-write storage of an object of the
-// specified type. Logically Variant<MutableOwned, ImmutableShared>.
-// The class's purpose is to share (shared_ptr) underlying storage (when it's
-// not changed) thus reducing memory footprint.
-template <typename T>
-class CopyOnWrite {
- public:
-  static_assert(!std::is_const_v<T>);
-  explicit CopyOnWrite(
-      std::variant<std::unique_ptr<T>, std::shared_ptr<const T>> ptr)
-      : ownership_(std::move(ptr)), ptr_([&]() -> decltype(ptr_) {
-          if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
-            return owned->get();
-          }
-          return std::get<std::shared_ptr<const T>>(ownership_).get();
-        }()) {}
-
-  // Obtains a const reference to the read-only copy of the object, could be
-  // sharing the storage with other CopyOnWrite<T> instances.
-  const T& get() const { return *ptr_; }
-
-  // Obtains a mutable reference to an exclusively owned copy of the object. If
-  // the object was sharing storage with other CopyOnWrite<T> instances, make a
-  // deep copy inline and transform into exclusively owned copy.
-  T& get_mutable() {
-    if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
-      return **owned;
-    }
-    auto& shared = std::get<std::shared_ptr<const T>>(ownership_);
-    DeepCopyToNewUnique(T(*shared));
-    return const_cast<T&>(*ptr_);
-  }
-  // Deep copies the provided value into an exclusively owned copy of the
-  // object.
-  void set(T&& value) {
-    if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
-      **owned = std::forward<T>(value);
-    } else {
-      DeepCopyToNewUnique(std::forward<T>(value));
-    }
-  }
-  // If the instance is in MutableOwned state, move the storage into
-  // ImmutableShared state.
-  // If the instance is in ImmutableShared state, returns the shared storage.
-  const std::shared_ptr<const T>& FreezeAndShare() const {
-    if (auto* owned = std::get_if<std::unique_ptr<T>>(&ownership_)) {
-      ownership_ = std::shared_ptr<const T>(std::move(*owned));
-    }
-    return std::get<std::shared_ptr<const T>>(ownership_);
-  }
-
- private:
-  void DeepCopyToNewUnique(T&& value) {
-    auto owned = std::make_unique<T>(std::forward<T>(value));
-    ptr_ = owned.get();
-    ownership_ = std::move(owned);
-  }
-  mutable std::variant<std::unique_ptr<T>, std::shared_ptr<const T>> ownership_;
-  const T* ptr_;
-};
-
 // Describes a compilation unit at the HLO level.
 //
 // HloModule is the top-level unit in the HLO IR.  It corresponds to a whole
@@ -140,19 +79,15 @@ class CopyOnWrite {
 // attached to.
 class HloModule {
  public:
-  // Constructor.
   HloModule(const std::string& name, HloModuleConfig config);
-  // REQUIRED:
-  // - comp_envs must not be null.
+  // REQUIRED: comp_envs must not be null.
   HloModule(const std::string& name, HloModuleConfig config,
             std::unique_ptr<CompilationEnvironments> comp_envs);
 
   // You can share a config from other modules by passing
   // HloModule::shared_config()
   HloModule(const std::string& name,
-            std::variant<std::unique_ptr<HloModuleConfig>,
-                         std::shared_ptr<const HloModuleConfig>>
-                config,
+            std::shared_ptr<const HloModuleConfig> config,
             std::unique_ptr<CompilationEnvironments> comp_envs);
   virtual ~HloModule() = default;
 
@@ -250,11 +185,11 @@ class HloModule {
   }
 
   ComputationLayout* mutable_entry_computation_layout() {
-    return config_.get_mutable().mutable_entry_computation_layout();
+    return mutable_config().mutable_entry_computation_layout();
   }
 
   const ComputationLayout& entry_computation_layout() const {
-    return config_.get().entry_computation_layout();
+    return config().entry_computation_layout();
   }
 
   void set_frontend_attributes(FrontendAttributes frontend_attributes) {
@@ -430,12 +365,29 @@ class HloModule {
   std::vector<HloComputation*> MakeNonfusionComputationsSorted(
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
-  HloModuleConfig& mutable_config() { return config_.get_mutable(); }
-  const HloModuleConfig& config() const { return config_.get(); }
-  void set_config(HloModuleConfig config) { config_.set(std::move(config)); }
+  // Returns a config for modifications in current module. If the config is
+  // shared with other modules, it creates a copy.
+  HloModuleConfig& mutable_config() {
+    if (config_.use_count() > 1) {
+      config_ = std::make_shared<const HloModuleConfig>(*config_);
+    }
+    return const_cast<HloModuleConfig&>(*config_);
+  }
 
-  const std::shared_ptr<const HloModuleConfig>& shared_config() const {
-    return config_.FreezeAndShare();
+  // Returns a config for read-only purposes assuming the config won't be
+  // changed during the life time of the returned object.
+  const HloModuleConfig& config() const { return *config_; }
+
+  void set_config(HloModuleConfig config) {
+    config_ = std::make_shared<const HloModuleConfig>(std::move(config));
+  }
+
+  // Shares the config which can be used in other HloModules,
+  // thus reducing the memory footprint. It can also be used to access the
+  // config for read-only purposes. Modules can modify their own config
+  // afterwards through mutable_config().
+  std::shared_ptr<const HloModuleConfig> shared_config() const {
+    return config_;
   }
 
   bool is_dynamic() const { return is_dynamic_; }
@@ -747,7 +699,11 @@ class HloModule {
       bool uniquify_identifiers, bool preserve_entry_layouts);
 
   std::string name_;
-  CopyOnWrite<HloModuleConfig> config_;
+
+  // Sharabled copy-on-write instance.
+  // If you want to modify it, use mutable_config().
+  std::shared_ptr<const HloModuleConfig> config_;
+
   HloComputation* entry_computation_ = nullptr;
   std::vector<std::unique_ptr<HloComputation>> computations_;
 
