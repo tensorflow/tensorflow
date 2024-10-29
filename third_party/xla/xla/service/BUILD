@@ -2113,6 +2113,7 @@ cc_library(
         "//xla/hlo/transforms:op_expander_pass",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
     ],
