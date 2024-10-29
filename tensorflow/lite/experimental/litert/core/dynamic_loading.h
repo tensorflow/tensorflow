@@ -26,6 +26,15 @@ namespace litert {
 
 constexpr absl::string_view kLiteRtSharedLibPrefix = "libLiteRt";
 
+// Check for null and print the last dlerror.
+inline void LogDlError() {
+  char* err = ::dlerror();
+  if (err == nullptr) {
+    return;
+  }
+  LITERT_LOG(LITERT_WARNING, "::dlerror() : %s", err);
+}
+
 // Loads shared library at given path.
 LiteRtStatus OpenLib(absl::string_view so_path, void** lib_handle);
 
@@ -39,8 +48,8 @@ inline static LiteRtStatus ResolveLibSymbol(void* lib_handle,
                                             Sym* sym_handle) {
   Sym ptr = (Sym)::dlsym(lib_handle, sym_name.data());
   if (ptr == nullptr) {
-    LITERT_LOG(LITERT_ERROR, "Faild to resolve symbol: %s, with err: %s\n",
-               sym_name, ::dlerror());
+    LITERT_LOG(LITERT_ERROR, "Faild to resolve symbol: %s\n", sym_name);
+    LogDlError();
     return kLiteRtStatusErrorDynamicLoading;
   }
   *sym_handle = ptr;
