@@ -851,6 +851,30 @@ TEST_F(HorizontalLoopFusionTest, DoNotMergeVariadicReductions) {
   EXPECT_FALSE(HorizontalLoopFusion().Run(module.get()).value());
 }
 
+TEST_F(HorizontalLoopFusionTest, DoFusionInsideWhileLoop) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+b {
+  a = (s8[]) parameter(0)
+  b = s8[] get-tuple-element(a), index=0
+  c = s8[] add(b, b)
+  d = s8[] multiply(b, b)
+  e = s8[] subtract(c, d)
+  t = tuple(e)
+}
+
+c {
+  p = (s8[]) parameter(0)
+  r = pred[] constant(true)
+}
+
+e {
+  p = (s8[]) parameter(0)
+  r = (s8[]) while(p), condition=c, body=b
+})"));
+
+  EXPECT_TRUE(HorizontalLoopFusion().Run(module.get()).value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
