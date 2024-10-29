@@ -17,7 +17,6 @@
 #define FLATBUFFERS_DEBUG_VERIFICATION_FAILURE
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers  // IWYU pragma: keep
-#include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
 #endif
 
 #include <cstddef>
@@ -25,14 +24,12 @@
 #include <list>
 #include <memory>
 #include <tuple>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/absl_check.h"
-#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "tensorflow/compiler/mlir/lite/allocation.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/core/model_builder_base.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -40,21 +37,17 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/core/litert_model_init.h"
 #include "tensorflow/lite/experimental/litert/core/model.h"
+#include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
+using ::litert::BufferRef;
 using ::litert::OwningBufferRef;
 using ::litert::internal::VerifyFlatbuffer;
 
-static LiteRtStatus IsOpSupported(const tflite::OperatorT& op) {
+LiteRtStatus IsOpSupported(const tflite::OperatorT& op) {
   // TODO: b/365299994 - Check for supported options.
-
-  if (!op.custom_options.empty()) {
-    // TODO: b/365299994 - Support custom options.
-    _LITERT_D_MSG("Custom options not supported.");
-    return kLiteRtStatusErrorUnsupported;
-  }
 
   if (!op.intermediates.empty()) {
     // TODO: b/365299994 - Support intermediates.
@@ -79,7 +72,7 @@ static LiteRtStatus IsOpSupported(const tflite::OperatorT& op) {
   return kLiteRtStatusOk;
 }
 
-static LiteRtStatus IsBufferSupported(const tflite::BufferT& buffer) {
+LiteRtStatus IsBufferSupported(const tflite::BufferT& buffer) {
   if (buffer.offset != 0) {
     // TODO: b/365299994 - Support buffer with offset.
     _LITERT_D_MSG("Buffers with offset not supported.");
@@ -89,7 +82,7 @@ static LiteRtStatus IsBufferSupported(const tflite::BufferT& buffer) {
   return kLiteRtStatusOk;
 }
 
-static LiteRtStatus IsTensorSupported(const tflite::TensorT& tensor) {
+LiteRtStatus IsTensorSupported(const tflite::TensorT& tensor) {
   if (!tensor.has_rank) {
     // TODO: b/365299994 - Support unranked tensors.
     _LITERT_D_MSG("Unranked tensors not supported.");
@@ -131,8 +124,8 @@ static LiteRtStatus IsTensorSupported(const tflite::TensorT& tensor) {
   return kLiteRtStatusOk;
 }
 
-static LiteRtStatus SetDefaultOptions(tflite::BuiltinOptionsUnion& opts,
-                                      LiteRtOpCode code) {
+LiteRtStatus SetDefaultOptions(tflite::BuiltinOptionsUnion& opts,
+                               LiteRtOpCode code) {
   switch (code) {
     case kLiteRtOpCodeTflMul:
       opts.Set(tflite::MulOptionsT());
@@ -247,6 +240,9 @@ LiteRtStatus ModelUnpacker::ConvertOp(const tflite::OperatorT& op,
   }
   target->option = op.builtin_options;
 
+  target->custom_options = OwningBufferRef<uint8_t>(op.custom_options.data(),
+                                                    op.custom_options.size());
+
   return kLiteRtStatusOk;
 }
 
@@ -305,8 +301,8 @@ LiteRtStatus RegisterCustomOpCode(LiteRtModel model, const char* new_op_code) {
   return kLiteRtStatusOk;
 }
 
-static LiteRtStatus LoadModel(std::unique_ptr<tflite::ModelT> flatbuffer,
-                              LiteRtModel* model) {
+LiteRtStatus LoadModel(std::unique_ptr<tflite::ModelT> flatbuffer,
+                       LiteRtModel* model) {
   auto litert_model = std::make_unique<LiteRtModelT>();
   litert_model->flatbuffer_model = std::move(flatbuffer);
   litert_model->subgraphs.reserve(100);
@@ -342,6 +338,14 @@ LiteRtStatus LoadModelFromFile(const char* path, LiteRtModel* model) {
                    alloc->bytes(), model);
 }
 
+LiteRtResult<UniqueLiteRtModel> LoadModel(BufferRef<uint8_t> serialized) {
+  LiteRtModel model;
+  LITERT_RETURN_RESULT_IF_NOT_OK(
+      LoadModel(serialized.Data(), serialized.Size(), &model),
+      UniqueLiteRtModel);
+  return LiteRtResult<UniqueLiteRtModel>::TakeValue(UniqueLiteRtModel(model));
+}
+
 void ModelDestroy(LiteRtModel model) { delete model; }
 
 //===----------------------------------------------------------------------===//
@@ -354,7 +358,7 @@ class ModelRepacker {
 
  private:
   static void BuildOpCodeMap(LiteRtModel model,
-                             std::unordered_map<LiteRtOpCode, uint32_t>& map);
+                             absl::flat_hash_map<LiteRtOpCode, uint32_t>& map);
 
   explicit ModelRepacker(LiteRtModel model) : model_(model) {
     BuildOpCodeMap(model_, op_code_map_);
@@ -377,11 +381,11 @@ class ModelRepacker {
   tflite::ModelT& OldFb() { return *model_->flatbuffer_model; }
 
   LiteRtModel model_;
-  std::unordered_map<LiteRtOpCode, uint32_t> op_code_map_;
+  absl::flat_hash_map<LiteRtOpCode, uint32_t> op_code_map_;
 };
 
 void ModelRepacker::BuildOpCodeMap(
-    LiteRtModel model, std::unordered_map<LiteRtOpCode, uint32_t>& map) {
+    LiteRtModel model, absl::flat_hash_map<LiteRtOpCode, uint32_t>& map) {
   // Add the user set custom code to the flatbuffers known codes.
   auto& custom_code = model->flatbuffer_model->operator_codes.emplace_back(
       std::make_unique<tflite::OperatorCodeT>());
@@ -513,29 +517,14 @@ LiteRtStatus ModelRepacker::Repack(LiteRtModel model) {
 
 LiteRtStatus AppendMetadata(LiteRtModel model, const void* metadata,
                             size_t metadata_size, const char* metadata_name) {
-  const auto metadata_buffer_ind = model->flatbuffer_model->buffers.size();
-
-  auto& metadata_buffer = model->flatbuffer_model->buffers.emplace_back(
-      std::make_unique<tflite::BufferT>());
-  auto raw_metadata = reinterpret_cast<const uint8_t*>(metadata);
-  metadata_buffer->data.assign(raw_metadata, raw_metadata + metadata_size);
-  model->flatbuffer_model->metadata_buffer.push_back(metadata_buffer_ind);
-
-  auto& fb_metadata = model->flatbuffer_model->metadata.emplace_back(
-      std::make_unique<tflite::MetadataT>());
-  fb_metadata->name.assign(metadata_name);
-  fb_metadata->buffer = metadata_buffer_ind;
-
+  BufferRef<uint8_t> m_buf(metadata, metadata_size);
+  return model->PushMetadata(absl::string_view(metadata_name), m_buf);
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus SerializeModel(LiteRtModel model, uint8_t** buf, size_t* size,
-                            size_t* offset) {
-  // Destroy model before return.
-  UniqueLiteRtModel u_model(model);
-
-  LITERT_RETURN_STATUS_IF_NOT_OK_MSG(ModelRepacker::Repack(model),
-                                     "Failed to repack model.");
+LiteRtResult<OwningBufferRef<uint8_t>> SerializeModel(UniqueLiteRtModel model) {
+  LITERT_RETURN_RESULT_IF_NOT_OK(ModelRepacker::Repack(model.get()),
+                                 OwningBufferRef<uint8_t>);
 
   flatbuffers::FlatBufferBuilder b;
   auto model_offset = tflite::Model::Pack(b, model->flatbuffer_model.get());
@@ -545,12 +534,19 @@ LiteRtStatus SerializeModel(LiteRtModel model, uint8_t** buf, size_t* size,
   auto [new_buf, new_size, new_offset] = buffer.GetWeak();
   new_buf = b.ReleaseRaw(new_size, new_offset);
 
-  LITERT_ENSURE(VerifyFlatbuffer(buffer.Span()),
-                kLiteRtStatusErrorInvalidFlatbuffer,
-                "Failed to verify flatbuffer");
+  if (!VerifyFlatbuffer(buffer.Span())) {
+    return LiteRtResult<OwningBufferRef<uint8_t>>::FromStatus(
+        kLiteRtStatusErrorInvalidFlatbuffer);
+  }
 
-  std::tie(*buf, *size, *offset) = buffer.Release();
+  return LiteRtResult<OwningBufferRef<uint8_t>>::TakeValue(std::move(buffer));
+}
 
+LiteRtStatus SerializeModel(LiteRtModel model, uint8_t** buf, size_t* size,
+                            size_t* offset) {
+  LITERT_ASSIGN_OR_RETURN_STATUS(auto serialized,
+                                 SerializeModel(UniqueLiteRtModel(model)));
+  std::tie(*buf, *size, *offset) = serialized.Release();
   return kLiteRtStatusOk;
 }
 

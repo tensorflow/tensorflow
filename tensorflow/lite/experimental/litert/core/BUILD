@@ -82,7 +82,6 @@ cc_library(
         ":api_internal",
         ":model",
         ":option",
-        "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:stderr_reporter",
@@ -91,8 +90,8 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings:string_view",
         "@flatbuffers//:runtime_cc",
     ],
 )

@@ -51,6 +51,9 @@ LiteRtStatus SerializeModel(LiteRtModel model, uint8_t** buf, size_t* size,
 
 #include <memory>
 
+#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
+#include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
+
 struct LiteRtModelDeleter {
   void operator()(LiteRtModel model) {
     if (model != nullptr) {
@@ -60,6 +63,12 @@ struct LiteRtModelDeleter {
 };
 
 using UniqueLiteRtModel = std::unique_ptr<LiteRtModelT, LiteRtModelDeleter>;
+
+LiteRtResult<litert::OwningBufferRef<uint8_t>> SerializeModel(
+    UniqueLiteRtModel model);
+
+LiteRtResult<UniqueLiteRtModel> LoadModel(
+    litert::BufferRef<uint8_t> serialized);
 
 #endif  // __cplusplus
 

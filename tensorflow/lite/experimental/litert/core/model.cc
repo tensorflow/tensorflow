@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -25,6 +26,7 @@
 #include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
+using ::litert::BufferRef;
 using ::litert::MutableBufferRef;
 
 //
@@ -74,10 +76,8 @@ LiteRtStatus LiteRtPushOp(LiteRtOpList op_list, LiteRtOp op) {
   return kLiteRtStatusOk;
 }
 
-LiteRtResult<MutableBufferRef<uint8_t>> LiteRtModelT::FindMetadata(
-    const absl::string_view key) const {
-  using ResT = LiteRtResult<MutableBufferRef<uint8_t>>;
-
+LiteRtStatus LiteRtModelT::FindMetadataInd(absl::string_view key,
+                                           uint32_t& ind) const {
   tflite::MetadataT* fb_metadata = nullptr;
   for (auto& m : flatbuffer_model->metadata) {
     if (m->name == key) {
@@ -86,17 +86,50 @@ LiteRtResult<MutableBufferRef<uint8_t>> LiteRtModelT::FindMetadata(
     }
   }
   if (fb_metadata == nullptr) {
-    return ResT::FromStatus(kLiteRtStatusErrorNotFound);
+    return kLiteRtStatusErrorNotFound;
   }
 
-  const uint32_t m_buffer_idx = fb_metadata->buffer;
+  ind = fb_metadata->buffer;
+  return kLiteRtStatusOk;
+}
+
+LiteRtResult<MutableBufferRef<uint8_t>> LiteRtModelT::FindMetadata(
+    const absl::string_view key) const {
+  using ResT = MutableBufferRef<uint8_t>;
+
+  uint32_t m_buffer_idx;
+  LITERT_RETURN_RESULT_IF_NOT_OK(FindMetadataInd(key, m_buffer_idx), ResT);
+
   if (m_buffer_idx >= flatbuffer_model->buffers.size()) {
-    return ResT::FromStatus(kLiteRtStatusErrorIndexOOB);
+    return LiteRtResult<ResT>::FromStatus(kLiteRtStatusErrorIndexOOB);
   }
   tflite::BufferT* m_buffer = flatbuffer_model->buffers.at(m_buffer_idx).get();
 
-  return ResT::FromValue(
+  return LiteRtResult<ResT>::FromValue(
       MutableBufferRef(m_buffer->data.data(), m_buffer->data.size()));
+}
+
+LiteRtStatus LiteRtModelT::PushMetadata(absl::string_view key,
+                                        BufferRef<uint8_t> data) {
+  {
+    uint32_t m_buffer_ind;
+    if (FindMetadataInd(key, m_buffer_ind) == kLiteRtStatusOk) {
+      return kLiteRtStatusErrorNotFound;
+    }
+  }
+
+  auto& new_metadata = flatbuffer_model->metadata.emplace_back(
+      std::make_unique<tflite::MetadataT>());
+  new_metadata->name.assign(key.data(), key.size());
+
+  const size_t new_m_buffer_ind = flatbuffer_model->buffers.size();
+  new_metadata->buffer = new_m_buffer_ind;
+
+  auto& new_buffer = flatbuffer_model->buffers.emplace_back(
+      std::make_unique<tflite::BufferT>());
+  new_buffer->data.assign(data.Data(), data.Data() + data.Size());
+
+  return kLiteRtStatusOk;
 }
 
 //
