@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -103,6 +104,16 @@ GraphNodeHandle FromCudaGraphHandle(CUgraphNode handle) {
 GraphConditionalHandle FromCudaGraphHandle(CUgraphConditionalHandle handle) {
   return absl::bit_cast<GraphConditionalHandle>(handle);
 }
+
+std::string ConditionalTypeToString(GpuCommandBuffer::ConditionType type) {
+  switch (type) {
+    case GpuCommandBuffer::ConditionType::kIf:
+      return "IF";
+    case GpuCommandBuffer::ConditionType::kWhile:
+      return "WHILE";
+  }
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<CudaCommandBuffer>> CudaCommandBuffer::Create(
@@ -209,11 +220,53 @@ CudaCommandBuffer::GetNoOpKernel() {
   return &noop_kernel_;
 }
 
-std::unique_ptr<GpuCommandBuffer> CudaCommandBuffer::CreateNestedCommandBuffer(
-    CUgraph graph) {
-  return std::unique_ptr<CudaCommandBuffer>(
-      new CudaCommandBuffer(Mode::kNested, parent_, graph,
-                            /*is_owned_graph=*/false));
+absl::StatusOr<GpuCommandBuffer::ConditionalNodeResult>
+CudaCommandBuffer::CreateConditionalNode(const Dependencies& dependencies,
+                                         GraphConditionalHandle conditional,
+                                         ConditionType type) {
+#if CUDA_VERSION >= 12030
+  // Add conditional node to a graph.
+  VLOG(2) << "Add conditional node to a graph " << graph_
+          << "; type: " << ConditionalTypeToString(type)
+          << "; deps: " << dependencies.size();
+
+  CUgraphNodeParams cu_params;
+  std::memset(&cu_params, 0, sizeof(cu_params));
+  CudaContext* gpu_context =
+      tensorflow::down_cast<CudaContext*>(parent_->gpu_context());
+
+  cu_params.type = CU_GRAPH_NODE_TYPE_CONDITIONAL;
+  cu_params.conditional.handle = ToCudaGraphHandle(conditional);
+  cu_params.conditional.ctx = gpu_context->context();
+  cu_params.conditional.size = 1;
+
+  switch (type) {
+    case GpuCommandBuffer::ConditionType::kIf:
+      cu_params.conditional.type = CU_GRAPH_COND_TYPE_IF;
+      break;
+    case GpuCommandBuffer::ConditionType::kWhile:
+      cu_params.conditional.type = CU_GRAPH_COND_TYPE_WHILE;
+      break;
+  }
+
+  std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
+  CUgraphNode node_handle = nullptr;
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuGraphAddNode(&node_handle, graph_, deps.data(),
+                                    deps.size(), &cu_params),
+                     "Failed to add conditional node to a CUDA graph"));
+
+  VLOG(2) << "Created conditional CUDA graph "
+          << cu_params.conditional.phGraph_out[0];
+
+  return ConditionalNodeResult{
+      FromCudaGraphHandle(node_handle),
+      std::unique_ptr<CudaCommandBuffer>(new CudaCommandBuffer(
+          Mode::kNested, parent_, cu_params.conditional.phGraph_out[0],
+          /*is_owned_graph=*/false))};
+#else
+  return absl::UnimplementedError("unsupported node type");
+#endif  // CUDA_VERSION >= 12030
 }
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemsetNode(

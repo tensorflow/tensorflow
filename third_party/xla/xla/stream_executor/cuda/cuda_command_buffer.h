@@ -71,8 +71,9 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
       DeviceMemory<bool> predicate) override;
   absl::StatusOr<NoOpKernel*> GetNoOpKernel();
 
-  std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
-      CUgraph graph) override;
+  absl::StatusOr<ConditionalNodeResult> CreateConditionalNode(
+      const Dependencies& dependencies, GraphConditionalHandle conditional,
+      ConditionType type) override;
 
   absl::StatusOr<GraphNodeHandle> CreateMemsetNode(
       const Dependencies& dependencies, DeviceMemoryBase destination,

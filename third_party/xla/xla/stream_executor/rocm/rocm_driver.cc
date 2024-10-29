@@ -123,12 +123,6 @@ absl::StatusOr<std::string> GpuDriver::GraphDebugDotPrint(
   return std::string(path);
 }
 
-absl::StatusOr<GpuDriver::GpuGraphNodeResult> GpuDriver::GraphAddNode(
-    hipGraphNode_t* node, hipGraph_t graph,
-    absl::Span<const hipGraphNode_t> deps, const GpuGraphNodeParams& params) {
-  return absl::UnimplementedError("unsupported node type");
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   hipError_t res = wrap::hipGetDeviceCount(&device_count);

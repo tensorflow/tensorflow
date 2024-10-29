@@ -97,11 +97,11 @@ absl::StatusOr<std::unique_ptr<RocmCommandBuffer>> RocmCommandBuffer::Create(
                             /*is_owned_graph=*/true));
 }
 
-std::unique_ptr<GpuCommandBuffer> RocmCommandBuffer::CreateNestedCommandBuffer(
-    hipGraph_t graph) {
-  return std::unique_ptr<RocmCommandBuffer>(
-      new RocmCommandBuffer(Mode::kNested, parent_, graph,
-                            /*is_owned_graph=*/false));
+absl::StatusOr<GpuCommandBuffer::ConditionalNodeResult>
+RocmCommandBuffer::CreateConditionalNode(const Dependencies& dependencies,
+                                         GraphConditionalHandle conditional,
+                                         ConditionType type) {
+  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 
 absl::Status RocmCommandBuffer::LaunchSetIfConditionKernel(

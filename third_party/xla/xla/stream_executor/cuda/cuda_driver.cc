@@ -143,60 +143,6 @@ absl::StatusOr<std::string> GpuDriver::GraphDebugDotPrint(
   return std::string(path);
 }
 
-static std::string ConditionalTypeToString(
-    GpuDriver::GpuGraphConditionalNodeParams::Type type) {
-  switch (type) {
-    case GpuDriver::GpuGraphConditionalNodeParams::Type::kIf:
-      return "IF";
-    case GpuDriver::GpuGraphConditionalNodeParams::Type::kWhile:
-      return "WHILE";
-  }
-}
-
-absl::StatusOr<GpuDriver::GpuGraphNodeResult> GpuDriver::GraphAddNode(
-    CUgraphNode* node, CUgraph graph, absl::Span<const CUgraphNode> deps,
-    const GpuGraphNodeParams& params) {
-#if CUDA_VERSION >= 12030
-  // Add conditional node to a graph.
-  if (auto* conditional = std::get_if<GpuGraphConditionalNodeParams>(&params)) {
-    VLOG(2) << "Add conditional node to a graph " << graph
-            << "; type: " << ConditionalTypeToString(conditional->type)
-            << "; deps: " << deps.size();
-
-    CUgraphNodeParams cu_params;
-    memset(&cu_params, 0, sizeof(cu_params));
-    CudaContext* gpu_context =
-        tensorflow::down_cast<CudaContext*>(conditional->context);
-
-    cu_params.type = CU_GRAPH_NODE_TYPE_CONDITIONAL;
-    cu_params.conditional.handle = conditional->handle;
-    cu_params.conditional.ctx = gpu_context->context();
-    cu_params.conditional.size = 1;
-
-    switch (conditional->type) {
-      case GpuDriver::GpuGraphConditionalNodeParams::Type::kIf:
-        cu_params.conditional.type = CU_GRAPH_COND_TYPE_IF;
-        break;
-      case GpuDriver::GpuGraphConditionalNodeParams::Type::kWhile:
-        cu_params.conditional.type = CU_GRAPH_COND_TYPE_WHILE;
-        break;
-    }
-
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
-        cuGraphAddNode(node, graph, deps.data(), deps.size(), &cu_params),
-        "Failed to add conditional node to a CUDA graph"));
-
-    GpuGraphConditionalNodeParams::Result result;
-    result.graph = cu_params.conditional.phGraph_out[0];
-
-    VLOG(2) << "Created conditional CUDA graph " << result.graph;
-    return result;
-  }
-#endif  // CUDA_VERSION >= 12030
-
-  return absl::UnimplementedError("unsupported node type");
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   auto status = cuda::ToStatus(cuDeviceGetCount(&device_count));

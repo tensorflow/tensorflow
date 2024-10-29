@@ -28,7 +28,6 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #endif
-#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -157,43 +156,6 @@ GpuCommandBuffer::ScopedGpuGraphExec::ScopedGpuGraphExec(
 GpuCommandBuffer::ScopedGpuGraphExec::~ScopedGpuGraphExec() {
   cmd_buffer->exec_ = restore;
   cmd_buffer->is_owned_graph_exec_ = restore_is_owned;
-}
-
-// Converts a platform independent GraphNodeHandle into a platform specific
-// GpuGraphNodeHandle. This function will be removed once all
-// Node factory functions have been migrated into the subclasses.
-static GpuGraphNodeHandle ToPlatformSpecificHandle(
-    GpuCommandBuffer::GraphNodeHandle handle) {
-  return absl::bit_cast<GpuGraphNodeHandle>(handle);
-}
-
-// Converts a platform independent GraphConditionalHandle into a platform
-// specific GpuGraphConditionalHandle. This function will be removed once all
-// Conditional factory functions have been migrated into the subclasses.
-static GpuGraphConditionalHandle ToPlatformSpecificHandle(
-    GraphConditionalHandle handle) {
-  return absl::bit_cast<GpuGraphConditionalHandle>(handle);
-}
-
-// Converts a list of platform independent GraphNodeHandles into a list of
-// platform specific GpuGraphNodeHandles. This function will be removed once
-// all Node factory functions have been migrated into the subclasses.
-static std::vector<GpuGraphNodeHandle> ToPlatformSpecificHandles(
-    absl::Span<const GraphNodeHandle> opaque_handles) {
-  std::vector<GpuGraphNodeHandle> handles;
-  handles.reserve(opaque_handles.size());
-  for (const GraphNodeHandle opaque_handle : opaque_handles) {
-    handles.push_back(ToPlatformSpecificHandle(opaque_handle));
-  }
-  return handles;
-}
-
-// Converts a platform specific GpuGraphNodeHandle into a platform independent
-// GraphNodeHandle. This function will be removed once all Node factory
-// functions have been migrated into the subclasses.
-static GpuCommandBuffer::GraphNodeHandle FromPlatformSpecificHandle(
-    GpuGraphNodeHandle handle) {
-  return absl::bit_cast<GpuCommandBuffer::GraphNodeHandle>(handle);
 }
 
 GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
@@ -566,9 +528,9 @@ GpuCommandBuffer::CreateConditionalCommandBuffers(
   cmd_buffers.reserve(conditionals.size());
 
   for (size_t i = 0; i < conditionals.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(
-        auto command_buffer,
-        CreateConditionalNode(execution_scope_id, type, conditionals[i]));
+    TF_ASSIGN_OR_RETURN(auto command_buffer,
+                        CreateConditionalCommandBuffer(execution_scope_id, type,
+                                                       conditionals[i]));
     TF_RETURN_IF_ERROR(builders[i](command_buffer.get(), conditionals[i]));
     TF_RETURN_IF_ERROR(command_buffer->Finalize());
     cmd_buffers.push_back(std::move(command_buffer));
@@ -594,30 +556,16 @@ absl::Status GpuCommandBuffer::UpdateConditionalCommandBuffers(
 }
 
 absl::StatusOr<std::unique_ptr<GpuCommandBuffer>>
-GpuCommandBuffer::CreateConditionalNode(ExecutionScopeId execution_scope_id,
-                                        ConditionType type,
-                                        GraphConditionalHandle conditional) {
+GpuCommandBuffer::CreateConditionalCommandBuffer(
+    ExecutionScopeId execution_scope_id, ConditionType type,
+    GraphConditionalHandle conditional) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
-  using ConditionalParams = GpuDriver::GpuGraphConditionalNodeParams;
-  using ConditionalResult = GpuDriver::GpuGraphConditionalNodeParams::Result;
-
-  std::vector<GpuGraphNodeHandle> barrier =
-      ToPlatformSpecificHandles(GetBarrier(execution_scope_id));
-
-  ConditionalParams params;
-  params.type = type;
-  params.handle = ToPlatformSpecificHandle(conditional);
-  params.context = parent_->gpu_context();
-
-  GpuGraphNodeHandle node_handle;
   TF_ASSIGN_OR_RETURN(
-      GpuDriver::GpuGraphNodeResult result,
-      GpuDriver::GraphAddNode(&node_handle, graph_, barrier, params));
-
-  execution_scope.nodes.emplace_back().handle =
-      FromPlatformSpecificHandle(node_handle);
-  return CreateNestedCommandBuffer(std::get<ConditionalResult>(result).graph);
+      auto result,
+      CreateConditionalNode(GetBarrier(execution_scope_id), conditional, type));
+  execution_scope.nodes.emplace_back().handle = result.node_handle;
+  return std::move(result.command_buffer);
 }
 
 absl::Status GpuCommandBuffer::AddConditionalCommandNode(

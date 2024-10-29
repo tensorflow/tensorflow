@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
@@ -201,8 +200,10 @@ class GpuCommandBuffer : public CommandBuffer {
   // Wraps a regular command buffer builder into condition builder.
   static ConditionBuilder ToConditionBuilder(Builder builder);
 
-  using ConditionType = typename GpuDriver::GpuGraphConditionalNodeParams::Type;
+ public:
+  enum class ConditionType { kIf, kWhile };
 
+ private:
   // Overwrites the `exec_` handle in a Gpu command buffer by `exec`, and
   // restores to the original handle when destroyed. This allows us updating
   // primary graph executable using nested command buffers (command buffers that
@@ -240,9 +241,10 @@ class GpuCommandBuffer : public CommandBuffer {
       absl::Span<const std::unique_ptr<GpuCommandBuffer>> command_buffers,
       absl::Span<const ConditionBuilder> builders);
 
-  absl::StatusOr<std::unique_ptr<GpuCommandBuffer>> CreateConditionalNode(
-      ExecutionScopeId execution_scope_id, ConditionType type,
-      GraphConditionalHandle conditional);
+  absl::StatusOr<std::unique_ptr<GpuCommandBuffer>>
+  CreateConditionalCommandBuffer(ExecutionScopeId execution_scope_id,
+                                 ConditionType type,
+                                 GraphConditionalHandle conditional);
 
   // Adds a new conditional command (If, IfElse, Case, While, For) to the
   // command buffer.
@@ -381,8 +383,18 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Creates a nested command buffer, associated with the same executor.
   // The given graph will not be owned by the created command buffer.
-  virtual std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
-      GpuGraphHandle graph) = 0;
+ protected:
+  struct ConditionalNodeResult {
+    GraphNodeHandle node_handle;
+    std::unique_ptr<GpuCommandBuffer> command_buffer;
+  };
+
+ private:
+  // Adds a new conditional node to the graph and creates a corresponding nested
+  // command buffer.
+  virtual absl::StatusOr<ConditionalNodeResult> CreateConditionalNode(
+      const Dependencies& dependencies, GraphConditionalHandle conditional,
+      ConditionType type) = 0;
 
   // Adds a new memset node to the graph.
   virtual absl::StatusOr<GraphNodeHandle> CreateMemsetNode(

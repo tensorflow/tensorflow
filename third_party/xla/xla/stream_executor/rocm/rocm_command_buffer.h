@@ -68,8 +68,9 @@ class RocmCommandBuffer : public GpuCommandBuffer {
       ExecutionScopeId execution_scope_id, GraphConditionalHandle conditional,
       DeviceMemory<bool> predicate) override;
 
-  std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
-      hipGraph_t graph) override;
+  absl::StatusOr<ConditionalNodeResult> CreateConditionalNode(
+      const Dependencies& dependencies, GraphConditionalHandle conditional,
+      ConditionType type) override;
 
   absl::StatusOr<GraphNodeHandle> CreateMemsetNode(
       const Dependencies& dependencies, DeviceMemoryBase destination,
