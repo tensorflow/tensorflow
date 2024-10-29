@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 
-#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -540,8 +539,6 @@ absl::Status GpuCommandBuffer::Memset(ExecutionScopeId execution_scope_id,
 // Command buffer condtitional commands API
 //--------------------------------------------------------------------------//
 
-using ConditionalHandles = absl::Span<const GpuGraphConditionalHandle>;
-
 /*static*/ GpuCommandBuffer::ConditionBuilder
 GpuCommandBuffer::ToConditionBuilder(Builder builder) {
   return [builder = std::move(builder)](CommandBuffer* cmd_buffer,
@@ -689,13 +686,8 @@ absl::Status GpuCommandBuffer::CreateConditionalCommand(
 absl::Status GpuCommandBuffer::If(ExecutionScopeId execution_scope_id,
                                   DeviceMemory<bool> predicate,
                                   Builder then_builder) {
-  TF_ASSIGN_OR_RETURN(SetIfConditionKernel * set_if_condition,
-                      GetSetIfConditionKernel());
-
   auto set_cond_fn = [&](ExecutionScopeId id, GraphConditionalHandles handles) {
-    return CommandBuffer::Launch(*set_if_condition, id, ThreadDim(), BlockDim(),
-                                 ToPlatformSpecificHandle(handles[0]),
-                                 predicate);
+    return LaunchSetIfConditionKernel(id, handles[0], predicate);
   };
 
   std::array<ConditionBuilder, 1> builders = {
@@ -709,14 +701,9 @@ absl::Status GpuCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
                                       DeviceMemory<bool> predicate,
                                       Builder then_builder,
                                       Builder else_builder) {
-  TF_ASSIGN_OR_RETURN(SetIfElseConditionKernel * set_if_else_condition,
-                      GetSetIfElseConditionKernel());
-
   auto set_cond_fn = [&](ExecutionScopeId id, GraphConditionalHandles handles) {
-    return CommandBuffer::Launch(
-        *set_if_else_condition, id, ThreadDim(), BlockDim(),
-        ToPlatformSpecificHandle(handles[0]),
-        ToPlatformSpecificHandle(handles[1]), predicate);
+    return LaunchSetIfElseConditionKernel(id, handles[0], handles[1],
+                                          predicate);
   };
 
   std::array<ConditionBuilder, 2> builders = {
@@ -730,9 +717,6 @@ absl::Status GpuCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
 absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
                                     DeviceMemory<int32_t> index,
                                     std::vector<Builder> branches) {
-  TF_ASSIGN_OR_RETURN(SetCaseConditionKernel * set_case_condition,
-                      GetSetCaseConditionKernel());
-
   constexpr size_t kBranchBatchSize = 8;
   int32_t batch_offset = 0;
   while (batch_offset < branches.size()) {
@@ -755,23 +739,8 @@ absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
     auto set_cond_fn = [&, batch_offset, enable_conditional_default](
                            ExecutionScopeId id,
                            GraphConditionalHandles conditionals) {
-      int32_t num_handles = conditionals.size();
-
-      // Pad handles up to size 8 with a default initialized handle.
-      std::vector<GpuGraphConditionalHandle> padded_handles{};
-      padded_handles.resize(kBranchBatchSize);
-      std::transform(conditionals.begin(), conditionals.end(),
-                     padded_handles.begin(),
-                     [](GraphConditionalHandle conditional) {
-                       return ToPlatformSpecificHandle(conditional);
-                     });
-
-      return CommandBuffer::Launch(
-          *set_case_condition, id, ThreadDim(), BlockDim(), padded_handles[0],
-          padded_handles[1], padded_handles[2], padded_handles[3],
-          padded_handles[4], padded_handles[5], padded_handles[6],
-          padded_handles[7], index, batch_offset, num_handles,
-          enable_conditional_default);
+      return LaunchSetCaseConditionKernel(id, conditionals, index, batch_offset,
+                                          enable_conditional_default);
     };
 
     // Wrap all branches into conditional command buffer builders.
@@ -794,17 +763,13 @@ absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,
                                    int32_t num_iteration,
                                    DeviceMemory<int32_t> loop_counter,
                                    Builder body_builder) {
-  TF_ASSIGN_OR_RETURN(SetForConditionKernel * set_for_condition,
-                      GetSetForConditionKernel());
-
   // Reset loop counter to zero.
   TF_RETURN_IF_ERROR(Memset(execution_scope_id, &loop_counter, uint32_t{0}, 1));
   TF_RETURN_IF_ERROR(Barrier(execution_scope_id));
 
   auto set_cond_fn = [&](ExecutionScopeId id, GraphConditionalHandles handles) {
-    return CommandBuffer::Launch(
-        *set_for_condition, id, ThreadDim(), BlockDim(),
-        ToPlatformSpecificHandle(handles[0]), loop_counter, num_iteration);
+    return LaunchSetForConditionKernel(id, handles[0], loop_counter,
+                                       num_iteration);
   };
 
   auto body = [&](CommandBuffer* body, GraphConditionalHandle conditional) {
@@ -812,9 +777,8 @@ absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,
     TF_RETURN_IF_ERROR(body->Barrier());
 
     // Decide if we want to continue loop iteration.
-    return body->Launch(*set_for_condition, ThreadDim(), BlockDim(),
-                        ToPlatformSpecificHandle(conditional), loop_counter,
-                        num_iteration);
+    return static_cast<GpuCommandBuffer*>(body)->LaunchSetForConditionKernel(
+        kDefaulExecutionScope, conditional, loop_counter, num_iteration);
   };
 
   std::array<ConditionBuilder, 1> builders = {std::move(body)};
@@ -827,17 +791,12 @@ absl::Status GpuCommandBuffer::While(ExecutionScopeId execution_scope_id,
                                      DeviceMemory<bool> pred,
                                      ExecutionScopeBuilder cond_builder,
                                      Builder body_builder) {
-  TF_ASSIGN_OR_RETURN(SetWhileConditionKernel * set_while_condition,
-                      GetSetWhileConditionKernel());
-
   // Record condition commands into the parent command buffer.
   TF_RETURN_IF_ERROR(cond_builder(execution_scope_id, this));
   TF_RETURN_IF_ERROR(Barrier(execution_scope_id));
 
   auto set_cond_fn = [&](ExecutionScopeId id, GraphConditionalHandles handles) {
-    return CommandBuffer::Launch(*set_while_condition, id, ThreadDim(),
-                                 BlockDim(),
-                                 ToPlatformSpecificHandle(handles[0]), pred);
+    return LaunchSetWhileConditionKernel(id, handles[0], pred);
   };
 
   auto body = [&](CommandBuffer* body, GraphConditionalHandle conditional) {
@@ -845,8 +804,8 @@ absl::Status GpuCommandBuffer::While(ExecutionScopeId execution_scope_id,
     TF_RETURN_IF_ERROR(body->Barrier());
     TF_RETURN_IF_ERROR(cond_builder(kDefaulExecutionScope, body));
     TF_RETURN_IF_ERROR(body->Barrier());
-    return body->Launch(*set_while_condition, ThreadDim(), BlockDim(),
-                        ToPlatformSpecificHandle(conditional), pred);
+    return static_cast<GpuCommandBuffer*>(body)->LaunchSetWhileConditionKernel(
+        kDefaulExecutionScope, conditional, pred);
   };
 
   std::array<ConditionBuilder, 1> builders = {std::move(body)};

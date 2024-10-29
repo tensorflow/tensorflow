@@ -69,6 +69,7 @@ class GpuCommandBuffer : public CommandBuffer {
   // constructed from a nullptr, trivially copyable, POD, etc.), that's why we
   // use a pointer to define it.
   using GraphConditionalHandle = GraphConditionalOpaque*;
+  using GraphConditionalHandles = absl::Span<const GraphConditionalHandle>;
 
   // A handle to a Gpu graph node and a metadata describing its properties. Each
   // command (launch, memcpy, etc.) creates one or more graph nodes.
@@ -109,6 +110,7 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status Barrier(ExecutionScopeId from_execution_scope_id,
                        ExecutionScopeId to_execution_scope_id) override;
 
+  using CommandBuffer::Launch;
   absl::Status Launch(ExecutionScopeId execution_scope_id,
                       const ThreadDim& threads, const BlockDim& blocks,
                       const Kernel& kernel, const KernelArgs& args) override;
@@ -186,27 +188,6 @@ class GpuCommandBuffer : public CommandBuffer {
 
   using NoOpKernel = TypedKernel<>;
 
-  // A signature of a device kernels updating conditional handle(s).
-  using SetIfConditionKernel =
-      TypedKernel<GpuGraphConditionalHandle, DeviceMemory<bool>>;
-
-  using SetIfElseConditionKernel =
-      TypedKernel<GpuGraphConditionalHandle, GpuGraphConditionalHandle,
-                  DeviceMemory<bool>>;
-
-  using SetCaseConditionKernel =
-      TypedKernel<GpuGraphConditionalHandle, GpuGraphConditionalHandle,
-                  GpuGraphConditionalHandle, GpuGraphConditionalHandle,
-                  GpuGraphConditionalHandle, GpuGraphConditionalHandle,
-                  GpuGraphConditionalHandle, GpuGraphConditionalHandle,
-                  DeviceMemory<int32_t>, int32_t, int32_t, bool>;
-
-  using SetForConditionKernel =
-      TypedKernel<GpuGraphConditionalHandle, DeviceMemory<int32_t>, int32_t>;
-
-  using SetWhileConditionKernel =
-      TypedKernel<GpuGraphConditionalHandle, DeviceMemory<bool>>;
-
  private:
   // A callback to launch a kernel that updates conditional handles state.
   using SetConditionFn = std::function<absl::Status(
@@ -270,16 +251,42 @@ class GpuCommandBuffer : public CommandBuffer {
 
   Dependencies GetBarrier(ExecutionScopeId execution_scope_id);
 
-  // Returns loaded auxiliary kernels, or loads them on a given stream executor.
-  // Loaded kernels owned by a current command buffer.
-  virtual absl::StatusOr<SetIfConditionKernel*> GetSetIfConditionKernel() = 0;
-  virtual absl::StatusOr<SetIfElseConditionKernel*>
-  GetSetIfElseConditionKernel() = 0;
-  virtual absl::StatusOr<SetCaseConditionKernel*>
-  GetSetCaseConditionKernel() = 0;
-  virtual absl::StatusOr<SetForConditionKernel*> GetSetForConditionKernel() = 0;
-  virtual absl::StatusOr<SetWhileConditionKernel*>
-  GetSetWhileConditionKernel() = 0;
+  // Launches a kernels that updates the state of the given graph conditional
+  // based on the predicate. If the predicate is true, `if_conditional` is set
+  // to 1, otherwise to 0.
+  virtual absl::Status LaunchSetIfConditionKernel(
+      ExecutionScopeId execution_scope_id,
+      GraphConditionalHandle if_conditional, DeviceMemory<bool> predicate) = 0;
+  // Launches a kernels that updates the state of the given graph conditionals
+  // based on the predicate. If the predicate is true, `if_conditional` is set
+  // to 1 and `else_conditional` to 0. If the predicate is false,
+  // `if_conditional` is set to 0 and `else_conditional` to 1.
+  virtual absl::Status LaunchSetIfElseConditionKernel(
+      ExecutionScopeId execution_scope_id,
+      GraphConditionalHandle if_conditional,
+      GraphConditionalHandle else_conditional,
+      DeviceMemory<bool> predicate) = 0;
+  // Launches a kernel that updates the state of the given graph conditionals
+  // based on the index and batch_offset. conditional[x] is set to 1 if index
+  // == x + batch_offset and 0 otherwise. `conditionals` may contain up to 8
+  // conditionals
+  virtual absl::Status LaunchSetCaseConditionKernel(
+      ExecutionScopeId execution_scope_id, GraphConditionalHandles conditionals,
+      DeviceMemory<int32_t> index, int32_t batch_offset,
+      bool enable_conditional_default) = 0;
+  // Launches a kernel that updates the state of the given graph conditional
+  // based on the loop counter and the total number of iterations. If the loop
+  // counter is less than the number of iterations, `conditional` is set to 1,
+  // otherwise to 0. The loop counter is also incremented by 1.
+  virtual absl::Status LaunchSetForConditionKernel(
+      ExecutionScopeId execution_scope_id, GraphConditionalHandle conditional,
+      DeviceMemory<int32_t> loop_counter, int32_t iterations) = 0;
+  // Launches a kernel that updates the state of the given graph conditional
+  // based on the predicate. If the predicate is true, `conditional` is set to
+  // 1, otherwise to 0.
+  virtual absl::Status LaunchSetWhileConditionKernel(
+      ExecutionScopeId execution_scope_id, GraphConditionalHandle conditional,
+      DeviceMemory<bool> predicate) = 0;
 
   // Recursively disable all nodes corresponding to barriers (including nested
   // conditional command buffers). This is work around the fact that we can't
