@@ -267,7 +267,6 @@ class GpuCommandBuffer : public CommandBuffer {
   virtual absl::StatusOr<SetForConditionKernel*> GetSetForConditionKernel() = 0;
   virtual absl::StatusOr<SetWhileConditionKernel*>
   GetSetWhileConditionKernel() = 0;
-  virtual absl::StatusOr<NoOpKernel*> GetNoOpKernel() = 0;
 
   // Recursively disable all nodes corresponding to barriers (including nested
   // conditional command buffers). This is work around the fact that we can't
@@ -421,6 +420,14 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Launches an instantiated graph. Only supported on primary command buffers.
   virtual absl::Status LaunchGraph(Stream* stream) = 0;
+
+  // Returns the number of nodes in the graph associated with this command
+  // buffer.
+  virtual absl::StatusOr<size_t> GetNodeCount() const = 0;
+
+  // This gets called at the beginning of `Finalize` and allows subclasses to
+  // perform any necessary preparation before the graph is finalized.
+  virtual absl::Status PrepareFinalization() = 0;
 };
 
 }  // namespace stream_executor::gpu

@@ -493,4 +493,25 @@ absl::Status CudaCommandBuffer::LaunchGraph(Stream* stream) {
   return cuda::ToStatus(cuGraphLaunch(exec_, AsGpuStreamValue(stream)),
                         "Failed to launch CUDA graph");
 }
+absl::StatusOr<size_t> CudaCommandBuffer::GetNodeCount() const {
+  size_t num_nodes;
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuGraphGetNodes(graph_, /*nodes=*/nullptr, &num_nodes)));
+  return num_nodes;
+}
+
+absl::Status CudaCommandBuffer::PrepareFinalization() {
+  // TODO(b/362769658): Remove this workaround when cuda supports conditionals
+  // with empty graphs.
+  TF_ASSIGN_OR_RETURN(auto node_count, GetNodeCount());
+  if (node_count > 0) {
+    return absl::OkStatus();
+  }
+
+  TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel());
+  TF_RETURN_IF_ERROR(CommandBuffer::Launch(*noop, kDefaulExecutionScope,
+                                           ThreadDim(), BlockDim()));
+
+  return absl::OkStatus();
+}
 }  // namespace stream_executor::gpu
