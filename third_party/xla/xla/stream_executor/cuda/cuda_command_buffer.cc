@@ -65,6 +65,7 @@ CUdeviceptr AsDevicePtr(const DeviceMemoryBase& mem) {
 }
 
 using GraphNodeHandle = GpuCommandBuffer::GraphNodeHandle;
+using GraphConditionalHandle = GpuCommandBuffer::GraphConditionalHandle;
 
 // Converts a platform independent GraphNodeHandle into a CUDA specific
 // CUgraphNode.
@@ -88,6 +89,12 @@ std::vector<CUgraphNode> ToCudaGraphHandles(
 // GraphNodeHandle.
 GraphNodeHandle FromCudaGraphHandle(CUgraphNode handle) {
   return absl::bit_cast<GraphNodeHandle>(handle);
+}
+
+// Converts a CUDA specific CUgraphConditionalHandle into a platform
+// independent GraphConditionalHandle.
+GraphConditionalHandle FromCudaGraphHandle(CUgraphConditionalHandle handle) {
+  return absl::bit_cast<GraphConditionalHandle>(handle);
 }
 }  // namespace
 
@@ -514,4 +521,30 @@ absl::Status CudaCommandBuffer::PrepareFinalization() {
 
   return absl::OkStatus();
 }
+
+absl::StatusOr<GraphConditionalHandle>
+CudaCommandBuffer::CreateConditionalHandle() {
+  constexpr int kDefaultLaunchValue = 0;
+  constexpr int kNoFlags = 0;
+  VLOG(2) << "Create conditional handle for a graph " << graph_
+          << "; context: " << parent_->gpu_context()
+          << "; default_launch_value: " << kDefaultLaunchValue
+          << "; flags: " << kNoFlags;
+
+#if CUDA_VERSION >= 12030
+  CUgraphConditionalHandle handle;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuGraphConditionalHandleCreate(
+          &handle, graph_,
+          tensorflow::down_cast<CudaContext*>(parent_->gpu_context())
+              ->context(),
+          kDefaultLaunchValue, kNoFlags),
+      "Failed to create conditional handle for a CUDA graph"));
+  return FromCudaGraphHandle(handle);
+#else
+  return absl::UnimplementedError(
+      "CUDA graph conditional nodes are not implemented");
+#endif  // CUDA_VERSION >= 12030
+}
+
 }  // namespace stream_executor::gpu

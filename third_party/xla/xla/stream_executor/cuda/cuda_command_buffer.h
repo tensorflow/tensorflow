@@ -111,6 +111,8 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
 
   absl::Status PrepareFinalization() override;
 
+  absl::StatusOr<GraphConditionalHandle> CreateConditionalHandle() override;
+
   // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
   // barriers, updating conditional handles, etc.).
   SetIfConditionKernel set_if_condition_kernel_;
