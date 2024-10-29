@@ -2521,8 +2521,7 @@ absl::Status VerifyChannels(const HloModule& module,
   }
 
   // Iterate over each channel to check invariants.
-  for (auto& pair : channel_instructions) {
-    auto& instructions = pair.second;
+  for (auto& [channel_id, instructions] : channel_instructions) {
     const HloInstruction* first = instructions[0];
     if (const auto* sendrecv = DynCast<HloSendRecvInstruction>(first)) {
       absl::flat_hash_set<HloOpcode> opcodes;
@@ -2530,14 +2529,14 @@ absl::Status VerifyChannels(const HloModule& module,
         opcodes.insert(instr->opcode());
         auto cast = DynCast<HloSendRecvInstruction>(instr);
         TF_RET_CHECK(cast != nullptr)
-            << "channel " << pair.first
+            << "channel " << channel_id
             << " is used for different types of channel instructions";
       }
     } else {
-      for (const HloInstruction* instr : instructions) {
-        if (opts.verify_unique_channel_ids) {
+      if (opts.verify_unique_channel_ids) {
+        for (const HloInstruction* instr : instructions) {
           TF_RET_CHECK(first->opcode() == instr->opcode())
-              << "channel " << pair.first
+              << "channel " << channel_id
               << " is used for different types of channel instructions";
         }
       }
