@@ -898,44 +898,11 @@ absl::Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   return absl::OkStatus();
 }
 
-int64_t GetConstantTensorSize(Node* n) {
-  if (n->op_def().name() != "Const") return -1;
-
-  const TensorProto* proto = nullptr;
-  Status s = GetNodeAttr(n->def(), "value", &proto);
-  if (!s.ok()) return -1;
-
-  if (!proto->has_tensor_shape()) {
-    return -1;
-  }
-  const auto& tensor_shape_proto = proto->tensor_shape();
-  if (tensor_shape_proto.unknown_rank()) {
-    return -1;
-  }
-  int64_t num_elements = 1;
-  for (const auto& dim : tensor_shape_proto.dim()) {
-    // Note that in some cases, dim.size() can be zero (e.g., empty vector).
-    num_elements *= dim.size();
-  }
-  return num_elements;
-}
-
 absl::Status MarkForCompilationPassImpl::DeclusterNodes() {
   for (Node* n : compilation_candidates_) {
     Cluster* cluster = GetClusterForNode(n);
     if (cluster == nullptr) {
       continue;
-    }
-
-    // Remove large constants from clustering so they don't get compiled.
-    // Avoid unnecessary copies of large constants (based on L1 cache).
-
-    const int64_t kLargeConstantThreshold = 16384;
-    if (n->op_def().name() == "Const") {
-      int64_t tensor_size = GetConstantTensorSize(n);
-      if (tensor_size > kLargeConstantThreshold) {
-        declustered_nodes_.insert(n);
-      }
     }
 
     // De-cluster Fill ops that are
