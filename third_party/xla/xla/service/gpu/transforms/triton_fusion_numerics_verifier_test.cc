@@ -235,7 +235,7 @@ ENTRY main {
   auto compilation_result =
       triton_fusion_numerics_pass_internal::CompileAndRunFusion(
           compile_util, *fusion, autotune_config, GetDebugOptionsForTest(),
-          /*clear_backend_config=*/false);
+          /*disable_triton=*/false);
 
   // Verify that the compilation with default flags fails. The compilation
   // fails, because the kernel will spill registers, but the error is
@@ -300,6 +300,47 @@ ENTRY main {
   TritonFusionNumericsVerifier verifier(autotune_config);
   TF_EXPECT_OK(RunHloPass(verifier, module.get()));
   EXPECT_EQ(verifier.CacheHitsForTestingOnly(), 1);
+}
+
+TEST_F(TritonFusionNumericsVerifierTest, VerifyThatDisablingTritonIsFast) {
+  // This computation results in a single Triton fusion. If that fusion is
+  // compiled without Triton and without rerunning the fusion pass, the
+  // resulting kernel is extremely slow and the test will timeout. This test
+  // ensures that the fusion pass is rerun.
+  absl::string_view hlo_text = R"(
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+ENTRY computation {
+  p0 = f32[16384,16384] parameter(0)
+  reshape1 = f32[1,1,16384,16384] reshape(p0)
+  reshape2 = f32[1,16384,16384] reshape(p0)
+  constant3 = f32[] constant(-inf)
+  reduce0 = f32[1,16384] reduce(reshape2, constant3), dimensions={2}, to_apply=max
+  broadcast3 = f32[1,1,16384,16384] broadcast(reduce0), dimensions={1,2}
+  sub = f32[1,1,16384,16384] subtract(reshape1, broadcast3)
+  exp = f32[1,1,16384,16384] exponential(sub)
+  reshape3 = f32[1,16384,16384] reshape(exp)
+  constant4 = f32[] constant(0)
+  reduce1 = f32[1,16384] reduce(reshape3, constant4), dimensions={2}, to_apply=add
+  broadcast4 = f32[1,1,16384,16384] broadcast(reduce1), dimensions={1,2}
+  ROOT div = f32[1,1,16384,16384] divide(exp, broadcast4)
+}
+  )";
+  auto module = Module(hlo_text, "");
+
+  EXPECT_TRUE(HloPassHasRun(*module, TritonFusionNumericsVerifier::Name()));
+  auto fusion = TritonFusion(*module);
+  EXPECT_NE(fusion, nullptr);
 }
 
 INSTANTIATE_TEST_SUITE_P(TritonFusionNumericsVerifierTestSuite,

@@ -3071,6 +3071,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:executable",
+        "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_module_config",
         "//xla/service:shaped_buffer",
         "//xla/service/gpu:backend_configs_cc",
@@ -3078,6 +3079,10 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu/autotuning:autotuner_compile_util",
         "//xla/service/gpu/autotuning:autotuner_util",
+        "//xla/service/gpu/transforms:fusion_wrapper",
+        "//xla/service/gpu/transforms:priority_fusion",
+        "//xla/service/gpu/transforms:tree_reduction_rewriter",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:stream",
         "//xla/tools:hlo_decomposer_lib",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -3094,6 +3099,7 @@ cc_library(
 
 xla_test(
     name = "triton_fusion_numerics_verifier_test",
+    timeout = "short",
     srcs = ["triton_fusion_numerics_verifier_test.cc"],
     backends = [
         "gpu_a100",
