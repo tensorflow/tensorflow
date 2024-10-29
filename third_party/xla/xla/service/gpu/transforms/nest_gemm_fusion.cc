@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -341,15 +343,22 @@ absl::StatusOr<HloInstructionSet> GetClosedProducerSet(
 // caller.
 absl::Status HoistBitcastToCallers(HloInstruction* bitcast,
                                    CallGraph* call_graph) {
+  VLOG(1) << "Hoisting bitcast " << bitcast->ToString();
   TF_ASSIGN_OR_RETURN(HloInstructionSet producers,
                       GetClosedProducerSet(bitcast));
 
   // Check that it's safe to hoist the bitcast.
   for (HloInstruction* instruction : producers) {
-    if (!instruction->IsElementwise() && !instruction->IsConstant() &&
-        instruction->opcode() != HloOpcode::kParameter) {
-      return absl::InternalError(
-          absl::StrCat("Cannot hoist bitcast past ", instruction->ToString()));
+    if (instruction->IsElementwise()) {
+      continue;
+    }
+    switch (instruction->opcode()) {
+      case HloOpcode::kParameter:
+      case HloOpcode::kConstant:
+        continue;
+      default:
+        return absl::InternalError(absl::StrCat("Cannot hoist bitcast past ",
+                                                instruction->ToString()));
     }
   }
 
@@ -360,6 +369,7 @@ absl::Status HoistBitcastToCallers(HloInstruction* bitcast,
     if (instruction->opcode() != HloOpcode::kParameter) {
       continue;
     }
+    // For parameters, we need to insert a bitcast for the caller's operand.
     int64_t number = instruction->parameter_number();
     for (HloInstruction* caller :
          call_graph->GetComputationCallers(instruction->parent())) {
@@ -372,18 +382,20 @@ absl::Status HoistBitcastToCallers(HloInstruction* bitcast,
   }
 
   TF_RETURN_IF_ERROR(bitcast->ReplaceAllUsesWith(bitcast->mutable_operand(0)));
-
+  TF_RETURN_IF_ERROR(bitcast->parent()->RemoveInstruction(bitcast));
   return absl::OkStatus();
 }
 
 // Hoists all bitcasts in the computation to its callers.
 absl::Status HoistBitcastsInComputationToCallers(HloComputation* computation,
                                                  CallGraph* call_graph) {
-  for (HloInstruction* instruction : computation->instructions()) {
-    if (instruction->opcode() != HloOpcode::kBitcast) {
-      continue;
-    }
-    TF_RETURN_IF_ERROR(HoistBitcastToCallers(instruction, call_graph));
+  absl::InlinedVector<HloInstruction*, 8> bitcasts;
+  absl::c_copy_if(computation->instructions(), std::back_inserter(bitcasts),
+                  [](HloInstruction* instruction) {
+                    return instruction->opcode() == HloOpcode::kBitcast;
+                  });
+  for (HloInstruction* bitcast : bitcasts) {
+    TF_RETURN_IF_ERROR(HoistBitcastToCallers(bitcast, call_graph));
   }
   return absl::OkStatus();
 }

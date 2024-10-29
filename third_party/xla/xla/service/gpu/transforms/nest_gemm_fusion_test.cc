@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
@@ -30,6 +31,7 @@ limitations under the License.
 
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
 namespace xla {
@@ -65,9 +67,7 @@ MATCHER_P(OutputTileSizesIs, matcher, "") {
 class NestGemmFusionTest : public HloTestBase {};
 
 TEST_F(NestGemmFusionTest, BasicTest) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-HloModule module
-
+  absl::string_view hlo = R"(
 dot {
   lhs = bf16[8192,512] parameter(0)
   rhs = bf16[512,512] parameter(1)
@@ -88,10 +88,10 @@ ENTRY entry {
       }
     }
 }
-)"));
+)";
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, NestGemmFusion().Run(module.get()))
-  EXPECT_TRUE(changed);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 
   const HloInstruction* fusion = nullptr;
@@ -110,9 +110,7 @@ ENTRY entry {
 // Tests hoisting of bitcasts which would otherwise trigger unsatisfiable
 // constraints during symbolic tile analysis.
 TEST_F(NestGemmFusionTest, BitcastsAreHoistedOutOfGemmFusions) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-HloModule module
-
+  absl::string_view hlo = R"(
 dot {
   lhs = f32[21] parameter(0)
   bitcast = f32[3,7]{0,1} bitcast(lhs)
@@ -134,10 +132,10 @@ ENTRY entry {
       }
     }
 }
-)"));
+)";
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, NestGemmFusion().Run(module.get()))
-  EXPECT_TRUE(changed);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());
 
   const HloInstruction* fusion = nullptr;
@@ -155,9 +153,7 @@ ENTRY entry {
 }
 
 TEST_F(NestGemmFusionTest, FailsOnBitcastWithOpenProducerSet) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-HloModule module
-
+  absl::string_view hlo = R"(
 dot {
   p0 = f32[32] parameter(0)
   lhs = f32[4,8] bitcast(p0)
@@ -178,11 +174,43 @@ ENTRY entry {
       }
     }
 }
-)"));
+)";
 
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   EXPECT_THAT(NestGemmFusion().Run(module.get()).status(),
               StatusIs(absl::StatusCode::kFailedPrecondition,
                        HasSubstr("not in the producer set")));
+}
+
+TEST_F(NestGemmFusionTest, BitcastsCanBeHoistedPastOtherBitcasts) {
+  absl::string_view hlo = R"(
+dot {
+  lhs = f32[3,7] parameter(0)
+  bitcast0 = f32[21] bitcast(lhs)
+  bitcast1 = f32[3,7] bitcast(bitcast0)
+  rhs = f32[7,11] parameter(1)
+  ROOT dot = f32[3,11] dot(bitcast1, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = f32[3, 7] parameter(0)
+  p1 = f32[7,11] parameter(1)
+  ROOT fusion = f32[3,11] fusion(p0, p1),
+    kind=kCustom, calls=dot, backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm",  "triton_gemm_config": {
+          "block_m":"32", "block_n":"64", "block_k":"16",
+          "split_k":"1", "num_stages":"1", "num_warps":"1", "num_ctas":"1"
+        }
+      }
+    }
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 }  // namespace
