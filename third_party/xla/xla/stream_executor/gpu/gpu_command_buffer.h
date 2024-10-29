@@ -244,7 +244,9 @@ class GpuCommandBuffer : public CommandBuffer {
       ExecutionScopeId execution_scope_id, ConditionType type,
       absl::Span<const GraphConditionalHandle> conditionals);
 
-  absl::Status CreateConditionalCommand(
+  // Adds a new conditional command (If, IfElse, Case, While, For) to the
+  // command buffer.
+  absl::Status AddConditionalCommandNode(
       ExecutionScopeId execution_scope_id, ConditionType type,
       SetConditionFn set_condition,
       absl::Span<const ConditionBuilder> builders);

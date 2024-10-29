@@ -625,7 +625,7 @@ GpuCommandBuffer::CreateConditionalNodes(
   return conditional_graphs;
 }
 
-absl::Status GpuCommandBuffer::CreateConditionalCommand(
+absl::Status GpuCommandBuffer::AddConditionalCommandNode(
     ExecutionScopeId execution_scope_id, ConditionType type,
     SetConditionFn set_condition, absl::Span<const ConditionBuilder> builders) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
@@ -693,8 +693,8 @@ absl::Status GpuCommandBuffer::If(ExecutionScopeId execution_scope_id,
   std::array<ConditionBuilder, 1> builders = {
       ToConditionBuilder(std::move(then_builder))};
 
-  return CreateConditionalCommand(execution_scope_id, ConditionType::kIf,
-                                  set_cond_fn, builders);
+  return AddConditionalCommandNode(execution_scope_id, ConditionType::kIf,
+                                   set_cond_fn, builders);
 }
 
 absl::Status GpuCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
@@ -710,8 +710,8 @@ absl::Status GpuCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
       ToConditionBuilder(std::move(then_builder)),
       ToConditionBuilder(std::move(else_builder))};
 
-  return CreateConditionalCommand(execution_scope_id, ConditionType::kIf,
-                                  set_cond_fn, builders);
+  return AddConditionalCommandNode(execution_scope_id, ConditionType::kIf,
+                                   set_cond_fn, builders);
 }
 
 absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
@@ -752,7 +752,7 @@ absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
           ToConditionBuilder(std::move(branches[branch_offset])));
     }
 
-    TF_RETURN_IF_ERROR(CreateConditionalCommand(
+    TF_RETURN_IF_ERROR(AddConditionalCommandNode(
         execution_scope_id, ConditionType::kIf, set_cond_fn, builders));
     batch_offset += batch_size;
   }
@@ -783,8 +783,8 @@ absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,
 
   std::array<ConditionBuilder, 1> builders = {std::move(body)};
 
-  return CreateConditionalCommand(execution_scope_id, ConditionType::kWhile,
-                                  set_cond_fn, builders);
+  return AddConditionalCommandNode(execution_scope_id, ConditionType::kWhile,
+                                   set_cond_fn, builders);
 }
 
 absl::Status GpuCommandBuffer::While(ExecutionScopeId execution_scope_id,
@@ -810,8 +810,8 @@ absl::Status GpuCommandBuffer::While(ExecutionScopeId execution_scope_id,
 
   std::array<ConditionBuilder, 1> builders = {std::move(body)};
 
-  return CreateConditionalCommand(execution_scope_id, ConditionType::kWhile,
-                                  set_cond_fn, builders);
+  return AddConditionalCommandNode(execution_scope_id, ConditionType::kWhile,
+                                   set_cond_fn, builders);
 }
 
 absl::Status GpuCommandBuffer::Finalize() {
