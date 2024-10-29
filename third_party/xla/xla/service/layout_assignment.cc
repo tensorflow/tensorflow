@@ -2593,47 +2593,45 @@ absl::StatusOr<bool> LayoutAssignment::Run(
   VLOG(2) << "Running layout assignment on module " << module->name();
   TF_RETURN_IF_ERROR(Init(module));
   call_graph_ = CallGraph::Build(module);
-  // Add copy to the operand of Send instructions, since we cannot call
-  // SetOperandLayout on Send instructions as it aliases its input to the
-  // output.
-  //
-  // TODO(b/68493863): Remove this once we can call SetOperandLayout() on the
-  // operand buffers that aliases with the output.
-  for (HloComputation* computation : module->computations(execution_threads)) {
-    for (HloInstruction* instruction :
-         computation->MakeInstructionPostOrder()) {
-      if (instruction->opcode() == HloOpcode::kSend) {
-        TF_RETURN_IF_ERROR(AddCopyForOperand(instruction, 0));
-      }
-    }
-  }
 
-  // If there is both a layout constraint on operands of a custom call, and
-  // aliasing constraint between output and operand, then it is simpler and
-  // safer to copy the operand before we assign layouts. Copying the operand
-  // during layout assignment is complicated because we may not update buffer
-  // aliasing information correctly at that stage. If we don't copy before
-  // layout assignment, and the backend imposes additional restraints on the
-  // operand (eg: if operand is a dot), then attempting to make a copy during
-  // layout assignment may still lead to wrong result due to incomplete
-  // propagation of buffer aliasing information depending on ordering of
-  // constraints. We expect that unnecessary copies may be optimized out by
-  // later passes.
+  std::vector<std::pair<HloInstruction*, int64_t>> operands_to_copy;
   for (HloComputation* computation : module->computations(execution_threads)) {
-    for (HloInstruction* instruction :
-         computation->MakeInstructionPostOrder()) {
-      if (IsLayoutConstrainedCustomCall(instruction)) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      // Add copy to the operand of Send instructions, since we cannot call
+      // SetOperandLayout on Send instructions as it aliases its input to the
+      // output.
+      //
+      // TODO(b/68493863): Remove this once we can call SetOperandLayout() on
+      // the operand buffers that aliases with the output.
+      if (instruction->opcode() == HloOpcode::kSend) {
+        operands_to_copy.emplace_back(instruction, 0);
+      } else if (IsLayoutConstrainedCustomCall(instruction)) {
+        // If there is both a layout constraint on operands of a custom call,
+        // and aliasing constraint between output and operand, then it is
+        // simpler and safer to copy the operand before we assign layouts.
+        // Copying the operand during layout assignment is complicated because
+        // we may not update buffer aliasing information correctly at that
+        // stage. If we don't copy before layout assignment, and the backend
+        // imposes additional restraints on the operand (eg: if operand is a
+        // dot), then attempting to make a copy during layout assignment may
+        // still lead to wrong result due to incomplete propagation of buffer
+        // aliasing information depending on ordering of constraints. We expect
+        // that unnecessary copies may be optimized out by later passes.
         absl::flat_hash_set<int64_t> processed;
         for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>&
                  output_operand_pair : instruction->output_operand_aliasing()) {
           int operand_no = output_operand_pair.second.first;
           if (!processed.contains(operand_no)) {
-            TF_RETURN_IF_ERROR(AddCopyForOperand(instruction, operand_no));
+            operands_to_copy.emplace_back(instruction, operand_no);
             processed.insert(operand_no);
           }
         }
       }
     }
+    for (const auto [instruction, operand_no] : operands_to_copy) {
+      TF_RETURN_IF_ERROR(AddCopyForOperand(instruction, operand_no));
+    }
+    operands_to_copy.clear();
   }
 
   // Clone Conditional computations with multiple callsites.
