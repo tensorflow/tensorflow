@@ -123,18 +123,6 @@ absl::StatusOr<std::string> GpuDriver::GraphDebugDotPrint(
   return std::string(path);
 }
 
-absl::Status GpuDriver::GraphConditionalHandleCreate(
-    GpuGraphConditionalHandle* handle, hipGraph_t graph, Context* context,
-    unsigned int default_launch_value, unsigned int flags) {
-  VLOG(2) << "Create conditional handle for a graph " << graph
-          << "; context: " << context
-          << "; default_launch_value: " << default_launch_value
-          << "; flags: " << flags;
-
-  return absl::UnimplementedError(
-      "HIP graph conditional nodes are not implemented yet");
-}
-
 absl::StatusOr<GpuDriver::GpuGraphNodeResult> GpuDriver::GraphAddNode(
     hipGraphNode_t* node, hipGraph_t graph,
     absl::Span<const hipGraphNode_t> deps, const GpuGraphNodeParams& params) {
