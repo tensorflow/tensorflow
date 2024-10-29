@@ -14,6 +14,8 @@
 
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 
+#include <array>
+#include <cstdint>
 #include <cstring>
 
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
@@ -37,11 +39,12 @@ constexpr const size_t kBufferSize = 1234;
 
 }  // namespace
 
-TEST(TensorBufferRequirements, SimpleTest) {
+TEST(TensorBufferRequirements, NoStrides) {
   LiteRtTensorBufferRequirements requirements;
-  ASSERT_EQ(LiteRtCreateTensorBufferRequirements(kNumSupportedTensorBufferTypes,
-                                                 kSupportedTensorBufferTypes,
-                                                 kBufferSize, &requirements),
+  ASSERT_EQ(LiteRtCreateTensorBufferRequirements(
+                kNumSupportedTensorBufferTypes, kSupportedTensorBufferTypes,
+                kBufferSize,
+                /*num_strides=*/0, /*strides=*/nullptr, &requirements),
             kLiteRtStatusOk);
 
   int num_types;
@@ -62,6 +65,28 @@ TEST(TensorBufferRequirements, SimpleTest) {
   ASSERT_EQ(LiteRtGetTensorBufferRequirementsBufferSize(requirements, &size),
             kLiteRtStatusOk);
   ASSERT_EQ(size, kBufferSize);
+
+  LiteRtDestroyTensorBufferRequirements(requirements);
+}
+
+TEST(TensorBufferRequirements, WithStrides) {
+  constexpr std::array<uint32_t, 3> kStrides = {1, 2, 3};
+
+  LiteRtTensorBufferRequirements requirements;
+  ASSERT_EQ(LiteRtCreateTensorBufferRequirements(
+                kNumSupportedTensorBufferTypes, kSupportedTensorBufferTypes,
+                kBufferSize, kStrides.size(), kStrides.data(), &requirements),
+            kLiteRtStatusOk);
+
+  int num_strides;
+  const uint32_t* strides;
+  ASSERT_EQ(LiteRtGetTensorBufferRequirementsStrides(requirements, &num_strides,
+                                                     &strides),
+            kLiteRtStatusOk);
+  ASSERT_EQ(num_strides, kStrides.size());
+  for (auto i = 0; i < kStrides.size(); ++i) {
+    ASSERT_EQ(strides[i], kStrides[i]);
+  }
 
   LiteRtDestroyTensorBufferRequirements(requirements);
 }

@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <array>
 #include <cstddef>
+#include <cstdint>
 
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
 #include "absl/types/span.h"
@@ -61,7 +63,8 @@ TEST(TensorBufferRequirements, NotOwned) {
   LiteRtTensorBufferRequirements litert_requirements;
   ASSERT_EQ(LiteRtCreateTensorBufferRequirements(
                 kNumSupportedTensorBufferTypes, kSupportedTensorBufferTypes,
-                kBufferSize, &litert_requirements),
+                kBufferSize, /*num_strides=*/0, /*strides=*/nullptr,
+                &litert_requirements),
             kLiteRtStatusOk);
 
   litert::TensorBufferRequirements requirements(litert_requirements,
@@ -81,4 +84,20 @@ TEST(TensorBufferRequirements, NotOwned) {
   ASSERT_EQ(requirements.Get(), litert_requirements);
 
   LiteRtDestroyTensorBufferRequirements(litert_requirements);
+}
+
+TEST(TensorBufferRequirements, WithStrides) {
+  constexpr std::array<uint32_t, 3> kStrides = {1, 2, 3};
+
+  auto requirements = litert::TensorBufferRequirements::Create(
+      absl::MakeSpan(kSupportedTensorBufferTypes,
+                     kNumSupportedTensorBufferTypes),
+      kBufferSize, absl::MakeSpan(kStrides.data(), kStrides.size()));
+  ASSERT_TRUE(requirements.ok());
+
+  auto strides = requirements->Strides();
+  ASSERT_EQ(strides.size(), kStrides.size());
+  for (auto i = 0; i < kStrides.size(); ++i) {
+    ASSERT_EQ(strides[i], kStrides[i]);
+  }
 }

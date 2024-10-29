@@ -16,6 +16,7 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_TENSOR_BUFFER_REQUIREMENTS_H_
 
 #include <cstddef>
+#include <cstdint>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
@@ -29,7 +30,8 @@ LITERT_DEFINE_HANDLE(LiteRtTensorBufferRequirements);
 LiteRtStatus LiteRtCreateTensorBufferRequirements(
     int num_supported_tensor_buffer_types,
     const LiteRtTensorBufferType* supported_tensor_buffer_types,
-    size_t buffer_size, LiteRtTensorBufferRequirements* requirements);
+    size_t buffer_size, int num_strides, const uint32_t* strides,
+    LiteRtTensorBufferRequirements* requirements);
 
 LiteRtStatus LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
     LiteRtTensorBufferRequirements requirements, int* num_types);
@@ -40,6 +42,10 @@ LiteRtStatus LiteRtGetTensorBufferRequirementsSupportedTensorBufferType(
 
 LiteRtStatus LiteRtGetTensorBufferRequirementsBufferSize(
     LiteRtTensorBufferRequirements requirements, size_t* buffer_size);
+
+LiteRtStatus LiteRtGetTensorBufferRequirementsStrides(
+    LiteRtTensorBufferRequirements requirements, int* num_strides,
+    const uint32_t** strides);
 
 void LiteRtDestroyTensorBufferRequirements(
     LiteRtTensorBufferRequirements requirements);

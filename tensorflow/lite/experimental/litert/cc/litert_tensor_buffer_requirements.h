@@ -16,6 +16,7 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_TENSOR_BUFFER_REQUIREMENTS_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -25,6 +26,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 
 namespace litert {
 
@@ -46,12 +48,13 @@ class TensorBufferRequirements
                                                                 owned) {}
 
   static absl::StatusOr<TensorBufferRequirements> Create(
-      absl::Span<const LiteRtTensorBufferType> buffer_types,
-      size_t buffer_size) {
+      absl::Span<const LiteRtTensorBufferType> buffer_types, size_t buffer_size,
+      absl::Span<const uint32_t> strides =
+          absl::MakeSpan(static_cast<const uint32_t*>(nullptr), 0)) {
     LiteRtTensorBufferRequirements tensor_buffer_requirements;
     if (auto status = LiteRtCreateTensorBufferRequirements(
             buffer_types.size(), buffer_types.data(), buffer_size,
-            &tensor_buffer_requirements);
+            strides.size(), strides.data(), &tensor_buffer_requirements);
         status != kLiteRtStatusOk) {
       return absl::InternalError("Failed to create tensor buffer requirements");
     }
@@ -87,6 +90,14 @@ class TensorBufferRequirements
       return absl::InternalError("Failed to get tensor buffer size");
     }
     return buffer_size;
+  }
+
+  absl::Span<const uint32_t> Strides() const {
+    int num_strides;
+    const uint32_t* strides;
+    litert::internal::AssertGet(LiteRtGetTensorBufferRequirementsStrides, Get(),
+                                &num_strides, &strides);
+    return absl::MakeSpan(strides, num_strides);
   }
 };
 
