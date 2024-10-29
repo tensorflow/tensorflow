@@ -38,7 +38,10 @@ namespace gpu {
 
 // An empty struct to be used as a handle for all unsupported features in
 // current CUDA/HIP/SYCL version.
-struct UnsupportedGpuFeature {};
+struct UnsupportedGpuFeature {
+  // This makes the struct the same size as all the other handles.
+  void* payload;
+};
 
 #if TENSORFLOW_USE_SYCL
 

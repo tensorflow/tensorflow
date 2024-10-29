@@ -108,6 +108,8 @@ class RocmCommandBuffer : public GpuCommandBuffer {
 
   absl::Status PrepareFinalization() override;
 
+  absl::StatusOr<GraphConditionalHandle> CreateConditionalHandle() override;
+
   GpuExecutor* parent_;
 };
 

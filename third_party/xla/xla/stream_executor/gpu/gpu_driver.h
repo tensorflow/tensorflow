@@ -107,12 +107,6 @@ class GpuDriver {
       GpuGraphHandle graph, const char* path,
       bool return_printed_graph = false);
 
-  // Creates a conditional handle.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gece6f3b9e85d0edb8484d625fe567376
-  static absl::Status GraphConditionalHandleCreate(
-      GpuGraphConditionalHandle* handle, GpuGraphHandle graph, Context* context,
-      unsigned int default_launch_value, unsigned int flags);
-
   // Conditional node parameters.
   // https://docs.nvidia.com/cuda/cuda-driver-api/structCUDA__CONDITIONAL__NODE__PARAMS.html#structCUDA__CONDITIONAL__NODE__PARAMS
   struct GpuGraphConditionalNodeParams {

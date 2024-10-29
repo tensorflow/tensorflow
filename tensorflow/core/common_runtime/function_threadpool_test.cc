@@ -178,7 +178,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     }
     Notification done;
     Status status;
-    flr->Run(opts, handle, frame, [&status, &done](const Status& s) {
+    flr->Run(opts, handle, frame, [&status, &done](const absl::Status& s) {
       status = s;
       done.Notify();
     });
