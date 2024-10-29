@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/sort_simplifier.h"
 
+#include <cstdint>
+#include <iterator>
 #include <memory>
 #include <vector>
 
@@ -154,14 +156,17 @@ absl::StatusOr<bool> SortSimplifier::Run(
 
   bool changed = false;
   std::vector<HloInstruction*> sort_instrs;
-  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
+  for (auto* comp : module->computations(execution_threads)) {
+    if (comp->IsFusionComputation()) {
+      continue;
+    }
     absl::c_copy_if(comp->instructions(), std::back_inserter(sort_instrs),
                     HloPredicateIsOp<HloOpcode::kSort>);
-  }
-
-  for (HloInstruction* sort_instr : sort_instrs) {
-    TF_ASSIGN_OR_RETURN(bool result, RemoveUnusedOperandFromSort(sort_instr));
-    changed |= result;
+    for (HloInstruction* sort_instr : sort_instrs) {
+      TF_ASSIGN_OR_RETURN(bool result, RemoveUnusedOperandFromSort(sort_instr));
+      changed |= result;
+    }
+    sort_instrs.clear();
   }
 
   if (changed) {
