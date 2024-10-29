@@ -120,7 +120,7 @@ TEST(TestLegalizeTensor, SimpleSupportedTensor) {
 
   ASSERT_EQ(qnn_tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(qnn_tensor.v2.dataType, QNN_DATATYPE_FLOAT_32);
-  EXPECT_EQ(qnn_tensor.v2.type, QNN_TENSOR_TYPE_UNDEFINED);
+  EXPECT_EQ(qnn_tensor.v2.type, QNN_TENSOR_TYPE_NATIVE);
 
   ASSERT_EQ(qnn_tensor.v2.rank, 2);
   ASSERT_NE(qnn_tensor.v2.dimensions, nullptr);

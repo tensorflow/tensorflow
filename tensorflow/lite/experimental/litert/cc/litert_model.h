@@ -211,6 +211,7 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
 
   bool IsSubgraphOutput() const;
   bool IsSubgraphInput() const;
+  bool IsConstant() const;
 };
 
 // Operator. C++ equivalent of LiteRtOp.

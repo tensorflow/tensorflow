@@ -26,20 +26,20 @@
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 
 namespace {
-static constexpr absl::string_view kOpTpl = "simple_%s_op.tflite";
 // clang-format off
 const auto kSupportedOps =
     testing::Values(
-                    "add",
-                    "div",
-                    "mul",
-                    "rsqrt",
-                    "slice",
-                    "sub",
-                    "sum",
-                    "tanh",
-                    "reshape",
-                    "batch_matmul"
+                    "simple_add_op.tflite",
+                    "simple_div_op.tflite",
+                    "simple_mul_op.tflite",
+                    "simple_rsqrt_op.tflite",
+                    "simple_slice_op.tflite",
+                    "simple_sub_op.tflite",
+                    "simple_sum_op.tflite",
+                    "simple_tanh_op.tflite",
+                    "simple_reshape_op.tflite",
+                    "simple_batch_matmul_op.tflite",
+                    "rms_norm.tflite"
                     );
 // clang-format on
 
@@ -115,8 +115,7 @@ class QnnPluginOpCompatibilityTest
 
 TEST_P(QnnPluginOpCompatibilityTest, SupportedOpsTest) {
   auto plugin = GetQnnPlugin();
-  auto model =
-      litert::testing::LoadTestFileModel(absl::StrFormat(kOpTpl, GetParam()));
+  auto model = litert::testing::LoadTestFileModel(GetParam());
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
                           ::graph_tools::GetSubgraph(model.get()));

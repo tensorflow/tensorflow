@@ -77,9 +77,18 @@ LiteRtStatus GraphMapper::LookupInScope(LiteRtTensor litert_tensor,
   // If we go in topological order, this should never happen. TODO: add
   // "internal error" status code.
   const auto qnn_id = CurrentScope().find(litert_tensor);
-  LITERT_ENSURE(qnn_id != CurrentScope().end(), kLiteRtStatusErrorNotFound,
-                "Couldn't find tensor in current_scope.");
-
+  // when qnn_id is not found, the tensor is a constant tensor thats not been
+  // added qnn graph.
+  if (qnn_id == CurrentScope().end()) {
+    LITERT_LOG(LITERT_INFO, "Adding constant tensor %s to qnn graph",
+               qnn_tensor.v2.name);
+    LITERT_RETURN_STATUS_IF_NOT_OK(
+        LegalizeAndRegister(litert_tensor, qnn_tensor));
+    LITERT_RETURN_STATUS_IF_NOT_OK(PushToScope(litert_tensor, qnn_tensor));
+    // }
+    return kLiteRtStatusOk;
+  }
+  LITERT_LOG(LITERT_INFO, "Found tensor %d in current_scope.", qnn_id->second);
   ResetTensor(qnn_tensor);
   qnn_tensor.v2.id = qnn_id->second;
 
@@ -133,12 +142,6 @@ LiteRtStatus GraphMapper::IsLiteRtSubgraphSupported() {
   LITERT_ENSURE_SUPPORTED(
       LiteRtSubgraphInputs().size() < 4,
       "Only subgraphs with less than 4 inputs currently supported.");
-
-  LITERT_ENSURE_SUPPORTED(LiteRtSubgraphOutputs().size() == 1,
-                          "Only subgraphs with 1 output currently supported.");
-
-  LITERT_ENSURE_SUPPORTED(LiteRtSubgraphOps().size() == 1,
-                          "Only subgraphs with 1 op currently supported.");
 
   return kLiteRtStatusOk;
 }

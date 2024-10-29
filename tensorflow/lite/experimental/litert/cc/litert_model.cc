@@ -27,4 +27,9 @@ bool Tensor::IsSubgraphInput() const {
          graph_tools::MatchNoWeights(Get());
 }
 
+bool Tensor::IsConstant() const {
+  return graph_tools::MatchTensorNoDefiningOp(Get()) &&
+         !graph_tools::MatchNoWeights(Get());
+}
+
 }  // namespace litert

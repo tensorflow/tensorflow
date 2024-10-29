@@ -31,6 +31,7 @@ cc_library(
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
         "//tensorflow/lite/experimental/litert/core:api_internal",
+        "//tensorflow/lite/experimental/litert/core:graph_tools",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
     ],
 )
