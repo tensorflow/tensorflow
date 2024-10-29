@@ -1113,24 +1113,6 @@ def func_graph_from_py_func(name,
   return func_graph
 
 
-def maybe_captured(tensor):
-  """If t is a captured value placeholder, returns the original captured value.
-
-  Args:
-    tensor: Tensor.
-
-  Returns:
-    A tensor, potentially from a different Graph/FuncGraph.
-  """
-  if (not isinstance(tensor, ops.EagerTensor) and
-      tensor.op.graph.building_function and tensor.op.type == "Placeholder"):
-    for input_t, placeholder_t in tensor.op.graph.captures:
-      if tensor == placeholder_t:
-        return maybe_captured(input_t)
-  # pylint: enable=protected-access
-  return tensor
-
-
 def device_stack_has_callable(device_stack):
   """Checks whether a device stack contains a callable."""
   return any(
