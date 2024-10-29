@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/tool_params.h"
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 #include "tensorflow/lite/tools/logging.h"
 
