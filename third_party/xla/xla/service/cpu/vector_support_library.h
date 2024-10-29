@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_VECTOR_SUPPORT_LIBRARY_H_
 #define XLA_SERVICE_CPU_VECTOR_SUPPORT_LIBRARY_H_
 
+#include <cstdint>
+#include <initializer_list>
 #include <string>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "llvm/ADT/APFloat.h"
