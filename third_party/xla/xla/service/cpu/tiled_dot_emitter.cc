@@ -15,6 +15,13 @@ limitations under the License.
 
 #include "xla/service/cpu/tiled_dot_emitter.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <iterator>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/log/check.h"
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"

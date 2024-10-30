@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/service/cpu/xfeed_manager.h"
 
+#include <cstdint>
+#include <utility>
+
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/shape.h"
