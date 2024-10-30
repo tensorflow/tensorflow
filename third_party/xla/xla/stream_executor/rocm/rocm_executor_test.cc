@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_executor.h"
 
+#include <memory>
+#include <variant>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/stream_executor/device_description.h"
