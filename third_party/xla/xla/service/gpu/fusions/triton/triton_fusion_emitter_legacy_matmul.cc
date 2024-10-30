@@ -398,9 +398,8 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
                                       const se::DeviceDescription& device_info,
                                       const HloInstruction& hlo,
                                       ValueRange inputs) {
-  Type input_type = mlir::getElementTypeOrSelf(inputs[0]);
-  if (input_type.isBF16() || input_type.isF16() || input_type.isF32() ||
-      input_type.isF64()) {
+  if (mlir::getElementTypeOrSelf(inputs[0]).isF32() ||
+      mlir::getElementTypeOrSelf(inputs[0]).isF64()) {
     auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
     if (dev_fn_id.ok()) {
       llvm::Triple triple("nvptx64-unknown-unknown");
@@ -408,31 +407,15 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
               device_info.gpu_compute_capability())) {
         triple.setTriple("amdgcn-unknown-unknown");
       }
-      PrimitiveType output_type = hlo.shape().element_type();
-      llvm::SmallVector<Value, 2> casted_inputs;
-      if (input_type.isBF16() || input_type.isF16()) {
-        // Upcast the inputs to F32.
-        for (int64_t i = 0; i < inputs.size(); ++i) {
-          casted_inputs.push_back(Cast(b, inputs[i], b.getF32Type()));
-        }
-        output_type = F32;
-      } else {
-        casted_inputs.assign(inputs.begin(), inputs.end());
-      }
-      Value res = b.create<mt::ExternElementwiseOp>(
-          casted_inputs[0].getType(), casted_inputs, "libdevice",
-          libdevice_path,
-          ObtainDeviceFunctionName(dev_fn_id.value(), output_type, triple),
+      return b.create<mt::ExternElementwiseOp>(
+          inputs[0].getType(), inputs, "libdevice", libdevice_path,
+          ObtainDeviceFunctionName(dev_fn_id.value(),
+                                   hlo.shape().element_type(), triple),
           /*pure=*/true);
-      if (input_type.isBF16() || input_type.isF16()) {
-        // Downcast back to the original input type.
-        res = Cast(b, res, input_type);
-      }
-      return res;
     }
   }
   const bool is_integer =
-      mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(input_type));
+      mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(inputs[0]));
 
   switch (hlo.opcode()) {
     case HloOpcode::kCopy:
