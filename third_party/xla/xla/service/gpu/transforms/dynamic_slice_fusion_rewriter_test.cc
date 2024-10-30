@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -973,8 +972,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
                             expected);
 }
 
-void Callback_Void(se::gpu::GpuStreamHandle stream, void** buffers,
-                   const char* /*opaque*/, size_t /*opaque_len*/) {}
+void Callback_Void(void* stream, void** buffers, const char* /*opaque*/,
+                   size_t /*opaque_len*/) {}
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Void, "gpu");
 

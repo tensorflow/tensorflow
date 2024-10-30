@@ -1618,7 +1618,6 @@ xla_cc_test(
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:statusor",
