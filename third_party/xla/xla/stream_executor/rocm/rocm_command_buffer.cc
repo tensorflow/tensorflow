@@ -465,4 +465,31 @@ std::unique_ptr<ScopedUpdateMode> RocmCommandBuffer::ActivateUpdateMode(
 
   return std::move(scoped_graph_exec);
 }
+
+RocmCommandBuffer::~RocmCommandBuffer() {
+  if (exec_ != nullptr && is_owned_graph_exec_) {
+    VLOG(5) << "Destroy GPU command buffer executable graph " << exec_ << " "
+            << "(remaining alive executable graphs: " << NotifyExecDestroyed()
+            << ")";
+    if (auto status = ToStatus(hipGraphExecDestroy(exec_),
+                               "Failed to destroy HIP executable graph");
+        !status.ok()) {
+      LOG(ERROR) << status.message();
+    }
+  }
+  if (graph_ != nullptr && is_owned_graph_) {
+    if (auto status =
+            ToStatus(hipGraphDestroy(graph_), "Failed to destroy HIP graph");
+        !status.ok()) {
+      LOG(ERROR) << status.message();
+    }
+  }
+}
+absl::Status RocmCommandBuffer::CheckCanBeUpdated() {
+  if (exec_ == nullptr) {
+    return absl::InternalError(
+        "Command buffer has to have a graph executable to be updated.");
+  }
+  return absl::OkStatus();
+}
 }  // namespace stream_executor::gpu

@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -99,9 +98,7 @@ class GpuCommandBuffer : public CommandBuffer {
     size_t nodes_offset = 0;
   };
 
-  GpuCommandBuffer(Mode mode, GpuExecutor* parent, GpuGraphHandle graph,
-                   bool is_owned_graph = true);
-  ~GpuCommandBuffer() override;
+  GpuCommandBuffer(Mode mode, GpuExecutor* parent);
 
   absl::Status Barrier(ExecutionScopeId execution_scope_id) override;
 
@@ -152,8 +149,6 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status Update() override;
   absl::Status Submit(Stream* stream) override;
 
-  GpuGraphExecHandle executable() const { return exec_; }
-
   Mode mode() const override { return mode_; }
   State state() const override { return state_; }
 
@@ -176,15 +171,16 @@ class GpuCommandBuffer : public CommandBuffer {
     return barriers(kDefaulExecutionScope);
   }
 
- private:
+ protected:
   // We track the total number of allocated and alive executable graphs in the
   // process to track the command buffers resource usage. Executable graph
   // allocates resources on a GPU devices (rule of thumb is ~8kb per node), so
   // we have to be careful not to keep too many of them alive for too long, or
   // we have a higher risk of OOM errors.
   static int64_t AliveExecs();
+  static int64_t NotifyExecCreated();
+  static int64_t NotifyExecDestroyed();
 
- protected:
   using Dependencies = absl::InlinedVector<GraphNodeHandle, 1>;
 
   using NoOpKernel = TypedKernel<>;
@@ -306,6 +302,9 @@ class GpuCommandBuffer : public CommandBuffer {
   // possible to add new commands to it, otherwise returns internal error.
   absl::Status CheckNotFinalized();
 
+  // Returns OK status if the command buffer can be updated.
+  virtual absl::Status CheckCanBeUpdated() = 0;
+
  private:
   // Returns OK status if the number of command buffers is equal to the expected
   // one, otherwise returns internal error.
@@ -315,26 +314,10 @@ class GpuCommandBuffer : public CommandBuffer {
   // Collects a set of dependencies for a new barrier.
   Dependencies GetBarrierDependencies(ExecutionScopeId execution_scope_id);
 
-  static_assert(std::is_pointer_v<GpuGraphHandle>,
-                "GpuGraphHandle must be a pointer");
-  static_assert(std::is_pointer_v<GpuGraphExecHandle>,
-                "GpuGraphExecHandle must be a pointer");
-  static_assert(std::is_pointer_v<GpuGraphNodeHandle>,
-                "GpuGraphNodeHandle must be a pointer");
-
   Mode mode_;
   State state_ = State::kCreate;
 
   GpuExecutor* parent_;  // not owned, must outlive *this
-
-  // TODO(hebecker): Move fields to subclasses once we have moved all GpuDriver
-  // calls.
- protected:
-  GpuGraphHandle graph_ = nullptr;  // owned if `is_owned_graph_`
-  bool is_owned_graph_ = true;      // ownership of `graph_`
-
-  GpuGraphExecHandle exec_ = nullptr;  // owned if `is_owned_graph_exec_`
-  bool is_owned_graph_exec_ = true;    // ownership of `is_owned_graph_exec_`
 
  private:
   // ExecutionScope holds the state of an underlying CUDA graph (nodes an

@@ -65,11 +65,6 @@ absl::Status GpuDriver::CreateGraph(CUgraph* graph) {
   return absl::OkStatus();
 }
 
-absl::Status GpuDriver::DestroyGraph(CUgraph graph) {
-  VLOG(2) << "Destroy CUDA graph " << graph;
-  return cuda::ToStatus(cuGraphDestroy(graph), "Failed to destroy CUDA graph");
-}
-
 absl::StatusOr<std::vector<GpuGraphNodeHandle>>
 GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
   VLOG(2) << "Get CUDA graph node " << node << " dependencies";
@@ -87,12 +82,6 @@ GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
       "Failed to get CUDA graph node depedencies"));
 
   return dependencies;
-}
-
-absl::Status GpuDriver::DestroyGraphExec(CUgraphExec exec) {
-  VLOG(2) << "Destroying CUDA executable graph " << exec;
-  return cuda::ToStatus(cuGraphExecDestroy(exec),
-                        "Failed to destroy CUDA executable graph");
 }
 
 int GpuDriver::GetDeviceCount() {

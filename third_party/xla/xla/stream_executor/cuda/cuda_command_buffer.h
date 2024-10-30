@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <type_traits>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
@@ -46,11 +47,19 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   static absl::StatusOr<std::unique_ptr<CudaCommandBuffer>> Create(
       Mode mode, GpuExecutor* parent);
 
+  ~CudaCommandBuffer() override;
+
  private:
   CudaCommandBuffer(Mode mode, GpuExecutor* parent, CUgraph graph,
                     bool is_owned_graph)
-      : GpuCommandBuffer(mode, parent, graph, is_owned_graph),
-        parent_(parent) {}
+      : GpuCommandBuffer(mode, parent),
+        parent_(parent),
+        graph_(graph),
+        is_owned_graph_(is_owned_graph) {
+    VLOG(5) << "Created command buffer for graph " << graph_
+            << "; mode=" << ModeToString(mode)
+            << "; is_owned_graph=" << is_owned_graph_;
+  }
 
   absl::Status LaunchSetIfConditionKernel(
       ExecutionScopeId execution_scope_id,
@@ -138,6 +147,8 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   std::unique_ptr<ScopedUpdateMode> ActivateUpdateMode(
       GpuCommandBuffer* nested_cmd_buffer) override;
 
+  absl::Status CheckCanBeUpdated() override;
+
   // A signature of a device kernels updating conditional handle(s).
   using SetIfConditionKernel =
       TypedKernel<CUgraphConditionalHandle, DeviceMemory<bool>>;
@@ -169,6 +180,16 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   NoOpKernel noop_kernel_;
 
   GpuExecutor* parent_;
+
+  static_assert(std::is_pointer_v<CUgraph>, "CUgraph must be a pointer");
+  static_assert(std::is_pointer_v<CUgraphExec>,
+                "CUgraphExec must be a pointer");
+
+  CUgraph graph_ = nullptr;     // owned if `is_owned_graph_`
+  bool is_owned_graph_ = true;  // ownership of `graph_`
+
+  CUgraphExec exec_ = nullptr;       // owned if `is_owned_graph_exec_`
+  bool is_owned_graph_exec_ = true;  // ownership of `is_owned_graph_exec_`
 };
 
 }  // namespace stream_executor::gpu

@@ -62,11 +62,6 @@ absl::Status GpuDriver::CreateGraph(hipGraph_t* graph) {
   return absl::OkStatus();
 }
 
-absl::Status GpuDriver::DestroyGraph(hipGraph_t graph) {
-  VLOG(2) << "Destroy HIP graph " << graph;
-  return ToStatus(wrap::hipGraphDestroy(graph), "Failed to destroy HIP graph");
-}
-
 absl::StatusOr<std::vector<GpuGraphNodeHandle>>
 GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
   VLOG(2) << "Get HIP graph node " << node << " dependencies";
@@ -84,12 +79,6 @@ GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
       "Failed to get HIP graph node depedencies"));
 
   return dependencies;
-}
-
-absl::Status GpuDriver::DestroyGraphExec(hipGraphExec_t exec) {
-  VLOG(2) << "Destroying HIP executable graph" << exec;
-  return ToStatus(wrap::hipGraphExecDestroy(exec),
-                  "Failed to destroy HIP graph");
 }
 
 int GpuDriver::GetDeviceCount() {

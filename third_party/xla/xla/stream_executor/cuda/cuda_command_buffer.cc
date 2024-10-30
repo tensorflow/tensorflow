@@ -698,4 +698,33 @@ std::unique_ptr<ScopedUpdateMode> CudaCommandBuffer::ActivateUpdateMode(
 
   return std::move(scoped_graph_exec);
 }
+
+CudaCommandBuffer::~CudaCommandBuffer() {
+  if (exec_ != nullptr && is_owned_graph_exec_) {
+    VLOG(5) << "Destroy GPU command buffer executable graph " << exec_ << " "
+            << "(remaining alive executable graphs: " << NotifyExecDestroyed()
+            << ")";
+    if (auto status = cuda::ToStatus(cuGraphExecDestroy(exec_),
+                                     "Failed to destroy CUDA executable graph");
+        !status.ok()) {
+      LOG(ERROR) << status.message();
+    }
+  }
+  if (graph_ != nullptr && is_owned_graph_) {
+    if (auto status = cuda::ToStatus(cuGraphDestroy(graph_),
+                                     "Failed to destroy CUDA graph");
+        !status.ok()) {
+      LOG(ERROR) << status.message();
+    }
+  }
+}
+
+absl::Status CudaCommandBuffer::CheckCanBeUpdated() {
+  if (exec_ == nullptr) {
+    return absl::InternalError(
+        "Command buffer has to have a graph executable to be updated.");
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace stream_executor::gpu

@@ -89,12 +89,12 @@ absl::Status UnsupportedStateError(State state) {
 static std::atomic<int64_t> allocated_execs(0);
 static std::atomic<int64_t> alive_execs(0);
 
-static int64_t NotifyExecCreated() {
+/*static*/ int64_t GpuCommandBuffer::NotifyExecCreated() {
   alive_execs.fetch_add(1, std::memory_order_relaxed);
   return allocated_execs.fetch_add(1, std::memory_order_relaxed);
 }
 
-static int64_t NotifyExecDestroyed() {
+/*static*/ int64_t GpuCommandBuffer::NotifyExecDestroyed() {
   DCHECK_GE(alive_execs.load(std::memory_order_relaxed), 1);
   return alive_execs.fetch_sub(1, std::memory_order_relaxed) - 1;
 }
@@ -107,41 +107,9 @@ static int64_t NotifyExecDestroyed() {
 // GpuCommandBuffer implementation
 //===----------------------------------------------------------------------===//
 
-static std::string_view ModeToString(CommandBuffer::Mode mode) {
-  switch (mode) {
-    case CommandBuffer::Mode::kPrimary:
-      return "primary";
-    case CommandBuffer::Mode::kNested:
-      return "nested";
-  }
-}
-
-GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent,
-                                   GpuGraphHandle graph, bool is_owned_graph)
-    : mode_(mode),
-      parent_(parent),
-      graph_(graph),
-      is_owned_graph_(is_owned_graph) {
-  VLOG(5) << "Created command buffer for graph " << graph_
-          << "; mode=" << ModeToString(mode)
-          << "; is_owned_graph=" << is_owned_graph_;
+GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent)
+    : mode_(mode), parent_(parent) {
   execution_scopes_.try_emplace(kDefaulExecutionScope);
-}
-
-GpuCommandBuffer::~GpuCommandBuffer() {
-  if (exec_ != nullptr && is_owned_graph_exec_) {
-    VLOG(5) << "Destroy GPU command buffer executable graph " << exec_ << " "
-            << "(remaining alive executable graphs: " << NotifyExecDestroyed()
-            << ")";
-    if (auto status = GpuDriver::DestroyGraphExec(exec_); !status.ok()) {
-      LOG(ERROR) << "Failed to destroy GPU graph exec: " << status.message();
-    }
-  }
-  if (graph_ != nullptr && is_owned_graph_) {
-    if (auto status = GpuDriver::DestroyGraph(graph_); !status.ok()) {
-      LOG(ERROR) << "Failed to destroy GPU graph: " << status.message();
-    }
-  }
 }
 
 GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
@@ -803,8 +771,8 @@ absl::Status GpuCommandBuffer::Finalize() {
   } else if (mode_ == Mode::kPrimary && state_ == State::kUpdate) {
     // If this is a finalization after update, we don't have to do anything as
     // each individual command already updated executable graph.
-    VLOG(5) << "Finalize executable graph " << exec_ << " update #"
-            << num_updates_++ << " "
+    VLOG(5) << "Finalize executable graph of command buffer " << this
+            << " update #" << num_updates_++ << " "
             << "(alive executable graphs: " << AliveExecs() << ")";
 
   } else if (mode_ == Mode::kNested) {
@@ -818,18 +786,16 @@ absl::Status GpuCommandBuffer::Finalize() {
 }
 
 absl::Status GpuCommandBuffer::Update() {
-  if (exec_ == nullptr) {
-    return absl::InternalError(
-        "Command buffer has to have a graph executable to be updated");
-  }
+  TF_RETURN_IF_ERROR(CheckCanBeUpdated());
 
   if (state_ != State::kFinalized) {
     return absl::InternalError(
         "Command buffer has to be finalized first before it can be updated");
   }
 
-  VLOG(5) << "Begin " << (mode_ == Mode::kPrimary ? "primary" : "nested")
-          << " command buffer update for executable graph " << exec_;
+  VLOG(5) << "Begin update of"
+          << (mode_ == Mode::kPrimary ? "primary" : "nested")
+          << " command buffer " << this;
 
   state_ = State::kUpdate;
   for (auto& [_, execution_scope] : execution_scopes_) {
