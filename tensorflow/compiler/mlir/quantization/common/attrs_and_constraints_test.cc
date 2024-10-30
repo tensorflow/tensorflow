@@ -316,7 +316,7 @@ TEST_F(AttrsAndConstraintsTest, I64ArrayInI32RangeAreCastedCorrectly) {
 
 TEST_F(AttrsAndConstraintsTest, CastingFailsForI64ArrayUnderI32Range) {
   const int64_t under_min_i32 = -2147483658;
-  ArrayRef<int64_t> array_i64{under_min_i32};
+  ArrayRef<int64_t> array_i64(under_min_i32);
 
   EXPECT_EQ(under_min_i32, llvm::minIntN(32) - 10);
   EXPECT_TRUE(failed(CastI64ArrayToI32(array_i64)));
@@ -324,7 +324,7 @@ TEST_F(AttrsAndConstraintsTest, CastingFailsForI64ArrayUnderI32Range) {
 
 TEST_F(AttrsAndConstraintsTest, CastingFailsForI64ArrayAboveI32Range) {
   const int64_t below_max_i32 = 2147483657;
-  ArrayRef<int64_t> array_i64{below_max_i32};
+  ArrayRef<int64_t> array_i64(below_max_i32);
 
   EXPECT_EQ(below_max_i32, llvm::maxIntN(32) + 10);
   EXPECT_TRUE(failed(CastI64ArrayToI32(array_i64)));

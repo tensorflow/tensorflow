@@ -47,6 +47,7 @@ struct Tf2HloArg {
   tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn;
   std::shared_ptr<xla::ifrt::Topology> topology;
+  absl::string_view platform_name;
 
   absl::StatusOr<std::string> Key();
 };

@@ -133,6 +133,11 @@ absl::StatusOr<OpKernelRunner> OpKernelRunner::Create(
   std::unique_ptr<OpKernel> op_kernel;
   TF_RETURN_IF_ERROR(CreateOpKernel(function_library_runtime,
                                     std::move(node_def), &op_kernel));
+
+  if (!op_kernel) {
+    return absl::InternalError(
+        absl::StrCat("Failed to create OpKernel for op: ", op_name));
+  }
   return OpKernelRunner(device, function_library_runtime, std::move(op_kernel));
 }
 

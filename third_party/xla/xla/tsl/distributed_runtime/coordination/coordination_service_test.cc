@@ -1637,6 +1637,30 @@ TEST_F(CoordinateTwoTasksTest, BarrierFailsIfServiceHasStopped) {
   EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kInternal));
 }
 
+TEST_F(CoordinateTwoTasksTest,
+       BarrierWithParticipatingTasksFailsIfServiceHasStopped) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  absl::Notification n0;
+  absl::Status barrier_status;
+  // No heartbeat for a while, leader consider the task as stale.
+  // As no error propagation is available, service stops.
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
+
+  // Barrier should fail when called after service stops.
+  coord_service_->BarrierAsync("barrier_id", absl::Seconds(5), task_0_,
+                               /*participating_tasks=*/{task_0_},
+                               [&](absl::Status s) {
+                                 barrier_status = s;
+                                 n0.Notify();
+                               });
+
+  n0.WaitForNotification();
+  EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kInternal));
+}
+
 TEST_F(CoordinateTwoTasksTest, BarrierFailsAfterErrorPollingResponse) {
   EnableCoordinationService(/*has_service_to_client_connection=*/false);
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
@@ -2012,17 +2036,21 @@ TEST_F(CoordinateTwoTasksTest,
                             /*enable_shutdown_barrier=*/false,
                             /*enable_register_barrier=*/true);
   absl::Status task0_status = absl::InternalError("uninitialized_status");
+  absl::Status restarted_task0_status =
+      absl::InternalError("uninitialized_status");
   // Task 0 registers first.
-  coord_service_->RegisterTaskAsync(task_0_, incarnation_0_,
-                                    [](const absl::Status& s) {});
+  coord_service_->RegisterTaskAsync(
+      task_0_, incarnation_0_,
+      [&](const absl::Status& s) { task0_status = s; });
   // Task 0 restarts with a new incarnation, and registers again.
   // This should be allowed since all tasks have not joined the cluster yet.
   coord_service_->RegisterTaskAsync(
       task_0_, /*incarnation=*/incarnation_0_ + 1,
-      [&](const absl::Status& s) { task0_status = s; });
+      [&](const absl::Status& s) { restarted_task0_status = s; });
   // Now all tasks will register in a synchronized fashion due to the barrier.
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
-  ASSERT_OK(task0_status);
+  ASSERT_THAT(task0_status, StatusIs(absl::StatusCode::kAlreadyExists));
+  ASSERT_OK(restarted_task0_status);
   // Task 0 joins again with the same incarnation.
   // This is okay, it didn't restart, probably sent RPC twice due to network
   // retries.
@@ -2064,7 +2092,8 @@ TEST_F(CoordinateTwoTasksTest, RegisterWithBarrier_Timeout) {
   EnableCoordinationService(/*has_service_to_client_connection=*/false,
                             /*enable_shutdown_barrier=*/false,
                             /*enable_register_barrier=*/true);
-  // Task 0 joins without task 1. Times out eventually.
+  // Task 0 joins without task 1. Times out eventually as this function is
+  // blocking.
   EXPECT_THAT(coord_service_->RegisterTask(task_0_, incarnation_0_),
               StatusIs(absl::StatusCode::kDeadlineExceeded));
 }

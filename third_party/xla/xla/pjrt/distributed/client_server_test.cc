@@ -57,6 +57,7 @@ namespace {
 using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
+using tsl::testing::StatusIs;
 
 constexpr absl::Duration kHeartbeatInterval = absl::Milliseconds(500);
 constexpr int kMaxMissingHeartbeats = 5;
@@ -665,6 +666,131 @@ TEST_F(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
   for (int i = 0; i < num_nodes - 1; ++i) {
     EXPECT_EQ(statuses[i].code(), tsl::error::DEADLINE_EXCEEDED);
   }
+}
+
+// After init, ML program will run. If a client restarts, the ML program will
+// have an inconsistent state. To recover from this, ALL clients need to
+// restart.
+TEST_F(ClientServerTest, ClientRestart_AfterConnect_Fails) {
+  int num_nodes = 3;
+  absl::Duration timeout = absl::Seconds(5);
+  CoordinationServiceImpl::Options service_options;
+  service_options.cluster_register_timeout = timeout;
+  service_options.shutdown_timeout = timeout;
+  StartService(num_nodes, service_options);
+  absl::Notification n;
+
+  auto thread_fn = [&](int node_id) -> absl::Status {
+    DistributedRuntimeClient::Options client_options;
+    client_options.init_timeout = timeout;
+    client_options.rpc_timeout = timeout;
+    // Overwrite the default error callback which invokes LOG(QFATAL).
+    client_options.missed_heartbeat_callback = [](absl::Status status) {
+      LOG(ERROR) << "Distributed client has missing heartbeats: " << status;
+    };
+    auto client = GetClient(node_id, client_options);
+
+    TF_RETURN_IF_ERROR(client->Connect());
+    // All clients have successfully connected at this point.
+    // Simulate client restart by creating a new client.
+    if (node_id == 2) {
+      client = nullptr;
+      auto restarted_client = GetClient(node_id, client_options);
+      auto status = restarted_client->Connect();
+      n.Notify();
+      return status;
+    }
+    n.WaitForNotification();
+    TF_RETURN_IF_ERROR(client->Shutdown());
+    return absl::OkStatus();
+  };
+
+  std::vector<absl::Status> statuses(num_nodes);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  // Errors should have been propagated to the clients, and thus the shutdown
+  // call will fail with `FailedPrecondition` since the tasks are already in
+  // error.
+  EXPECT_THAT(statuses[0], StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(statuses[1], StatusIs(absl::StatusCode::kFailedPrecondition));
+  // This client was restarted, so its connection attempt will be aborted.
+  EXPECT_THAT(statuses[2], StatusIs(absl::StatusCode::kAborted));
+}
+
+// If a client restarts during init, it can silently reconnect because no
+// stateful operations have run yet, so the program state is still valid.
+TEST_F(ClientServerTest, ClientRestart_DuringConnect_Succeeds) {
+  int num_nodes = 3;
+  absl::Duration timeout = absl::Seconds(5);
+  CoordinationServiceImpl::Options service_options;
+  service_options.cluster_register_timeout = timeout;
+  service_options.shutdown_timeout = timeout;
+  StartService(num_nodes, service_options);
+  absl::Notification previous_node_2_connecting, node_2_restarted;
+
+  std::vector<absl::Status> statuses(num_nodes + 1);
+  auto thread_fn = [&](int node_id) -> absl::Status {
+    DistributedRuntimeClient::Options client_options;
+    client_options.init_timeout = timeout;
+    client_options.rpc_timeout = timeout;
+    // Overwrite the default error callback which invokes LOG(QFATAL).
+    client_options.missed_heartbeat_callback = [](absl::Status status) {
+      LOG(ERROR) << "Distributed client has missing heartbeats: " << status;
+    };
+    bool restarted_node_2 = false;
+    if (node_id == 3) {
+      restarted_node_2 = true;
+      node_id = 2;  // This is the restarted client.
+    }
+    auto client = GetClient(node_id, client_options);
+
+    // Overall timeline:
+    // 1. Node 0, 2 connects.
+    // 2. Node 2 restarts and connects.
+    // 3. Node 1 connects.
+    // 4. All attempts succeed, except the initial node 2 connection attempt.
+    if (node_id == 0) {
+      TF_RETURN_IF_ERROR(client->Connect());
+      TF_RETURN_IF_ERROR(client->Shutdown());
+      return absl::OkStatus();
+    } else if (node_id == 1) {
+      node_2_restarted.WaitForNotification();
+      absl::SleepFor(absl::Seconds(1));  // Give time for node 2 to connect.
+      TF_RETURN_IF_ERROR(client->Connect());
+      TF_RETURN_IF_ERROR(client->Shutdown());
+      return absl::OkStatus();
+    } else if (node_id == 2 && !restarted_node_2) {
+      previous_node_2_connecting.Notify();
+      return client->Connect();  // Stale attempt, should fail.
+    } else {
+      // Restarted node 2.
+      previous_node_2_connecting.WaitForNotification();
+      absl::SleepFor(absl::Seconds(1));  // Give time for node 2 to connect.
+      node_2_restarted.Notify();
+      TF_RETURN_IF_ERROR(client->Connect());
+      TF_RETURN_IF_ERROR(client->Shutdown());
+      return absl::OkStatus();
+    }
+  };
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes + 1);
+
+    for (int i = 0; i < num_nodes + 1; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  EXPECT_THAT(statuses[0], StatusIs(absl::StatusCode::kOk));
+  EXPECT_THAT(statuses[1], StatusIs(absl::StatusCode::kOk));
+  // This was the initial connection attempt that should be aborted.
+  EXPECT_THAT(statuses[2], StatusIs(absl::StatusCode::kAlreadyExists));
+  // This was the restarted client which should silently reconnect.
+  EXPECT_THAT(statuses[3], StatusIs(absl::StatusCode::kOk));
 }
 
 TEST_F(ClientServerTest, WaitAtBarrier_Succeed) {

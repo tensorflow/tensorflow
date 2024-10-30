@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/cpu/cpu_compiler.h"

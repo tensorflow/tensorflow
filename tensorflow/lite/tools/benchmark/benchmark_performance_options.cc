@@ -60,7 +60,7 @@ std::string MultiRunStatsRecorder::PerfOptionName(
   }
 #endif
 
-  if (params.Get<bool>("use_gpu")) {
+  if (params.Get<bool>("use_gpu") || params.Get<bool>("use_gpuv3")) {
 #if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
     if (params.Get<bool>("gpu_precision_loss_allowed")) {
       return "gpu-fp16";

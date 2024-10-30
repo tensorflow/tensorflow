@@ -56,7 +56,7 @@ using mlir::func::FuncOp;
 
 // Run the TF XLA Bridge based on the input pipeline, which can be either TPU
 // bridge pipeline or non TPU bridge pipeline.
-tensorflow::Status RunTFXLABridge(
+absl::Status RunTFXLABridge(
     ModuleOp module,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder,
     llvm::StringRef module_name = llvm::StringRef(),
@@ -112,11 +112,9 @@ tensorflow::Status RunTFXLABridge(
   return diag_handler.ConsumeStatus();
 }
 
-tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
-                                       bool fallback_enabled,
-                                       std::string bridge_type,
-                                       std::string device_type,
-                                       absl::Status status) {
+absl::Status RecordIfErrorStatus(const std::string error_prefix,
+                                 bool fallback_enabled, std::string bridge_type,
+                                 std::string device_type, absl::Status status) {
   if (status.ok()) {
     return status;
   }
@@ -160,7 +158,7 @@ void CreateReplicatedClusteringPipelineV2(OpPassManager &pm) {
   CreateReplicatedClusteringPipeline(pm, /*module_name=*/"");
 }
 
-tensorflow::Status RunFunctionTf2xlaClusteringBridge(
+absl::Status RunFunctionTf2xlaClusteringBridge(
     ModuleOp module, bool is_supported_by_replicated_brige,
     bool is_in_fallback_enabled_mode, llvm::StringRef module_name) {
   std::string device_type = is_supported_by_replicated_brige
@@ -172,7 +170,7 @@ tensorflow::Status RunFunctionTf2xlaClusteringBridge(
       << " Bridge called stack trace is "
       << "(NOTE: this is not an error; rather the stack trace for debugging) : "
       << tensorflow::CurrentStackTrace();
-  Status clustering_status =
+  absl::Status clustering_status =
       is_supported_by_replicated_brige
           ? RunTFXLABridge(
                 module,

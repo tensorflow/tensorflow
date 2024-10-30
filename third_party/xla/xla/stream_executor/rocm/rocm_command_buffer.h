@@ -16,12 +16,23 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_COMMAND_BUFFER_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_COMMAND_BUFFER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <vector>
 
+#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "rocm/include/hip/hip_runtime.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 
 namespace stream_executor::gpu {
 
@@ -38,17 +49,84 @@ class RocmCommandBuffer : public GpuCommandBuffer {
       : GpuCommandBuffer(mode, parent, graph, is_owned_graph),
         parent_(parent) {}
 
-  absl::StatusOr<SetIfConditionKernel*> GetSetIfConditionKernel() override;
-  absl::StatusOr<SetIfElseConditionKernel*> GetSetIfElseConditionKernel()
-      override;
-  absl::StatusOr<SetCaseConditionKernel*> GetSetCaseConditionKernel() override;
-  absl::StatusOr<SetForConditionKernel*> GetSetForConditionKernel() override;
-  absl::StatusOr<SetWhileConditionKernel*> GetSetWhileConditionKernel()
-      override;
-  absl::StatusOr<NoOpKernel*> GetNoOpKernel() override;
+  absl::Status LaunchSetIfConditionKernel(
+      ExecutionScopeId execution_scope_id,
+      GraphConditionalHandle if_conditional,
+      DeviceMemory<bool> predicate) override;
+  absl::Status LaunchSetIfElseConditionKernel(
+      ExecutionScopeId execution_scope_id,
+      GraphConditionalHandle if_conditional,
+      GraphConditionalHandle else_conditional,
+      DeviceMemory<bool> predicate) override;
+  absl::Status LaunchSetCaseConditionKernel(
+      ExecutionScopeId execution_scope_id, GraphConditionalHandles conditionals,
+      DeviceMemory<int32_t> index, int32_t batch_offset,
+      bool enable_conditional_default) override;
+  absl::Status LaunchSetForConditionKernel(ExecutionScopeId execution_scope_id,
+                                           GraphConditionalHandle conditional,
+                                           DeviceMemory<int32_t> loop_counter,
+                                           int32_t iterations) override;
+  absl::Status LaunchSetWhileConditionKernel(
+      ExecutionScopeId execution_scope_id, GraphConditionalHandle conditional,
+      DeviceMemory<bool> predicate) override;
 
-  std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
-      hipGraph_t graph) override;
+  absl::StatusOr<ConditionalNodeResult> CreateConditionalNode(
+      const Dependencies& dependencies, GraphConditionalHandle conditional,
+      ConditionType type) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateMemsetNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      BitPattern bit_pattern, size_t num_elements) override;
+
+  absl::Status UpdateMemsetNode(GraphNodeHandle node_handle,
+                                DeviceMemoryBase destination,
+                                BitPattern bit_pattern,
+                                size_t num_elements) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateMemcpyD2DNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      DeviceMemoryBase source, uint64_t size) override;
+
+  absl::Status UpdateMemcpyD2DNode(GraphNodeHandle node_handle,
+                                   DeviceMemoryBase destination,
+                                   DeviceMemoryBase source,
+                                   uint64_t size) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateChildNode(
+      const Dependencies& dependencies, const CommandBuffer& nested) override;
+
+  absl::Status UpdateChildNode(GraphNodeHandle node_handle,
+                               const CommandBuffer& nested) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateKernelNode(
+      const Dependencies& dependencies, const ThreadDim& threads,
+      const BlockDim& blocks, const Kernel& kernel,
+      const KernelArgsPackedArrayBase& args) override;
+
+  absl::Status UpdateKernelNode(GraphNodeHandle node_handle,
+                                const ThreadDim& threads,
+                                const BlockDim& blocks, const Kernel& kernel,
+                                const KernelArgsPackedArrayBase& args) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateBarrierNode(
+      const Dependencies& dependencies) override;
+
+  absl::Status Trace(Stream* stream,
+                     absl::AnyInvocable<absl::Status()> function) override;
+
+  absl::Status SetNodeExecutionEnabled(GraphNodeHandle node_handle,
+                                       CommandBuffer& root_command_buffer,
+                                       bool enabled) override;
+
+  absl::Status LaunchGraph(Stream* stream) override;
+
+  absl::StatusOr<size_t> GetNodeCount() const override;
+
+  absl::Status PrepareFinalization() override;
+
+  absl::StatusOr<GraphConditionalHandle> CreateConditionalHandle() override;
+
+  absl::Status WriteGraphToDotFile(absl::string_view path) override;
 
   GpuExecutor* parent_;
 };

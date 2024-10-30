@@ -2784,9 +2784,10 @@ class Subgraph {
       case kTfLiteBuiltinSum: {
         const TfLiteReducerParams* reducer_params =
             static_cast<const TfLiteReducerParams*>(node->builtin_data);
-        return VisitSumNode(subgraph, delegate, logging_context, node_index,
-                            node, context->tensors, reducer_params,
-                            input_output_tensors);
+        return VisitReduceNode(BuiltinOperator_SUM, xnn_reduce_sum, subgraph,
+                               delegate, logging_context, node_index, node,
+                               context->tensors, reducer_params,
+                               input_output_tensors);
       }
       case kTfLiteBuiltinMaximum:
         return VisitMaximumNode(subgraph, delegate, logging_context, node_index,
@@ -2794,10 +2795,10 @@ class Subgraph {
       case kTfLiteBuiltinMean: {
         const TfLiteReducerParams* reducer_params =
             static_cast<const TfLiteReducerParams*>(node->builtin_data);
-
-        return VisitMeanNode(subgraph, delegate, logging_context, node_index,
-                             node, context->tensors, reducer_params,
-                             input_output_tensors);
+        return VisitReduceNode(BuiltinOperator_MEAN, xnn_reduce_mean, subgraph,
+                               delegate, logging_context, node_index, node,
+                               context->tensors, reducer_params,
+                               input_output_tensors);
       }
       case kTfLiteBuiltinMinimum:
         return VisitMinimumNode(subgraph, delegate, logging_context, node_index,
@@ -4581,20 +4582,20 @@ class Subgraph {
     return kTfLiteOk;
   }
 
-  static TfLiteStatus VisitSumNode(
-      xnn_subgraph_t subgraph, const Delegate& delegate,
-      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
-      const TfLiteTensor* tensors, const TfLiteReducerParams* reducer_params,
+  static TfLiteStatus VisitReduceNode(
+      const tflite::BuiltinOperator tflite_operator,
+      const xnn_reduce_operator reduce_operator, xnn_subgraph_t subgraph,
+      const Delegate& delegate, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const TfLiteReducerParams* reducer_params,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
-        logging_context, node, 2, 1, BuiltinOperator_SUM, node_index));
+        logging_context, node, 2, 1, tflite_operator, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, input_tensor, node->inputs->data[0], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
-                                           node->inputs->data[0],
-                                           BuiltinOperator_SUM, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
+                                       node->inputs->data[0], node_index));
 
     const TfLiteTensor& axes_tensor = tensors[node->inputs->data[1]];
     TF_LITE_ENSURE_STATUS(CheckTensorType(logging_context, axes_tensor,
@@ -4603,85 +4604,40 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckAxesTensorShape(
         logging_context, axes_tensor, node->inputs->data[1], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-        logging_context, axes_tensor, node->inputs->data[1],
-        BuiltinOperator_SUM, node_index));
+        logging_context, axes_tensor, node->inputs->data[1], tflite_operator,
+        node_index));
 
     const int32_t* axes_data =
         reinterpret_cast<const int32_t*>(axes_tensor.data.data);
     const int num_reduction_axes = NumElements(&axes_tensor);
-    switch (num_reduction_axes) {
-      case 1:
-        if (axes_data[0] != 2) {
-          TF_LITE_MAYBE_KERNEL_LOG(
-              logging_context,
-              "unsupported SUM reduction along non-spatial "
-              "axis %d in node %d",
-              axes_data[0], node_index);
-          return kTfLiteError;
-        }
-        break;
-      case 2:
-        if (std::min(axes_data[0], axes_data[1]) != 1 ||
-            std::max(axes_data[0], axes_data[1]) != 2) {
-          TF_LITE_MAYBE_KERNEL_LOG(
-              logging_context,
-              "unsupported SUM reduction along non-spatial "
-              "axes %d and %d in node %d",
-              std::min(axes_data[0], axes_data[1]),
-              std::max(axes_data[0], axes_data[1]), node_index);
-          return kTfLiteError;
-        }
-        break;
-      default:
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "unsupported SUM reduction along %d axes in node %d",
-            SizeOfDimension(&axes_tensor, 0), node_index);
-        return kTfLiteError;
-    }
-
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
                                        node->outputs->data[0], node_index));
-    int expected_output_dims = 4;
-    uint32_t flags = 0;
-    if (!reducer_params->keep_dims) {
-      expected_output_dims -= num_reduction_axes;
-    } else {
-      flags = XNN_FLAG_KEEP_DIMS;
-    }
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(
-        logging_context, output_tensor, expected_output_dims,
-        node->outputs->data[0], BuiltinOperator_SUM, node_index));
 
-    const float output_min = -std::numeric_limits<float>::infinity();
-    const float output_max = +std::numeric_limits<float>::infinity();
+    uint32_t flags = 0;
+    if (reducer_params->keep_dims) {
+      flags |= XNN_FLAG_KEEP_DIMS;
+    }
 
     if (subgraph != nullptr) {
-      xnn_status status = xnn_status_success;
-      switch (num_reduction_axes) {
-        case 1:
-          status = xnn_define_global_sum_pooling_1d(
-              subgraph, output_min, output_max,
-              /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
-              /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
-              flags);
-          break;
-        case 2:
-          status = xnn_define_global_sum_pooling_2d(
-              subgraph, output_min, output_max,
-              /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
-              /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
-              flags);
-          break;
-        default:
-          status = xnn_status_unsupported_parameter;
-          break;
+      std::array<size_t, XNN_MAX_TENSOR_DIMS> reduction_axes;
+      for (int i = 0; i < num_reduction_axes; ++i) {
+        if (axes_data[i] < 0) {
+          reduction_axes[i] = axes_data[i] + NumDimensions(&input_tensor);
+        } else {
+          reduction_axes[i] = axes_data[i];
+        }
       }
-      if (status != xnn_status_success) {
+      std::sort(&reduction_axes[0], &reduction_axes[num_reduction_axes]);
+      if (xnn_define_static_reduce(
+              subgraph, reduce_operator, num_reduction_axes,
+              reduction_axes.data(),
+              /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
+              /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
+              flags) != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
-                           EnumNameBuiltinOperator(BuiltinOperator_SUM),
+                           EnumNameBuiltinOperator(tflite_operator),
                            node_index);
         return kTfLiteError;
       }
@@ -4720,68 +4676,6 @@ class Subgraph {
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
                            EnumNameBuiltinOperator(BuiltinOperator_MAXIMUM),
-                           node_index);
-        return kTfLiteError;
-      }
-    }
-
-    return kTfLiteOk;
-  }
-
-  static TfLiteStatus VisitMeanNode(
-      xnn_subgraph_t subgraph, const Delegate& delegate,
-      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
-      const TfLiteTensor* tensors, const TfLiteReducerParams* reducer_params,
-      const std::unordered_map<int, uint32_t>& input_output_tensors) {
-    TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
-        logging_context, node, 2, 1, BuiltinOperator_MEAN, node_index));
-
-    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
-                                       node->inputs->data[0], node_index));
-
-    const TfLiteTensor& axes_tensor = tensors[node->inputs->data[1]];
-    TF_LITE_ENSURE_STATUS(CheckTensorType(logging_context, axes_tensor,
-                                          kTfLiteInt32, node->inputs->data[1],
-                                          node_index));
-    TF_LITE_ENSURE_STATUS(CheckAxesTensorShape(
-        logging_context, axes_tensor, node->inputs->data[1], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-        logging_context, axes_tensor, node->inputs->data[1],
-        BuiltinOperator_MEAN, node_index));
-
-    const int32_t* axes_data =
-        reinterpret_cast<const int32_t*>(axes_tensor.data.data);
-    const int num_reduction_axes = NumElements(&axes_tensor);
-    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
-                                       node->outputs->data[0], node_index));
-    int expected_output_dims = 4;
-    if (!reducer_params->keep_dims) {
-      expected_output_dims -= num_reduction_axes;
-    }
-
-    if (subgraph != nullptr) {
-      uint32_t flags = reducer_params->keep_dims ? XNN_FLAG_KEEP_DIMS : 0;
-      xnn_status status = xnn_status_success;
-      std::array<size_t, XNN_MAX_TENSOR_DIMS> reduction_axes;
-      for (int i = 0; i < num_reduction_axes; ++i) {
-        if (axes_data[i] < 0) {
-          reduction_axes[i] = axes_data[i] + NumDimensions(&input_tensor);
-        } else {
-          reduction_axes[i] = axes_data[i];
-        }
-      }
-      std::sort(&reduction_axes[0], &reduction_axes[num_reduction_axes]);
-      status = xnn_define_static_mean(
-          subgraph, num_reduction_axes, reduction_axes.data(),
-          /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
-          /*output_id=*/input_output_tensors.at(node->outputs->data[0]), flags);
-      if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
-                           EnumNameBuiltinOperator(BuiltinOperator_MEAN),
                            node_index);
         return kTfLiteError;
       }

@@ -2184,6 +2184,59 @@ ENTRY AllToAllWithSubgroupsIotaList {
 )",
 /*replica_count=*/40
 },
+// ragged-all-to-all
+{
+"RaggedAllToAllWithReplicaGroups",
+R"(HloModule RaggedAllToAll, entry_computation_layout={(bf16[1024,256]{1,0}, bf16[1024,256]{1,0}, s32[8]{0}, s32[8]{0}, s32[8]{0}, /*index=5*/s32[8]{0})->bf16[1024,256]{1,0}}, replica_count=8
+
+ENTRY AllToAll {
+  input = bf16[1024,256]{1,0} parameter(0)
+  output = bf16[1024,256]{1,0} parameter(1)
+  input_offsets = s32[8]{0} parameter(2)
+  input_sizes = s32[8]{0} parameter(3)
+  output_offsets = s32[8]{0} parameter(4)
+  output_sizes = s32[8]{0} parameter(5)
+  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, input_sizes, output_offsets, output_sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+}
+
+)",
+/*replica_count=*/8
+},
+// ragged-all-to-all
+{
+"RaggedAllToAllWithCollectiveDeviceList",
+R"(HloModule RaggedAllToAll, entry_computation_layout={(bf16[1024,256]{1,0}, bf16[1024,256]{1,0}, s32[8]{0}, s32[8]{0}, s32[8]{0}, /*index=5*/s32[8]{0})->bf16[1024,256]{1,0}}, replica_count=8
+
+ENTRY AllToAll {
+  input = bf16[1024,256]{1,0} parameter(0)
+  output = bf16[1024,256]{1,0} parameter(1)
+  input_offsets = s32[8]{0} parameter(2)
+  input_sizes = s32[8]{0} parameter(3)
+  output_offsets = s32[8]{0} parameter(4)
+  output_sizes = s32[8]{0} parameter(5)
+  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, input_sizes, output_offsets, output_sizes), replica_groups=[2,4]<=[4,2]T(1,0)
+}
+
+)",
+/*replica_count=*/8
+},
+// ragged-all-to-all
+{
+"RaggedAllToAll",
+R"(HloModule RaggedAllToAll, entry_computation_layout={(bf16[1024,256]{1,0}, bf16[1024,256]{1,0}, s32[8]{0}, s32[8]{0}, s32[8]{0}, /*index=5*/s32[8]{0})->bf16[1024,256]{1,0}}, replica_count=8
+
+ENTRY AllToAll {
+  input = bf16[1024,256]{1,0} parameter(0)
+  output = bf16[1024,256]{1,0} parameter(1)
+  input_offsets = s32[8]{0} parameter(2)
+  input_sizes = s32[8]{0} parameter(3)
+  output_offsets = s32[8]{0} parameter(4)
+  output_sizes = s32[8]{0} parameter(5)
+  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, input_sizes, output_offsets, output_sizes), replica_groups={}
+}
+
+)"
+},
 // collective-broadcast
 {
 "CollectiveBroadcast",

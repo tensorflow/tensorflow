@@ -149,7 +149,7 @@ class PriorityFusionQueue {
                       mlir::MLIRContext* mlir_context,
                       HloFusionAnalysisCache& fusion_analysis_cache,
                       FusionDeduplicationCache& fusion_deduplication_cache,
-                      bool triton_softmax_priority_fusion_enabled)
+                      bool triton_heroless_fusion_enabled)
       : computation_(computation),
         device_info_(device_info),
         cost_analysis_(cost_analysis_options, *device_info),
@@ -161,8 +161,7 @@ class PriorityFusionQueue {
         mlir_context_(mlir_context),
         fusion_analysis_cache_(fusion_analysis_cache),
         fusion_deduplication_cache_(fusion_deduplication_cache),
-        triton_softmax_priority_fusion_enabled_(
-            triton_softmax_priority_fusion_enabled) {
+        triton_heroless_fusion_enabled_(triton_heroless_fusion_enabled) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
     TF_CHECK_OK(computation_->Accept(&cost_analysis_));
 
@@ -610,8 +609,9 @@ class PriorityFusionQueue {
 
   FusionDecision CanFuseTriton(HloInstruction* producer,
                                HloInstruction* consumer) {
-    if (!triton_softmax_priority_fusion_enabled_) {
-      return FusionDecision::Forbid("triton softmax fusion is not enabled");
+    if (!IsGenericTritonFusion(*producer) &&
+        !IsGenericTritonFusion(*consumer) && !triton_heroless_fusion_enabled_) {
+      return FusionDecision::Forbid("triton heroless fusion is not enabled");
     }
 
     if (auto fusion_decision = IsTritonSupported(*producer); !fusion_decision) {
@@ -646,6 +646,15 @@ class PriorityFusionQueue {
   }
 
   FusionDecision CanFuse(HloInstruction* producer, HloInstruction* consumer) {
+    // Don't fuse across a root instruction. There are situation when a root
+    // instruction is not the last in the computation. Instructions after the
+    // root are not necessary dead. They can be inputs to instructions with side
+    // effects, like outfeed.
+    if (producer == producer->parent()->root_instruction()) {
+      return FusionDecision::Forbid(
+          "not fusing into the output of the root instruction");
+    }
+
     if (!IsFusible(*producer)) {
       return FusionDecision::Forbid("the producer is not fusible");
     }
@@ -654,8 +663,17 @@ class PriorityFusionQueue {
       return FusionDecision::Forbid("the consumer is not fusible");
     }
 
-    if (IsGenericTritonFusion(*producer) || IsGenericTritonFusion(*consumer)) {
-      return CanFuseTriton(producer, consumer);
+    // Fusing with Triton is our preferred choice. If the producer-consumer
+    // fusion is supported by Triton and all necessary flags are enabled, the
+    // result will be a Triton fusion. If either `producer` or `consumer` is
+    // already a Triton fusion, we can fuse only if the result will also be a
+    // Triton fusion.
+    //
+    // Otherwise, we'll check if the fusion is supported by the emitter.
+    FusionDecision can_fuse_triton = CanFuseTriton(producer, consumer);
+    if (IsGenericTritonFusion(*producer) || IsGenericTritonFusion(*consumer) ||
+        can_fuse_triton) {
+      return can_fuse_triton;
     }
 
     if (consumer->opcode() == HloOpcode::kBitcast) {
@@ -726,15 +744,6 @@ class PriorityFusionQueue {
     if (cost_analysis_.ProducerConsumerMergedTooLarge(*producer, *consumer)) {
       return FusionDecision::Forbid(
           "the fusion would result in an overly large code duplication");
-    }
-
-    // Don't fuse across a root instruction. There are situation when a root
-    // instruction is not the last in the computation. Instructions after the
-    // root are not necessary dead. They can be inputs to instructions with side
-    // effects, like outfeed.
-    if (producer == producer->parent()->root_instruction()) {
-      return FusionDecision::Forbid(
-          "not fusing into the output of the root instruction");
     }
 
     return InstructionFusion::ShouldFuseInPlaceOp(producer, consumer);
@@ -867,7 +876,8 @@ class PriorityFusionQueue {
   // like shared memory usage or number of unnested reductions of fusion nodes.
   FusionInfoCache fusion_info_cache_;
 
-  bool triton_softmax_priority_fusion_enabled_;
+  // If true, redirect all fusion decisions to Triton fusion.
+  bool triton_heroless_fusion_enabled_;
 
   bool dump_fusion_visualization_;
 };
@@ -962,13 +972,13 @@ absl::StatusOr<bool> PriorityFusion::Run(
         module->ToString(HloPrintOptions::ShortParsable()));
   }
 
-  bool triton_softmax_priority_fusion_enabled =
+  bool triton_heroless_fusion_enabled =
       module->config()
           .debug_options()
-          .xla_gpu_experimental_enable_triton_softmax_priority_fusion();
+          .xla_gpu_experimental_enable_triton_heroless_priority_fusion();
 
   FusionDeduplicationCache fusion_deduplication_cache =
-      FusionDeduplicationCache::Create(*module);
+      FusionDeduplicationCache::Create(*module, IsFusible);
 
   int changed = false;
   for (auto* computation : fusible_computations) {
@@ -978,7 +988,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
         computation, cost_analysis_options_, &device_info_,
         fusion_process_dump_.get(), thread_pool_, &mlir_context_,
         fusion_analysis_cache_, fusion_deduplication_cache,
-        triton_softmax_priority_fusion_enabled);
+        triton_heroless_fusion_enabled);
 
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();
@@ -1011,6 +1021,8 @@ absl::StatusOr<bool> PriorityFusion::Run(
         if (backend_config_it != block_level_parameters_map.end()) {
           TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(
               GetTritonGpuBackendConfig(backend_config_it->second)));
+          fusion_instruction->set_fusion_kind(
+              HloInstruction::FusionKind::kCustom);
         }
 
         changed = true;

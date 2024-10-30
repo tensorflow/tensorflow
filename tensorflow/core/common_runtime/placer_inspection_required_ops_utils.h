@@ -59,7 +59,7 @@ class PlacerInspectionRequiredOpChecker {
   // returning a resource. This definition is driven by Placer's need to
   // look inside the op.
   // REQUIRES: `node` is part of `graph` passed into constructor.
-  Status IsPlacerInspectionRequired(const Node& node, bool* is_deep);
+  absl::Status IsPlacerInspectionRequired(const Node& node, bool* is_deep);
 
  private:
   const Graph& graph_;
@@ -72,10 +72,10 @@ class PlacerInspectionRequiredOpChecker {
 
 // Extracts `fdef` and `func` from `flib_def` for the function identified
 // in "f" attribute of `node`.
-Status GetFunctionDefAndAttrs(const FunctionLibraryDefinition& flib_def,
-                              const Node& node,
-                              core::RefCountPtr<FunctionRecord>* fdef,
-                              NameAttrList* func);
+absl::Status GetFunctionDefAndAttrs(const FunctionLibraryDefinition& flib_def,
+                                    const Node& node,
+                                    core::RefCountPtr<FunctionRecord>* fdef,
+                                    NameAttrList* func);
 
 // The "call" stack of functions.
 // Useful for better error messages as well as for detecting recursion.
@@ -149,7 +149,7 @@ class FunctionStack {
 //         v
 //         y
 //
-Status IsolatePlacerInspectionRequiredOps(
+absl::Status IsolatePlacerInspectionRequiredOps(
     const FunctionLibraryDefinition& flib_def, Graph* graph);
 
 }  // namespace tensorflow

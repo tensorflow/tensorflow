@@ -63,16 +63,18 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
 
 // Serializes an MLIR module to a portable artifact with forward and backward
 // compatibility. Supports modules using StableHLO/MHLO/CHLO/Func dialects.
-// Target parameter is a StableHLO version string ("0.9.0") which can be used
-// for forward compatibility to specify the target downgrade version.
-// Most commonly should use:
+// The `requested_target` parameter is a StableHLO version string ("0.9.0")
+// which can be used for forward compatibility to specify the target downgrade
+// version. Most commonly should use:
 //   `mlir::stablehlo::getCurrentVersion()` for backward compat but not forward.
 //   `mlir::stablehlo::getMinimumVersion()` for maximum forward compatibility.
-// Ideally should be the `mlir::stablehlo::getCurrentVersion()` of the plugin.
-// If program contains dialects that aren't supposed in StableHLO portable
-// artifacts, use SerializeUsingNativeBytecode.
+// In PJRT, the `requested_target` should be the current version of the PJRT
+// plugin. Serialize will use `min(framework_version, plugin_version)` to
+// serialize. If program contains dialects that aren't supported in StableHLO
+// portable artifacts, use SerializeUsingNativeBytecode.
 absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
-    mlir::ModuleOp mlir_module, absl::string_view target, bool inplace = false);
+    mlir::ModuleOp mlir_module, absl::string_view requested_target,
+    bool inplace = false);
 
 // Given a module that might be a portable artifact, deserialize and upgrade it
 // back to StableHLO.

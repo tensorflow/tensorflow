@@ -42,13 +42,13 @@ class GraphAnalyzer {
   virtual ~GraphAnalyzer();
 
   // Performs the analysis and collects the subgraphs.
-  Status Run();
+  absl::Status Run();
 
   // Returns the subgraphs found in Run() printed to text.
   std::vector<string> DumpSubgraphs();
 
   // Prints the subgraphs found in Run() to stdout.
-  Status OutputSubgraphs();
+  absl::Status OutputSubgraphs();
 
   // TODO(babkin): add a way to extract the subgraphs as direct data
   // structures and as protobufs, and to write protobufs to a RecordIO.
@@ -61,7 +61,7 @@ class GraphAnalyzer {
   friend class tensorflow::grappler::graph_analyzer::test::GraphAnalyzerTest;
 
   // Builds the map of nodes from the original graph definition.
-  Status BuildMap();
+  absl::Status BuildMap();
 
   // Using nodes_, finds all the subgraphs of size subgraph_size_ and places
   // them into result_.
@@ -74,7 +74,7 @@ class GraphAnalyzer {
   void DropInvalidSubgraphs();
 
   // Deletes from result_ duplicate entries of equivalent topology.
-  Status CollateResult();
+  absl::Status CollateResult();
 
   // Returns the raw subgraphs found in FindSubgraphs() printed to text.
   std::vector<string> DumpRawSubgraphs();

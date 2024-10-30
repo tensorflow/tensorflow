@@ -144,7 +144,8 @@ struct ScalarHloToArithmeticPattern : public OpConversionPattern<OpTy> {
           rewriter.create<tensor::ExtractOp>(loc, operand, ValueRange()));
     }
     Value scalarResult = mhlo::MhloOpToStdScalarOp::mapOp(
-        op, resultTy->getElementType(), operands, &rewriter);
+        op, resultTy->getElementType(), operands, /*attributes=*/std::nullopt,
+        &rewriter);
     if (!scalarResult) return failure();
     rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, *resultTy,
                                                         scalarResult);

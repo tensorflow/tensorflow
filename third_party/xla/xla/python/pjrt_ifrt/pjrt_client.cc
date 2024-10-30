@@ -185,21 +185,17 @@ absl::StatusOr<tsl::RCReference<Array>> MakeStringArrayFromHostBuffer(
   TF_RETURN_IF_ERROR(param_validation);
 
   auto num_elements = shape.num_elements();
-  auto strings = std::make_shared<std::vector<std::string>>();
+  auto strings = std::make_shared<std::vector<absl::Cord>>();
   strings->reserve(num_elements);
-  auto string_views = std::make_shared<std::vector<absl::string_view>>();
-  string_views->reserve(num_elements);
-  auto element = static_cast<const absl::string_view*>(data);
+  auto element = static_cast<const absl::Cord*>(data);
   for (int i = 0; i < num_elements; ++i, ++element) {
-    strings->push_back(std::string(*element));
-    string_views->push_back(absl::string_view(strings->back()));
+    strings->push_back(*element);
   }
   std::move(on_done_with_host_buffer)();
 
   BasicStringArray::Buffers buffers;
-  buffers.push_back(*string_views);
-  auto buffer_releaser = [strings = std::move(strings),
-                          string_views = std::move(string_views)]() {};
+  buffers.push_back(*strings);
+  auto buffer_releaser = [strings = std::move(strings)]() {};
 
   return BasicStringArray::Create(
       client, std::move(shape), std::move(sharding),
@@ -224,28 +220,21 @@ AssembleStringArrayFromSingleDeviceStringArrays(
   // string_views underlying a BasicString::Buffer.  Not thread safe.
   struct BufferBackingStore {
     explicit BufferBackingStore(int num_shards)
-        : per_shard_strings(num_shards), per_shard_string_views(num_shards) {}
+        : per_shard_strings(num_shards) {}
     void clear() {
       per_shard_strings.clear();
-      per_shard_string_views.clear();
     }
-    void CopyBuffer(absl::Span<const absl::string_view> strbuf, int shard_index,
+
+    void CopyBuffer(absl::Span<const absl::Cord> strbuf, int shard_index,
                     BasicStringArray::Buffers* buffers) {
       auto& strings = per_shard_strings[shard_index];
       strings.reserve(strbuf.size());
-      auto& views = per_shard_string_views[shard_index];
-      views.reserve(strbuf.size());
-
       for (int i = 0; i < strbuf.size(); ++i) {
-        strings.push_back(std::string(strbuf[i].data(), strbuf[i].size()));
+        strings.push_back(strbuf[i]);
       }
-      for (const auto& str : strings) {
-        views.push_back(str);
-      }
-      (*buffers)[shard_index] = absl::MakeConstSpan(views);
+      (*buffers)[shard_index] = absl::MakeConstSpan(strings);
     }
-    std::vector<std::vector<std::string>> per_shard_strings;
-    std::vector<std::vector<absl::string_view>> per_shard_string_views;
+    std::vector<std::vector<absl::Cord>> per_shard_strings;
   };
   auto buffer_backing_store =
       std::make_shared<BufferBackingStore>(sharding->devices()->size());

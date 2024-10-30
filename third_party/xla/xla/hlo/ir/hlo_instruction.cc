@@ -747,6 +747,18 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           proto.constrain_layout(), channel_id, split_dimension);
       break;
     }
+    case HloOpcode::kRaggedAllToAll: {
+      std::optional<int64_t> channel_id;
+      if (proto.channel_id() > 0) {
+        channel_id = proto.channel_id();
+      }
+      TF_RET_CHECK(all_operands().size() == 6)
+          << "RaggedAllToAll must have 6 operands";
+      instruction = CreateRaggedAllToAll(shape, all_operands(),
+                                         CollectiveDeviceList::FromProto(proto),
+                                         channel_id);
+      break;
+    }
     case HloOpcode::kCollectiveBroadcast: {
       std::optional<int64_t> channel_id;
       if (proto.channel_id() > 0) {
@@ -1658,6 +1670,24 @@ HloInstruction::CreateAllReduceStart(
     const std::optional<int64_t>& split_dimension) {
   return CreateAllToAll(shape, operands, CollectiveDeviceList(replica_groups),
                         constrain_layout, channel_id, split_dimension);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateRaggedAllToAll(const Shape& shape,
+                                     absl::Span<HloInstruction* const> operands,
+                                     const CollectiveDeviceList& device_list,
+                                     const std::optional<int64_t>& channel_id) {
+  return std::make_unique<HloRaggedAllToAllInstruction>(
+      shape, operands, device_list, channel_id);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateRaggedAllToAll(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<int64_t>& channel_id) {
+  return CreateRaggedAllToAll(shape, operands,
+                              CollectiveDeviceList(replica_groups), channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -4357,6 +4387,8 @@ absl::Status HloInstruction::Visit(
       return visitor->HandleAllReduceDone(this);
     case HloOpcode::kAllToAll:
       return visitor->HandleAllToAll(this);
+    case HloOpcode::kRaggedAllToAll:
+      return visitor->HandleRaggedAllToAll(this);
     case HloOpcode::kCollectiveBroadcast:
       return visitor->HandleCollectiveBroadcast(this);
     case HloOpcode::kCollectivePermute:

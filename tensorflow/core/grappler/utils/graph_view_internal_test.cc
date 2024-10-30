@@ -55,7 +55,7 @@ using MutableNodeViewDiff = NodeViewDiff<MutableGraphView>;
 TEST(MutableNodeViewDiffTest, UpdateName) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -79,7 +79,7 @@ TEST(MutableNodeViewDiffTest, UpdateName) {
 TEST(MutableNodeViewDiffTest, UpdateOp) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -103,7 +103,7 @@ TEST(MutableNodeViewDiffTest, UpdateOp) {
 TEST(MutableNodeViewDiffTest, UpdateDevice) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -127,7 +127,7 @@ TEST(MutableNodeViewDiffTest, UpdateDevice) {
 TEST(MutableNodeViewDiffTest, AddOrUpdateRegularFanin) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -173,7 +173,7 @@ TEST(MutableNodeViewDiffTest, AddOrUpdateRegularFanin) {
 TEST(MutableNodeViewDiffTest, AddOrUpdateRegularFaninBetweenRemovedFanins) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -212,7 +212,7 @@ TEST(MutableNodeViewDiffTest, AddOrUpdateRegularFaninBetweenRemovedFanins) {
 TEST(MutableNodeViewDiffTest, RemoveRegularFanin) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -296,7 +296,7 @@ TEST(MutableNodeViewDiffTest, RemoveRegularFanin) {
 TEST(MutableNodeViewDiffTest, RemoveRegularFaninResize) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -331,7 +331,7 @@ TEST(MutableNodeViewDiffTest, RemoveRegularFaninResize) {
 TEST(MutableNodeViewDiffTest, AddControllingFanin) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -355,7 +355,7 @@ TEST(MutableNodeViewDiffTest, AddControllingFanin) {
 TEST(MutableNodeViewDiffTest, RemoveControllingFanin) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -387,7 +387,7 @@ TEST(MutableNodeViewDiffTest, RemoveControllingFanin) {
 TEST(MutableNodeViewDiffTest, AddOrUpdateAttribute) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -415,7 +415,7 @@ TEST(MutableNodeViewDiffTest, AddOrUpdateAttribute) {
 TEST(MutableNodeViewDiffTest, RemoveAttribute) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -445,7 +445,7 @@ TEST(MutableNodeViewDiffTest, RemoveAttribute) {
 TEST(MutableNodeViewDiffTest, Reset) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -479,7 +479,7 @@ TEST(MutableNodeViewDiffTest, Reset) {
 TEST(MutableNodeViewDiffTest, IsWellFormedWithRemovedAndAppendedFanins) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -503,7 +503,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedWithRemovedAndAppendedFanins) {
 TEST(MutableNodeViewDiffTest, IsWellFormedSelfLoopRegularUpdate) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -523,7 +523,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedSelfLoopRegularUpdate) {
 TEST(MutableNodeViewDiffTest, IsWellFormedSelfLoopRegularNew) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -543,7 +543,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedSelfLoopRegularNew) {
 TEST(MutableNodeViewDiffTest, IsWellFormedSelfLoopControl) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -563,7 +563,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedSelfLoopControl) {
 TEST(MutableNodeViewDiffTest, IsWellFormedMissingFaninRegularUpdate) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -583,7 +583,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedMissingFaninRegularUpdate) {
 TEST(MutableNodeViewDiffTest, IsWellFormedMissingFaninRegularNew) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -603,7 +603,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedMissingFaninRegularNew) {
 TEST(MutableNodeViewDiffTest, IsWellFormedMissingControl) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -623,7 +623,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedMissingControl) {
 TEST(MutableNodeViewDiffTest, IsWellFormedRenamedSelfLoopRegularUpdate) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -653,7 +653,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedRenamedSelfLoopRegularUpdate) {
 TEST(MutableNodeViewDiffTest, IsWellFormedRenamedSelfLoopRegularNew) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -683,7 +683,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedRenamedSelfLoopRegularNew) {
 TEST(MutableNodeViewDiffTest, IsWellFormedRenamedSelfLoopControl) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -713,7 +713,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedRenamedSelfLoopControl) {
 TEST(MutableNodeViewDiffTest, IsWellFormedRenamedMissingFaninRegularUpdate) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -743,7 +743,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedRenamedMissingFaninRegularUpdate) {
 TEST(MutableNodeViewDiffTest, IsWellFormedRenamedMissingFaninRegularNew) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -773,7 +773,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedRenamedMissingFaninRegularNew) {
 TEST(MutableNodeViewDiffTest, IsWellFormedRenamedMissingFaninControl) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -803,7 +803,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedRenamedMissingFaninControl) {
 TEST(MutableNodeViewDiffTest, RenamedAndRemovedFanins) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -837,7 +837,7 @@ TEST(MutableNodeViewDiffTest, RenamedAndRemovedFanins) {
 TEST(MutableNodeViewDiffTest, RenamedWithSelfLoopControl) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -861,7 +861,7 @@ using MutationNewNodeForTest = NewNode<MutableGraphView>;
 TEST(MutationNewNodeTest, UpdateName) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -878,7 +878,7 @@ TEST(MutationNewNodeTest, UpdateName) {
 TEST(MutationNewNodeTest, UpdateOp) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -895,7 +895,7 @@ TEST(MutationNewNodeTest, UpdateOp) {
 TEST(MutationNewNodeTest, UpdateDevice) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -912,7 +912,7 @@ TEST(MutationNewNodeTest, UpdateDevice) {
 TEST(MutationNewNodeTest, AddOrUpdateRegularFanin) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -954,7 +954,7 @@ TEST(MutationNewNodeTest, AddOrUpdateRegularFanin) {
 TEST(MutationNewNodeTest, RemoveRegularFanin) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -983,7 +983,7 @@ TEST(MutationNewNodeTest, RemoveRegularFanin) {
 TEST(MutationNewNodeTest, AddControllingFanin) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -1013,7 +1013,7 @@ TEST(MutationNewNodeTest, AddControllingFanin) {
 TEST(MutationNewNodeTest, RemoveControllingFanin) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -1040,7 +1040,7 @@ TEST(MutationNewNodeTest, RemoveControllingFanin) {
 TEST(MutationNewNodeTest, AddOrUpdateAttribute) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);
@@ -1062,7 +1062,7 @@ TEST(MutationNewNodeTest, AddOrUpdateAttribute) {
 TEST(MutationNewNodeTest, RemoveAttribute) {
   GraphDef graph = SimpleTestGraphForMutation();
 
-  Status s;
+  absl::Status s;
   MutableGraphView graph_view(&graph, &s);
   TF_ASSERT_OK(s);
   auto updated_node_names = GetUpdatedNodeNames(&graph_view);

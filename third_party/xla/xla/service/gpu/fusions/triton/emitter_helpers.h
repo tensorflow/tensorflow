@@ -193,11 +193,6 @@ absl::StatusOr<mlir::Value> EmitElementwise(
     const se::DeviceDescription& device_info, const HloInstruction& hlo,
     mlir::ValueRange inputs);
 
-// Emit sequence of operations for unpacking 2xi4 -> i8.
-absl::StatusOr<mlir::Value> EmitUnpackInt4(mlir::ImplicitLocOpBuilder& b,
-                                           const HloInstruction* hlo,
-                                           int64_t unpack_dim_idx,
-                                           mlir::Value value);
 }  // namespace xla::gpu::triton
 
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_EMITTER_HELPERS_H_

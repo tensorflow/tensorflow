@@ -176,6 +176,7 @@ limitations under the License.
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
 #include "xla/service/gpu/transforms/algorithm_checker.h"
+#include "xla/service/gpu/transforms/all_gather_dynamic_slice_simplifier.h"
 #include "xla/service/gpu/transforms/all_gather_optimizer.h"
 #include "xla/service/gpu/transforms/all_reduce_blueconnect.h"
 #include "xla/service/gpu/transforms/all_reduce_splitter.h"
@@ -190,6 +191,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/gpu/transforms/dot_dimension_sorter.h"
+#include "xla/service/gpu/transforms/dot_normalizer.h"
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
@@ -860,6 +862,7 @@ absl::Status RunCollectiveOptimizationPasses(
   collectives_pipeline.AddPass<AllReduceFolder>();
   collectives_pipeline.AddPass<AllReduceSplitter>();
   collectives_pipeline.AddPass<AllGatherOptimizer>();
+  collectives_pipeline.AddPass<AllGatherDynamicSliceSimplifier>();
   collectives_pipeline.AddPass<AllReduceReassociate>(
       debug_options.xla_gpu_enable_reassociation_for_converted_ar());
   collectives_pipeline.AddPass<ReduceScatterReassociate>();
@@ -1504,6 +1507,11 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
     const auto* rocm_cc = std::get_if<se::RocmComputeCapability>(&gpu_version);
 
+    // Make sure that dots have at least 1 contracting dimension in the
+    // operands. Needs to happen shortly before the dot rewrite, as otherwise
+    // AlgebraicSimplifier will simplify it away again.
+    // TODO(b/375566188): Figure out whether we can get rid of this pass.
+    pipeline.AddPass<DotNormalizer>();
     if (debug_options.xla_gpu_enable_triton_gemm() &&
         (cuda_cc != nullptr &&
          cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE))) {
@@ -1563,11 +1571,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();
-    // Do not split small reduction dimensions unless priority fusion is
-    // enabled, which handles such cases well.
-    bool ignore_small_reduce_dims =
-        !debug_options.xla_gpu_enable_priority_fusion();
-    pipeline.AddPass<HloPassFix<ReductionSplitter>>(ignore_small_reduce_dims);
+    pipeline.AddPass<HloPassFix<ReductionSplitter>>(
+        /*ignore_small_reduce_dims=*/false);
     pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(gpu_version);
     // Normalization passes might have introduced s4 tensors without bit width
     // annotations, this pass will add the annotations.
@@ -2223,12 +2228,9 @@ GpuCompiler::CompileToBackendResult(
 
   // Test whether LinkModules is supported.
   bool can_use_link_modules = (executor != nullptr);
-  se::GpuComputeCapability gpu_compute_capability =
-      gpu_device_info.gpu_compute_capability();
   if (can_use_link_modules) {
-    TF_ASSIGN_OR_RETURN(
-        can_use_link_modules,
-        CanUseLinkModules(module->config(), gpu_compute_capability));
+    TF_ASSIGN_OR_RETURN(can_use_link_modules,
+                        CanUseLinkModules(module->config()));
   }
   const bool split_modules =
       can_use_link_modules &&
@@ -2300,6 +2302,9 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     return absl::StrFormat("XlaCompileBackend:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());
   }};
+
+  RecordGpuCompilerStacktrace();
+
   BinaryMap dnn_compiled_graphs;
   if (stream_exec) {
     TF_RETURN_IF_ERROR(RunCudnnCompilerPasses(module.get(), stream_exec,
@@ -2634,7 +2639,8 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     pipeline.AddPass<SanitizeConstantNames>();
   }
 
-  if (module->config().debug_options().xla_gpu_enable_pgle_accuracy_checker()) {
+  if (module->config().debug_options().xla_gpu_pgle_accuracy_checker() ==
+      DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR) {
     AddHloVerifier(
         &main_pipeline,
         module->config().debug_options().xla_experimental_ignore_channel_id(),

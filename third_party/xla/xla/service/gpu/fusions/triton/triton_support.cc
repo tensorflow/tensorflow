@@ -44,7 +44,6 @@ bool IsTritonSupportedDataType(PrimitiveType type,
                                const se::GpuComputeCapability& gpu_version) {
   switch (type) {
     case PRED:
-    case S4:
     case S8:
     case S16:
     case S32:
@@ -90,7 +89,9 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
     ret.insert(HloOpcode::kNot);
   }
 
-  if (element_type == PrimitiveType::F32 ||
+  if (element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F16 ||
+      element_type == PrimitiveType::F32 ||
       element_type == PrimitiveType::F64) {
     absl::flat_hash_set<HloOpcode> additional_opcodes{
         HloOpcode::kCos,   HloOpcode::kExp,   HloOpcode::kExpm1,
@@ -98,13 +99,6 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
         HloOpcode::kLog1p, HloOpcode::kRsqrt, HloOpcode::kSin,
         HloOpcode::kSqrt,  HloOpcode::kCbrt,  HloOpcode::kTan,
         HloOpcode::kTanh,  HloOpcode::kErf};
-    ret.insert(additional_opcodes.begin(), additional_opcodes.end());
-  }
-
-  if (element_type == PrimitiveType::BF16 ||
-      element_type == PrimitiveType::F16) {
-    absl::flat_hash_set<HloOpcode> additional_opcodes{HloOpcode::kFloor,
-                                                      HloOpcode::kCeil};
     ret.insert(additional_opcodes.begin(), additional_opcodes.end());
   }
 
@@ -143,8 +137,7 @@ CodegenDecision IsTritonSupportedConversion(
   }
 
   if (IsTritonSupportedDataType(input, gpu_version) &&
-      (IsTritonSupportedDataType(output, gpu_version) ||
-       output == PrimitiveType::S4)) {
+      IsTritonSupportedDataType(output, gpu_version)) {
     return CodegenDecision::Allow();
   }
 
@@ -186,6 +179,12 @@ absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
     ret.insert(HloOpcode::kDivide);
     ret.insert(HloOpcode::kRemainder);
     ret.insert(HloOpcode::kPower);
+  }
+  if (element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F16) {
+    ret.insert(HloOpcode::kAtan2);
+    ret.insert(HloOpcode::kPower);
+    ret.insert(HloOpcode::kRemainder);
   }
 
   return ret;
@@ -322,13 +321,9 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kTranspose:
     case HloOpcode::kParameter:
     case HloOpcode::kBroadcast:
-      return CodegenDecision::Allow();
     case HloOpcode::kBitcast:
-
     case HloOpcode::kReshape:
-      return (instr.shape().rank() == 0 && instr.operand(0)->shape().rank() > 0)
-                 ? CodegenDecision::Forbid("0D reshapes are not yet supported.")
-                 : CodegenDecision::Allow();
+      return CodegenDecision::Allow();
     default:
       VLOG(2) << "Unsupported instruction: " << instr.ToString();
       break;

@@ -596,6 +596,7 @@ bool IsNonFusionCollective(const HloInstruction* instruction) {
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReduceScatter:
       return true;
     case HloOpcode::kAsyncStart:

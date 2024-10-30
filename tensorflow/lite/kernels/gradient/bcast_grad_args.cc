@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"

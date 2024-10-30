@@ -16,10 +16,17 @@ limitations under the License.
 #include "xla/service/gpu/metrics.h"
 
 #include <cstdint>
+#include <deque>
+#include <string>
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/monitoring/counter.h"
 #include "xla/tsl/lib/monitoring/gauge.h"
 #include "xla/tsl/lib/monitoring/sampler.h"
+#include "tsl/platform/stacktrace.h"
 
 namespace xla {
 namespace {
@@ -39,6 +46,10 @@ auto* compiled_programs_count = tsl::monitoring::Counter<0>::New(
 auto* xla_device_binary_size = tsl::monitoring::Gauge<int64_t, 0>::New(
     "/xla/service/gpu/xla_device_binary_size",
     "The size of the XLA binary loaded onto the GPU device.");
+
+auto* gpu_compiler_stacktrace_count = tsl::monitoring::Counter<1>::New(
+    "/xla/service/gpu/compiler_stacktrace_count",
+    "The number of times a compiler stacktrace was called.", "stacktrace");
 
 }  // namespace
 
@@ -91,6 +102,33 @@ void ResetCompiledProgramsCountForTesting() {
 
 void RecordXlaDeviceBinarySize(const int64_t size) {
   xla_device_binary_size->GetCell()->Set(size);
+}
+
+void RecordGpuCompilerStacktrace() {
+  std::string tsl_stacktrace = tsl::CurrentStackTrace();
+
+  // tsl::CurrentStackTrace() adds a prefix and postfix lines, so remove them.
+  std::deque<std::string> stack = absl::StrSplit(tsl_stacktrace, '\n');
+  stack.pop_front();
+  stack.pop_back();
+
+  // Stack traces with addresses would make too many unique streamz cells.
+  // We only care about the actual call stack.
+  // Format chars added by tsl::CurrentStackTrace().
+  constexpr unsigned kFormatChars = 8;
+  constexpr unsigned kAddressFormat = kFormatChars + 2 * sizeof(void*);
+  for (int i = 0; i < stack.size(); ++i) {
+    stack[i] = std::string(absl::StripAsciiWhitespace(
+        absl::ClippedSubstr(stack[i], kAddressFormat)));
+  }
+
+  std::string stacktrace = absl::StrJoin(stack, ";\n");
+  gpu_compiler_stacktrace_count->GetCell(stacktrace)->IncrementBy(1);
+}
+
+int GetGpuCompilerStacktraceCount(absl::string_view stacktrace) {
+  return gpu_compiler_stacktrace_count->GetCell(std::string(stacktrace))
+      ->value();
 }
 
 }  // namespace xla

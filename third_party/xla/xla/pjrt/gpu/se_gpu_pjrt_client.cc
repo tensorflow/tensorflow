@@ -123,10 +123,10 @@ class AsyncHostToDeviceTransferManager
  public:
   static absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   Create(absl::Span<const PjRtClient::ShapeSpec> shape_specs,
-         std::optional<absl::Span<const Layout>> device_layouts,
+         std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
          PjRtStreamExecutorDevice* device, PjRtStreamExecutorClient* client,
          PjRtMemorySpace* memory_space) {
-    if (device_layouts != std::nullopt &&
+    if (device_layouts.has_value() &&
         device_layouts->size() != shape_specs.size()) {
       return InvalidArgument(
           "Number of layouts %d does not match the number of shapes %d",
@@ -153,14 +153,14 @@ class AsyncHostToDeviceTransferManager
           std::make_shared<BufferSequencingEvent>(client->thread_pool()));
       Shape& device_shape = device_shapes.emplace_back(
           ShapeUtil::MakeShape(shape_spec.element_type, shape_spec.dims));
-      if (device_layouts == std::nullopt) {
+      if (device_layouts.has_value() && (*device_layouts)[i].has_value()) {
+        *device_shape.mutable_layout() = *(*device_layouts)[i];
+      } else {
         TF_ASSIGN_OR_RETURN(device_shape,
                             client->client()
                                 ->backend()
                                 .transfer_manager()
                                 ->ChooseCompactLayoutForShape(device_shape));
-      } else {
-        *device_shape.mutable_layout() = (*device_layouts)[i];
       }
       LocalDeviceState* local_device = device->local_device_state();
       se::Stream* h2d_stream = local_device->host_to_device_stream();
@@ -555,7 +555,7 @@ absl::string_view StreamExecutorGpuClient::platform_version() const {
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
     absl::Span<const PjRtClient::ShapeSpec> shape_specs,
-    std::optional<absl::Span<const Layout>> device_layouts,
+    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
     PjRtDevice* device) {
   auto* stream_executor_device =
       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
@@ -581,7 +581,7 @@ StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
     absl::Span<const PjRtClient::ShapeSpec> shape_specs,
-    std::optional<absl::Span<const Layout>> device_layouts,
+    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
     PjRtMemorySpace* memory_space) {
   CHECK_EQ(memory_space->devices().size(), 1);
   PjRtDevice* device = memory_space->devices()[0];

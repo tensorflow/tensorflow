@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -544,6 +545,12 @@ class PjRtClient {
   // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
 
+  // Returns the key value store used by the client.
+  virtual std::optional<std::shared_ptr<KeyValueStoreInterface>>
+  key_value_store() const {
+    return std::nullopt;
+  }
+
   // Returns information about the underlying PJRT C API plugin if such a plugin
   // is being used, otherwise returns nullopt.
   virtual std::optional<PjRtPluginAttributes> plugin_attributes() const {
@@ -765,12 +772,16 @@ class PjRtClient {
   };
 
   // Returns a manager for async transfers into a set of buffers with on-host
-  // shapes defined by 'shape_specs' and optional `device_layouts`. The
-  // `device_layout` is used when non-compact layouts are preferred.
+  // shapes defined by 'shape_specs' and optional `device_layouts`.
+  //
+  // If the desired layout of one or more buffers is not specified in
+  // `device_layouts`, then those buffers will use the default device layout. If
+  // `device_layouts` itself is not specified, then all buffers will use the
+  // default device layout.
   virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
       absl::Span<const ShapeSpec> shape_specs,
-      std::optional<absl::Span<const Layout>> device_layouts,
+      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtDevice* device) {
     return absl::UnimplementedError(absl::StrCat(
         "CreateBuffersForAsyncHostToDevice with ShapeSpec and Layout is "
@@ -782,7 +793,7 @@ class PjRtClient {
   virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
       absl::Span<const ShapeSpec> shape_specs,
-      std::optional<absl::Span<const Layout>> device_layouts,
+      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
       PjRtMemorySpace* memory_space) {
     return absl::UnimplementedError(absl::StrCat(
         "CreateBuffersForAsyncHostToDevice with ShapeSpec and Layout is "

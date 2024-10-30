@@ -47,7 +47,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         new_disabled_backends.extend(NVIDIA_GPU_BACKENDS)
 
     new_backend_tags = {key: value for key, value in backend_tags.items() if key != "gpu"}
-    gpu_backend_tags = backend_tags.get("gpu", [])
+    gpu_backend_tags = backend_tags.get("gpu", tf_gpu_tests_tags())
     for key in NVIDIA_GPU_BACKENDS:
         new_backend_tags.setdefault(key, gpu_backend_tags[:])
 

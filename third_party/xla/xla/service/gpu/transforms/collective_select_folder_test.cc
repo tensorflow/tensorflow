@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
@@ -34,11 +35,14 @@ limitations under the License.
 namespace xla {
 namespace {
 
+namespace op = ::xla::testing::opcode_matchers;
 using ::testing::HasSubstr;
+
 class CollectiveSelectFolderTest : public HloTestBase {
  public:
   absl::Status ExpectNoTranform(std::string_view hlo_template) {
-    return RunAndCheckHloRewrite(hlo_template, CollectiveSelectFolder(), false)
+    return RunAndCheckHloRewrite(hlo_template, CollectiveSelectFolder(),
+                                 /*expect_change=*/false)
         .status();
   }
 };
@@ -209,6 +213,27 @@ TEST_F(CollectiveSelectFolderTest, NotEqualTrueTrueTransform) {
   EXPECT_EQ(root->operand(0)->name(), "compare_true_data");
 }
 
+TEST_F(CollectiveSelectFolderTest, CommutativeCompare) {
+  const char* kHlo = R"(
+  HloModule test
+  ENTRY computation1 {
+    data_1 = f32[16] parameter(0)
+    data_2 = f32[16] parameter(1)
+    c3 = u32[] constant(3)
+    partition_id = u32[] partition-id()
+    predicate = pred[] compare(c3, partition_id), direction=NE
+    bcast_predicate = pred[] broadcast(predicate), dimensions={}
+    selected_data = f32[16] select(bcast_predicate, data_1, data_2)
+    ROOT data_rcv = f32[16] collective-permute(selected_data), source_target_pairs={{0,1},{1,2},{4,5},{5,6}}, channel_id=1
+  }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunAndCheckHloRewrite(kHlo, CollectiveSelectFolder(),
+                                                /*expect_change=*/true));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::CollectivePermute(op::Parameter(0)));
+}
+
 TEST_F(CollectiveSelectFolderTest, MoreThanOnePair_NotTransformed) {
   // The cp contains sources 0 and 1, and therefore doesn't match
   // equal(1) and not equal(1)
@@ -251,6 +276,23 @@ TEST_F(CollectiveSelectFolderTest, SelectNoBroadcastTransform) {
                              {"$pairs", "{{3,0}}"}}));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->operand(0)->name(), "compare_true_data");
+}
+
+TEST_F(CollectiveSelectFolderTest, NegatedPredicate_NotTransformed) {
+  const absl::string_view kHlo = R"(
+    HloModule test
+    ENTRY computation {
+      data_1 = f32[16] parameter(0)
+      data_2 = f32[16] parameter(1)
+      c3 = u32[] constant(3)
+      partition_id = u32[] partition-id()
+      predicate = pred[] compare(partition_id, c3), direction=EQ
+      negated_predicate = pred[] not(predicate)
+      selected_data = f32[16] select(negated_predicate, data_1, data_2)
+      ROOT result_data = f32[16] collective-permute(selected_data), source_target_pairs={{3,0}}, channel_id=1
+    }
+  )";
+  TF_ASSERT_OK(ExpectNoTranform(kHlo));
 }
 
 TEST_F(CollectiveSelectFolderTest, ReplicaIdChannelIdMismatch_NotTransformed) {

@@ -402,12 +402,13 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicSlice) {
       // because that is the only possible value.
       Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
-        offset_map: (d0, d1, d2)[s0, s1] -> (s0, 0, s1)
-        size_map: (d0, d1, d2) -> (1, d1, d2)
-        stride_map: (d0, d1, d2) -> (0, 1, 1)
+        offset_map: (d0, d1, d2)[s0, s1, s2] -> (s0, s1, s2)
+        size_map: (d0, d1, d2) -> (d0, d1, d2)
+        stride_map: (d0, d1, d2) -> (1, 1, 1)
         rt_vars:
           s0 in [0, 1],
-          s1 in [0, 226],
+          s1 in [0, 0],
+          s2 in [0, 226],
       )")));
   for (int i = 1; i <= 3; i++) {
     EXPECT_THAT(
@@ -798,6 +799,20 @@ TEST_F(SymbolicTileTest, ResultingConstraintsAreSimplifiedAway) {
         offset_map: (d0, d1, d2) -> (0, 0, 0)
         size_map: (d0, d1, d2) -> (d0, d1, d2 * 128)
         stride_map: (d0, d1, d2) -> (1, 1, 1)
+      )")));
+}
+
+TEST_F(SymbolicTileTest, PointDimensionsAreNotSimplified) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0) -> (d0)", &mlir_context_), /*dim_upper_bounds=*/{1},
+      /*symbol_upper_bounds=*/{});
+
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
+              Optional(MatchSymbolicTileString(R"(
+      Symbolic tile with
+        offset_map: (d0) -> (0)
+        size_map: (d0) -> (d0)
+        stride_map: (d0) -> (1)
       )")));
 }
 

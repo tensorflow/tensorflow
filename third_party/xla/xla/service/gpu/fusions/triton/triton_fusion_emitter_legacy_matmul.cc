@@ -61,12 +61,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/mlir_hlo/mhlo/transforms/transformation_helpers.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
-#include "xla/service/gpu/fusions/triton/emitter_helpers.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -82,6 +82,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -104,10 +105,49 @@ using ::mlir::Type;
 using ::mlir::Value;
 using ::mlir::ValueRange;
 
-using ::xla::gpu::triton::StorageType;
-using ::xla::gpu::triton::TritonType;
-
 namespace {
+
+absl::StatusOr<Type> TritonType(mlir::OpBuilder b, PrimitiveType t) {
+  switch (t) {
+    case F64:
+      return b.getF64Type();
+    case F32:
+      return b.getF32Type();
+    case F16:
+      return b.getF16Type();
+    case BF16:
+      return b.getBF16Type();
+    case S64:
+      return b.getI64Type();
+    case S32:
+      return b.getI32Type();
+    case S16:
+      return b.getI16Type();
+    case PRED:
+      return b.getI1Type();
+    case S8:
+      return b.getI8Type();
+    case S4:  // The unpacking to i8 is supported by the emitter.
+      // We pass the s4 tensor as i8 tensor with the minor dimension having 2x
+      // less elements and unpack in the inner loop of the triton kernel.
+      return b.getI8Type();
+    case F8E5M2:
+      return b.getFloat8E5M2Type();
+    case F8E4M3FN:
+      return b.getFloat8E4M3FNType();
+    default:
+      return absl::UnimplementedError(
+          absl::StrCat("This type is not supported yet: ",
+                       primitive_util::LowercasePrimitiveTypeName(t)));
+  }
+}
+
+Type StorageType(mlir::OpBuilder b, Type t) {
+  if (t.isInteger(1)) {
+    return b.getI8Type();
+  }
+  return t;
+}
 
 // Create a scalar constant.
 template <typename T>
@@ -358,8 +398,9 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
                                       const se::DeviceDescription& device_info,
                                       const HloInstruction& hlo,
                                       ValueRange inputs) {
-  if (mlir::getElementTypeOrSelf(inputs[0]).isF32() ||
-      mlir::getElementTypeOrSelf(inputs[0]).isF64()) {
+  Type input_type = mlir::getElementTypeOrSelf(inputs[0]);
+  if (input_type.isBF16() || input_type.isF16() || input_type.isF32() ||
+      input_type.isF64()) {
     auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
     if (dev_fn_id.ok()) {
       llvm::Triple triple("nvptx64-unknown-unknown");
@@ -367,15 +408,31 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
               device_info.gpu_compute_capability())) {
         triple.setTriple("amdgcn-unknown-unknown");
       }
-      return b.create<mt::ExternElementwiseOp>(
-          inputs[0].getType(), inputs, "libdevice", libdevice_path,
-          ObtainDeviceFunctionName(dev_fn_id.value(),
-                                   hlo.shape().element_type(), triple),
+      PrimitiveType output_type = hlo.shape().element_type();
+      llvm::SmallVector<Value, 2> casted_inputs;
+      if (input_type.isBF16() || input_type.isF16()) {
+        // Upcast the inputs to F32.
+        for (int64_t i = 0; i < inputs.size(); ++i) {
+          casted_inputs.push_back(Cast(b, inputs[i], b.getF32Type()));
+        }
+        output_type = F32;
+      } else {
+        casted_inputs.assign(inputs.begin(), inputs.end());
+      }
+      Value res = b.create<mt::ExternElementwiseOp>(
+          casted_inputs[0].getType(), casted_inputs, "libdevice",
+          libdevice_path,
+          ObtainDeviceFunctionName(dev_fn_id.value(), output_type, triple),
           /*pure=*/true);
+      if (input_type.isBF16() || input_type.isF16()) {
+        // Downcast back to the original input type.
+        res = Cast(b, res, input_type);
+      }
+      return res;
     }
   }
   const bool is_integer =
-      mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(inputs[0]));
+      mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(input_type));
 
   switch (hlo.opcode()) {
     case HloOpcode::kCopy:
@@ -454,8 +511,23 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
 
 absl::StatusOr<Value> EmitConstant(ImplicitLocOpBuilder& b,
                                    const HloInstruction& constant) {
-  TF_ASSIGN_OR_RETURN(auto result, triton::EmitConstant(b, constant));
-  return result.UnwrapScalar();
+  CHECK_EQ(constant.opcode(), HloOpcode::kConstant);
+  CHECK(ShapeUtil::IsEffectiveScalar(constant.shape()));
+
+  TF_ASSIGN_OR_RETURN(Type ty, TritonType(b, constant.shape().element_type()));
+
+  if (constant.shape().element_type() == U64) {
+    TF_ASSIGN_OR_RETURN(Literal converted, constant.literal().Convert(U64));
+    return CreateConst(b, ty, converted.GetFirstElement<uint64_t>());
+  }
+
+  if (constant.shape().IsInteger()) {
+    TF_ASSIGN_OR_RETURN(Literal converted, constant.literal().Convert(S64));
+    return CreateConst(b, ty, converted.GetFirstElement<int64_t>());
+  }
+
+  TF_ASSIGN_OR_RETURN(Literal converted, constant.literal().Convert(F64));
+  return CreateConst(b, ty, converted.GetFirstElement<double>());
 }
 
 // Emit sequence of operations for unpacking 2xi4 -> i8.

@@ -1039,6 +1039,10 @@ absl::Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+absl::Status HloCostAnalysis::HandleRaggedAllToAll(const HloInstruction* hlo) {
+  return absl::OkStatus();
+}
+
 absl::Status HloCostAnalysis::HandleCollectiveBroadcast(
     const HloInstruction* /*hlo*/) {
   return absl::OkStatus();

@@ -22,6 +22,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <stack>
 #include <string>
 #include <utility>
 #include <variant>
@@ -75,16 +76,14 @@ HloModule::HloModule(const std::string& name, HloModuleConfig config)
 
 HloModule::HloModule(const std::string& name, HloModuleConfig config,
                      std::unique_ptr<CompilationEnvironments> comp_envs)
-    : HloModule(name, std::make_unique<HloModuleConfig>(std::move(config)),
+    : HloModule(name, std::make_shared<HloModuleConfig>(std::move(config)),
                 std::move(comp_envs)) {}
 
 HloModule::HloModule(const std::string& name,
-                     std::variant<std::unique_ptr<HloModuleConfig>,
-                                  std::shared_ptr<const HloModuleConfig>>
-                         config,
+                     std::shared_ptr<const HloModuleConfig> config,
                      std::unique_ptr<CompilationEnvironments> comp_envs)
     : name_(NameUniquer::GetSanitizedName(name)),
-      config_(std::move(config)),
+      config_(config),
       unique_id_(next_unique_module_id_++),
       metadata_(tsl::Env::Default()),
       autofdo_fingerprint_(""),
@@ -101,7 +100,7 @@ absl::Status HloModule::set_schedule(HloSchedule schedule) {
 
 void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
   entry_computation_ = entry_computation;
-  config_.get_mutable().SetDefaultComputationLayout(
+  mutable_config().SetDefaultComputationLayout(
       entry_computation_->ComputeProgramShape());
   input_output_alias_config_ = HloInputOutputAliasConfig(
       entry_computation_->root_instruction()->shape());
@@ -138,12 +137,12 @@ HloComputation* HloModule::AddComputationInternal(
     entry_computation_ = computation.get();
 
     if (preserve_entry_layouts) {
-      config_.get_mutable().SetComputationLayoutIfExists(
+      mutable_config().SetComputationLayoutIfExists(
           entry_computation_->ComputeProgramShape());
-    } else if (!config_.get().has_entry_computation_layout()) {
+    } else if (!config().has_entry_computation_layout()) {
       // If the module configuration has no entry layout computation set, create
       // a default one based on the program shape.
-      config_.get_mutable().SetDefaultComputationLayout(
+      mutable_config().SetDefaultComputationLayout(
           entry_computation_->ComputeProgramShape());
     }
     input_output_alias_config_ = HloInputOutputAliasConfig(
@@ -374,7 +373,8 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
     printer->Append(std::move(serialized_buffer_donor));
     printer->Append(" }");
   }
-  const auto& config = config_.get();
+
+  const HloModuleConfig& config = this->config();
   if (config.alias_passthrough_params()) {
     printer->Append(", alias_passthrough_params=true");
   }
@@ -504,9 +504,9 @@ HloModuleProto HloModule::ToProto() const {
     profile_info_proto.set_compilation_event(profile_info.compilation_event());
     profile_info_proto.set_fingerprint(profile_info.fingerprint());
   }
-  if (config_.get().has_static_device_assignment()) {
+  if (config().has_static_device_assignment()) {
     DeviceAssignmentProto device_assignment;
-    config_.get().static_device_assignment().Serialize(&device_assignment);
+    config().static_device_assignment().Serialize(&device_assignment);
     (*proto.mutable_device_assignment()) = device_assignment;
   }
 
@@ -518,7 +518,7 @@ HloModuleProto HloModule::ToProto() const {
 
 HloModuleProtoWithConfig HloModule::ToProtoWithConfig() const {
   HloModuleProtoWithConfig result;
-  *result.mutable_config() = config_.get().ToProto();
+  *result.mutable_config() = config().ToProto();
   *result.mutable_hlo_module() = ToProto();
   return result;
 }
@@ -679,12 +679,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     module->add_profile_info(profile_info);
   }
   if (proto.has_device_assignment()) {
-    if (!module->config_.get().has_static_device_assignment()) {
+    if (!module->config().has_static_device_assignment()) {
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<DeviceAssignment> device_assignment,
           DeviceAssignment::Deserialize(proto.device_assignment()));
-      module->config_.get_mutable().set_static_device_assignment(
-          *device_assignment);
+      module->mutable_config().set_static_device_assignment(*device_assignment);
     }
   }
 
@@ -1066,7 +1065,7 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted(
 }
 
 std::unique_ptr<HloModule> HloModule::Clone(const std::string& suffix) const {
-  return Clone(config_.FreezeAndShare(), suffix);
+  return Clone(shared_config(), suffix);
 }
 
 std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
@@ -1133,17 +1132,21 @@ std::unique_ptr<HloModule> HloModule::Clone(
 }
 
 absl::Status HloModule::RemoveUnusedComputations() {
-  std::string suffix = "tmp";
-  auto module = std::make_unique<HloModule>(
-      absl::StrCat(name_, "-", suffix), config(),
-      std::make_unique<CompilationEnvironments>(*comp_envs_));
-  HloCloneContext context(module.get(), suffix);
-  entry_computation_->Clone(suffix, &context);
-  std::vector<HloComputation*> to_remove;
-  for (auto computation : computations()) {
-    auto found_computation = context.FindComputation(computation);
-    if (found_computation == nullptr) {
-      to_remove.push_back(computation);
+  absl::flat_hash_set<HloComputation*> to_remove(computations().begin(),
+                                                 computations().end());
+  std::stack<HloComputation*> agenda;
+  agenda.push(entry_computation_);
+  to_remove.erase(entry_computation_);
+  while (!agenda.empty()) {
+    HloComputation* computation = agenda.top();
+    agenda.pop();
+    for (HloInstruction* instruction : computation->instructions()) {
+      for (HloComputation* called_computation :
+           instruction->called_computations()) {
+        if (to_remove.erase(called_computation) > 0) {
+          agenda.push(called_computation);
+        }
+      }
     }
   }
   for (auto computation : to_remove) {

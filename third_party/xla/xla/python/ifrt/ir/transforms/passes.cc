@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/transforms/passes.h"
 
+#include <memory>
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Transforms/Passes.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/ir/atom_program_compiler.h"
 
 namespace xla {
 namespace ifrt {
@@ -49,12 +55,23 @@ void CreateIfrtToOutlinedAtomProgramsPipeline(
 }
 
 void CreateIfrtCompileXlaPreprocessingPipeline(mlir::OpPassManager& pm) {
-  pm.addPass(CreateIfrtLowerShardingToXlaPass());
+  pm.addPass(CreateIfrtLowerAtomProgramMetadataToXlaPass());
   pm.addPass(CreateIfrtRemoveIfrtAttrsPass());
 }
 
-void RegisterIfrtPassesAndPipelines() {
+void RegisterIfrtPassesAndPipelines(
+    std::shared_ptr<AtomProgramCompiler> compiler,
+    std::shared_ptr<
+        absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
+        compile_options_overrides,
+    std::shared_ptr<AtomExecutableMap> atom_executable_map,
+    std::shared_ptr<AtomExecutableMap> bound_executable_map) {
   registerIfrtIrPasses();
+  RegisterIfrtCompileAtomProgramPass(compiler, compile_options_overrides,
+                                     atom_executable_map);
+  RegisterIfrtCompileAndPropagateShardingsPass(
+      compiler, compile_options_overrides, atom_executable_map);
+  RegisterIfrtVerifyBoundExternalLoadedExecutablePass(bound_executable_map);
   mlir::PassPipelineRegistration<IfrtToOutlinedAtomProgramsPipelineOptions>(
       "ifrt-to-outlined-atom-programs-pipeline",
       "Runs passes that do not require compilation-time information",

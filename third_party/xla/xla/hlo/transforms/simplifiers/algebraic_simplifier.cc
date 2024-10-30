@@ -1434,10 +1434,6 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
     }
     auto bit_dims = original_map[op_dim];
     for (int64_t bitcast_dim : bit_dims) {
-      if (result_shape.dimensions(bitcast_dim) == 1) {
-        // Postpone all degenerated dimensions (those with size 1) to the end.
-        continue;
-      }
       VLOG(3) << "Add new reshaped dimension:" << bitcast_dim << "\n";
       if (bitcast_pos < 0 ||
           (*reshaped_dimensions)[bitcast_pos] != bitcast_dim) {
@@ -1447,6 +1443,10 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
         if (bitcast_pos >= reshaped_dimensions->size()) {
           VLOG(3) << "bitcast pos is over incremented:" << bitcast_pos << "\n";
           return std::nullopt;
+        }
+        if (result_shape.dimensions(bitcast_dim) == 1) {
+          // Postpone all degenerated dimensions (those with size 1) to the end.
+          continue;
         }
         (*reshaped_dimensions)[bitcast_pos] = bitcast_dim;
       }
@@ -3503,9 +3503,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   const bool is_packed_nibble =
       absl::c_linear_search(dot->precision_config().operand_precision(),
                             PrecisionConfig::PACKED_NIBBLE);
+  const bool has_precision_config_algorithm =
+      dot->precision_config().algorithm() != PrecisionConfig::ALG_UNSET;
   // If there are no contracting dimensions, a dot can be rewritten as
   // mul(broadcast(transpose(x)),broadcast(transpose(y)))
-  if (!is_packed_nibble && options_.enable_dot_to_multiply_rewrite() &&
+  if (!is_packed_nibble && !has_precision_config_algorithm &&
+      options_.enable_dot_to_multiply_rewrite() &&
       dnums.lhs_contracting_dimensions_size() == 0) {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
@@ -3907,7 +3910,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be
   // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
-  if (!is_packed_nibble && options_.enable_dot_strength_reduction() &&
+  if (!is_packed_nibble && !has_precision_config_algorithm &&
+      options_.enable_dot_strength_reduction() &&
       DotHasOnlyBatchAndContractingOnOneOperand(lhs->shape().rank(),
                                                 rhs->shape().rank(), dnums) &&
       ShouldStrengthReduceDotToReduce(dot)) {

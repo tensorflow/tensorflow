@@ -1101,6 +1101,120 @@ ENTRY entry {
       op::Slice(op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, p0)));
 }
 
+// This test is for the redundant aliasing bug (b/374902759) introduced between
+// different operands of the same instruction while converting sync copy to
+// async ones.
+TEST_F(MemorySpaceAssignmentTest, SyncReplacementAliasingBug) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true, entry_computation_layout={(f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[])->f32[10,2,3]{2,1,0}}
+
+%while_body (p0.1: (f32[10,2,3], f32[10,2,3], f32[10,2,3], pred[])) -> (f32[10,2,3], f32[10,2,3], f32[10,2,3], pred[]) {
+  %p0.1 = (f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) parameter(0)
+  %gte0 = f32[10,2,3]{2,1,0} get-tuple-element((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) %p0.1), index=0
+  %gte1 = f32[10,2,3]{2,1,0} get-tuple-element((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) %p0.1), index=1
+  %gte2 = f32[10,2,3]{2,1,0} get-tuple-element((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) %p0.1), index=2
+  %gte3 = pred[] get-tuple-element((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) %p0.1), index=3
+  %neg0 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %gte2)
+  %neg1 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg0)
+  %neg2 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg1)
+  %neg3 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg2)
+  %neg4 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg3)
+  %neg5 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg4)
+  %neg6 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg5)
+  %neg7 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg6)
+  ROOT %tuple = (f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) tuple(f32[10,2,3]{2,1,0} %gte0, f32[10,2,3]{2,1,0} %gte1, f32[10,2,3]{2,1,0} %neg7, pred[] %gte3)
+}
+
+%while_cond (p0: (f32[10,2,3], f32[10,2,3], f32[10,2,3], pred[])) -> pred[] {
+  %p0 = (f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) parameter(0)
+  ROOT %gte = pred[] get-tuple-element((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) %p0), index=3
+}
+
+ENTRY %entry (p0.2: f32[10,2,3], p1: f32[10,2,3], p2: pred[]) -> f32[10,2,3] {
+  %p0.2 = f32[10,2,3]{2,1,0} parameter(0)
+  %p1 = f32[10,2,3]{2,1,0} parameter(1)
+  %p2 = pred[] parameter(2)
+  p0_copy = f32[10,2,3]{2,1,0} copy(f32[10,2,3]{2,1,0} %p0.2)
+  %p0_copy_copy = f32[10,2,3]{2,1,0} copy(f32[10,2,3]{2,1,0} p0_copy)
+  %negate0 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %p1)
+  %negate1 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate0)
+  %negate2 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate1)
+  %negate3 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate2)
+  %negate4 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate3)
+  %negate5 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate4)
+  %negate6 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate5)
+  %negate7 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate6)
+  %tuple.3 = (f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) tuple(f32[10,2,3]{2,1,0} %negate7, f32[10,2,3]{2,1,0} %p0_copy, f32[10,2,3]{2,1,0} %p0_copy_copy, pred[] %p2)
+  while.1 = (f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) while((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) %tuple.3), condition=%while_cond, body=%while_body
+  %gte.1 = f32[10,2,3]{2,1,0} get-tuple-element((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) while.1), index=2
+  ROOT %negate = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %gte.1)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 1024;
+  options.enable_sync_copy_replacement = true;
+  options.enable_sync_slice_replacement = true;
+  options.is_async_slice_implemented_fn =
+      [](const HloInstruction* instruction) { return true; };
+  AssignMemorySpace(module.get(), options);
+  HloInstruction* while_instruction = FindInstruction(module.get(), "while.1");
+  ASSERT_NE(while_instruction, nullptr);
+  const HloInstruction* tuple = while_instruction->operand(0);
+  HloInstruction* p0_copy = FindInstruction(module.get(), "p0_copy");
+  ASSERT_NE(p0_copy, nullptr);
+  EXPECT_THAT(tuple->operand(1), op::AsyncCopy(kDefaultMemorySpace,
+                                               kAlternateMemorySpace, p0_copy));
+  EXPECT_THAT(tuple->operand(2),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            tuple->operand(1)));
+}
+
+// Added for b/376344953 that was introduced when we tried to
+// convert a sync copy that was used by a conditional into an async copy.
+TEST_F(MemorySpaceAssignmentTest, ConditionalCopyReplacement) {
+  absl::string_view hlo_string = R"(
+  HloModule CondAllocation, is_scheduled=true
+
+  true_computation {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg1 = f32[3]{0} negate(gte)
+  }
+
+  false_computation {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg2 = f32[3]{0} negate(gte)
+  }
+
+  ENTRY entry {
+    p0_main = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0_main)
+    tuple = (f32[3]{0}) tuple(copy)
+    ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_sync_copy_replacement = true;
+  AssignMemorySpace(module.get(), options);
+  auto conditional =
+      module->GetComputationWithName("entry")->GetInstructionWithName(
+          "conditional");
+  CHECK_NE(conditional, nullptr);
+  auto p0 = module->GetComputationWithName("entry")->GetInstructionWithName(
+      "p0_main");
+  CHECK_NE(p0, nullptr);
+  auto copy = conditional->operand(1)->operand(0);
+  CHECK_NE(copy, nullptr);
+  EXPECT_THAT(copy,
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, p0));
+}
+
 TEST_F(MemorySpaceAssignmentTest, AlwaysSpillJitPrefetchTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.

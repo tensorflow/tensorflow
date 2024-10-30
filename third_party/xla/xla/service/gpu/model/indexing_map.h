@@ -267,8 +267,12 @@ class IndexingMap {
   // Returns true if the indexing map is valid.
   bool Verify(std::ostream& out) const;
 
+  // If kPreserve, then point dimensions will not be simplified to constants.
+  enum class SimplifyPointDimensions { kPreserve, kReplace };
+
   // Returns true if the map was simplified.
-  bool Simplify();
+  bool Simplify(SimplifyPointDimensions simplify_point_dimensions =
+                    SimplifyPointDimensions::kReplace);
 
   // Return MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const;

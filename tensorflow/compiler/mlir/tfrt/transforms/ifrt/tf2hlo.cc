@@ -80,11 +80,15 @@ uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
 }  // namespace
 
 absl::StatusOr<std::string> Tf2HloArg::Key() {
-  if (!topology) {
-    return absl::InternalError("topology is not set");
+  uint64_t fingerprint = tsl::Fingerprint64(platform_name);
+  if (topology) {
+    TF_ASSIGN_OR_RETURN(std::string serialized_topology, topology->Serialize());
+    fingerprint = tsl::Fingerprint64(serialized_topology);
   }
-  TF_ASSIGN_OR_RETURN(std::string serialized_topology, topology->Serialize());
-  uint64_t fingerprint = tsl::Fingerprint64(serialized_topology);
+  if (platform_name != xla::CudaName() && !topology) {
+    return absl::FailedPreconditionError(
+        "Topology is required for non-GPU compilation.");
+  }
   fingerprint =
       tsl::FingerprintCat64(fingerprint, MlirModuleFingerprint(module));
   for (const auto& dtype_and_shape : input_dtypes_and_shapes) {
@@ -103,6 +107,13 @@ absl::StatusOr<std::string> Tf2HloArg::Key() {
   }
   fingerprint = tsl::FingerprintCat64(fingerprint,
                                       tsl::Fingerprint64(entry_function_name));
+  std::string serialized_compile_metadata;
+  if (!tsl::SerializeToStringDeterministic(compile_metadata,
+                                           &serialized_compile_metadata)) {
+    return absl::InternalError("Failed to serialize compile metadata");
+  }
+  fingerprint = tsl::FingerprintCat64(
+      fingerprint, tsl::Fingerprint64(serialized_compile_metadata));
   return absl::StrCat(absl::Hex(fingerprint));
 }
 
@@ -198,14 +209,10 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
     tensorflow::DumpMlirOpToFile("ifrt_before_bridge_phase2", arg.module);
   }
 
-  if (!arg.topology) {
-    return absl::InternalError("topology is not set in Tf2HloArg");
-  }
-
   // Device_type is a string of
   // tensorflow/compiler/mlir/tf2xla/api/v2/device_type.proto:DeviceType
   std::string device_type = "XLA_TPU_JIT";
-  if (arg.topology->platform_name() == xla::CudaName()) {
+  if (arg.platform_name == xla::CudaName()) {
     device_type = "XLA_GPU_JIT";
   }
   VLOG(1) << "device_type: " << device_type;

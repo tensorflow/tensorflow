@@ -1542,11 +1542,13 @@ cc_library(
 alias(
     name = "portable_jpeg_internal",
     actual = "//tensorflow/core/lib/jpeg:portable_jpeg_internal",
+    visibility = ["//visibility:public"],
 )
 
 alias(
     name = "portable_gif_internal",
     actual = "//tensorflow/core/lib/gif:portable_gif_internal",
+    visibility = ["//visibility:public"],
 )
 
 alias(

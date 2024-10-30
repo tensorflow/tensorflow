@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_TILED_DOT_EMITTER_H_
 #define XLA_SERVICE_CPU_TILED_DOT_EMITTER_H_
 
+#include <cstdint>
+
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/service/hlo_module_config.h"

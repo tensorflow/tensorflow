@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
@@ -177,12 +178,40 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//xla/python/ifrt:friends"],
     deps = [
+        ":ifrt_ir_compile_options_proto_cc",
+        "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
+        "//xla/python/pjrt_ifrt:xla_ifrt",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+tf_proto_library(
+    name = "ifrt_ir_compile_options_proto",
+    srcs = ["ifrt_ir_compile_options.proto"],
+    protodeps = ["//xla/pjrt:compile_options_proto"],
+    visibility = ["//xla/python/ifrt:friends"],
+)
+
+xla_cc_test(
+    name = "ifrt_ir_program_test",
+    srcs = ["ifrt_ir_program_test.cc"],
+    deps = [
+        ":ifrt_ir_compile_options_proto_cc",
+        ":ifrt_ir_program",
+        "//xla/client:executable_build_options",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/service:computation_placer_hdr",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -224,5 +253,20 @@ xla_cc_test(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "atom_program_compiler",
+    hdrs = ["atom_program_compiler.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:friends"],
+    deps = [
+        ":ir",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt/hlo:hlo_program",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
     ],
 )

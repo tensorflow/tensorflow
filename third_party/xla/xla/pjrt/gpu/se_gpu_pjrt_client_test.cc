@@ -488,12 +488,12 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncWithNonCompactLayout) {
   spec.element_type = src_literal.shape().element_type();
   spec.dims = DimensionVector(src_literal.shape().dimensions().begin(),
                               src_literal.shape().dimensions().end());
+  std::vector<std::optional<xla::Layout>> device_layouts = {
+      std::make_optional(transposed_shape.layout())};
   TF_ASSERT_OK_AND_ASSIGN(
       auto transfer_manager,
       client->CreateBuffersForAsyncHostToDevice(
-          {spec},
-          std::make_optional<absl::Span<const Layout>>(
-              {transposed_shape.layout()}),
+          {spec}, device_layouts,
           client->addressable_devices()[0]->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
 

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include "xla/error_spec.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"

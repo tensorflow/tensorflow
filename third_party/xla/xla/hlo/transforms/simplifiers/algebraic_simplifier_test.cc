@@ -9470,6 +9470,20 @@ TEST_F(AlgebraicSimplifierTest, CanDisableDotToMultiplyRewrite) {
   ASSERT_FALSE(AlgebraicSimplifier(opts).Run(m2.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       NoDotToMultiplyRewriteWithPrecisionConfigAlgorithm) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test
+    ENTRY dot {
+      a = f32[128]{0} parameter(0)
+      b = f32[128]{0} parameter(1)
+      ROOT dot = f32[128,128]{1,0} dot(a, b), algorithm=dot_tf32_tf32_f32
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, RemainderOfIota) {
   const char* kModuleStr = R"(
     HloModule m
@@ -10417,6 +10431,20 @@ TEST_F(AlgebraicSimplifierTest, MultipleDotStrengthReductions) {
   EXPECT_EQ(3, m->computation_count());
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       NoDotStrengthReductionWithPrecisionConfigAlgorithm) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test
+    ENTRY dot {
+      a = f32[128,2]{1,0} parameter(0)
+      b = f32[2]{0} parameter(1)
+      ROOT dot = f32[128]{0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_tf32_tf32_f32
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduce) {
   const char* kModuleStr = R"(
     HloModule m
@@ -11023,6 +11051,28 @@ TEST_F(AlgebraicSimplifierTest, CopyBitcastCopy) {
   ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Bitcast(m::Copy(m::Parameter()))));
+}
+
+TEST_F(AlgebraicSimplifierTest, CopyBitcastCopyDimSize1) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+     param.8 = f32[9, 1, 12]{2,1,0} parameter(0)
+     transpose.1 = f32[1,12,9]{1,0,2} transpose(param.8), dimensions={1,2,0}
+     copy.4 = f32[1,12,9]{2,1,0} copy(transpose.1)
+     bitcast.15 = f32[1,108]{1,0} bitcast(copy.4)
+     copy.1 = f32[1,108]{0,1} copy(bitcast.15)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Bitcast(m::Bitcast(m::Copy(m::Bitcast(m::Parameter()))))));
 }
 
 TEST_F(AlgebraicSimplifierTest, CopyBitcastCopy2) {

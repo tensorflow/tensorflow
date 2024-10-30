@@ -18,17 +18,17 @@ project(tensorflow-lite-c C CXX)
 
 option(TFLITE_C_BUILD_SHARED_LIBS "Build shared libraries" ON)
 
-set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
+set(TF_SOURCE_DIR "" CACHE PATH
   "Directory that contains the TensorFlow project"
 )
-if (NOT TENSORFLOW_SOURCE_DIR)
-  get_filename_component(TENSORFLOW_SOURCE_DIR
+if (NOT TF_SOURCE_DIR)
+  get_filename_component(TF_SOURCE_DIR
     "${CMAKE_CURRENT_LIST_DIR}/../../../"
     ABSOLUTE
   )
 endif()
 
-set(TFLITE_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow/lite")
+set(TFLITE_SOURCE_DIR "${TF_SOURCE_DIR}/tensorflow/lite")
 
 add_subdirectory(
   "${TFLITE_SOURCE_DIR}"
@@ -67,6 +67,7 @@ add_library(tensorflowlite_c ${TFLITE_C_LIBTYPE}
   ${TFLITE_SOURCE_DIR}/core/c/c_api_experimental.cc
   ${TFLITE_SOURCE_DIR}/core/c/common.cc
   ${TFLITE_SOURCE_DIR}/core/c/operator.cc
+  ${TF_SOURCE_DIR}/tensorflow/compiler/mlir/lite/core/c/tflite_types.h
   builtin_op_data.h
   c_api.h
   c_api_experimental.h

@@ -170,7 +170,9 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
                                      *literal));
 }
 
-TEST(PjRtClientTest, CompileUsesStableHloVersion) {
+// TODO: (b/375454646) Eanble once frameworks have bugfix:
+// https://github.com/openxla/xla/commit/2f99455cdf99e844ddad17de9f4714997023d243
+TEST(PjRtClientTest, DISABLED_CompileUsesStableHloVersion) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* c_api, pjrt::PjrtApi("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,

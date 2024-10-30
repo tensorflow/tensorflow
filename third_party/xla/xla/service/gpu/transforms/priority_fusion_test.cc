@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/priority_fusion.h"
 
-#include <stdint.h>
-
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,12 +24,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -39,11 +34,8 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -78,16 +70,6 @@ class PriorityFusionTest : public HloTestBase {
   PriorityFusion priority_fusion_{
       /*thread_pool=*/nullptr, device_info_,
       GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true}};
-};
-
-class PriorityFusionWithTritonEnabledTest : public PriorityFusionTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = PriorityFusionTest::GetDebugOptionsForTest();
-    debug_options
-        .set_xla_gpu_experimental_enable_triton_softmax_priority_fusion(true);
-    return debug_options;
-  }
 };
 
 TEST_F(PriorityFusionTest, FuseWithSharedArgument) {
@@ -893,8 +875,7 @@ TEST_F(PriorityFusionTest, DoNotFuseProducerConsumerMergedTooLarge) {
   EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
 }
 
-TEST_F(PriorityFusionWithTritonEnabledTest,
-       CanMergeTritonFusionWithBothProducerAndConsumer) {
+TEST_F(PriorityFusionTest, CanMergeTritonFusionWithBothProducerAndConsumer) {
   const std::string kHloText = R"(
 HloModule t
 add {
@@ -950,8 +931,7 @@ ENTRY main {
             2);
 }
 
-TEST_F(PriorityFusionWithTritonEnabledTest,
-       FuseTritonProducerWithTwoConsumers) {
+TEST_F(PriorityFusionTest, FuseTritonProducerWithTwoConsumers) {
   const std::string kHloText = R"(
 HloModule t
 add {
@@ -1013,8 +993,7 @@ ENTRY main {
             2);
 }
 
-TEST_F(PriorityFusionWithTritonEnabledTest,
-       TritonProducerNotSupported_DoNotFuse) {
+TEST_F(PriorityFusionTest, TritonProducerNotSupported_DoNotFuse) {
   const std::string kHloText = R"(
 HloModule t
 
@@ -1043,8 +1022,7 @@ ENTRY main {
   EXPECT_FALSE(priority_fusion_.Run(module.get()).value());
 }
 
-TEST_F(PriorityFusionWithTritonEnabledTest,
-       TritonConsumerNotSupported_DoNotFuse) {
+TEST_F(PriorityFusionTest, TritonConsumerNotSupported_DoNotFuse) {
   const std::string kHloText = R"(
 HloModule t
 
@@ -1096,6 +1074,35 @@ TEST_F(PriorityFusionTest, DoNotFuseInsideReducer) {
     }
   )");
   EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+}
+
+class PriorityFusionWithTritonEnabledTest : public PriorityFusionTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = PriorityFusionTest::GetDebugOptionsForTest();
+    debug_options
+        .set_xla_gpu_experimental_enable_triton_heroless_priority_fusion(true);
+    return debug_options;
+  }
+};
+
+TEST_F(PriorityFusionWithTritonEnabledTest,
+       TwoElementwiseOpsAreFusedWithTriton) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[2048] parameter(0)
+  p1 = f32[2048] parameter(1)
+  add = f32[2048] add(p0, p1)
+  ROOT mul = f32[2048] multiply(add, p0)
+})");
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+  EXPECT_TRUE(IsGenericTritonFusion(*root));
 }
 
 }  // namespace gpu

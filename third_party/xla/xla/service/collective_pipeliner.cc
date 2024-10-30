@@ -2631,7 +2631,8 @@ static absl::Status TransformLoopBackward(
   absl::flat_hash_map<HloInstruction*, HloInstruction*> while_body_to_peeled;
   absl::flat_hash_map<HloInstruction*, int64_t> collective_to_move_map;
   absl::flat_hash_set<HloInstruction*> is_pipelined_instruction;
-  absl::flat_hash_map<HloInstruction*, int64_t> is_output_instruction;
+  absl::flat_hash_map<HloInstruction*, std::vector<int64_t>>
+      is_output_instruction;
   absl::flat_hash_set<const HloInstruction*> sideeffect_unused_instructions;
   int64_t count = 0;
   // Add instructions to duplicate into a set.
@@ -2671,8 +2672,8 @@ static absl::Status TransformLoopBackward(
   CHECK_EQ(while_body->root_instruction()->opcode(), HloOpcode::kTuple);
   // Record instructions that are part of the output of the loop.
   for (int i = 0; i < while_body->root_instruction()->operand_count(); ++i) {
-    is_output_instruction[while_body->root_instruction()->mutable_operand(i)] =
-        i;
+    is_output_instruction[while_body->root_instruction()->mutable_operand(i)]
+        .push_back(i);
   }
 
   // Collect the new parameter shapes with the additional state for the indices
@@ -2905,8 +2906,9 @@ static absl::Status TransformLoopBackward(
           HloInstruction::CreateGetTupleElement(new_while_loop, tuple_idx));
       while_body_replacement_map[instr] = pipelined_value;
       if (instruction_is_output_it != is_output_instruction.end()) {
-        output_tuple_instructions[instruction_is_output_it->second] =
-            pipelined_value;
+        for (int64_t index : instruction_is_output_it->second) {
+          output_tuple_instructions[index] = pipelined_value;
+        }
       }
       continue;
     }
@@ -2922,8 +2924,9 @@ static absl::Status TransformLoopBackward(
         loop_analysis));
     while_body_replacement_map[instr] = cloned_instr;
     if (instruction_is_output_it != is_output_instruction.end()) {
-      output_tuple_instructions[instruction_is_output_it->second] =
-          cloned_instr;
+      for (int64_t index : instruction_is_output_it->second) {
+        output_tuple_instructions[index] = cloned_instr;
+      }
     }
   }
   // Substitute old loop with the result of the last peeled iteration.

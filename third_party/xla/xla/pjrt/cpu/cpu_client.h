@@ -291,7 +291,7 @@ class TfrtCpuClient final : public PjRtClient {
 
   absl::string_view platform_name() const override { return CpuName(); }
 
-  absl::string_view platform_version() const override { return "<unknown>"; }
+  absl::string_view platform_version() const override { return CpuName(); }
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;

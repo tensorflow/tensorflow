@@ -26,7 +26,10 @@ cc_library(
     name = "run_handler_util",
     srcs = ["run_handler_util.cc"],
     hdrs = ["run_handler_util.h"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_cc_test(
@@ -56,6 +59,8 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:env",
         "@tf_runtime//:hostcontext",
@@ -98,6 +103,8 @@ cc_library(
         ":run_handler",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
@@ -119,6 +126,7 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],

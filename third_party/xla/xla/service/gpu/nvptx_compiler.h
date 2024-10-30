@@ -95,8 +95,7 @@ class NVPTXCompiler : public GpuCompiler {
       const HloModule* debug_module, const CompileOptions& options) override;
 
   absl::StatusOr<bool> CanUseLinkModules(
-      const HloModuleConfig& module_config,
-      se::GpuComputeCapability& gpu_compute_capability) override;
+      const HloModuleConfig& module_config) override;
 
  private:
   absl::StatusOr<std::vector<uint8_t>> LinkModules(
@@ -106,8 +105,7 @@ class NVPTXCompiler : public GpuCompiler {
       const DebugOptions& debug_options) override;
 
   absl::StatusOr<stream_executor::PtxLinkingMethod> ChooseLinkingMethod(
-      const DebugOptions& debug_options,
-      se::CudaComputeCapability& compute_capability);
+      const DebugOptions& debug_options);
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin if compilation succeeded.

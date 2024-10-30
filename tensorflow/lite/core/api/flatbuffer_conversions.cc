@@ -27,6 +27,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
+// TODO(sosagarcia): Rework all function implementations to wrap around the
+// compiler flatbuffer_conversions.
+// LINT.IfChange
 namespace tflite {
 
 namespace {
@@ -2986,3 +2989,4 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
 }
 
 }  // namespace tflite
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/core/api/flatbuffer_conversions.cc)

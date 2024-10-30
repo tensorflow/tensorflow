@@ -85,10 +85,8 @@ cc_library(
     hdrs = ["op_kernel_runner.h"],
     features = tf_features_nolayering_check_if_ios(),
     visibility = [
-        ":friends",
         # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt/graph_executor:__subpackages__",
-        "//tensorflow/lite/delegates/flex:__pkg__",
+        "//visibility:public",
     ],
     deps = [
         "@com_google_absl//absl/container:inlined_vector",

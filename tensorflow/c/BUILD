@@ -151,10 +151,7 @@ tf_cuda_library(
         "tf_tensor.h",
         "tf_tstring.h",
     ],
-    visibility = [
-        "//tensorflow:internal",
-        "//tensorflow/c:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = selects.with_or({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -557,7 +554,7 @@ tf_cuda_library(
         "tf_tensor_helper.h",
         "tf_tensor_internal.h",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         ":c_api_macros",
         ":tensor_interface",

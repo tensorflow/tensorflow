@@ -27,8 +27,7 @@ package_group(
         "//third_party/iree/...",
         "//third_party/odml/infra/...",
         "//tensorflow/compiler/mlir/...",
-        "//tensorflow/lite/experimental/lrt/...",
-        "//tensorflow/lite/python/...",
+        "//tensorflow/lite/...",
         "//waymo/accelerator/alpine/tools/...",
         "//waymo/ml/compiler/mlir/...",
         # Allow visibility from the mlir language server.
@@ -1374,15 +1373,16 @@ cc_library(
     ],
     deps = [
         ":const_tensor_utils",
+        ":control_edges",
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
         ":offset_buffer",
         ":size_utils",
         ":tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite:control_edges",
         "//tensorflow/compiler/mlir/lite/core:absl_error_model_builder",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/lite/schema:debug_metadata_fbs_with_mutable",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
@@ -1399,7 +1399,9 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Support",
@@ -1412,6 +1414,7 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@stablehlo//:stablehlo_ops",
@@ -1764,10 +1767,7 @@ exports_files(srcs = ["utils/control_edges.h"])
 cc_library(
     name = "control_edges",
     hdrs = ["utils/control_edges.h"],
-    visibility = [
-        "//tensorflow/compiler/mlir/lite/experimental/remat:__pkg__",
-        "//tensorflow/lite:__pkg__",
-    ],
+    visibility = ["//tensorflow/compiler/mlir/lite/experimental/remat:__pkg__"],
 )
 
 tf_cc_test(

@@ -308,11 +308,12 @@ func.func @main(%arg0: !array0, %arg1: !array1) -> (!array1, !array2)
   let constructor = "CreateIfrtReshardToCopyArraysPass()";
 }
 
-def IfrtLowerShardingToXlaPass :
-    Pass<"ifrt-lower-sharding-to-xla", "mlir::ModuleOp"> {
-  let summary = "Converts IFRT sharding to HLO sharding for xla modules";
+def IfrtLowerAtomProgramMetadataToXlaPass :
+    Pass<"ifrt-lower-atom-program-metadata-to-xla", "mlir::ModuleOp"> {
+  let summary = "Converts IFRT metadata to XLA-compatible attributes";
   let description = [{
-Replaces `ifrt.sharding` attr by `mhlo.sharding` attr.
+Replaces `ifrt.sharding` attr by `mhlo.sharding` attr, and `ifrt.memory_kind`
+by `mhlo.memory_kind`.
 
 For example, the following code
 
@@ -337,7 +338,7 @@ module attributes {
 ```
   }];
 
-  let constructor = "CreateIfrtLowerShardingToXlaPass()";
+  let constructor = "CreateIfrtLowerAtomProgramMetadataToXlaPass()";
 }
 
 def IfrtRemoveIfrtAttrsPass :

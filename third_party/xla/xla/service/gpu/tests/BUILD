@@ -476,42 +476,6 @@ xla_test(
 )
 
 xla_test(
-    name = "gpu_fusion_test",
-    srcs = ["gpu_fusion_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":gpu_codegen_test",
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu:gpu_fusible",
-        "//xla/service/gpu/transforms:instruction_fusion",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-xla_test(
-    name = "gpu_fusion_pipeline_test",
-    srcs = ["gpu_fusion_pipeline_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":gpu_codegen_test",
-        "//xla:shape_util",
-        "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/service:hlo_cost_analysis",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu/transforms:fusion_merger",
-        "//xla/service/gpu/transforms:instruction_fusion",
-        "//xla/service/gpu/transforms:multi_output_fusion",
-        "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-xla_test(
     name = "gpu_unrolling_test",
     srcs = ["gpu_unrolling_test.cc"],
     backends = ["gpu"],

@@ -95,6 +95,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
+WHEEL_VERSION = "2.19.0"
 VERSION = "2.19.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
@@ -185,8 +186,8 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
 
 def tf_portable_full_lite_protos(full, lite):
     return select({
-        "//tensorflow:mobile_lite_protos": lite,
-        "//tensorflow:mobile_full_protos": full,
+        clean_dep("//tensorflow:mobile_lite_protos"): lite,
+        clean_dep("//tensorflow:mobile_full_protos"): full,
         # The default should probably be lite runtime, but since most clients
         # seem to use the non-lite version, let's make that the default for now.
         "//conditions:default": full,

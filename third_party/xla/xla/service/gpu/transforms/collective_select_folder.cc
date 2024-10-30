@@ -50,50 +50,64 @@ struct FoldableSelect {
   HloInstruction* false_operand;
 };
 
-// Returns handy references to %constant, %true_operand, %false_operand of the
-//   `select(broadcast(compare(current_id, constant)), true_operand,
-//       false_operand)`
+// Matches foldable select ops that we can analyse and returns handy references
+// to %constant, %true_operand, %false_operand of the op. Matches, e.g.,
+//
+// ```
+// select(
+//     broadcast(compare(partition-id(), constant)),
+//     true_operand,
+//     false_operand)
+// ```
+//
 // or
-//    select(compare(current_id, constant), true_operand, false_operand)`
+//
+// ```
+// select(
+//     compare(partition-id(), constant),
+//     true_operand,
+//     false_operand)
+// ```
 std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
   if (select->opcode() != HloOpcode::kSelect) {
     return std::nullopt;
   }
 
-  // Select may have broadcast.
-  const HloInstruction* compare_candidate = select->operand(0);
-  if (compare_candidate->opcode() != HloOpcode::kCompare) {
-    compare_candidate = compare_candidate->operand(0);
-  }
-  if (compare_candidate->opcode() != HloOpcode::kCompare) {
-    return std::nullopt;
-  }
-
+  // Match select predicate (may be broadcasted).
+  const HloInstruction* predicate_candidate = select->operand(0);
+  if (predicate_candidate->opcode() == HloOpcode::kBroadcast)
+    predicate_candidate = predicate_candidate->operand(0);
   const HloCompareInstruction* compare =
-      DynCast<HloCompareInstruction>(compare_candidate);
+      DynCast<HloCompareInstruction>(predicate_candidate);
+  if (compare == nullptr) return std::nullopt;
   if (compare->direction() != Comparison::Direction::kEq &&
       compare->direction() != Comparison::Direction::kNe) {
     return std::nullopt;
   }
 
+  // Find replica-id or partition-id op and constant op, swap if needed.
   const HloInstruction* id_op = compare->operand(0);
-  CollectiveOpGroupMode mode;
+  const HloInstruction* constant_op = compare->operand(1);
+  if (HloPredicateIsNotOp<HloOpcode::kConstant>(constant_op)) {
+    std::swap(id_op, constant_op);
+  }
+
+  // Match replica-id or partition-id.
+  CollectiveOpGroupMode collective_mode;
   if (id_op->opcode() == HloOpcode::kReplicaId) {
-    mode = CollectiveOpGroupMode::kCrossReplica;
+    collective_mode = CollectiveOpGroupMode::kCrossReplica;
   } else if (id_op->opcode() == HloOpcode::kPartitionId) {
-    mode = CollectiveOpGroupMode::kCrossPartition;
+    collective_mode = CollectiveOpGroupMode::kCrossPartition;
   } else {
     return std::nullopt;
   }
 
-  if (compare->operand(1)->opcode() != HloOpcode::kConstant) {
+  // Match constant.
+  if (HloPredicateIsNotOp<HloOpcode::kConstant>(constant_op))
     return std::nullopt;
-  }
-
-  int64_t id_value =
-      compare->operand(1)->literal().GetFirstInteger().value_or(-1);
-
-  return FoldableSelect{compare->direction(), id_value, mode,
+  std::optional<int64_t> constant_id = constant_op->literal().GetFirstInteger();
+  if (!constant_id.has_value()) return std::nullopt;
+  return FoldableSelect{compare->direction(), *constant_id, collective_mode,
                         select->mutable_operand(1), select->mutable_operand(2)};
 }
 
@@ -141,7 +155,7 @@ absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(HloInstruction* inst) {
   if (!select_match.has_value()) return false;
 
   // We have to maintain integrity of relationship between the predicate, which
-  // is based on partition or replica ID, and the collevtive mode of the
+  // is based on partition or replica ID, and the collective mode of the
   // collective-permute op.
   TF_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode collective_mode,
