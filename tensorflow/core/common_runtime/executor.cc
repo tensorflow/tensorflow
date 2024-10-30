@@ -304,8 +304,9 @@ class ExecutorState {
   void ProcessInline(TaggedNodeReadyQueue* inline_ready,
                      int64_t scheduled_nsec);
 
-  Status ProcessSync(const NodeItem& item, OpKernelContext::Params* params,
-                     EntryVector* outputs, NodeExecStatsInterface* stats);
+  absl::Status ProcessSync(const NodeItem& item,
+                           OpKernelContext::Params* params,
+                           EntryVector* outputs, NodeExecStatsInterface* stats);
   void ProcessAsync(const NodeItem& item, const OpKernelContext::Params& params,
                     const TaggedNode& tagged_node, Entry* first_input,
                     NodeExecStatsInterface* stats,
