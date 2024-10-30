@@ -170,9 +170,7 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
                                      *literal));
 }
 
-// TODO: (b/375454646) Eanble once frameworks have bugfix:
-// https://github.com/openxla/xla/commit/2f99455cdf99e844ddad17de9f4714997023d243
-TEST(PjRtClientTest, DISABLED_CompileUsesStableHloVersion) {
+TEST(PjRtClientTest, CompileUsesStableHloVersion) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* c_api, pjrt::PjrtApi("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -184,7 +182,10 @@ TEST(PjRtClientTest, DISABLED_CompileUsesStableHloVersion) {
                           ParseMlirModuleString(kProgram, context));
   const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile =
       [](PJRT_Client_Compile_Args* args) -> PJRT_Error* {
-    mlir::vhlo::Version version = mlir::vhlo::Version::getCurrentVersion();
+    // TODO: (b/375454646) Eanble once frameworks have bugfix:
+    // https://github.com/openxla/xla/commit/2f99455cdf99e844ddad17de9f4714997023d243
+    // mlir::vhlo::Version version = mlir::vhlo::Version::getCurrentVersion();
+    mlir::vhlo::Version version = mlir::vhlo::Version(1, 7, 0);
     std::string version_string = absl::StrFormat(
         "%d.%d.%d", version.getMajor(), version.getMinor(), version.getPatch());
     // MLIR doesn't have any functionality for retrieving the producer of
