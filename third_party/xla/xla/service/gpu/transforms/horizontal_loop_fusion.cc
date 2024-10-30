@@ -316,10 +316,9 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
 
   // Sort `fusible_instrs_` according to output types, the number of outputs,
   // instruction counts, output tensor element count. For sliced input fusion,
-  // we only fuse instructions with the same number/type of outputs and whose
-  // computations have the same instruction count. For kLoop fusion, we requires
-  // the fused instructions to have the same number/type of outputs and also the
-  // same output shape. We did a sort here so the fusion candidates is
+  // we only fuse instructions with the same number/type of outputs.
+  // For kLoop fusion, we in addition require the same output shape.
+  // We did a sort here so the fusion candidates is
   // populating a continuous span.
   std::stable_sort(
       fusible_instrs_.begin(), fusible_instrs_.end(),
@@ -384,15 +383,6 @@ HorizontalLoopFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
         GetOutputSizeOfFusible(*fusible_instrs_[right])) {
       // Cannot fuse computations who have different numbers of outputs.
       VLOG(2) << "different number of outputs";
-      break;
-    }
-    if (GetInstrCountOfFusible(*fusible_instrs_[left]) !=
-        GetInstrCountOfFusible(*fusible_instrs_[right])) {
-      // Do not fuse computations of different instruction counts as it may
-      // introduce control divergence. This is a very simple heuristic to avoid
-      // fusing computations with too much discrepancy and we may improve it
-      // when the needs arise.
-      VLOG(2) << "different instruction count";
       break;
     }
     if (!sliced_input_fusion_ &&
