@@ -23,17 +23,14 @@ Should be set via --repo_env=WHEEL_NAME=tensorflow_cpu.
 6) `--xla_aot` - paths to files that should be in xla_aot directory. 
 """
 
-load("@python_version_repo//:py_version.bzl", "WHEEL_COLLAB", "WHEEL_NAME", "OUTPUT_PATH")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
-<<<<<<< HEAD
-load("//tensorflow:tensorflow.bzl", "VERSION")
-=======
 load(
     "@python_version_repo//:py_version.bzl",
     "HERMETIC_PYTHON_VERSION",
     "MACOSX_DEPLOYMENT_TARGET",
     "WHEEL_COLLAB",
     "WHEEL_NAME",
+    "OUTPUT_PATH",
 )
 load("//tensorflow:tensorflow.bzl", "VERSION", "WHEEL_VERSION")
 
@@ -58,7 +55,6 @@ def _get_full_wheel_name(platform_name, platform_tag):
         python_version = python_version,
         wheel_platform_tag = _get_wheel_platform_name(platform_name, platform_tag),
     )
->>>>>>> master
 
 def _tf_wheel_impl(ctx):
     include_cuda_libs = ctx.attr.include_cuda_libs[BuildSettingInfo].value
@@ -70,10 +66,6 @@ def _tf_wheel_impl(ctx):
                  " If you absolutely need to add CUDA dependencies, provide `--@local_config_cuda//cuda:override_include_cuda_libs=true`.")
     executable = ctx.executable.wheel_binary
 
-<<<<<<< HEAD
-    output = ctx.actions.declare_directory("wheel_house")
-    output_path = OUTPUT_PATH if OUTPUT_PATH else output.path
-=======
     full_wheel_name = _get_full_wheel_name(
         platform_name = ctx.attr.platform_name,
         platform_tag = ctx.attr.platform_tag,
@@ -84,7 +76,6 @@ def _tf_wheel_impl(ctx):
         wheel_dir = wheel_dir_name,
         wheel_name = full_wheel_name,
     ))
->>>>>>> master
     args = ctx.actions.args()
     args.add("--project-name", WHEEL_NAME)
     args.add("--platform", _get_wheel_platform_name(
@@ -92,11 +83,7 @@ def _tf_wheel_impl(ctx):
         ctx.attr.platform_tag,
     ))
     args.add("--collab", str(WHEEL_COLLAB))
-<<<<<<< HEAD
-    args.add("--output-name", output_path)
-=======
     args.add("--output-name", output_dir.path)
->>>>>>> master
     args.add("--version", VERSION)
 
     headers = ctx.files.headers[:]

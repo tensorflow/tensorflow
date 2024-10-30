@@ -14,11 +14,8 @@ def _python_repository_impl(ctx):
     ctx.file("BUILD", "")
     wheel_name = ctx.os.environ.get("WHEEL_NAME", "tensorflow")
     wheel_collab = ctx.os.environ.get("WHEEL_COLLAB", False)
-<<<<<<< HEAD
     output_path = ctx.os.environ.get("OUTPUT_PATH", None)
-=======
     macos_deployment_target = ctx.os.environ.get("MACOSX_DEPLOYMENT_TARGET", "")
->>>>>>> master
 
     requirements = None
     for i in range(0, len(ctx.attr.requirements_locks)):

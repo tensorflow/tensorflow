@@ -14,11 +14,8 @@ def _python_repository_impl(ctx):
     ctx.file("BUILD", "")
     wheel_name = ctx.os.environ.get("WHEEL_NAME", "tensorflow")
     wheel_collab = ctx.os.environ.get("WHEEL_COLLAB", False)
-<<<<<<< HEAD
     output_path = repository_ctx.os.environ.get("OUTPUT_PATH", None)
-=======
     macos_deployment_target = ctx.os.environ.get("MACOSX_DEPLOYMENT_TARGET", "")
->>>>>>> master
 
     requirements = None
     for i in range(0, len(ctx.attr.requirements_locks)):
@@ -75,11 +72,8 @@ WHEEL_COLLAB = "{wheel_collab}"
 REQUIREMENTS = "{requirements}"
 REQUIREMENTS_WITH_LOCAL_WHEELS = "{requirements_with_local_wheels}"
 USE_PYWRAP_RULES = {use_pywrap_rules}
-<<<<<<< HEAD
 OUTPUT_PATH = "{output_path}"
-=======
 MACOSX_DEPLOYMENT_TARGET = "{macos_deployment_target}"
->>>>>>> master
 """.format(
             version = version,
             wheel_name = wheel_name,
@@ -87,11 +81,8 @@ MACOSX_DEPLOYMENT_TARGET = "{macos_deployment_target}"
             requirements = str(requirements),
             requirements_with_local_wheels = requirements_with_local_wheels,
             use_pywrap_rules = use_pywrap_rules,
-<<<<<<< HEAD
             output_path = output_path,
-=======
             macos_deployment_target = macos_deployment_target,
->>>>>>> master
         ),
     )
 
