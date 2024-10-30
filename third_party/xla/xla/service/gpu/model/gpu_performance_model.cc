@@ -179,7 +179,8 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     const EstimateRunTimeData& consumer_runtime,
     const se::DeviceDescription& device_info,
     const GpuHloCostAnalysis* cost_analysis,
-    const GpuPerformanceModelOptions& config) {
+    const GpuPerformanceModelOptions& config,
+    bool producer_writes_side_output) {
   VLOG(8) << "EstimateRunTimeForFusion, producer: " << producer->name()
           << " consumer: " << consumer->name();
 
@@ -242,19 +243,26 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
         GetCoalescingUtilizationRate(element_type, device_info, coalesced));
   }
 
+  int64_t bytes_written = consumer_runtime.bytes_written;
+  absl::Duration write_time = consumer_runtime.write_time;
+
+  // Fusing the producer with the consumer fusion will result in a multi-output
+  // fusion that writes output of the producer to the main memory. Add producer
+  // output to the total memory write time.
+  if (producer_writes_side_output) {
+    bytes_written += producer_runtime.bytes_written;
+    write_time += producer_runtime.write_time;
+  }
+
   auto exec_time = CombineComputeAndMemoryAccessTime(
-      compute_time, read_time + consumer_runtime.write_time, config);
+      compute_time, read_time + write_time, config);
 
   VLOG(3) << "Runtime data for producer-consumer fusion:\n"
           << " producer: " << producer->name() << "\n"
           << " consumer: " << consumer->name() << "\n"
           << launch_dimensions.ToString() << "\n"
-          << EstimateRunTimeData{flops,
-                                 bytes_read,
-                                 consumer_runtime.bytes_written,
-                                 read_time,
-                                 consumer_runtime.write_time,
-                                 compute_time,
+          << EstimateRunTimeData{flops,     bytes_read, bytes_written,
+                                 read_time, write_time, compute_time,
                                  exec_time}
                  .ToString();
 
@@ -352,8 +360,7 @@ GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
     const HloInstruction* producer, const se::DeviceDescription& device_info,
     const GpuHloCostAnalysis* cost_analysis,
     const GpuPerformanceModelOptions& config,
-    absl::Span<const HloInstruction* const> fused_consumers,
-    bool multi_output) {
+    absl::Span<const HloInstruction* const> fused_consumers) {
   auto cache_result = config.gpu_performance_model_cache->Get(*producer);
   CHECK(cache_result.has_value());
   EstimateRunTimeData producer_runtime = *cache_result;
@@ -379,14 +386,42 @@ GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
         device_info, cost_analysis, config);
   }
 
-  // Multi-output fusion still writes the initial output of the producer.
-  // For now assume that the producer's output does not need to be recomputed.
-  if (multi_output) {
-    time_fused += producer_runtime.write_time;
-  }
-
   if (VLOG_IS_ON(8)) {
     LOG(INFO) << "Consumer count: " << fused_consumers.size();
+    LOG(INFO) << "Unfused time: " << time_unfused;
+    LOG(INFO) << "Fused time: " << time_fused;
+  }
+
+  return {time_unfused, time_fused};
+}
+
+/*static*/
+GpuPerformanceModel::RunTimes
+GpuPerformanceModel::EstimateRunTimesForMultiOutputFusion(
+    const HloInstruction* producer, const HloInstruction* consumer,
+    const se::DeviceDescription& device_info,
+    const GpuHloCostAnalysis* cost_analysis) {
+  GpuPerformanceModelOptions config =
+      GpuPerformanceModelOptions::PriorityFusion();
+
+  EstimateRunTimeData producer_runtime =
+      GpuPerformanceModel::EstimateRunTimeForInstruction(producer, device_info,
+                                                         cost_analysis, config);
+  EstimateRunTimeData consumer_runtime =
+      GpuPerformanceModel::EstimateRunTimeForInstruction(consumer, device_info,
+                                                         cost_analysis, config);
+
+  absl::Duration time_unfused = 2 * kKernelLaunchOverhead +
+                                producer_runtime.exec_time +
+                                consumer_runtime.exec_time;
+
+  absl::Duration time_fused =
+      kKernelLaunchOverhead +
+      EstimateRunTimeForFusion(producer, consumer, producer_runtime,
+                               consumer_runtime, device_info, cost_analysis,
+                               config, /*producer_writes_side_output=*/true);
+
+  if (VLOG_IS_ON(8)) {
     LOG(INFO) << "Unfused time: " << time_unfused;
     LOG(INFO) << "Fused time: " << time_fused;
   }

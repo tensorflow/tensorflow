@@ -45,7 +45,8 @@ class GpuPerformanceModel : public GpuPerformanceModelBase {
       const EstimateRunTimeData& consumer_runtime,
       const se::DeviceDescription& device_info,
       const GpuHloCostAnalysis* cost_analysis,
-      const GpuPerformanceModelOptions& config);
+      const GpuPerformanceModelOptions& config,
+      bool producer_writes_side_output = false);
 
   static absl::Duration EstimateRunTimeForFusionCached(
       const HloInstruction* producer, const HloInstruction* consumer,
@@ -83,8 +84,12 @@ class GpuPerformanceModel : public GpuPerformanceModelBase {
       const HloInstruction* producer, const se::DeviceDescription& device_info,
       const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,
-      absl::Span<const HloInstruction* const> fused_consumers = {},
-      bool multi_output = false);
+      absl::Span<const HloInstruction* const> fused_consumers = {});
+
+  static RunTimes EstimateRunTimesForMultiOutputFusion(
+      const HloInstruction* producer, const HloInstruction* consumer,
+      const se::DeviceDescription& device_info,
+      const GpuHloCostAnalysis* cost_analysis);
 
   // Writes estimated execution time to FusionBackendConfig.reification_cost.
   static void RecordEstimatedRunTime(HloInstruction* instruction,

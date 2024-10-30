@@ -765,6 +765,61 @@ ENTRY fusion {
   EXPECT_EQ(result, absl::InfiniteDuration());
 }
 
+TEST_F(GpuPerformanceModelTest,
+       EstimateRunTimeForFusion_MultiOutputWrite_ReturnsCorrectTime) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_power {
+  constant.1 = f32[] constant(2)
+  broadcast = f32[4,28672,28672] broadcast(constant.1), dimensions={}
+  iota = s32[28672,28672] iota(), iota_dimension=0
+  iota.1 = s32[28672,28672] iota(), iota_dimension=1
+  compare = pred[28672,28672] compare(iota, iota.1), direction=GE
+  broadcast.1 = pred[4,28672,28672] broadcast(compare), dimensions={1,2}
+  param_0.3 = f32[4,28672,28672] parameter(0)
+  constant.2 = f32[] constant(-1e+30)
+  broadcast.2 = f32[4,28672,28672] broadcast(constant.2), dimensions={}
+  select = f32[4,28672,28672] select(broadcast.1, param_0.3, broadcast.2)
+  param_1.2 = f32[4,28672] parameter(1)
+  broadcast.3 = f32[4,28672,28672] broadcast(param_1.2), dimensions={0,1}
+  subtract = f32[4,28672,28672] subtract(select, broadcast.3)
+  ROOT power = f32[4,28672,28672] power(broadcast, subtract)
+}
+
+region.1 {
+  param_0.1 = f32[] parameter(0)
+  param_1.1 = f32[] parameter(1)
+  ROOT add = f32[] add(param_0.1, param_1.1)
+}
+
+fused_reduce {
+  param_0.2 = f32[4,28672,28672] parameter(0)
+  bitcast = f32[4,28672,128,224] bitcast(param_0.2)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[4,28672,128] reduce(bitcast, constant), dimensions={3}, to_apply=region.1
+}
+
+ENTRY entry_computation.1 {
+  param_1.3 = f32[4,28672,28672] parameter(1)
+  param_0.4 = f32[4,28672] parameter(0)
+  loop_power_fusion = f32[4,28672,28672] fusion(param_1.3, param_0.4), kind=kLoop, calls=fused_power
+  input_reduce_fusion = f32[4,28672,128] fusion(loop_power_fusion), kind=kInput, calls=fused_reduce
+  ROOT tuple = (f32[4,28672,28672], f32[4,28672,128]) tuple(loop_power_fusion, input_reduce_fusion)
+})"));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  auto* producer =
+      module->entry_computation()->GetInstructionWithName("loop_power_fusion");
+  auto* consumer = module->entry_computation()->GetInstructionWithName(
+      "input_reduce_fusion");
+
+  auto t = GpuPerformanceModel::EstimateRunTimesForMultiOutputFusion(
+      producer, consumer, device_info_, &analysis_);
+  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_unfused), 162, 1);
+  EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_fused), 145, 1);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
