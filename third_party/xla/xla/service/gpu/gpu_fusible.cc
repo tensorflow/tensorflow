@@ -1007,11 +1007,6 @@ bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
       case HloOpcode::kReduceWindow:
       case HloOpcode::kSort:
       case HloOpcode::kDot:
-      case HloOpcode::kSin:
-      case HloOpcode::kCos:
-      case HloOpcode::kTan:
-      case HloOpcode::kPower:
-      case HloOpcode::kAtan2:
         return true;
       case HloOpcode::kConcatenate:
         return node.instruction().operand_count() >
