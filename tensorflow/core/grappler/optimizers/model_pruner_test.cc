@@ -565,7 +565,7 @@ TEST_F(ModelPrunerTest, PruneConstantsWithoutInputsAndOutputs) {
   item.fetch = {"id1"};
   ModelPruner pruner;
   GraphDef output;
-  Status status = pruner.Optimize(nullptr, item, &output);
+  absl::Status status = pruner.Optimize(nullptr, item, &output);
   TF_ASSERT_OK(status);
 
   GraphDef expected;

@@ -105,16 +105,16 @@ add_computation {
   ROOT add = $0[] add(arg_0.1, arg_1.1)
 }
 ENTRY main {
-  param_0 = $0[127,125]{1,0} parameter(0)
+  param_0 = $0[64,125]{1,0} parameter(0)
   constant_neg_inf = $0[] constant(-inf)
-  reduce = $0[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = $0[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = $0[127,125]{1,0} subtract(param_0, broadcast)
-  exponential = $0[127,125]{1,0} exponential(subtract)
+  reduce = $0[64]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = $0[64,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = $0[64,125]{1,0} subtract(param_0, broadcast)
+  exponential = $0[64,125]{1,0} exponential(subtract)
   constant_zero = $0[] constant(0)
-  second_reduce = $0[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = $0[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT divide = $0[127,125]{1,0} divide(exponential, second_broadcast)
+  second_reduce = $0[64]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = $0[64,125]{1,0} broadcast(second_reduce), dimensions={0}
+  ROOT divide = $0[64,125]{1,0} divide(exponential, second_broadcast)
 }
 )";
 
