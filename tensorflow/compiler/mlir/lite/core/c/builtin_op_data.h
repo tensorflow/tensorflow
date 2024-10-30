@@ -37,6 +37,7 @@ extern "C" {
 #define TFLITE_STABLEHLO_GATHER_PARAMS_MAX_DIMENSION_COUNT 8
 #define TFLITE_STABLEHLO_REDUCE_WINDOW_PARAMS_MAX_DIMENSION_COUNT 8
 #define TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT 8
+#define TFLITE_STABLEHLO_CASE_PARAMS_MAX_BRANCHES_COUNT 20
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
@@ -653,6 +654,14 @@ typedef struct {
   const uint8_t* attributes;
   size_t attributes_size;
 } TfLiteStablehloCompositeParams;
+
+typedef struct {
+  // See the stablehlo spec for the explanation of the attributes:
+  // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#case
+  int32_t
+      branch_subgraph_indices[TFLITE_STABLEHLO_CASE_PARAMS_MAX_BRANCHES_COUNT];
+  uint32_t num_branches;
+} TfLiteStablehloCaseParams;
 
 #ifdef __cplusplus
 }  // extern "C"
