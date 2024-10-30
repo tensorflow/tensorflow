@@ -90,7 +90,7 @@ LiteRtStatus SumOpLegalization::LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
   // Extract keepdims option from sum op.
   bool keep_dims;
   LITERT_RETURN_STATUS_IF_NOT_OK(
-      LiteRtSumGetKeepdimsOption(src.Get(), &keep_dims));
+      LiteRtGetSumKeepDimsOption(src.Get(), &keep_dims));
 
   // Construct the scalar "keep_dims" param.
   if (keep_dims) {

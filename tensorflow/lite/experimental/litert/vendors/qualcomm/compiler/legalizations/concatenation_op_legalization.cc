@@ -78,7 +78,7 @@ LiteRtStatus ConcatenationOpLegalization::LegalizeOp(
   // Extract axis option from concatenation op.
   int32_t axis;
   LITERT_RETURN_STATUS_IF_NOT_OK(
-      LiteRtConcatenationGetAxisOption(src.Get(), &axis));
+      LiteRtGetConcatenationAxisOption(src.Get(), &axis));
 
   // Construct the scalar "axis" param.
   Qnn_Param_t axis_param = BuildDefaultParam();

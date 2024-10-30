@@ -88,7 +88,7 @@ TEST(Qualcomm, DispatchApiWithFastRpc) {
                 invocation_context, /*input_index=*/0, &kInput0TensorType,
                 &input_0_tensor_buffer_requirements),
             kLiteRtStatusOk);
-  EXPECT_EQ(LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+  EXPECT_EQ(LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
                 input_0_tensor_buffer_requirements, &num_tensor_buffer_types),
             kLiteRtStatusOk);
   EXPECT_GE(num_tensor_buffer_types, 1);
@@ -110,7 +110,7 @@ TEST(Qualcomm, DispatchApiWithFastRpc) {
                 invocation_context, /*input_index=*/1, &kInput1TensorType,
                 &input_1_tensor_buffer_requirements),
             kLiteRtStatusOk);
-  EXPECT_EQ(LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+  EXPECT_EQ(LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
                 input_1_tensor_buffer_requirements, &num_tensor_buffer_types),
             kLiteRtStatusOk);
   EXPECT_GE(num_tensor_buffer_types, 1);
@@ -132,7 +132,7 @@ TEST(Qualcomm, DispatchApiWithFastRpc) {
                 invocation_context, /*output_index=*/0, &kOutputTensorType,
                 &output_tensor_buffer_requirements),
             kLiteRtStatusOk);
-  EXPECT_EQ(LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+  EXPECT_EQ(LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
                 output_tensor_buffer_requirements, &num_tensor_buffer_types),
             kLiteRtStatusOk);
   EXPECT_GE(num_tensor_buffer_types, 1);
@@ -339,7 +339,7 @@ TEST(Qualcomm, DispatchApiWithDmaBuf) {
                 invocation_context, /*input_index=*/0, &kInput0TensorType,
                 &input_0_tensor_buffer_requirements),
             kLiteRtStatusOk);
-  EXPECT_EQ(LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+  EXPECT_EQ(LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
                 input_0_tensor_buffer_requirements, &num_tensor_buffer_types),
             kLiteRtStatusOk);
   EXPECT_GE(num_tensor_buffer_types, 1);
@@ -361,7 +361,7 @@ TEST(Qualcomm, DispatchApiWithDmaBuf) {
                 invocation_context, /*input_index=*/1, &kInput1TensorType,
                 &input_1_tensor_buffer_requirements),
             kLiteRtStatusOk);
-  EXPECT_EQ(LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+  EXPECT_EQ(LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
                 input_1_tensor_buffer_requirements, &num_tensor_buffer_types),
             kLiteRtStatusOk);
   EXPECT_GE(num_tensor_buffer_types, 1);
@@ -383,7 +383,7 @@ TEST(Qualcomm, DispatchApiWithDmaBuf) {
                 invocation_context, /*output_index=*/0, &kOutputTensorType,
                 &output_tensor_buffer_requirements),
             kLiteRtStatusOk);
-  EXPECT_EQ(LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+  EXPECT_EQ(LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
                 output_tensor_buffer_requirements, &num_tensor_buffer_types),
             kLiteRtStatusOk);
   EXPECT_GE(num_tensor_buffer_types, 1);

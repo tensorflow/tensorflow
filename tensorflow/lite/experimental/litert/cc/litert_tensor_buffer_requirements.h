@@ -63,9 +63,8 @@ class TensorBufferRequirements
 
   absl::StatusOr<std::vector<LiteRtTensorBufferType>> SupportedTypes() const {
     int num_types;
-    if (auto status =
-            LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
-                Get(), &num_types);
+    if (auto status = LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
+            Get(), &num_types);
         status != kLiteRtStatusOk) {
       return absl::InternalError(
           "Failed to get the number of supported tensor types");

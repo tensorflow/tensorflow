@@ -32,36 +32,36 @@ extern "C" {
 // Api Interface
 //
 
-typedef const char* (*LiteRtPluginApiSocManufacturer)();
+typedef const char* (*LiteRtGetCompilerPluginSocManufacturerT)();
 
-typedef LiteRtStatus (*LiteRtPluginApiInit)(LiteRtCompilerPlugin*);
+typedef LiteRtStatus (*LiteRtCreateCompilerPluginT)(LiteRtCompilerPlugin*);
 
-typedef void (*LiteRtPluginApiDestroy)(LiteRtCompilerPlugin);
+typedef void (*LiteRtDestroyCompilerPluginT)(LiteRtCompilerPlugin);
 
-typedef LiteRtParamIndex (*LiteRtPluginApiNumSupportedModels)(
-    LiteRtCompilerPlugin);
+typedef LiteRtStatus (*LiteRtGetNumCompilerPluginSupportedSocModelsT)(
+    LiteRtCompilerPlugin, LiteRtParamIndex*);
 
-typedef LiteRtStatus (*LiteRtPluginApiGetSupportedSocModel)(
+typedef LiteRtStatus (*LiteRtGetCompilerPluginSupportedSocModelT)(
     LiteRtCompilerPlugin, LiteRtParamIndex soc_model_idx,
     const char** soc_moel_idx);
 
-typedef LiteRtStatus (*LiteRtPluginApiPartitionModel)(
+typedef LiteRtStatus (*LiteRtCompilerPluginPartitionModelT)(
     LiteRtCompilerPlugin, LiteRtModel model, LiteRtOpList selected_ops);
 
-typedef LiteRtStatus (*LiteRtPluginApiCompile)(
+typedef LiteRtStatus (*LiteRtCompilerPluginCompileT)(
     LiteRtCompilerPlugin, const char* soc_model, LiteRtSubgraphArray partitions,
     LiteRtParamIndex num_partitions, LiteRtCompiledResult* compiled_result);
 
-typedef void (*LiteRtCompiledResultApiDestroy)(LiteRtCompiledResult);
+typedef void (*LiteRtDestroyCompiledResultT)(LiteRtCompiledResult);
 
-typedef LiteRtStatus (*LiteRtCompiledResultApiGetByteCode)(
+typedef LiteRtStatus (*LiteRtGetCompiledResultByteCodeT)(
     LiteRtCompiledResult, const void** byte_code, size_t* byte_code_size);
 
-typedef LiteRtStatus (*LiteRtCompiledResultApiGetCallInfo)(
+typedef LiteRtStatus (*LiteRtGetCompiledResultCallInfoT)(
     LiteRtCompiledResult, LiteRtParamIndex call_idx, const void** call_info,
     size_t* call_info_size);
 
-typedef LiteRtStatus (*LiteRtCompiledResultApiGetNumCalls)(
+typedef LiteRtStatus (*LiteRtGetNumCompiledResultCallsT)(
     LiteRtCompiledResult, LiteRtParamIndex* num_calls);
 
 //
@@ -70,20 +70,23 @@ typedef LiteRtStatus (*LiteRtCompiledResultApiGetNumCalls)(
 
 // Wraps all resolved functions from api interface.
 struct LiteRtCompilerPluginApi {
-  LiteRtPluginApiInit init = nullptr;
-  LiteRtPluginApiDestroy destroy = nullptr;
+  LiteRtCreateCompilerPluginT create_compiler_plugin = nullptr;
+  LiteRtDestroyCompilerPluginT destroy_compiler_plugin = nullptr;
 
-  LiteRtPluginApiSocManufacturer soc_manufacturer = nullptr;
-  LiteRtPluginApiNumSupportedModels num_supported_models = nullptr;
-  LiteRtPluginApiGetSupportedSocModel get_supported_soc_model = nullptr;
+  LiteRtGetCompilerPluginSocManufacturerT get_compiler_plugin_soc_manufacturer =
+      nullptr;
+  LiteRtGetNumCompilerPluginSupportedSocModelsT
+      get_num_compiler_plugin_supported_models = nullptr;
+  LiteRtGetCompilerPluginSupportedSocModelT
+      get_compiler_plugin_supported_soc_model = nullptr;
 
-  LiteRtPluginApiPartitionModel partition_model = nullptr;
-  LiteRtPluginApiCompile compile = nullptr;
+  LiteRtCompilerPluginPartitionModelT compiler_plugin_partition_model = nullptr;
+  LiteRtCompilerPluginCompileT compiler_plugin_compile = nullptr;
 
-  LiteRtCompiledResultApiDestroy compiled_result_destroy = nullptr;
-  LiteRtCompiledResultApiGetByteCode compiled_result_get_byte_code = nullptr;
-  LiteRtCompiledResultApiGetCallInfo compiled_result_get_call_info = nullptr;
-  LiteRtCompiledResultApiGetNumCalls compiled_result_get_num_calls = nullptr;
+  LiteRtDestroyCompiledResultT destroy_compiled_result = nullptr;
+  LiteRtGetCompiledResultByteCodeT get_compiled_result_byte_code = nullptr;
+  LiteRtGetCompiledResultCallInfoT get_compiled_result_call_info = nullptr;
+  LiteRtGetNumCompiledResultCallsT get_compiled_result_num_calls = nullptr;
 };
 
 #ifdef __cplusplus

@@ -23,7 +23,7 @@
 // Op Options
 //
 
-LiteRtStatus LiteRtAddGetFusedActivationOption(LiteRtOp op,
+LiteRtStatus LiteRtGetAddFusedActivationOption(LiteRtOp op,
                                                uint32_t* fused_activation) {
   if (op->op_code != kLiteRtOpCodeTflAdd) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -32,7 +32,7 @@ LiteRtStatus LiteRtAddGetFusedActivationOption(LiteRtOp op,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtBatchMatmulGetAdjXOption(LiteRtOp op, bool* adj_x) {
+LiteRtStatus LiteRtGetBatchMatmulAdjXOption(LiteRtOp op, bool* adj_x) {
   if (op->op_code != kLiteRtOpCodeTflBatchMatmul) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -40,7 +40,7 @@ LiteRtStatus LiteRtBatchMatmulGetAdjXOption(LiteRtOp op, bool* adj_x) {
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtBatchMatmulGetAdjYOption(LiteRtOp op, bool* adj_y) {
+LiteRtStatus LiteRtGetBatchMatmulAdjYOption(LiteRtOp op, bool* adj_y) {
   if (op->op_code != kLiteRtOpCodeTflBatchMatmul) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -48,7 +48,7 @@ LiteRtStatus LiteRtBatchMatmulGetAdjYOption(LiteRtOp op, bool* adj_y) {
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtBatchMatmulGetAsymmetricQuantizeInputOption(
+LiteRtStatus LiteRtGetBatchMatmulAsymmetricQuantizeInputOption(
     LiteRtOp op, bool* asymmetric_quantize_input) {
   if (op->op_code != kLiteRtOpCodeTflBatchMatmul) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -58,7 +58,7 @@ LiteRtStatus LiteRtBatchMatmulGetAsymmetricQuantizeInputOption(
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtConcatenationGetFusedActivationOption(
+LiteRtStatus LiteRtGetConcatenationFusedActivationOption(
     LiteRtOp op, uint32_t* fused_activation) {
   if (op->op_code != kLiteRtOpCodeTflConcatenation) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -68,7 +68,7 @@ LiteRtStatus LiteRtConcatenationGetFusedActivationOption(
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtConcatenationGetAxisOption(LiteRtOp op, int32_t* axis) {
+LiteRtStatus LiteRtGetConcatenationAxisOption(LiteRtOp op, int32_t* axis) {
   if (op->op_code != kLiteRtOpCodeTflConcatenation) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -76,7 +76,7 @@ LiteRtStatus LiteRtConcatenationGetAxisOption(LiteRtOp op, int32_t* axis) {
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtDivGetFusedActivationOption(LiteRtOp op,
+LiteRtStatus LiteRtGetDivFusedActivationOption(LiteRtOp op,
                                                uint32_t* fused_activation) {
   if (op->op_code != kLiteRtOpCodeTflDiv) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -85,7 +85,7 @@ LiteRtStatus LiteRtDivGetFusedActivationOption(LiteRtOp op,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtFullyConnectedGetFusedActivationOption(
+LiteRtStatus LiteRtGetFullyConnectedFusedActivationOption(
     LiteRtOp op, uint32_t* fused_activation) {
   if (op->op_code != kLiteRtOpCodeTflFullyConnected) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -95,7 +95,7 @@ LiteRtStatus LiteRtFullyConnectedGetFusedActivationOption(
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtFullyConnectedGetKeepNumDimsOption(LiteRtOp op,
+LiteRtStatus LiteRtGetFullyConnectedKeepNumDimsOption(LiteRtOp op,
                                                       bool* keep_num_dims) {
   if (op->op_code != kLiteRtOpCodeTflFullyConnected) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -114,7 +114,7 @@ LiteRtStatus LiteRtFullyConnectedGetQuantizedBiasTypeOption(
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtFullyConnectedGetAsymmetricQuantizeInputOption(
+LiteRtStatus LiteRtGetFullyConnectedAsymmetricQuantizeInputOption(
     LiteRtOp op, bool* asymmetric_quantize_input) {
   if (op->op_code != kLiteRtOpCodeTflFullyConnected) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -124,7 +124,7 @@ LiteRtStatus LiteRtFullyConnectedGetAsymmetricQuantizeInputOption(
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtFullyConnectedGetWeightsFormatOption(
+LiteRtStatus LiteRtGetFullyConnectedWeightsFormatOption(
     LiteRtOp op, uint32_t* weights_format) {
   if (op->op_code != kLiteRtOpCodeTflFullyConnected) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -132,7 +132,7 @@ LiteRtStatus LiteRtFullyConnectedGetWeightsFormatOption(
   *weights_format = op->option.AsFullyConnectedOptions()->weights_format;
   return kLiteRtStatusOk;
 }
-LiteRtStatus LiteRtMulGetFusedActivationOption(LiteRtOp op,
+LiteRtStatus LiteRtGetMulFusedActivationOption(LiteRtOp op,
                                                uint32_t* fused_activation) {
   if (op->op_code != kLiteRtOpCodeTflMul) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -141,7 +141,7 @@ LiteRtStatus LiteRtMulGetFusedActivationOption(LiteRtOp op,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtSoftmaxGetBetaOption(LiteRtOp op, float* beta) {
+LiteRtStatus LiteRtGetSoftmaxBetaOption(LiteRtOp op, float* beta) {
   if (op->op_code != kLiteRtOpCodeTflSoftmax) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -149,7 +149,7 @@ LiteRtStatus LiteRtSoftmaxGetBetaOption(LiteRtOp op, float* beta) {
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtStridedSliceGetBeginMaskOption(LiteRtOp op,
+LiteRtStatus LiteRtGetStridedSliceBeginMaskOption(LiteRtOp op,
                                                   int32_t* begin_mask) {
   if (op->op_code != kLiteRtOpCodeTflStridedSlice) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -158,7 +158,7 @@ LiteRtStatus LiteRtStridedSliceGetBeginMaskOption(LiteRtOp op,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtStridedSliceGetEndMaskOption(LiteRtOp op,
+LiteRtStatus LiteRtGetStridedSliceEndMaskOption(LiteRtOp op,
                                                 int32_t* end_mask) {
   if (op->op_code != kLiteRtOpCodeTflStridedSlice) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -167,7 +167,7 @@ LiteRtStatus LiteRtStridedSliceGetEndMaskOption(LiteRtOp op,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtStridedSliceGetEllipsisMaskOption(LiteRtOp op,
+LiteRtStatus LiteRtGetStridedSliceEllipsisMaskOption(LiteRtOp op,
                                                      int32_t* ellipsis_mask) {
   if (op->op_code != kLiteRtOpCodeTflStridedSlice) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -176,7 +176,7 @@ LiteRtStatus LiteRtStridedSliceGetEllipsisMaskOption(LiteRtOp op,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtStridedSliceGetNewAxisMaskOption(LiteRtOp op,
+LiteRtStatus LiteRtGetStridedSliceNewAxisMaskOption(LiteRtOp op,
                                                     int32_t* new_axis_mask) {
   if (op->op_code != kLiteRtOpCodeTflStridedSlice) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -185,7 +185,7 @@ LiteRtStatus LiteRtStridedSliceGetNewAxisMaskOption(LiteRtOp op,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtStridedSliceGetShrinkAxisMaskOption(
+LiteRtStatus LiteRtGetStridedSliceShrinkAxisMaskOption(
     LiteRtOp op, int32_t* shrink_axis_mask) {
   if (op->op_code != kLiteRtOpCodeTflStridedSlice) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -194,7 +194,7 @@ LiteRtStatus LiteRtStridedSliceGetShrinkAxisMaskOption(
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtStridedSliceGetOffsetOption(LiteRtOp op, bool* offset) {
+LiteRtStatus LiteRtGetStridedSliceOffsetOption(LiteRtOp op, bool* offset) {
   if (op->op_code != kLiteRtOpCodeTflStridedSlice) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -202,7 +202,7 @@ LiteRtStatus LiteRtStridedSliceGetOffsetOption(LiteRtOp op, bool* offset) {
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtSubGetFusedActivationOption(LiteRtOp op,
+LiteRtStatus LiteRtGetSubFusedActivationOption(LiteRtOp op,
                                                uint32_t* fused_activation) {
   if (op->op_code != kLiteRtOpCodeTflSub) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -211,7 +211,7 @@ LiteRtStatus LiteRtSubGetFusedActivationOption(LiteRtOp op,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtReshapeGetNewShapeOption(LiteRtOp op, int32_t** new_shape,
+LiteRtStatus LiteRtGetReshapeNewShapeOption(LiteRtOp op, int32_t** new_shape,
                                             int32_t* new_shape_size) {
   if (op->op_code != kLiteRtOpCodeTflReshape) {
     return kLiteRtStatusErrorInvalidArgument;
@@ -226,7 +226,7 @@ LiteRtStatus LiteRtReshapeGetNewShapeOption(LiteRtOp op, int32_t** new_shape,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtSumGetKeepdimsOption(LiteRtOp op, bool* keepdims) {
+LiteRtStatus LiteRtGetSumKeepDimsOption(LiteRtOp op, bool* keepdims) {
   if (op->op_code != kLiteRtOpCodeTflSum) {
     return kLiteRtStatusErrorInvalidArgument;
   }

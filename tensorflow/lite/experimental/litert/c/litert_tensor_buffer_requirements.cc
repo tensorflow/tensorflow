@@ -60,7 +60,7 @@ LiteRtStatus LiteRtCreateTensorBufferRequirements(
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+LiteRtStatus LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
     LiteRtTensorBufferRequirements requirements, int* num_types) {
   if (!requirements || !num_types) {
     return kLiteRtStatusErrorInvalidArgument;

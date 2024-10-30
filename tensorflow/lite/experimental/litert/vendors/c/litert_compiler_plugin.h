@@ -33,63 +33,64 @@ LITERT_DEFINE_HANDLE(LiteRtCompiledResult);
 // Plugin
 //
 
-LiteRtStatus LiteRtPluginInit(LiteRtCompilerPlugin* compiler_plugin);
+LiteRtStatus LiteRtCreateCompilerPlugin(LiteRtCompilerPlugin* compiler_plugin);
 
-void LiteRtPluginDestroy(LiteRtCompilerPlugin compiler_plugin);
+void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin);
 
 // Name associated with the manufacturer this plugin relates to (e.g,
 // GoogleTensor, Qualcomm).
-const char* LiteRtPluginSocManufacturer();
+const char* LiteRtGetCompilerPluginSocManufacturer();
 
 // Number of SoC models supported by this plugin.
-LiteRtParamIndex LiteRtPluginNumSupportedSocModels(
-    LiteRtCompilerPlugin compiler_plugin);
+LiteRtStatus LiteRtGetNumCompilerPluginSupportedSocModels(
+    LiteRtCompilerPlugin compiler_plugin,
+    LiteRtParamIndex* num_supported_soc_models);
 
 // Gets the name of the SoC model at the given index. The memory
 // associated with the returned name is owned by the plugin.
-LiteRtStatus LiteRtPluginGetSupportedSocModel(
+LiteRtStatus LiteRtGetCompilerPluginSupportedSocModel(
     LiteRtCompilerPlugin compiler_plugin, LiteRtParamIndex soc_model_idx,
     const char** soc_model_name);
 
 // Select desired ops for compilation. This will be called only once
 // during the plugin application flow, all ops should be selected during this
 // call.
-LiteRtStatus LiteRtPluginPartitionModel(LiteRtCompilerPlugin compiler_plugin,
-                                        LiteRtModel model,
-                                        LiteRtOpList selected_ops);
+LiteRtStatus LiteRtCompilerPluginPartitionModel(
+    LiteRtCompilerPlugin compiler_plugin, LiteRtModel model,
+    LiteRtOpList selected_ops);
 
 // Prepare result to pass to the runtime for given partition and, optionally,
 // for a given SoC model (parameter `soc_model` can be NULL). The given
 // subgraphs are valid sub-DAG within the ops selected in partition step.
-LiteRtStatus LiteRtPluginCompile(LiteRtCompilerPlugin compiler_plugin,
-                                 const char* soc_model,
-                                 LiteRtSubgraphArray partitions,
-                                 LiteRtParamIndex num_partitions,
-                                 LiteRtCompiledResult* compiled_result);
+LiteRtStatus LiteRtCompilerPluginCompile(LiteRtCompilerPlugin compiler_plugin,
+                                         const char* soc_model,
+                                         LiteRtSubgraphArray partitions,
+                                         LiteRtParamIndex num_partitions,
+                                         LiteRtCompiledResult* compiled_result);
 
 //
 // Compiled Partition
 //
 
-void LiteRtCompiledResultDestroy(LiteRtCompiledResult result);
+void LiteRtDestroyCompiledResult(LiteRtCompiledResult result);
 
 // Get serialized result to compiled modules available to all custom ops.
 // This could be one module with multiple entry points or multiple modules
 // concat together.
-LiteRtStatus LiteRtCompiledResultGetByteCode(
+LiteRtStatus LiteRtGetCompiledResultByteCode(
     LiteRtCompiledResult compiled_result, const void** byte_code,
     size_t* byte_code_size);
 
 // Get info to embed in a particular custom op. This could be  any opaque data
 // parsed in the custom op.
-LiteRtStatus LiteRtCompiledResultGetCallInfo(
+LiteRtStatus LiteRtGetCompiledResultCallInfo(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex call_idx,
     const void** call_info, size_t* call_info_size);
 
 // Get the number of calls that will be made to the HAL for this graph.
 // This should equal the number of partitions given for compilation which
 // is equal to the number of custom ops in the final model.
-LiteRtStatus LiteRtCompiledResultGetNumCalls(
+LiteRtStatus LiteRtGetNumCompiledResultCalls(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_calls);
 
 #ifdef __cplusplus

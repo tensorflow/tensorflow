@@ -25,7 +25,7 @@ litert_dynamic_lib(
     hdrs = ["//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin.h"],
     export_litert_only = True,
     shared_lib_name = "qnn_compiler_plugin_so",
-    so_name = "libLiteRtQnnCompilerPlugin.so",
+    so_name = "libLiteRtCompilerPlugin_Qualcomm.so",
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",

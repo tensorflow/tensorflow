@@ -61,7 +61,7 @@ inline absl::string_view FbBufToStr(FbBufferT fb_buf) {
 struct LiteRtCompilerPluginDeleter {
   void operator()(LiteRtCompilerPlugin plugin) {
     if (plugin != nullptr) {
-      LiteRtPluginDestroy(plugin);
+      LiteRtDestroyCompilerPlugin(plugin);
     }
   }
 };

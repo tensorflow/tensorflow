@@ -48,7 +48,7 @@ TEST(TensorBufferRequirements, NoStrides) {
             kLiteRtStatusOk);
 
   int num_types;
-  ASSERT_EQ(LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+  ASSERT_EQ(LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
                 requirements, &num_types),
             kLiteRtStatusOk);
   ASSERT_EQ(num_types, kNumSupportedTensorBufferTypes);

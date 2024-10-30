@@ -33,7 +33,7 @@ LiteRtStatus LiteRtCreateTensorBufferRequirements(
     size_t buffer_size, int num_strides, const uint32_t* strides,
     LiteRtTensorBufferRequirements* requirements);
 
-LiteRtStatus LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+LiteRtStatus LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
     LiteRtTensorBufferRequirements requirements, int* num_types);
 
 LiteRtStatus LiteRtGetTensorBufferRequirementsSupportedTensorBufferType(

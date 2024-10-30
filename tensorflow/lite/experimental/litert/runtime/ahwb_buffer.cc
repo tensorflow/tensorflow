@@ -76,7 +76,7 @@ absl::StatusOr<void*> AhwbBuffer::Lock(AHardwareBuffer* ahwb,
 #if LITERT_HAS_AHWB_SUPPORT
   int fence = -1;
   if (event) {
-    if (auto status = LiteRtEventGetSyncFenceFd(event, &fence);
+    if (auto status = LiteRtGetEventSyncFenceFd(event, &fence);
         status != kLiteRtStatusOk) {
       return absl::InternalError("Failed to get sync fence fd from event");
     }

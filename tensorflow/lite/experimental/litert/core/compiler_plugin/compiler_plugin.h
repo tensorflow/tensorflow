@@ -78,7 +78,7 @@ class CompilerPlugin {
   // string returned by the underlying plugin are expected to have static
   // lifetime.
   absl::string_view SocManufacturer() const {
-    return plugin_api_.soc_manufacturer();
+    return plugin_api_.get_compiler_plugin_soc_manufacturer();
   }
 
   // Get list of unique soc models targetable by this plugin.

@@ -24,13 +24,13 @@
 #include "tensorflow/lite/experimental/litert/runtime/event.h"
 
 #if LITERT_HAS_SYNC_FENCE_SUPPORT
-LiteRtStatus LiteRtEventCreateFromSyncFenceFd(int sync_fence_fd, bool owns_fd,
+LiteRtStatus LiteRtCreateEventFromSyncFenceFd(int sync_fence_fd, bool owns_fd,
                                               LiteRtEvent* event) {
   *event = new LiteRtEventT{.fd = sync_fence_fd, .owns_fd = owns_fd};
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtEventGetSyncFenceFd(LiteRtEvent event, int* sync_fence_fd) {
+LiteRtStatus LiteRtGetEventSyncFenceFd(LiteRtEvent event, int* sync_fence_fd) {
   *sync_fence_fd = event->fd;
   return kLiteRtStatusOk;
 }
@@ -40,4 +40,4 @@ LiteRtStatus LiteRtEventWait(LiteRtEvent event, int64_t timeout_in_ms) {
   return event->Wait(timeout_in_ms);
 }
 
-void LiteRtEventDestroy(LiteRtEvent event) { delete event; }
+void LiteRtDestroyEvent(LiteRtEvent event) { delete event; }
