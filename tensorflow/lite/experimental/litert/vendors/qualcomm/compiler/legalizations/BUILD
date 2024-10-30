@@ -86,6 +86,33 @@ litert_lib(
 )
 
 litert_lib(
+    name = "concatenation_op_legalization",
+    srcs = ["concatenation_op_legalization.cc"],
+    hdrs = ["concatenation_op_legalization.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
+    deps = [
+        ":legalization",
+        ":util",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler:graph_mapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_op",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_tensor",
+    ],
+)
+
+litert_lib(
     name = "div_op_legalization",
     srcs = ["div_op_legalization.cc"],
     hdrs = ["div_op_legalization.h"],

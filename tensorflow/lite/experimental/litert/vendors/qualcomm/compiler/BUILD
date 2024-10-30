@@ -96,6 +96,7 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_tensor",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:add_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:batch_matmul_op_legalization",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:concatenation_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:div_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:mul_op_legalization",

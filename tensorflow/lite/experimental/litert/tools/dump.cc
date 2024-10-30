@@ -115,6 +115,9 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflSum:
       out << "TFL_SUM";
       break;
+    case kLiteRtOpCodeTflConcatenation:
+      out << "TFL_CONCATENATION";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;
@@ -296,10 +299,10 @@ void DumpOptions(const LiteRtOpT& op, std::ostream& out) {
           << "\n";
       break;
     case kLiteRtOpCodeTflConcatenation:
+      out << "axis: " << op.option.AsConcatenationOptions()->axis << "\n";
       out << "fused_activation_function: "
           << op.option.AsConcatenationOptions()->fused_activation_function
           << "\n";
-      out << "axis: " << op.option.AsConcatenationOptions()->axis << "\n";
       break;
     case kLiteRtOpCodeTflDiv:
       out << "fused_activation_function: "

@@ -39,7 +39,8 @@ const auto kSupportedOps =
                     "simple_tanh_op.tflite",
                     "simple_reshape_op.tflite",
                     "simple_batch_matmul_op.tflite",
-                    "rms_norm.tflite"
+                    "rms_norm.tflite",
+                    "simple_concatenation_op.tflite"
                     );
 // clang-format on
 
