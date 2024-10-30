@@ -1045,6 +1045,7 @@ xla_test(
         "manual",
     ]),
     deps = [
+        ":rocm_event",
         ":rocm_executor",
         ":rocm_platform_id",
         ":rocm_stream",

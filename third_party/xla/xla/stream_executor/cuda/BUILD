@@ -1243,6 +1243,7 @@ xla_test(
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
+        ":cuda_event",
         ":cuda_executor",
         ":cuda_platform_id",
         ":cuda_stream",
