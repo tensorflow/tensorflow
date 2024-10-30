@@ -29,7 +29,7 @@ this file with a file generated from [`api_template.__init__.py`](https://www.gi
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    import keras
+  import keras
 
 import sysconfig as _sysconfig
 import importlib
