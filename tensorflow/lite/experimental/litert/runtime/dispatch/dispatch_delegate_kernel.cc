@@ -99,17 +99,18 @@ absl::StatusOr<DispatchDelegateKernel::Ptr> DispatchDelegateKernel::Create(
   }
   LITERT_LOG(LITERT_INFO, "Dispatch API build ID: %s", build_id);
 
-  LiteRtDispatchApiVersion api_version;
+  LiteRtApiVersion api_version;
   if (auto status = LiteRtDispatchGetApiVersion(&api_version);
       status != kLiteRtStatusOk) {
-    LITERT_LOG(LITERT_ERROR, "Failed to get Dispatch API version: %d", status);
-    return absl::InternalError("Failed to get Dispatch API version");
+    LITERT_LOG(LITERT_ERROR, "Failed to get LiteRT Dispatch API version: %d",
+               status);
+    return absl::InternalError("Failed to get LiteRT Dispatch API version");
   }
   LITERT_LOG(LITERT_INFO, "Dispatch API version: %d.%d.%d", api_version.major,
              api_version.minor, api_version.patch);
   // Check if the versions mach.
-  if (api_version.major != LITERT_DISPATCH_API_VERSION_MAJOR ||
-      api_version.minor < LITERT_DISPATCH_API_VERSION_MINOR) {
+  if (api_version.major != LITERT_API_VERSION_MAJOR ||
+      api_version.minor < LITERT_API_VERSION_MINOR) {
     return absl::InternalError(
         "Found Dispatch API with an unsupported version");
   }

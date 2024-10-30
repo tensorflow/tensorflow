@@ -207,7 +207,7 @@ typedef struct LiteRtDispatchGraphInterface {
 
 // FIXME See Vulkan and OpenCL extensions.
 typedef struct LiteRtDispatchApi {
-  LiteRtDispatchApiVersion version;
+  LiteRtApiVersion version;
   LiteRtDispatchInterface* interface;
   LiteRtDispatchAsyncInterface* async_interface;
   LiteRtDispatchGraphInterface* graph_interface;

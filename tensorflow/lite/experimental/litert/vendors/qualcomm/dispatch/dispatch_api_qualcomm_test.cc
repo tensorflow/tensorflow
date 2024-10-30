@@ -46,7 +46,7 @@ TEST(Qualcomm, DispatchApiWithFastRpc) {
   EXPECT_EQ(LiteRtDispatchGetBuildId(&build_id), kLiteRtStatusOk);
   ABSL_LOG(INFO) << "build_id: " << build_id;
 
-  LiteRtDispatchApiVersion api_version;
+  LiteRtApiVersion api_version;
   EXPECT_EQ(LiteRtDispatchGetApiVersion(&api_version), kLiteRtStatusOk);
   ABSL_LOG(INFO) << "api_version: " << api_version.major << "."
                  << api_version.minor << "." << api_version.patch;
@@ -297,7 +297,7 @@ TEST(Qualcomm, DispatchApiWithDmaBuf) {
   EXPECT_EQ(LiteRtDispatchGetBuildId(&build_id), kLiteRtStatusOk);
   ABSL_LOG(INFO) << "build_id: " << build_id;
 
-  LiteRtDispatchApiVersion api_version;
+  LiteRtApiVersion api_version;
   EXPECT_EQ(LiteRtDispatchGetApiVersion(&api_version), kLiteRtStatusOk);
   ABSL_LOG(INFO) << "api_version: " << api_version.major << "."
                  << api_version.minor << "." << api_version.patch;

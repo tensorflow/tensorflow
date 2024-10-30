@@ -49,6 +49,16 @@ extern "C" {
 #define LITERT_HAS_FASTRPC_SUPPORT 0
 #endif
 
+#define LITERT_API_VERSION_MAJOR 0
+#define LITERT_API_VERSION_MINOR 1
+#define LITERT_API_VERSION_PATCH 0
+
+typedef struct LiteRtApiVersion {
+  int major;
+  int minor;
+  int patch;
+} LiteRtApiVersion;
+
 typedef enum {
   kLiteRtStatusOk = 0,
 
