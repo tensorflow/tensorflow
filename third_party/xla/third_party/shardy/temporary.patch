@@ -1,407 +1,407 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..d5844b5 100644
+index d5844b5..509398d 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,387 @@
+@@ -1,387 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Arch/AArch64.cpp b/clang/lib/Driver/ToolChains/Arch/AArch64.cpp
-+--- a/clang/lib/Driver/ToolChains/Arch/AArch64.cpp
-++++ b/clang/lib/Driver/ToolChains/Arch/AArch64.cpp
-+@@ -135,21 +135,15 @@
-+   return true;
-+ }
-+ 
-+-static bool getAArch64ArchFeaturesFromMcpu(
-+-    const Driver &D, StringRef Mcpu, const ArgList &Args,
-+-    llvm::AArch64::ExtensionSet &Extensions, std::vector<StringRef> &Features) {
-++static bool
-++getAArch64ArchFeaturesFromMcpu(const Driver &D, StringRef Mcpu,
-++                               const ArgList &Args,
-++                               llvm::AArch64::ExtensionSet &Extensions) {
-+   StringRef CPU;
-+   std::string McpuLowerCase = Mcpu.lower();
-+   if (!DecodeAArch64Mcpu(D, McpuLowerCase, CPU, Extensions))
-+     return false;
-+ 
-+-  if (Mcpu == "native") {
-+-    llvm::StringMap<bool> HostFeatures = llvm::sys::getHostCPUFeatures();
-+-    for (auto &[Feature, Enabled] : HostFeatures) {
-+-      Features.push_back(Args.MakeArgString((Enabled ? "+" : "-") + Feature));
-+-    }
-+-  }
-+-
-+   return true;
-+ }
-+ 
-+@@ -216,11 +210,11 @@
-+     success =
-+         getAArch64ArchFeaturesFromMarch(D, A->getValue(), Args, Extensions);
-+   else if ((A = Args.getLastArg(options::OPT_mcpu_EQ)))
-+-    success = getAArch64ArchFeaturesFromMcpu(D, A->getValue(), Args, Extensions,
-+-                                             Features);
-++    success =
-++        getAArch64ArchFeaturesFromMcpu(D, A->getValue(), Args, Extensions);
-+   else if (isCPUDeterminedByTriple(Triple))
-+     success = getAArch64ArchFeaturesFromMcpu(
-+-        D, getAArch64TargetCPU(Args, Triple, A), Args, Extensions, Features);
-++        D, getAArch64TargetCPU(Args, Triple, A), Args, Extensions);
-+   else
-+     // Default to 'A' profile if the architecture is not specified.
-+     success = getAArch64ArchFeaturesFromMarch(D, "armv8-a", Args, Extensions);
-+diff -ruN --strip-trailing-cr a/clang/test/Driver/Inputs/cpunative/cortex-a57 b/clang/test/Driver/Inputs/cpunative/cortex-a57
-+--- a/clang/test/Driver/Inputs/cpunative/cortex-a57
-++++ b/clang/test/Driver/Inputs/cpunative/cortex-a57
-+@@ -1,8 +0,0 @@
-+-processor       : 0
-+-BogoMIPS        : 200.00
-+-Features        : fp asimd evtstrm crc32 cpuid
-+-CPU implementer : 0x41
-+-CPU architecture: 8
-+-CPU variant     : 0x1
-+-CPU part        : 0xd07
-+-CPU revision    : 1
-+diff -ruN --strip-trailing-cr a/clang/test/Driver/Inputs/cpunative/cortex-a72 b/clang/test/Driver/Inputs/cpunative/cortex-a72
-+--- a/clang/test/Driver/Inputs/cpunative/cortex-a72
-++++ b/clang/test/Driver/Inputs/cpunative/cortex-a72
-+@@ -1,8 +0,0 @@
-+-processor       : 0
-+-BogoMIPS        : 250.00
-+-Features        : fp asimd evtstrm aes pmull sha1 sha2 crc32 cpuid asimdrdm
-+-CPU implementer : 0x41
-+-CPU architecture: 8
-+-CPU variant     : 0x0
-+-CPU part        : 0xd08
-+-CPU revision    : 2
-+diff -ruN --strip-trailing-cr a/clang/test/Driver/Inputs/cpunative/cortex-a76 b/clang/test/Driver/Inputs/cpunative/cortex-a76
-+--- a/clang/test/Driver/Inputs/cpunative/cortex-a76
-++++ b/clang/test/Driver/Inputs/cpunative/cortex-a76
-+@@ -1,8 +0,0 @@
-+-processor       : 0
-+-BogoMIPS        : 500.00
-+-Features        : fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics cpuid asimdrdm ssbs jscvt fcma
-+-CPU implementer : 0x41
-+-CPU architecture: 8
-+-CPU variant     : 0x1
-+-CPU part        : 0xd0b
-+-CPU revision    : 2
-+diff -ruN --strip-trailing-cr a/clang/test/Driver/Inputs/cpunative/neoverse-n1 b/clang/test/Driver/Inputs/cpunative/neoverse-n1
-+--- a/clang/test/Driver/Inputs/cpunative/neoverse-n1
-++++ b/clang/test/Driver/Inputs/cpunative/neoverse-n1
-+@@ -1,8 +0,0 @@
-+-processor       : 0
-+-BogoMIPS        : 50.00
-+-Features        : fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm lrcpc dcpop asimddp ssbs
-+-CPU implementer : 0x41
-+-CPU architecture: 8
-+-CPU variant     : 0x3
-+-CPU part        : 0xd0c
-+-CPU revision    : 1
-+diff -ruN --strip-trailing-cr a/clang/test/Driver/Inputs/cpunative/neoverse-v2 b/clang/test/Driver/Inputs/cpunative/neoverse-v2
-+--- a/clang/test/Driver/Inputs/cpunative/neoverse-v2
-++++ b/clang/test/Driver/Inputs/cpunative/neoverse-v2
-+@@ -1,8 +0,0 @@
-+-processor       : 0
-+-BogoMIPS        : 2000.00
-+-Features        : fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp sha512 sve asimdfhm dit uscat ilrcpc flagm ssbs sb paca pacg dcpodp sve2 sveaes svepmull svebitperm svesha3 svesm4 flagm2 frint svei8mm svebf16 i8mm bf16 dgh bti
-+-CPU implementer : 0x41
-+-CPU architecture: 8
-+-CPU variant     : 0x0
-+-CPU part        : 0xd4f
-+-CPU revision    : 0
-+diff -ruN --strip-trailing-cr a/clang/test/Driver/aarch64-mcpu-native.c b/clang/test/Driver/aarch64-mcpu-native.c
-+--- a/clang/test/Driver/aarch64-mcpu-native.c
-++++ b/clang/test/Driver/aarch64-mcpu-native.c
-+@@ -1,138 +0,0 @@
-+-// REQUIRES: aarch64-registered-target
-+-// RUN: export LLVM_CPUINFO=%S/Inputs/cpunative/neoverse-v2
-+-// RUN: %clang --target=aarch64 --print-enabled-extensions -mcpu=native | FileCheck --strict-whitespace --check-prefix=CHECK-FEAT-NV2 --implicit-check-not=FEAT_ %s
-+-
-+-// CHECK-FEAT-NV2: Extensions enabled for the given AArch64 target
-+-// CHECK-FEAT-NV2-EMPTY:
-+-// CHECK-FEAT-NV2:    Architecture Feature(s)                                Description
-+-// CHECK-FEAT-NV2:    FEAT_AES, FEAT_PMULL                                   Enable AES support
-+-// CHECK-FEAT-NV2:    FEAT_AMUv1                                             Enable Armv8.4-A Activity Monitors extension
-+-// CHECK-FEAT-NV2:    FEAT_AdvSIMD                                           Enable Advanced SIMD instructions
-+-// CHECK-FEAT-NV2:    FEAT_BF16                                              Enable BFloat16 Extension
-+-// CHECK-FEAT-NV2:    FEAT_BTI                                               Enable Branch Target Identification
-+-// CHECK-FEAT-NV2:    FEAT_CCIDX                                             Enable Armv8.3-A Extend of the CCSIDR number of sets
-+-// CHECK-FEAT-NV2:    FEAT_CRC32                                             Enable Armv8.0-A CRC-32 checksum instructions
-+-// CHECK-FEAT-NV2:    FEAT_CSV2_2                                            Enable architectural speculation restriction
-+-// CHECK-FEAT-NV2:    FEAT_DIT                                               Enable Armv8.4-A Data Independent Timing instructions
-+-// CHECK-FEAT-NV2:    FEAT_DPB                                               Enable Armv8.2-A data Cache Clean to Point of Persistence
-+-// CHECK-FEAT-NV2:    FEAT_DPB2                                              Enable Armv8.5-A Cache Clean to Point of Deep Persistence
-+-// CHECK-FEAT-NV2:    FEAT_DotProd                                           Enable dot product support
-+-// CHECK-FEAT-NV2:    FEAT_ETE                                               Enable Embedded Trace Extension
-+-// CHECK-FEAT-NV2:    FEAT_FCMA                                              Enable Armv8.3-A Floating-point complex number support
-+-// CHECK-FEAT-NV2:    FEAT_FHM                                               Enable FP16 FML instructions
-+-// CHECK-FEAT-NV2:    FEAT_FP                                                Enable Armv8.0-A Floating Point Extensions
-+-// CHECK-FEAT-NV2:    FEAT_FP16                                              Enable half-precision floating-point data processing
-+-// CHECK-FEAT-NV2:    FEAT_FRINTTS                                           Enable FRInt[32|64][Z|X] instructions that round a floating-point number to an integer (in FP format) forcing it to fit into a 32- or 64-bit int
-+-// CHECK-FEAT-NV2:    FEAT_FlagM                                             Enable Armv8.4-A Flag Manipulation instructions
-+-// CHECK-FEAT-NV2:    FEAT_FlagM2                                            Enable alternative NZCV format for floating point comparisons
-+-// CHECK-FEAT-NV2:    FEAT_I8MM                                              Enable Matrix Multiply Int8 Extension
-+-// CHECK-FEAT-NV2:    FEAT_JSCVT                                             Enable Armv8.3-A JavaScript FP conversion instructions
-+-// CHECK-FEAT-NV2:    FEAT_LOR                                               Enable Armv8.1-A Limited Ordering Regions extension
-+-// CHECK-FEAT-NV2:    FEAT_LRCPC                                             Enable support for RCPC extension
-+-// CHECK-FEAT-NV2:    FEAT_LRCPC2                                            Enable Armv8.4-A RCPC instructions with Immediate Offsets
-+-// CHECK-FEAT-NV2:    FEAT_LSE                                               Enable Armv8.1-A Large System Extension (LSE) atomic instructions
-+-// CHECK-FEAT-NV2:    FEAT_LSE2                                              Enable Armv8.4-A Large System Extension 2 (LSE2) atomicity rules
-+-// CHECK-FEAT-NV2:    FEAT_MPAM                                              Enable Armv8.4-A Memory system Partitioning and Monitoring extension
-+-// CHECK-FEAT-NV2:    FEAT_MTE, FEAT_MTE2                                    Enable Memory Tagging Extension
-+-// CHECK-FEAT-NV2:    FEAT_NV, FEAT_NV2                                      Enable Armv8.4-A Nested Virtualization Enchancement
-+-// CHECK-FEAT-NV2:    FEAT_PAN                                               Enable Armv8.1-A Privileged Access-Never extension
-+-// CHECK-FEAT-NV2:    FEAT_PAN2                                              Enable Armv8.2-A PAN s1e1R and s1e1W Variants
-+-// CHECK-FEAT-NV2:    FEAT_PAuth                                             Enable Armv8.3-A Pointer Authentication extension
-+-// CHECK-FEAT-NV2:    FEAT_PMUv3                                             Enable Armv8.0-A PMUv3 Performance Monitors extension
-+-// CHECK-FEAT-NV2:    FEAT_RAS, FEAT_RASv1p1                                 Enable Armv8.0-A Reliability, Availability and Serviceability Extensions
-+-// CHECK-FEAT-NV2:    FEAT_RDM                                               Enable Armv8.1-A Rounding Double Multiply Add/Subtract instructions
-+-// CHECK-FEAT-NV2:    FEAT_RNG                                               Enable Random Number generation instructions
-+-// CHECK-FEAT-NV2:    FEAT_SB                                                Enable Armv8.5-A Speculation Barrier
-+-// CHECK-FEAT-NV2:    FEAT_SEL2                                              Enable Armv8.4-A Secure Exception Level 2 extension
-+-// CHECK-FEAT-NV2:    FEAT_SHA1, FEAT_SHA256                                 Enable SHA1 and SHA256 support
-+-// CHECK-FEAT-NV2:    FEAT_SPE                                               Enable Statistical Profiling extension
-+-// CHECK-FEAT-NV2:    FEAT_SPECRES                                           Enable Armv8.5-A execution and data prediction invalidation instructions
-+-// CHECK-FEAT-NV2:    FEAT_SSBS, FEAT_SSBS2                                  Enable Speculative Store Bypass Safe bit
-+-// CHECK-FEAT-NV2:    FEAT_SVE                                               Enable Scalable Vector Extension (SVE) instructions
-+-// CHECK-FEAT-NV2:    FEAT_SVE2                                              Enable Scalable Vector Extension 2 (SVE2) instructions
-+-// CHECK-FEAT-NV2:    FEAT_SVE_BitPerm                                       Enable bit permutation SVE2 instructions
-+-// CHECK-FEAT-NV2:    FEAT_TLBIOS, FEAT_TLBIRANGE                            Enable Armv8.4-A TLB Range and Maintenance instructions
-+-// CHECK-FEAT-NV2:    FEAT_TRBE                                              Enable Trace Buffer Extension
-+-// CHECK-FEAT-NV2:    FEAT_TRF                                               Enable Armv8.4-A Trace extension
-+-// CHECK-FEAT-NV2:    FEAT_UAO                                               Enable Armv8.2-A UAO PState
-+-// CHECK-FEAT-NV2:    FEAT_VHE                                               Enable Armv8.1-A Virtual Host extension
-+-
-+-// RUN: export LLVM_CPUINFO=%S/Inputs/cpunative/neoverse-n1
-+-// RUN: %clang --target=aarch64 --print-enabled-extensions -mcpu=native | FileCheck --strict-whitespace --check-prefix=CHECK-FEAT-NN1 --implicit-check-not=FEAT_ %s
-+-
-+-// CHECK-FEAT-NN1: Extensions enabled for the given AArch64 target
-+-// CHECK-FEAT-NN1-EMPTY:
-+-// CHECK-FEAT-NN1:    Architecture Feature(s)                                Description
-+-// CHECK-FEAT-NN1:    FEAT_AES, FEAT_PMULL                                   Enable AES support
-+-// CHECK-FEAT-NN1:    FEAT_AdvSIMD                                           Enable Advanced SIMD instructions
-+-// CHECK-FEAT-NN1:    FEAT_CRC32                                             Enable Armv8.0-A CRC-32 checksum instructions
-+-// CHECK-FEAT-NN1:    FEAT_DPB                                               Enable Armv8.2-A data Cache Clean to Point of Persistence
-+-// CHECK-FEAT-NN1:    FEAT_DotProd                                           Enable dot product support
-+-// CHECK-FEAT-NN1:    FEAT_FP                                                Enable Armv8.0-A Floating Point Extensions
-+-// CHECK-FEAT-NN1:    FEAT_FP16                                              Enable half-precision floating-point data processing
-+-// CHECK-FEAT-NN1:    FEAT_LOR                                               Enable Armv8.1-A Limited Ordering Regions extension
-+-// CHECK-FEAT-NN1:    FEAT_LRCPC                                             Enable support for RCPC extension
-+-// CHECK-FEAT-NN1:    FEAT_LSE                                               Enable Armv8.1-A Large System Extension (LSE) atomic instructions
-+-// CHECK-FEAT-NN1:    FEAT_PAN                                               Enable Armv8.1-A Privileged Access-Never extension
-+-// CHECK-FEAT-NN1:    FEAT_PAN2                                              Enable Armv8.2-A PAN s1e1R and s1e1W Variants
-+-// CHECK-FEAT-NN1:    FEAT_PMUv3                                             Enable Armv8.0-A PMUv3 Performance Monitors extension
-+-// CHECK-FEAT-NN1:    FEAT_RAS, FEAT_RASv1p1                                 Enable Armv8.0-A Reliability, Availability and Serviceability Extensions
-+-// CHECK-FEAT-NN1:    FEAT_RDM                                               Enable Armv8.1-A Rounding Double Multiply Add/Subtract instructions
-+-// CHECK-FEAT-NN1:    FEAT_SHA1, FEAT_SHA256                                 Enable SHA1 and SHA256 support
-+-// CHECK-FEAT-NN1:    FEAT_SPE                                               Enable Statistical Profiling extension
-+-// CHECK-FEAT-NN1:    FEAT_SSBS, FEAT_SSBS2                                  Enable Speculative Store Bypass Safe bit
-+-// CHECK-FEAT-NN1:    FEAT_UAO                                               Enable Armv8.2-A UAO PState
-+-// CHECK-FEAT-NN1:    FEAT_VHE                                               Enable Armv8.1-A Virtual Host extension
-+-
-+-
-+-// RUN: export LLVM_CPUINFO=%S/Inputs/cpunative/cortex-a57
-+-// RUN: %clang --target=aarch64 --print-enabled-extensions -mcpu=native | FileCheck --strict-whitespace --check-prefix=CHECK-FEAT-CA57 --implicit-check-not=FEAT_ %s
-+-
-+-// CHECK-FEAT-CA57: Extensions enabled for the given AArch64 target
-+-// CHECK-FEAT-CA57-EMPTY:
-+-// CHECK-FEAT-CA57:    Architecture Feature(s)                                Description
-+-// CHECK-FEAT-CA57:    FEAT_AES, FEAT_PMULL                                   Enable AES support
-+-// CHECK-FEAT-CA57:    FEAT_AdvSIMD                                           Enable Advanced SIMD instructions
-+-// CHECK-FEAT-CA57:    FEAT_CRC32                                             Enable Armv8.0-A CRC-32 checksum instructions
-+-// CHECK-FEAT-CA57:    FEAT_FP                                                Enable Armv8.0-A Floating Point Extensions
-+-// CHECK-FEAT-CA57:    FEAT_PMUv3                                             Enable Armv8.0-A PMUv3 Performance Monitors extension
-+-// CHECK-FEAT-CA57:    FEAT_SHA1, FEAT_SHA256                                 Enable SHA1 and SHA256 support
-+-
-+-// RUN: export LLVM_CPUINFO=%S/Inputs/cpunative/cortex-a72
-+-// RUN: %clang --target=aarch64 --print-enabled-extensions -mcpu=native | FileCheck --strict-whitespace  --check-prefix=CHECK-FEAT-CA72 --implicit-check-not=FEAT_ %s
-+-
-+-// CHECK-FEAT-CA72: Extensions enabled for the given AArch64 target
-+-// CHECK-EMPTY:
-+-// CHECK-FEAT-CA72:   Architecture Feature(s)                                Description
-+-// CHECK-FEAT-CA72:    FEAT_AES, FEAT_PMULL                                   Enable AES support
-+-// CHECK-FEAT-CA72:    FEAT_AdvSIMD                                           Enable Advanced SIMD instructions
-+-// CHECK-FEAT-CA72:    FEAT_CRC32                                             Enable Armv8.0-A CRC-32 checksum instructions
-+-// CHECK-FEAT-CA72:    FEAT_FP                                                Enable Armv8.0-A Floating Point Extensions
-+-// CHECK-FEAT-CA72:    FEAT_PMUv3                                             Enable Armv8.0-A PMUv3 Performance Monitors extension
-+-// CHECK-FEAT-CA72:    FEAT_SHA1, FEAT_SHA256                                 Enable SHA1 and SHA256 support
-+-
-+-// RUN: export LLVM_CPUINFO=%S/Inputs/cpunative/cortex-a76
-+-// RUN: %clang --target=aarch64 --print-enabled-extensions -mcpu=native | FileCheck --strict-whitespace --check-prefix=CHECK-FEAT-CA76 --implicit-check-not=FEAT_ %s
-+-
-+-// CHECK-FEAT-CA76: Extensions enabled for the given AArch64 target
-+-// CHECK-FEAT-CA76-EMPTY:
-+-// CHECK-FEAT-CA76:    Architecture Feature(s)                                Description
-+-// CHECK-FEAT-CA76:    FEAT_AES, FEAT_PMULL                                   Enable AES support
-+-// CHECK-FEAT-CA76:    FEAT_AdvSIMD                                           Enable Advanced SIMD instructions
-+-// CHECK-FEAT-CA76:    FEAT_CRC32                                             Enable Armv8.0-A CRC-32 checksum instructions
-+-// CHECK-FEAT-CA76:    FEAT_DPB                                               Enable Armv8.2-A data Cache Clean to Point of Persistence
-+-// CHECK-FEAT-CA76:    FEAT_DotProd                                           Enable dot product support
-+-// CHECK-FEAT-CA76:    FEAT_FP                                                Enable Armv8.0-A Floating Point Extensions
-+-// CHECK-FEAT-CA76:    FEAT_FP16                                              Enable half-precision floating-point data processing
-+-// CHECK-FEAT-CA76:    FEAT_LOR                                               Enable Armv8.1-A Limited Ordering Regions extension
-+-// CHECK-FEAT-CA76:    FEAT_LRCPC                                             Enable support for RCPC extension
-+-// CHECK-FEAT-CA76:    FEAT_LSE                                               Enable Armv8.1-A Large System Extension (LSE) atomic instructions
-+-// CHECK-FEAT-CA76:    FEAT_PAN                                               Enable Armv8.1-A Privileged Access-Never extension
-+-// CHECK-FEAT-CA76:    FEAT_PAN2                                              Enable Armv8.2-A PAN s1e1R and s1e1W Variants
-+-// CHECK-FEAT-CA76:    FEAT_PMUv3                                             Enable Armv8.0-A PMUv3 Performance Monitors extension
-+-// CHECK-FEAT-CA76:    FEAT_RAS, FEAT_RASv1p1                                 Enable Armv8.0-A Reliability, Availability and Serviceability Extensions
-+-// CHECK-FEAT-CA76:    FEAT_RDM                                               Enable Armv8.1-A Rounding Double Multiply Add/Subtract instructions
-+-// CHECK-FEAT-CA76:    FEAT_SHA1, FEAT_SHA256                                 Enable SHA1 and SHA256 support
-+-// CHECK-FEAT-CA76:    FEAT_SSBS, FEAT_SSBS2                                  Enable Speculative Store Bypass Safe bit
-+-// CHECK-FEAT-CA76:    FEAT_UAO                                               Enable Armv8.2-A UAO PState
-+-// CHECK-FEAT-CA76:    FEAT_VHE                                               Enable Armv8.1-A Virtual Host extension
-+diff -ruN --strip-trailing-cr a/llvm/include/llvm/ADT/StringRef.h b/llvm/include/llvm/ADT/StringRef.h
-+--- a/llvm/include/llvm/ADT/StringRef.h
-++++ b/llvm/include/llvm/ADT/StringRef.h
-+@@ -60,7 +60,11 @@
-+     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
-+ 
-+   private:
-+-    std::string_view View;
-++    /// The start of the string, in an external buffer.
-++    const char *Data = nullptr;
-++
-++    /// The length of the string.
-++    size_t Length = 0;
-+ 
-+     // Workaround memcmp issue with null pointers (undefined behavior)
-+     // by providing a specialized version
-+@@ -82,26 +86,28 @@
-+ 
-+     /// Construct a string ref from a cstring.
-+     /*implicit*/ constexpr StringRef(const char *Str LLVM_LIFETIME_BOUND)
-+-        : View(Str, Str ?
-++        : Data(Str), Length(Str ?
-+     // GCC 7 doesn't have constexpr char_traits. Fall back to __builtin_strlen.
-+ #if defined(_GLIBCXX_RELEASE) && _GLIBCXX_RELEASE < 8
-+-                        __builtin_strlen(Str)
-++                                __builtin_strlen(Str)
-+ #else
-+-                        std::char_traits<char>::length(Str)
-++                                std::char_traits<char>::length(Str)
-+ #endif
-+-                        : 0) {
-++                                : 0) {
-+     }
-+ 
-+     /// Construct a string ref from a pointer and length.
-+     /*implicit*/ constexpr StringRef(const char *data LLVM_LIFETIME_BOUND,
-+                                      size_t length)
-+-        : View(data, length) {}
-++        : Data(data), Length(length) {}
-+ 
-+     /// Construct a string ref from an std::string.
-+-    /*implicit*/ StringRef(const std::string &Str) : View(Str) {}
-++    /*implicit*/ StringRef(const std::string &Str)
-++        : Data(Str.data()), Length(Str.length()) {}
-+ 
-+     /// Construct a string ref from an std::string_view.
-+-    /*implicit*/ constexpr StringRef(std::string_view Str) : View(Str) {}
-++    /*implicit*/ constexpr StringRef(std::string_view Str)
-++        : Data(Str.data()), Length(Str.size()) {}
-+ 
-+     /// @}
-+     /// @name Iterators
-+@@ -135,13 +141,13 @@
-+ 
-+     /// data - Get a pointer to the start of the string (which may not be null
-+     /// terminated).
-+-    [[nodiscard]] constexpr const char *data() const { return View.data(); }
-++    [[nodiscard]] constexpr const char *data() const { return Data; }
-+ 
-+     /// empty - Check if the string is empty.
-+     [[nodiscard]] constexpr bool empty() const { return size() == 0; }
-+ 
-+     /// size - Get the string size.
-+-    [[nodiscard]] constexpr size_t size() const { return View.size(); }
-++    [[nodiscard]] constexpr size_t size() const { return Length; }
-+ 
-+     /// front - Get the first character in the string.
-+     [[nodiscard]] char front() const {
-+diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86TargetTransformInfo.cpp b/llvm/lib/Target/X86/X86TargetTransformInfo.cpp
-+--- a/llvm/lib/Target/X86/X86TargetTransformInfo.cpp
-++++ b/llvm/lib/Target/X86/X86TargetTransformInfo.cpp
-+@@ -3068,6 +3068,13 @@
-+         if (auto KindCost = Entry->Cost[CostKind])
-+           return *KindCost;
-+     }
-++
-++    if ((ISD == ISD::FP_ROUND && SimpleDstTy == MVT::f16) ||
-++        (ISD == ISD::FP_EXTEND && SimpleSrcTy == MVT::f16)) {
-++      // fp16 conversions not covered by any table entries require a libcall.
-++      // Return a large (arbitrary) number to model this.
-++      return InstructionCost(64);
-++    }
-+   }
-+ 
-+   // Fall back to legalized types.
-+@@ -3174,11 +3181,6 @@
-+                             TTI::CastContextHint::None, CostKind);
-+   }
-+ 
-+-  if (ISD == ISD::FP_ROUND && LTDest.second.getScalarType() == MVT::f16) {
-+-    // Conversion requires a libcall.
-+-    return InstructionCost::getInvalid();
-+-  }
-+-
-+   // TODO: Allow non-throughput costs that aren't binary.
-+   auto AdjustCost = [&CostKind](InstructionCost Cost,
-+                                 InstructionCost N = 1) -> InstructionCost {
-+diff -ruN --strip-trailing-cr a/llvm/lib/TargetParser/Host.cpp b/llvm/lib/TargetParser/Host.cpp
-+--- a/llvm/lib/TargetParser/Host.cpp
-++++ b/llvm/lib/TargetParser/Host.cpp
-+@@ -68,15 +68,11 @@
-+ 
-+ static std::unique_ptr<llvm::MemoryBuffer>
-+     LLVM_ATTRIBUTE_UNUSED getProcCpuinfoContent() {
-+-  const char *CPUInfoFile = "/proc/cpuinfo";
-+-  if (const char *CpuinfoIntercept = std::getenv("LLVM_CPUINFO"))
-+-    CPUInfoFile = CpuinfoIntercept;
-+   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> Text =
-+-      llvm::MemoryBuffer::getFileAsStream(CPUInfoFile);
-+-
-++      llvm::MemoryBuffer::getFileAsStream("/proc/cpuinfo");
-+   if (std::error_code EC = Text.getError()) {
-+-    llvm::errs() << "Can't read " << CPUInfoFile << ": " << EC.message()
-+-                 << "\n";
-++    llvm::errs() << "Can't read "
-++                 << "/proc/cpuinfo: " << EC.message() << "\n";
-+     return nullptr;
-+   }
-+   return std::move(*Text);
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/conversion-fp16.ll b/llvm/test/Transforms/SLPVectorizer/X86/conversion-fp16.ll
-+--- a/llvm/test/Transforms/SLPVectorizer/X86/conversion-fp16.ll
-++++ b/llvm/test/Transforms/SLPVectorizer/X86/conversion-fp16.ll
-+@@ -453,14 +453,9 @@
-+ ;
-+ ; CHECK-F16C-LABEL: define void @fpround_v16xf32_v16xf16(
-+ ; CHECK-F16C-SAME: ptr [[S0:%.*]], ptr [[D0:%.*]]) #[[ATTR0]] {
-+-; CHECK-F16C-NEXT:    [[S8:%.*]] = getelementptr inbounds float, ptr [[S0]], i64 8
-+-; CHECK-F16C-NEXT:    [[D8:%.*]] = getelementptr inbounds half, ptr [[D0]], i64 8
-+-; CHECK-F16C-NEXT:    [[TMP1:%.*]] = load <8 x float>, ptr [[S0]], align 4
-+-; CHECK-F16C-NEXT:    [[TMP2:%.*]] = fptrunc <8 x float> [[TMP1]] to <8 x half>
-+-; CHECK-F16C-NEXT:    [[TMP3:%.*]] = load <8 x float>, ptr [[S8]], align 4
-+-; CHECK-F16C-NEXT:    [[TMP4:%.*]] = fptrunc <8 x float> [[TMP3]] to <8 x half>
-+-; CHECK-F16C-NEXT:    store <8 x half> [[TMP2]], ptr [[D0]], align 2
-+-; CHECK-F16C-NEXT:    store <8 x half> [[TMP4]], ptr [[D8]], align 2
-++; CHECK-F16C-NEXT:    [[TMP1:%.*]] = load <16 x float>, ptr [[S0]], align 4
-++; CHECK-F16C-NEXT:    [[TMP2:%.*]] = fptrunc <16 x float> [[TMP1]] to <16 x half>
-++; CHECK-F16C-NEXT:    store <16 x half> [[TMP2]], ptr [[D0]], align 2
-+ ; CHECK-F16C-NEXT:    ret void
-+ ;
-+ ; CHECK-AVX512-LABEL: define void @fpround_v16xf32_v16xf16(
+-diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Arch/AArch64.cpp b/clang/lib/Driver/ToolChains/Arch/AArch64.cpp
+---- a/clang/lib/Driver/ToolChains/Arch/AArch64.cpp
+-+++ b/clang/lib/Driver/ToolChains/Arch/AArch64.cpp
+-@@ -135,21 +135,15 @@
+-   return true;
+- }
+- 
+--static bool getAArch64ArchFeaturesFromMcpu(
+--    const Driver &D, StringRef Mcpu, const ArgList &Args,
+--    llvm::AArch64::ExtensionSet &Extensions, std::vector<StringRef> &Features) {
+-+static bool
+-+getAArch64ArchFeaturesFromMcpu(const Driver &D, StringRef Mcpu,
+-+                               const ArgList &Args,
+-+                               llvm::AArch64::ExtensionSet &Extensions) {
+-   StringRef CPU;
+-   std::string McpuLowerCase = Mcpu.lower();
+-   if (!DecodeAArch64Mcpu(D, McpuLowerCase, CPU, Extensions))
+-     return false;
+- 
+--  if (Mcpu == "native") {
+--    llvm::StringMap<bool> HostFeatures = llvm::sys::getHostCPUFeatures();
+--    for (auto &[Feature, Enabled] : HostFeatures) {
+--      Features.push_back(Args.MakeArgString((Enabled ? "+" : "-") + Feature));
+--    }
+--  }
+--
+-   return true;
+- }
+- 
+-@@ -216,11 +210,11 @@
+-     success =
+-         getAArch64ArchFeaturesFromMarch(D, A->getValue(), Args, Extensions);
+-   else if ((A = Args.getLastArg(options::OPT_mcpu_EQ)))
+--    success = getAArch64ArchFeaturesFromMcpu(D, A->getValue(), Args, Extensions,
+--                                             Features);
+-+    success =
+-+        getAArch64ArchFeaturesFromMcpu(D, A->getValue(), Args, Extensions);
+-   else if (isCPUDeterminedByTriple(Triple))
+-     success = getAArch64ArchFeaturesFromMcpu(
+--        D, getAArch64TargetCPU(Args, Triple, A), Args, Extensions, Features);
+-+        D, getAArch64TargetCPU(Args, Triple, A), Args, Extensions);
+-   else
+-     // Default to 'A' profile if the architecture is not specified.
+-     success = getAArch64ArchFeaturesFromMarch(D, "armv8-a", Args, Extensions);
+-diff -ruN --strip-trailing-cr a/clang/test/Driver/Inputs/cpunative/cortex-a57 b/clang/test/Driver/Inputs/cpunative/cortex-a57
+---- a/clang/test/Driver/Inputs/cpunative/cortex-a57
+-+++ b/clang/test/Driver/Inputs/cpunative/cortex-a57
+-@@ -1,8 +0,0 @@
+--processor       : 0
+--BogoMIPS        : 200.00
+--Features        : fp asimd evtstrm crc32 cpuid
+--CPU implementer : 0x41
+--CPU architecture: 8
+--CPU variant     : 0x1
+--CPU part        : 0xd07
+--CPU revision    : 1
+-diff -ruN --strip-trailing-cr a/clang/test/Driver/Inputs/cpunative/cortex-a72 b/clang/test/Driver/Inputs/cpunative/cortex-a72
+---- a/clang/test/Driver/Inputs/cpunative/cortex-a72
+-+++ b/clang/test/Driver/Inputs/cpunative/cortex-a72
+-@@ -1,8 +0,0 @@
+--processor       : 0
+--BogoMIPS        : 250.00
+--Features        : fp asimd evtstrm aes pmull sha1 sha2 crc32 cpuid asimdrdm
+--CPU implementer : 0x41
+--CPU architecture: 8
+--CPU variant     : 0x0
+--CPU part        : 0xd08
+--CPU revision    : 2
+-diff -ruN --strip-trailing-cr a/clang/test/Driver/Inputs/cpunative/cortex-a76 b/clang/test/Driver/Inputs/cpunative/cortex-a76
+---- a/clang/test/Driver/Inputs/cpunative/cortex-a76
+-+++ b/clang/test/Driver/Inputs/cpunative/cortex-a76
+-@@ -1,8 +0,0 @@
+--processor       : 0
+--BogoMIPS        : 500.00
+--Features        : fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics cpuid asimdrdm ssbs jscvt fcma
+--CPU implementer : 0x41
+--CPU architecture: 8
+--CPU variant     : 0x1
+--CPU part        : 0xd0b
+--CPU revision    : 2
+-diff -ruN --strip-trailing-cr a/clang/test/Driver/Inputs/cpunative/neoverse-n1 b/clang/test/Driver/Inputs/cpunative/neoverse-n1
+---- a/clang/test/Driver/Inputs/cpunative/neoverse-n1
+-+++ b/clang/test/Driver/Inputs/cpunative/neoverse-n1
+-@@ -1,8 +0,0 @@
+--processor       : 0
+--BogoMIPS        : 50.00
+--Features        : fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm lrcpc dcpop asimddp ssbs
+--CPU implementer : 0x41
+--CPU architecture: 8
+--CPU variant     : 0x3
+--CPU part        : 0xd0c
+--CPU revision    : 1
+-diff -ruN --strip-trailing-cr a/clang/test/Driver/Inputs/cpunative/neoverse-v2 b/clang/test/Driver/Inputs/cpunative/neoverse-v2
+---- a/clang/test/Driver/Inputs/cpunative/neoverse-v2
+-+++ b/clang/test/Driver/Inputs/cpunative/neoverse-v2
+-@@ -1,8 +0,0 @@
+--processor       : 0
+--BogoMIPS        : 2000.00
+--Features        : fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp sha512 sve asimdfhm dit uscat ilrcpc flagm ssbs sb paca pacg dcpodp sve2 sveaes svepmull svebitperm svesha3 svesm4 flagm2 frint svei8mm svebf16 i8mm bf16 dgh bti
+--CPU implementer : 0x41
+--CPU architecture: 8
+--CPU variant     : 0x0
+--CPU part        : 0xd4f
+--CPU revision    : 0
+-diff -ruN --strip-trailing-cr a/clang/test/Driver/aarch64-mcpu-native.c b/clang/test/Driver/aarch64-mcpu-native.c
+---- a/clang/test/Driver/aarch64-mcpu-native.c
+-+++ b/clang/test/Driver/aarch64-mcpu-native.c
+-@@ -1,138 +0,0 @@
+--// REQUIRES: aarch64-registered-target
+--// RUN: export LLVM_CPUINFO=%S/Inputs/cpunative/neoverse-v2
+--// RUN: %clang --target=aarch64 --print-enabled-extensions -mcpu=native | FileCheck --strict-whitespace --check-prefix=CHECK-FEAT-NV2 --implicit-check-not=FEAT_ %s
+--
+--// CHECK-FEAT-NV2: Extensions enabled for the given AArch64 target
+--// CHECK-FEAT-NV2-EMPTY:
+--// CHECK-FEAT-NV2:    Architecture Feature(s)                                Description
+--// CHECK-FEAT-NV2:    FEAT_AES, FEAT_PMULL                                   Enable AES support
+--// CHECK-FEAT-NV2:    FEAT_AMUv1                                             Enable Armv8.4-A Activity Monitors extension
+--// CHECK-FEAT-NV2:    FEAT_AdvSIMD                                           Enable Advanced SIMD instructions
+--// CHECK-FEAT-NV2:    FEAT_BF16                                              Enable BFloat16 Extension
+--// CHECK-FEAT-NV2:    FEAT_BTI                                               Enable Branch Target Identification
+--// CHECK-FEAT-NV2:    FEAT_CCIDX                                             Enable Armv8.3-A Extend of the CCSIDR number of sets
+--// CHECK-FEAT-NV2:    FEAT_CRC32                                             Enable Armv8.0-A CRC-32 checksum instructions
+--// CHECK-FEAT-NV2:    FEAT_CSV2_2                                            Enable architectural speculation restriction
+--// CHECK-FEAT-NV2:    FEAT_DIT                                               Enable Armv8.4-A Data Independent Timing instructions
+--// CHECK-FEAT-NV2:    FEAT_DPB                                               Enable Armv8.2-A data Cache Clean to Point of Persistence
+--// CHECK-FEAT-NV2:    FEAT_DPB2                                              Enable Armv8.5-A Cache Clean to Point of Deep Persistence
+--// CHECK-FEAT-NV2:    FEAT_DotProd                                           Enable dot product support
+--// CHECK-FEAT-NV2:    FEAT_ETE                                               Enable Embedded Trace Extension
+--// CHECK-FEAT-NV2:    FEAT_FCMA                                              Enable Armv8.3-A Floating-point complex number support
+--// CHECK-FEAT-NV2:    FEAT_FHM                                               Enable FP16 FML instructions
+--// CHECK-FEAT-NV2:    FEAT_FP                                                Enable Armv8.0-A Floating Point Extensions
+--// CHECK-FEAT-NV2:    FEAT_FP16                                              Enable half-precision floating-point data processing
+--// CHECK-FEAT-NV2:    FEAT_FRINTTS                                           Enable FRInt[32|64][Z|X] instructions that round a floating-point number to an integer (in FP format) forcing it to fit into a 32- or 64-bit int
+--// CHECK-FEAT-NV2:    FEAT_FlagM                                             Enable Armv8.4-A Flag Manipulation instructions
+--// CHECK-FEAT-NV2:    FEAT_FlagM2                                            Enable alternative NZCV format for floating point comparisons
+--// CHECK-FEAT-NV2:    FEAT_I8MM                                              Enable Matrix Multiply Int8 Extension
+--// CHECK-FEAT-NV2:    FEAT_JSCVT                                             Enable Armv8.3-A JavaScript FP conversion instructions
+--// CHECK-FEAT-NV2:    FEAT_LOR                                               Enable Armv8.1-A Limited Ordering Regions extension
+--// CHECK-FEAT-NV2:    FEAT_LRCPC                                             Enable support for RCPC extension
+--// CHECK-FEAT-NV2:    FEAT_LRCPC2                                            Enable Armv8.4-A RCPC instructions with Immediate Offsets
+--// CHECK-FEAT-NV2:    FEAT_LSE                                               Enable Armv8.1-A Large System Extension (LSE) atomic instructions
+--// CHECK-FEAT-NV2:    FEAT_LSE2                                              Enable Armv8.4-A Large System Extension 2 (LSE2) atomicity rules
+--// CHECK-FEAT-NV2:    FEAT_MPAM                                              Enable Armv8.4-A Memory system Partitioning and Monitoring extension
+--// CHECK-FEAT-NV2:    FEAT_MTE, FEAT_MTE2                                    Enable Memory Tagging Extension
+--// CHECK-FEAT-NV2:    FEAT_NV, FEAT_NV2                                      Enable Armv8.4-A Nested Virtualization Enchancement
+--// CHECK-FEAT-NV2:    FEAT_PAN                                               Enable Armv8.1-A Privileged Access-Never extension
+--// CHECK-FEAT-NV2:    FEAT_PAN2                                              Enable Armv8.2-A PAN s1e1R and s1e1W Variants
+--// CHECK-FEAT-NV2:    FEAT_PAuth                                             Enable Armv8.3-A Pointer Authentication extension
+--// CHECK-FEAT-NV2:    FEAT_PMUv3                                             Enable Armv8.0-A PMUv3 Performance Monitors extension
+--// CHECK-FEAT-NV2:    FEAT_RAS, FEAT_RASv1p1                                 Enable Armv8.0-A Reliability, Availability and Serviceability Extensions
+--// CHECK-FEAT-NV2:    FEAT_RDM                                               Enable Armv8.1-A Rounding Double Multiply Add/Subtract instructions
+--// CHECK-FEAT-NV2:    FEAT_RNG                                               Enable Random Number generation instructions
+--// CHECK-FEAT-NV2:    FEAT_SB                                                Enable Armv8.5-A Speculation Barrier
+--// CHECK-FEAT-NV2:    FEAT_SEL2                                              Enable Armv8.4-A Secure Exception Level 2 extension
+--// CHECK-FEAT-NV2:    FEAT_SHA1, FEAT_SHA256                                 Enable SHA1 and SHA256 support
+--// CHECK-FEAT-NV2:    FEAT_SPE                                               Enable Statistical Profiling extension
+--// CHECK-FEAT-NV2:    FEAT_SPECRES                                           Enable Armv8.5-A execution and data prediction invalidation instructions
+--// CHECK-FEAT-NV2:    FEAT_SSBS, FEAT_SSBS2                                  Enable Speculative Store Bypass Safe bit
+--// CHECK-FEAT-NV2:    FEAT_SVE                                               Enable Scalable Vector Extension (SVE) instructions
+--// CHECK-FEAT-NV2:    FEAT_SVE2                                              Enable Scalable Vector Extension 2 (SVE2) instructions
+--// CHECK-FEAT-NV2:    FEAT_SVE_BitPerm                                       Enable bit permutation SVE2 instructions
+--// CHECK-FEAT-NV2:    FEAT_TLBIOS, FEAT_TLBIRANGE                            Enable Armv8.4-A TLB Range and Maintenance instructions
+--// CHECK-FEAT-NV2:    FEAT_TRBE                                              Enable Trace Buffer Extension
+--// CHECK-FEAT-NV2:    FEAT_TRF                                               Enable Armv8.4-A Trace extension
+--// CHECK-FEAT-NV2:    FEAT_UAO                                               Enable Armv8.2-A UAO PState
+--// CHECK-FEAT-NV2:    FEAT_VHE                                               Enable Armv8.1-A Virtual Host extension
+--
+--// RUN: export LLVM_CPUINFO=%S/Inputs/cpunative/neoverse-n1
+--// RUN: %clang --target=aarch64 --print-enabled-extensions -mcpu=native | FileCheck --strict-whitespace --check-prefix=CHECK-FEAT-NN1 --implicit-check-not=FEAT_ %s
+--
+--// CHECK-FEAT-NN1: Extensions enabled for the given AArch64 target
+--// CHECK-FEAT-NN1-EMPTY:
+--// CHECK-FEAT-NN1:    Architecture Feature(s)                                Description
+--// CHECK-FEAT-NN1:    FEAT_AES, FEAT_PMULL                                   Enable AES support
+--// CHECK-FEAT-NN1:    FEAT_AdvSIMD                                           Enable Advanced SIMD instructions
+--// CHECK-FEAT-NN1:    FEAT_CRC32                                             Enable Armv8.0-A CRC-32 checksum instructions
+--// CHECK-FEAT-NN1:    FEAT_DPB                                               Enable Armv8.2-A data Cache Clean to Point of Persistence
+--// CHECK-FEAT-NN1:    FEAT_DotProd                                           Enable dot product support
+--// CHECK-FEAT-NN1:    FEAT_FP                                                Enable Armv8.0-A Floating Point Extensions
+--// CHECK-FEAT-NN1:    FEAT_FP16                                              Enable half-precision floating-point data processing
+--// CHECK-FEAT-NN1:    FEAT_LOR                                               Enable Armv8.1-A Limited Ordering Regions extension
+--// CHECK-FEAT-NN1:    FEAT_LRCPC                                             Enable support for RCPC extension
+--// CHECK-FEAT-NN1:    FEAT_LSE                                               Enable Armv8.1-A Large System Extension (LSE) atomic instructions
+--// CHECK-FEAT-NN1:    FEAT_PAN                                               Enable Armv8.1-A Privileged Access-Never extension
+--// CHECK-FEAT-NN1:    FEAT_PAN2                                              Enable Armv8.2-A PAN s1e1R and s1e1W Variants
+--// CHECK-FEAT-NN1:    FEAT_PMUv3                                             Enable Armv8.0-A PMUv3 Performance Monitors extension
+--// CHECK-FEAT-NN1:    FEAT_RAS, FEAT_RASv1p1                                 Enable Armv8.0-A Reliability, Availability and Serviceability Extensions
+--// CHECK-FEAT-NN1:    FEAT_RDM                                               Enable Armv8.1-A Rounding Double Multiply Add/Subtract instructions
+--// CHECK-FEAT-NN1:    FEAT_SHA1, FEAT_SHA256                                 Enable SHA1 and SHA256 support
+--// CHECK-FEAT-NN1:    FEAT_SPE                                               Enable Statistical Profiling extension
+--// CHECK-FEAT-NN1:    FEAT_SSBS, FEAT_SSBS2                                  Enable Speculative Store Bypass Safe bit
+--// CHECK-FEAT-NN1:    FEAT_UAO                                               Enable Armv8.2-A UAO PState
+--// CHECK-FEAT-NN1:    FEAT_VHE                                               Enable Armv8.1-A Virtual Host extension
+--
+--
+--// RUN: export LLVM_CPUINFO=%S/Inputs/cpunative/cortex-a57
+--// RUN: %clang --target=aarch64 --print-enabled-extensions -mcpu=native | FileCheck --strict-whitespace --check-prefix=CHECK-FEAT-CA57 --implicit-check-not=FEAT_ %s
+--
+--// CHECK-FEAT-CA57: Extensions enabled for the given AArch64 target
+--// CHECK-FEAT-CA57-EMPTY:
+--// CHECK-FEAT-CA57:    Architecture Feature(s)                                Description
+--// CHECK-FEAT-CA57:    FEAT_AES, FEAT_PMULL                                   Enable AES support
+--// CHECK-FEAT-CA57:    FEAT_AdvSIMD                                           Enable Advanced SIMD instructions
+--// CHECK-FEAT-CA57:    FEAT_CRC32                                             Enable Armv8.0-A CRC-32 checksum instructions
+--// CHECK-FEAT-CA57:    FEAT_FP                                                Enable Armv8.0-A Floating Point Extensions
+--// CHECK-FEAT-CA57:    FEAT_PMUv3                                             Enable Armv8.0-A PMUv3 Performance Monitors extension
+--// CHECK-FEAT-CA57:    FEAT_SHA1, FEAT_SHA256                                 Enable SHA1 and SHA256 support
+--
+--// RUN: export LLVM_CPUINFO=%S/Inputs/cpunative/cortex-a72
+--// RUN: %clang --target=aarch64 --print-enabled-extensions -mcpu=native | FileCheck --strict-whitespace  --check-prefix=CHECK-FEAT-CA72 --implicit-check-not=FEAT_ %s
+--
+--// CHECK-FEAT-CA72: Extensions enabled for the given AArch64 target
+--// CHECK-EMPTY:
+--// CHECK-FEAT-CA72:   Architecture Feature(s)                                Description
+--// CHECK-FEAT-CA72:    FEAT_AES, FEAT_PMULL                                   Enable AES support
+--// CHECK-FEAT-CA72:    FEAT_AdvSIMD                                           Enable Advanced SIMD instructions
+--// CHECK-FEAT-CA72:    FEAT_CRC32                                             Enable Armv8.0-A CRC-32 checksum instructions
+--// CHECK-FEAT-CA72:    FEAT_FP                                                Enable Armv8.0-A Floating Point Extensions
+--// CHECK-FEAT-CA72:    FEAT_PMUv3                                             Enable Armv8.0-A PMUv3 Performance Monitors extension
+--// CHECK-FEAT-CA72:    FEAT_SHA1, FEAT_SHA256                                 Enable SHA1 and SHA256 support
+--
+--// RUN: export LLVM_CPUINFO=%S/Inputs/cpunative/cortex-a76
+--// RUN: %clang --target=aarch64 --print-enabled-extensions -mcpu=native | FileCheck --strict-whitespace --check-prefix=CHECK-FEAT-CA76 --implicit-check-not=FEAT_ %s
+--
+--// CHECK-FEAT-CA76: Extensions enabled for the given AArch64 target
+--// CHECK-FEAT-CA76-EMPTY:
+--// CHECK-FEAT-CA76:    Architecture Feature(s)                                Description
+--// CHECK-FEAT-CA76:    FEAT_AES, FEAT_PMULL                                   Enable AES support
+--// CHECK-FEAT-CA76:    FEAT_AdvSIMD                                           Enable Advanced SIMD instructions
+--// CHECK-FEAT-CA76:    FEAT_CRC32                                             Enable Armv8.0-A CRC-32 checksum instructions
+--// CHECK-FEAT-CA76:    FEAT_DPB                                               Enable Armv8.2-A data Cache Clean to Point of Persistence
+--// CHECK-FEAT-CA76:    FEAT_DotProd                                           Enable dot product support
+--// CHECK-FEAT-CA76:    FEAT_FP                                                Enable Armv8.0-A Floating Point Extensions
+--// CHECK-FEAT-CA76:    FEAT_FP16                                              Enable half-precision floating-point data processing
+--// CHECK-FEAT-CA76:    FEAT_LOR                                               Enable Armv8.1-A Limited Ordering Regions extension
+--// CHECK-FEAT-CA76:    FEAT_LRCPC                                             Enable support for RCPC extension
+--// CHECK-FEAT-CA76:    FEAT_LSE                                               Enable Armv8.1-A Large System Extension (LSE) atomic instructions
+--// CHECK-FEAT-CA76:    FEAT_PAN                                               Enable Armv8.1-A Privileged Access-Never extension
+--// CHECK-FEAT-CA76:    FEAT_PAN2                                              Enable Armv8.2-A PAN s1e1R and s1e1W Variants
+--// CHECK-FEAT-CA76:    FEAT_PMUv3                                             Enable Armv8.0-A PMUv3 Performance Monitors extension
+--// CHECK-FEAT-CA76:    FEAT_RAS, FEAT_RASv1p1                                 Enable Armv8.0-A Reliability, Availability and Serviceability Extensions
+--// CHECK-FEAT-CA76:    FEAT_RDM                                               Enable Armv8.1-A Rounding Double Multiply Add/Subtract instructions
+--// CHECK-FEAT-CA76:    FEAT_SHA1, FEAT_SHA256                                 Enable SHA1 and SHA256 support
+--// CHECK-FEAT-CA76:    FEAT_SSBS, FEAT_SSBS2                                  Enable Speculative Store Bypass Safe bit
+--// CHECK-FEAT-CA76:    FEAT_UAO                                               Enable Armv8.2-A UAO PState
+--// CHECK-FEAT-CA76:    FEAT_VHE                                               Enable Armv8.1-A Virtual Host extension
+-diff -ruN --strip-trailing-cr a/llvm/include/llvm/ADT/StringRef.h b/llvm/include/llvm/ADT/StringRef.h
+---- a/llvm/include/llvm/ADT/StringRef.h
+-+++ b/llvm/include/llvm/ADT/StringRef.h
+-@@ -60,7 +60,11 @@
+-     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+- 
+-   private:
+--    std::string_view View;
+-+    /// The start of the string, in an external buffer.
+-+    const char *Data = nullptr;
+-+
+-+    /// The length of the string.
+-+    size_t Length = 0;
+- 
+-     // Workaround memcmp issue with null pointers (undefined behavior)
+-     // by providing a specialized version
+-@@ -82,26 +86,28 @@
+- 
+-     /// Construct a string ref from a cstring.
+-     /*implicit*/ constexpr StringRef(const char *Str LLVM_LIFETIME_BOUND)
+--        : View(Str, Str ?
+-+        : Data(Str), Length(Str ?
+-     // GCC 7 doesn't have constexpr char_traits. Fall back to __builtin_strlen.
+- #if defined(_GLIBCXX_RELEASE) && _GLIBCXX_RELEASE < 8
+--                        __builtin_strlen(Str)
+-+                                __builtin_strlen(Str)
+- #else
+--                        std::char_traits<char>::length(Str)
+-+                                std::char_traits<char>::length(Str)
+- #endif
+--                        : 0) {
+-+                                : 0) {
+-     }
+- 
+-     /// Construct a string ref from a pointer and length.
+-     /*implicit*/ constexpr StringRef(const char *data LLVM_LIFETIME_BOUND,
+-                                      size_t length)
+--        : View(data, length) {}
+-+        : Data(data), Length(length) {}
+- 
+-     /// Construct a string ref from an std::string.
+--    /*implicit*/ StringRef(const std::string &Str) : View(Str) {}
+-+    /*implicit*/ StringRef(const std::string &Str)
+-+        : Data(Str.data()), Length(Str.length()) {}
+- 
+-     /// Construct a string ref from an std::string_view.
+--    /*implicit*/ constexpr StringRef(std::string_view Str) : View(Str) {}
+-+    /*implicit*/ constexpr StringRef(std::string_view Str)
+-+        : Data(Str.data()), Length(Str.size()) {}
+- 
+-     /// @}
+-     /// @name Iterators
+-@@ -135,13 +141,13 @@
+- 
+-     /// data - Get a pointer to the start of the string (which may not be null
+-     /// terminated).
+--    [[nodiscard]] constexpr const char *data() const { return View.data(); }
+-+    [[nodiscard]] constexpr const char *data() const { return Data; }
+- 
+-     /// empty - Check if the string is empty.
+-     [[nodiscard]] constexpr bool empty() const { return size() == 0; }
+- 
+-     /// size - Get the string size.
+--    [[nodiscard]] constexpr size_t size() const { return View.size(); }
+-+    [[nodiscard]] constexpr size_t size() const { return Length; }
+- 
+-     /// front - Get the first character in the string.
+-     [[nodiscard]] char front() const {
+-diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86TargetTransformInfo.cpp b/llvm/lib/Target/X86/X86TargetTransformInfo.cpp
+---- a/llvm/lib/Target/X86/X86TargetTransformInfo.cpp
+-+++ b/llvm/lib/Target/X86/X86TargetTransformInfo.cpp
+-@@ -3068,6 +3068,13 @@
+-         if (auto KindCost = Entry->Cost[CostKind])
+-           return *KindCost;
+-     }
+-+
+-+    if ((ISD == ISD::FP_ROUND && SimpleDstTy == MVT::f16) ||
+-+        (ISD == ISD::FP_EXTEND && SimpleSrcTy == MVT::f16)) {
+-+      // fp16 conversions not covered by any table entries require a libcall.
+-+      // Return a large (arbitrary) number to model this.
+-+      return InstructionCost(64);
+-+    }
+-   }
+- 
+-   // Fall back to legalized types.
+-@@ -3174,11 +3181,6 @@
+-                             TTI::CastContextHint::None, CostKind);
+-   }
+- 
+--  if (ISD == ISD::FP_ROUND && LTDest.second.getScalarType() == MVT::f16) {
+--    // Conversion requires a libcall.
+--    return InstructionCost::getInvalid();
+--  }
+--
+-   // TODO: Allow non-throughput costs that aren't binary.
+-   auto AdjustCost = [&CostKind](InstructionCost Cost,
+-                                 InstructionCost N = 1) -> InstructionCost {
+-diff -ruN --strip-trailing-cr a/llvm/lib/TargetParser/Host.cpp b/llvm/lib/TargetParser/Host.cpp
+---- a/llvm/lib/TargetParser/Host.cpp
+-+++ b/llvm/lib/TargetParser/Host.cpp
+-@@ -68,15 +68,11 @@
+- 
+- static std::unique_ptr<llvm::MemoryBuffer>
+-     LLVM_ATTRIBUTE_UNUSED getProcCpuinfoContent() {
+--  const char *CPUInfoFile = "/proc/cpuinfo";
+--  if (const char *CpuinfoIntercept = std::getenv("LLVM_CPUINFO"))
+--    CPUInfoFile = CpuinfoIntercept;
+-   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> Text =
+--      llvm::MemoryBuffer::getFileAsStream(CPUInfoFile);
+--
+-+      llvm::MemoryBuffer::getFileAsStream("/proc/cpuinfo");
+-   if (std::error_code EC = Text.getError()) {
+--    llvm::errs() << "Can't read " << CPUInfoFile << ": " << EC.message()
+--                 << "\n";
+-+    llvm::errs() << "Can't read "
+-+                 << "/proc/cpuinfo: " << EC.message() << "\n";
+-     return nullptr;
+-   }
+-   return std::move(*Text);
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/conversion-fp16.ll b/llvm/test/Transforms/SLPVectorizer/X86/conversion-fp16.ll
+---- a/llvm/test/Transforms/SLPVectorizer/X86/conversion-fp16.ll
+-+++ b/llvm/test/Transforms/SLPVectorizer/X86/conversion-fp16.ll
+-@@ -453,14 +453,9 @@
+- ;
+- ; CHECK-F16C-LABEL: define void @fpround_v16xf32_v16xf16(
+- ; CHECK-F16C-SAME: ptr [[S0:%.*]], ptr [[D0:%.*]]) #[[ATTR0]] {
+--; CHECK-F16C-NEXT:    [[S8:%.*]] = getelementptr inbounds float, ptr [[S0]], i64 8
+--; CHECK-F16C-NEXT:    [[D8:%.*]] = getelementptr inbounds half, ptr [[D0]], i64 8
+--; CHECK-F16C-NEXT:    [[TMP1:%.*]] = load <8 x float>, ptr [[S0]], align 4
+--; CHECK-F16C-NEXT:    [[TMP2:%.*]] = fptrunc <8 x float> [[TMP1]] to <8 x half>
+--; CHECK-F16C-NEXT:    [[TMP3:%.*]] = load <8 x float>, ptr [[S8]], align 4
+--; CHECK-F16C-NEXT:    [[TMP4:%.*]] = fptrunc <8 x float> [[TMP3]] to <8 x half>
+--; CHECK-F16C-NEXT:    store <8 x half> [[TMP2]], ptr [[D0]], align 2
+--; CHECK-F16C-NEXT:    store <8 x half> [[TMP4]], ptr [[D8]], align 2
+-+; CHECK-F16C-NEXT:    [[TMP1:%.*]] = load <16 x float>, ptr [[S0]], align 4
+-+; CHECK-F16C-NEXT:    [[TMP2:%.*]] = fptrunc <16 x float> [[TMP1]] to <16 x half>
+-+; CHECK-F16C-NEXT:    store <16 x half> [[TMP2]], ptr [[D0]], align 2
+- ; CHECK-F16C-NEXT:    ret void
+- ;
+- ; CHECK-AVX512-LABEL: define void @fpround_v16xf32_v16xf16(
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index b0eebe3..c6da07b 100644
+index c6da07b..48a6599 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "ac4bd74190fedfbe025ef757ff308dd184a507f5"
--    LLVM_SHA256 = "5344d79adb0049d8879fabfdac5589d4b770a02312ed8f82ce56cbf043fc86ab"
-+    LLVM_COMMIT = "872981bd236530b160bf788aafd1cbde7b2bfb30"
-+    LLVM_SHA256 = "7cb758e3750b65aa591a4ca3bed89d2a052866817cb635d50137b52ddaeecf4f"
+-    LLVM_COMMIT = "872981bd236530b160bf788aafd1cbde7b2bfb30"
+-    LLVM_SHA256 = "7cb758e3750b65aa591a4ca3bed89d2a052866817cb635d50137b52ddaeecf4f"
++    LLVM_COMMIT = "4ba623f24479879fb7100988f6ad5d9a62c19842"
++    LLVM_SHA256 = "397410a7824d70db007f492263ae72a4bed21e7f907fb64a50f2d9c9adf0cce3"
  
      tf_http_archive(
          name = name,
