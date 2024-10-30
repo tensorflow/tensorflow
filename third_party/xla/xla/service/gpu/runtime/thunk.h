@@ -270,6 +270,12 @@ class Thunk {
     int64_t collective_max_nchannels;
     int64_t p2p_max_nchannels;
 
+    // Global async status.
+    AsyncStatus* async_status = nullptr;
+
+    // Global queue of async events.
+    std::vector<std::unique_ptr<se::Event>>* async_events_queue = nullptr;
+
    private:
     CollectiveExecuteParams(se::StreamExecutor* executor, RunId run_id,
                             absl::Span<se::Stream* const> async_streams,

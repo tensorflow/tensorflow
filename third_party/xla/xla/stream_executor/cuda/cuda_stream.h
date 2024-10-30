@@ -60,6 +60,7 @@ class CudaStream : public StreamCommon {
   absl::Status BlockHostUntilDone() override;
 
   void SetName(std::string name) override;
+  absl::StatusOr<bool> IsIdle() override;
 
   Stream::PlatformSpecificHandle platform_specific_handle() const override {
     return {stream_handle_};

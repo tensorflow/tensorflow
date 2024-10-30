@@ -63,8 +63,8 @@ absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
     HloExecutionProfile* hlo_execution_profile) {
   absl::StatusOr<ScopedShapedBuffer> result =
       ExecuteAsyncOnStream(run_options, arguments, hlo_execution_profile);
-  absl::Status blocking_status = run_options->stream()->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(result.status());
+  absl::Status blocking_status = run_options->stream()->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(blocking_status);
   return result;
 }
@@ -100,8 +100,8 @@ absl::StatusOr<ExecutionOutput> Executable::ExecuteOnStream(
     HloExecutionProfile* hlo_execution_profile) {
   absl::StatusOr<ExecutionOutput> result = ExecuteAsyncOnStream(
       run_options, std::move(arguments), hlo_execution_profile);
-  absl::Status blocking_status = run_options->stream()->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(result.status());
+  absl::Status blocking_status = run_options->stream()->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(blocking_status);
   return result;
 }

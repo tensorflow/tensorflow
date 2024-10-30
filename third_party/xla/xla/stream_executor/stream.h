@@ -306,6 +306,11 @@ class Stream {
         "This stream does not support EventBasedTimers.");
   }
 
+  // Checks to see if the stream is idling.
+  virtual absl::StatusOr<bool> IsIdle() {
+    return absl::UnimplementedError("Not implemented");
+  };
+
  private:
   // Helper method to launch a kernel with optional cluster dimensions.
   virtual absl::Status Launch(const ThreadDim &thread_dims,

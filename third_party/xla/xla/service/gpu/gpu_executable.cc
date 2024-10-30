@@ -71,6 +71,8 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
@@ -150,6 +152,7 @@ GpuExecutable::~GpuExecutable() {
   if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->UnregisterModule(module().unique_id());
   }
+  async_events_queue_.clear();
 }
 
 absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
@@ -220,7 +223,9 @@ class ResourceRequests : public Thunk::ResourceRequests {
   }
 
   absl::StatusOr<Thunk::CollectiveCliques> AcquireCollectiveCliques(
-      const Thunk::CollectiveExecuteParams& params) {
+      const Thunk::CollectiveExecuteParams& params,
+      std::vector<std::unique_ptr<se::Event>>& async_events_queue,
+      AsyncStatus& async_status) {
     if (cliques_.empty()) return Thunk::CollectiveCliques();
 
     VLOG(2) << "Acquire " << cliques_.size()
@@ -266,11 +271,12 @@ class ResourceRequests : public Thunk::ResourceRequests {
       int64_t max_channels = r.key.stream_kind() == AsyncStreamKind::kCollective
                                  ? params.collective_max_nchannels
                                  : params.p2p_max_nchannels;
-      TF_ASSIGN_OR_RETURN(std::shared_ptr<NcclClique::Lock> clique,
-                          AcquireNcclClique(params.executor, params.run_id,
-                                            r.key, *clique_id_callback, *rank,
-                                            r.num_local_participants,
-                                            cliques_map, max_channels));
+      TF_ASSIGN_OR_RETURN(
+          std::shared_ptr<NcclClique::Lock> clique,
+          AcquireNcclClique(params.executor, params.run_id, r.key,
+                            *clique_id_callback, *rank,
+                            r.num_local_participants, cliques_map,
+                            async_events_queue, async_status, max_channels));
 
       cliques_map[r.key] = std::move(clique);
     }
@@ -332,6 +338,8 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
 absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
                                  se::EventBasedTimer* execution_timer,
+                                 AsyncStatus& async_status,
+                                 const DebugOptions* debug_options,
                                  se::Stream* stream_to_sync);
 
 absl::Status RendezvousAfterInitialization(
@@ -344,7 +352,9 @@ absl::Status ExecuteThunks(
     Thunk::ExecutableSource executable_source,
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
-    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids) {
+    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids,
+    std::vector<std::unique_ptr<se::Event>>& async_events_queue,
+    AsyncStatus& async_status) {
   bool mock_collectives =
       run_options->run_options().gpu_executable_run_options()
           ? run_options->run_options()
@@ -425,7 +435,8 @@ absl::Status ExecuteThunks(
                           *run_options, async_comms_streams,
                           main_stream->parent()->device_ordinal(),
                           collective_max_nchannels, p2p_max_nchannels));
-
+  collective_params.async_status = &async_status;
+  collective_params.async_events_queue = &async_events_queue;
   ResourceRequests resource_requests;
 
   {  // Collect resource requirements from thunks.
@@ -441,10 +452,13 @@ absl::Status ExecuteThunks(
   if (!mock_collectives) {
     TF_ASSIGN_OR_RETURN(
         collective_cliques,
-        resource_requests.AcquireCollectiveCliques(collective_params));
+        resource_requests.AcquireCollectiveCliques(
+            collective_params, async_events_queue, async_status));
   }
 
   {  // Initialize thunks using prepared resources before execution.
+    collective_params.async_status = &async_status;
+    collective_params.async_events_queue = &async_events_queue;
     Thunk::InitializeParams initialize_params{
         executor,
         executable_source,
@@ -473,10 +487,9 @@ absl::Status ExecuteThunks(
       *run_options, buffer_allocations, main_stream,
       command_buffer_trace_stream, &collective_params, &collective_cliques,
       std::move(additional_execution_streams));
-
   TF_RETURN_IF_ERROR(thunk_sequence.ExecuteOnStream(execute_params));
-
-  return MaybeSyncAndProfile(run_options, execution_timer.get(),
+  return MaybeSyncAndProfile(run_options, execution_timer.get(), async_status,
+                             debug_options,
                              block_host_until_done ? main_stream : nullptr);
 }
 
@@ -567,6 +580,8 @@ absl::Status RendezvousAfterInitialization(
 
 absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
                                  se::EventBasedTimer* execution_timer,
+                                 AsyncStatus& async_status,
+                                 const DebugOptions* debug_options,
                                  se::Stream* stream_to_sync = nullptr) {
   // If we're measuring the execution time then it's important to queue the
   // stop event before triggering any synchronization.
@@ -584,6 +599,25 @@ absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
   // TODO(b/30100571): we could potentially postpone deallocating the temp
   // buffers until a different computation is executed.
   if (stream_to_sync) {
+    auto device = stream_to_sync->parent()->GetDeviceDescription();
+    if (std::holds_alternative<se::CudaComputeCapability>(
+            device.gpu_compute_capability())) {
+      TF_ASSIGN_OR_RETURN(bool is_idle, stream_to_sync->IsIdle());
+      while (!is_idle) {
+        if (!async_status.async_op_status.ok()) {
+          // NCCL error has occurred, wait for all communicators
+          // to be aborted before returning.
+          while (async_status.is_all_comms_aborted == false) {
+            // Need to rendezvous while waiting for the signal in case
+            // any rank is stuck when aborting.
+            TF_RETURN_IF_ERROR(
+                RendezvousAfterInitialization(run_options, debug_options));
+          }
+
+          return async_status.async_op_status;
+        }
+      }
+    }
     absl::Status block_status = stream_to_sync->BlockHostUntilDone();
     if (!block_status.ok()) {
       return Internal(
@@ -591,8 +625,7 @@ absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
           stream_to_sync, block_status.message());
     }
   }
-
-  return absl::OkStatus();
+  return async_status.async_op_status;
 }
 
 }  // namespace
@@ -1004,7 +1037,8 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     TF_RETURN_IF_ERROR(ExecuteThunks(
         has_module() ? &module_config().debug_options() : nullptr, module_name_,
         unique_id, *thunks_, executable_source, run_options, buffer_allocations,
-        block_host_until_done, execution_stream_ids_));
+        block_host_until_done, execution_stream_ids_, async_events_queue_,
+        async_status_));
   }
 
   TF_RETURN_IF_ERROR(

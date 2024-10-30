@@ -357,13 +357,16 @@ absl::Status MaybeRegisterBuffers(NcclApi* nccl_api,
 }
 
 absl::Status NcclCollectiveThunk::AsyncEvents::Initialize(
-    se::StreamExecutor* executor) {
+    const InitializeParams& params) {
+  se::StreamExecutor* executor = params.executor;
   absl::MutexLock lock(&mu_);
   if (events_.contains(executor)) return absl::OkStatus();
 
   TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
 
-  events_.try_emplace(executor, std::move(event));
+  params.collective_params->async_events_queue->push_back(std::move(event));
+  events_.try_emplace(
+      executor, params.collective_params->async_events_queue->back().get());
   return absl::OkStatus();
 }
 
@@ -376,8 +379,7 @@ absl::StatusOr<se::Event*> NcclCollectiveThunk::AsyncEvents::GetEvent(
     return absl::InternalError(
         "Collective operation async completion event not initialized");
   }
-
-  return event->second.get();
+  return event->second;
 }
 
 absl::Status NcclCollectiveThunk::Prepare(const PrepareParams& params,
@@ -396,7 +398,7 @@ absl::Status NcclCollectiveThunk::Prepare(const PrepareParams& params,
 
 absl::Status NcclCollectiveThunk::Initialize(const InitializeParams& params) {
   if (async_events_) {
-    TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
+    TF_RETURN_IF_ERROR(async_events_->Initialize(params));
   }
   return absl::OkStatus();
 }
@@ -420,6 +422,12 @@ bool operator==(const FirstCallRendezvousKey& a,
 }  // namespace
 
 absl::Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
+  if (params.collective_params->async_status->async_op_status !=
+      absl::OkStatus()) {
+    LOG(ERROR) << "Async status is not ok. Returning status.";
+    return params.collective_params->async_status->async_op_status;
+  }
+
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));
   const NcclStreamId stream_id = nccl_stream_id();

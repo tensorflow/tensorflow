@@ -66,6 +66,21 @@ absl::Status RecordGpuEvent(StreamExecutor* executor, CUevent event,
                         "Error recording CUDA event");
 }
 
+bool IsStreamIdle(StreamExecutor* executor, CUstream stream) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+  CHECK(stream != nullptr);
+  CUresult res = cuStreamQuery(stream);
+  if (res == CUDA_SUCCESS) {
+    return true;
+  }
+
+  if (res != CUDA_ERROR_NOT_READY) {
+    LOG(ERROR) << "stream in bad state on status query: "
+               << cuda::ToStatus(res);
+  }
+  return false;
+}
+
 int GetGpuStreamPriority(stream_executor::StreamPriority stream_priority) {
   if (stream_priority == stream_executor::StreamPriority::Default) {
     return 0;
@@ -497,5 +512,8 @@ void CudaStream::SetName(std::string name) {
   StreamCommon::SetName(std::move(name));
 }
 
+absl::StatusOr<bool> CudaStream::IsIdle() {
+  return IsStreamIdle(executor_, stream_handle_);
+}
 }  // namespace gpu
 }  // namespace stream_executor
