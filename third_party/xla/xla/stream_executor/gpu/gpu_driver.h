@@ -67,28 +67,6 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
   static absl::Status DestroyGraph(GpuGraphHandle graph);
 
-  // Graph instantiation flags.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g070bf5517d3a7915667c256eefce4956
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#cuda-driver-data-types
-  struct GraphInstantiateFlags {
-    // Automatically free memory allocated in a graph before relaunching.
-    bool auto_free_on_launch = false;
-    // Automatically upload the graph after instantiation.
-    bool upload = false;
-    // Instantiate the graph to be launchable from the device.
-    bool device_launch = false;
-    // Run the graph using the per-node priority attributes rather than the
-    // priority of the stream it is launched into.
-    bool use_node_prirotiy = false;
-  };
-
-  // Creates an executable graph from a graph.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gb53b435e178cccfa37ac87285d2c3fa1
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
-  static absl::Status GraphInstantiate(GpuGraphExecHandle* exec,
-                                       GpuGraphHandle graph,
-                                       const GraphInstantiateFlags& flags);
-
   // Returns a node's dependencies.
   //
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g048f4c0babcbba64a933fc277cd45083

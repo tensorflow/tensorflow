@@ -444,4 +444,10 @@ absl::Status RocmCommandBuffer::WriteGraphToDotFile(absl::string_view path) {
       "Failed to print gpu graph debug file");
 }
 
+absl::Status RocmCommandBuffer::InstantiateGraph() {
+  VLOG(2) << "Instantiate HIP executable graph from graph " << graph_;
+  return ToStatus(
+      wrap::hipGraphInstantiate(&exec_, graph_, nullptr, nullptr, 0),
+      "Failed to instantiate HIP graph");
+}
 }  // namespace stream_executor::gpu

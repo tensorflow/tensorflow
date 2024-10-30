@@ -780,45 +780,29 @@ absl::Status GpuCommandBuffer::Finalize() {
   }
 
   if (mode_ == Mode::kPrimary && state_ == State::kCreate) {
-    // If this is the first time we finalize command buffer after construction,
-    // we need to instantiate it to an executable graph.
-    GpuDriver::GraphInstantiateFlags flags;
-
     uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
-    // If we get a "resource exhausted error" we retry instantiating Gpu graph
-    // one more time after releasing unused device memory allocated for graphs.
-    auto instantiated = GpuDriver::GraphInstantiate(&exec_, graph_, flags);
+    // If this is the first time we finalize command buffer after construction,
+    // we need to instantiate it to an executable graph.
+    auto instantiated = InstantiateGraph();
+
     if (instantiated.code() == absl::StatusCode::kResourceExhausted) {
-      LOG(WARNING) << "Retry CUDA graph instantiation after OOM error"
-                   << "; execution_scopes: " << execution_scopes_.size()
-                   << "; nodes: " << num_nodes
-                   << "; conditionals: " << num_cond_cmd_buffers
-                   << "; alive executable graphs: " << AliveExecs();
-
-      TF_RETURN_IF_ERROR(parent_->TrimGraphMemory());
-
-      auto retry = GpuDriver::GraphInstantiate(&exec_, graph_, flags);
-      if (retry.code() == absl::StatusCode::kResourceExhausted) {
-        return absl::ResourceExhaustedError(absl::StrFormat(
-            "CUDA driver ran out of memory trying to instantiate CUDA graph "
-            "with %d nodes and %d conditionals (total of %d alive CUDA graphs "
-            "in the process). You can try to (a) Give more memory to CUDA "
-            "driver by reducing XLA_CLIENT_MEM_FRACTION (b) Disable "
-            "CUDA graph with 'XLA_FLAGS=--xla_gpu_enable_command_buffer=' "
-            "(empty set). Original error: %s",
-            num_nodes, num_cond_cmd_buffers, AliveExecs(), retry.message()));
-      } else {
-        TF_RETURN_IF_ERROR(retry);
-      }
-    } else {
-      TF_RETURN_IF_ERROR(instantiated);
+      return absl::ResourceExhaustedError(absl::StrFormat(
+          "Underlying backend ran out of memory trying to instantiate graph "
+          "with %d nodes and %d conditionals (total of %d alive graphs "
+          "in the process). You can try to (a) Give more memory to the "
+          "driver by reducing XLA_CLIENT_MEM_FRACTION (b) Disable "
+          "command buffers with 'XLA_FLAGS=--xla_gpu_enable_command_buffer=' "
+          "(empty set). Original error: %s",
+          num_nodes, num_cond_cmd_buffers, AliveExecs(),
+          instantiated.message()));
     }
+    TF_RETURN_IF_ERROR(instantiated);
 
     uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
-    VLOG(5) << "Instantiated executable graph #" << NotifyExecCreated() << " "
-            << exec_ << " in " << (end_nanos - start_nanos) / 1000 << " μs"
+    VLOG(5) << "Instantiated executable graph #" << NotifyExecCreated()
+            << " in " << (end_nanos - start_nanos) / 1000 << " μs"
             << "; execution_scopes: " << execution_scopes_.size()
             << "; nodes: " << num_nodes
             << "; conditionals: " << num_cond_cmd_buffers

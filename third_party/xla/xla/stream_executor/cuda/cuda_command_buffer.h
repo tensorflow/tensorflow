@@ -130,6 +130,8 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
 
   absl::Status WriteGraphToDotFile(absl::string_view path) override;
 
+  absl::Status InstantiateGraph() override;
+
   // A signature of a device kernels updating conditional handle(s).
   using SetIfConditionKernel =
       TypedKernel<CUgraphConditionalHandle, DeviceMemory<bool>>;

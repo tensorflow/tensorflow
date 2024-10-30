@@ -67,17 +67,6 @@ absl::Status GpuDriver::DestroyGraph(hipGraph_t graph) {
   return ToStatus(wrap::hipGraphDestroy(graph), "Failed to destroy HIP graph");
 }
 
-absl::Status GpuDriver::GraphInstantiate(hipGraphExec_t* exec, hipGraph_t graph,
-                                         const GraphInstantiateFlags& flags) {
-  VLOG(2) << "Instantiate HIP executable graph from graph " << graph << " ("
-          << "auto_free_on_launch=" << flags.auto_free_on_launch << ", "
-          << "device_launch=" << flags.device_launch << ", "
-          << "use_node_priority=" << flags.use_node_prirotiy << ", "
-          << "upload=" << flags.upload << ")";
-  return ToStatus(wrap::hipGraphInstantiate(exec, graph, nullptr, nullptr, 0),
-                  "Failed to instantiate HIP graph");
-}
-
 absl::StatusOr<std::vector<GpuGraphNodeHandle>>
 GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
   VLOG(2) << "Get HIP graph node " << node << " dependencies";
