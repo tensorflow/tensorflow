@@ -2911,56 +2911,6 @@ std::optional<Value> convertFusedActivation(PatternRewriter& rewriter,
   return std::nullopt;
 }
 
-template <typename T>
-static Value convertGenericReduceOp(PatternRewriter& rewriter, Operation* op,
-                                    Value input, Type input_etype,
-                                    Type reduce_etype,
-                                    ArrayRef<int64_t> input_shape,
-                                    ArrayRef<int64_t> axes) {
-  Location loc = op->getLoc();
-  int64_t input_rank = input_shape.size();
-  llvm::SmallVector<int32_t> perms;
-  llvm::SmallVector<int64_t> reshape_shape;
-  perms.reserve(input_rank);
-  reshape_shape.resize(2, 1);
-
-  // First insert all non-reduction axes.
-  for (int i = 0; i < input_rank; i++) {
-    auto it = std::find(axes.begin(), axes.end(), i);
-    if (it == axes.end()) {
-      perms.push_back(i);
-      reshape_shape[0] *= input_shape[i];
-    }
-  }
-
-  // Then insert all reduction matrices.
-  for (auto axis : axes) {
-    perms.push_back(axis);
-    reshape_shape[1] *= input_shape[axis];
-  }
-
-  Value perms_value =
-      getConstTensor<int32_t>(rewriter, op, perms,
-                              {static_cast<int64_t>(perms.size())})
-          .value();
-
-  auto transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
-      rewriter, loc, UnrankedTensorType::get(input_etype), input, perms_value);
-
-  auto reshape_shape_value =
-      getTosaConstShape(rewriter, op->getLoc(),
-                    tensorflow::ConvertMlirShapeToTF(reshape_shape));
-  auto reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
-      rewriter, loc,
-      tensorflow::GetTypeFromTFTensorShape(reshape_shape, input_etype),
-      transpose_op,
-      reshape_shape_value);
-
-  return CreateOpAndInfer<T>(rewriter, loc,
-                             UnrankedTensorType::get(reduce_etype), reshape_op,
-                             rewriter.getI32IntegerAttr(1));
-}
-
 // Common function for lowering reduce operations to TOSA ops.
 // Nan propagation mode is only applied to reduce_max and reduce_min.
 template <typename T>
@@ -3001,46 +2951,35 @@ std::optional<Value> convertReduceOpCommon(
     axes.push_back(axis_val);
   }
 
-  // Reduction operations are limited to 4D tensors, restructure to obey this
-  // restriction. We transpose all reduction axis to the RHS, then reshape
-  // such that all reduction and non-reduction values are grouped. This forms a
-  // 2D matrix in all cases.
   Value val = input_value;
-  if (input_rank > 4) {
-    val = convertGenericReduceOp<T>(rewriter, op, val,
-                                    input_type.getElementType(),
-                                    reduce_element_type, input_shape, axes);
-  } else {
-    // Reduce along each axis
-    SmallVector<int64_t> shape_vec(input_shape.begin(), input_shape.end());
+  SmallVector<int64_t> shape_vec(input_shape.begin(), input_shape.end());
 
-    if (is_quantized) {
-      val = buildRescaleToInt32(rewriter, op, val, input_scale_multiplier,
-                                input_scale_shift, input_zp);
-    }
+  if (is_quantized) {
+    val = buildRescaleToInt32(rewriter, op, val, input_scale_multiplier,
+                              input_scale_shift, input_zp);
+  }
 
-    for (auto axis_val : axes) {
-      auto axis_attr = rewriter.getI32IntegerAttr(axis_val);
+  for (auto axis_val : axes) {
+    auto axis_attr = rewriter.getI32IntegerAttr(axis_val);
 
-      shape_vec[axis_val] = 1;
-      RankedTensorType reduce_type =
-          tensorflow::GetTypeFromTFTensorShape(shape_vec, reduce_element_type);
+    shape_vec[axis_val] = 1;
+    RankedTensorType reduce_type =
+        tensorflow::GetTypeFromTFTensorShape(shape_vec, reduce_element_type);
 
-      if constexpr (std::is_same_v<tosa::ReduceMaxOp, T> ||
-                    std::is_same_v<tosa::ReduceMinOp, T>) {
-        if (nan_mode != "PROPAGATE" && nan_mode != "IGNORE") {
-          (void)rewriter.notifyMatchFailure(
-              op, "invalid NaN mode: must be either 'PROPAGATE' or 'IGNORE'");
-          return std::nullopt;
-        }
-        val = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type, val,
-                                  axis_attr, rewriter.getStringAttr(nan_mode))
-                  .getResult();
-      } else {
-        val = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type, val,
-                                  axis_attr)
-                  .getResult();
+    if constexpr (std::is_same_v<tosa::ReduceMaxOp, T> ||
+                  std::is_same_v<tosa::ReduceMinOp, T>) {
+      if (nan_mode != "PROPAGATE" && nan_mode != "IGNORE") {
+        (void)rewriter.notifyMatchFailure(
+            op, "invalid NaN mode: must be either 'PROPAGATE' or 'IGNORE'");
+        return std::nullopt;
       }
+      val = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type, val,
+                                axis_attr, rewriter.getStringAttr(nan_mode))
+                .getResult();
+    } else {
+      val = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type, val,
+                                axis_attr)
+                .getResult();
     }
   }
 

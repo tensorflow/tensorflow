@@ -313,14 +313,10 @@ func.func @test_reduce_sum(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
 
 // CHECK-LABEL: test_reduce_sum_nonzero_axis
 // CHECK-SAME: %[[VAL_0:.*]]: tensor<10x20x30x40x50xf32>
-// CHECK-DAG: %[[VAL_1:.*]] = "tosa.const"() <{value = dense<[0, 1, 2, 4, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
-// CHECK-DAG: %[[VAL_11:.*]] = tosa.const_shape  {value = dense<[300000, 40]> : tensor<2xindex>}
-// CHECK-DAG: %[[VAL_12:.*]] = tosa.const_shape  {value = dense<[10, 20, 30, 50]> : tensor<4xindex>}
-// CHECK: %[[VAL_2:.*]] = tosa.transpose %[[VAL_0]], %[[VAL_1]] : (tensor<10x20x30x40x50xf32>, tensor<5xi32>) -> tensor<10x20x30x50x40xf32>
-// CHECK: %[[VAL_3:.*]] = tosa.reshape %[[VAL_2]], %[[VAL_11]] : (tensor<10x20x30x50x40xf32>, !tosa.shape<2>) -> tensor<300000x40xf32>
-// CHECK: %[[VAL_4:.*]] = tosa.reduce_sum %[[VAL_3]] {axis = 1 : i32} : (tensor<300000x40xf32>) -> tensor<300000x1xf32>
-// CHECK: %[[VAL_5:.*]] = tosa.reshape %[[VAL_4]], %[[VAL_12]] : (tensor<300000x1xf32>, !tosa.shape<4>) -> tensor<10x20x30x50xf32>
-// CHECK: return %[[VAL_5]] : tensor<10x20x30x50xf32>
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape {value = dense<[10, 20, 30, 50]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[VAL_2:.*]] = tosa.reduce_sum %[[VAL_0]] {axis = 3 : i32} : (tensor<10x20x30x40x50xf32>) -> tensor<10x20x30x1x50xf32>
+// CHECK-DAG: %[[VAL_3:.*]] = tosa.reshape %[[VAL_2]], %[[VAL_1]] : (tensor<10x20x30x1x50xf32>, !tosa.shape<4>) -> tensor<10x20x30x50xf32>
+// CHECK: return %[[VAL_3]] : tensor<10x20x30x50xf32>
 func.func @test_reduce_sum_nonzero_axis(%arg0: tensor<10x20x30x40x50xf32> {tf._user_specified_name = "inp_list"}) -> tensor<10x20x30x50xf32> {
   %cst = "tf.Const"() {device = "", value = dense<3> : tensor<i32>} : () -> tensor<i32>
   %0 = "tf.Sum"(%arg0, %cst) {device = "", keep_dims = false} : (tensor<10x20x30x40x50xf32>, tensor<i32>) -> tensor<10x20x30x50xf32>

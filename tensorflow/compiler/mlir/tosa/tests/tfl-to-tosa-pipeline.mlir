@@ -712,14 +712,10 @@ func.func @test_reduce_sum(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
 
 // CHECK-LABEL: test_reduce_sum_nonzero_axis
 // CHECK-SAME: %[[VAL_0:.*]]: tensor<10x20x30x40x50xf32>
-// CHECK: %[[CONST0:.*]] = tosa.const_shape  {value = dense<[10, 20, 30, 50]> : tensor<4xindex>} : () -> !tosa.shape<4>
-// CHECK: %[[CONST1:.*]] = tosa.const_shape  {value = dense<[300000, 40]> : tensor<2xindex>} : () -> !tosa.shape<2>
-// CHECK: %[[VAL_1:.*]] = "tosa.const"() <{value = dense<[0, 1, 2, 4, 3]> : tensor<5xi32>}> : () -> tensor<5xi32>
-// CHECK: %[[VAL_2:.*]] = tosa.transpose %[[VAL_0]], %[[VAL_1]] : (tensor<10x20x30x40x50xf32>, tensor<5xi32>) -> tensor<10x20x30x50x40xf32>
-// CHECK: %[[VAL_3:.*]] = tosa.reshape %[[VAL_2]], %[[CONST1]] : (tensor<10x20x30x50x40xf32>, !tosa.shape<2>) -> tensor<300000x40xf32>
-// CHECK: %[[VAL_4:.*]] = tosa.reduce_sum %[[VAL_3]] {axis = 1 : i32} : (tensor<300000x40xf32>) -> tensor<300000x1xf32>
-// CHECK: %[[VAL_5:.*]] = tosa.reshape %[[VAL_4]], %[[CONST0]] : (tensor<300000x1xf32>, !tosa.shape<4>) -> tensor<10x20x30x50xf32>
-// CHECK: return %[[VAL_5]] : tensor<10x20x30x50xf32>
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape {value = dense<[10, 20, 30, 50]> : tensor<4xindex>}
+// CHECK-DAG: %[[VAL_2:.*]] = tosa.reduce_sum %[[VAL_0]] {axis = 3 : i32} : (tensor<10x20x30x40x50xf32>) -> tensor<10x20x30x1x50xf32>
+// CHECK-DAG: %[[VAL_3:.*]] = tosa.reshape %[[VAL_2]], %[[VAL_1]] : (tensor<10x20x30x1x50xf32>, !tosa.shape<4>) -> tensor<10x20x30x50xf32>
+// CHECK: return %[[VAL_3]] : tensor<10x20x30x50xf32>
 func.func @test_reduce_sum_nonzero_axis(%arg0: tensor<10x20x30x40x50xf32> {tf._user_specified_name = "inp_list"}) -> tensor<10x20x30x50xf32> {
   %cst = arith.constant dense<3> : tensor<i32>
   %0 = "tfl.sum"(%arg0, %cst) {device = "", keep_dims = false} : (tensor<10x20x30x40x50xf32>, tensor<i32>) -> tensor<10x20x30x50xf32>
@@ -729,15 +725,14 @@ func.func @test_reduce_sum_nonzero_axis(%arg0: tensor<10x20x30x40x50xf32> {tf._u
 // -----
 
 // CHECK-LABEL: test_reduce_sum_5D
+// CHECK-DAG: %[[VAR0:.*]] = tosa.const_shape {value = dense<[6, 8]> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAR1:.*]] = tosa.reduce_sum %arg0 {axis = 0 : i32} : (tensor<4x5x6x7x8xf32>) -> tensor<1x5x6x7x8xf32>
+// CHECK-DAG: %[[VAR2:.*]] = tosa.reduce_sum %[[VAR1]] {axis = 1 : i32} : (tensor<1x5x6x7x8xf32>) -> tensor<1x1x6x7x8xf32>
+// CHECK-DAG: %[[VAR3:.*]] = tosa.reduce_sum %[[VAR2]] {axis = 3 : i32} : (tensor<1x1x6x7x8xf32>) -> tensor<1x1x6x1x8xf32>
+// CHECK-DAG: %[[VAR4:.*]] = tosa.reshape %[[VAR3]], %[[VAR0]] : (tensor<1x1x6x1x8xf32>, !tosa.shape<2>) -> tensor<6x8xf32>
+// CHECK: return %[[VAR4]]
 func.func @test_reduce_sum_5D(%arg0: tensor<4x5x6x7x8xf32>) -> tensor<6x8xf32> {
   %cst = arith.constant dense<[0, 1, 3]> : tensor<3xi32>
-  // CHECK-DAG: %[[PERM:.+]] = "tosa.const"() <{value = dense<[2, 4, 0, 1, 3]> : tensor<5xi32>}>
-  // CHECK-DAG: %[[TRANSPOSE:.+]] = tosa.transpose %arg0, %[[PERM]]
-  // CHECK-DAG: %[[CONST1:.+]] = tosa.const_shape {value = dense<[48, 140]> : tensor<2xindex>
-  // CHECK-DAG: %[[RESHAPE0:.+]] = tosa.reshape %[[TRANSPOSE:.+]], %[[CONST1]]
-  // CHECK-DAG: %[[REDUCE:.+]] = tosa.reduce_sum %[[RESHAPE0]] {axis = 1 : i32}
-  // CHECK-DAG: %[[CONST2:.+]] = tosa.const_shape {value = dense<[6, 8]> : tensor<2xindex>
-  // CHECK: %[[RESHAPE1:.+]] = tosa.reshape %[[REDUCE]], %[[CONST2]]
   %0 = "tfl.sum"(%arg0, %cst)  {keep_dims = false}  : (tensor<4x5x6x7x8xf32>, tensor<3xi32>) -> tensor<6x8xf32>
   func.return %0 : tensor<6x8xf32>
 }
