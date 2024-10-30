@@ -54,14 +54,6 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-absl::Status GpuDriver::CreateGraph(hipGraph_t* graph) {
-  VLOG(2) << "Create new HIP graph";
-  TF_RETURN_IF_ERROR(ToStatus(wrap::hipGraphCreate(graph, /*flags=*/0),
-                              "Failed to create HIP graph"));
-  VLOG(2) << "Created HIP graph " << *graph;
-  return absl::OkStatus();
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   hipError_t res = wrap::hipGetDeviceCount(&device_count);

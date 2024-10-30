@@ -57,14 +57,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-absl::Status GpuDriver::CreateGraph(CUgraph* graph) {
-  VLOG(2) << "Create new CUDA graph";
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuGraphCreate(graph, /*flags=*/0),
-                                    "Failed to create CUDA graph"));
-  VLOG(2) << "Created CUDA graph " << *graph;
-  return absl::OkStatus();
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   auto status = cuda::ToStatus(cuDeviceGetCount(&device_count));

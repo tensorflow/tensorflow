@@ -57,11 +57,6 @@ namespace gpu {
 // Thread safety: these functions should not be used from signal handlers.
 class GpuDriver {
  public:
-  // Creates a new GPU graph.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gd885f719186010727b75c3315f865fdf
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
-  static absl::Status CreateGraph(GpuGraphHandle* graph);
-
   // The CUDA stream callback type signature.
   // The data passed to AddStreamCallback is subsequently passed to this
   // callback when it fires.
