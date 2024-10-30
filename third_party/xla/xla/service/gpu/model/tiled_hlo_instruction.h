@@ -147,11 +147,6 @@ inline bool operator==(const TiledHloInstruction& lhs,
   return lhs.operands() == rhs.operands();
 }
 
-inline bool operator!=(const TiledHloInstruction& lhs,
-                       const TiledHloInstruction& rhs) {
-  return !(lhs == rhs);
-}
-
 template <typename H>
 H AbslHashValue(H h, const TiledHloInstruction& tiled_hlo_instruction) {
   // There is no default hash implementation for llvm::SmallVector neither in
@@ -184,11 +179,6 @@ class TiledHloFusionInstruction : public TiledHloInstruction {
       llvm::SmallVector<int64_t> tile_sizes,
       llvm::SmallVector<int64_t> tile_strides,
       std::optional<IndexingMap> tile_offsets_indexing);
-
-  // The `TiledHloComputation` called by this instruction.
-  const TiledHloComputation* called_computation() const {
-    return called_computation_.get();
-  }
 
  private:
   TiledHloFusionInstruction(
