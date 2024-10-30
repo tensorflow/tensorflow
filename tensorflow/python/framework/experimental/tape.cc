@@ -27,7 +27,7 @@ namespace py = pybind11;
 namespace tensorflow {
 namespace gradients {
 
-Status RegisterGradients(GradientRegistry* registry) {
+absl::Status RegisterGradients(GradientRegistry* registry) {
   // TODO(srbs): Rename ops::Add and AddRegisterer to AddV2.
   TF_RETURN_IF_ERROR(registry->Register("AddV2", AddRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Exp", ExpRegisterer));
@@ -54,9 +54,9 @@ PYBIND11_MODULE(_tape, m) {
               std::vector<AbstractTensorHandle*> source_tensors,
               std::vector<AbstractTensorHandle*> output_gradients) {
              std::vector<AbstractTensorHandle*> results(source_tensors.size());
-             Status s = self->ComputeGradient(ctx, target_tensors,
-                                              source_tensors, output_gradients,
-                                              absl::MakeSpan(results));
+             absl::Status s = self->ComputeGradient(
+                 ctx, target_tensors, source_tensors, output_gradients,
+                 absl::MakeSpan(results));
              MaybeRaiseRegisteredFromStatus(s);
              return results;
            });
