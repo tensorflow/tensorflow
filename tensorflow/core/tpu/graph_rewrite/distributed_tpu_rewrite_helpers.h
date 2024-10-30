@@ -18,6 +18,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_GRAPH_REWRITE_DISTRIBUTED_TPU_REWRITE_HELPERS_H_
 #define TENSORFLOW_CORE_TPU_GRAPH_REWRITE_DISTRIBUTED_TPU_REWRITE_HELPERS_H_
 
+#include <functional>
+#include <vector>
+
 #include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/device.h"

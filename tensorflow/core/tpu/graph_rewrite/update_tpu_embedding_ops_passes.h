@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_GRAPH_REWRITE_UPDATE_TPU_EMBEDDING_OPS_PASSES_H_
 #define TENSORFLOW_CORE_TPU_GRAPH_REWRITE_UPDATE_TPU_EMBEDDING_OPS_PASSES_H_
 
+#include <map>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
