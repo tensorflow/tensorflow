@@ -28,6 +28,10 @@ VERS_1.0 {
     *LiteRtCompiledResultGetCallInfo;
     *LiteRtCompiledResultGetNumCalls;
 
+    /* Dispatch */
+
+    LiteRtDispatch*;
+
   local:
 
     /* Hide everything else */

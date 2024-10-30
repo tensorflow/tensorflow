@@ -87,7 +87,7 @@ cc_test(
     name = "dispatch_delegate_google_tensor_test",
     srcs = ["dispatch_delegate_google_tensor_test.cc"],
     data = [
-        "//tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch:dispatch_api_shared",
+        "//tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch:dispatch_api_so",
     ],
     linkopts = select({
         "//tensorflow:android": ["-landroid"],
@@ -114,7 +114,7 @@ cc_test(
     name = "dispatch_delegate_qualcomm_test",
     srcs = ["dispatch_delegate_qualcomm_test.cc"],
     data = [
-        "//tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch:dispatch_api_shared",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch:dispatch_api_so",
     ],
     linkopts = select({
         "//tensorflow:android": ["-landroid"],
