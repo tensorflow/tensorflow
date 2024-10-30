@@ -353,6 +353,45 @@ static int64_t GetAgActivationCacheIndex(const HloInstruction* while_loop) {
   return tuple_shape.tuple_shapes_size() - 1;
 }
 
+bool FindDusSliceForCachedActivation(HloInstruction* inst,
+                                     HloInstruction** dus_boundary_constant,
+                                     HloInstruction** slice_indices,
+                                     bool is_first_slice) {
+  // We are only interested in DUS in the loop body.
+  if (inst->opcode() != HloOpcode::kDynamicUpdateSlice) {
+    return false;
+  }
+  // Check that the first operand of DUS is a:
+  // 1. GTE of loop input param in case of the first slice of data
+  // 2. DUS in case of the second slice of data from unrolled loop.
+  HloInstruction* dus_destination = inst->mutable_operand(0);
+  if (is_first_slice &&
+      !Match(dus_destination, m::GetTupleElement(m::Parameter()))) {
+    return false;
+  }
+  if (!is_first_slice && !Match(dus_destination, m::DynamicUpdateSlice())) {
+    return false;
+  }
+  HloInstruction* dus_constant = nullptr;
+  HloInstruction* dus_slice_index = nullptr;
+  // Now we loop through all the index operands to find boundary and slice
+  // index.
+  for (int64_t i = 2; i < inst->operand_count(); i++) {
+    if (!Match(inst->mutable_operand(i), m::Constant(&dus_constant)) &&
+        !Match(
+            inst->mutable_operand(i),
+            m::Reshape(m::DynamicSlice(&dus_slice_index, m::Op(), m::Op())))) {
+      return false;
+    }
+  }
+  if (!dus_constant || !dus_slice_index) {
+    return false;
+  }
+  *dus_boundary_constant = dus_constant;
+  *slice_indices = dus_slice_index;
+  return true;
+}
+
 absl::Status ProcessWindowedEinsumLoopForActivationCaching(
     WindowedEinsumHandler::WindowedEinsumAgLoops& ag_loop) {
   HloInstruction* loop = ag_loop.loop;
@@ -391,16 +430,14 @@ absl::Status ProcessWindowedEinsumLoopForActivationCaching(
       break;
     }
   }
+
   for (HloInstruction* inst : while_body->MakeInstructionPostOrder()) {
     HloInstruction* slice_indices;
     // If we have a DUS(PARAM,DS) pattern, we need to update the output
     // buffer with the first slice.
-    if (Match(inst,
-              m::DynamicUpdateSlice(
-                  m::GetTupleElement(m::Parameter()), m::Op(),
-                  m::Constant(&dus_boundary_constant),
-                  m::Reshape(m::DynamicSlice(&slice_indices, m::Op(), m::Op())),
-                  m::Op()))) {
+    if (FindDusSliceForCachedActivation(inst, &dus_boundary_constant,
+                                        &slice_indices,
+                                        /*is_first_slice=*/true)) {
       slice_indices = while_body->AddInstruction(HloInstruction::CreateReshape(
           dus_boundary_constant->shape(), slice_indices));
       VLOG(5) << "Created slice op for first slice: "
@@ -415,11 +452,9 @@ absl::Status ProcessWindowedEinsumLoopForActivationCaching(
     // unrolled, we need to update the output buffer again with the
     // second slice. Since the second slice will have different indices,
     // we need to re-capture slice_indices.
-    if (Match(inst,
-              m::DynamicUpdateSlice(
-                  m::DynamicUpdateSlice(), m::Op(), m::Constant(),
-                  m::Reshape(m::DynamicSlice(&slice_indices, m::Op(), m::Op())),
-                  m::Op()))) {
+    if (FindDusSliceForCachedActivation(inst, &dus_boundary_constant,
+                                        &slice_indices,
+                                        /*is_first_slice=*/false)) {
       slice_indices = while_body->AddInstruction(HloInstruction::CreateReshape(
           dus_boundary_constant->shape(), slice_indices));
       VLOG(5) << "Created slice op for second slice: "
