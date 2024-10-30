@@ -159,9 +159,11 @@ bool IsAlignedSlice(const HloInstruction* slice) {
 //   param = (s32[], s32[], s32[16]{0}, s32[16]{0}) parameter(0)
 //   // the index in `gte` has to be the loop iteration index
 //   gte = s32[] get-tuple-element(param), index=0
-//   c0 = s32[] constant(0) compare = pred[] compare(gte, c0), direction=LT
+//   c0 = s32[] constant(0)
+//   compare = pred[] compare(gte, c0), direction=LT
 //   c_trip_count = s32[] constant(16)
-//   add = s32[] add(gte, c_trip_count) select = s32[] select(compare, add, gte)
+//   add = s32[] add(gte, c_trip_count)
+//   select = s32[] select(compare, add, gte)
 // clang-format on
 
 bool IsLoopIterationNumber(const HloInstruction& offset) {

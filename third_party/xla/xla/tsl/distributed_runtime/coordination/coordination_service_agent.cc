@@ -385,9 +385,11 @@ void CoordinationServiceAgentImpl::StartSendingHeartbeats() {
       }
       SetError(status);
     } else if (response.leader_incarnation() != leader_incarnation_) {
-      SetError(MakeCoordinationError(
-          absl::AbortedError("Leader incarnation ID mismatch: the "
-                             "coordination leader has restarted.")));
+      SetError(MakeCoordinationError(absl::AbortedError(
+          "Leader incarnation ID mismatch: the coordination  leader "
+          "(usually slice 0 task 0) has restarted. Check for earlier "
+          "errors or any scheduler events (e.g. preemption, eviction) to "
+          "debug further.")));
     }
     // Send next heartbeat after an interval.
     {
@@ -556,8 +558,10 @@ absl::Status CoordinationServiceAgentImpl::ReportError(
                  "coordination service: "
               << s
               << "\nThis is usually caused by an earlier error during "
-                 "execution. Check the logs (this task or the leader) for "
-                 "an earlier error to debug further.";
+                 "execution. Check the logs of (a) this task, (b) the "
+                 "leader (usually slice 0 task 0) and (c) the scheduler "
+                 "(e.g. preemption, eviction) for an earlier error to debug "
+                 "further.";
         }
         n.Notify();
       });
@@ -603,8 +607,10 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
           << "Failed to disconnect from coordination service with status: "
           << TrimCoordinationErrorMessage(status)
           << "\nProceeding with agent shutdown anyway. This is usually caused "
-             "by an earlier error during execution. Check the logs (this task "
-             "or the leader) for an earlier error to debug further.";
+             "by an earlier error during execution. Check the logs of (a) this "
+             "task, (b) the leader (usually slice 0 task 0) and (c) the "
+             "scheduler (e.g. preemption, eviction) for an earlier error to "
+             "debug further.";
     }
   }
 
@@ -620,8 +626,9 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
           "still shutdown anyway. Agent status: ",
           status_.ToString(),
           "\nThis is usually caused by an earlier error during execution. "
-          "Check the logs (this task or the leader) for an earlier error to "
-          "debug further.");
+          "Check the logs of (a) this task, (b) the leader (usually slice 0 "
+          "task 0) and (c) the scheduler (e.g. preemption, eviction) for an "
+          "earlier error to debug further.");
       status =
           MakeCoordinationError(absl::FailedPreconditionError(status_message));
       LOG(ERROR) << status_message;
@@ -870,7 +877,6 @@ void CoordinationServiceAgentImpl::SetError(const absl::Status& error) {
   if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return;
   absl::Status trimmed_error = TrimCoordinationErrorMessage(error);
 
-  LOG(ERROR) << "Coordination agent is set to ERROR: " << trimmed_error;
   state_ = CoordinatedTaskState::TASKSTATE_ERROR;
   status_ = trimmed_error;
   error_fn_(trimmed_error);

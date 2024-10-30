@@ -18,6 +18,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -165,17 +166,17 @@ class SdyRoundTripImportShardyAttrsPass
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
+
     // We can use the saved string attributes to restore the original mesh and
     // value shardings with the original mesh axis names and priorities on the
-    // sharding.
-    DictionaryAttr moduleDictAttr = getFrontendAttrs(moduleOp);
-    // If there is no `kMeshesRoundTripAttr, there were no meshes in the
-    // original Shardy model.
+    // sharding. If there is no `kMeshesRoundTripAttr, there were no meshes in
+    // the original Shardy model.
+    std::optional<DictionaryAttr> meshesAttr =
+        tryGetFrontendAttr<DictionaryAttr>(moduleOp, kMeshesRoundTripAttr);
     mlir::ArrayRef<NamedAttribute> sdyMeshes =
-        moduleDictAttr ? parseStringAttr<DictionaryAttr>(moduleDictAttr,
-                                                         kMeshesRoundTripAttr)
-                             .getValue()
-                       : mlir::ArrayRef<NamedAttribute>();
+        meshesAttr.has_value() ? meshesAttr.value().getValue()
+                               : mlir::ArrayRef<NamedAttribute>();
+
     IRRewriter rewriter(moduleOp);
     // Insert the meshes before any functions.
     rewriter.setInsertionPointToStart(moduleOp.getBody());

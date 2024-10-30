@@ -39,9 +39,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
-#include "xla/service/float_normalization.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -236,7 +236,7 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module) {
 
 }  // namespace
 
-DebugOptions TritonSupportTestBase::GetDebugOptionsForTest() {
+DebugOptions TritonSupportTestBase::GetDebugOptionsForTest() const {
   auto options = HloTestBase::GetDebugOptionsForTest();
   // It's necessary to set this manually, because it's disabled in optimized
   // builds and there are some ASAN builds that run on TAP with -c opt.

@@ -79,6 +79,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
+#include "xla/hlo/translate/mhlo_to_hlo/literal_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/module_attributes_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/stack_frame_index_builder.h"
@@ -212,56 +213,6 @@ bool IsBoundedOrStatic(mlir::Type ty) {
       return false;
   }
   return true;
-}
-
-template <typename T>
-xla::Array<T> ArrayFromDenseElementsAttr(mlir::DenseElementsAttr dense_attr) {
-  constexpr xla::PrimitiveType type =
-      xla::primitive_util::NativeToPrimitiveType<T>();
-  xla::Shape shape = xla::TypeToShape(dense_attr.getType());
-  xla::Array<T> array(shape.dimensions());
-  if constexpr (!xla::primitive_util::IsSubByteNonPredType(type)) {
-    array.SetValues(dense_attr.getValues<T>());
-  } else {
-    // The only way to get subbyte integers from getValues() is to get them as
-    // APInts.
-    auto values = dense_attr.getValues<llvm::APInt>();
-    for (int i = 0; i < values.size(); i++) {
-      if constexpr (xla::primitive_util::IsUnsignedIntegralType(type)) {
-        array.data()[i] = T{values[i].getZExtValue()};
-      } else {
-        static_assert(xla::primitive_util::IsSignedIntegralType(type));
-        array.data()[i] = T{values[i].getSExtValue()};
-      }
-    }
-  }
-  return array;
-}
-
-absl::StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
-                                                        xla::Layout layout) {
-  auto dense_attr = mlir::dyn_cast<mlir::DenseElementsAttr>(attr);
-  if (!dense_attr)
-    return tsl::errors::Unimplemented("Only dense elements attr are supported");
-
-  xla::Shape shape = xla::TypeToShape(dense_attr.getType());
-
-  return xla::primitive_util::PrimitiveTypeSwitch<absl::StatusOr<xla::Literal>>(
-      [&](auto primitive_type_constant) -> absl::StatusOr<xla::Literal> {
-        if constexpr (xla::primitive_util::IsArrayType(
-                          primitive_type_constant)) {
-          using cpp_type =
-              xla::primitive_util::NativeTypeOf<primitive_type_constant>;
-          xla::Array<cpp_type> source_data =
-              ArrayFromDenseElementsAttr<cpp_type>(dense_attr);
-          return xla::LiteralUtil::CreateFromArrayWithLayout(source_data,
-                                                             layout);
-        }
-        return tsl::errors::Internal(absl::StrCat(  // NOLINT
-            "Unsupported type: ",
-            xla::PrimitiveType_Name(shape.element_type())));
-      },
-      shape.element_type());
 }
 
 // Convert APInt into an int.
@@ -2268,7 +2219,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   const xla::Literal* literal_ptr = nullptr;
   auto literal_attr = op->getAttrOfType<DenseElementsAttr>(kMhloLiteral);
   if (literal_attr) {
-    literal = CreateArrayLiteralFromAttr(literal_attr, {});
+    literal = mhlo::CreateLiteralFromAttribute(literal_attr, {});
     if (!literal.ok()) return failure();
     literal_ptr = &*literal;
   }
@@ -3312,7 +3263,8 @@ LogicalResult ConvertToHloModule::LowerConstant(
   mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(inst);
   if (failed(shape_or)) return failure();
 
-  auto literal_or = CreateArrayLiteralFromAttr(const_attr, shape_or->layout());
+  auto literal_or =
+      mhlo::CreateLiteralFromAttribute(const_attr, shape_or->layout());
   if (!literal_or.ok()) return inst->emitError(literal_or.status().ToString());
 
   xla::XlaScopedShardingAssignment scoped_sharding(

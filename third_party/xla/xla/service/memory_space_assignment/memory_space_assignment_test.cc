@@ -45,11 +45,14 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/transforms/simplifiers/instruction_hoister.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout_util.h"
@@ -57,12 +60,9 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/instruction_hoister.h"
 #include "xla/service/memory_space_assignment/algorithm.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/buffer_interval_comparator.h"
@@ -1060,6 +1060,115 @@ ENTRY entry {
   concat = FindInstruction(module2.get(), "concat");
   ASSERT_NE(concat, nullptr);
   EXPECT_THAT(concat->operand(1), op::AsyncDone(op::AsyncStart(p0)));
+}
+
+TEST_F(MemorySpaceAssignmentTest, SyncReplacementMultipleOpTypes) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[10,2,3]{2,1,0} parameter(0)
+  p1 = f32[10,2,3]{2,1,0} parameter(1)
+  p0_copy = copy(p0)
+  negate0 = negate(p1)
+  negate1 = negate(negate0)
+  negate2 = negate(negate1)
+  negate3 = negate(negate2)
+  negate4 = negate(negate3)
+  negate5 = negate(negate4)
+  negate6 = negate(negate5)
+  negate7 = negate(negate6)
+  slice = f32[1,2,3] slice(p0_copy), slice={[0:1], [0:2], [0:3]}
+  concat = f32[11,2,3] concatenate(negate7, slice), dimensions={0}
+  ROOT root = negate(concat)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 512;
+  options.enable_sync_copy_replacement = true;
+  options.enable_sync_slice_replacement = true;
+  options.is_async_slice_implemented_fn =
+      [](const HloInstruction* instruction) { return true; };
+  AssignMemorySpace(module.get(), options);
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  ASSERT_NE(p0, nullptr);
+  HloInstruction* concat = FindInstruction(module.get(), "concat");
+  ASSERT_NE(concat, nullptr);
+  EXPECT_THAT(
+      concat->operand(1),
+      op::Slice(op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, p0)));
+}
+
+// This test is for the redundant aliasing bug (b/374902759) introduced between
+// different operands of the same instruction while converting sync copy to
+// async ones.
+TEST_F(MemorySpaceAssignmentTest, SyncReplacementAliasingBug) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true, entry_computation_layout={(f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[])->f32[10,2,3]{2,1,0}}
+
+%while_body (p0.1: (f32[10,2,3], f32[10,2,3], f32[10,2,3], pred[])) -> (f32[10,2,3], f32[10,2,3], f32[10,2,3], pred[]) {
+  %p0.1 = (f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) parameter(0)
+  %gte0 = f32[10,2,3]{2,1,0} get-tuple-element((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) %p0.1), index=0
+  %gte1 = f32[10,2,3]{2,1,0} get-tuple-element((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) %p0.1), index=1
+  %gte2 = f32[10,2,3]{2,1,0} get-tuple-element((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) %p0.1), index=2
+  %gte3 = pred[] get-tuple-element((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) %p0.1), index=3
+  %neg0 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %gte2)
+  %neg1 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg0)
+  %neg2 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg1)
+  %neg3 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg2)
+  %neg4 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg3)
+  %neg5 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg4)
+  %neg6 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg5)
+  %neg7 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %neg6)
+  ROOT %tuple = (f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) tuple(f32[10,2,3]{2,1,0} %gte0, f32[10,2,3]{2,1,0} %gte1, f32[10,2,3]{2,1,0} %neg7, pred[] %gte3)
+}
+
+%while_cond (p0: (f32[10,2,3], f32[10,2,3], f32[10,2,3], pred[])) -> pred[] {
+  %p0 = (f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) parameter(0)
+  ROOT %gte = pred[] get-tuple-element((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) %p0), index=3
+}
+
+ENTRY %entry (p0.2: f32[10,2,3], p1: f32[10,2,3], p2: pred[]) -> f32[10,2,3] {
+  %p0.2 = f32[10,2,3]{2,1,0} parameter(0)
+  %p1 = f32[10,2,3]{2,1,0} parameter(1)
+  %p2 = pred[] parameter(2)
+  p0_copy = f32[10,2,3]{2,1,0} copy(f32[10,2,3]{2,1,0} %p0.2)
+  %p0_copy_copy = f32[10,2,3]{2,1,0} copy(f32[10,2,3]{2,1,0} p0_copy)
+  %negate0 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %p1)
+  %negate1 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate0)
+  %negate2 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate1)
+  %negate3 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate2)
+  %negate4 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate3)
+  %negate5 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate4)
+  %negate6 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate5)
+  %negate7 = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %negate6)
+  %tuple.3 = (f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) tuple(f32[10,2,3]{2,1,0} %negate7, f32[10,2,3]{2,1,0} %p0_copy, f32[10,2,3]{2,1,0} %p0_copy_copy, pred[] %p2)
+  while.1 = (f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) while((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) %tuple.3), condition=%while_cond, body=%while_body
+  %gte.1 = f32[10,2,3]{2,1,0} get-tuple-element((f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, f32[10,2,3]{2,1,0}, pred[]) while.1), index=2
+  ROOT %negate = f32[10,2,3]{2,1,0} negate(f32[10,2,3]{2,1,0} %gte.1)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 1024;
+  options.enable_sync_copy_replacement = true;
+  options.enable_sync_slice_replacement = true;
+  options.is_async_slice_implemented_fn =
+      [](const HloInstruction* instruction) { return true; };
+  AssignMemorySpace(module.get(), options);
+  HloInstruction* while_instruction = FindInstruction(module.get(), "while.1");
+  ASSERT_NE(while_instruction, nullptr);
+  const HloInstruction* tuple = while_instruction->operand(0);
+  HloInstruction* p0_copy = FindInstruction(module.get(), "p0_copy");
+  ASSERT_NE(p0_copy, nullptr);
+  EXPECT_THAT(tuple->operand(1), op::AsyncCopy(kDefaultMemorySpace,
+                                               kAlternateMemorySpace, p0_copy));
+  EXPECT_THAT(tuple->operand(2),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            tuple->operand(1)));
 }
 
 TEST_F(MemorySpaceAssignmentTest, AlwaysSpillJitPrefetchTest) {
@@ -8673,6 +8782,77 @@ entry {
   }
 
   VLOG(2) << "module: " << module->ToString();
+}
+
+// This test verifies that window prefetched operands are seen by the
+// reserved_scoped_memory_fn. Because window prefetched operands allocates space
+// in the alternate memory, which will be identified as prefetched_operands.
+// Therefore they will be seen by reserved_scoped_memory_fn.
+TEST_F(MemorySpaceAssignmentTest,
+       WindowPrefetchedOperandsAreSeenByReservedScopedMemoryFn) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  fused_computation {
+    param0 = f32[1024] parameter(0)
+    param1 = f32[1024] parameter(1)
+    ROOT root = f32[1024] add(param0, param1)
+  }
+
+  ENTRY Entry {
+    param0 = f32[1024] parameter(0)
+    param1 = f32[1024] parameter(1)
+    ROOT fusion = f32[1024] fusion(param0, param1), kind=kLoop, calls=fused_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  bool seen_window_prefetched_operand = false;
+
+  Options options = DefaultMemorySpaceOptions();
+  options.max_repacks = 10;
+  options.repack_after_every_allocation = true;
+  options.reduce_scoped_memory_limit = true;
+  options.reserved_scoped_memory_fn =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_set<std::pair<int, ShapeIndex>>
+              operands_in_alternate_memory,
+          const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory) {
+        if (instruction == fusion && !operands_in_alternate_memory.empty()) {
+          seen_window_prefetched_operand = true;
+        }
+        return 1;
+      };
+
+  // Make sure that the alternate memory is larger than the fusion operand's
+  // full size, but smaller than its span buffer size, so that it will be window
+  // prefetched.
+  options.enable_window_prefetch = true;
+  ASSERT_LT(options.max_size_in_bytes, 1024);
+  ASSERT_GT(options.max_size_in_bytes, 32);
+  // This lambda instructs MSA to allocate 32 bytes in the alternate memory as
+  // span buffer of the fusion instruction.
+  options.window_prefetch_detail_fn =
+      [&](const HloInstruction* instruction) -> WindowPrefetchDetail {
+    WindowPrefetchDetail detail;
+    if (instruction == fusion) {
+      WindowPrefetchDetail::WindowDetail* window = detail.add_windows();
+      window->set_operand(0);
+      window->set_size(32);
+    }
+    return detail;
+  };
+
+  // Run memory space assignment and verify that window prefetched operands are
+  // seen by the reserved_scoped_memory_fn.
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map, nullptr);
+  options.repacker = &repacker;
+  AssignMemorySpace(module.get(), options, /*max_prefetch_interval=*/10,
+                    /*min_prefetch_interval=*/0);
+  EXPECT_TRUE(seen_window_prefetched_operand);
 }
 
 using AsynchronousCopyOrderingTest = ::testing::Test;

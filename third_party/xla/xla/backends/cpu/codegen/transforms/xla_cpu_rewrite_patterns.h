@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_TRANSFORMS_XLA_CPU_REWRITE_PATTERNS_H_
 #define XLA_BACKENDS_CPU_CODEGEN_TRANSFORMS_XLA_CPU_REWRITE_PATTERNS_H_
 
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace xla::cpu {
@@ -24,6 +25,9 @@ namespace xla::cpu {
 // types to LLVM types.
 void PopulateXlaCpuTypeConversionAndLegality(mlir::TypeConverter& converter,
                                              mlir::ConversionTarget& target);
+
+// Populates rewrite patterns for converting XLA:CPU ops to LLVM ops.
+void PopulateXlaCpuConversionPatterns(mlir::RewritePatternSet& patterns);
 
 }  // namespace xla::cpu
 

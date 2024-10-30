@@ -3,9 +3,9 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@build_bazel_rules_android//android:rules.bzl", "android_binary", "android_library")
 load("@rules_java//java:defs.bzl", "java_library", "java_test")
-load("//tensorflow:tensorflow.bzl", "clean_dep")
 load(
     "//tensorflow/lite:build_def.bzl",
+    "clean_dep",
     "tflite_copts_warnings",
     "tflite_custom_c_library",
     "tflite_jni_binary",

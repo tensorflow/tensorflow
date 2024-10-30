@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_lexer.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/hlo_module_config.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -2183,6 +2183,59 @@ ENTRY AllToAllWithSubgroupsIotaList {
 
 )",
 /*replica_count=*/40
+},
+// ragged-all-to-all
+{
+"RaggedAllToAllWithReplicaGroups",
+R"(HloModule RaggedAllToAll, entry_computation_layout={(bf16[1024,256]{1,0}, bf16[1024,256]{1,0}, s32[8]{0}, s32[8]{0}, s32[8]{0}, /*index=5*/s32[8]{0})->bf16[1024,256]{1,0}}, replica_count=8
+
+ENTRY AllToAll {
+  input = bf16[1024,256]{1,0} parameter(0)
+  output = bf16[1024,256]{1,0} parameter(1)
+  input_offsets = s32[8]{0} parameter(2)
+  input_sizes = s32[8]{0} parameter(3)
+  output_offsets = s32[8]{0} parameter(4)
+  output_sizes = s32[8]{0} parameter(5)
+  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, input_sizes, output_offsets, output_sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+}
+
+)",
+/*replica_count=*/8
+},
+// ragged-all-to-all
+{
+"RaggedAllToAllWithCollectiveDeviceList",
+R"(HloModule RaggedAllToAll, entry_computation_layout={(bf16[1024,256]{1,0}, bf16[1024,256]{1,0}, s32[8]{0}, s32[8]{0}, s32[8]{0}, /*index=5*/s32[8]{0})->bf16[1024,256]{1,0}}, replica_count=8
+
+ENTRY AllToAll {
+  input = bf16[1024,256]{1,0} parameter(0)
+  output = bf16[1024,256]{1,0} parameter(1)
+  input_offsets = s32[8]{0} parameter(2)
+  input_sizes = s32[8]{0} parameter(3)
+  output_offsets = s32[8]{0} parameter(4)
+  output_sizes = s32[8]{0} parameter(5)
+  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, input_sizes, output_offsets, output_sizes), replica_groups=[2,4]<=[4,2]T(1,0)
+}
+
+)",
+/*replica_count=*/8
+},
+// ragged-all-to-all
+{
+"RaggedAllToAll",
+R"(HloModule RaggedAllToAll, entry_computation_layout={(bf16[1024,256]{1,0}, bf16[1024,256]{1,0}, s32[8]{0}, s32[8]{0}, s32[8]{0}, /*index=5*/s32[8]{0})->bf16[1024,256]{1,0}}, replica_count=8
+
+ENTRY AllToAll {
+  input = bf16[1024,256]{1,0} parameter(0)
+  output = bf16[1024,256]{1,0} parameter(1)
+  input_offsets = s32[8]{0} parameter(2)
+  input_sizes = s32[8]{0} parameter(3)
+  output_offsets = s32[8]{0} parameter(4)
+  output_sizes = s32[8]{0} parameter(5)
+  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, input_sizes, output_offsets, output_sizes), replica_groups={}
+}
+
+)"
 },
 // collective-broadcast
 {

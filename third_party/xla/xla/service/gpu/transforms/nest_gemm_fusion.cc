@@ -18,6 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -27,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -39,16 +42,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/instruction_fusion.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/macros.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -59,8 +64,7 @@ namespace {
 // instruction, which is the last instructions in the input span.  We only
 // replace the uses of the root in 'consumer', and leave other users alone.
 absl::Status FuseInstructionsForConsumer(
-    const std::vector<HloInstruction*>& instructions,
-    HloInstruction& consumer) {
+    absl::Span<HloInstruction* const> instructions, HloInstruction& consumer) {
   HloComputation::Builder builder(instructions.back()->name());
 
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
@@ -198,6 +202,15 @@ absl::StatusOr<llvm::SmallVector<int64_t>> FindOutputTileSizesForEpilogue(
   expected_dot_tile_sizes[dot_rank - 2] = config.block_m;
   expected_dot_tile_sizes[dot_rank - 1] = config.block_n;
 
+  if (VLOG_IS_ON(1)) {
+    std::ostringstream oss;
+    for (const auto& size : expected_dot_tile_sizes) {
+      oss << size << " ";
+    }
+    LOG(INFO) << "FindOutputTileSizesForEpilogue: " << tiled_dot.ToString()
+              << "Constraints: " << analysis.GetConstraints().ToString()
+              << "Expected dot tile sizes: " << oss.str();
+  }
   // Try all permutations of the dot tile sizes to see if any of them satisfy
   // the constraints of the analysis and map to the given config of the dot.
   llvm::SmallVector<int64_t> output_tile_sizes = expected_dot_tile_sizes;
@@ -235,7 +248,7 @@ absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
 }
 
 // Transforms a fusion into an equivalent nested fusion if it has a single dot.
-// Returns true if the transformation was successful.
+// Returns ok if the transformation was successful.
 absl::Status MakeNestedFusionFromGemmFusion(
     HloFusionInstruction* fusion, const TritonGemmConfig& config,
     const SymbolicTileAnalysis& analysis,
@@ -295,9 +308,90 @@ size_t GetDotCount(HloComputation* computation) {
   });
 }
 
+// Returns the transitive producers of 'instruction'. Returns an error if that
+// set is not closed, i.e. if there are any consumers outside of the set other
+// than 'instruction' itself.
+absl::StatusOr<HloInstructionSet> GetClosedProducerSet(
+    HloInstruction* instruction) {
+  HloInstructionSet producers;
+  std::deque<HloInstruction*> worklist(instruction->operands().begin(),
+                                       instruction->operands().end());
+  do {
+    HloInstruction* front = worklist.front();
+    worklist.pop_front();
+    if (!producers.insert(front).second) {
+      continue;  // Already in producer set.
+    }
+    worklist.insert(worklist.end(), front->operands().begin(),
+                    front->operands().end());
+    for (HloInstruction* user : front->users()) {
+      if (TF_PREDICT_TRUE(user == instruction || producers.count(user) > 0)) {
+        continue;  // User is instruction itself or in producer set.
+      }
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Instruction ", front->ToString(), " has consumer ", user->ToString(),
+          ", which is not in the producer set of, or ", instruction->ToString(),
+          " itself."));
+    }
+  } while (!worklist.empty());
+  return producers;
+}
+
+// Hoists the given 'bitcast' out of its computation, to the parent of each
+// caller.
+absl::Status HoistBitcastToCallers(HloInstruction* bitcast,
+                                   CallGraph* call_graph) {
+  TF_ASSIGN_OR_RETURN(HloInstructionSet producers,
+                      GetClosedProducerSet(bitcast));
+
+  // Check that it's safe to hoist the bitcast.
+  for (HloInstruction* instruction : producers) {
+    if (!instruction->IsElementwise() && !instruction->IsConstant() &&
+        instruction->opcode() != HloOpcode::kParameter) {
+      return absl::InternalError(
+          absl::StrCat("Cannot hoist bitcast past ", instruction->ToString()));
+    }
+  }
+
+  // Adjust the shape of of every instruction in the backward slice.
+  Shape shape = bitcast->shape();
+  for (HloInstruction* instruction : producers) {
+    *instruction->mutable_shape() = shape;
+    if (instruction->opcode() != HloOpcode::kParameter) {
+      continue;
+    }
+    int64_t number = instruction->parameter_number();
+    for (HloInstruction* caller :
+         call_graph->GetComputationCallers(instruction->parent())) {
+      HloInstruction* new_bitcast =
+          caller->AddInstruction(HloInstruction::CreateBitcast(
+              instruction->shape(), caller->mutable_operand(number)));
+      TF_RETURN_IF_ERROR(
+          caller->ReplaceOperandWithDifferentShape(number, new_bitcast));
+    }
+  }
+
+  TF_RETURN_IF_ERROR(bitcast->ReplaceAllUsesWith(bitcast->mutable_operand(0)));
+
+  return absl::OkStatus();
+}
+
+// Hoists all bitcasts in the computation to its callers.
+absl::Status HoistBitcastsInComputationToCallers(HloComputation* computation,
+                                                 CallGraph* call_graph) {
+  for (HloInstruction* instruction : computation->instructions()) {
+    if (instruction->opcode() != HloOpcode::kBitcast) {
+      continue;
+    }
+    TF_RETURN_IF_ERROR(HoistBitcastToCallers(instruction, call_graph));
+  }
+  return absl::OkStatus();
+}
+
 class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit NestGemmFusionVisitor(mlir::MLIRContext* ctx) : ctx_(ctx) {}
+  explicit NestGemmFusionVisitor(mlir::MLIRContext* ctx, CallGraph* call_graph)
+      : ctx_(ctx), call_graph_(call_graph) {}
 
   absl::Status HandleFusion(HloInstruction* instruction) override {
     HloFusionInstruction* fusion = Cast<HloFusionInstruction>(instruction);
@@ -314,6 +408,9 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();  // Skip because fusion has no dot.
     }
     DCHECK_EQ(GetDotCount(computation), 1) << "Fusion has more than one dot.";
+
+    TF_RETURN_IF_ERROR(
+        HoistBitcastsInComputationToCallers(computation, call_graph_));
     SymbolicTileAnalysisOrError analysis_or =
         SymbolicTileAnalysis::AnalyzeComputation(
             *fusion->called_computations()[0], ctx_);
@@ -326,10 +423,10 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     }
 
     auto& analysis = std::get<SymbolicTileAnalysis>(analysis_or);
-    auto tiled_dot_it = absl::c_find_if(
-        analysis.GetSymbolicTiledHloComputation(),
-        [&](const auto& tiled_hlo) { return tiled_hlo->hlo() == dot; });
-    if (tiled_dot_it == analysis.GetSymbolicTiledHloComputation().end()) {
+    const auto& tiled_instructions = analysis.GetSymbolicTiledHloComputation();
+    auto is_dot = [&](const auto& instr) { return instr->hlo() == dot; };
+    auto tiled_dot_it = absl::c_find_if(tiled_instructions, is_dot);
+    if (tiled_dot_it == tiled_instructions.end()) {
       return absl::InternalError(absl::StrCat(
           "Couldn't find a symbolic tiled instruction for ", dot->ToString()));
     }
@@ -343,6 +440,7 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
 
  private:
   mlir::MLIRContext* ctx_;
+  CallGraph* call_graph_;
 };
 
 }  // namespace
@@ -351,10 +449,11 @@ absl::StatusOr<bool> NestGemmFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
+  auto call_graph = CallGraph::Build(module, execution_threads);
   mlir::MLIRContext ctx;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    NestGemmFusionVisitor visitor(&ctx);
+    NestGemmFusionVisitor visitor(&ctx, call_graph.get());
     TF_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }

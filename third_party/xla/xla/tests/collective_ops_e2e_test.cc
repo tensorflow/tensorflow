@@ -142,7 +142,7 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
   }
 
  protected:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
 
     // Enable or disable all async collectives based on test parameter.
@@ -593,11 +593,10 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
                               true /*run_hlo_passes*/, true /*use-threads*/));
   ASSERT_EQ(results.size(), kNumReplicas);
 
-  auto& ref_runner = HloTestBase::reference_runner_;
   TF_ASSERT_OK_AND_ASSIGN(
       auto ref_module, ParseAndReturnVerifiedModule(kModuleSingleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto ref_exec, ref_runner.CreateExecutable(std::move(ref_module), true));
+  TF_ASSERT_OK_AND_ASSIGN(auto ref_exec, reference_runner().CreateExecutable(
+                                             std::move(ref_module), true));
 
   ErrorSpec error_spec{1e-5, 1e-5};
   fake_ptrs.push_back(nullptr);
@@ -605,8 +604,8 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
     auto replica_id =
         LiteralUtil::CreateFullWithDescendingLayout<uint32_t>({}, i);
     fake_ptrs.back() = &replica_id;
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto res, ref_runner.ExecuteWithExecutable(ref_exec.get(), fake_ptrs));
+    TF_ASSERT_OK_AND_ASSIGN(auto res, reference_runner().ExecuteWithExecutable(
+                                          ref_exec.get(), fake_ptrs));
     EXPECT_TRUE(LiteralTestUtil::Near(res, results[i], error_spec));
   }
 }

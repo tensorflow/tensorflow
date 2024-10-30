@@ -73,7 +73,7 @@ class ElementalIrEmitterExecutionTest : public HloTestBase {
 class ElementalIrEmitterExecutionTestWithoutFastMinMax
     : public ElementalIrEmitterExecutionTest {
  protected:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         ElementalIrEmitterExecutionTest::GetDebugOptionsForTest();
     debug_options.set_xla_cpu_enable_fast_min_max(false);

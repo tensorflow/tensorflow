@@ -314,8 +314,12 @@ class ParametricDotTest : public DotOperationTest,
       std::string_view name(
           ::testing::UnitTest::GetInstance()->current_test_info()->name());
       if (name.find("TestF16/270x270x520_MajorToMinor") != std::string::npos) {
+<<<<<<< HEAD
         // TODO(rocm): weekly sync 24-10-01
         GTEST_SKIP() << "Currently failing on ROCm!"; 
+=======
+        GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
+>>>>>>> master
         execution_options_.mutable_debug_options()->set_xla_gpu_autotune_level(
             0);
         DotTestParam param = GetParam();

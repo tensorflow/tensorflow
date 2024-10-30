@@ -27,7 +27,7 @@ namespace gpu {
 namespace {
 
 class CompilationParallelismTest : public GpuCodegenTest {
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // Use multiple threads for compilation
     debug_options.set_xla_gpu_force_compilation_parallelism(4);

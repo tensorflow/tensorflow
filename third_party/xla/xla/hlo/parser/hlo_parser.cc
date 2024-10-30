@@ -215,6 +215,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kReduceScatter:
@@ -1784,6 +1785,23 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           *shape, operands, device_list,
           constrain_layout ? *constrain_layout : false, channel_id,
           split_dimension));
+    }
+    case HloOpcode::kRaggedAllToAll: {
+      CollectiveDeviceList device_list;
+      attrs["replica_groups"] = {/*required=*/false,
+                                 AttrTy::kCollectiveDeviceList, &device_list};
+      optional<int64_t> channel_id;
+      attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
+      optional<std::vector<int64_t>> dimensions;
+      attrs["dimensions"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                             &dimensions};
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
+          !ParseAttributes(attrs, allow_attributes, shape) ||
+          (dimensions && dimensions->size() != 1)) {
+        return nullptr;
+      }
+      return builder->AddInstruction(HloInstruction::CreateRaggedAllToAll(
+          *shape, operands, device_list, channel_id));
     }
     case HloOpcode::kCollectiveBroadcast: {
       CollectiveDeviceList device_list;

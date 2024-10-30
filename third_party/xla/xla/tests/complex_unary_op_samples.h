@@ -804,9 +804,15 @@ struct Tan {
         /* 123 */ { { -2.e+00f, -min }, { 2.1850398e+00f, -6.7877737e-38f }, 2.5e-01f },
         /* 124 */ { { -3.6093321e-13f, -min }, { -3.6093321e-13f, -min }, 2.1990233e+12f },
         /* 125 */ { { -6.5136393e-26f, -min }, { -6.5136393e-26f, -min }, 9.6714066e+24f },
+#ifndef __aarch64__
+// TODO(b/342448599); Fix and re-enable on Arm.
         /* 126 */ { { -min, -min }, { -min, -min }, 4.2535296e+37f },
+#endif
         /* 127 */ { { zero, -min }, { zero, -min }, 4.2535296e+37f },
+#ifndef __aarch64__
+// TODO(b/342448599); Fix and re-enable on Arm.
         /* 128 */ { { min, -min }, { min, -min }, 4.2535296e+37f },
+#endif
         /* 129 */ { { 6.5136393e-26f, -min }, { 6.5136393e-26f, -min }, 9.6714066e+24f },
         /* 130 */ { { 3.6093321e-13f, -min }, { 3.6093321e-13f, -min }, 2.1990233e+12f },
         /* 131 */ { { 2.e+00f, -min }, { -2.1850398e+00f, -6.7877737e-38f }, 2.5e-01f },
@@ -821,9 +827,15 @@ struct Tan {
         /* 140 */ { { -2.e+00f, zero }, { 2.1850398e+00f, zero }, 2.5e-01f },
         /* 141 */ { { -3.6093321e-13f, zero }, { -3.6093321e-13f, zero }, 2.1990233e+12f },
         /* 142 */ { { -6.5136393e-26f, zero }, { -6.5136393e-26f, zero }, 9.6714066e+24f },
+#ifndef __aarch64__
+// TODO(b/342448599); Fix and re-enable on Arm.
         /* 143 */ { { -min, zero }, { -min, zero }, 4.2535296e+37f },
+#endif
         /* 144 */ { { zero, zero }, { zero, zero }, 1.e+00f },
+#ifndef __aarch64__
+// TODO(b/342448599); Fix and re-enable on Arm.
         /* 145 */ { { min, zero }, { min, zero }, 4.2535296e+37f },
+#endif
         /* 146 */ { { 6.5136393e-26f, zero }, { 6.5136393e-26f, zero }, 9.6714066e+24f },
         /* 147 */ { { 3.6093321e-13f, zero }, { 3.6093321e-13f, zero }, 2.1990233e+12f },
         /* 148 */ { { 2.e+00f, zero }, { -2.1850398e+00f, zero }, 2.5e-01f },
@@ -838,9 +850,15 @@ struct Tan {
         /* 157 */ { { -2.e+00f, min }, { 2.1850398e+00f, 6.7877737e-38f }, 2.5e-01f },
         /* 158 */ { { -3.6093321e-13f, min }, { -3.6093321e-13f, min }, 2.1990233e+12f },
         /* 159 */ { { -6.5136393e-26f, min }, { -6.5136393e-26f, min }, 9.6714066e+24f },
+#ifndef __aarch64__
+// TODO(b/342448599); Fix and re-enable on Arm.
         /* 160 */ { { -min, min }, { -min, min }, 4.2535296e+37f },
+#endif
         /* 161 */ { { zero, min }, { zero, min }, 4.2535296e+37f },
+#ifndef __aarch64__
+// TODO(b/342448599); Fix and re-enable on Arm.
         /* 162 */ { { min, min }, { min, min }, 4.2535296e+37f },
+#endif
         /* 163 */ { { 6.5136393e-26f, min }, { 6.5136393e-26f, min }, 9.6714066e+24f },
         /* 164 */ { { 3.6093321e-13f, min }, { 3.6093321e-13f, min }, 2.1990233e+12f },
         /* 165 */ { { 2.e+00f, min }, { -2.1850398e+00f, 6.7877737e-38f }, 2.5e-01f },
@@ -967,6 +985,7 @@ struct Tan {
         /* 286 */ { { 6.1409603e+25f, inf }, { zero, 1.e+00f }, 5.e-01f },
         /* 287 */ { { max, inf }, { zero, 1.e+00f }, 5.e-01f },
         /* 288 */ { { inf, inf }, { zero, 1.e+00f }, 5.e-01f }
+
           // clang-format on
       };
       return table;

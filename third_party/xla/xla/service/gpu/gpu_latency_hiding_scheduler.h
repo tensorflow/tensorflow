@@ -76,7 +76,7 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
   explicit GpuAsyncTracker(const SchedulerConfig& config);
 
   // Returns resources used (occupied or released) by `instr`.
-  ResourcesVector GetResourcesFromInstruction(
+  ResourcesVector GetResourcesFromInstructionImpl(
       const HloInstruction& instr) const override;
 
   // Returns the number of target defined resources

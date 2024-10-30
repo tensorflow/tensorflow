@@ -14,8 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/gradients/tape/tape_operation.h"
 
-#include "tensorflow/c/eager/abstract_context.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "tensorflow/c/eager/abstract_operation.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/gradients.h"
+#include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace gradients {

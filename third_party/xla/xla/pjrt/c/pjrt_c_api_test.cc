@@ -495,7 +495,9 @@ TEST_F(PjrtCApiTest, PluginAttributes) {
     EXPECT_TRUE(did_not_exist_yet);
   }
   EXPECT_TRUE(names.find("xla_version") != names.end());
-  EXPECT_TRUE(names.find("stablehlo_current_version") != names.end());
+  // TODO: (b/375454646) Uncomment once frameworks have bugfix:
+  // https://github.com/openxla/xla/commit/2f99455cdf99e844ddad17de9f4714997023d243
+  // EXPECT_TRUE(names.find("stablehlo_current_version") != names.end());
   EXPECT_TRUE(names.find("stablehlo_minimum_version") != names.end());
 }
 

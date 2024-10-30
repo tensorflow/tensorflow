@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/while_loop_fusible_sinking.h"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -24,11 +25,20 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/service/while_util.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -49,6 +59,232 @@ bool IsFusionCandidate(const HloInstruction* instr) {
   return instr->opcode() != HloOpcode::kRng &&
          (instr->IsElementwise() || instr->opcode() == HloOpcode::kReshape ||
           instr->opcode() == HloOpcode::kTranspose);
+}
+
+// For element-wise op 'instr' we have:
+// forall index i in output shape: instr[i] = f(operand1[i], ...),  where
+// f is the elementwise operation. We can see that all the indices of the output
+// shape is written to.
+bool IsShapeCoveringWriteOnlyInstruction(HloInstruction* instr) {
+  // Clamp is tricky to handle, we bail.
+  if (instr->opcode() == HloOpcode::kClamp) {
+    return false;
+  }
+  return instr->IsElementwise();
+}
+
+// Updates the uses of the while loop with the equivalent tuple that retrieves
+// the first original_operand_count elements of the while output.
+absl::Status UpdateWhileUsesWithTuple(HloInstruction* while_instr,
+                                      int64_t original_operand_count) {
+  const std::vector<HloInstruction*> users = while_instr->users();
+  std::vector<HloInstruction*> gtes(original_operand_count);
+  for (int64_t i = 0; i < gtes.size(); ++i) {
+    gtes[i] = while_instr->AddInstruction(
+        HloInstruction::CreateGetTupleElement(while_instr, i));
+  }
+  HloInstruction* tuple =
+      while_instr->AddInstruction(HloInstruction::CreateTuple(gtes));
+  if (while_instr->IsRoot()) {
+    while_instr->parent()->set_root_instruction(tuple);
+  }
+  if (!users.empty()) {
+    TF_RETURN_IF_ERROR(while_instr->ReplaceUsesWith(users, tuple));
+  }
+  return absl::OkStatus();
+}
+
+// Appends the given new operand to while input and update loops computations
+// and shape accordingly and returns the gte instruction within the body that
+// represents the new operand.
+absl::StatusOr<HloInstruction*> AppendToWhileState(
+    HloInstruction* while_instr, HloInstruction* new_operand) {
+  // Update the while initial value
+  HloInstruction* while_input = while_instr->while_init();
+  ShapeUtil::AppendShapeToTuple(new_operand->shape(),
+                                while_input->mutable_shape());
+  while_input->AppendOperand(new_operand);
+  // Update the body computation.
+  HloComputation* body = while_instr->while_body();
+  *body->parameter_instruction(0)->mutable_shape() = while_input->shape();
+  HloInstruction* new_gte =
+      body->AddInstruction(HloInstruction::CreateGetTupleElement(
+          body->parameter_instruction(0), while_input->operand_count() - 1));
+  ShapeUtil::AppendShapeToTuple(new_gte->shape(),
+                                body->root_instruction()->mutable_shape());
+  body->root_instruction()->AppendOperand(new_gte);
+  // Update the condition computation.
+  HloComputation* condition = while_instr->while_condition();
+  *condition->parameter_instruction(0)->mutable_shape() = while_input->shape();
+  // Finalize the update by changing the uses of the while loop and updating its
+  // shape.
+  TF_RETURN_IF_ERROR(
+      UpdateWhileUsesWithTuple(while_instr, while_input->operand_count() - 1));
+  *while_instr->mutable_shape() = while_input->shape();
+  return new_gte;
+}
+
+// Return the list of indices of the given while loop that are written to
+// entirely in the loop body.
+std::vector<int64_t> GetLoopShapeCoveringWriteIndices(
+    HloInstruction* while_instr) {
+  HloInstruction* tuple;
+  if (!Match(while_instr->while_init(),
+             match::Op(&tuple).WithOpcode(HloOpcode::kTuple).WithOneUse())) {
+    return {};
+  }
+
+  std::vector<int64_t> loop_indices;
+  for (int64_t tuple_index = 0; tuple_index < tuple->operand_count();
+       ++tuple_index) {
+    HloInstruction* arg_operand = tuple->mutable_operand(tuple_index);
+    // We're looking for an argument that is a broadcast(constant) feeds a while
+    // loop.
+    if (!Match(arg_operand, match::Broadcast(match::ConstantScalar()))) {
+      continue;
+    }
+    HloInstruction* broadcast_gte = hlo_query::GetUniqueGteInstruction(
+        while_instr->while_body()->parameter_instruction(0), tuple_index);
+    if (broadcast_gte == nullptr) {
+      continue;
+    }
+
+    // If the buffer is not written to entirely, we won't sink it. We might be
+    // able to support this case in the future, but for now we'll just skip it.
+    HloInstruction* root_buffer_value =
+        while_instr->while_body()->root_instruction()->mutable_operand(
+            tuple_index);
+    if (!IsShapeCoveringWriteOnlyInstruction(root_buffer_value)) {
+      continue;
+    }
+    loop_indices.push_back(tuple_index);
+  }
+
+  return loop_indices;
+}
+
+// Returns true if the given instruction is monotonic, i.e. it is either
+// monotonically increasing or decreasing. This is not an exhaustive list of
+// monotonic operations.
+bool IsMonotonic(HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kAdd ||
+         instr->opcode() == HloOpcode::kSubtract;
+}
+
+// The idea is that certain constant-initialized buffers can be left as
+// uninitialized if all the elements of the buffer are written to in the loop
+// body. This way, we eliminate the need to initialize the buffer (with
+// broadcast) in the critical path of the program. To summarize, the conditions
+// to apply this optimization are:
+// 1. The buffer is a constant-initialized buffer.
+// 2. All the elements of the buffer are written to in the loop body.
+// 3. The iteration variable of the loop is monotonically increasing or
+// decreasing.
+// The optimization is applied by creating a select between the initial value
+// and the value in the body. The select is guarded by a predicate that checks
+// if the loop iteration variable is equal to the first iteration value.
+absl::StatusOr<bool> TryRewritingBroadcastAsAllocateBuffer(
+    HloInstruction* while_instr) {
+  std::optional<int64_t> induction_var_tuple_index =
+      GetLoopInductionVarTupleIdx(while_instr);
+  if (!induction_var_tuple_index.has_value()) {
+    return false;
+  }
+  HloComputation* while_body = while_instr->while_body();
+  bool changed = false;
+  std::vector<HloInstruction*> old_buffers;
+  std::vector<int64_t> loop_indices =
+      GetLoopShapeCoveringWriteIndices(while_instr);
+  if (loop_indices.empty()) {
+    return false;
+  }
+  HloInstruction* loop_iteration_variable_initial_value =
+      while_instr->while_init()->mutable_operand(
+          induction_var_tuple_index.value());
+  // We only support integer loop iteration variables since these are the only
+  // ones that can be compared to get the first iteration value.
+  if (!ShapeUtil::ElementIsIntegral(
+          loop_iteration_variable_initial_value->shape())) {
+    return false;
+  }
+
+  // Also we have to make sure that the induction variable is either
+  // monotonically increasing or decreasing since we rely on this fact to get
+  // the first iteration value.
+  HloInstruction* induction_var_update_fun =
+      while_instr->while_body()->root_instruction()->mutable_operand(
+          induction_var_tuple_index.value());
+  if (!IsMonotonic(induction_var_update_fun)) {
+    return false;
+  }
+
+  VLOG(3) << "Sinking fusible broadcast into " << while_instr->ToString();
+
+  // If we find any sinkable indices, we prepare the loop state by adding the
+  // initial value of the loop iteration variable to the loop state and use it
+  // inside the body to create a predicate that checks if the loop iteration
+  // variable is equal to the first iteration value. This is done only once
+  // regardless of the number of sinkable indices.
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * loop_iteration_variable_initial_value_gte,
+      AppendToWhileState(while_instr, loop_iteration_variable_initial_value));
+  HloInstruction* iteration_var_gte = hlo_query::GetUniqueGteInstruction(
+      while_body->parameter_instruction(0), induction_var_tuple_index.value());
+  if (iteration_var_gte == nullptr) {
+    return false;
+  }
+  HloInstruction* is_first_iteration_pred =
+      while_body->AddInstruction(HloInstruction::CreateCompare(
+          ShapeUtil::MakeShape(PRED, {}), iteration_var_gte,
+          loop_iteration_variable_initial_value_gte,
+          Comparison::Direction::kEq));
+  for (int64_t loop_index : loop_indices) {
+    HloInstruction* buffer =
+        while_instr->while_init()->mutable_operand(loop_index);
+    VLOG(3) << "Sinking " << buffer->ToString() << " at index " << loop_index;
+    if (absl::c_find(old_buffers, buffer) == old_buffers.end()) {
+      old_buffers.push_back(buffer);
+    }
+    // It is possible that the same broadcast has multiple users, first clone
+    // the buffer and then replace this specific use with the clone.
+    HloInstruction* buffer_clone = buffer->AddInstruction(buffer->Clone());
+    TF_RETURN_IF_ERROR(while_instr->while_init()->ReplaceOperandWith(
+        loop_index, buffer_clone));
+
+    // Replace the clone with a free AllocateBuffer.
+    HloInstruction* new_buffer =
+        while_instr->parent()->AddInstruction(HloInstruction::CreateCustomCall(
+            buffer_clone->shape(), {}, "AllocateBuffer"));
+    TF_RETURN_IF_ERROR(buffer_clone->ReplaceAllUsesWith(new_buffer));
+    TF_RETURN_IF_ERROR(buffer_clone->parent()->RemoveInstruction(buffer_clone));
+    // Broadcast the predicate to the shape of the buffer.
+    HloInstruction* is_first_iteration_pred_broadcast =
+        while_body->AddInstruction(HloInstruction::CreateBroadcast(
+            ShapeUtil::MakeShapeWithDescendingLayout(
+                PRED, new_buffer->shape().dimensions()),
+            is_first_iteration_pred, {}));
+    HloInstruction* sunk_constant_broadcast =
+        while_body->AddInstruction(HloInstruction::CreateBroadcast(
+            new_buffer->shape(),
+            while_body->AddInstruction(buffer->mutable_operand(0)->Clone()),
+            {}));
+    // Create a select between the initial broadcasted value (in the first
+    // iteration of the loop) and the value in the body in the subsequent
+    // iterations and replace the use of the buffer in the body with the select.
+    HloInstruction* buffer_body_gte = hlo_query::GetUniqueGteInstruction(
+        while_body->parameter_instruction(0), loop_index);
+    HloInstruction* new_buffer_value =
+        while_body->AddInstruction(HloInstruction::CreateTernary(
+            new_buffer->shape(), HloOpcode::kSelect,
+            is_first_iteration_pred_broadcast, sunk_constant_broadcast,
+            buffer_body_gte));
+    TF_RETURN_IF_ERROR(buffer_body_gte->ReplaceAllUsesWith(new_buffer_value));
+    if (buffer->user_count() == 0) {
+      TF_RETURN_IF_ERROR(buffer->parent()->RemoveInstruction(buffer));
+    }
+    changed = true;
+  }
+  return changed;
 }
 }  // namespace
 
@@ -243,13 +479,14 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
         while_body->ReplaceInstruction(invariant_body_gte, cloned_fusion));
     TF_RETURN_IF_ERROR(cloned_fusion->Defuse());
   }
-
   return changed;
 }
 
 absl::StatusOr<bool> WhileLoopFusibleSinking::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  VLOG(5) << "Before WhileLoopFusibleSinking " << module->unique_id();
+  XLA_VLOG_LINES(5, module->ToString());
   call_counts_.clear();
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
@@ -288,6 +525,17 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::Run(
     TF_ASSIGN_OR_RETURN(bool result,
                         TrySinkingFusiblesIntoWhileLoop(while_instr));
     changed |= result;
+  }
+
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
+    for (HloInstruction* instr : comp->instructions()) {
+      // TODO: b/358837872 - Handle loops with sharding.
+      if (Match(instr, match::While()) && !instr->has_sharding()) {
+        TF_ASSIGN_OR_RETURN(bool result,
+                            TryRewritingBroadcastAsAllocateBuffer(instr));
+        changed |= result;
+      }
+    }
   }
   return changed;
 }

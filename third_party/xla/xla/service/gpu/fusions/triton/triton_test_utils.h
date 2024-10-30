@@ -72,7 +72,7 @@ absl::StatusOr<bool> ApplyFloatNormalization(
 
 class TritonSupportTestBase : public HloTestBase {
  protected:
-  DebugOptions GetDebugOptionsForTest() override;
+  DebugOptions GetDebugOptionsForTest() const override;
 
   // An HLO module together with a reference to the instruction of interest
   // that's being tested. See ParseTemplateAndGetInstruction for more details.

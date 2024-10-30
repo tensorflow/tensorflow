@@ -27,6 +27,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "ml_dtypes/include/float8.h"
 #include "xla/maybe_owning.h"
 #include "xla/test.h"

@@ -430,6 +430,11 @@ PyClient::CompileIfrtProgram(
             *stats->bytes_limit);
       }
     }
+
+    if (pjrt_compatible_client->pjrt_client()->key_value_store().has_value()) {
+      options.executable_build_options.set_key_value_store(
+          *pjrt_compatible_client->pjrt_client()->key_value_store());
+    }
   }
 
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;

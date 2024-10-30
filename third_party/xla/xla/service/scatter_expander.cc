@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "xla/service/scatter_expander.h"
 
+#include <cstdint>
+#include <iterator>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -24,52 +29,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/scatter_utils.h"
 #include "xla/service/while_util.h"
+#include "xla/shape.h"
 
 namespace xla {
-
-// Expands an index vector from the scatter_indices tensor into a vector that
-// can be used to dynamic-update-slice to perform the scatter update.
-static absl::StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
-    HloInstruction* index_vector, const ScatterDimensionNumbers& dim_numbers,
-    int64_t operand_rank) {
-  HloComputation* computation = index_vector->parent();
-  const Shape& index_shape = index_vector->shape();
-
-  // Scatter of a scalar. Return a zero-sized vector of indices.
-  if (operand_rank == 0) {
-    return computation->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateFromDimensions(index_shape.element_type(), {0})));
-  }
-
-  HloInstruction* zero =
-      computation->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateFromDimensions(index_shape.element_type(), {1})));
-
-  // We extract out individual components from the smaller index and concatenate
-  // them (interspersing zeros as needed) into the larger index.
-  std::vector<HloInstruction*> expanded_index_components;
-
-  for (int i = 0; i < operand_rank; i++) {
-    int64_t index_vector_dim_index =
-        FindIndex(dim_numbers.scatter_dims_to_operand_dims(), i);
-    if (index_vector_dim_index !=
-        dim_numbers.scatter_dims_to_operand_dims_size()) {
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * component_to_concat,
-          MakeSliceHlo(index_vector, /*start_indices=*/{index_vector_dim_index},
-                       /*limit_indices=*/{index_vector_dim_index + 1},
-                       /*strides=*/{1}));
-      expanded_index_components.push_back(component_to_concat);
-    } else {
-      expanded_index_components.push_back(zero);
-    }
-  }
-
-  return MakeConcatHlo(expanded_index_components, /*dimension=*/0);
-}
 
 static absl::StatusOr<HloInstruction*> CheckIndexValidity(
     HloComputation* computation, HloInstruction* index,
@@ -117,6 +83,23 @@ static absl::StatusOr<HloInstruction*> CheckIndexValidity(
   return MakeBroadcastHlo(valid_index_reduced, {}, window_sizes);
 }
 
+// Returns the sorted dimensions in a slice that are either collapsed or
+// corresponding to an explicit batching dimension.
+std::vector<int64_t> GetDegeneratedSliceDims(
+    const ScatterDimensionNumbers& dim_numbers) {
+  absl::Span<const int64_t> input_batching_dims =
+      dim_numbers.input_batching_dims();
+  absl::Span<const int64_t> inserted_window_dims =
+      dim_numbers.inserted_window_dims();
+  std::vector<int64_t> degenerated_dims;
+  degenerated_dims.reserve(inserted_window_dims.size() +
+                           input_batching_dims.size());
+  absl::c_copy(inserted_window_dims, std::back_inserter(degenerated_dims));
+  absl::c_copy(input_batching_dims, std::back_inserter(degenerated_dims));
+  absl::c_sort(degenerated_dims);
+  return degenerated_dims;
+}
+
 // Body of the while loop that performs the scatter operation using other HLOs.
 static absl::StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
     HloScatterInstruction* scatter, HloInstruction* induction_var,
@@ -158,7 +141,12 @@ static absl::StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
   TF_ASSIGN_OR_RETURN(
       HloInstruction * scatter_slice_start,
       ExpandIndexVectorIntoOperandSpace(
-          index_vector, dim_numbers, operands[0]->shape().dimensions_size()));
+          scatter->scatter_indices()->shape(),
+          operands[0]->shape().dimensions_size(),
+          dim_numbers.index_vector_dim(),
+          dim_numbers.scatter_dims_to_operand_dims(),
+          dim_numbers.scatter_indices_batching_dims(),
+          dim_numbers.input_batching_dims(), index_vector, induction_var));
 
   // Extract the slice to be used to update from `updates` tensor for the
   // induction_var corresponding to this iteration of the while loop.
@@ -179,6 +167,9 @@ static absl::StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
   auto update_slices_with_dims_inserted =
       absl::MakeSpan(map_operands).last(updates.size());
   absl::Span<const int64_t> actual_update_slice_dims;
+
+  std::vector<int64_t> degenerated_dims = GetDegeneratedSliceDims(dim_numbers);
+
   for (int i = 0, n = operands.size(); i < n; ++i) {
     HloInstruction* update = updates[i];
     TF_ASSIGN_OR_RETURN(
@@ -188,8 +179,7 @@ static absl::StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
                         ElideDegenerateDims(update_slice, {0}));
     TF_ASSIGN_OR_RETURN(
         HloInstruction * update_slice_with_dims_inserted,
-        InsertDegenerateDims(update_slice_for_scatter,
-                             dim_numbers.inserted_window_dims()));
+        InsertDegenerateDims(update_slice_for_scatter, degenerated_dims));
     update_slices_with_dims_inserted[i] = update_slice_with_dims_inserted;
     // Note that the following transformation assumes that both DynamicSlice and
     // DynamicUpdateSlice follow the same semantics for OOB indices. For

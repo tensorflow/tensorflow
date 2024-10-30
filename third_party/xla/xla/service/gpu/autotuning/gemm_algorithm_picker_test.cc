@@ -50,7 +50,7 @@ class GemmAlgorithmPickerTest : public HloTestBase,
  public:
   GemmAlgorithmPickerTest() { AutotunerUtil::ClearAutotuneResults(); }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(GetParam());
     debug_options.set_xla_gpu_enable_triton_gemm(false);

@@ -38,7 +38,7 @@ class CpuGpuShapeVerifierTest : public HloTestBase {
     HloVerifierOpts opts;
     std::unique_ptr<TargetVerifierMetadata> metadata =
         std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
-    hlo_verifier_ = std::make_unique<HloVerifier>(std::move(metadata));
+    set_hlo_verifier(std::make_unique<HloVerifier>(std::move(metadata)));
   }
 };
 

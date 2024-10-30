@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -69,8 +69,7 @@ const Shape& GetElementShape(const HloFusionAnalysis& analysis) {
 
 // Computes the maximum valid unroll factor for a given instruction.
 int ComputeMaxUnrollFactor(int64_t num_elements) {
-  constexpr int kMaxUnrollFactor = 4;
-  for (int i = kMaxUnrollFactor; i > 1; i /= 2) {
+  for (int i = MaxUnrollFactor(); i > 1; i /= 2) {
     if (num_elements % i == 0) {
       return i;
     }

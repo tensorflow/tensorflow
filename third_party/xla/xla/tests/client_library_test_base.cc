@@ -593,9 +593,7 @@ XlaOp ClientLibraryTestBase::AddParam(const Literal& argument,
 
 XlaOp ClientLibraryTestBase::CreateConstantFromLiteral(const Literal& literal,
                                                        XlaBuilder* builder) {
-  return ConstantLiteral(builder, use_bfloat16()
-                                      ? LiteralUtil::ConvertF32ToBF16(literal)
-                                      : LiteralSlice(literal));
+  return ConstantLiteral(builder, MaybeConvertLiteralToTestType(literal));
 }
 
 absl::StatusOr<std::unique_ptr<GlobalData>>

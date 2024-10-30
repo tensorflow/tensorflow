@@ -54,6 +54,26 @@ cc_library(
 )
 
 cc_library(
+    name = "literal_exporter",
+    srcs = ["literal_exporter.cc"],
+    hdrs = ["literal_exporter.h"],
+    deps = [
+        ":type_to_shape",
+        "//xla:array",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+cc_library(
     name = "location_exporter",
     srcs = ["location_exporter.cc"],
     hdrs = ["location_exporter.h"],
@@ -103,6 +123,7 @@ cc_library(
     deps = [
         ":attribute_exporter",
         ":layout_util",
+        ":literal_exporter",
         ":location_exporter",
         ":module_attributes_exporter",
         ":operator_writer_inc",

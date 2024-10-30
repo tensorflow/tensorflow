@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -633,14 +634,16 @@ static PJRT_NamedValue StableHloVersion(absl::string_view name,
 }
 
 const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes() {
-  static const std::vector<PJRT_NamedValue>* c_values =
-      new std::vector<PJRT_NamedValue>({
-          XlaVersion("xla_version"),
-          StableHloVersion<0>("stablehlo_current_version",
-                              mlir::vhlo::Version::getCurrentVersion()),
-          StableHloVersion<1>("stablehlo_minimum_version",
-                              mlir::vhlo::Version::getMinimumVersion()),
-      });
+  static const std::vector<PJRT_NamedValue>* c_values = new std::vector<
+      PJRT_NamedValue>({
+      XlaVersion("xla_version"),
+      // TODO: (b/375454646) Uncomment once frameworks have bugfix:
+      // https://github.com/openxla/xla/commit/2f99455cdf99e844ddad17de9f4714997023d243
+      // StableHloVersion<0>("stablehlo_current_version",
+      //                     mlir::vhlo::Version::getCurrentVersion()),
+      StableHloVersion<1>("stablehlo_minimum_version",
+                          mlir::vhlo::Version::getMinimumVersion()),
+  });
   return *c_values;
 }
 

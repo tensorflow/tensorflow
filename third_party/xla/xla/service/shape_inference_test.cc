@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/test_helpers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -350,6 +351,17 @@ TEST_F(ShapeInferenceTest, ClampBadShapes) {
                    .ok());
 }
 
+TEST_F(ShapeInferenceTest, Atan2FailsWithIntegerInput) {
+  const Shape input = ShapeUtil::MakeScalarShape(S8);
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kAtan2, input, input, {});
+  EXPECT_THAT(
+      inferred_shape.status(),
+      tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                             HasSubstr("Expected input element type to be "
+                                       "floating or complex for atan2")));
+}
+
 TEST_F(ShapeInferenceTest, Complex) {
   const auto complex_shape = [&](const Shape& lhs, const Shape& rhs,
                                  absl::Span<const int64_t> bcast) {
@@ -389,6 +401,17 @@ TEST_F(ShapeInferenceTest, Complex) {
 
   TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(f64_, f64_, {}));
   ASSERT_TRUE(ShapeUtil::Equal(result, ShapeUtil::MakeShape(C128, {})));
+}
+
+TEST_F(ShapeInferenceTest, ComplexCbrtIsNotSupported) {
+  const Shape input = ShapeUtil::MakeScalarShape(C64);
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferUnaryOpShape(HloOpcode::kCbrt, input);
+  EXPECT_THAT(
+      inferred_shape.status(),
+      tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                             HasSubstr("Expected element type in shape to be "
+                                       "floating for cbrt operation")));
 }
 
 TEST_F(ShapeInferenceTest, VariadicOpTuplify) {

@@ -15,8 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/all_gather_dynamic_slice_simplifier.h"
 
+#include <optional>
+
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_opt_utils.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace xla {
 bool AllGatherDynamicSliceSimplifier::InstructionMatchesPattern(
@@ -46,16 +53,15 @@ bool AllGatherDynamicSliceSimplifier::InstructionMatchesPattern(
       is_reshape ? Cast<HloAllGatherInstruction>(operand->mutable_operand(0))
                  : Cast<HloAllGatherInstruction>(operand);
 
-  bool match = AllGatherDynamicSliceCancellation(
+  std::optional<ReduceScatterSpec> spec = AllGatherDynamicSliceCancellation(
       all_gather, config.num_partitions(), config.replica_count(),
-      /*allow_multiple_split_dims=*/true,
-      /*allow_intervening_reshape=*/true, /*min_rank=*/1,
-      HloPredicateIsOp<HloOpcode::kPartitionId>,
+      config_.allow_multiple_split_dims, config_.allow_intervening_reshape,
+      config_.min_rank, HloPredicateIsOp<HloOpcode::kPartitionId>,
       HloPredicateIsOp<HloOpcode::kReplicaId>,
-      /*allow_intervening_bitcast=*/false,
-      /*allow_multiple_users=*/true);
+      config_.allow_intervening_bitcast, config_.allow_multiple_users);
 
-  return match;
+  return spec.has_value() &&
+         spec->split_dim == all_gather->all_gather_dimension();
 }
 
 absl::StatusOr<HloInstruction*>

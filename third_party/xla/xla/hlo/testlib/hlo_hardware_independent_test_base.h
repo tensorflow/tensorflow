@@ -53,6 +53,14 @@ namespace xla {
 //
 class HloHardwareIndependentTestBase : public ::testing::Test {
  public:
+  static PrecisionConfig DefaultPrecisionConfig(int operands);
+
+ protected:
+  explicit HloHardwareIndependentTestBase(
+      bool verifier_layout_sensitive = false,
+      bool allow_mixed_precision_in_hlo_verifier = true,
+      HloPredicate instruction_can_change_layout_func = {});
+
   // Creates a new HLO module for a test. The module created will have
   // TestName() for its name; it will also automatically populate its debug
   // options from command-line flags. If you want a fresh HloModule object and
@@ -63,21 +71,21 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   // destruction.
   ABSL_DEPRECATED("Use CreateNewVerifiedModule instead.")
   std::unique_ptr<HloModule> CreateNewUnverifiedModule(
-      const std::string& name = TestName());
+      const std::string& name = TestName()) const;
 
   // Like CreateNewUnverifiedModule, except the HloModule returned here runs the
   // HLO verifier on destruction.
   std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
-      const std::string& name = TestName(), int64_t replica_count = 1);
+      const std::string& name = TestName(), int64_t replica_count = 1) const;
 
   // Parses the given string and returns module as a VerifiedHloModule.
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
   ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                int64_t replica_count = 1,
-                               int64_t num_partitions = 1);
+                               int64_t num_partitions = 1) const;
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
   ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                               const HloModuleConfig& config);
+                               const HloModuleConfig& config) const;
 
   // Runs the hlo_pass with the provided module and returns the result. This
   // function also verifies that the module remains unchanged when hlo_pass
@@ -105,19 +113,9 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   static absl::StatusOr<bool> RunHloPass(HloPassInterface&& hlo_pass,
                                          HloModuleGroup* module_group);
 
-  static PrecisionConfig DefaultPrecisionConfig(int operands);
-
   // Sets most fath math options to be enabled to model the fast math flags
   // generally used for CPU:AOT compilation.
   static void SetAotFastMathDebugOptions(DebugOptions* options);
-
- protected:
-  explicit HloHardwareIndependentTestBase(
-      bool verifier_layout_sensitive = false,
-      bool allow_mixed_precision_in_hlo_verifier = true,
-      HloPredicate instruction_can_change_layout_func = {});
-
-  ~HloHardwareIndependentTestBase() override = default;
 
   // Runs pass `hlo_pass` on input HLO module `hlo` with optional config, and
   // FileChecks the result against `expected`.
@@ -128,14 +126,14 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
       absl::string_view hlo, HloPassInterface&& hlo_pass,
       std::optional<absl::string_view> expected,
       std::function<void(HloModule*)> after_pass_checks = nullptr,
-      const HloModuleConfig* config = nullptr);
+      const HloModuleConfig* config = nullptr) const;
 
   // Runs pass `hlo_pass` on a group of input HLO modules `hlo_module_strs`,
   // and FileChecks the result against `expected`.
   void RunAndFilecheckHloModuleGroupRewrite(
       absl::Span<const absl::string_view> hlo_module_strs,
       HloPassInterface&& hlo_pass,
-      std::optional<absl::Span<const absl::string_view>> expected);
+      std::optional<absl::Span<const absl::string_view>> expected) const;
 
   using FixedMapping =
       std::initializer_list<std::pair<absl::string_view, absl::string_view>>;
@@ -146,7 +144,7 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   // to the HLO module for further inspection.
   absl::StatusOr<std::unique_ptr<HloModule>> RunAndCheckHloRewrite(
       absl::string_view hlo_template, HloPassInterface&& hlo_pass,
-      bool expect_change = true, FixedMapping params = {});
+      bool expect_change = true, FixedMapping params = {}) const;
 
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in
@@ -154,11 +152,11 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   //
   // This function is virtual so tests can specify an alternative set of debug
   // options (e.g. disabling additional passes).
-  virtual DebugOptions GetDebugOptionsForTest();
+  virtual DebugOptions GetDebugOptionsForTest() const;
 
   // Gets an HloModuleConfig with options appropriate for tests.
   HloModuleConfig GetModuleConfigForTest(int64_t replica_count = 1,
-                                         int64_t num_partitions = 1) {
+                                         int64_t num_partitions = 1) const {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     config.set_replica_count(replica_count);
@@ -169,8 +167,8 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   // Convenience method to force the layout of a given parameter in a module.
   // The layout of parameter number 'param_no' in the 'module' is set to
   // 'layout'.
-  void ForceParameterLayout(HloModule* module, int64_t param_no,
-                            const Layout& layout) {
+  static void ForceParameterLayout(HloModule* module, int64_t param_no,
+                                   const Layout& layout) {
     ASSERT_LT(param_no,
               module->mutable_entry_computation_layout()->parameter_count());
     module->mutable_entry_computation_layout()
@@ -180,14 +178,14 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
 
   // Convenience method to force the layout of the computation result in a
   // module. The result layout of 'module' is set to 'layout'.
-  void ForceResultLayout(HloModule* module, const Layout& layout) {
+  static void ForceResultLayout(HloModule* module, const Layout& layout) {
     module->mutable_entry_computation_layout()
         ->mutable_result_layout()
         ->ResetLayout(layout);
   }
 
-  void ForceResultLayout(HloModule* module, const Layout& layout,
-                         ShapeIndexView shape_index) {
+  static void ForceResultLayout(HloModule* module, const Layout& layout,
+                                ShapeIndexView shape_index) {
     module->mutable_entry_computation_layout()
         ->mutable_result_layout()
         ->ResetLayout(layout, shape_index);
@@ -195,7 +193,7 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
 
   // Convenience method to clear the layout of the computation result in
   // 'module'.
-  void ForceClearResultLayout(HloModule* module) {
+  static void ForceClearResultLayout(HloModule* module) {
     module->mutable_entry_computation_layout()
         ->mutable_result_layout()
         ->Clear();
@@ -208,36 +206,58 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
 
   // This is useful for tests which create HLOs from a string and then want to
   // inspect a particular computation or instruction.
-  HloComputation* FindComputation(HloModule* module, absl::string_view name);
-  HloInstruction* FindInstruction(HloModule* module, absl::string_view name);
+  static HloComputation* FindComputation(HloModule* module,
+                                         absl::string_view name);
+  static HloInstruction* FindInstruction(HloModule* module,
+                                         absl::string_view name);
   // Gets the instruction from the given module with the given opcode.
-  HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
+  static HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
   // Gets all the instructions from the given module with the given opcode.
-  std::vector<HloInstruction*> FindInstructions(HloModule* module,
-                                                HloOpcode opcode);
+  static std::vector<HloInstruction*> FindInstructions(HloModule* module,
+                                                       HloOpcode opcode);
 
+  bool verifier_layout_sensitive() const { return verifier_layout_sensitive_; }
+  void set_verifier_layout_sensitive(bool verifier_layout_sensitive) {
+    verifier_layout_sensitive_ = verifier_layout_sensitive;
+  }
+  HloPredicate instruction_can_change_layout_func() const {
+    return instruction_can_change_layout_func_;
+  }
+  void set_instruction_can_change_layout_func(
+      HloPredicate instruction_can_change_layout_func) {
+    instruction_can_change_layout_func_ =
+        std::move(instruction_can_change_layout_func);
+  }
   // Return an HLO verifier constructed for the test backend.
   HloVerifier& verifier() const { return *hlo_verifier_; }
+  void set_hlo_verifier(std::unique_ptr<HloVerifier> hlo_verifier) {
+    hlo_verifier_ = std::move(hlo_verifier);
+  }
+  bool allow_mixed_precision_in_hlo_verifier() const {
+    return allow_mixed_precision_in_hlo_verifier_;
+  }
 
-  static std::string TestName();
-
-  bool verifier_layout_sensitive_;
-  bool allow_mixed_precision_in_hlo_verifier_;
-  HloPredicate instruction_can_change_layout_func_;
-  std::unique_ptr<HloVerifier> hlo_verifier_;
+  static std::string TestName() {
+    return ::testing::UnitTest::GetInstance()->current_test_info()->name();
+  }
 
   // Updates the entry computation layout to match the program shape. Useful
   // when tiling assignment has been run to update the latter and we want those
   // changes propagated into the former.
-  absl::Status UpdateEntryComputationLayoutToMatchProgramLayout(
+  static absl::Status UpdateEntryComputationLayoutToMatchProgramLayout(
       HloModule* module);
 
- protected:
   // Compares the inputs shapes of two modules and returns the list of parameter
   // indices that mismatch. The mismatch could be either in shape or datatype.
   // If there is no mismatch, an empty vector is returned.
   [[nodiscard]] std::vector<int> CompareInputs(const HloModule& module_0,
                                                const HloModule& module_1);
+
+ private:
+  bool verifier_layout_sensitive_;
+  bool allow_mixed_precision_in_hlo_verifier_;
+  HloPredicate instruction_can_change_layout_func_;
+  std::unique_ptr<HloVerifier> hlo_verifier_;
 };
 
 }  // namespace xla

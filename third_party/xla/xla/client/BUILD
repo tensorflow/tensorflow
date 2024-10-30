@@ -40,11 +40,10 @@ cc_library(
     ],
 )
 
-# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/builder:padding
-# instead.
 cc_library(
     name = "padding",
     hdrs = ["padding.h"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/builder:padding instead.",
     deps = [
         "//xla/hlo/builder:padding",
     ],
@@ -126,8 +125,10 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/service:source_map_util",
         "//xla/service:stream_pool",
-        "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -153,7 +154,7 @@ cc_library(
         "//xla/service:compile_only_service",
         "//xla/service:compiler",
         "//xla/service:hlo_module_config",
-        "//xla/stream_executor",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -177,8 +178,9 @@ cc_library(
         "//xla/service:compile_only_service",
         "//xla/service:local_service",
         "//xla/service:platform_util",
-        "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
@@ -189,43 +191,39 @@ cc_library(
     ],
 )
 
-# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/builder:sharding_builder
-# instead.
 cc_library(
     name = "sharding_builder",
     hdrs = ["sharding_builder.h"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/builder:sharding_builder instead.",
     deps = [
         "//xla/hlo/builder:sharding_builder",
     ],
 )
 
-# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/builder:xla_computation
-# instead.
 cc_library(
     name = "xla_computation",
     hdrs = ["xla_computation.h"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/builder:xla_computation instead.",
     visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/builder:xla_computation",
     ],
 )
 
-# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/builder:value_inference
-# instead.
 cc_library(
     name = "value_inference",
     hdrs = ["value_inference.h"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/builder:value_inference instead.",
     visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/builder:value_inference",
     ],
 )
 
-# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/builder:xla_builder
-# instead.
 cc_library(
     name = "xla_builder",
     hdrs = ["xla_builder.h"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/builder:xla_builder instead.",
     visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/builder:xla_builder",

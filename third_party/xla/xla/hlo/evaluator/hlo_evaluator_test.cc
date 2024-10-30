@@ -41,10 +41,13 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/simplifiers/hlo_element_type_converter.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -52,14 +55,11 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dynamic_dimension_inference.h"
-#include "xla/service/hlo_element_type_converter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
-#include "xla/service/tuple_points_to_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/types.h"
@@ -78,7 +78,7 @@ static std::array<bool, 2> use_bf16_params{true, false};
 // Test fixture for the HloEvaluator.
 //
 // In bf16 mode, all f32 shapes are converted to bf16 before running.
-class HloEvaluatorTest : public HloTestBase {
+class HloEvaluatorTest : public HloHardwareIndependentTestBase {
  public:
   HloEvaluatorTest() : use_bfloat16_(false) { InitializeFftData(); }
 
@@ -91,8 +91,9 @@ class HloEvaluatorTest : public HloTestBase {
   }
 
   // Evaluate function that takes in a local module instead of using m_
-  // that is in HloTestBase. Once m_ in HloTestBase is
-  // removed, this should be the default Evaluate function.
+  // that is in HloHardwareIndependentTestBase. Once m_ in
+  // HloHardwareIndependentTestBase is removed, this should be the default
+  // Evaluate function.
   Literal EvaluateWithModule(
       HloModule* module, absl::Span<const Literal* const> arg_literals = {}) {
     if (use_bfloat16_) {
@@ -2603,7 +2604,7 @@ ENTRY main {
   EXPECT_TRUE(LiteralTestUtil::Near(expected, result, fft_error_));
 }
 
-class HloEvaluatorPreciseReduceTest : public HloTestBase {};
+class HloEvaluatorPreciseReduceTest : public HloHardwareIndependentTestBase {};
 
 // Tests that Reduce doesn't lose precision when adding many numbers (because
 // it accumulates its result in a double).
@@ -5171,7 +5172,7 @@ TEST_F(HloEvaluatorTest, ParameterThroughCallSucceedsWithPrecomputation) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
-class PatternMatchParseWhileLoopTest : public HloTestBase {};
+class PatternMatchParseWhileLoopTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(PatternMatchParseWhileLoopTest, LoopBoundDefinedInsideOfCond) {
   constexpr absl::string_view kHloModule = R"(

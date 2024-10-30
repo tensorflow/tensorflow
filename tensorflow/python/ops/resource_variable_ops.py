@@ -857,7 +857,8 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
         and self._xla_sharding is not None
     ):
       sharding_string = self._xla_sharding.SerializeToString()
-      result = gen_xla_ops.xla_sharding(result, sharding=sharding_string)
+      with ops.colocate_with(result):
+        result = gen_xla_ops.xla_sharding(result, sharding=sharding_string)
       # pylint: disable=protected-access
       result.op._set_attr(
           "_XlaSharding",

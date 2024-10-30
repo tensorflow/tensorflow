@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/transforms/collectives/convert_async_collectives_to_sync.h"
-#include "xla/service/convert_async_collectives_to_sync.h"
 
 namespace xla {
 namespace gpu {

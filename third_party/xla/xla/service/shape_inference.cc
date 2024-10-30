@@ -348,6 +348,8 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
   switch (opcode) {
     case HloOpcode::kFloor:
+    case HloOpcode::kCbrt:  // Complex cbrt is not implemented in either of the
+                            // backends.
     case HloOpcode::kCeil:
     case HloOpcode::kErf:
     case HloOpcode::kRoundNearestAfz:
@@ -368,7 +370,6 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
     case HloOpcode::kLogistic:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSqrt:
-    case HloOpcode::kCbrt:
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
       if (!ShapeUtil::ElementIsFloating(shape) &&
@@ -1229,6 +1230,14 @@ ShapeInference::InferElementwiseBinaryOpShape(
           "Broadcast dimensions field must either be not set or be the "
           "identity on binary operations with operands of the same rank.");
     }
+  }
+
+  if (operation == HloOpcode::kAtan2 && !ShapeUtil::ElementIsFloating(lhs) &&
+      !ShapeUtil::ElementIsComplex(lhs)) {
+    return InvalidArgument(
+        "Expected input element type to be floating or complex for %s "
+        "operation; got %s.",
+        HloOpcodeString(operation), PrimitiveType_Name(lhs.element_type()));
   }
 
   if (ShapeUtil::CompatibleIgnoringFpPrecision(lhs, rhs) &&
@@ -2557,6 +2566,13 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
   }
 
   return InferVariadicOpShape(HloOpcode::kTuple, operand_shapes);
+}
+
+/* static */ absl::StatusOr<Shape> ShapeInference::InferRaggedAllToAllShape(
+    absl::Span<const Shape* const> operand_shapes) {
+  TF_RETURN_IF_ERROR(
+      ExpectArray(*(operand_shapes[1]), "operand 1 of ragged-all-to-all"));
+  return *(operand_shapes[1]);
 }
 
 /* static */ absl::StatusOr<Shape>

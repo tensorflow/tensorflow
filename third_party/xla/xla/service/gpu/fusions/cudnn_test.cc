@@ -58,7 +58,7 @@ namespace {
 
 class CuDnnFusionTest : public GpuCodegenTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // Let this group of tests just use first available plan skipping
     // autotuning.
@@ -97,7 +97,7 @@ class CuDnnFusionFileCheckTest : public CuDnnFusionTest {
     }
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions options = CuDnnFusionTest::GetDebugOptionsForTest();
     options.set_xla_dump_to(output_directory_);
     return options;
@@ -556,7 +556,7 @@ ENTRY e {
 
 class CuDnnFusionCommandBufferTest : public CuDnnFusionTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = CuDnnFusionTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_graph_min_graph_size(1);
     return debug_options;
@@ -611,7 +611,7 @@ ENTRY e {
 
 class CuDnnFusionLevel2Test : public CuDnnFusionExecutionTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         CuDnnFusionExecutionTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cudnn_gemm_fusion_level(2);
@@ -836,7 +836,7 @@ ENTRY e {
 
 class CuDnnFusionLevel3Test : public CuDnnFusionExecutionTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         CuDnnFusionExecutionTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cudnn_gemm_fusion_level(3);
@@ -1093,7 +1093,7 @@ INSTANTIATE_TEST_SUITE_P(SelectTestSuite, SelectTest,
 
 class CuDnnFusionRewriteTest : public CuDnnFusionTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = CuDnnFusionTest::GetDebugOptionsForTest();
     // Reset autotuning level to default.
     debug_options.set_xla_gpu_autotune_level(

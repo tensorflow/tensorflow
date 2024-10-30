@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_UTILS_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/log/check.h"
@@ -60,11 +61,10 @@ void removeFrontendAttribute(mlir::Operation* op,
 void removeFrontendAttribute(mlir::func::FuncOp funcOp,
                              mlir::StringRef attributeName, int64_t argNum);
 
-// Checkes if "frontend_attributes" `DictionaryAttr` from `op` contains
-// `key`.
+// Checks if "frontend_attributes" `DictionaryAttr` from `op` contains `key`.
 bool hasFrontendAttr(mlir::Operation* op, mlir::StringRef key);
 
-// Checkes if `dictAttr` exists and contains `key`.
+// Checks if `dictAttr` exists and contains `key`.
 bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key);
 
 void loadAllRequiredDialects(mlir::MLIRContext* context);
@@ -83,6 +83,19 @@ AttrTy parseStringAttr(mlir::DictionaryAttr dictAttr,
         mlir::parseAttribute(value, stringAttr.getContext()));
   }
   return nullptr;
+}
+
+// Checks if `op`'s "frontend_attributes" `DictionaryAttr` contains `attrName`
+// and parses it to an attribute of type `AttrTy`. If it doesn't exist, then
+// returns std::nullopt.
+template <typename AttrTy>
+std::optional<AttrTy> tryGetFrontendAttr(mlir::Operation* op,
+                                         mlir::StringRef attrName) {
+  mlir::DictionaryAttr dictAttr = getFrontendAttrs(op);
+  if (hasKey(dictAttr, attrName)) {
+    return parseStringAttr<AttrTy>(dictAttr, attrName);
+  }
+  return std::nullopt;
 }
 
 }  // namespace sdy

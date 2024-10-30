@@ -231,3 +231,23 @@ module @no_meshes_attr_module {
     return %0 : tensor<8x2xf64>
   }
 }
+
+// -----
+
+// CHECK-LABEL: func @import_sharding_group
+// CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+func.func @import_sharding_group(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK sdy.sharding_group %arg0 group_id = 21:  tensor<8x8xf32>
+  mhlo.custom_call @local_xla.sdy.ShardingGroup(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding_group_id = "21 : i64"}} : (tensor<8x8xf32>) -> ()
+  return %arg0 : tensor<8x8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @import_sharding_group_with_unused_result
+// CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+func.func @import_sharding_group_with_unused_result(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK sdy.sharding_group %arg0 group_id = 21:  tensor<8x8xf32>
+  %0 = mhlo.custom_call @local_xla.sdy.ShardingGroup(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding_group_id = "21 : i64"}} : (tensor<8x8xf32>) -> tuple<>
+  return %arg0 : tensor<8x8xf32>
+}

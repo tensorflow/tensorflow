@@ -1755,7 +1755,7 @@ TEST_F(MultiOutputFusionTest, OverlappingRead) {
 }
 
 class TransposeMultiOutputFusionTest : public MultiOutputFusionTest {
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         MultiOutputFusionTest::GetDebugOptionsForTest();
     // Only the MLIR transpose emitter supports unpadded 2D transposes.

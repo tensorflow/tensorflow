@@ -228,6 +228,9 @@ bool IsGenericTritonFusion(const HloInstruction& instr);
 // instructions it contains.
 bool MayPreventVectorization(const HloFusionAdaptor& fusion);
 
+// Returns the max loop unroll factor.
+inline constexpr int64_t MaxUnrollFactor() { return 4; }
+
 LaunchDimensionsConfig ComputeLoopFusionConfig(
     const HloFusionAnalysis& analysis);
 

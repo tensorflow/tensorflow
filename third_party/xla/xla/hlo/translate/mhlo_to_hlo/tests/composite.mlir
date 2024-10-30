@@ -2,14 +2,14 @@
 
 module @composite {
   // CHECK: HloModule composite, entry_computation_layout={()->f32[]}
-  // CHECK: %add.2 (Arg_0.3: f32[]) -> f32[] {
-  // CHECK:   %Arg_0.3 = f32[] parameter(0)
-  // CHECK:   %constant.4 = f32[] constant(2)
-  // CHECK:   ROOT %add.5 = f32[] add(f32[] %Arg_0.3, f32[] %constant.4)
+  // CHECK: %[[ADD:add.[0-9]+]] ([[ARG0:Arg_0.[0-9]+]]: f32[]) -> f32[] {
+  // CHECK:   %[[ARG0]] = f32[] parameter(0)
+  // CHECK:   %[[CONSTANT:constant.[0-9]+]] = f32[] constant(2)
+  // CHECK:   ROOT %add.{{[0-9]+}} = f32[] add(f32[] %[[ARG0]], f32[] %[[CONSTANT]])
   // CHECK: }
-  // CHECK: ENTRY %main.7 () -> f32[] {
-  // CHECK:   %constant.1 = f32[] constant(42)
-  // CHECK:   ROOT %call.6 = f32[] call(f32[] %constant.1), to_apply=%add.2, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
+  // CHECK: ENTRY %main.{{[0-9]+}} () -> f32[] {
+  // CHECK:   %[[CONSTANT:constant.[0-9]+]] = f32[] constant(42)
+  // CHECK:   ROOT %call.{{[0-9]+}} = f32[] call(f32[] %[[CONSTANT]]), to_apply=%[[ADD]], is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
   // CHECK: }
   func.func @main() -> tensor<f32> {
     %0 = mhlo.constant dense<4.200000e+01> : tensor<f32>
@@ -35,14 +35,14 @@ module @composite {
 // zero-output composite
 module @composite {
   //CHECK: HloModule composite, entry_computation_layout={()->()}
-  //CHECK: %return.2 (Arg_0.3: f32[]) -> () {
-  //CHECK:   %Arg_0.3 = f32[] parameter(0)
-  //CHECK:   ROOT %tuple.4 = () tuple()
+  //CHECK: %[[RETURN:return.[0-9]+]] ([[ARG:Arg_0.[0-9]+]]: f32[]) -> () {
+  //CHECK:   %[[ARG]] = f32[] parameter(0)
+  //CHECK:   ROOT %tuple.{{[0-9]+}} = () tuple()
   //CHECK: }
-  //CHECK: ENTRY %main.7 () -> () {
-  //CHECK:   %constant.1 = f32[] constant(42)
-  //CHECK:   %call.5 = () call(f32[] %constant.1), to_apply=%return.2, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
-  //CHECK:   ROOT %tuple.6 = () tuple()
+  //CHECK: ENTRY %main.{{[0-9]+}} () -> () {
+  //CHECK:   %[[CONSTANT:constant.[0-9]+]] = f32[] constant(42)
+  //CHECK:   %call.5 = () call(f32[] %[[CONSTANT]]), to_apply=%[[RETURN]], is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
+  //CHECK:   ROOT %tuple.{{[0-9]+}} = () tuple()
   //CHECK: }
   func.func @main() -> () {
     %0 = mhlo.constant dense<4.200000e+01> : tensor<f32>
@@ -67,18 +67,18 @@ module @composite {
 // multi-output composite
 module @composite {
   //CHECK: HloModule composite, entry_computation_layout={()->(f32[], f32[])}
-  //CHECK: %add.2 (Arg_0.3: f32[]) -> (f32[], f32[]) {
-  //CHECK:   %Arg_0.3 = f32[] parameter(0)
-  //CHECK:   %constant.4 = f32[] constant(2)
-  //CHECK:   %add.5 = f32[] add(f32[] %Arg_0.3, f32[] %constant.4)
-  //CHECK:   ROOT %tuple.6 = (f32[], f32[]) tuple(f32[] %add.5, f32[] %add.5)
+  //CHECK: %[[ADD:add.[0-9]+]] ([[ARG:Arg_0.[0-9]+]]: f32[]) -> (f32[], f32[]) {
+  //CHECK:   %[[ARG]] = f32[] parameter(0)
+  //CHECK:   %[[CONSTANT:constant.[0-9]+]] = f32[] constant(2)
+  //CHECK:   %[[ADDOP:add.[0-9]+]] = f32[] add(f32[] %[[ARG]], f32[] %[[CONSTANT]])
+  //CHECK:   ROOT %tuple.{{[0-9]+}} = (f32[], f32[]) tuple(f32[] %[[ADDOP]], f32[] %[[ADDOP]])
   //CHECK: }
-  //CHECK: ENTRY %main.11 () -> (f32[], f32[]) {
-  //CHECK:   %constant.1 = f32[] constant(42)
-  //CHECK:   %call.7 = (f32[], f32[]) call(f32[] %constant.1), to_apply=%add.2, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
-  //CHECK:   %get-tuple-element.8 = f32[] get-tuple-element((f32[], f32[]) %call.7), index=0
-  //CHECK:   %get-tuple-element.9 = f32[] get-tuple-element((f32[], f32[]) %call.7), index=1
-  //CHECK:   ROOT %tuple.10 = (f32[], f32[]) tuple(f32[] %get-tuple-element.8, f32[] %get-tuple-element.9)
+  //CHECK: ENTRY %main.{{[0-9]+}} () -> (f32[], f32[]) {
+  //CHECK:   %[[CONSTANT:constant.[0-9]+]] = f32[] constant(42)
+  //CHECK:   %[[CALL:call.[0-9]+]] = (f32[], f32[]) call(f32[] %[[CONSTANT]]), to_apply=%[[ADD]], is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
+  //CHECK:   %[[GTE0:get-tuple-element.[0-9]+]] = f32[] get-tuple-element((f32[], f32[]) %[[CALL]]), index=0
+  //CHECK:   %[[GTE1:get-tuple-element.[0-9]+]] = f32[] get-tuple-element((f32[], f32[]) %[[CALL]]), index=1
+  //CHECK:   ROOT %tuple.{{[0-9]+}} = (f32[], f32[]) tuple(f32[] %[[GTE0]], f32[] %[[GTE1]])
   //CHECK: }
   func.func @main() -> (tensor<f32>, tensor<f32>) {
     %0 = mhlo.constant dense<4.200000e+01> : tensor<f32>
@@ -105,14 +105,14 @@ module @composite {
 // optional composite attributes
 module @composite {
   // CHECK: HloModule composite, entry_computation_layout={()->f32[]}
-  // CHECK: %add.2 (Arg_0.3: f32[]) -> f32[] {
-  // CHECK:   %Arg_0.3 = f32[] parameter(0)
-  // CHECK:   %constant.4 = f32[] constant(2)
-  // CHECK:   ROOT %add.5 = f32[] add(f32[] %Arg_0.3, f32[] %constant.4)
+  // CHECK: %[[ADD:add.[0-9]+]] ([[ARG:Arg_0.[0-9]+]]: f32[]) -> f32[] {
+  // CHECK:   %[[ARG]] = f32[] parameter(0)
+  // CHECK:   %[[CONSTANT:constant.[0-9]+]] = f32[] constant(2)
+  // CHECK:   ROOT %add.{{[0-9]+}} = f32[] add(f32[] %[[ARG]], f32[] %[[CONSTANT]])
   // CHECK: }
-  // CHECK: ENTRY %main.7 () -> f32[] {
-  // CHECK:   %constant.1 = f32[] constant(42)
-  // CHECK:   ROOT %call.6 = f32[] call(f32[] %constant.1), to_apply=%add.2, is_composite=true, frontend_attributes={composite.attributes={},composite.name="foo.bar",composite.version="1"}
+  // CHECK: ENTRY %main.{{[0-9]+}} () -> f32[] {
+  // CHECK:   %[[CONSTANT:constant.[0-9]+]] = f32[] constant(42)
+  // CHECK:   ROOT %call.{{[0-9]+}} = f32[] call(f32[] %[[CONSTANT]]), to_apply=%[[ADD]], is_composite=true, frontend_attributes={composite.attributes={},composite.name="foo.bar",composite.version="1"}
   // CHECK: }
   func.func @main() -> tensor<f32> {
     %0 = mhlo.constant dense<4.200000e+01> : tensor<f32>
@@ -134,14 +134,14 @@ module @composite {
 // optional composite version
 module @composite {
   // CHECK: HloModule composite, entry_computation_layout={()->f32[]}
-  // CHECK: %add.2 (Arg_0.3: f32[]) -> f32[] {
-  // CHECK:   %Arg_0.3 = f32[] parameter(0)
-  // CHECK:   %constant.4 = f32[] constant(2)
-  // CHECK:   ROOT %add.5 = f32[] add(f32[] %Arg_0.3, f32[] %constant.4)
+  // CHECK: %[[ADD:add.[0-9]+]] ([[ARG:Arg_0.[0-9]+]]: f32[]) -> f32[] {
+  // CHECK:   %[[ARG]] = f32[] parameter(0)
+  // CHECK:   %[[CONSTANT:constant.[0-9]+]] = f32[] constant(2)
+  // CHECK:   ROOT %add.{{[0-9]+}} = f32[] add(f32[] %[[ARG]], f32[] %[[CONSTANT]])
   // CHECK: }
-  // CHECK: ENTRY %main.7 () -> f32[] {
-  // CHECK:   %constant.1 = f32[] constant(42)
-  // CHECK:   ROOT %call.6 = f32[] call(f32[] %constant.1), to_apply=%add.2, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="0"}
+  // CHECK: ENTRY %main.{{[0-9]+}} () -> f32[] {
+  // CHECK:   %[[CONSTANT:constant.[0-9]+]] = f32[] constant(42)
+  // CHECK:   ROOT %call.{{[0-9]+}} = f32[] call(f32[] %[[CONSTANT]]), to_apply=%[[ADD]], is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="0"}
   // CHECK: }
   func.func @main() -> tensor<f32> {
     %0 = mhlo.constant dense<4.200000e+01> : tensor<f32>
@@ -166,14 +166,14 @@ module @composite {
 // optional composite attributes and version
 module @composite {
   // CHECK: HloModule composite, entry_computation_layout={()->f32[]}
-  // CHECK: %add.2 (Arg_0.3: f32[]) -> f32[] {
-  // CHECK:   %Arg_0.3 = f32[] parameter(0)
-  // CHECK:   %constant.4 = f32[] constant(2)
-  // CHECK:   ROOT %add.5 = f32[] add(f32[] %Arg_0.3, f32[] %constant.4)
+  // CHECK: %[[ADD:add.[0-9]+]] ([[ARG:Arg_0.[0-9]+]]: f32[]) -> f32[] {
+  // CHECK:   %[[ARG]] = f32[] parameter(0)
+  // CHECK:   %[[CONSTANT:constant.[0-9]+]] = f32[] constant(2)
+  // CHECK:   ROOT %add.{{[0-9]+}} = f32[] add(f32[] %[[ARG]], f32[] %[[CONSTANT]])
   // CHECK: }
-  // CHECK: ENTRY %main.7 () -> f32[] {
-  // CHECK:   %constant.1 = f32[] constant(42)
-  // CHECK:   ROOT %call.6 = f32[] call(f32[] %constant.1), to_apply=%add.2, is_composite=true, frontend_attributes={composite.attributes={},composite.name="foo.bar",composite.version="0"}
+  // CHECK: ENTRY %main.{{[0-9]+}} () -> f32[] {
+  // CHECK:   %[[CONSTANT:constant.[0-9]+]] = f32[] constant(42)
+  // CHECK:   ROOT %call.{{[0-9]+}} = f32[] call(f32[] %[[CONSTANT]]), to_apply=%[[ADD]], is_composite=true, frontend_attributes={composite.attributes={},composite.name="foo.bar",composite.version="0"}
   // CHECK: }
   func.func @main() -> tensor<f32> {
     %0 = mhlo.constant dense<4.200000e+01> : tensor<f32>

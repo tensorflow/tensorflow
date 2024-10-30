@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_COLLECTIVES_ALL_REDUCE_COMBINER_H_
 #define XLA_HLO_TRANSFORMS_COLLECTIVES_ALL_REDUCE_COMBINER_H_
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/array2d.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/xla_data.pb.h"

@@ -1372,6 +1372,37 @@ CHECK:     tt.store {{.*}} !tt.ptr<f32>
       kHloText, ErrorSpec{/*aabs=*/6e-1, /*arel=*/6e-1}));
 }
 
+TEST_F(TritonEmitterTest, ReshapeTo0DIsSupported) {
+  const std::string kHloText = R"(
+triton_computation {
+  p0 = f32[1,1,1,1] parameter(0)
+  p1 = f32[1] parameter(1)
+  reshape1 = f32[] reshape(p0)
+  reshape2 = f32[] reshape(p1)
+  ROOT add = f32[] add(reshape1, reshape2)
+}
+
+ENTRY entry_computation {
+  p0 = f32[1,1,1,1] parameter(0)
+  p1 = f32[1] parameter(1)
+  ROOT fusion = f32[] fusion(p0, p1), kind=kCustom, calls=triton_computation,
+    backend_config={
+      "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
+          "output_tile_sizes":[], "num_warps":"1"}}
+    }
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:     tt.reshape
+CHECK:     tt.reduce{{.*}}axis = 0
+CHECK-NOT: tt.reshape
+CHECK:     tt.reduce{{.*}}axis = 0
+CHECK:     tt.store {{.*}} !tt.ptr<f32>
+)"));
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{0, 0}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

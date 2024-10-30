@@ -178,6 +178,10 @@ class ShapeInference {
   static absl::StatusOr<Shape> InferAllToAllTupleShape(
       absl::Span<const Shape* const> operand_shapes);
 
+  // Infers the shape of an HLO ragged-all-to-all instruction.
+  static absl::StatusOr<Shape> InferRaggedAllToAllShape(
+      absl::Span<const Shape* const> operand_shapes);
+
   // Infers the shape of a collective broadcast operation.
   static absl::StatusOr<Shape> InferCollectiveBroadcastShape(
       absl::Span<const Shape* const> operand_shapes);

@@ -25,11 +25,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/xla_data.pb.h"
