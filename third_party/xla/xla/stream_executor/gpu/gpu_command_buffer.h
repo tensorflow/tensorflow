@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -33,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -171,6 +169,12 @@ class GpuCommandBuffer : public CommandBuffer {
     return barriers(kDefaulExecutionScope);
   }
 
+  // Returns the list of dependencies for a given node. `node` must be a node
+  // added to the current command buffer. The returned node pointer's lifetimes
+  // are bound to the current command buffer.
+  virtual absl::StatusOr<std::vector<GraphNodeHandle>> GetNodeDependencies(
+      GraphNodeHandle node) = 0;
+
  protected:
   // We track the total number of allocated and alive executable graphs in the
   // process to track the command buffers resource usage. Executable graph
@@ -215,8 +219,6 @@ class GpuCommandBuffer : public CommandBuffer {
     std::vector<GraphConditionalHandle> conditionals;
     std::vector<std::unique_ptr<GpuCommandBuffer>> command_buffers;
   };
-
-  using AllocationResult = std::pair<GpuDevicePtr, uint64_t>;
 
   absl::StatusOr<std::vector<GraphConditionalHandle>> CreateConditionalHandles(
       size_t num_handles);

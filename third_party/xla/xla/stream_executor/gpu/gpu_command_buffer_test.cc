@@ -18,10 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <vector>
 
-#include "absl/base/casts.h"
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
@@ -30,9 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
-#include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -47,11 +44,15 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
 namespace stream_executor::gpu {
+using testing::ElementsAre;
+using testing::IsEmpty;
+using tsl::testing::IsOkAndHolds;
 
 using ExecutionScopeId = CommandBuffer::ExecutionScopeId;
 
@@ -80,40 +81,6 @@ using AddI32Ptrs3 = TypedKernelFactory<internal::Ptrs3<int32_t>>;
 
 static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
 static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
-
-using GraphNodeHandle = GpuCommandBuffer::GraphNodeHandle;
-
-// Converts a platform independent GraphNodeHandle into a platform specific
-// GpuGraphNodeHandle. This function will be removed once
-// GraphNodeGetDependencies has been migrated into GpuCommandBuffer..
-static GpuGraphNodeHandle ToPlatformSpecificHandle(GraphNodeHandle handle) {
-  return absl::bit_cast<GpuGraphNodeHandle>(handle);
-}
-
-// Converts a platform specific GpuGraphNodeHandle into a platform independent
-// GraphNodeHandle. This function will be removed once GraphNodeGetDependencies
-// has been migrated into GpuCommandBuffer.
-static GraphNodeHandle FromPlatformSpecificHandle(GpuGraphNodeHandle handle) {
-  return absl::bit_cast<GraphNodeHandle>(handle);
-}
-
-template <typename Info>
-static std::vector<GraphNodeHandle> Deps(Info info) {
-  if (auto deps = GpuDriver::GraphNodeGetDependencies(
-          ToPlatformSpecificHandle(info.handle));
-      deps.ok()) {
-    std::vector<GraphNodeHandle> handles;
-    std::transform(deps->begin(), deps->end(), std::back_inserter(handles),
-                   FromPlatformSpecificHandle);
-    return handles;
-  }
-  return {GraphNodeHandle(0xDEADBEEF)};
-}
-
-template <typename... Infos>
-static std::vector<GraphNodeHandle> ExpectedDeps(Infos... info) {
-  return {info.handle...};
-}
 
 // Some of the tests rely on CUDA 12.3+ features.
 static bool IsAtLeastCuda12300(
@@ -451,7 +418,8 @@ TEST(GpuCommandBufferTest, Barriers) {
 
   // First barrier does not have any dependencies.
   EXPECT_TRUE(barriers[0].is_barrier_node);
-  EXPECT_TRUE(Deps(barriers[0]).empty());
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers[0].handle),
+              IsOkAndHolds(IsEmpty()));
 
   // Second barrier reuses first memset node.
   EXPECT_FALSE(barriers[1].is_barrier_node);
@@ -467,8 +435,10 @@ TEST(GpuCommandBufferTest, Barriers) {
   EXPECT_TRUE(barriers[4].is_barrier_node);
   EXPECT_TRUE(barriers[5].is_barrier_node);
 
-  EXPECT_EQ(Deps(barriers[4]), ExpectedDeps(nodes[2], nodes[3]));
-  EXPECT_EQ(Deps(barriers[5]), ExpectedDeps(nodes[4], nodes[5]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers[4].handle),
+              IsOkAndHolds(ElementsAre(nodes[2].handle, nodes[3].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers[5].handle),
+              IsOkAndHolds(ElementsAre(nodes[4].handle, nodes[5].handle)));
 
   // Update command buffer to use a new bit pattern.
   TF_ASSERT_OK(cmd_buffer->Update());
@@ -537,8 +507,10 @@ TEST(GpuCommandBufferTest, IndependentExecutionScopes) {
   EXPECT_TRUE(barriers0[0].is_barrier_node);
   EXPECT_TRUE(barriers1[0].is_barrier_node);
 
-  EXPECT_EQ(Deps(barriers0[0]), ExpectedDeps(nodes0[0], nodes0[1]));
-  EXPECT_EQ(Deps(barriers1[0]), ExpectedDeps(nodes1[0], nodes1[1]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers0[0].handle),
+              IsOkAndHolds(ElementsAre(nodes0[0].handle, nodes0[1].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers1[0].handle),
+              IsOkAndHolds(ElementsAre(nodes1[0].handle, nodes1[1].handle)));
 
   // Update command buffer to use a new bit pattern.
   TF_ASSERT_OK(cmd_buffer->Update());
@@ -621,16 +593,23 @@ TEST(GpuCommandBufferTest, ExecutionScopeBarriers) {
   EXPECT_TRUE(barriers0[1].handle == barriers1[1].handle);
   EXPECT_TRUE(barriers1[1].handle == barriers2[1].handle);
 
-  EXPECT_EQ(Deps(barriers0[0]), ExpectedDeps(nodes0[0], nodes0[1]));
-  EXPECT_EQ(Deps(barriers1[0]), ExpectedDeps(nodes1[0], nodes1[1]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers0[0].handle),
+              IsOkAndHolds(ElementsAre(nodes0[0].handle, nodes0[1].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers1[0].handle),
+              IsOkAndHolds(ElementsAre(nodes1[0].handle, nodes1[1].handle)));
 
-  EXPECT_TRUE(Deps(barriers2[0]).empty());
-  EXPECT_EQ(Deps(barriers2[1]),
-            ExpectedDeps(barriers0[0], barriers1[0], barriers2[0]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers2[0].handle),
+              IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers2[1].handle),
+              IsOkAndHolds(ElementsAre(barriers0[0].handle, barriers1[0].handle,
+                                       barriers2[0].handle)));
 
-  EXPECT_EQ(Deps(nodes0[2]), ExpectedDeps(barriers0[1]));
-  EXPECT_EQ(Deps(nodes1[2]), ExpectedDeps(barriers1[1]));
-  EXPECT_EQ(Deps(nodes2[0]), ExpectedDeps(barriers2[1]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(nodes0[2].handle),
+              IsOkAndHolds(ElementsAre(barriers0[1].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(nodes1[2].handle),
+              IsOkAndHolds(ElementsAre(barriers1[1].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(nodes2[0].handle),
+              IsOkAndHolds(ElementsAre(barriers2[1].handle)));
 
   // Update command buffer to use a new bit pattern.
   TF_ASSERT_OK(cmd_buffer->Update());
@@ -702,11 +681,17 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
   EXPECT_TRUE(barriers0[0].is_barrier_node);
   EXPECT_TRUE(barriers1[0].is_barrier_node && barriers1[1].is_barrier_node);
 
-  EXPECT_EQ(Deps(barriers0[0]), ExpectedDeps(nodes0[0], nodes0[1]));
-  EXPECT_EQ(Deps(barriers1[0]), ExpectedDeps(nodes1[0], nodes1[1]));
-  EXPECT_EQ(Deps(barriers1[1]), ExpectedDeps(barriers0[0], barriers1[0]));
-  EXPECT_EQ(Deps(nodes0[2]), ExpectedDeps(barriers0[0]));
-  EXPECT_EQ(Deps(nodes1[2]), ExpectedDeps(barriers1[1]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers0[0].handle),
+              IsOkAndHolds(ElementsAre(nodes0[0].handle, nodes0[1].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers1[0].handle),
+              IsOkAndHolds(ElementsAre(nodes1[0].handle, nodes1[1].handle)));
+  EXPECT_THAT(
+      gpu_cmd_buffer->GetNodeDependencies(barriers1[1].handle),
+      IsOkAndHolds(ElementsAre(barriers0[0].handle, barriers1[0].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(nodes0[2].handle),
+              IsOkAndHolds(ElementsAre(barriers0[0].handle)));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(nodes1[2].handle),
+              IsOkAndHolds(ElementsAre(barriers1[1].handle)));
 
   // Update command buffer to use a new bit pattern.
   TF_ASSERT_OK(cmd_buffer->Update());
@@ -1507,15 +1492,17 @@ TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
   ASSERT_EQ(barriers0.size(), 3);
   ASSERT_EQ(barriers1.size(), 3);
 
-  EXPECT_EQ(Deps(barriers0[0]), ExpectedDeps(nodes0[0], nodes0[1]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers0[0].handle),
+              IsOkAndHolds(ElementsAre(nodes0[0].handle, nodes0[1].handle)));
   EXPECT_EQ(barriers0[0].handle, barriers0[1].handle);
 
   EXPECT_EQ(barriers1[0].handle, nodes1[0].handle);
   EXPECT_EQ(barriers1[1].handle, nodes1[1].handle);
 
   // s0 and s1 share broadcasted barrier.
-  EXPECT_TRUE(barriers0[2].handle == barriers1[2].handle);
-  EXPECT_EQ(Deps(barriers0[2]), ExpectedDeps(barriers0[1], nodes1[1]));
+  EXPECT_EQ(barriers0[2].handle, barriers1[2].handle);
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers0[2].handle),
+              IsOkAndHolds(ElementsAre(barriers0[1].handle, nodes1[1].handle)));
 
   // TODO(b/326284532): Add a test for bit pattern update.
 
@@ -1615,7 +1602,8 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
   ASSERT_EQ(barriers1.size(), 4);
 
   // The final barrier that joins while and memset.
-  EXPECT_EQ(Deps(barriers0[1]), ExpectedDeps(nodes0[0], nodes1[2]));
+  EXPECT_THAT(gpu_cmd_buffer->GetNodeDependencies(barriers0[1].handle),
+              IsOkAndHolds(ElementsAre(nodes0[0].handle, nodes1[2].handle)));
 
   // Update bit pattern and number of iterations.
   TF_ASSERT_OK(cmd_buffer->Update());

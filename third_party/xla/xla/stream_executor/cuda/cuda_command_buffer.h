@@ -149,6 +149,9 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
 
   absl::Status CheckCanBeUpdated() override;
 
+  absl::StatusOr<std::vector<GraphNodeHandle>> GetNodeDependencies(
+      GraphNodeHandle node) override;
+
   // A signature of a device kernels updating conditional handle(s).
   using SetIfConditionKernel =
       TypedKernel<CUgraphConditionalHandle, DeviceMemory<bool>>;

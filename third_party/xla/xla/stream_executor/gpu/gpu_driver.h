@@ -62,12 +62,6 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
   static absl::Status CreateGraph(GpuGraphHandle* graph);
 
-  // Returns a node's dependencies.
-  //
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g048f4c0babcbba64a933fc277cd45083
-  static absl::StatusOr<std::vector<GpuGraphNodeHandle>>
-  GraphNodeGetDependencies(GpuGraphNodeHandle node);
-
   // The CUDA stream callback type signature.
   // The data passed to AddStreamCallback is subsequently passed to this
   // callback when it fires.

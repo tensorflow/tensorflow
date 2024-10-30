@@ -142,6 +142,9 @@ class RocmCommandBuffer : public GpuCommandBuffer {
 
   absl::Status CheckCanBeUpdated() override;
 
+  absl::StatusOr<std::vector<GraphNodeHandle>> GetNodeDependencies(
+      GraphNodeHandle node) override;
+
   GpuExecutor* parent_;
 
   static_assert(std::is_pointer_v<hipGraph_t>, "hipGraph_t must be a pointer");

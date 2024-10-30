@@ -65,25 +65,6 @@ absl::Status GpuDriver::CreateGraph(CUgraph* graph) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<GpuGraphNodeHandle>>
-GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
-  VLOG(2) << "Get CUDA graph node " << node << " dependencies";
-
-  std::vector<CUgraphNode> dependencies;
-
-  size_t num_dependencies = 0;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuGraphNodeGetDependencies(node, nullptr, &num_dependencies),
-      "Failed to get CUDA graph node depedencies size"));
-
-  dependencies.resize(num_dependencies, nullptr);
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuGraphNodeGetDependencies(node, dependencies.data(), &num_dependencies),
-      "Failed to get CUDA graph node depedencies"));
-
-  return dependencies;
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   auto status = cuda::ToStatus(cuDeviceGetCount(&device_count));
