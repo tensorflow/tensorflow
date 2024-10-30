@@ -167,7 +167,7 @@ class Backend {
   // XLA's perspective. That is, an executable compiled for one device would
   // be equivalent to an executable compiled for the other.
   absl::StatusOr<bool> devices_equivalent(int device_ordinal_a,
-                                          int device_ordinal_b);
+                                          int device_ordinal_b) const;
 
   // For the host platform, returns the configured eigen threadpool device to be
   // used for scheduling work. For other platforms, returns NULL.
