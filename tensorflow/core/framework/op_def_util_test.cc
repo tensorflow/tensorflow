@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_def_util.h"
 
+#include <vector>
+
+#include "absl/strings/match.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"

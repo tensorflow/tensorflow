@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_MEMORY_TYPES_H_
 #define TENSORFLOW_CORE_FRAMEWORK_MEMORY_TYPES_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 

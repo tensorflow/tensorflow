@@ -15,15 +15,26 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/fake_input.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel_test_base.h"

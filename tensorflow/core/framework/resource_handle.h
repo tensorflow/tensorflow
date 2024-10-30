@@ -16,9 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_RESOURCE_HANDLE_H_
 #define TENSORFLOW_CORE_FRAMEWORK_RESOURCE_HANDLE_H_
 
+#include <atomic>
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_index.h"

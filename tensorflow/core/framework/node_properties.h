@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_NODE_PROPERTIES_H_
 #define TENSORFLOW_CORE_FRAMEWORK_NODE_PROPERTIES_H_
 
+#include <memory>
+#include <utility>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
