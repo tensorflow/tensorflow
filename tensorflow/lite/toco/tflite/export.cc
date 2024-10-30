@@ -439,8 +439,8 @@ Offset<Vector<Offset<Buffer>>> ExportBuffers(
   return builder->CreateVector(buffer_vector);
 }
 
-tensorflow::Status Export(const Model& model, std::string* output_file_contents,
-                          const ExportParams& params) {
+absl::Status Export(const Model& model, std::string* output_file_contents,
+                    const ExportParams& params) {
   const auto ops_by_type = BuildOperatorByTypeMap(params.enable_select_tf_ops);
   return Export(model, output_file_contents, params, ops_by_type);
 }
@@ -489,7 +489,7 @@ flatbuffers::Offset<tflite::Metadata> ExportMetadata(
   return metadata;
 }
 
-tensorflow::Status Export(
+absl::Status Export(
     const Model& model, std::string* output_file_contents,
     const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
@@ -691,7 +691,7 @@ tensorflow::Status Export(
     WriteModelToString(q_builder, output_file_contents);
   }
 
-  return tensorflow::Status();
+  return absl::Status();
 }
 
 }  // namespace tflite

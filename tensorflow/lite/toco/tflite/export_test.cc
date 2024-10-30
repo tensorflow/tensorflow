@@ -162,7 +162,7 @@ class ExportTest : public ::testing::Test {
     }
   }
 
-  tensorflow::Status ExportAndReturnStatus(const ExportParams& params) {
+  absl::Status ExportAndReturnStatus(const ExportParams& params) {
     std::string result;
     return Export(input_model_, &result, params);
   }
