@@ -79,17 +79,19 @@ const char* kSPMD2cp = R"(
     c_last_id = u32[] constant($last_id_constant)
     repl_id = u32[] partition-id()
 
-    pred_first_id = pred[] compare(repl_id, c_first_id), direction=EQ
+    pred_first_id = pred[] compare(repl_id, c_first_id), direction=$direction
     is_first = pred[] broadcast(pred_first_id), dimensions={}
 
-    pred_last_id = pred[] compare(repl_id, c_last_id), direction=EQ
+    pred_last_id = pred[] compare(repl_id, c_last_id), direction=$direction
     is_last = pred[] broadcast(pred_last_id), dimensions={}
 
     // This is the select that we want to optimize away.
     data_snd = f32[16] select(is_last, bwd_data, fwd_data)
 
-    bwd_data_rcv = f32[16] collective-permute(data_snd), channel_id=1, source_target_pairs=$backward_pairs
-    fwd_data_rcv = f32[16] collective-permute(data_snd), channel_id=2, source_target_pairs=$forward_pairs
+    bwd_data_rcv = f32[16] collective-permute(data_snd), channel_id=1,
+        source_target_pairs=$backward_pairs
+    fwd_data_rcv = f32[16] collective-permute(data_snd), channel_id=2,
+        source_target_pairs=$forward_pairs
     ROOT data_rcv = f32[16] select(is_first, bwd_data_rcv, fwd_data_rcv)
   }
 )";
@@ -102,7 +104,8 @@ TEST_F(CollectiveSelectFolderTest, SimpleForwardCycle) {
                             {{"$first_id_constant", "0"},
                              {"$last_id_constant", "3"},
                              {"$forward_pairs", "{{0,1},{1,2},{2,3}}"},
-                             {"$backward_pairs", "{{3,0}}"}}));
+                             {"$backward_pairs", "{{3,0}}"},
+                             {"$direction", "EQ"}}));
 
   VerifyDirectDataFeedSPMD(module.get(), "fwd_data", "bwd_data");
 }
@@ -115,7 +118,8 @@ TEST_F(CollectiveSelectFolderTest, SimpleBackwardCycle) {
                             {{"$first_id_constant", "3"},
                              {"$last_id_constant", "0"},
                              {"$forward_pairs", "{{3,2},{2,1},{1,0}}"},
-                             {"$backward_pairs", "{{0,3}}"}}));
+                             {"$backward_pairs", "{{0,3}}"},
+                             {"$direction", "EQ"}}));
   VerifyDirectDataFeedSPMD(module.get(), "fwd_data", "bwd_data");
 }
 
@@ -128,7 +132,7 @@ TEST_F(CollectiveSelectFolderTest, CompareNEForwardCycle) {
                              {"$last_id_constant", "3"},
                              {"$forward_pairs", "{{0,1},{1,2},{2,3}}"},
                              {"$backward_pairs", "{{3,0}}"},
-                             {"direction=EQ", "direction=NE"}}));
+                             {"$direction", "NE"}}));
   // Compared with SimpleForwardCycle above, this test flips the condition
   // and therefore the data being forwarded.
   VerifyDirectDataFeedSPMD(module.get(), "bwd_data", "fwd_data");
@@ -146,7 +150,8 @@ TEST_F(CollectiveSelectFolderTest, LastDeviceIdMismatch) {
                             {{"$first_id_constant", "0"},
                              {"$last_id_constant", "2"},  // mismatch
                              {"$forward_pairs", "{{0,1},{1,2},{2,3}}"},
-                             {"$backward_pairs", "{{3,0}}"}}));
+                             {"$backward_pairs", "{{3,0}}"},
+                             {"$direction", "EQ"}}));
   VerifyDirectDataFeedSPMD(module.get(), "data_snd", "fwd_data");
 }
 
@@ -161,7 +166,8 @@ const char* kSelectBasecase = R"(
     prd = pred[] compare(repl_id, device_id_constant), direction=$direction
     bcast = pred[] broadcast(prd), dimensions={}
     selected_data = f32[16] select(bcast, compare_true_data, compare_false_data)
-    ROOT data_rcv = f32[16] collective-permute(selected_data), source_target_pairs=$pairs
+    ROOT data_rcv = f32[16] collective-permute(selected_data),
+        source_target_pairs=$pairs
   }
 )";
 
@@ -224,7 +230,8 @@ TEST_F(CollectiveSelectFolderTest, CommutativeCompare) {
     predicate = pred[] compare(c3, partition_id), direction=NE
     bcast_predicate = pred[] broadcast(predicate), dimensions={}
     selected_data = f32[16] select(bcast_predicate, data_1, data_2)
-    ROOT data_rcv = f32[16] collective-permute(selected_data), source_target_pairs={{0,1},{1,2},{4,5},{5,6}}, channel_id=1
+    ROOT data_rcv = f32[16] collective-permute(selected_data),
+        source_target_pairs={{0,1},{1,2},{4,5},{5,6}}, channel_id=1
   }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -262,7 +269,8 @@ const char* kSelectNoBroadcast = R"(
 
     prd = pred[] compare(repl_id, device_id_constant), direction=$direction
     selected_data = f32[16] select(prd, compare_true_data, compare_false_data)
-    ROOT data_rcv = f32[16] collective-permute(selected_data), source_target_pairs=$pairs
+    ROOT data_rcv = f32[16] collective-permute(selected_data),
+        source_target_pairs=$pairs
   }
 )";
 
@@ -289,7 +297,8 @@ TEST_F(CollectiveSelectFolderTest, NegatedPredicate_NotTransformed) {
       predicate = pred[] compare(partition_id, c3), direction=EQ
       negated_predicate = pred[] not(predicate)
       selected_data = f32[16] select(negated_predicate, data_1, data_2)
-      ROOT result_data = f32[16] collective-permute(selected_data), source_target_pairs={{3,0}}, channel_id=1
+      ROOT result_data = f32[16] collective-permute(selected_data),
+          source_target_pairs={{3,0}}, channel_id=1
     }
   )";
   TF_ASSERT_OK(ExpectNoTranform(kHlo));
@@ -306,7 +315,8 @@ TEST_F(CollectiveSelectFolderTest, ReplicaIdChannelIdMismatch_NotTransformed) {
 
       prd = pred[] compare(repl_id, device_id_constant), direction=EQ
       selected_data = f32[16] select(prd, compare_true_data, compare_false_data)
-      ROOT data_rcv = f32[16] collective-permute(selected_data), channel_id=1, source_target_pairs={{0,1}}
+      ROOT data_rcv = f32[16] collective-permute(selected_data), channel_id=1,
+          source_target_pairs={{0,1}}
     }
   )";
   TF_ASSERT_OK(ExpectNoTranform(hlo));
@@ -323,7 +333,8 @@ TEST_F(CollectiveSelectFolderTest, PartIdChannelIdMismatch_NotTransformed) {
 
       prd = pred[] compare(repl_id, device_id_constant), direction=EQ
       selected_data = f32[16] select(prd, compare_true_data, compare_false_data)
-      ROOT data_rcv = f32[16] collective-permute(selected_data), source_target_pairs={{0,1}}
+      ROOT data_rcv = f32[16] collective-permute(selected_data),
+          source_target_pairs={{0,1}}
     }
   )";
   TF_ASSERT_OK(ExpectNoTranform(hlo));
@@ -341,7 +352,8 @@ TEST_F(CollectiveSelectFolderTest, WrongNesting_NotTransformed) {
 
       prd = pred[] compare(sum, device_id_constant), direction=EQ
       selected_data = f32[16] select(prd, compare_true_data, compare_false_data)
-      ROOT data_rcv = f32[16] collective-permute(selected_data), source_target_pairs={{0,1}}
+      ROOT data_rcv = f32[16] collective-permute(selected_data),
+          source_target_pairs={{0,1}}
     }
   )";
   TF_ASSERT_OK(ExpectNoTranform(hlo));
