@@ -1574,10 +1574,13 @@ TEST_F(CoordinateTwoTasksTest,
   n.WaitForNotification();
 
   EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kDeadlineExceeded));
-  // Confirm that task_0_ has disconnected.
-  // Note: this should not happen in prod where RegisterTask() is called after
-  // Shutdown(), which is prevented by agent-side logic.
-  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  // Task 0 should not be allowed to silently register again to the
+  // same service instance, regardless of incarnation (same process or
+  // restarted).
+  EXPECT_THAT(coord_service_->RegisterTask(task_0_, incarnation_0_),
+              StatusIs(absl::StatusCode::kAborted));
+  EXPECT_THAT(coord_service_->RegisterTask(task_0_, incarnation_1_),
+              StatusIs(absl::StatusCode::kAborted));
 
   // Other task is alerted that shutdown has been initiated without it.
   absl::Status other_task_status = client_1_.GetStatus();
@@ -1791,6 +1794,98 @@ TEST_F(CoordinateTwoTasksTest, RecoverableTaskWillNotPropagateError) {
   // Since no error propagation for recoverable tasks, other tasks should work
   // as normal.
   TF_EXPECT_OK(client_1_.GetStatus());
+}
+
+TEST_F(CoordinateTwoTasksTest,
+       RecoverableTaskWithErrorPollingWillNotPropagateError) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false,
+                            /*enable_shutdown_barrier=*/false,
+                            /*enable_register_barrier=*/false,
+                            /*set_worker_job_recoverable=*/true);
+  // These callbacks may be invoked after this test (e.g. cancellations during
+  // coord service dtor), so we use shared pointers to extend their lifetimes
+  // beyond the test to avoid use-after-free errors.
+  auto s0 = std::make_shared<absl::Status>();
+  auto s1 = std::make_shared<absl::Status>();
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  coord_service_->PollForErrorAsync(
+      task_0_, [s0](const absl::Status& status) { *s0 = status; });
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  coord_service_->PollForErrorAsync(
+      task_1_, [s1](const absl::Status& status) { *s1 = status; });
+
+  ASSERT_OK(coord_service_->ReportTaskError(task_0_,
+                                            absl::InternalError("test_error")));
+
+  // Since no error propagation for recoverable tasks, other tasks should work
+  // as normal.
+  EXPECT_THAT(*s0, StatusIs(absl::StatusCode::kOk));
+  EXPECT_THAT(*s1, StatusIs(absl::StatusCode::kOk));
+}
+
+TEST(CoordinationServiceTest, RecoverableAndNonRecoverableTasks) {
+  CoordinationServiceConfig config;
+  config.set_service_type(kCoordinationServiceType);
+  // Workers are recoverable, chief is not.
+  config.mutable_recoverable_jobs()->Add("worker");
+  CoordinatedTask chief;
+  chief.set_job_name("chief");
+  chief.set_task_id(0);
+  CoordinatedTask task_0;
+  task_0.set_job_name("worker");
+  task_0.set_task_id(0);
+  CoordinatedTask task_1;
+  task_1.set_job_name("worker");
+  task_1.set_task_id(1);
+  CoordinatedJob* chief_job = config.mutable_coordinated_job_list()->Add();
+  chief_job->set_name("chief");
+  chief_job->set_num_tasks(1);
+  CoordinatedJob* worker_job = config.mutable_coordinated_job_list()->Add();
+  worker_job->set_name("worker");
+  worker_job->set_num_tasks(2);
+
+  std::unique_ptr<CoordinationServiceInterface> coord_service =
+      CoordinationServiceInterface::EnableCoordinationService(
+          Env::Default(), config, /*cache=*/nullptr);
+
+  // Each coordinated task registers and polls for errors.
+  ASSERT_OK(coord_service->RegisterTask(chief, /*incarnation=*/0));
+  ASSERT_OK(coord_service->RegisterTask(task_0, /*incarnation=*/0));
+  ASSERT_OK(coord_service->RegisterTask(task_1, /*incarnation=*/0));
+  // These callbacks may be invoked after this test (e.g. cancellations during
+  // coord service dtor), so we use shared pointers to extend their lifetimes
+  // beyond the test to avoid use-after-free errors.
+  absl::Status s_chief, s0, s1;
+  coord_service->PollForErrorAsync(
+      chief, [&s_chief](const absl::Status& status) { s_chief = status; });
+  coord_service->PollForErrorAsync(
+      task_0, [&s0](const absl::Status& status) { s0 = status; });
+  coord_service->PollForErrorAsync(
+      task_1, [&s1](const absl::Status& status) { s1 = status; });
+
+  // Recoverable task hits error.
+  ASSERT_OK(coord_service->ReportTaskError(task_0,
+                                           absl::InternalError("test_error")));
+  // Since no error propagation for recoverable tasks, other tasks should work
+  // as normal.
+  EXPECT_THAT(s_chief, StatusIs(absl::StatusCode::kOk));
+  EXPECT_THAT(s0, StatusIs(absl::StatusCode::kOk));
+  EXPECT_THAT(s1, StatusIs(absl::StatusCode::kOk));
+
+  // TODO(b/342448688): Revisit this test, and think about shutdown barrier
+  // interactions.
+  ASSERT_OK(coord_service->ResetTask(task_0));
+  ASSERT_OK(coord_service->RegisterTask(task_0, /*incarnation=*/1));
+  coord_service->PollForErrorAsync(
+      task_0, [&s0](const absl::Status& status) { s0 = status; });
+
+  // Non-recoverable task hits error.
+  ASSERT_OK(
+      coord_service->ReportTaskError(chief, absl::InternalError("test_error")));
+  // Error propagates to all tasks.
+  EXPECT_THAT(s_chief, StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(s0, StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(s1, StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(CoordinateTwoTasksTest,
