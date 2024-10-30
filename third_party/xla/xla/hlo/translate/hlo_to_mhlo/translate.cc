@@ -14,6 +14,7 @@ limitations under the License.
 
 #include "xla/hlo/translate/hlo_to_mhlo/translate.h"
 
+#include <string>
 #include <utility>
 
 #include "absl/log/log.h"
