@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
@@ -449,5 +450,19 @@ absl::Status RocmCommandBuffer::InstantiateGraph() {
   return ToStatus(
       wrap::hipGraphInstantiate(&exec_, graph_, nullptr, nullptr, 0),
       "Failed to instantiate HIP graph");
+}
+
+std::unique_ptr<ScopedUpdateMode> RocmCommandBuffer::ActivateUpdateMode(
+    GpuCommandBuffer* nested_cmd_buffer) {
+  auto nested_rocm_cmd_buffer =
+      static_cast<RocmCommandBuffer*>(nested_cmd_buffer);
+  auto scoped_graph_exec = std::make_unique<ScopedRocmGraphExec>(
+      &nested_rocm_cmd_buffer->exec_,
+      &nested_rocm_cmd_buffer->is_owned_graph_exec_);
+
+  nested_rocm_cmd_buffer->exec_ = exec_;
+  nested_rocm_cmd_buffer->is_owned_graph_exec_ = false;
+
+  return std::move(scoped_graph_exec);
 }
 }  // namespace stream_executor::gpu

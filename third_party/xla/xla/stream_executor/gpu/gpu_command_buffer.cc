@@ -144,20 +144,6 @@ GpuCommandBuffer::~GpuCommandBuffer() {
   }
 }
 
-GpuCommandBuffer::ScopedGpuGraphExec::ScopedGpuGraphExec(
-    GpuCommandBuffer* cmd_buffer, GpuGraphExecHandle exec)
-    : cmd_buffer(cmd_buffer),
-      restore(cmd_buffer->exec_),
-      restore_is_owned(cmd_buffer->is_owned_graph_exec_) {
-  cmd_buffer->exec_ = exec;
-  cmd_buffer->is_owned_graph_exec_ = false;
-}
-
-GpuCommandBuffer::ScopedGpuGraphExec::~ScopedGpuGraphExec() {
-  cmd_buffer->exec_ = restore;
-  cmd_buffer->is_owned_graph_exec_ = restore_is_owned;
-}
-
 GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
     ExecutionScopeId execution_scope_id) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
@@ -545,7 +531,7 @@ absl::Status GpuCommandBuffer::UpdateConditionalCommandBuffers(
     absl::Span<const ConditionBuilder> builders) {
   for (size_t i = 0; i < command_buffers.size(); ++i) {
     // Use parent graph executable for conditional command buffer update.
-    ScopedGpuGraphExec scoped_exec(command_buffers[i].get(), exec_);
+    auto scoped_update_mode = ActivateUpdateMode(command_buffers[i].get());
 
     // Update command buffer using user-provided builder callback.
     TF_RETURN_IF_ERROR(command_buffers[i]->Update());

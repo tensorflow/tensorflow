@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -678,5 +680,22 @@ absl::Status CudaCommandBuffer::InstantiateGraph() {
   }
 
   return absl::OkStatus();
+}
+
+std::unique_ptr<ScopedUpdateMode> CudaCommandBuffer::ActivateUpdateMode(
+    GpuCommandBuffer* nested_cmd_buffer) {
+  auto nested_cuda_cmd_buffer =
+      static_cast<CudaCommandBuffer*>(nested_cmd_buffer);
+
+  auto scoped_graph_exec = std::make_unique<ScopedCudaGraphExec>(
+      &nested_cuda_cmd_buffer->exec_,
+      &nested_cuda_cmd_buffer->is_owned_graph_exec_);
+
+  // We need to store the graph exec handle in the nested command buffer.
+  // The scoped_graph_exec will restore the old state once we are done.
+  nested_cuda_cmd_buffer->exec_ = exec_;
+  nested_cuda_cmd_buffer->is_owned_graph_exec_ = false;
+
+  return std::move(scoped_graph_exec);
 }
 }  // namespace stream_executor::gpu

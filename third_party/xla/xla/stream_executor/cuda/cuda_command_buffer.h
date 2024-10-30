@@ -31,6 +31,8 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/scoped_gpu_graph_exec.h"
+#include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
@@ -131,6 +133,10 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   absl::Status WriteGraphToDotFile(absl::string_view path) override;
 
   absl::Status InstantiateGraph() override;
+
+  using ScopedCudaGraphExec = ScopedGraphExec<CUgraphExec>;
+  std::unique_ptr<ScopedUpdateMode> ActivateUpdateMode(
+      GpuCommandBuffer* nested_cmd_buffer) override;
 
   // A signature of a device kernels updating conditional handle(s).
   using SetIfConditionKernel =

@@ -25,12 +25,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/scoped_gpu_graph_exec.h"
+#include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -129,6 +130,10 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   absl::Status WriteGraphToDotFile(absl::string_view path) override;
 
   absl::Status InstantiateGraph() override;
+
+  using ScopedRocmGraphExec = ScopedGraphExec<hipGraphExec_t>;
+  std::unique_ptr<ScopedUpdateMode> ActivateUpdateMode(
+      GpuCommandBuffer* nested_cmd_buffer) override;
 
   GpuExecutor* parent_;
 };

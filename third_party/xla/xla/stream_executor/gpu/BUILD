@@ -168,6 +168,23 @@ gpu_only_cc_library(
     ),
 )
 
+cc_library(
+    name = "scoped_update_mode",
+    hdrs = [
+        "scoped_update_mode.h",
+    ],
+)
+
+cc_library(
+    name = "scoped_gpu_graph_exec",
+    hdrs = [
+        "scoped_gpu_graph_exec.h",
+    ],
+    deps = [
+        ":scoped_update_mode",
+    ],
+)
+
 gpu_only_cc_library(
     name = "gpu_command_buffer",
     srcs = ["gpu_command_buffer.cc"],
@@ -178,6 +195,7 @@ gpu_only_cc_library(
         ":gpu_driver_header",
         ":gpu_executor_header",
         ":gpu_types_header",
+        ":scoped_update_mode",
         "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_memory",

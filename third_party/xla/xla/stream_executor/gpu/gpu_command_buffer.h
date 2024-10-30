@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -205,19 +206,12 @@ class GpuCommandBuffer : public CommandBuffer {
   enum class ConditionType { kIf, kWhile };
 
  private:
-  // Overwrites the `exec_` handle in a Gpu command buffer by `exec`, and
-  // restores to the original handle when destroyed. This allows us updating
-  // primary graph executable using nested command buffers (command buffers that
-  // do not have their own executable), which is required for updating
-  // conditional commands.
-  struct ScopedGpuGraphExec {
-    ScopedGpuGraphExec(GpuCommandBuffer* cmd_buffer, GpuGraphExecHandle exec);
-    ~ScopedGpuGraphExec();
-
-    GpuCommandBuffer* cmd_buffer;
-    GpuGraphExecHandle restore;
-    bool restore_is_owned;
-  };
+  // Prepares a nested command buffer for an update of the graph.
+  // It's a prerequisite to a call to `Update` on a nested command buffer.
+  // The return value needs to be kept alive until the update is finished. An
+  // update finishes by a call to `Finalize`.
+  virtual std::unique_ptr<ScopedUpdateMode> ActivateUpdateMode(
+      GpuCommandBuffer* nested_cmd_buffer) = 0;
 
   // For each conditional node in the Gpu graph we keep a record of conditional
   // command buffers attached to a node, so we can apply updates to them.

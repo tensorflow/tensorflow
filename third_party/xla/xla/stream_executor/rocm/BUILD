@@ -1191,6 +1191,8 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_stream",
+        "//xla/stream_executor/gpu:scoped_gpu_graph_exec",
+        "//xla/stream_executor/gpu:scoped_update_mode",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
