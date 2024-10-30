@@ -314,6 +314,11 @@ class TfrtCpuClient final : public PjRtClient {
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
+
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       absl::Status error, const Shape& shape, PjRtDevice* device) override;
 
