@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_CPU_OPTIONS_H_
 #define XLA_SERVICE_CPU_CPU_OPTIONS_H_
 
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <tuple>
 
 #include "xla/service/hlo_module_config.h"
 

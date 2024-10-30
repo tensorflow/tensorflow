@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+#include <utility>
 #define EIGEN_USE_THREADS
 #include "xla/service/cpu/cpu_runtime.h"
 

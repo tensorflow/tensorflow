@@ -15,9 +15,17 @@ limitations under the License.
 
 #include "xla/service/cpu/ir_function.h"
 
-#include <iterator>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Value.h"
 #include "xla/service/cpu/cpu_runtime.h"

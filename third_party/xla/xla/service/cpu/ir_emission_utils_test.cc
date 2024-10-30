@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/ir_emission_utils.h"
 
+#include <cstdint>
 #include <memory>
 
 #include "xla/service/cpu/target_machine_features_fake.h"
