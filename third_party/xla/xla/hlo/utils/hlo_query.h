@@ -79,6 +79,10 @@ bool IsBroadcastOfScalarConstant(const HloInstruction& instr);
 // Returns whether the `instr` is a broadcast and its input is a parameter.
 bool IsBroadcastOfParameter(const HloInstruction& instr);
 
+// Returns true for a parameter or a parameter followed by a chain of no-op
+// instructions (bitcast, get-tuple-element).
+bool IsEffectiveParameter(const HloInstruction&);
+
 // Returns first HLO of the computation with the opcode, otherwise nullptr.
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               HloOpcode opcode);
