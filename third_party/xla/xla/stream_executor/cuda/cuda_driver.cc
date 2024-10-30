@@ -70,32 +70,6 @@ absl::Status GpuDriver::DestroyGraph(CUgraph graph) {
   return cuda::ToStatus(cuGraphDestroy(graph), "Failed to destroy CUDA graph");
 }
 
-absl::Status GpuDriver::GraphInstantiate(CUgraphExec* exec, CUgraph graph,
-                                         const GraphInstantiateFlags& flags) {
-  VLOG(2) << "Instantiate CUDA executable graph from graph " << graph << " ("
-          << "auto_free_on_launch=" << flags.auto_free_on_launch << ", "
-          << "device_launch=" << flags.device_launch << ", "
-          << "use_node_priority=" << flags.use_node_prirotiy << ", "
-          << "upload=" << flags.upload << ")";
-
-#if CUDA_VERSION >= 12000
-  uint64_t cu_flags = 0;
-  if (flags.auto_free_on_launch)
-    cu_flags |= CUDA_GRAPH_INSTANTIATE_FLAG_AUTO_FREE_ON_LAUNCH;
-  if (flags.use_node_prirotiy)
-    cu_flags |= CUDA_GRAPH_INSTANTIATE_FLAG_USE_NODE_PRIORITY;
-  if (flags.device_launch)
-    cu_flags |= CUDA_GRAPH_INSTANTIATE_FLAG_DEVICE_LAUNCH;
-  if (flags.upload) cu_flags |= CUDA_GRAPH_INSTANTIATE_FLAG_UPLOAD;
-
-  return cuda::ToStatus(cuGraphInstantiate(exec, graph, cu_flags),
-                        "Failed to instantiate CUDA graph");
-#else
-  return cuda::ToStatus(cuGraphInstantiate(exec, graph, nullptr, nullptr, 0),
-                        "Failed to instantiate CUDA graph");
-#endif  // CUDA_VERSION >= 12000
-}
-
 absl::StatusOr<std::vector<GpuGraphNodeHandle>>
 GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
   VLOG(2) << "Get CUDA graph node " << node << " dependencies";

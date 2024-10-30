@@ -128,6 +128,8 @@ class RocmCommandBuffer : public GpuCommandBuffer {
 
   absl::Status WriteGraphToDotFile(absl::string_view path) override;
 
+  absl::Status InstantiateGraph() override;
+
   GpuExecutor* parent_;
 };
 

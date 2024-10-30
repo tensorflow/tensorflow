@@ -115,6 +115,19 @@ std::string ConditionalTypeToString(GpuCommandBuffer::ConditionType type) {
   }
 }
 
+absl::Status GraphInstantiate(CUgraphExec* exec, CUgraph graph) {
+  VLOG(2) << "Instantiate CUDA executable graph from graph " << graph;
+
+#if CUDA_VERSION >= 12000
+  uint64_t cu_flags = 0;
+  return cuda::ToStatus(cuGraphInstantiate(exec, graph, cu_flags),
+                        "Failed to instantiate CUDA graph");
+#else
+  return cuda::ToStatus(cuGraphInstantiate(exec, graph, nullptr, nullptr, 0),
+                        "Failed to instantiate CUDA graph");
+#endif  // CUDA_VERSION >= 12000
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<CudaCommandBuffer>> CudaCommandBuffer::Create(
@@ -651,4 +664,19 @@ absl::Status CudaCommandBuffer::WriteGraphToDotFile(absl::string_view path) {
       "CUDA graph debug dot print is not supported.");
 }
 
+absl::Status CudaCommandBuffer::InstantiateGraph() {
+  // If we get a "resource exhausted error" we retry instantiating Gpu graph
+  // one more time after releasing unused device memory allocated for graphs.
+  auto instantiated = GraphInstantiate(&exec_, graph_);
+  if (instantiated.code() == absl::StatusCode::kResourceExhausted) {
+    LOG(WARNING) << "Retry CUDA graph instantiation after OOM error";
+
+    TF_RETURN_IF_ERROR(parent_->TrimGraphMemory());
+    TF_RETURN_IF_ERROR(GraphInstantiate(&exec_, graph_));
+  } else {
+    TF_RETURN_IF_ERROR(instantiated);
+  }
+
+  return absl::OkStatus();
+}
 }  // namespace stream_executor::gpu

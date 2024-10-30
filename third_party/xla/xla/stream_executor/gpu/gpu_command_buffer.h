@@ -469,6 +469,9 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Writes the underlying graph to a file in graphviz DOT format.
   virtual absl::Status WriteGraphToDotFile(absl::string_view path) = 0;
+
+  // Instantiates the executable graph from the underlying graph.
+  virtual absl::Status InstantiateGraph() = 0;
 };
 
 }  // namespace stream_executor::gpu
