@@ -1483,6 +1483,7 @@ cc_library(
         "@local_xla//xla:xla_proto_cc_impl",
         "@local_xla//xla:xla_data_proto_cc_impl",
         "@local_xla//xla/service:hlo_proto_cc_impl",
+        "@local_xla//xla/service:metrics_proto_cc_impl",
         "@local_xla//xla/service:buffer_assignment_proto_cc_impl",
         "@local_xla//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl",
         "@local_xla//xla/service/gpu:backend_configs_cc_impl",

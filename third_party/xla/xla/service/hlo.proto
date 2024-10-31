@@ -31,6 +31,7 @@ syntax = "proto3";
 package xla;
 
 import "google/protobuf/any.proto";
+import "xla/service/metrics.proto";
 import "xla/xla_data.proto";
 
 option cc_enable_arenas = true;
@@ -809,4 +810,7 @@ message HloPassMetadata {
 
   // Custom metadata for the pass.
   google.protobuf.Any custom_metadata = 10;
+
+  // Used to log any number of key, value pair stats per pass.
+  repeated KeyValueMetric kv_metrics = 11;
 }

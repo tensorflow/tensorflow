@@ -39,6 +39,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     Label("//xla:xla_proto_cc_impl"),
     Label("//xla/service:buffer_assignment_proto_cc_impl"),
     Label("//xla/service:hlo_proto_cc_impl"),
+    Label("//xla/service:metrics_proto_cc_impl"),
     Label("//xla/service/gpu:backend_configs_cc_impl"),
     Label("//xla/service/gpu/model:hlo_op_profile_proto_cc_impl"),
     Label("//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl"),
