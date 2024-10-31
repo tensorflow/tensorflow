@@ -25,9 +25,9 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "stablehlo/api/PortableApi.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
+#include "stablehlo/dialect/Version.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -180,8 +180,14 @@ FailureOr<OwningOpRef<ModuleOp>> PruneStablehloModule(
 FailureOr<std::string> SerializeStablehlo(ModuleOp stablehlo_module) {
   std::string bytecode;
   llvm::raw_string_ostream os(bytecode);
-  if (mlir::failed(stablehlo::serializePortableArtifact(
-          stablehlo_module, stablehlo::getCurrentVersion(), os))) {
+  // When writing to SavedModels, use 4w compatibility.
+  // TODO: When serializing a model, also serialize the version is is targeting
+  // as an attribute.
+  auto targetVersion = vhlo::Version::fromCompatibilityRequirement(
+                           vhlo::Version::CompatibilityRequirement::WEEK_4)
+                           .toString();
+  if (mlir::failed(stablehlo::serializePortableArtifact(stablehlo_module,
+                                                        targetVersion, os))) {
     return stablehlo_module.emitError()
            << "failed to serialize the pruned stablehlo module";
   }

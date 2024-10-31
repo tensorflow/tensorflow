@@ -36,9 +36,9 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "stablehlo/api/PortableApi.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
+#include "stablehlo/dialect/Version.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/bfloat16_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -69,9 +69,12 @@ absl::StatusOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
 
   std::string bytecode;
   llvm::raw_string_ostream os(bytecode);
+  // When writing to SavedModels, use 4w compatibility.
+  auto targetVersion = vhlo::Version::fromCompatibilityRequirement(
+                           vhlo::Version::CompatibilityRequirement::WEEK_4)
+                           .toString();
   if (failed(mlir::stablehlo::serializePortableArtifact(
-          stablehlo_module_op.get(), mlir::stablehlo::getCurrentVersion(),
-          os))) {
+          stablehlo_module_op.get(), targetVersion, os))) {
     return absl::InternalError("Failed to serialize StableHLO module.");
   }
   return bytecode;
