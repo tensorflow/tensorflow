@@ -54,12 +54,12 @@ class SortThunk final : public Thunk {
   static absl::StatusOr<std::unique_ptr<SortThunk>> Create(
       Info info, absl::Span<const Input> inputs, int64_t dimension,
       bool is_stable, LessThan less_than,
-      std::optional<SortDirection> direction = std::nullopt);
+      std::optional<SortDirection> direction);
 
   static absl::StatusOr<std::unique_ptr<SortThunk>> Create(
       Info info, absl::Span<const Input> inputs, int64_t dimension,
       bool is_stable, std::string comparator_name,
-      std::optional<SortDirection> direction = std::nullopt);
+      std::optional<SortDirection> direction);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 

@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/topk_thunk.h"
 #include "xla/backends/cpu/runtime/while_thunk.h"
+#include "xla/comparison_util.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -68,6 +69,7 @@ limitations under the License.
 #include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -1011,11 +1013,59 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDynamicUpdateSliceThunk(
   return MakeKernelThunkSequence(instruction, buffers, kernel);
 }
 
+// Parse the sort comparator to determine the sort direction. Comparator is
+// expected to be an HloOpcode::kCompare with two parameters.
+std::optional<SortThunk::SortDirection> ThunkEmitter::MatchSortDirection(
+    const HloComputation* hlo_comparator) const {
+  namespace m = match;
+  std::optional<SortThunk::SortDirection> direction = std::nullopt;
+
+  // TODO(tsilytskyi): Handle more than two input parameters.
+  if (hlo_comparator->root_instruction()->opcode() == HloOpcode::kCompare &&
+      hlo_comparator->root_instruction()->operand(0)->opcode() ==
+          HloOpcode::kParameter &&
+      hlo_comparator->root_instruction()->operand(1)->opcode() ==
+          HloOpcode::kParameter &&
+      hlo_comparator->num_parameters() == 2) {
+    auto* compare =
+        Cast<HloCompareInstruction>(hlo_comparator->root_instruction());
+
+    // Take into account the order of the parameters. If they are swapped,
+    // the sort direction will be reversed.
+    const bool expected_param_order =
+        (Match(compare, m::Op()
+                            .WithOperand(0, m::Parameter(0))
+                            .WithOperand(1, m::Parameter(1))));
+    switch (compare->comparison_direction()) {
+      case ComparisonDirection::kGe:
+        direction = (expected_param_order)
+                        ? SortThunk::SortDirection::kDescending
+                        : SortThunk::SortDirection::kAscending;
+        break;
+      case ComparisonDirection::kLt:
+        direction = (expected_param_order)
+                        ? SortThunk::SortDirection::kAscending
+                        : SortThunk::SortDirection::kDescending;
+        break;
+      default:
+        break;
+    }
+  }
+
+  return direction;
+}
+
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
     const HloInstruction* instruction) {
   auto* sort = Cast<HloSortInstruction>(instruction);
 
-  TF_ASSIGN_OR_RETURN(auto comparator, ir_emitter_.EmitSortComparator(sort));
+  HloComputation* hlocomparator = sort->to_apply();
+
+  const std::optional<SortThunk::SortDirection> direction =
+      MatchSortDirection(hlocomparator);
+
+  TF_ASSIGN_OR_RETURN(auto comparator,
+                      ir_emitter_.EmitSortComparator(hlocomparator));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(sort));
 
   if (buffers.arguments.size() != buffers.results.size()) {
@@ -1048,7 +1098,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
   TF_ASSIGN_OR_RETURN(
       thunks.emplace_back(),
       SortThunk::Create(ThunkInfo(instruction), inputs, sort->sort_dimension(),
-                        sort->is_stable(), comparator.name));
+                        sort->is_stable(), comparator.name, direction));
 
   return thunks;
 }
