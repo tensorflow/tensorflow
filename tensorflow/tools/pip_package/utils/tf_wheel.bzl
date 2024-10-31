@@ -30,7 +30,6 @@ load(
     "MACOSX_DEPLOYMENT_TARGET",
     "WHEEL_COLLAB",
     "WHEEL_NAME",
-    "OUTPUT_PATH",
 )
 load("//tensorflow:tensorflow.bzl", "VERSION", "WHEEL_VERSION")
 

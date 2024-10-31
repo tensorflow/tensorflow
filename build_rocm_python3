@@ -48,35 +48,34 @@ fi
 
 if [ -f /usertools/rocm.bazelrc ]; then
 	# Use the bazelrc files in /usertools if available
-	# Also, this is likely a tensorflow-build container so put the whl in /tf/pkg
-        TF_PKG_LOC=/tf/pkg
+    	TF_PKG_LOC=bazel-bin/tensorflow/tools/pip_package/wheel_house
 	if [[ -n $nightly ]]; then
 		# Remove any previous builds and build nightly
 	        rm -f $TF_PKG_LOC/tf_nightly_rocm*.whl
         export project_name=tf_nightly_rocm
 		python3 tensorflow/tools/ci_build/update_version.py --nightly --rocm_version &&
-		bazel --bazelrc=/usertools/rocm.bazelrc build $RESOURCE_OPTION --config=rocm --repo_env=WHEEL_NAME=tf_nightly_rocm --repo_env=OUTPUT_PATH=$TF_PKG_LOC/ --action_env=project_name=tf_nightly_rocm --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION tensorflow/tools/pip_package:wheel --verbose_failures &&
+		bazel --bazelrc=/usertools/rocm.bazelrc build $RESOURCE_OPTION --config=rocm --repo_env=WHEEL_NAME=tf_nightly_rocm --action_env=project_name=tf_nightly_rocm --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION tensorflow/tools/pip_package:wheel --verbose_failures &&
 		pip3 install --upgrade $TF_PKG_LOC/tf_nightly_rocm*.whl
 	else
 		# Remove any previous builds and build release
 	        rm -f $TF_PKG_LOC/tensorflow*.whl
 		python3 tensorflow/tools/ci_build/update_version.py --rocm_version &&
-		bazel --bazelrc=/usertools/rocm.bazelrc build $RESOURCE_OPTION --config=rocm --repo_env=WHEEL_NAME=tensorflow_rocm --repo_env=OUTPUT_PATH=$TF_PKG_LOC/ --action_env=project_name=tensorflow_rocm --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION tensorflow/tools/pip_package:wheel --verbose_failures &&
+		bazel --bazelrc=/usertools/rocm.bazelrc build $RESOURCE_OPTION --config=rocm --repo_env=WHEEL_NAME=tensorflow_rocm --action_env=project_name=tensorflow_rocm --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION tensorflow/tools/pip_package:wheel --verbose_failures &&
 		pip3 install --upgrade $TF_PKG_LOC/tensorflow*.whl
 	fi
 else
 	# Legacy style: run configure then build
-        TF_PKG_LOC=/tmp/tensorflow_pkg
+        TF_PKG_LOC=bazel-bin/tensorflow/tools/pip_package/wheel_house
 	yes "" | TF_NEED_CLANG=0 ROCM_PATH=$ROCM_INSTALL_DIR TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python3 ./configure &&
 	if [[ -n $nightly ]]; then
 		# Remove any previous builds and build nightly
 	        rm -f $TF_PKG_LOC/tf_nightly_rocm*.whl
-		bazel build $RESOURCE_OPTION --config=opt --config=rocm --repo_env=WHEEL_NAME=tf_nightly_rocm --action_env=project_name=tf_nightly_rocm --repo_env=OUTPUT_PATH=$TF_PKG_LOC/ //tensorflow/tools/pip_package:wheel --verbose_failures &&
+		bazel build $RESOURCE_OPTION --config=opt --config=rocm --repo_env=WHEEL_NAME=tf_nightly_rocm --action_env=project_name=tf_nightly_rocm //tensorflow/tools/pip_package:wheel --verbose_failures &&
 		pip3 install --upgrade $TF_PKG_LOC/tf_nightly_rocm*.whl
 	else
 		# Remove any previous builds and build release
 	        rm -f $TF_PKG_LOC/tensorflow*.whl
-		bazel build $RESOURCE_OPTION --config=opt --config=rocm --repo_env=WHEEL_NAME=tensorflow_rocm --action_env=project_name=tensorflow_rocm --repo_env=OUTPUT_PATH=$TF_PKG_LOC/ //tensorflow/tools/pip_package:wheel --verbose_failures &&
+		bazel build $RESOURCE_OPTION --config=opt --config=rocm --repo_env=WHEEL_NAME=tensorflow_rocm --action_env=project_name=tensorflow_rocm //tensorflow/tools/pip_package:wheel --verbose_failures &&
 		pip3 install --upgrade $TF_PKG_LOC/tensorflow*.whl
 	fi
 fi
