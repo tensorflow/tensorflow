@@ -32,7 +32,6 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
@@ -155,7 +154,8 @@ class IrEmitter2 {
       const HloInstruction* instr);
 
   // Emits a comparator function for the given sort instruction.
-  absl::StatusOr<ComparatorInfo> EmitSortComparator(HloComputation* comparator);
+  absl::StatusOr<ComparatorInfo> EmitSortComparator(
+      const HloInstruction* instr);
 
  private:
   class ElementalIrEmitter;

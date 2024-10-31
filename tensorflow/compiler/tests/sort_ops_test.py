@@ -89,34 +89,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
                 -np.arange(101, dtype=value_type)
             ])
 
-  # Flip is the only reliable way to get a descending sort across any dimension.
-  # 1. -np.sort(-x) doesn't work with unsigned integers.
-  # 2. np.sort(x, axis=a)[::-1] is not generic over axis wher reversing array
-  # 3. x.argsort() either requires "-1" (first option) or flip, so the same.
-  def _descendingSort(self, x, dimension):
-    b = np.sort(x, axis=dimension)
-    return np.flip(b, axis=dimension)
-
-  @parameterized.parameters(0, 1, 2)
-  def testMisleadingComparator(self, dimension):
-    shape = (4, 3, 4)
-    for key_type in self._supported_key_types():
-      x = self._shuffled_arange(shape, key_type)
-      expected = self._descendingSort(x, dimension)
-
-      # pylint: disable=cell-var-from-loop
-      @function.Defun(key_type, key_type)
-      def compare_gt(x1, x2):
-        return x2 < x1  # "greater than" with misleading "<" sign
-
-      def wrap_sort(x):
-        return xla.variadic_sort([x],
-                                 dimension=dimension,
-                                 is_stable=False,
-                                 comparator=compare_gt)
-
-      self._assertOpOutputMatchesExpected(wrap_sort, [x], expected=[expected])
-
   @parameterized.parameters(0, 1, 2)
   def testVariadicSortDimension(self, dimension):
     shape = (2, 3, 4)
@@ -136,12 +108,11 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
       self._assertOpOutputMatchesExpected(wrap_sort, [x], expected=[expected])
 
-  @parameterized.parameters(0, 1, 2)
-  def testVariadicSortReverse(self, dimension):
-    shape = (100, 3, 4)
+  def testVariadicSortReverse(self):
+    shape = (100,)
     for key_type in self._supported_key_types():
       x = self._shuffled_arange(shape, key_type)
-      expected = self._descendingSort(x, dimension)
+      expected = np.sort(x, axis=0)[::-1]
 
       @function.Defun(key_type, key_type)
       def compare_gt(x1, x2):
@@ -149,7 +120,7 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
       def wrap_sort(x):
         return xla.variadic_sort([x],
-                                 dimension=dimension,
+                                 dimension=0,
                                  is_stable=False,
                                  comparator=compare_gt)
 
@@ -389,93 +360,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
               in_topk,
               [x.astype(np.float32), y.astype(dtype)],
               expected=[expected])
-
-
-class SortOpsBenchmark(test.Benchmark):
-  """Microbenchmarks for the sort ops."""
-
-  def _benchmarkSort(self, name, dtype, is_stable, use_xla_jit):
-
-    def get_shuffled_arr(sorted_arr, shape):
-      shuffled = sorted_arr.copy()
-      np.random.shuffle(shuffled)
-      return shuffled.reshape(shape)
-
-    @function.Defun(dtype, dtype)
-    def compare_lt(x1, x2):
-      return x1 < x2
-
-    def builder_fn():
-      shape = (100001,)
-      sorted_arr = np.arange(np.prod(shape), dtype=dtype)
-      shuffled = get_shuffled_arr(sorted_arr, shape)
-      given_result = xla.variadic_sort(
-          [shuffled], dimension=0, is_stable=is_stable, comparator=compare_lt
-      )
-      stable_str = "stable" if is_stable else "unstable"
-      return "%s_%s.shape%s" % (stable_str, name, shape), [given_result]
-
-    xla_test.Benchmark(self, builder_fn, use_xla_jit=use_xla_jit, device="cpu")
-
-  def benchmarkStableSortF16(self):
-    self._benchmarkSort(
-        "sort_f16", dtype=np.float16, is_stable=True, use_xla_jit=False
-    )
-
-  def benchmarkStableSortF32(self):
-    self._benchmarkSort(
-        "sort_f32", dtype=np.float32, is_stable=True, use_xla_jit=False
-    )
-
-  def benchmarkStableSortF64(self):
-    self._benchmarkSort(
-        "sort_f64", dtype=np.float64, is_stable=True, use_xla_jit=False
-    )
-
-  def benchmarkStableSortF16XLA(self):
-    self._benchmarkSort(
-        "sort_f16", dtype=np.float16, is_stable=True, use_xla_jit=True
-    )
-
-  def benchmarkStableSortF32XLA(self):
-    self._benchmarkSort(
-        "sort_f32", dtype=np.float32, is_stable=True, use_xla_jit=True
-    )
-
-  def benchmarkStableSortF64XLA(self):
-    self._benchmarkSort(
-        "sort_f64", dtype=np.float64, is_stable=True, use_xla_jit=True
-    )
-
-  def benchmarkUnstableSortF16(self):
-    self._benchmarkSort(
-        "sort_f16", dtype=np.float16, is_stable=False, use_xla_jit=False
-    )
-
-  def benchmarkUnstableSortF32(self):
-    self._benchmarkSort(
-        "sort_f32", dtype=np.float32, is_stable=False, use_xla_jit=False
-    )
-
-  def benchmarkUnstableSortF64(self):
-    self._benchmarkSort(
-        "sort_f64", dtype=np.float64, is_stable=False, use_xla_jit=False
-    )
-
-  def benchmarkUnstableSortF16XLA(self):
-    self._benchmarkSort(
-        "sort_f16", dtype=np.float16, is_stable=False, use_xla_jit=True
-    )
-
-  def benchmarkUnstableSortF32XLA(self):
-    self._benchmarkSort(
-        "sort_f32", dtype=np.float32, is_stable=False, use_xla_jit=True
-    )
-
-  def benchmarkUnstableSortF64XLA(self):
-    self._benchmarkSort(
-        "sort_f64", dtype=np.float64, is_stable=False, use_xla_jit=True
-    )
 
 
 if __name__ == "__main__":

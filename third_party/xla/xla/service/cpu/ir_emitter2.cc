@@ -529,7 +529,9 @@ IrEmitter2::EmitDynamicUpdateSliceHostKernel(const HloInstruction* instr) {
 }
 
 absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
-    HloComputation* comparator) {
+    const HloInstruction* instr) {
+  HloComputation* comparator = instr->to_apply();
+
   // Find if we already emitted this comparator.
   auto info = absl::c_find_if(comparators_, [&](const ComparatorInfo& info) {
     return info.name == comparator->name();
