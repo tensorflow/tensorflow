@@ -194,14 +194,12 @@ bool Parser::ParseVarName(std::string* var_name) {
 }
 
 bool Parser::ParseInt(int64_t* value) {
-  int val;
   if (current_token_.kind != Token::Kind::kIntLiteral ||
-      current_token_.spelling.getAsInteger(/*radix=*/0, val)) {
+      current_token_.spelling.getAsInteger(/*radix=*/0, *value)) {
     llvm::errs() << "Expected int literal, got: " << current_token_.spelling
                  << "\n";
     return false;
   }
-  *value = static_cast<int64_t>(val);
   Advance();
   return true;
 }

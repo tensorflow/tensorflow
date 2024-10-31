@@ -133,6 +133,14 @@ TEST_F(IndexingMapSerializationTest, DimRangesRuntimeAndConstraints) {
   )");
 }
 
+TEST_F(IndexingMapSerializationTest, Int64Bounds) {
+  ParseAndCheck(R"(
+    (bl_x) -> (bl_x floordiv 100663296),
+    domain:
+    bl_x in [0, 2415919103]
+  )");
+}
+
 TEST_F(IndexingMapSerializationTest, AffineExprsWithParens) {
   ParseAndCheck(R"(
     (d0, d1)[s0, s1] -> ((d0 + d0 mod 3) floordiv 3
