@@ -166,6 +166,7 @@ cc_library(
     ),
     hdrs = ["triton_fusion_emitter_legacy_matmul.h"],
     deps = [
+        ":emitter_helpers",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:shape_util",

@@ -249,6 +249,50 @@ ENTRY e {
       /*run_hlo_passes=*/false));
 }
 
+TEST_P(UnaryElementwiseTest, ElementwiseUnaryOpExecutesCorrectly) {
+  PrimitiveType data_type;
+  HloOpcode opcode;
+  float tolerance;
+  std::tie(data_type, opcode, tolerance) = GetParam();
+
+  const std::string kHloTestTemplate = R"(
+triton_computation {
+  parameter_0 = $0[33,68]{1,0} parameter(0)
+  output = $0[33,68]{1,0} $1(parameter_0)
+  ROOT convert = f32[33,68]{1,0} convert(output)
+}
+
+ENTRY e {
+  p0 = $0[33,68]{1,0} parameter(0)
+  ROOT triton_fusion = f32[33,68]{1,0} fusion(p0), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+                    "block_level_fusion_config":{"output_tile_sizes":["1", "1"],"num_warps":"1"}}}
+})";
+  const std::string hlo_test = absl::Substitute(
+      kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
+      HloOpcodeString(opcode));
+
+  const std::string kHloRefTemplate = R"(
+fused_computation {
+  param_0.1 = $0[33,68]{1,0} parameter(0)
+  output = $0[33,68]{1,0} $1(param_0.1)
+  ROOT convert = f32[33,68]{1,0} convert(output)
+}
+
+ENTRY e {
+  p0 = $0[33,68]{1,0} parameter(0)
+  ROOT fusion = f32[33,68]{1,0} fusion(p0), kind=kLoop, calls=fused_computation
+})";
+  const std::string hlo_ref = absl::Substitute(
+      kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
+      HloOpcodeString(opcode));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      hlo_ref, hlo_test, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance},
+      /*run_hlo_passes=*/false));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuitePRED, UnaryElementwiseTest,
     ::testing::Combine(
@@ -370,6 +414,54 @@ ENTRY e {
       "alpha_imag":0,"precision_config":
       {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[92,63]{1,0} get-tuple-element((f32[92,63]{1,0}, s8[0]{0}) gemm), index=0
+})";
+  const std::string hlo_ref = absl::Substitute(
+      kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
+      HloOpcodeString(opcode));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      hlo_ref, hlo_test, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance},
+      /*run_hlo_passes=*/false, /*args_max_bits_of_precision=*/6));
+}
+
+TEST_P(BinaryElementwiseTest, ElementwiseBinaryOpExecutesCorrectly) {
+  PrimitiveType data_type;
+  HloOpcode opcode;
+  float tolerance;
+  std::tie(data_type, opcode, tolerance) = GetParam();
+
+  const std::string kHloTestTemplate = R"(
+triton_computation {
+  parameter_0 = $0[11,63]{1,0} parameter(0)
+  parameter_1 = $0[11,63]{1,0} parameter(1)
+  output = $0[11,63]{1,0} $1(parameter_0, parameter_1)
+  ROOT c.1 = f32[11,63]{1,0} convert(output)
+}
+
+ENTRY e {
+  p0 = $0[11,63]{1,0} parameter(0)
+  p1 = $0[11,63]{1,0} parameter(1)
+  ROOT triton_fusion = f32[11,63]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+                    "block_level_fusion_config":{"output_tile_sizes":["1", "1"],"num_warps":"1"}}}
+})";
+  const std::string hlo_test = absl::Substitute(
+      kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
+      HloOpcodeString(opcode));
+
+  const std::string kHloRefTemplate = R"(
+fused_computation {
+  p0 = $0[11,63]{1,0} parameter(0)
+  p1 = $0[11,63]{1,0} parameter(1)
+  output = $0[11,63]{1,0} $1(p0, p1)
+  ROOT convert.1 = f32[11,63]{1,0} convert(output)
+}
+
+ENTRY e {
+  p1 = $0[11,63]{1,0} parameter(1)
+  p0 = $0[11,63]{1,0} parameter(0)
+  ROOT fusion = f32[11,63]{1,0} fusion(p0, p1), kind=kLoop, calls=fused_computation
 })";
   const std::string hlo_ref = absl::Substitute(
       kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -1063,6 +1155,7 @@ TEST_P(TritonSoftmaxTest,
   if (data_type == F16) {
     GTEST_SKIP() << "Exponential op does not support F16.";
   }
+
   const std::string hlo_text_template = R"(
 HloModule softmax
 max_computation {
@@ -1743,10 +1836,6 @@ ENTRY main {
 TEST_P(TritonSoftmaxTest, CanFuseAndEmitRMSNormDiamond) {
   PrimitiveType data_type = GetParam();
 
-  if (data_type == F16) {
-    GTEST_SKIP() << "rsqrt op does not support F16.";
-  }
-
   const std::string hlo_text_template = R"(
 HloModule rms_norm
 add_computation {
@@ -1794,7 +1883,7 @@ ENTRY main.30 {
       tolerance = 1e-6;
       break;
     case F16:
-      tolerance = 2e-4;
+      tolerance = 5e-4;
       break;
     case BF16:
       tolerance = 4e-2;

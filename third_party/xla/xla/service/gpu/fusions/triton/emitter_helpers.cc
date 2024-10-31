@@ -321,29 +321,67 @@ ScalarOrTensor Splat(ImplicitLocOpBuilder& b, ScalarOrTensor value,
   return ScalarOrTensor(b.create<mt::SplatOp>(type, value.UnwrapUnsafe()));
 }
 
+bool IsSupportedElementwiseLibdeviceFunction(const HloInstruction& hlo) {
+  auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
+  if (!dev_fn_id.ok()) {
+    return false;
+  }
+  PrimitiveType output_type = hlo.shape().element_type();
+  return output_type == PrimitiveType::BF16 ||
+         output_type == PrimitiveType::F16 ||
+         output_type == PrimitiveType::F32 || output_type == PrimitiveType::F64;
+}
+
+absl::StatusOr<Value> EmitElementwiseLibdeviceFunction(
+    ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info, const HloInstruction& hlo,
+    ValueRange inputs) {
+  TF_ASSIGN_OR_RETURN(auto dev_fn_id, GetTargetDeviceFunctionID(hlo.opcode()));
+  PrimitiveType output_type = hlo.shape().element_type();
+  if (output_type != PrimitiveType::BF16 && output_type != PrimitiveType::F16 &&
+      output_type != PrimitiveType::F32 && output_type != PrimitiveType::F64) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported elementwise operation ", hlo.ToString()));
+  }
+  llvm::Triple triple("nvptx64-unknown-unknown");
+  if (std::holds_alternative<se::RocmComputeCapability>(
+          device_info.gpu_compute_capability())) {
+    triple.setTriple("amdgcn-unknown-unknown");
+  }
+  llvm::SmallVector<Value, 2> casted_inputs;
+  PrimitiveType casted_output_type = output_type;
+  if (output_type == PrimitiveType::BF16 || output_type == PrimitiveType::F16) {
+    // Upcast the inputs to F32.
+    for (int64_t i = 0; i < inputs.size(); ++i) {
+      casted_inputs.push_back(Cast(b, inputs[i], b.getF32Type()));
+    }
+    casted_output_type = F32;
+  } else {
+    casted_inputs.assign(inputs.begin(), inputs.end());
+  }
+  Value res = b.create<mt::ExternElementwiseOp>(
+      casted_inputs[0].getType(), casted_inputs, "libdevice", libdevice_path,
+      ObtainDeviceFunctionName(dev_fn_id, casted_output_type, triple),
+      /*pure=*/true);
+  if (output_type == PrimitiveType::BF16 || output_type == PrimitiveType::F16) {
+    // Downcast back to the original output type.
+    TF_ASSIGN_OR_RETURN(auto dst_ty, TritonType(b, output_type));
+    res = Cast(b, res, dst_ty);
+  }
+  return res;
+}
+
 absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
                                       absl::string_view libdevice_path,
                                       const se::DeviceDescription& device_info,
                                       const HloInstruction& hlo,
                                       ValueRange inputs) {
-  if (mlir::getElementTypeOrSelf(inputs[0]).isF32() ||
-      mlir::getElementTypeOrSelf(inputs[0]).isF64()) {
-    auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
-    if (dev_fn_id.ok()) {
-      llvm::Triple triple("nvptx64-unknown-unknown");
-      if (std::holds_alternative<se::RocmComputeCapability>(
-              device_info.gpu_compute_capability())) {
-        triple.setTriple("amdgcn-unknown-unknown");
-      }
-      return b.create<mt::ExternElementwiseOp>(
-          inputs[0].getType(), inputs, "libdevice", libdevice_path,
-          ObtainDeviceFunctionName(dev_fn_id.value(),
-                                   hlo.shape().element_type(), triple),
-          /*pure=*/true);
-    }
+  if (IsSupportedElementwiseLibdeviceFunction(hlo)) {
+    return EmitElementwiseLibdeviceFunction(b, libdevice_path, device_info, hlo,
+                                            inputs);
   }
   const bool is_integer =
-      mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(inputs[0]));
+      mlir::isa<mlir::IntegerType>(getElementTypeOrSelf(inputs[0].getType()));
 
   switch (hlo.opcode()) {
     case HloOpcode::kCopy:
