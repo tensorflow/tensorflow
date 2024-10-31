@@ -116,7 +116,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::gpu::createAllocateSharedMemoryPass());
   pm.addPass(CreateSparseLocalLoadToLLVMPass());
   pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
-  // The triton_gpu.sparse_dot ops need to be rewritten after
+  // The triton_xla.sparse_dot ops need to be rewritten after
   // ModuleAxisInfoAnalysis inside convert-triton-gpu-to-llvm.
   pm.addPass(CreateSparseDotOpToLLVMPass());
   pm.addPass(mt::createConvertNVGPUToLLVMPass());
