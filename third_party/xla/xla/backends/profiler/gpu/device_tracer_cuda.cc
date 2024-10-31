@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if GOOGLE_CUDA
+
 #include <stdlib.h>
 
 #include <memory>
@@ -24,7 +26,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
-#include "xla/backends/profiler/gpu/cupti_utils.h"
+#include "xla/backends/profiler/gpu/cupti_wrapper.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/errors.h"
@@ -236,3 +238,5 @@ auto register_gpu_tracer_factory = [] {
 
 }  // namespace profiler
 }  // namespace xla
+
+#endif  // GOOGLE_CUDA

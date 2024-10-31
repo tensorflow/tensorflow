@@ -548,12 +548,11 @@ cc_library(
     hdrs = ["kernel_name_tracer.h"],
     tags = ["manual"],  # Need to exclude this from wildcard builds
     deps = [
-        "//xla/tsl/profiler/utils:time_utils",
-        "@com_google_absl//absl/algorithm:container",
-    ] + if_cuda([
         "//xla/backends/profiler/gpu:cupti_collector",
         "//xla/backends/profiler/gpu:cupti_tracer",
-    ]),
+        "//xla/tsl/profiler/utils:time_utils",
+        "@com_google_absl//absl/algorithm:container",
+    ],
 )
 
 cc_library(

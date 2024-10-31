@@ -29,8 +29,8 @@ limitations under the License.
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/profiler/gpu/kernel_details.h"
 #include "xla/tsl/profiler/utils/buffer_pool.h"
 #include "xla/tsl/profiler/utils/lock_free_queue.h"
 #include "tsl/platform/mutex.h"
@@ -104,6 +104,32 @@ struct MemsetDetails {
   int8_t channel_type = 0;  // CUPTI_CHANNEL_TYPE_INVALID
 };
 
+struct KernelDetails {
+  // The number of registers used in this kernel.
+  uint32_t registers_per_thread;
+  // The amount of shared memory space used by a thread block.
+  uint32_t static_shared_memory_usage;
+  // The amount of dynamic memory space used by a thread block.
+  uint32_t dynamic_shared_memory_usage;
+  // X-dimension of a thread block.
+  uint32_t block_x;
+  // Y-dimension of a thread block.
+  uint32_t block_y;
+  // Z-dimension of a thread block.
+  uint32_t block_z;
+  // X-dimension of a grid.
+  uint32_t grid_x;
+  // Y-dimension of a grid.
+  uint32_t grid_y;
+  // Z-dimension of a grid.
+  uint32_t grid_z;
+
+  // ID of the hardware channel on which this operation ran.
+  uint32_t channel_id = -1;
+  // CUpti_ChannelType of the channel above.
+  int8_t channel_type = 0;  // CUPTI_CHANNEL_TYPE_INVALID
+};
+
 struct GenericDetails {
   uint32_t cbid;
 };
@@ -115,6 +141,18 @@ struct CudaGraphDetails {
                            // fields as if trace in node mode, many activity
                            // events will contains graph id.
 };
+
+inline std::string ToXStat(const KernelDetails& kernel_info,
+                           double occupancy_pct) {
+  return absl::StrCat(
+      "regs:", kernel_info.registers_per_thread,
+      " static_shared:", kernel_info.static_shared_memory_usage,
+      " dynamic_shared:", kernel_info.dynamic_shared_memory_usage,
+      " grid:", kernel_info.grid_x, ",", kernel_info.grid_y, ",",
+      kernel_info.grid_z, " block:", kernel_info.block_x, ",",
+      kernel_info.block_y, ",", kernel_info.block_z,
+      " occ_pct:", occupancy_pct);
+}
 
 // Gets the name of the CUpti_ActivityMemoryKind value.
 absl::string_view GetMemoryKindName(int8_t memory_kind);
