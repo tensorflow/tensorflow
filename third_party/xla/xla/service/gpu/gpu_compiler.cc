@@ -72,7 +72,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/collectives/all_gather_broadcast_reorder.h"
-#include "xla/hlo/transforms/collectives/all_gather_combiner.h"
 #include "xla/hlo/transforms/collectives/all_reduce_combiner.h"
 #include "xla/hlo/transforms/collectives/all_reduce_contiguous.h"
 #include "xla/hlo/transforms/collectives/async_collective_creator.h"
@@ -135,6 +134,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/collective_permute_decomposer.h"
 #include "xla/service/collective_pipeliner.h"
+#include "xla/service/collective_utils.h"
 #include "xla/service/compiler.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/copy_insertion.h"
@@ -146,6 +146,7 @@ limitations under the License.
 #include "xla/service/export_hlo.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gather_expander.h"
+#include "xla/service/gpu/all_gather_combiner.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/custom_kernel_fusion_autotuner.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
@@ -1082,17 +1083,22 @@ void AddDoubleBufferingPasses(const DebugOptions& opts,
 }
 
 absl::Status RunPostFusionPasses(
-    HloModule* hlo_module,
+    HloModule* hlo_module, const se::DeviceDescription& device_description,
+    int pointer_size,
     std::function<absl::Status(HloPassPipeline*, const DebugOptions&)>
         add_custom_kernel_replacement_passes) {
   const DebugOptions& opts = hlo_module->config().debug_options();
 
   HloPassPipeline pipeline("post-fusion optimization");
   pipeline.AddPass<RenameFusions>();
-  pipeline.AddPass<AllGatherCombiner>(
+  pipeline.AddPass<GpuAllGatherCombiner>(
+      device_description,
+      /*default_combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
+      /*combine_threshold_in_bytes=*/
       opts.xla_gpu_all_gather_combine_threshold_bytes(),
       /*combine_threshold_count=*/256,
-      opts.xla_gpu_enable_all_gather_combine_by_dim());
+      /*combine_by_dim=*/opts.xla_gpu_enable_all_gather_combine_by_dim(),
+      /*combine_different_dtypes=*/true, /*pointer_size=*/pointer_size);
   pipeline.AddPass<AllReduceCombiner>(
       opts.xla_gpu_all_reduce_combine_threshold_bytes(),
       /*combine_threshold_count=*/256);
@@ -1354,7 +1360,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
                                      thread_pool.get_mutable(),
                                      ShapeSizeBytesFunction()));
   TF_RETURN_IF_ERROR(RunPostFusionPasses(
-      hlo_module,
+      hlo_module, gpu_target_config.device_description, pointer_size_,
       [this](HloPassPipeline* pipeline, const DebugOptions& debug_options) {
         return AddCustomKernelReplacementPasses(pipeline, debug_options);
       }));
