@@ -323,7 +323,7 @@ ScalarOrTensor Splat(ImplicitLocOpBuilder& b, ScalarOrTensor value,
 
 bool IsSupportedElementwiseLibdeviceFunction(const HloInstruction& hlo) {
   auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
-  if (!dev_fn_id.ok()) {
+  if (!dev_fn_id.has_value()) {
     return false;
   }
   PrimitiveType output_type = hlo.shape().element_type();
@@ -336,7 +336,11 @@ absl::StatusOr<Value> EmitElementwiseLibdeviceFunction(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info, const HloInstruction& hlo,
     ValueRange inputs) {
-  TF_ASSIGN_OR_RETURN(auto dev_fn_id, GetTargetDeviceFunctionID(hlo.opcode()));
+  auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
+  if (!dev_fn_id.has_value()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("No libdevice function for operation ", hlo.ToString()));
+  }
   PrimitiveType output_type = hlo.shape().element_type();
   if (output_type != PrimitiveType::BF16 && output_type != PrimitiveType::F16 &&
       output_type != PrimitiveType::F32 && output_type != PrimitiveType::F64) {
@@ -361,7 +365,7 @@ absl::StatusOr<Value> EmitElementwiseLibdeviceFunction(
   }
   Value res = b.create<mt::ExternElementwiseOp>(
       casted_inputs[0].getType(), casted_inputs, "libdevice", libdevice_path,
-      ObtainDeviceFunctionName(dev_fn_id, casted_output_type, triple),
+      ObtainDeviceFunctionName(dev_fn_id.value(), casted_output_type, triple),
       /*pure=*/true);
   if (output_type == PrimitiveType::BF16 || output_type == PrimitiveType::F16) {
     // Downcast back to the original output type.

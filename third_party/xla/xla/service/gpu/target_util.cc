@@ -18,6 +18,7 @@ limitations under the License.
 #include "xla/service/gpu/target_util.h"
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -270,7 +271,7 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
 }
 }  // namespace
 
-absl::StatusOr<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
+std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
   switch (op) {
     case HloOpcode::kAtan2:
       return TargetDeviceFunctionID::kAtan2;
@@ -305,8 +306,7 @@ absl::StatusOr<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
     default:
       break;
   }
-  return NotFound("The HLO opcode %s is not mapped to a device function",
-                  HloOpcodeString(op));
+  return std::nullopt;
 }
 
 std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,

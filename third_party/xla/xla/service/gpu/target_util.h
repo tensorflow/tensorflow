@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TARGET_UTIL_H_
 #define XLA_SERVICE_GPU_TARGET_UTIL_H_
 
+#include <optional>
 #include <string>
 
 #include "absl/status/statusor.h"
@@ -69,8 +70,9 @@ enum class TargetDeviceFunctionID {
   kErf,
 };
 
-// HLO opcode -> TargetDeviceFunctionID mapping.
-absl::StatusOr<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode);
+// HLO opcode -> TargetDeviceFunctionID mapping. Returns std::nullopt if there
+// is no TargetDeviceFunctionID for the given HloOpcode.
+std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op);
 
 // Emits IR to call a device function named "callee_name" on the given
 // operand. Returns the IR value that represents the return value.
