@@ -1,3 +1,4 @@
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -42,12 +43,15 @@ tf_cuda_cc_test(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/backends/profiler/gpu:cuda_test",
-        "@local_xla//xla/backends/profiler/gpu:cupti_collector",
-        "@local_xla//xla/backends/profiler/gpu:device_tracer",
         "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
     ] + if_cuda_is_configured([
+        # keep sorted
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cupti_headers",
+    ]) + if_cuda([
+        # keep sorted
+        "@local_xla//xla/backends/profiler/gpu:cuda_test",
+        "@local_xla//xla/backends/profiler/gpu:cupti_collector",
+        "@local_xla//xla/backends/profiler/gpu:device_tracer_cuda",
     ]),
 )

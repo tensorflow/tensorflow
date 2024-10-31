@@ -13,15 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
-
 #include "xla/backends/profiler/gpu/cupti_error_manager.h"
 
 #include <cstdint>
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "xla/backends/profiler/gpu/cuda_test.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
@@ -237,5 +234,3 @@ TEST_F(CuptiErrorManagerTest, GpuTraceAutoEnableTest) {
 }  // namespace test
 }  // namespace profiler
 }  // namespace xla
-
-#endif  // GOOGLE_CUDA

@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if TENSORFLOW_USE_ROCM
-
 #include <memory>
 #include <utility>
 
@@ -275,5 +273,3 @@ auto register_rocm_gpu_tracer_factory = [] {
 
 }  // namespace profiler
 }  // namespace xla
-
-#endif  // TENSORFLOW_USE_ROCM

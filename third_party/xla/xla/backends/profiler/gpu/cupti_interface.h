@@ -117,8 +117,6 @@ class CuptiInterface {
   void operator=(const CuptiInterface&) = delete;
 };
 
-CuptiInterface* GetCuptiInterface();
-
 }  // namespace profiler
 }  // namespace xla
 
