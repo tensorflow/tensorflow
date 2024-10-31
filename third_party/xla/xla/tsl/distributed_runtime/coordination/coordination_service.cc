@@ -193,6 +193,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   void SetTaskError(std::string_view task_name, const absl::Status& error)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  // Used for cluster-wide errors (e.g. register or shutdown barrier fails).
+  void SetAllTasksError(const absl::Status& error)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   absl::Status DisconnectTask(const CoordinatedTask& task)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   void DisconnectAllTasks() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
@@ -248,10 +251,10 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   // Sends responses to error polling requests when an error is encountered.
   void SendErrorPollingResponse(const absl::Status& error)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  // Responds to error polling or stops the service when an error is
+  // Responds to error polling or fails all tasks when an error is
   // encountered. Should only be called when there is no service to client
-  // connection. Returns true if the service stops, otherwise returns false.
-  bool SendErrorPollingResponseOrStopService(const absl::Status& error)
+  // connection.
+  void SendErrorPollingResponseOrFailAllTasks(const absl::Status& error)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Returns whether the clients are polling for error from the service. If the
   // clients are not polling for error from the service, the service should stop
@@ -311,7 +314,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     void Disconnect(uint64_t grace_period_duration_us);
     absl::Status RecordHeartbeat(uint64_t task_incarnation);
     int64_t TimeSinceLastHeartbeatMs();
-    void SetError(const absl::Status& status);
+    // Sets the error and returns true if the task state is not ERROR.
+    // Otherwise, don't overwrite the error and return false.
+    bool SetError(const absl::Status& status);
     DeviceInfo GetDeviceInfo() { return devices_; }
     void CollectDeviceInfo(const DeviceInfo& devices) { devices_ = devices; }
     // Checks if task has called WaitForAllTasks() previously, which gathers the
@@ -439,11 +444,12 @@ void CoordinationServiceStandaloneImpl::TaskState::Disconnect(
   status_ = absl::OkStatus();
 }
 
-void CoordinationServiceStandaloneImpl::TaskState::SetError(
+bool CoordinationServiceStandaloneImpl::TaskState::SetError(
     const absl::Status& status) {
-  if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return;
+  if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return false;
   state_ = CoordinatedTaskState::TASKSTATE_ERROR;
   status_ = status;
+  return true;
 }
 
 absl::Status CoordinationServiceStandaloneImpl::TaskState::RecordHeartbeat(
@@ -548,12 +554,6 @@ void CoordinationServiceStandaloneImpl::CheckHeartbeatTimeout() {
                        "preemption, eviction) to debug further.")));
 
       SetTaskError(task_name, status);
-      if (ServiceHasStopped()) {
-        // Setting the task to error may cause service to stop (e.g. task is
-        // waiting for shutdown barrier). In this case, all the state is invalid
-        // and we should exit immediately.
-        return;
-      }
     }
   }
   // Propagate heartbeat timeout errors to other connected tasks.
@@ -1049,7 +1049,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
   // If there is no service-to-client connection, use error polling or stop
   // the service.
   if (client_cache_ == nullptr) {
-    SendErrorPollingResponseOrStopService(error);
+    SendErrorPollingResponseOrFailAllTasks(error);
     return;
   }
 
@@ -1228,18 +1228,27 @@ absl::Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
   return absl::OkStatus();
 }
 
+void CoordinationServiceStandaloneImpl::SetAllTasksError(
+    const absl::Status& error) {
+  for (const auto& task_state : cluster_state_) {
+    SetTaskError(task_state.first, error);
+  }
+}
+
 void CoordinationServiceStandaloneImpl::SetTaskError(
     std::string_view task_name, const absl::Status& error) {
-  cluster_state_[task_name]->SetError(error);
-  LOG(ERROR) << task_name
-             << " has been set to ERROR in coordination service: " << error;
-  for (const auto& barrier_id :
-       cluster_state_[task_name]->GetOngoingBarriers()) {
-    absl::Status barrier_error =
-        MakeCoordinationError(absl::InternalError(absl::StrCat(
-            "Barrier failed beacuse a task is in error. Barrier Id: ",
-            barrier_id, ", Task: ", task_name, " Error: ", error.ToString())));
-    PassBarrier(barrier_id, barrier_error, &barriers_[barrier_id]);
+  const std::unique_ptr<TaskState>& task_state = cluster_state_[task_name];
+  if (task_state->SetError(error)) {
+    LOG(ERROR) << task_name
+               << " has been set to ERROR in coordination service: " << error;
+    for (const auto& barrier_id : task_state->GetOngoingBarriers()) {
+      absl::Status barrier_error =
+          MakeCoordinationError(absl::InternalError(absl::StrCat(
+              "Barrier failed beacuse a task is in error. Barrier Id: ",
+              barrier_id, ", Task: ", task_name,
+              " Error: ", error.ToString())));
+      PassBarrier(barrier_id, barrier_error, &barriers_[barrier_id]);
+    }
   }
 }
 
@@ -1552,7 +1561,11 @@ void CoordinationServiceStandaloneImpl::PassBarrier(std::string_view barrier_id,
   }
   barrier->done_callbacks.clear();
   if (barrier_id == kClusterRegisterBarrierId && !result.ok()) {
-    // Stop service if register failed.
+    // Set all tasks to error.
+    absl::Status register_error =
+        MakeCoordinationError(absl::InternalError(absl::StrCat(
+            "Cluster registration failed with error: ", result.ToString())));
+    SetAllTasksError(register_error);
     LOG(ERROR)
         << "Stopping coordination service as cluster registration failed. This "
            "may be due to 1) some tasks crashed earlier before connecting, 2) "
@@ -1560,7 +1573,6 @@ void CoordinationServiceStandaloneImpl::PassBarrier(std::string_view barrier_id,
            "setting a longer initialization timeout if such delays are "
            "expected, the timeout is currently set to: "
         << cluster_register_timeout_ << ".\n\nOriginal error: " << result;
-    Stop();
     return;
   }
   // Special hook for shutdown barrier to disconnect tasks at the barrier and
@@ -1693,9 +1705,7 @@ void CoordinationServiceStandaloneImpl::CompleteShutdownAfterBarrier(
     // (already-errored tasks don't receive new notifications)
     // For restarted tasks that hit this error, they should retry until there is
     // a new service instance.
-    for (const auto& [task_name, _] : cluster_state_) {
-      SetTaskError(task_name, shutdown_error);
-    }
+    SetAllTasksError(shutdown_error);
   }
 }
 }  // namespace
@@ -1712,9 +1722,9 @@ bool CoordinationServiceStandaloneImpl::isRecoverableJob(
   return recoverable_jobs_.find(task_name) != recoverable_jobs_.end();
 }
 
-bool CoordinationServiceStandaloneImpl::SendErrorPollingResponseOrStopService(
+void CoordinationServiceStandaloneImpl::SendErrorPollingResponseOrFailAllTasks(
     const absl::Status& error) {
-  CHECK(!error.ok()) << "SendErrorPollingResponseOrStopService called with OK "
+  CHECK(!error.ok()) << "SendErrorPollingResponseOrFailAllTasks called with OK "
                         "status. Should always return an error.";
   // Should be called only when there is no service-to-client connection.
   assert(client_cache_ == nullptr);
@@ -1723,14 +1733,15 @@ bool CoordinationServiceStandaloneImpl::SendErrorPollingResponseOrStopService(
         << "Use error polling to propagate the following error to all tasks: "
         << error;
     SendErrorPollingResponse(error);
-    return false;
+  } else {
+    absl::Status unheard_error =
+        MakeCoordinationError(absl::InternalError(absl::StrCat(
+            "All tasks were set to error because coordination service "
+            "encountered an error, but was unable to inform clients. Error: ",
+            error.ToString())));
+    LOG(ERROR) << unheard_error;
+    SetAllTasksError(unheard_error);
   }
-
-  LOG(ERROR) << "Stopping coordination service as there is no "
-                "service-to-client connection, but we encountered an error: "
-             << error;
-  Stop();
-  return true;
 }
 
 bool CoordinationServiceStandaloneImpl::IsClientPollingForError() const {

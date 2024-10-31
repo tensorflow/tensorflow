@@ -128,7 +128,8 @@ class TestCoordinationClient : public CoordinationClient {
 #define UNIMPLEMENTED_WITH_CALL_OPTS(method)                                 \
   void method##Async(CallOptions* call_opts, const method##Request* request, \
                      method##Response* response, StatusCallback done)        \
-      override{done(absl::UnimplementedError(#method "Async"));              \
+      override {                                                             \
+    done(absl::UnimplementedError(#method "Async"));                         \
   }
 
   UNIMPLEMENTED_WITH_CALL_OPTS(GetKeyValue);
@@ -457,10 +458,7 @@ TEST(CoordinationServiceTest, RegisterTask_AlreadyInError_Fails) {
   const absl::Status status =
       coord_service->RegisterTask(task_0, /*incarnation=*/0);
 
-  // Impl note: the error triggers the service to stop, which fails new
-  // requests. It's okay to change the error code during development as long as
-  // it fails.
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kAborted));
 }
 
 TEST_F(CoordinateTwoTasksTest, TestTaskHeartbeatTimeout) {
@@ -507,15 +505,13 @@ TEST_F(CoordinateTwoTasksTest,
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
 
   // No heartbeat for a while, leader consider the task as stale.
-  // Service stops and disconnects both tasks.
   Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
-  // Unexpected heartbeat from unregistered tasks since service state has been
-  // reset.
+  // Unexpected heartbeat from errored tasks.
   EXPECT_THAT(coord_service_->RecordHeartbeat(task_0_, incarnation_0_),
-              StatusIs(absl::StatusCode::kInternal));
+              StatusIs(absl::StatusCode::kAborted));
   EXPECT_THAT(coord_service_->RecordHeartbeat(task_1_, incarnation_1_),
-              StatusIs(absl::StatusCode::kInternal));
+              StatusIs(absl::StatusCode::kAborted));
 }
 
 TEST_F(CoordinateTwoTasksTest,
@@ -978,7 +974,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
   coord_service->WaitForAllTasks(task_0, local_devices_0,
                                  [](absl::Status s) { ASSERT_OK(s); });
 
-  // Task0 sends device info sgain.
+  // Task0 sends device info again.
   coord_service->WaitForAllTasks(task_0, local_devices_0,
                                  [](absl::Status s) { ASSERT_OK(s); });
   coord_service->WaitForAllTasks(task_1, local_devices_1,
@@ -1588,7 +1584,7 @@ TEST_F(CoordinateTwoTasksTest,
 }
 
 TEST_F(CoordinateTwoTasksTest,
-       ShutdownWithBarrier_BarrierFailsWithoutClientConnection_ServiceStops) {
+       ShutdownWithBarrier_BarrierFailsWithoutClientConnection_SetTaskToError) {
   EnableCoordinationService(/*has_service_to_client_connection=*/false,
                             /*enable_shutdown_barrier=*/true);
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
@@ -1609,27 +1605,23 @@ TEST_F(CoordinateTwoTasksTest,
 
   EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kDeadlineExceeded));
 
-  // Service stops because no service-to-client connection is available for
-  // error propagation.
-  // Task 1 still sends unexpected heartbeat because it doesn't know that
-  // service has stopped yet, which should fail.
+  // Task 1 sends unexpected heartbeat that is aborted because it is in error.
   absl::Status s = coord_service_->RecordHeartbeat(task_1_, incarnation_1_);
 
-  EXPECT_THAT(s, StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(s, StatusIs(absl::StatusCode::kAborted));
 }
 
-TEST_F(CoordinateTwoTasksTest, BarrierFailsIfServiceHasStopped) {
+TEST_F(CoordinateTwoTasksTest, BarrierFailsIfTaskIsInError) {
   EnableCoordinationService(/*has_service_to_client_connection=*/false);
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   absl::Notification n0;
   absl::Status barrier_status;
   // No heartbeat for a while, leader consider the task as stale.
-  // As no error propagation is available, service stops.
   Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
-  // Barrier should fail when called after service stops.
+  // Barrier should fail when called after stale task is set to error.
   coord_service_->BarrierAsync("barrier_id", absl::Seconds(5), task_0_,
                                /*participating_tasks=*/{}, [&](absl::Status s) {
                                  barrier_status = s;
@@ -1641,18 +1633,16 @@ TEST_F(CoordinateTwoTasksTest, BarrierFailsIfServiceHasStopped) {
 }
 
 TEST_F(CoordinateTwoTasksTest,
-       BarrierWithParticipatingTasksFailsIfServiceHasStopped) {
+       BarrierWithParticipatingTasksFailsIfTaskIsStale) {
   EnableCoordinationService(/*has_service_to_client_connection=*/false);
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   absl::Notification n0;
   absl::Status barrier_status;
   // No heartbeat for a while, leader consider the task as stale.
-  // As no error propagation is available, service stops.
   Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
-  // Barrier should fail when called after service stops.
   coord_service_->BarrierAsync("barrier_id", absl::Seconds(5), task_0_,
                                /*participating_tasks=*/{task_0_},
                                [&](absl::Status s) {
@@ -1706,18 +1696,17 @@ TEST_F(CoordinateTwoTasksTest, BarrierFailsAfterErrorPollingResponse) {
   EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kInternal));
 }
 
-TEST_F(CoordinateTwoTasksTest, BarrierWithSubsetFailsIfServiceHasStopped) {
+TEST_F(CoordinateTwoTasksTest, BarrierWithSubsetFailsIfTaskIsStale) {
   EnableCoordinationService(/*has_service_to_client_connection=*/false);
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   absl::Notification n0;
   absl::Status barrier_status;
   // No heartbeat for a while, leader consider the task as stale.
-  // As no error propagation is available, service stops.
   Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
-  // Barrier should fail when called after service stops.
+  // Barrier should fail if task is in error.
   // Note that this is same as above test, but the barrier only blocks for task
   // 0.
   coord_service_->BarrierAsync("barrier_id", absl::Seconds(5), task_0_,
@@ -1732,31 +1721,39 @@ TEST_F(CoordinateTwoTasksTest, BarrierWithSubsetFailsIfServiceHasStopped) {
 }
 
 TEST_F(CoordinateTwoTasksTest,
-       BarrierWithNonParticipatingTaskFailsIfServiceHasStopped) {
+       BarrierWithNonParticipatingTaskFailsIfTaskIsStale) {
   EnableCoordinationService(/*has_service_to_client_connection=*/false);
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
-  absl::Notification n0;
-  absl::Status barrier_status;
+  absl::Notification n0, n1;
+  absl::Status barrier_status_0, barrier_status_1;
   // No heartbeat for a while, leader consider the task as stale.
-  // As no error propagation is available, service stops.
   Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
-  // Barrier should fail when called after service stops.
+  // Barrier should fail if task is in error.
   // Note that this is same as above test, but the barrier only blocks for task
-  // 1. Task 0 calls it, which is an invalid invocation (and would have failed
-  // with invalid argument error), but the barrier should fail because of the
-  // shutdown error anyway.
+  // 1.
+
   coord_service_->BarrierAsync("barrier_id", absl::Seconds(5), task_0_,
                                /*participating_tasks=*/{task_1_},
                                [&](absl::Status s) {
-                                 barrier_status = s;
+                                 barrier_status_0 = s;
                                  n0.Notify();
                                });
-
   n0.WaitForNotification();
-  EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kInternal));
+  coord_service_->BarrierAsync("barrier_id_2", absl::Seconds(5), task_1_,
+                               /*participating_tasks=*/{task_1_},
+                               [&](absl::Status s) {
+                                 barrier_status_1 = s;
+                                 n1.Notify();
+                               });
+  n1.WaitForNotification();
+
+  // Non-participating task can't invoke the barrier.
+  EXPECT_THAT(barrier_status_0, StatusIs(absl::StatusCode::kInvalidArgument));
+  // Participating task is in error and can't invoke the barrier.
+  EXPECT_THAT(barrier_status_1, StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(CoordinateTwoTasksTest, UnrecoverableTaskPropagatesError) {
@@ -2030,18 +2027,14 @@ TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorWhenInErrorState) {
 
   coord_service_->PollForErrorAsync(
       task_0_, [&](const absl::Status& status) { s = status; });
-  // Impl note: the error triggers the service to stop, which fails new
-  // requests. It is okay to change the error code during development as long as
-  // it fails.
-  EXPECT_THAT(s, StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(s, StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
-TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfServiceHasStopped) {
+TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfTaskIsStale) {
   EnableCoordinationService(/*has_service_to_client_connection=*/false);
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   // No heartbeat for a while, leader consider the task as stale.
-  // As no error propagation is available, service stops.
   Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
@@ -2049,8 +2042,8 @@ TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfServiceHasStopped) {
   coord_service_->PollForErrorAsync(
       task_0_, [&](const absl::Status& status) { s = status; });
 
-  EXPECT_THAT(s, StatusIs(absl::StatusCode::kInternal,
-                          HasSubstr("service has shut down")));
+  EXPECT_THAT(s, StatusIs(absl::StatusCode::kFailedPrecondition,
+                          HasSubstr("already in error")));
 }
 
 TEST_F(CoordinateTwoTasksTest,
@@ -2097,14 +2090,12 @@ TEST_F(CoordinateTwoTasksTest, LatePollingTaskCanGetError) {
 }
 
 TEST_F(CoordinateTwoTasksTest,
-       RegisterWithBarrier_OldHeartbeat_ServiceNotStopped) {
+       RegisterWithBarrier_OldHeartbeat_RestartedTasksCanReconnect) {
   EnableCoordinationService(/*has_service_to_client_connection=*/false,
                             /*enable_shutdown_barrier=*/false,
                             /*enable_register_barrier=*/true);
   // Service restarted.
   // Old task 0 sends an unexpected heartbeat, which should fail.
-  // Crucially, this should not stop the service, so future API calls should not
-  // trigger an internal error (which occurs if service has shut down).
   ASSERT_THAT(coord_service_->RecordHeartbeat(task_0_, incarnation_0_ - 1),
               StatusIs(absl::StatusCode::kInvalidArgument));
   absl::Status task0_status = absl::InternalError("uninitialized_status");
@@ -2166,8 +2157,7 @@ TEST_F(CoordinateTwoTasksTest, RegisterWithBarrier_RestartAfterBarrier_Fails) {
   // (i.e. all tasks already acked once).
   ASSERT_THAT(coord_service_->RegisterTask(task_0_, incarnation_0_ + 2),
               StatusIs(absl::StatusCode::kAborted));
-  // Service should have stopped due to the previous registration failure.
-  // Check for internal error code.
+  // All tasks should be set to error and unable to start any barriers.
   absl::Notification n;
   absl::Status barrier_status;
   coord_service_->BarrierAsync("barrier_id", absl::Seconds(10), task_0_, {},
