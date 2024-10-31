@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -667,8 +668,10 @@ inline absl::Status ReadTextProto(Env* /* env */,
                                   protobuf::MessageLite* /* proto */) {
   return errors::Unimplemented("Can't parse text protos with protolite.");
 }
-absl::Status ReadTextProto(Env* env, const std::string& fname,
-                           protobuf::Message* proto);
+
+absl::Status ReadTextProto(
+    Env* env, const std::string& fname, protobuf::Message* proto,
+    std::optional<proto2::TextFormat::Parser> parser = std::nullopt);
 
 /// Read contents of named file and parse as either text or binary encoded proto
 /// data and store into `*proto`.
