@@ -17,9 +17,6 @@ limitations under the License.
 
 #include <pybind11/stl.h>
 
-#include <memory>
-
-#include "absl/types/span.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"

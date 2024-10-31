@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/quantization/device_target.h"
 
-#include <algorithm>
+#include <cassert>
+#include <cmath>
 #include <functional>
 #include <optional>
 
