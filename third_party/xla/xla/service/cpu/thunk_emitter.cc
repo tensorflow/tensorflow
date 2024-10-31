@@ -248,9 +248,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kXor:
       return EmitElementalKernelThunk(instruction);
 
-    case HloOpcode::kSelectAndScatter:
-      return EmitSelectAndScatterThunk(instruction);
-
     // ReplicaId and PartitionId identify the location of the current device in
     // a logical grid of communicating devices.
     case HloOpcode::kReplicaId:
@@ -985,15 +982,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
   return MakeKernelThunkSequence(
       instruction, buffers, kernel,
       /*min_alignment=*/cpu_function_runtime::MinAlign());
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSelectAndScatterThunk(
-    const HloInstruction* instruction) {
-  TF_ASSIGN_OR_RETURN(auto kernel,
-                      ir_emitter_.EmitSelectAndScatterHostKernel(instruction));
-  TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
-
-  return MakeKernelThunkSequence(instruction, buffers, kernel);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceThunk(
