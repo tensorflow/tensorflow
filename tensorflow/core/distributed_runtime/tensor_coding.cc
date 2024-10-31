@@ -15,11 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 
-#include "google/protobuf/any.pb.h"
+#include <climits>
+#include <cstddef>
+#include <cstdint>
+#include <utility>
 
+#include "google/protobuf/any.pb.h"
+#include "absl/status/status.h"
+#include "third_party/protobuf/io/coded_stream.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
 
