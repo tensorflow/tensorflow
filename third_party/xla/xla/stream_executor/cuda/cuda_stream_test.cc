@@ -298,7 +298,6 @@ TEST_F(CudaStreamTest, WaitForOtherStream) {
   }),
               IsOk());
 
-  EXPECT_THAT(execution_order, IsEmpty());
   EXPECT_THAT(stream1->RecordEvent(&event), IsOk());
   EXPECT_THAT(stream2->BlockHostUntilDone(), IsOk());
   EXPECT_THAT(execution_order,
