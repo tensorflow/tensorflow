@@ -24,13 +24,13 @@ Pod::Spec.new do |s|
 
   # TODO(b/149803849): Remove this after adding support for simulators.
   s.pod_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386 x86_64 arm64'
-    'ENABLE_USER_SCRIPT_SANDBOXING' => 'NO'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386 x86_64 arm64',
+    'ENABLE_USER_SCRIPT_SANDBOXING' => 'NO',
   }
 
   # TODO(b/149803849): Remove this after adding support for simulators.
   s.user_target_xcconfig = {
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386 x86_64 arm64'
-    'ENABLE_USER_SCRIPT_SANDBOXING' => 'NO'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386 x86_64 arm64',
+    'ENABLE_USER_SCRIPT_SANDBOXING' => 'NO',
   }
 end
