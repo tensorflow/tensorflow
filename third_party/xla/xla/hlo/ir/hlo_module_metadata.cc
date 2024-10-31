@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_metadata.h"
 
 #include <algorithm>
+#include <cstdint>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
