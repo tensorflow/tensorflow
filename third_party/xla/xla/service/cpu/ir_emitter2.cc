@@ -505,23 +505,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo>
-IrEmitter2::EmitSelectAndScatterHostKernel(const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                      EmitKernelPrototype(instr));
-
-  llvm_ir::IrArray operand_array = kernel_prototype.arguments[0];
-  llvm_ir::IrArray source_array = kernel_prototype.arguments[1];
-  llvm_ir::IrArray output_array = kernel_prototype.results[0];
-
-  TF_RETURN_IF_ERROR(nested_ir_emitter_->HandleSelectAndScatter(
-      const_cast<HloInstruction*>(instr), operand_array, source_array,
-      output_array));
-
-  return kernels_.emplace_back(
-      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
-}
-
-absl::StatusOr<IrEmitter2::KernelInfo>
 IrEmitter2::EmitDynamicUpdateSliceHostKernel(const HloInstruction* instr) {
   if (llvm_ir::CanUpdateDynamicSliceInPlace(const_cast<HloInstruction*>(instr),
                                             nested_ir_emitter_->assignment())) {

@@ -150,10 +150,6 @@ class IrEmitter2 {
   absl::StatusOr<KernelInfo> EmitSliceToDynamicHostKernel(
       const HloInstruction* instr);
 
-  // Emits a host kernel for the given select-and-scatter instruction.
-  absl::StatusOr<KernelInfo> EmitSelectAndScatterHostKernel(
-      const HloInstruction* instr);
-
   // Emits a host kernel for the given dynamic-update-slice instruction.
   absl::StatusOr<KernelInfo> EmitDynamicUpdateSliceHostKernel(
       const HloInstruction* instr);

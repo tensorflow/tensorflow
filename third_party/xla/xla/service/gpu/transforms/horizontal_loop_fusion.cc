@@ -298,7 +298,8 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
       VLOG(2) << "sliced_input_fusion=" << sliced_input_fusion_
               << " rejects non-row-major fusion instr " << instr->ToString();
       continue;
-    } else if (AnyOpndIsParamSharedAmongFusions(instr, fusible_candidates)) {
+    } else if (sliced_input_fusion_ &&
+               AnyOpndIsParamSharedAmongFusions(instr, fusible_candidates)) {
       // Don't fuse fusions whose operands are parameter instructions that are
       // shared among fusions because we cannot i/o alias the produced
       // horizontal fusion due to the concat insertion.
