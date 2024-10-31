@@ -1522,9 +1522,7 @@ ENTRY main {
 }
   )")
                     .value();
-  auto& debug_options = module->mutable_config().mutable_debug_options();
-  debug_options.set_xla_gpu_mlir_emitter_level(3);
-  EXPECT_FALSE(mof_.Run(module.get()).value());
+  EXPECT_TRUE(mof_.Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, DoNotFuseRoot) {
@@ -1758,8 +1756,6 @@ class TransposeMultiOutputFusionTest : public MultiOutputFusionTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         MultiOutputFusionTest::GetDebugOptionsForTest();
-    // Only the MLIR transpose emitter supports unpadded 2D transposes.
-    debug_options.set_xla_gpu_mlir_emitter_level(3);
     return debug_options;
   }
 };

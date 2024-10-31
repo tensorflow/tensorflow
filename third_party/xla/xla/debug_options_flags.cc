@@ -247,13 +247,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_bf16_3way_gemm(false);
   opts.set_xla_gpu_nccl_collective_max_nchannels(0);
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
-
-#if GOOGLE_CUDA
-  opts.set_xla_gpu_mlir_emitter_level(4);
-#else
-  opts.set_xla_gpu_mlir_emitter_level(0);
-#endif
-
   opts.set_xla_gpu_multi_streamed_windowed_einsum(false);
 
   // Minimum combined size of matrices in matrix multiplication to
@@ -1891,12 +1884,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Specify the maximum number of channels(SMs) NCCL will use "
       "for p2p operations. Default is 0 which is to let "
       "NCCL decide."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_mlir_emitter_level",
-                int64_setter_for(&DebugOptions::set_xla_gpu_mlir_emitter_level),
-                debug_options->xla_gpu_mlir_emitter_level(),
-                "Enable new MLIR-based emitters. Level 0 means disabled, "
-                "higher levels enable more of the emitters."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_multi_streamed_windowed_einsum",
       bool_setter_for(

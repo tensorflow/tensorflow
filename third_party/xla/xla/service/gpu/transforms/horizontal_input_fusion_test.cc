@@ -143,19 +143,10 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
   builder.AddInstruction(HloInstruction::CreateTuple(var_outs));
   module->AddEntryComputation(builder.Build());
 
-  // Verify that horizontal fusion is kicked in. Check that there are multiple
-  // `reduce` instructions fused into the same fusion.
-  if (GetDebugOptionsForTest().xla_gpu_mlir_emitter_level() < 4) {
-    // 6 is just a randomly picked number as we don't exactly know how large the
-    // fusion will be created due to the `FusionFitsInBudget` constraint.
-    CompileAndVerifyIr(module->Clone(), R"(CHECK: reduce-group-6)",
-                       /*match_optimized_ir=*/false);
-  } else {
-    // Verify that we produced a multi-output reduction with independent groups.
-    CompileAndVerifyIr(module->Clone(), R"(CHECK: switch {{.*}} label {{.*}} [
-                                           CHECK-NEXT: label)",
-                       /*match_optimized_ir=*/false);
-  }
+  // Verify that we produced a multi-output reduction with independent groups.
+  CompileAndVerifyIr(module->Clone(), R"(CHECK: switch {{.*}} label {{.*}} [
+                                          CHECK-NEXT: label)",
+                     /*match_optimized_ir=*/false);
 
   // Testing with the entire gpu optimization pipeline.
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-5, 1e-5}));

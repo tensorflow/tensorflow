@@ -50,10 +50,6 @@ namespace gpu {
 absl::StatusOr<std::unique_ptr<HloModule>> LoadTestModule(
     absl::string_view filename) {
   auto module = *xla::LoadModuleFromFile(std::string(filename));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_mlir_emitter_level(4);
-
   int num_fusions = absl::c_count_if(
       module->entry_computation()->instructions(),
       [](const HloInstruction* instruction) {
