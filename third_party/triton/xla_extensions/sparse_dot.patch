@@ -57,7 +57,7 @@ diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dia
 index 012786dae..6043b764a 100644
 --- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
-@@ -497,6 +497,123 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
+@@ -526,6 +526,123 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
    return encoding;
  }
  
@@ -280,7 +280,7 @@ index d74e0a224..4e45f7c4c 100644
  static void createAsyncCopy(scf::ForOp &forOp, tt::LoadOp loadOp, Value alloc,
                              Value insertIdx, Value extractIdx,
                              tt::CoarseSchedule &schedule,
-@@ -235,17 +239,25 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
+@@ -237,17 +241,25 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
      } else {
        if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
          return std::nullopt;
@@ -315,8 +315,8 @@ index d74e0a224..4e45f7c4c 100644
 +      }
      }
      // Check that the shared encodings needed by the users are compatible.
-     if (attr != nullptr)
-@@ -352,7 +364,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
+     if (attr != nullptr && attr != tempAttr) {
+@@ -356,7 +368,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
        };
  
    for (Operation &op : forOp.getBody()->without_terminator()) {
@@ -325,7 +325,7 @@ index d74e0a224..4e45f7c4c 100644
        continue;
      seen.clear();
      dfs(&op, 0, &op);
-@@ -429,7 +441,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+@@ -433,7 +445,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
          continue;
      }
  
