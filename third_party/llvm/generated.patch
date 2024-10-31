@@ -1,1 +1,449 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/libc/test/UnitTest/LibcTest.h b/libc/test/UnitTest/LibcTest.h
+--- a/libc/test/UnitTest/LibcTest.h
++++ b/libc/test/UnitTest/LibcTest.h
+@@ -165,7 +165,7 @@
+   // Helper to allow macro invocations like `ASSERT_EQ(foo, nullptr)`.
+   template <typename ValType,
+             cpp::enable_if_t<cpp::is_pointer_v<ValType>, ValType> = nullptr>
+-  bool test(TestCond Cond, ValType LHS, std::nullptr_t, const char *LHSStr,
++  bool test(TestCond Cond, ValType LHS, cpp::nullptr_t, const char *LHSStr,
+             const char *RHSStr, internal::Location Loc) {
+     return test(Cond, LHS, static_cast<ValType>(nullptr), LHSStr, RHSStr, Loc);
+   }
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Support/NVPTXAddrSpace.h b/llvm/include/llvm/Support/NVPTXAddrSpace.h
+--- a/llvm/include/llvm/Support/NVPTXAddrSpace.h
++++ b/llvm/include/llvm/Support/NVPTXAddrSpace.h
+@@ -1,33 +0,0 @@
+-//===---------------- NVPTXAddrSpace.h -------------------------*- C++ -*-===//
+-//
+-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+-// See https://llvm.org/LICENSE.txt for license information.
+-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-//
+-//===----------------------------------------------------------------------===//
+-//
+-/// \file
+-/// NVPTX address space definition
+-///
+-//
+-//===----------------------------------------------------------------------===//
+-
+-#ifndef LLVM_SUPPORT_NVPTXADDRSPACE_H
+-#define LLVM_SUPPORT_NVPTXADDRSPACE_H
+-
+-namespace llvm {
+-namespace NVPTXAS {
+-enum AddressSpace : unsigned {
+-  ADDRESS_SPACE_GENERIC = 0,
+-  ADDRESS_SPACE_GLOBAL = 1,
+-  ADDRESS_SPACE_SHARED = 3,
+-  ADDRESS_SPACE_CONST = 4,
+-  ADDRESS_SPACE_LOCAL = 5,
+-
+-  ADDRESS_SPACE_PARAM = 101,
+-};
+-} // end namespace NVPTXAS
+-
+-} // end namespace llvm
+-
+-#endif // LLVM_SUPPORT_NVPTXADDRSPACE_H
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/MCTargetDesc/NVPTXBaseInfo.h b/llvm/lib/Target/NVPTX/MCTargetDesc/NVPTXBaseInfo.h
+--- a/llvm/lib/Target/NVPTX/MCTargetDesc/NVPTXBaseInfo.h
++++ b/llvm/lib/Target/NVPTX/MCTargetDesc/NVPTXBaseInfo.h
+@@ -16,10 +16,18 @@
+ #ifndef LLVM_LIB_TARGET_NVPTX_MCTARGETDESC_NVPTXBASEINFO_H
+ #define LLVM_LIB_TARGET_NVPTX_MCTARGETDESC_NVPTXBASEINFO_H
+ 
+-#include "llvm/Support/NVPTXAddrSpace.h"
+ namespace llvm {
+ 
+-using namespace NVPTXAS;
++enum AddressSpace {
++  ADDRESS_SPACE_GENERIC = 0,
++  ADDRESS_SPACE_GLOBAL = 1,
++  ADDRESS_SPACE_SHARED = 3,
++  ADDRESS_SPACE_CONST = 4,
++  ADDRESS_SPACE_LOCAL = 5,
++
++  // NVVM Internal
++  ADDRESS_SPACE_PARAM = 101
++};
+ 
+ namespace NVPTXII {
+ enum {
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXTargetTransformInfo.cpp b/llvm/lib/Target/NVPTX/NVPTXTargetTransformInfo.cpp
+--- a/llvm/lib/Target/NVPTX/NVPTXTargetTransformInfo.cpp
++++ b/llvm/lib/Target/NVPTX/NVPTXTargetTransformInfo.cpp
+@@ -15,12 +15,10 @@
+ #include "llvm/CodeGen/CostTable.h"
+ #include "llvm/CodeGen/TargetLowering.h"
+ #include "llvm/IR/Constants.h"
+-#include "llvm/IR/IntrinsicInst.h"
+ #include "llvm/IR/Intrinsics.h"
+ #include "llvm/IR/IntrinsicsNVPTX.h"
+ #include "llvm/IR/Value.h"
+ #include "llvm/Support/Casting.h"
+-#include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Transforms/InstCombine/InstCombiner.h"
+ #include <optional>
+ using namespace llvm;
+@@ -119,8 +117,7 @@
+ }
+ 
+ // Convert NVVM intrinsics to target-generic LLVM code where possible.
+-static Instruction *convertNvvmIntrinsicToLlvm(InstCombiner &IC,
+-                                               IntrinsicInst *II) {
++static Instruction *simplifyNvvmIntrinsic(IntrinsicInst *II, InstCombiner &IC) {
+   // Each NVVM intrinsic we can simplify can be replaced with one of:
+   //
+   //  * an LLVM intrinsic,
+@@ -416,65 +413,11 @@
+   llvm_unreachable("All SpecialCase enumerators should be handled in switch.");
+ }
+ 
+-// Returns an instruction pointer (may be nullptr if we do not know the answer).
+-// Returns nullopt if `II` is not one of the `isspacep` intrinsics.
+-static std::optional<Instruction *>
+-handleSpaceCheckIntrinsics(InstCombiner &IC, IntrinsicInst &II) {
+-  Value *Op0 = II.getArgOperand(0);
+-  // Returns true/false when we know the answer, nullopt otherwise.
+-  auto CheckASMatch = [](unsigned IID, unsigned AS) -> std::optional<bool> {
+-    if (AS == NVPTXAS::ADDRESS_SPACE_GENERIC ||
+-        AS == NVPTXAS::ADDRESS_SPACE_PARAM)
+-      return std::nullopt; // Got to check at run-time.
+-    switch (IID) {
+-    case Intrinsic::nvvm_isspacep_global:
+-      return AS == NVPTXAS::ADDRESS_SPACE_GLOBAL;
+-    case Intrinsic::nvvm_isspacep_local:
+-      return AS == NVPTXAS::ADDRESS_SPACE_LOCAL;
+-    case Intrinsic::nvvm_isspacep_shared:
+-      return AS == NVPTXAS::ADDRESS_SPACE_SHARED;
+-    case Intrinsic::nvvm_isspacep_shared_cluster:
+-      // We can't tell shared from shared_cluster at compile time from AS alone,
+-      // but it can't be either is AS is not shared.
+-      return AS == NVPTXAS::ADDRESS_SPACE_SHARED ? std::nullopt
+-                                                 : std::optional{false};
+-    case Intrinsic::nvvm_isspacep_const:
+-      return AS == NVPTXAS::ADDRESS_SPACE_CONST;
+-    default:
+-      llvm_unreachable("Unexpected intrinsic");
+-    }
+-  };
+-
+-  switch (auto IID = II.getIntrinsicID()) {
+-  case Intrinsic::nvvm_isspacep_global:
+-  case Intrinsic::nvvm_isspacep_local:
+-  case Intrinsic::nvvm_isspacep_shared:
+-  case Intrinsic::nvvm_isspacep_shared_cluster:
+-  case Intrinsic::nvvm_isspacep_const: {
+-    auto *Ty = II.getType();
+-    unsigned AS = Op0->getType()->getPointerAddressSpace();
+-    // Peek through ASC to generic AS.
+-    // TODO: we could dig deeper through both ASCs and GEPs.
+-    if (AS == NVPTXAS::ADDRESS_SPACE_GENERIC)
+-      if (auto *ASCO = dyn_cast<AddrSpaceCastOperator>(Op0))
+-        AS = ASCO->getOperand(0)->getType()->getPointerAddressSpace();
+-
+-    if (std::optional<bool> Answer = CheckASMatch(IID, AS))
+-      return IC.replaceInstUsesWith(II, ConstantInt::get(Ty, *Answer));
+-    return nullptr; // Don't know the answer, got to check at run time.
+-  }
+-  default:
+-    return std::nullopt;
+-  }
+-}
+-
+ std::optional<Instruction *>
+ NVPTXTTIImpl::instCombineIntrinsic(InstCombiner &IC, IntrinsicInst &II) const {
+-  if (std::optional<Instruction *> I = handleSpaceCheckIntrinsics(IC, II))
+-    return *I;
+-  if (Instruction *I = convertNvvmIntrinsicToLlvm(IC, &II))
++  if (Instruction *I = simplifyNvvmIntrinsic(&II, IC)) {
+     return I;
+-
++  }
+   return std::nullopt;
+ }
+ 
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/NVPTX/isspacep.ll b/llvm/test/Transforms/InstCombine/NVPTX/isspacep.ll
+--- a/llvm/test/Transforms/InstCombine/NVPTX/isspacep.ll
++++ b/llvm/test/Transforms/InstCombine/NVPTX/isspacep.ll
+@@ -1,277 +0,0 @@
+-; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
+-; RUN: opt < %s -passes=instcombine -mtriple=nvptx64-nvidia-cuda -S | FileCheck %s
+-target datalayout = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64"
+-target triple = "nvptx64-nvidia-cuda"
+-
+-; Source data in different AS.
+-@shared_data = dso_local addrspace(3) global i32 undef, align 4
+-@global_data = dso_local addrspace(1) externally_initialized global i32 0, align 4
+-@const_data = dso_local addrspace(4) externally_initialized constant i32 3, align 4
+-
+-; Results get stored here.
+-@gen = dso_local addrspace(1) externally_initialized global i8 0, align 1
+-@g1 = dso_local addrspace(1) externally_initialized global i8 0, align 1
+-@g2 = dso_local addrspace(1) externally_initialized global i8 0, align 1
+-@s1 = dso_local addrspace(1) externally_initialized global i8 0, align 1
+-@s2 = dso_local addrspace(1) externally_initialized global i8 0, align 1
+-@c1 = dso_local addrspace(1) externally_initialized global i8 0, align 1
+-@c2 = dso_local addrspace(1) externally_initialized global i8 0, align 1
+-@l = dso_local addrspace(1) externally_initialized global i8 0, align 1
+-
+-declare i1 @llvm.nvvm.isspacep.global(ptr nocapture)
+-declare i1 @llvm.nvvm.isspacep.shared(ptr nocapture)
+-declare i1 @llvm.nvvm.isspacep.const(ptr nocapture)
+-declare i1 @llvm.nvvm.isspacep.local(ptr nocapture)
+-
+-define dso_local void @check_global(ptr nocapture noundef readnone %out, ptr nocapture noundef readnone %genp,
+-; CHECK-LABEL: define dso_local void @check_global(
+-; CHECK-SAME: ptr nocapture noundef readnone [[OUT:%.*]], ptr nocapture noundef readnone [[GENP:%.*]], ptr addrspace(1) [[GP:%.*]], ptr addrspace(3) [[SP:%.*]], ptr addrspace(4) [[CP:%.*]], ptr addrspace(5) [[LP:%.*]]) local_unnamed_addr {
+-; CHECK-NEXT:  [[ENTRY:.*:]]
+-; CHECK-NEXT:    [[GEN0:%.*]] = tail call i1 @llvm.nvvm.isspacep.global(ptr [[GENP]])
+-; CHECK-NEXT:    [[STOREDV:%.*]] = zext i1 [[GEN0]] to i8
+-; CHECK-NEXT:    store i8 [[STOREDV]], ptr addrspacecast (ptr addrspace(1) @gen to ptr), align 1
+-; CHECK-NEXT:    store i8 1, ptr addrspacecast (ptr addrspace(1) @g1 to ptr), align 1
+-; CHECK-NEXT:    store i8 1, ptr addrspacecast (ptr addrspace(1) @g2 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @s1 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @s2 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @c1 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @c2 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @l to ptr), align 1
+-; CHECK-NEXT:    ret void
+-;
+-  ptr addrspace(1) %gp,
+-  ptr addrspace(3) %sp,
+-  ptr addrspace(4) %cp,
+-  ptr addrspace(5) %lp) local_unnamed_addr {
+-entry:
+-  ; No constant folding for generic pointers of unknown origin.
+-  %gen0 = tail call i1 @llvm.nvvm.isspacep.global(ptr %genp)
+-  %storedv = zext i1 %gen0 to i8
+-  store i8 %storedv, ptr addrspacecast (ptr addrspace(1) @gen to ptr), align 1
+-
+-  %isg1 = tail call i1 @llvm.nvvm.isspacep.global(ptr addrspacecast (ptr addrspace(1) @global_data to ptr))
+-  %isg18 = zext i1 %isg1 to i8
+-  store i8 %isg18, ptr addrspacecast (ptr addrspace(1) @g1 to ptr), align 1
+-
+-  %gp_asc = addrspacecast ptr addrspace(1) %gp to ptr
+-  %isg2 = tail call i1 @llvm.nvvm.isspacep.global(ptr %gp_asc)
+-  %isg28 = zext i1 %isg2 to i8
+-  store i8 %isg28, ptr addrspacecast (ptr addrspace(1) @g2 to ptr), align 1
+-
+-  %iss1 = tail call i1 @llvm.nvvm.isspacep.global(ptr addrspacecast (ptr addrspace(3) @shared_data to ptr))
+-  %iss18 = zext i1 %iss1 to i8
+-  store i8 %iss18, ptr addrspacecast (ptr addrspace(1) @s1 to ptr), align 1
+-
+-  %sp_asc = addrspacecast ptr addrspace(3) %sp to ptr
+-  %iss2 = tail call i1 @llvm.nvvm.isspacep.global(ptr %sp_asc)
+-  %iss28 = zext i1 %iss2 to i8
+-  store i8 %iss28, ptr addrspacecast (ptr addrspace(1) @s2 to ptr), align 1
+-
+-  %isc1 = tail call i1 @llvm.nvvm.isspacep.global(ptr addrspacecast (ptr addrspace(4) @const_data to ptr))
+-  %isc18 = zext i1 %isc1 to i8
+-  store i8 %isc18, ptr addrspacecast (ptr addrspace(1) @c1 to ptr), align 1
+-
+-  %cp_asc = addrspacecast ptr addrspace(4) %cp to ptr
+-  %isc2 = tail call i1 @llvm.nvvm.isspacep.global(ptr %cp_asc)
+-  %isc28 = zext i1 %isc2 to i8
+-  store i8 %isc28, ptr addrspacecast (ptr addrspace(1) @c2 to ptr), align 1
+-
+-  ; Local data can't ihave a constant address, so we can't have a constant ASC expression
+-  ; We can only use an ASC instruction.
+-  %lp_asc = addrspacecast ptr addrspace(5) %lp to ptr
+-  %isl = call i1 @llvm.nvvm.isspacep.global(ptr nonnull %lp_asc)
+-  %isl8 = zext i1 %isl to i8
+-  store i8 %isl8, ptr addrspacecast (ptr addrspace(1) @l to ptr), align 1
+-
+-  ret void
+-}
+-
+-define dso_local void @check_shared(ptr nocapture noundef readnone %out, ptr nocapture noundef readnone %genp,
+-; CHECK-LABEL: define dso_local void @check_shared(
+-; CHECK-SAME: ptr nocapture noundef readnone [[OUT:%.*]], ptr nocapture noundef readnone [[GENP:%.*]], ptr addrspace(1) [[GP:%.*]], ptr addrspace(3) [[SP:%.*]], ptr addrspace(4) [[CP:%.*]], ptr addrspace(5) [[LP:%.*]]) local_unnamed_addr {
+-; CHECK-NEXT:  [[ENTRY:.*:]]
+-; CHECK-NEXT:    [[GEN0:%.*]] = tail call i1 @llvm.nvvm.isspacep.shared(ptr [[GENP]])
+-; CHECK-NEXT:    [[STOREDV:%.*]] = zext i1 [[GEN0]] to i8
+-; CHECK-NEXT:    store i8 [[STOREDV]], ptr addrspacecast (ptr addrspace(1) @gen to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @g1 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @g2 to ptr), align 1
+-; CHECK-NEXT:    store i8 1, ptr addrspacecast (ptr addrspace(1) @s1 to ptr), align 1
+-; CHECK-NEXT:    store i8 1, ptr addrspacecast (ptr addrspace(1) @s2 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @c1 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @c2 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @l to ptr), align 1
+-; CHECK-NEXT:    ret void
+-;
+-  ptr addrspace(1) %gp,
+-  ptr addrspace(3) %sp,
+-  ptr addrspace(4) %cp,
+-  ptr addrspace(5) %lp) local_unnamed_addr {
+-entry:
+-  ; No constant folding for generic pointers of unknown origin.
+-  %gen0 = tail call i1 @llvm.nvvm.isspacep.shared(ptr %genp)
+-  %storedv = zext i1 %gen0 to i8
+-  store i8 %storedv, ptr addrspacecast (ptr addrspace(1) @gen to ptr), align 1
+-
+-  %isg1 = tail call i1 @llvm.nvvm.isspacep.shared(ptr addrspacecast (ptr addrspace(1) @global_data to ptr))
+-  %isg18 = zext i1 %isg1 to i8
+-  store i8 %isg18, ptr addrspacecast (ptr addrspace(1) @g1 to ptr), align 1
+-
+-  %gp_asc = addrspacecast ptr addrspace(1) %gp to ptr
+-  %isg2 = tail call i1 @llvm.nvvm.isspacep.shared(ptr %gp_asc)
+-  %isg28 = zext i1 %isg2 to i8
+-  store i8 %isg28, ptr addrspacecast (ptr addrspace(1) @g2 to ptr), align 1
+-
+-  %iss1 = tail call i1 @llvm.nvvm.isspacep.shared(ptr addrspacecast (ptr addrspace(3) @shared_data to ptr))
+-  %iss18 = zext i1 %iss1 to i8
+-  store i8 %iss18, ptr addrspacecast (ptr addrspace(1) @s1 to ptr), align 1
+-
+-  %sp_asc = addrspacecast ptr addrspace(3) %sp to ptr
+-  %iss2 = tail call i1 @llvm.nvvm.isspacep.shared(ptr %sp_asc)
+-  %iss28 = zext i1 %iss2 to i8
+-  store i8 %iss28, ptr addrspacecast (ptr addrspace(1) @s2 to ptr), align 1
+-
+-  %isc1 = tail call i1 @llvm.nvvm.isspacep.shared(ptr addrspacecast (ptr addrspace(4) @const_data to ptr))
+-  %isc18 = zext i1 %isc1 to i8
+-  store i8 %isc18, ptr addrspacecast (ptr addrspace(1) @c1 to ptr), align 1
+-
+-  %cp_asc = addrspacecast ptr addrspace(4) %cp to ptr
+-  %isc2 = tail call i1 @llvm.nvvm.isspacep.shared(ptr %cp_asc)
+-  %isc28 = zext i1 %isc2 to i8
+-  store i8 %isc28, ptr addrspacecast (ptr addrspace(1) @c2 to ptr), align 1
+-
+-  ; Local data can't have a constant address, so we can't have a constant ASC expression
+-  ; We can only use an ASC instruction.
+-  %lp_asc = addrspacecast ptr addrspace(5) %lp to ptr
+-  %isl = call i1 @llvm.nvvm.isspacep.shared(ptr nonnull %lp_asc)
+-  %isl8 = zext i1 %isl to i8
+-  store i8 %isl8, ptr addrspacecast (ptr addrspace(1) @l to ptr), align 1
+-
+-  ret void
+-}
+-
+-define dso_local void @check_const(ptr nocapture noundef readnone %out, ptr nocapture noundef readnone %genp,
+-; CHECK-LABEL: define dso_local void @check_const(
+-; CHECK-SAME: ptr nocapture noundef readnone [[OUT:%.*]], ptr nocapture noundef readnone [[GENP:%.*]], ptr addrspace(1) [[GP:%.*]], ptr addrspace(3) [[SP:%.*]], ptr addrspace(4) [[CP:%.*]], ptr addrspace(5) [[LP:%.*]]) local_unnamed_addr {
+-; CHECK-NEXT:  [[ENTRY:.*:]]
+-; CHECK-NEXT:    [[GEN0:%.*]] = tail call i1 @llvm.nvvm.isspacep.const(ptr [[GENP]])
+-; CHECK-NEXT:    [[STOREDV:%.*]] = zext i1 [[GEN0]] to i8
+-; CHECK-NEXT:    store i8 [[STOREDV]], ptr addrspacecast (ptr addrspace(1) @gen to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @g1 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @g2 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @s1 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @s2 to ptr), align 1
+-; CHECK-NEXT:    store i8 1, ptr addrspacecast (ptr addrspace(1) @c1 to ptr), align 1
+-; CHECK-NEXT:    store i8 1, ptr addrspacecast (ptr addrspace(1) @c2 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @l to ptr), align 1
+-; CHECK-NEXT:    ret void
+-;
+-  ptr addrspace(1) %gp,
+-  ptr addrspace(3) %sp,
+-  ptr addrspace(4) %cp,
+-  ptr addrspace(5) %lp) local_unnamed_addr {
+-entry:
+-  ; No constant folding for generic pointers of unknown origin.
+-  %gen0 = tail call i1 @llvm.nvvm.isspacep.const(ptr %genp)
+-  %storedv = zext i1 %gen0 to i8
+-  store i8 %storedv, ptr addrspacecast (ptr addrspace(1) @gen to ptr), align 1
+-
+-  %isg1 = tail call i1 @llvm.nvvm.isspacep.const(ptr addrspacecast (ptr addrspace(1) @global_data to ptr))
+-  %isg18 = zext i1 %isg1 to i8
+-  store i8 %isg18, ptr addrspacecast (ptr addrspace(1) @g1 to ptr), align 1
+-
+-  %gp_asc = addrspacecast ptr addrspace(1) %gp to ptr
+-  %isg2 = tail call i1 @llvm.nvvm.isspacep.const(ptr %gp_asc)
+-  %isg28 = zext i1 %isg2 to i8
+-  store i8 %isg28, ptr addrspacecast (ptr addrspace(1) @g2 to ptr), align 1
+-
+-  %iss1 = tail call i1 @llvm.nvvm.isspacep.const(ptr addrspacecast (ptr addrspace(3) @shared_data to ptr))
+-  %iss18 = zext i1 %iss1 to i8
+-  store i8 %iss18, ptr addrspacecast (ptr addrspace(1) @s1 to ptr), align 1
+-
+-  %sp_asc = addrspacecast ptr addrspace(3) %sp to ptr
+-  %iss2 = tail call i1 @llvm.nvvm.isspacep.const(ptr %sp_asc)
+-  %iss28 = zext i1 %iss2 to i8
+-  store i8 %iss28, ptr addrspacecast (ptr addrspace(1) @s2 to ptr), align 1
+-
+-  %isc1 = tail call i1 @llvm.nvvm.isspacep.const(ptr addrspacecast (ptr addrspace(4) @const_data to ptr))
+-  %isc18 = zext i1 %isc1 to i8
+-  store i8 %isc18, ptr addrspacecast (ptr addrspace(1) @c1 to ptr), align 1
+-
+-  %cp_asc = addrspacecast ptr addrspace(4) %cp to ptr
+-  %isc2 = tail call i1 @llvm.nvvm.isspacep.const(ptr %cp_asc)
+-  %isc28 = zext i1 %isc2 to i8
+-  store i8 %isc28, ptr addrspacecast (ptr addrspace(1) @c2 to ptr), align 1
+-
+-  ; Local data can't have a constant address, so we can't have a constant ASC expression
+-  ; We can only use an ASC instruction.
+-  %lp_asc = addrspacecast ptr addrspace(5) %lp to ptr
+-  %isl = call i1 @llvm.nvvm.isspacep.const(ptr nonnull %lp_asc)
+-  %isl8 = zext i1 %isl to i8
+-  store i8 %isl8, ptr addrspacecast (ptr addrspace(1) @l to ptr), align 1
+-
+-  ret void
+-}
+-
+-define dso_local void @check_local(ptr nocapture noundef readnone %out, ptr nocapture noundef readnone %genp,
+-; CHECK-LABEL: define dso_local void @check_local(
+-; CHECK-SAME: ptr nocapture noundef readnone [[OUT:%.*]], ptr nocapture noundef readnone [[GENP:%.*]], ptr addrspace(1) [[GP:%.*]], ptr addrspace(3) [[SP:%.*]], ptr addrspace(4) [[CP:%.*]], ptr addrspace(5) [[LP:%.*]]) local_unnamed_addr {
+-; CHECK-NEXT:  [[ENTRY:.*:]]
+-; CHECK-NEXT:    [[GEN0:%.*]] = tail call i1 @llvm.nvvm.isspacep.local(ptr [[GENP]])
+-; CHECK-NEXT:    [[STOREDV:%.*]] = zext i1 [[GEN0]] to i8
+-; CHECK-NEXT:    store i8 [[STOREDV]], ptr addrspacecast (ptr addrspace(1) @gen to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @g1 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @g2 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @s1 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @s2 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @c1 to ptr), align 1
+-; CHECK-NEXT:    store i8 0, ptr addrspacecast (ptr addrspace(1) @c2 to ptr), align 1
+-; CHECK-NEXT:    store i8 1, ptr addrspacecast (ptr addrspace(1) @l to ptr), align 1
+-; CHECK-NEXT:    ret void
+-;
+-  ptr addrspace(1) %gp,
+-  ptr addrspace(3) %sp,
+-  ptr addrspace(4) %cp,
+-  ptr addrspace(5) %lp) local_unnamed_addr {
+-entry:
+-  ; No constant folding for generic pointers of unknown origin.
+-  %gen0 = tail call i1 @llvm.nvvm.isspacep.local(ptr %genp)
+-  %storedv = zext i1 %gen0 to i8
+-  store i8 %storedv, ptr addrspacecast (ptr addrspace(1) @gen to ptr), align 1
+-
+-  %isg1 = tail call i1 @llvm.nvvm.isspacep.local(ptr addrspacecast (ptr addrspace(1) @global_data to ptr))
+-  %isg18 = zext i1 %isg1 to i8
+-  store i8 %isg18, ptr addrspacecast (ptr addrspace(1) @g1 to ptr), align 1
+-
+-  %gp_asc = addrspacecast ptr addrspace(1) %gp to ptr
+-  %isg2 = tail call i1 @llvm.nvvm.isspacep.local(ptr %gp_asc)
+-  %isg28 = zext i1 %isg2 to i8
+-  store i8 %isg28, ptr addrspacecast (ptr addrspace(1) @g2 to ptr), align 1
+-
+-  %iss1 = tail call i1 @llvm.nvvm.isspacep.local(ptr addrspacecast (ptr addrspace(3) @shared_data to ptr))
+-  %iss18 = zext i1 %iss1 to i8
+-  store i8 %iss18, ptr addrspacecast (ptr addrspace(1) @s1 to ptr), align 1
+-
+-  %sp_asc = addrspacecast ptr addrspace(3) %sp to ptr
+-  %iss2 = tail call i1 @llvm.nvvm.isspacep.local(ptr %sp_asc)
+-  %iss28 = zext i1 %iss2 to i8
+-  store i8 %iss28, ptr addrspacecast (ptr addrspace(1) @s2 to ptr), align 1
+-
+-  %isc1 = tail call i1 @llvm.nvvm.isspacep.local(ptr addrspacecast (ptr addrspace(4) @const_data to ptr))
+-  %isc18 = zext i1 %isc1 to i8
+-  store i8 %isc18, ptr addrspacecast (ptr addrspace(1) @c1 to ptr), align 1
+-
+-  %cp_asc = addrspacecast ptr addrspace(4) %cp to ptr
+-  %isc2 = tail call i1 @llvm.nvvm.isspacep.local(ptr %cp_asc)
+-  %isc28 = zext i1 %isc2 to i8
+-  store i8 %isc28, ptr addrspacecast (ptr addrspace(1) @c2 to ptr), align 1
+-
+-  ; Local data can't have a constant address, so we can't have a constant ASC expression
+-  ; We can only use an ASC instruction.
+-  %lp_asc = addrspacecast ptr addrspace(5) %lp to ptr
+-  %isl = call i1 @llvm.nvvm.isspacep.local(ptr nonnull %lp_asc)
+-  %isl8 = zext i1 %isl to i8
+-  store i8 %isl8, ptr addrspacecast (ptr addrspace(1) @l to ptr), align 1
+-
+-  ret void
+-}
+-
