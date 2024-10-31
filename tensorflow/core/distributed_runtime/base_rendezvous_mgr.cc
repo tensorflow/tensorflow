@@ -15,18 +15,23 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/base_rendezvous_mgr.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
