@@ -66,6 +66,16 @@ std::optional<QnnHtpDevice_Arch_t> FindSocModel(
 
 }  // namespace
 
+LiteRtStatus LiteRtGetCompilerPluginVersion(LiteRtApiVersion* api_version) {
+  if (api_version == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  api_version->major = LITERT_API_VERSION_MAJOR;
+  api_version->minor = LITERT_API_VERSION_MINOR;
+  api_version->patch = LITERT_API_VERSION_PATCH;
+  return kLiteRtStatusOk;
+}
+
 const char* LiteRtGetCompilerPluginSocManufacturer() {
   return kPluginManufacturer;
 }

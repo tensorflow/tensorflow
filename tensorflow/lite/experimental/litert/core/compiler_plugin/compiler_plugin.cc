@@ -89,6 +89,8 @@ namespace {
 
 LiteRtStatus ResolvePluginApi(void* lib_handle,
                               LiteRtCompilerPluginApi& result) {
+  RESOLVE_API_FUNC("LiteRtGetCompilerPluginVersion",
+                   result.get_compiler_plugin_version);
   RESOLVE_API_FUNC("LiteRtGetCompilerPluginSocManufacturer",
                    result.get_compiler_plugin_soc_manufacturer);
   RESOLVE_API_FUNC("LiteRtGetNumCompilerPluginSupportedSocModels",
@@ -167,6 +169,20 @@ CompilerPlugin::ResultT CompilerPlugin::LoadPlugin(
     return ResultT::FromStatus(kLiteRtStatusErrorDynamicLoading);
   }
 
+  if (auto api_version = plugin.ApiVersion();
+      api_version.Status() != kLiteRtStatusOk) {
+    return ResultT::FromStatus(api_version.Status());
+  } else if (api_version.Value().major != LITERT_API_VERSION_MAJOR) {
+    LITERT_LOG(
+        LITERT_ERROR,
+        "Unsupported Compiler Plugin version, found version %d.%d.%d and "
+        "expected version %d.%d.%d",
+        api_version.Value().major, api_version.Value().minor,
+        api_version.Value().patch, LITERT_API_VERSION_MAJOR,
+        LITERT_API_VERSION_MINOR, LITERT_API_VERSION_PATCH);
+    return ResultT::FromStatus(kLiteRtStatusErrorRuntimeFailure);
+  }
+
   // This should never change throughout the lifetime of the compiler
   // plugin so save to avoid recalling.
   if (auto soc_models = GetSocModels(plugin.plugin_api_, plugin.plugin_handle_);
@@ -239,6 +255,13 @@ CompilerPlugin::~CompilerPlugin() {
       LITERT_LOG(LITERT_WARNING, "%s", "Failed to close shared library\n");
     }
   }
+}
+
+LiteRtResult<LiteRtApiVersion> CompilerPlugin::ApiVersion() const {
+  LiteRtApiVersion api_version;
+  LITERT_RETURN_RESULT_IF_NOT_OK(
+      plugin_api_.get_compiler_plugin_version(&api_version), LiteRtApiVersion);
+  return LiteRtResult<LiteRtApiVersion>::FromValue(api_version);
 }
 
 LiteRtResult<std::vector<LiteRtOp>> CompilerPlugin::PartitionModel(

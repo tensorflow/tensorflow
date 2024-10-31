@@ -32,6 +32,8 @@ extern "C" {
 // Api Interface
 //
 
+typedef LiteRtStatus (*LiteRtGetCompilerPluginVersionT)(LiteRtApiVersion*);
+
 typedef const char* (*LiteRtGetCompilerPluginSocManufacturerT)();
 
 typedef LiteRtStatus (*LiteRtCreateCompilerPluginT)(LiteRtCompilerPlugin*);
@@ -70,11 +72,12 @@ typedef LiteRtStatus (*LiteRtGetNumCompiledResultCallsT)(
 
 // Wraps all resolved functions from api interface.
 struct LiteRtCompilerPluginApi {
+  LiteRtGetCompilerPluginVersionT get_compiler_plugin_version = nullptr;
+  LiteRtGetCompilerPluginSocManufacturerT get_compiler_plugin_soc_manufacturer =
+      nullptr;
   LiteRtCreateCompilerPluginT create_compiler_plugin = nullptr;
   LiteRtDestroyCompilerPluginT destroy_compiler_plugin = nullptr;
 
-  LiteRtGetCompilerPluginSocManufacturerT get_compiler_plugin_soc_manufacturer =
-      nullptr;
   LiteRtGetNumCompilerPluginSupportedSocModelsT
       get_num_compiler_plugin_supported_models = nullptr;
   LiteRtGetCompilerPluginSupportedSocModelT

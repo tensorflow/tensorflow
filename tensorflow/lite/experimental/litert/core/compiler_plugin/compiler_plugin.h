@@ -74,6 +74,9 @@ class CompilerPlugin {
   using ResultT = LiteRtResult<CompilerPlugin>;
   using ResultVecT = LiteRtResult<VecT>;
 
+  // Get the compiler plugin's API version.
+  LiteRtResult<LiteRtApiVersion> ApiVersion() const;
+
   // Get the manufacturer associated with this plugin. NOTE: SocManufacturer
   // string returned by the underlying plugin are expected to have static
   // lifetime.

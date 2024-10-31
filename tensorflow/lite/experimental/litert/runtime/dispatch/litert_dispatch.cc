@@ -123,15 +123,15 @@ LiteRtStatus LiteRtDispatchInitialize(const LiteRtDispatchOption* options,
     return status;
   }
 
-  if (!(TheApi.version.major == LITERT_API_VERSION_MAJOR &&
-        TheApi.version.minor <= LITERT_API_VERSION_MINOR)) {
+  if (TheApi.version.major != LITERT_API_VERSION_MAJOR) {
     ::dlclose(lib_handle);
-    LITERT_LOG(LITERT_ERROR,
-               "Dispatch API runtime is too old, found version %d.%d.%d and "
-               "expected at least version %d.%d.%d",
-               TheApi.version.major, TheApi.version.minor, TheApi.version.patch,
-               LITERT_API_VERSION_MAJOR, LITERT_API_VERSION_MINOR,
-               LITERT_API_VERSION_PATCH);
+    LITERT_LOG(
+        LITERT_ERROR,
+        "Unsupported Dispatch API runtime version, found version %d.%d.%d and "
+        "expected version %d.%d.%d",
+        TheApi.version.major, TheApi.version.minor, TheApi.version.patch,
+        LITERT_API_VERSION_MAJOR, LITERT_API_VERSION_MINOR,
+        LITERT_API_VERSION_PATCH);
     return kLiteRtStatusErrorRuntimeFailure;
   }
 

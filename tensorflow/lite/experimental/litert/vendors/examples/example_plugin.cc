@@ -37,6 +37,16 @@ constexpr char kPluginSocModel[] = "ExampleSocModel";
 
 }  // namespace
 
+LiteRtStatus LiteRtGetCompilerPluginVersion(LiteRtApiVersion* api_version) {
+  if (!api_version) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  api_version->major = LITERT_API_VERSION_MAJOR;
+  api_version->minor = LITERT_API_VERSION_MINOR;
+  api_version->patch = LITERT_API_VERSION_PATCH;
+  return kLiteRtStatusOk;
+}
+
 const char* LiteRtGetCompilerPluginSocManufacturer() {
   return kPluginManufacturer;
 }

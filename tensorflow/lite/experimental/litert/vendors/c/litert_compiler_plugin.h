@@ -33,13 +33,15 @@ LITERT_DEFINE_HANDLE(LiteRtCompiledResult);
 // Plugin
 //
 
-LiteRtStatus LiteRtCreateCompilerPlugin(LiteRtCompilerPlugin* compiler_plugin);
-
-void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin);
+LiteRtStatus LiteRtGetCompilerPluginVersion(LiteRtApiVersion* api_version);
 
 // Name associated with the manufacturer this plugin relates to (e.g,
 // GoogleTensor, Qualcomm).
 const char* LiteRtGetCompilerPluginSocManufacturer();
+
+LiteRtStatus LiteRtCreateCompilerPlugin(LiteRtCompilerPlugin* compiler_plugin);
+
+void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin);
 
 // Number of SoC models supported by this plugin.
 LiteRtStatus LiteRtGetNumCompilerPluginSupportedSocModels(
