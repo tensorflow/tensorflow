@@ -148,7 +148,8 @@ class PosixEnv : public Env {
       auto thread_name =
           GetThreadNameRegistry().find(std::this_thread::get_id());
       if (thread_name != GetThreadNameRegistry().end()) {
-        *name = absl::StrCat(thread_name->second, "/", GetCurrentThreadId());
+        *name = absl::StrCat(thread_name->second, "/",
+                                static_cast<uint32>(GetCurrentThreadId()));
         return true;
       }
     }
