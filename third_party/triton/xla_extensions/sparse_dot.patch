@@ -225,7 +225,7 @@ index d74e0a224..4e45f7c4c 100644
        continue;
      seen.clear();
      dfs(&op, 0, &op);
-@@ -433,7 +445,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+@@ -433,7 +446,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
          continue;
      }
  
@@ -234,6 +234,17 @@ index d74e0a224..4e45f7c4c 100644
        loadInfo.usedByDot = true;
        if (loadIsMMAv3(op)) {
          loadInfo.loadIsMMAV3 = true;
+@@ -445,7 +458,9 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+       } else if (isa<tt::ExperimentalDescriptorLoadOp>(op)) {
+         loadInfo.sharedEncoding =
+             getSharedEncoding(op, /*loadIsMMAv3=*/true).value_or(nullptr);
+-      } else if (auto dot = dyn_cast<tt::DotOp>(use)) {
++      } else if (auto dot = dyn_cast<tt::DotOp>(use);
++      dot ||
++      use->getName().getStringRef() == "triton_xla.sparse_dot") {
+         bool incompatible = false;
+         loadInfo.sharedEncoding =
+             getSharedEncIfAllUsersAreDotEnc(op->getResult(0), incompatible)
 diff --git a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
 index fb0e7f6fd..37795c20c 100644
 --- a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
