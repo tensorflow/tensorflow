@@ -15,7 +15,9 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
 #define XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
+#include <functional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"

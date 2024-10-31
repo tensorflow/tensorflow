@@ -15,6 +15,13 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/kernel_support_library.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <vector>
+
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"

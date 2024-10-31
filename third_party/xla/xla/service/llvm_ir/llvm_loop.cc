@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/llvm_loop.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"

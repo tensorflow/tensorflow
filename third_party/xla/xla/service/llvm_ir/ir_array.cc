@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/ir_array.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
-#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>

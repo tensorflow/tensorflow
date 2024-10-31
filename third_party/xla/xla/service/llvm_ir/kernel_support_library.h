@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_IR_KERNEL_SUPPORT_LIBRARY_H_
 #define XLA_SERVICE_LLVM_IR_KERNEL_SUPPORT_LIBRARY_H_
 
+#include <cstdint>
+#include <functional>
 #include <string>
 
 #include "absl/log/check.h"
