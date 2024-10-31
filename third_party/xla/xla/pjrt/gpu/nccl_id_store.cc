@@ -15,15 +15,19 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/nccl_id_store.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/util/env_var.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -46,8 +50,22 @@ absl::StatusOr<gpu::NcclCliqueId> NcclIdStore::GetNcclUniqueId(
     TF_ASSIGN_OR_RETURN(clique_id, gpu::NcclApi::Default()->GetUniqueId());
     TF_RETURN_IF_ERROR(kv_store_->Set(key.ToString(), clique_id.ToString()));
   } else {
+    absl::Duration timeout = absl::Minutes(10);
+    {
+      int64_t timeout_minutes;
+      absl::Status status = tsl::ReadInt64FromEnvVar(
+          "XLA_PJRT_GPU_KV_STORE_GET_TIMEOUT_MINUTES", 10, &timeout_minutes);
+      if (status.ok()) {
+        timeout = absl::Minutes(timeout_minutes);
+      } else {
+        LOG(ERROR)
+            << "Failed to read XLA_PJRT_GPU_KV_STORE_GET_TIMEOUT_MINUTES: "
+            << status;
+      }
+    }
+
     TF_ASSIGN_OR_RETURN(std::string id_str,
-                        kv_store_->Get(key.ToString(), absl::Minutes(10)));
+                        kv_store_->Get(key.ToString(), timeout));
     TF_ASSIGN_OR_RETURN(clique_id, gpu::NcclCliqueId::FromString(id_str));
   }
   absl::MutexLock lock(&mu_);
