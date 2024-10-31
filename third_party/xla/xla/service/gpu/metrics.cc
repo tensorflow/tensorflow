@@ -112,6 +112,11 @@ void RecordGpuCompilerStacktrace() {
   stack.pop_front();
   stack.pop_back();
 
+  const int kMaxStackDepth = 10;
+  while (stack.size() > kMaxStackDepth) {
+    stack.pop_back();
+  }
+
   // Stack traces with addresses would make too many unique streamz cells.
   // We only care about the actual call stack.
   // Format chars added by tsl::CurrentStackTrace().
