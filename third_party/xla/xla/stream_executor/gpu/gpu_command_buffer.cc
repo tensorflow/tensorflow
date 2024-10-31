@@ -61,6 +61,7 @@ using GraphNodeHandle = GpuCommandBuffer::GraphNodeHandle;
 using GraphConditionalHandle = GpuCommandBuffer::GraphConditionalHandle;
 using GraphConditionalHandles = absl::Span<const GraphConditionalHandle>;
 
+namespace {
 std::string_view to_string(State state) {
   switch (state) {
     case State::kCreate:
@@ -76,6 +77,7 @@ absl::Status UnsupportedStateError(State state) {
   return absl::InternalError(
       absl::StrCat("Unsupported command buffer state: ", to_string(state)));
 }
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // GpuCommandBuffer resource usage tracking
