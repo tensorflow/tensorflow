@@ -111,6 +111,11 @@ class TfrtCpuTopologyDescription : public PjRtTopologyDescription {
       absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices,
       absl::Span<const std::string> machine_attributes);
 
+  static TfrtCpuTopologyDescription Create(
+      PjRtPlatformId platform_id, absl::string_view platform_name,
+      absl::string_view platform_version,
+      std::shared_ptr<const CpuTopology> cpu_topology);
+
   // `cpu_device_ids` is the list of logical device ids for the CPU devices and
   // will be used to initialize the CPU topology.
   TfrtCpuTopologyDescription(
@@ -120,10 +125,21 @@ class TfrtCpuTopologyDescription : public PjRtTopologyDescription {
       absl::Span<const std::string> machine_attributes)
       : platform_id_(platform_id),
         platform_name_(platform_name),
+        platform_version_(platform_version) {
+    cpu_topology_ = std::make_shared<CpuTopology>(
+        std::move(cpu_devices),
+        std::vector<std::string>(machine_attributes.begin(),
+                                 machine_attributes.end()));
+  }
+
+  TfrtCpuTopologyDescription(
+      const PjRtPlatformId platform_id, const absl::string_view platform_name,
+      const absl::string_view platform_version,
+      const std::shared_ptr<const CpuTopology> cpu_topology)
+      : platform_id_(platform_id),
+        platform_name_(platform_name),
         platform_version_(platform_version),
-        cpu_topology_(std::move(cpu_devices),
-                      std::vector<std::string>(machine_attributes.begin(),
-                                               machine_attributes.end())) {}
+        cpu_topology_(cpu_topology) {}
 
   bool operator==(const TfrtCpuTopologyDescription& other) const {
     return this->platform_id() == other.platform_id() &&
@@ -143,8 +159,8 @@ class TfrtCpuTopologyDescription : public PjRtTopologyDescription {
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
       const override;
 
-  const CpuTopology& cpu_topology() const { return cpu_topology_; }
-  const CpuTopology* cpu_topology_ptr() const { return &cpu_topology_; }
+  const CpuTopology& cpu_topology() const { return *cpu_topology_; }
+  const CpuTopology* cpu_topology_ptr() const { return cpu_topology_.get(); }
 
   // No subslice is supported.
   bool is_subslice_topology() const override { return false; }
@@ -154,15 +170,15 @@ class TfrtCpuTopologyDescription : public PjRtTopologyDescription {
   absl::StatusOr<int> ProcessCount() const override { return 1; }
 
   absl::StatusOr<int> CoreCountOfDefaultType() const override {
-    return cpu_topology_.number_of_devices();
+    return cpu_topology_->number_of_devices();
   }
 
   absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const override {
-    return cpu_topology_.number_of_devices();
+    return cpu_topology_->number_of_devices();
   }
 
   absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override {
-    return cpu_topology_.number_of_devices();
+    return cpu_topology_->number_of_devices();
   }
 
   absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override {
@@ -185,7 +201,7 @@ class TfrtCpuTopologyDescription : public PjRtTopologyDescription {
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
   const std::string platform_version_;
-  const CpuTopology cpu_topology_;
+  std::shared_ptr<const CpuTopology> cpu_topology_;
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
 };
 
