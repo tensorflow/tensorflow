@@ -123,6 +123,7 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
+load("//third_party/protobuf/bazel:java_proto_library.bzl", "java_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
