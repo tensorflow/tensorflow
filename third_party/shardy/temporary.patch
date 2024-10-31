@@ -1,234 +1,234 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..99cc661 100644
+index 99cc661..509398d 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,214 @@
+@@ -1,214 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/clang/include/clang/Driver/Options.td b/clang/include/clang/Driver/Options.td
-+--- a/clang/include/clang/Driver/Options.td
-++++ b/clang/include/clang/Driver/Options.td
-+@@ -1786,12 +1786,6 @@
-+   PosFlag<SetTrue, [], [ClangOption, CC1Option],
-+           "Emit extra debug info to make sample profile more accurate">,
-+   NegFlag<SetFalse>>;
-+-def fprofile_generate_cold_function_coverage : Flag<["-"], "fprofile-generate-cold-function-coverage">, 
-+-    Group<f_Group>, Visibility<[ClangOption, CLOption]>,
-+-    HelpText<"Generate instrumented code to collect coverage info for cold functions into default.profraw file (overridden by '=' form of option or LLVM_PROFILE_FILE env var)">;
-+-def fprofile_generate_cold_function_coverage_EQ : Joined<["-"], "fprofile-generate-cold-function-coverage=">, 
-+-    Group<f_Group>, Visibility<[ClangOption, CLOption]>, MetaVarName<"<directory>">,
-+-    HelpText<"Generate instrumented code to collect coverage info for cold functions into <directory>/default.profraw (overridden by LLVM_PROFILE_FILE env var)">; 
-+ def fprofile_instr_generate : Flag<["-"], "fprofile-instr-generate">,
-+     Group<f_Group>, Visibility<[ClangOption, CLOption]>,
-+     HelpText<"Generate instrumented code to collect execution counts into default.profraw file (overridden by '=' form of option or LLVM_PROFILE_FILE env var)">;
-+diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChain.cpp b/clang/lib/Driver/ToolChain.cpp
-+--- a/clang/lib/Driver/ToolChain.cpp
-++++ b/clang/lib/Driver/ToolChain.cpp
-+@@ -897,9 +897,7 @@
-+          Args.hasArg(options::OPT_fprofile_instr_generate) ||
-+          Args.hasArg(options::OPT_fprofile_instr_generate_EQ) ||
-+          Args.hasArg(options::OPT_fcreate_profile) ||
-+-         Args.hasArg(options::OPT_forder_file_instrumentation) ||
-+-         Args.hasArg(options::OPT_fprofile_generate_cold_function_coverage) ||
-+-         Args.hasArg(options::OPT_fprofile_generate_cold_function_coverage_EQ);
-++         Args.hasArg(options::OPT_forder_file_instrumentation);
-+ }
-+ 
-+ bool ToolChain::needsGCovInstrumentation(const llvm::opt::ArgList &Args) {
-+diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
-+--- a/clang/lib/Driver/ToolChains/Clang.cpp
-++++ b/clang/lib/Driver/ToolChains/Clang.cpp
-+@@ -632,26 +632,6 @@
-+     }
-+   }
-+ 
-+-  if (auto *ColdFuncCoverageArg = Args.getLastArg(
-+-          options::OPT_fprofile_generate_cold_function_coverage,
-+-          options::OPT_fprofile_generate_cold_function_coverage_EQ)) {
-+-    SmallString<128> Path(
-+-        ColdFuncCoverageArg->getOption().matches(
-+-            options::OPT_fprofile_generate_cold_function_coverage_EQ)
-+-            ? ColdFuncCoverageArg->getValue()
-+-            : "");
-+-    llvm::sys::path::append(Path, "default_%m.profraw");
-+-    // FIXME: Idealy the file path should be passed through
-+-    // `-fprofile-instrument-path=`(InstrProfileOutput), however, this field is
-+-    // shared with other profile use path(see PGOOptions), we need to refactor
-+-    // PGOOptions to make it work.
-+-    CmdArgs.push_back("-mllvm");
-+-    CmdArgs.push_back(Args.MakeArgString(
-+-        Twine("--instrument-cold-function-only-path=") + Path));
-+-    CmdArgs.push_back("-mllvm");
-+-    CmdArgs.push_back("--pgo-function-entry-coverage");
-+-  }
-+-
-+   Arg *PGOGenArg = nullptr;
-+   if (PGOGenerateArg) {
-+     assert(!CSPGOGenerateArg);
-+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/pgo-cold-function-coverage.c b/clang/test/CodeGen/pgo-cold-function-coverage.c
-+--- a/clang/test/CodeGen/pgo-cold-function-coverage.c
-++++ b/clang/test/CodeGen/pgo-cold-function-coverage.c
-+@@ -1,19 +0,0 @@
-+-// Test -fprofile-generate-cold-function-coverage 
-+-
-+-// RUN: rm -rf %t && split-file %s %t
-+-// RUN: %clang --target=x86_64 -O2 -fprofile-generate-cold-function-coverage=/xxx/yyy/ -fprofile-sample-accurate -fprofile-sample-use=%t/pgo-cold-func.prof  -S -emit-llvm -o - %t/pgo-cold-func.c | FileCheck %s
-+-
-+-// CHECK: @__llvm_profile_filename = {{.*}} c"/xxx/yyy/default_%m.profraw\00"
-+-
-+-// CHECK: store i8 0, ptr @__profc_bar, align 1
-+-// CHECK-NOT: @__profc_foo 
-+-
-+-//--- pgo-cold-func.prof
-+-foo:1:1
-+- 1: 1
-+-
-+-//--- pgo-cold-func.c
-+-int bar(int x) { return x;}
-+-int foo(int x) { 
-+-    return x;
-+-}
-+diff -ruN --strip-trailing-cr a/clang/test/Driver/fprofile-generate-cold-function-coverage.c b/clang/test/Driver/fprofile-generate-cold-function-coverage.c
-+--- a/clang/test/Driver/fprofile-generate-cold-function-coverage.c
-++++ b/clang/test/Driver/fprofile-generate-cold-function-coverage.c
-+@@ -1,8 +0,0 @@
-+-// RUN: %clang -### -c -fprofile-generate-cold-function-coverage %s 2>&1 | FileCheck %s
-+-// CHECK: "--instrument-cold-function-only-path=default_%m.profraw" 
-+-// CHECK: "--pgo-function-entry-coverage"
-+-// CHECK-NOT:  "-fprofile-instrument"
-+-// CHECK-NOT:  "-fprofile-instrument-path=
-+-
-+-// RUN: %clang -### -c -fprofile-generate-cold-function-coverage=dir %s 2>&1 | FileCheck %s --check-prefix=CHECK-EQ
-+-// CHECK-EQ: "--instrument-cold-function-only-path=dir{{/|\\\\}}default_%m.profraw" 
-+diff -ruN --strip-trailing-cr a/llvm/lib/Passes/PassBuilderPipelines.cpp b/llvm/lib/Passes/PassBuilderPipelines.cpp
-+--- a/llvm/lib/Passes/PassBuilderPipelines.cpp
-++++ b/llvm/lib/Passes/PassBuilderPipelines.cpp
-+@@ -296,12 +296,7 @@
-+     "enable-loop-versioning-licm", cl::init(false), cl::Hidden,
-+     cl::desc("Enable the experimental Loop Versioning LICM pass"));
-+ 
-+-static cl::opt<std::string> InstrumentColdFuncOnlyPath(
-+-    "instrument-cold-function-only-path", cl::init(""),
-+-    cl::desc("File path for cold function only instrumentation"), cl::Hidden);
-+-
-+ extern cl::opt<std::string> UseCtxProfile;
-+-extern cl::opt<bool> PGOInstrumentColdFunctionOnly;
-+ 
-+ namespace llvm {
-+ extern cl::opt<bool> EnableMemProfContextDisambiguation;
-+@@ -1187,13 +1182,8 @@
-+   const bool IsCtxProfUse =
-+       !UseCtxProfile.empty() && Phase == ThinOrFullLTOPhase::ThinLTOPreLink;
-+ 
-+-  // Enable cold function coverage instrumentation if
-+-  // InstrumentColdFuncOnlyPath is provided.
-+-  const bool IsColdFuncOnlyInstrGen = PGOInstrumentColdFunctionOnly =
-+-      IsPGOPreLink && !InstrumentColdFuncOnlyPath.empty();
-+-
-+   if (IsPGOInstrGen || IsPGOInstrUse || IsMemprofUse || IsCtxProfGen ||
-+-      IsCtxProfUse || IsColdFuncOnlyInstrGen)
-++      IsCtxProfUse)
-+     addPreInlinerPasses(MPM, Level, Phase);
-+ 
-+   // Add all the requested passes for instrumentation PGO, if requested.
-+@@ -1215,11 +1205,6 @@
-+       return MPM;
-+     addPostPGOLoopRotation(MPM, Level);
-+     MPM.addPass(PGOCtxProfLoweringPass());
-+-  } else if (IsColdFuncOnlyInstrGen) {
-+-    addPGOInstrPasses(
-+-        MPM, Level, /* RunProfileGen */ true, /* IsCS */ false,
-+-        /* AtomicCounterUpdate */ false, InstrumentColdFuncOnlyPath,
-+-        /* ProfileRemappingFile */ "", IntrusiveRefCntPtr<vfs::FileSystem>());
-+   }
-+ 
-+   if (IsPGOInstrGen || IsPGOInstrUse || IsCtxProfGen)
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp b/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
-+--- a/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
-++++ b/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
-+@@ -319,20 +319,6 @@
-+     cl::desc("Do not instrument functions with the number of critical edges "
-+              " greater than this threshold."));
-+ 
-+-static cl::opt<uint64_t> PGOColdInstrumentEntryThreshold(
-+-    "pgo-cold-instrument-entry-threshold", cl::init(0), cl::Hidden,
-+-    cl::desc("For cold function instrumentation, skip instrumenting functions "
-+-             "whose entry count is above the given value."));
-+-
-+-static cl::opt<bool> PGOTreatUnknownAsCold(
-+-    "pgo-treat-unknown-as-cold", cl::init(false), cl::Hidden,
-+-    cl::desc("For cold function instrumentation, treat count unknown(e.g. "
-+-             "unprofiled) functions as cold."));
-+-
-+-cl::opt<bool> PGOInstrumentColdFunctionOnly(
-+-    "pgo-instrument-cold-function-only", cl::init(false), cl::Hidden,
-+-    cl::desc("Enable cold function only instrumentation."));
-+-
-+ extern cl::opt<unsigned> MaxNumVTableAnnotations;
-+ 
-+ namespace llvm {
-+@@ -1911,11 +1897,6 @@
-+     return true;
-+   if (F.getInstructionCount() < PGOFunctionSizeThreshold)
-+     return true;
-+-  if (PGOInstrumentColdFunctionOnly) {
-+-    if (auto EntryCount = F.getEntryCount())
-+-      return EntryCount->getCount() > PGOColdInstrumentEntryThreshold;
-+-    return !PGOTreatUnknownAsCold;
-+-  }
-+   return false;
-+ }
-+ 
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PGOProfile/instr-gen-cold-function.ll b/llvm/test/Transforms/PGOProfile/instr-gen-cold-function.ll
-+--- a/llvm/test/Transforms/PGOProfile/instr-gen-cold-function.ll
-++++ b/llvm/test/Transforms/PGOProfile/instr-gen-cold-function.ll
-+@@ -1,35 +0,0 @@
-+-; RUN: opt < %s  --passes=pgo-instr-gen -pgo-instrument-cold-function-only -pgo-function-entry-coverage -S  | FileCheck --check-prefixes=COLD %s
-+-; RUN: opt < %s  --passes=pgo-instr-gen -pgo-instrument-cold-function-only -pgo-function-entry-coverage -pgo-cold-instrument-entry-threshold=1 -S  | FileCheck --check-prefixes=ENTRY-COUNT %s
-+-; RUN: opt < %s  --passes=pgo-instr-gen -pgo-instrument-cold-function-only -pgo-function-entry-coverage -pgo-treat-unknown-as-cold -S  | FileCheck --check-prefixes=UNKNOWN-FUNC %s
-+-
-+-; COLD: call void @llvm.instrprof.cover(ptr @__profn_foo, i64  [[#]], i32 1, i32 0)
-+-; COLD-NOT: __profn_main
-+-; COLD-NOT: __profn_bar
-+-
-+-; ENTRY-COUNT: call void @llvm.instrprof.cover(ptr @__profn_foo, i64  [[#]], i32 1, i32 0)
-+-; ENTRY-COUNT: call void @llvm.instrprof.cover(ptr @__profn_main, i64 [[#]], i32 1, i32 0)
-+-
-+-; UNKNOWN-FUNC: call void @llvm.instrprof.cover(ptr @__profn_bar, i64  [[#]], i32 1, i32 0)
-+-; UNKNOWN-FUNC: call void @llvm.instrprof.cover(ptr @__profn_foo, i64  [[#]], i32 1, i32 0)
-+-
-+-
-+-target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
-+-target triple = "x86_64-unknown-linux-gnu"
-+-
-+-define void @bar() {
-+-entry:
-+-  ret void
-+-}
-+-
-+-define void @foo() !prof !0 {
-+-entry:
-+-  ret void
-+-}
-+-
-+-define i32 @main() !prof !1 {
-+-entry:
-+-  ret i32 0
-+-}
-+-
-+-!0 = !{!"function_entry_count", i64 0}
-+-!1 = !{!"function_entry_count", i64 1}
+-diff -ruN --strip-trailing-cr a/clang/include/clang/Driver/Options.td b/clang/include/clang/Driver/Options.td
+---- a/clang/include/clang/Driver/Options.td
+-+++ b/clang/include/clang/Driver/Options.td
+-@@ -1786,12 +1786,6 @@
+-   PosFlag<SetTrue, [], [ClangOption, CC1Option],
+-           "Emit extra debug info to make sample profile more accurate">,
+-   NegFlag<SetFalse>>;
+--def fprofile_generate_cold_function_coverage : Flag<["-"], "fprofile-generate-cold-function-coverage">, 
+--    Group<f_Group>, Visibility<[ClangOption, CLOption]>,
+--    HelpText<"Generate instrumented code to collect coverage info for cold functions into default.profraw file (overridden by '=' form of option or LLVM_PROFILE_FILE env var)">;
+--def fprofile_generate_cold_function_coverage_EQ : Joined<["-"], "fprofile-generate-cold-function-coverage=">, 
+--    Group<f_Group>, Visibility<[ClangOption, CLOption]>, MetaVarName<"<directory>">,
+--    HelpText<"Generate instrumented code to collect coverage info for cold functions into <directory>/default.profraw (overridden by LLVM_PROFILE_FILE env var)">; 
+- def fprofile_instr_generate : Flag<["-"], "fprofile-instr-generate">,
+-     Group<f_Group>, Visibility<[ClangOption, CLOption]>,
+-     HelpText<"Generate instrumented code to collect execution counts into default.profraw file (overridden by '=' form of option or LLVM_PROFILE_FILE env var)">;
+-diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChain.cpp b/clang/lib/Driver/ToolChain.cpp
+---- a/clang/lib/Driver/ToolChain.cpp
+-+++ b/clang/lib/Driver/ToolChain.cpp
+-@@ -897,9 +897,7 @@
+-          Args.hasArg(options::OPT_fprofile_instr_generate) ||
+-          Args.hasArg(options::OPT_fprofile_instr_generate_EQ) ||
+-          Args.hasArg(options::OPT_fcreate_profile) ||
+--         Args.hasArg(options::OPT_forder_file_instrumentation) ||
+--         Args.hasArg(options::OPT_fprofile_generate_cold_function_coverage) ||
+--         Args.hasArg(options::OPT_fprofile_generate_cold_function_coverage_EQ);
+-+         Args.hasArg(options::OPT_forder_file_instrumentation);
+- }
+- 
+- bool ToolChain::needsGCovInstrumentation(const llvm::opt::ArgList &Args) {
+-diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
+---- a/clang/lib/Driver/ToolChains/Clang.cpp
+-+++ b/clang/lib/Driver/ToolChains/Clang.cpp
+-@@ -632,26 +632,6 @@
+-     }
+-   }
+- 
+--  if (auto *ColdFuncCoverageArg = Args.getLastArg(
+--          options::OPT_fprofile_generate_cold_function_coverage,
+--          options::OPT_fprofile_generate_cold_function_coverage_EQ)) {
+--    SmallString<128> Path(
+--        ColdFuncCoverageArg->getOption().matches(
+--            options::OPT_fprofile_generate_cold_function_coverage_EQ)
+--            ? ColdFuncCoverageArg->getValue()
+--            : "");
+--    llvm::sys::path::append(Path, "default_%m.profraw");
+--    // FIXME: Idealy the file path should be passed through
+--    // `-fprofile-instrument-path=`(InstrProfileOutput), however, this field is
+--    // shared with other profile use path(see PGOOptions), we need to refactor
+--    // PGOOptions to make it work.
+--    CmdArgs.push_back("-mllvm");
+--    CmdArgs.push_back(Args.MakeArgString(
+--        Twine("--instrument-cold-function-only-path=") + Path));
+--    CmdArgs.push_back("-mllvm");
+--    CmdArgs.push_back("--pgo-function-entry-coverage");
+--  }
+--
+-   Arg *PGOGenArg = nullptr;
+-   if (PGOGenerateArg) {
+-     assert(!CSPGOGenerateArg);
+-diff -ruN --strip-trailing-cr a/clang/test/CodeGen/pgo-cold-function-coverage.c b/clang/test/CodeGen/pgo-cold-function-coverage.c
+---- a/clang/test/CodeGen/pgo-cold-function-coverage.c
+-+++ b/clang/test/CodeGen/pgo-cold-function-coverage.c
+-@@ -1,19 +0,0 @@
+--// Test -fprofile-generate-cold-function-coverage 
+--
+--// RUN: rm -rf %t && split-file %s %t
+--// RUN: %clang --target=x86_64 -O2 -fprofile-generate-cold-function-coverage=/xxx/yyy/ -fprofile-sample-accurate -fprofile-sample-use=%t/pgo-cold-func.prof  -S -emit-llvm -o - %t/pgo-cold-func.c | FileCheck %s
+--
+--// CHECK: @__llvm_profile_filename = {{.*}} c"/xxx/yyy/default_%m.profraw\00"
+--
+--// CHECK: store i8 0, ptr @__profc_bar, align 1
+--// CHECK-NOT: @__profc_foo 
+--
+--//--- pgo-cold-func.prof
+--foo:1:1
+-- 1: 1
+--
+--//--- pgo-cold-func.c
+--int bar(int x) { return x;}
+--int foo(int x) { 
+--    return x;
+--}
+-diff -ruN --strip-trailing-cr a/clang/test/Driver/fprofile-generate-cold-function-coverage.c b/clang/test/Driver/fprofile-generate-cold-function-coverage.c
+---- a/clang/test/Driver/fprofile-generate-cold-function-coverage.c
+-+++ b/clang/test/Driver/fprofile-generate-cold-function-coverage.c
+-@@ -1,8 +0,0 @@
+--// RUN: %clang -### -c -fprofile-generate-cold-function-coverage %s 2>&1 | FileCheck %s
+--// CHECK: "--instrument-cold-function-only-path=default_%m.profraw" 
+--// CHECK: "--pgo-function-entry-coverage"
+--// CHECK-NOT:  "-fprofile-instrument"
+--// CHECK-NOT:  "-fprofile-instrument-path=
+--
+--// RUN: %clang -### -c -fprofile-generate-cold-function-coverage=dir %s 2>&1 | FileCheck %s --check-prefix=CHECK-EQ
+--// CHECK-EQ: "--instrument-cold-function-only-path=dir{{/|\\\\}}default_%m.profraw" 
+-diff -ruN --strip-trailing-cr a/llvm/lib/Passes/PassBuilderPipelines.cpp b/llvm/lib/Passes/PassBuilderPipelines.cpp
+---- a/llvm/lib/Passes/PassBuilderPipelines.cpp
+-+++ b/llvm/lib/Passes/PassBuilderPipelines.cpp
+-@@ -296,12 +296,7 @@
+-     "enable-loop-versioning-licm", cl::init(false), cl::Hidden,
+-     cl::desc("Enable the experimental Loop Versioning LICM pass"));
+- 
+--static cl::opt<std::string> InstrumentColdFuncOnlyPath(
+--    "instrument-cold-function-only-path", cl::init(""),
+--    cl::desc("File path for cold function only instrumentation"), cl::Hidden);
+--
+- extern cl::opt<std::string> UseCtxProfile;
+--extern cl::opt<bool> PGOInstrumentColdFunctionOnly;
+- 
+- namespace llvm {
+- extern cl::opt<bool> EnableMemProfContextDisambiguation;
+-@@ -1187,13 +1182,8 @@
+-   const bool IsCtxProfUse =
+-       !UseCtxProfile.empty() && Phase == ThinOrFullLTOPhase::ThinLTOPreLink;
+- 
+--  // Enable cold function coverage instrumentation if
+--  // InstrumentColdFuncOnlyPath is provided.
+--  const bool IsColdFuncOnlyInstrGen = PGOInstrumentColdFunctionOnly =
+--      IsPGOPreLink && !InstrumentColdFuncOnlyPath.empty();
+--
+-   if (IsPGOInstrGen || IsPGOInstrUse || IsMemprofUse || IsCtxProfGen ||
+--      IsCtxProfUse || IsColdFuncOnlyInstrGen)
+-+      IsCtxProfUse)
+-     addPreInlinerPasses(MPM, Level, Phase);
+- 
+-   // Add all the requested passes for instrumentation PGO, if requested.
+-@@ -1215,11 +1205,6 @@
+-       return MPM;
+-     addPostPGOLoopRotation(MPM, Level);
+-     MPM.addPass(PGOCtxProfLoweringPass());
+--  } else if (IsColdFuncOnlyInstrGen) {
+--    addPGOInstrPasses(
+--        MPM, Level, /* RunProfileGen */ true, /* IsCS */ false,
+--        /* AtomicCounterUpdate */ false, InstrumentColdFuncOnlyPath,
+--        /* ProfileRemappingFile */ "", IntrusiveRefCntPtr<vfs::FileSystem>());
+-   }
+- 
+-   if (IsPGOInstrGen || IsPGOInstrUse || IsCtxProfGen)
+-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp b/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
+---- a/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
+-+++ b/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
+-@@ -319,20 +319,6 @@
+-     cl::desc("Do not instrument functions with the number of critical edges "
+-              " greater than this threshold."));
+- 
+--static cl::opt<uint64_t> PGOColdInstrumentEntryThreshold(
+--    "pgo-cold-instrument-entry-threshold", cl::init(0), cl::Hidden,
+--    cl::desc("For cold function instrumentation, skip instrumenting functions "
+--             "whose entry count is above the given value."));
+--
+--static cl::opt<bool> PGOTreatUnknownAsCold(
+--    "pgo-treat-unknown-as-cold", cl::init(false), cl::Hidden,
+--    cl::desc("For cold function instrumentation, treat count unknown(e.g. "
+--             "unprofiled) functions as cold."));
+--
+--cl::opt<bool> PGOInstrumentColdFunctionOnly(
+--    "pgo-instrument-cold-function-only", cl::init(false), cl::Hidden,
+--    cl::desc("Enable cold function only instrumentation."));
+--
+- extern cl::opt<unsigned> MaxNumVTableAnnotations;
+- 
+- namespace llvm {
+-@@ -1911,11 +1897,6 @@
+-     return true;
+-   if (F.getInstructionCount() < PGOFunctionSizeThreshold)
+-     return true;
+--  if (PGOInstrumentColdFunctionOnly) {
+--    if (auto EntryCount = F.getEntryCount())
+--      return EntryCount->getCount() > PGOColdInstrumentEntryThreshold;
+--    return !PGOTreatUnknownAsCold;
+--  }
+-   return false;
+- }
+- 
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PGOProfile/instr-gen-cold-function.ll b/llvm/test/Transforms/PGOProfile/instr-gen-cold-function.ll
+---- a/llvm/test/Transforms/PGOProfile/instr-gen-cold-function.ll
+-+++ b/llvm/test/Transforms/PGOProfile/instr-gen-cold-function.ll
+-@@ -1,35 +0,0 @@
+--; RUN: opt < %s  --passes=pgo-instr-gen -pgo-instrument-cold-function-only -pgo-function-entry-coverage -S  | FileCheck --check-prefixes=COLD %s
+--; RUN: opt < %s  --passes=pgo-instr-gen -pgo-instrument-cold-function-only -pgo-function-entry-coverage -pgo-cold-instrument-entry-threshold=1 -S  | FileCheck --check-prefixes=ENTRY-COUNT %s
+--; RUN: opt < %s  --passes=pgo-instr-gen -pgo-instrument-cold-function-only -pgo-function-entry-coverage -pgo-treat-unknown-as-cold -S  | FileCheck --check-prefixes=UNKNOWN-FUNC %s
+--
+--; COLD: call void @llvm.instrprof.cover(ptr @__profn_foo, i64  [[#]], i32 1, i32 0)
+--; COLD-NOT: __profn_main
+--; COLD-NOT: __profn_bar
+--
+--; ENTRY-COUNT: call void @llvm.instrprof.cover(ptr @__profn_foo, i64  [[#]], i32 1, i32 0)
+--; ENTRY-COUNT: call void @llvm.instrprof.cover(ptr @__profn_main, i64 [[#]], i32 1, i32 0)
+--
+--; UNKNOWN-FUNC: call void @llvm.instrprof.cover(ptr @__profn_bar, i64  [[#]], i32 1, i32 0)
+--; UNKNOWN-FUNC: call void @llvm.instrprof.cover(ptr @__profn_foo, i64  [[#]], i32 1, i32 0)
+--
+--
+--target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+--target triple = "x86_64-unknown-linux-gnu"
+--
+--define void @bar() {
+--entry:
+--  ret void
+--}
+--
+--define void @foo() !prof !0 {
+--entry:
+--  ret void
+--}
+--
+--define i32 @main() !prof !1 {
+--entry:
+--  ret i32 0
+--}
+--
+--!0 = !{!"function_entry_count", i64 0}
+--!1 = !{!"function_entry_count", i64 1}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 48a6599..df7e70f 100644
+index df7e70f..7bfc984 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "4ba623f24479879fb7100988f6ad5d9a62c19842"
--    LLVM_SHA256 = "397410a7824d70db007f492263ae72a4bed21e7f907fb64a50f2d9c9adf0cce3"
-+    LLVM_COMMIT = "95c2d798148f12565dd4c9ddc753d196e47f230f"
-+    LLVM_SHA256 = "f11e5bbf17d50ff31addc9e1737d64e64a144fce928166de5878c72a1efcf9b4"
+-    LLVM_COMMIT = "95c2d798148f12565dd4c9ddc753d196e47f230f"
+-    LLVM_SHA256 = "f11e5bbf17d50ff31addc9e1737d64e64a144fce928166de5878c72a1efcf9b4"
++    LLVM_COMMIT = "eeee5a44bbf24f2f30a313ecf66e6a76de365658"
++    LLVM_SHA256 = "2e280faca863113e3c2df3f24794c52a1e40e738ebdb026c62f5fc9db981bb45"
  
      tf_http_archive(
          name = name,
