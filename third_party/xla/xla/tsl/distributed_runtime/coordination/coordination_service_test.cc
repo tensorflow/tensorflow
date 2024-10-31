@@ -472,9 +472,9 @@ TEST_F(CoordinateTwoTasksTest, TestTaskHeartbeatTimeout) {
   Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
   EXPECT_THAT(coord_service_->RecordHeartbeat(task_0_, incarnation_0_),
-              StatusIs(absl::StatusCode::kUnavailable));
+              StatusIs(absl::StatusCode::kAborted));
   EXPECT_THAT(coord_service_->RecordHeartbeat(task_1_, incarnation_1_),
-              StatusIs(absl::StatusCode::kUnavailable));
+              StatusIs(absl::StatusCode::kAborted));
 }
 
 TEST_F(CoordinateTwoTasksTest,
@@ -1771,8 +1771,6 @@ TEST_F(CoordinateTwoTasksTest, UnrecoverableTaskPropagatesError) {
   ASSERT_OK(coord_service_->ReportTaskError(task_0_,
                                             absl::InternalError("test_error")));
 
-  EXPECT_THAT(coord_service_->RecordHeartbeat(task_0_, incarnation_0_),
-              StatusIs(absl::StatusCode::kInternal));
   // For unrecoverable task, error propagates to all connected tasks.
   EXPECT_THAT(client_1_.GetStatus(), StatusIs(absl::StatusCode::kInternal));
 }
@@ -1789,8 +1787,6 @@ TEST_F(CoordinateTwoTasksTest, RecoverableTaskWillNotPropagateError) {
   ASSERT_OK(coord_service_->ReportTaskError(task_0_,
                                             absl::InternalError("test_error")));
 
-  EXPECT_THAT(coord_service_->RecordHeartbeat(task_0_, incarnation_0_),
-              StatusIs(absl::StatusCode::kInternal));
   // Since no error propagation for recoverable tasks, other tasks should work
   // as normal.
   TF_EXPECT_OK(client_1_.GetStatus());
@@ -1902,7 +1898,7 @@ TEST_F(CoordinateTwoTasksTest,
                                             absl::InternalError("test_error")));
 
   EXPECT_THAT(coord_service_->RecordHeartbeat(task_0_, incarnation_0_),
-              StatusIs(absl::StatusCode::kInternal));
+              StatusIs(absl::StatusCode::kAborted));
   // Since no error propagation for recoverable tasks, other tasks should work
   // as normal.
   TF_EXPECT_OK(client_1_.GetStatus());

@@ -758,7 +758,8 @@ void CoordinationServiceStandaloneImpl::RegisterTaskAsync(
     return;
   }
 
-  auto* task_cluster_state = cluster_state_[task_name].get();
+  const std::unique_ptr<TaskState>& task_cluster_state =
+      cluster_state_[task_name];
   const auto task_state = task_cluster_state->GetState();
   const auto task_status = task_cluster_state->GetStatus();
 
@@ -811,13 +812,14 @@ void CoordinationServiceStandaloneImpl::RegisterTaskAsync(
                        "incarnation. It has likely restarted.");
     }
   } else {
-    // This task is connected or already in error, which implies it has
-    // registered previously.
+    // This task is already in error, which implies it has registered
+    // previously.
     error_message =
         absl::StrCat(task_name,
                      " unexpectedly tried to connect while it is already in "
                      "error. ResetTask() should be called before a "
-                     "subsequent connect attempt.");
+                     "subsequent connect attempt. Existing error: ",
+                     task_status.ToString());
   }
   LOG(ERROR) << error_message;
   absl::Status error =
@@ -983,9 +985,13 @@ absl::Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
         absl::StrCat("Unexpected heartbeat request from task: ", task_name,
                      ". This usually implies a configuration error.")));
   }
-  if (!cluster_state_[task_name]->GetStatus().ok()) {
-    return cluster_state_[task_name]->GetStatus();
-  } else if (cluster_state_[task_name]->IsDisconnectedBeyondGracePeriod()) {
+  const std::unique_ptr<TaskState>& task_state = cluster_state_[task_name];
+  if (!task_state->GetStatus().ok()) {
+    return MakeCoordinationError(absl::AbortedError(absl::StrCat(
+        "Unexpected heartbeat request from an already-in-error task: ",
+        task_name,
+        " with existing error: ", task_state->GetStatus().ToString())));
+  } else if (task_state->IsDisconnectedBeyondGracePeriod()) {
     // We accept heartbeats for a short grace period to account for the lag
     // time between the service recording the state change and the agent
     // stopping heartbeats.
@@ -997,7 +1003,7 @@ absl::Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
   }
   VLOG(10) << "Record heartbeat from task: " << task_name
            << "at incarnation: " << incarnation << "at " << absl::Now();
-  s = cluster_state_[task_name]->RecordHeartbeat(incarnation);
+  s = task_state->RecordHeartbeat(incarnation);
 
   // Set and propagate any heartbeat errors.
   if (!s.ok()) {
