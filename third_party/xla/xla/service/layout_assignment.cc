@@ -362,36 +362,25 @@ absl::Status LayoutAssignment::SetOperandLayout(
           << ShapeUtil::HumanStringWithLayout(shape_with_layout)
           << " : priority = " << priority << "; mandatory = " << mandatory
           << "; dfs = " << dfs << "\n";
-  OperandLayoutConstraint* curr_shape_layout =
+  std::unique_ptr<OperandLayoutConstraint>& curr_shape_layout =
       constraints.MutableOperandLayoutConstraint(instruction, operand_no);
-  if (curr_shape_layout != nullptr) {
+  if (curr_shape_layout) {
     if (!curr_shape_layout->UpdateLayout(priority, shape_with_layout, mandatory,
                                          dfs, this)) {
       return absl::OkStatus();
     }
   }
-  OperandLayoutConstraint new_constraint(ShapeLayout(shape_with_layout),
-                                         instruction, operand_no, mandatory,
-                                         dfs, priority);
-  auto op_constraint = constraints.InsertOperandLayoutConstraint(
-      instruction, operand_no, new_constraint);
-  PushAddedConstraints(op_constraint);
-  return absl::OkStatus();
-}
-
-OperandLayoutConstraint*
-LayoutAssignment::LayoutConstraints::InsertOperandLayoutConstraint(
-    const HloInstruction* instruction, int64_t operand_no,
-    const OperandLayoutConstraint& constraint) {
-  auto key = std::make_pair(instruction, operand_no);
-  auto iter = operand_constraints_.find(key);
-  if (iter == operand_constraints_.end()) {
-    auto pair = std::make_pair(key, constraint);
-    iter = operand_constraints_.insert(pair).first;
+  if (curr_shape_layout == nullptr) {
+    curr_shape_layout = std::make_unique<OperandLayoutConstraint>(
+        ShapeLayout(shape_with_layout), instruction, operand_no, mandatory, dfs,
+        priority);
   } else {
-    iter->second = constraint;
+    *curr_shape_layout =
+        OperandLayoutConstraint(ShapeLayout(shape_with_layout), instruction,
+                                operand_no, mandatory, dfs, priority);
   }
-  return &iter->second;
+  PushAddedConstraints(curr_shape_layout.get());
+  return absl::OkStatus();
 }
 
 void LayoutAssignment::PushAddedConstraints(
@@ -549,14 +538,13 @@ const OperandLayoutConstraint*
 LayoutAssignment::LayoutConstraints::GetOperandLayoutConstraint(
     const HloInstruction* instruction, int64_t operand_no) const {
   auto it = operand_constraints_.find(std::make_pair(instruction, operand_no));
-  return it == operand_constraints_.end() ? nullptr : &it->second;
+  return it == operand_constraints_.end() ? nullptr : it->second.get();
 }
 
-OperandLayoutConstraint*
+std::unique_ptr<OperandLayoutConstraint>&
 LayoutAssignment::LayoutConstraints::MutableOperandLayoutConstraint(
     const HloInstruction* instruction, int64_t operand_no) {
-  auto it = operand_constraints_.find(std::make_pair(instruction, operand_no));
-  return it == operand_constraints_.end() ? nullptr : &it->second;
+  return operand_constraints_[std::make_pair(instruction, operand_no)];
 }
 
 const ShapeLayout* LayoutAssignment::LayoutConstraints::ResultLayout() const {
