@@ -15,6 +15,8 @@
 
 # buildifier: disable=out-of-order-load
 
+load("//third_party/protobuf/bazel:proto_library.bzl", "proto_library")
+load("//third_party/protobuf/bazel:java_lite_proto_library.bzl", "java_lite_proto_library")
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
 
 # copybara:comment_begin(oss-only)
