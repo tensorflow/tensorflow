@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter.h"
@@ -373,8 +372,6 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns the ShapedSlices for the given operands.
   absl::StatusOr<std::vector<ShapedSlice>> GetShapedSlices(
       mlir::Operation::operand_range operands);
-
-  GpuElementalIrEmitter elemental_emitter_;
 };
 
 }  // namespace gpu

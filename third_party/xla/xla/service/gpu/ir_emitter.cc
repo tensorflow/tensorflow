@@ -31,7 +31,6 @@ limitations under the License.
 #include "llvm/Support/AtomicOrdering.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/service/elemental_ir_emitter.h"
-#include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
@@ -61,9 +60,7 @@ absl::Status IrEmitter::DefaultAction(HloInstruction* hlo) {
           .EmitReadArrayElement(index, &b_, operand->name());
     };
   }
-  return EmitTargetElementLoop(
-      *hlo, GpuElementalIrEmitter(*ir_emitter_context_, &b_)
-                .MakeElementGenerator(hlo, operand_to_generator));
+  return absl::InvalidArgumentError("bla");
 }
 
 absl::Status IrEmitter::HandleConstant(HloInstruction* constant) {
@@ -182,18 +179,6 @@ absl::Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
 
 absl::Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   return absl::OkStatus();
-}
-
-absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
-  // kFusion for library calls should be handled by
-  // IrEmitterUnnested::HandleFusion.
-  CHECK_EQ(HloInstruction::FusionKind::kLoop, fusion->fusion_kind());
-  GpuElementalIrEmitter elemental_emitter(*ir_emitter_context_, &b_);
-  FusedIrEmitter fused_emitter(elemental_emitter);
-  BindFusionArguments(fusion, &fused_emitter);
-  TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
-                                          *fusion->fused_expression_root()));
-  return EmitTargetElementLoop(*fusion, generator);
 }
 
 absl::Status IrEmitter::HandleCall(HloInstruction* call) {

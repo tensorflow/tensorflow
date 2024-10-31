@@ -437,12 +437,10 @@ cc_library(
 cc_library(
     name = "ir_emitter",
     srcs = [
-        "elemental_ir_emitter.cc",
         "ir_emitter.cc",
         "ir_emitter_nested.cc",
     ],
     hdrs = [
-        "elemental_ir_emitter.h",
         "ir_emitter.h",
         "ir_emitter_nested.h",
     ],
