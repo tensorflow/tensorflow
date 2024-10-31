@@ -148,7 +148,8 @@ bool IsFusibleCandidate(const HloInstruction& instr) {
     return false;
   }
 
-  if (IsNestableVariadicReduction(instr)) {
+  if (IsNestableVariadicReduction(instr) ||
+      IsNestableVariadicReduceWindow(instr)) {
     return false;
   }
 

@@ -554,7 +554,6 @@ lit_test_suite(
             "kernel_reuse.hlo",
             "pad_to_static.hlo",
             "rng_get_and_update_state.hlo",
-            "select_and_scatter.hlo",
             "single_instruction.hlo",
             "slice_to_dynamic.hlo",
             "sorting.hlo",

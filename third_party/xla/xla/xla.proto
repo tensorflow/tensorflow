@@ -883,9 +883,6 @@ message DebugOptions {
   // Excludes non-deterministic ops from compiled executables.
   // Unlike --xla_gpu_deterministic_ops does not disable autotuning - the
   // compilation itself can be non-deterministic.
-  // At present, the HLO op SelectAndScatter does not have a
-  // deterministic XLA:GPU implementation.
-  // Compilation errors out if SelectAndScatter is encountered.
   // Scatter ops can non-deterministic by default; these get converted to
   // a deterministic implementation.
   bool xla_gpu_exclude_nondeterministic_ops = 297;

@@ -158,8 +158,6 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitFusion(const HloFusionInstruction* instr);
   absl::Status EmitCopy(const HloInstruction* instr);
   absl::Status EmitAsyncCustomCallStart(const HloInstruction* instr);
-  absl::Status EmitSelectAndScatter(
-      const HloSelectAndScatterInstruction* instr);
   absl::Status EmitWhile(const HloInstruction* instr);
   absl::Status EmitInfeed(const HloInfeedInstruction* instr);
   absl::Status EmitOutfeed(const HloOutfeedInstruction* instr);

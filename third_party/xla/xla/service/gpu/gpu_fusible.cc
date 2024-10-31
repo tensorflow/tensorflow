@@ -214,6 +214,15 @@ bool IsNestableVariadicReduction(const HloInstruction& instr) {
            instr.fused_expression_root()->opcode() == HloOpcode::kReduce));
 }
 
+bool IsNestableVariadicReduceWindow(const HloInstruction& instr) {
+  return instr.shape().IsTuple() &&
+         (instr.opcode() == HloOpcode::kReduceWindow ||
+          (instr.opcode() == HloOpcode::kFusion &&
+           instr.fusion_kind() == HloInstruction::FusionKind::kLoop &&
+           instr.fused_expression_root()->opcode() ==
+               HloOpcode::kReduceWindow));
+}
+
 bool IsInputFusibleTranspose(const HloInstruction& instr) {
   if (instr.opcode() == HloOpcode::kBitcast || instr.IsCustomFusion()) {
     return false;

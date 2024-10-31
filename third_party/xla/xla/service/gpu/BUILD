@@ -1633,6 +1633,7 @@ cc_library(
         "//xla/service:scatter_determinism_expander",
         "//xla/service:scatter_expander",
         "//xla/service:scatter_simplifier",
+        "//xla/service:select_and_scatter_expander",
         "//xla/service:sharding_remover",
         "//xla/service:slow_operation_alarm",
         "//xla/service:topk_rewriter",
