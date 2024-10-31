@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/client/lib/testing.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
