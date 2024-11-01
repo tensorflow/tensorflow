@@ -26,7 +26,7 @@ limitations under the License.
 namespace xla {
 
 struct ReduceScatterSpec {
-  int64_t split_dim;
+  int64_t split_dim = -1;
   int64_t sharded_partitions = 1;
   int64_t sharded_replicas = 1;
   int64_t group_size;
