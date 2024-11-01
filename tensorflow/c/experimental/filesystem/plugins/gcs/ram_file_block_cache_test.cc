@@ -28,9 +28,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status ReadCache(tf_gcs_filesystem::RamFileBlockCache* cache,
-                 const string& filename, size_t offset, size_t n,
-                 std::vector<char>* out) {
+absl::Status ReadCache(tf_gcs_filesystem::RamFileBlockCache* cache,
+                       const string& filename, size_t offset, size_t n,
+                       std::vector<char>* out) {
   out->clear();
   out->resize(n, 0);
   TF_Status status;
@@ -244,7 +244,7 @@ TEST(RamFileBlockCacheTest, OutOfRange) {
   // Reading at offset file_size + 4 will read the second block (since the read
   // at file_size + 4 = 28 will be aligned to an offset of 16) but will return
   // OutOfRange because the offset is past the end of the 24-byte file.
-  Status status = ReadCache(&cache, "", file_size + 4, 4, &out);
+  absl::Status status = ReadCache(&cache, "", file_size + 4, 4, &out);
   EXPECT_EQ(status.code(), error::OUT_OF_RANGE);
   EXPECT_TRUE(second_block);
   // Reading the second full block will return 8 bytes, from a cache hit.
@@ -276,7 +276,7 @@ TEST(RamFileBlockCacheTest, Inconsistent) {
   EXPECT_EQ(out.size(), 1);
   // Now read the first block; this should yield an INTERNAL error because we
   // had already cached a partial block at a later position.
-  Status status = ReadCache(&cache, "", 0, block_size, &out);
+  absl::Status status = ReadCache(&cache, "", 0, block_size, &out);
   EXPECT_EQ(status.code(), error::INTERNAL);
 }
 
