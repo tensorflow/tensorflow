@@ -42,7 +42,7 @@ namespace tensorflow {
 // TPUReplicate operators.
 class EncapsulateTPUComputationsPass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 
   // The following methods are public only for unit tests.
 
@@ -52,23 +52,23 @@ class EncapsulateTPUComputationsPass : public GraphOptimizationPass {
   //    functions contain the computations to be passed to TPUReplicate. During
   //    encapsulation, we sort the arguments into the order expected by
   //    TPUReplicate.
-  static Status Encapsulate(std::unique_ptr<Graph>* graph,
-                            FunctionLibraryDefinition* flib_def);
+  static absl::Status Encapsulate(std::unique_ptr<Graph>* graph,
+                                  FunctionLibraryDefinition* flib_def);
 
   // b) we rewrite the function calls generated in phase (a) into TPUReplicate
   //    operators. We also flatten the TPUReplicatedInput and
   //    TPUReplicatedOutput replicated input and output nodes of the function
   //    call into the replicated input and outputs of the TPUReplicate operator.
-  static Status BuildTPUReplicateOps(Graph* graph);
+  static absl::Status BuildTPUReplicateOps(Graph* graph);
 };
 
 // Graph optimization pass that calls `ExtractOutsideCompilation` for all XLA
 // computation nodes.
 class ExtractOutsideCompilationPass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 
-  static Status ProcessHeadTailOutsideCompilation(
+  static absl::Status ProcessHeadTailOutsideCompilation(
       const std::string& outside_compilation_attr_name, int* lifted_arg_count,
       std::unordered_map<std::string, XlaClusterInfo>* clusters, Graph* g,
       FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld);

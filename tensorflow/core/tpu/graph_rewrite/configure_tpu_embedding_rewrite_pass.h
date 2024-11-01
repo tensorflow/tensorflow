@@ -31,7 +31,7 @@ namespace tensorflow {
 // devices with nodes which will set up TPU Embedding.
 class ConfigureTPUEmbeddingRewritePass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 }  // namespace tensorflow

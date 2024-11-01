@@ -54,7 +54,7 @@ constexpr char kConnectHostsOp[] = "ConnectTPUEmbeddingHosts";
 constexpr char kFinalizeOp[] = "FinalizeTPUEmbedding";
 constexpr char kEmbeddingConfigurationAttr[] = "config";
 
-Status AddSynchronizationNode(
+absl::Status AddSynchronizationNode(
     const NodeDef& sync_node_def, const string& device_name,
     absl::Span<Node* const> end_nodes,
     absl::Span<const DistributedTPURewriteHelpers::OutputDependency>
@@ -86,11 +86,9 @@ Status AddSynchronizationNode(
   return absl::OkStatus();
 }
 
-Status AddSetupPropagationEmbeddingNode(const string& device_name,
-                                        const string& node_name,
-                                        const string& op_name,
-                                        absl::Span<Node* const> input_nodes,
-                                        Graph* graph, Node** node) {
+absl::Status AddSetupPropagationEmbeddingNode(
+    const string& device_name, const string& node_name, const string& op_name,
+    absl::Span<Node* const> input_nodes, Graph* graph, Node** node) {
   NodeDef node_def;
   node_def.set_name(node_name);
   node_def.set_op(op_name);
@@ -109,10 +107,10 @@ Status AddSetupPropagationEmbeddingNode(const string& device_name,
   return absl::OkStatus();
 }
 
-Status AddExecutePartitionerNode(const string& configuration_device_name,
-                                 const string& config,
-                                 absl::Span<Node* const> input_dependencies,
-                                 Graph* graph, Node** partitioner_node) {
+absl::Status AddExecutePartitionerNode(
+    const string& configuration_device_name, const string& config,
+    absl::Span<Node* const> input_dependencies, Graph* graph,
+    Node** partitioner_node) {
   NodeDef partitioner_def;
   partitioner_def.set_name(graph->NewName("execute_embedding_partitioner"));
   partitioner_def.set_op(kExecutePartitionerOp);
@@ -129,9 +127,9 @@ Status AddExecutePartitionerNode(const string& configuration_device_name,
   return absl::OkStatus();
 }
 
-Status AddConfigureMemoryNode(const string& host_device_name,
-                              Node* partitioner_node, Graph* graph,
-                              Node** embedding_node) {
+absl::Status AddConfigureMemoryNode(const string& host_device_name,
+                                    Node* partitioner_node, Graph* graph,
+                                    Node** embedding_node) {
   NodeDef embedding_def;
   embedding_def.set_name(graph->NewName("configure_tpu_embedding_memory"));
   embedding_def.set_op(kConfigureMemoryOp);
@@ -143,9 +141,9 @@ Status AddConfigureMemoryNode(const string& host_device_name,
   return absl::OkStatus();
 }
 
-Status AddCollateMemoryNode(const string& configuration_device_name,
-                            absl::Span<Node* const> memory_nodes, Graph* graph,
-                            Node** embedding_node) {
+absl::Status AddCollateMemoryNode(const string& configuration_device_name,
+                                  absl::Span<Node* const> memory_nodes,
+                                  Graph* graph, Node** embedding_node) {
   return AddSetupPropagationEmbeddingNode(
       /*device_name=*/configuration_device_name,
       /*node_name=*/graph->NewName("collate_tpu_embedding_memory"),
@@ -154,10 +152,10 @@ Status AddCollateMemoryNode(const string& configuration_device_name,
       /*node=*/embedding_node);
 }
 
-Status AddConfigureHostNode(const string& host_device_name,
-                            const string& config, Node* partitioner_node,
-                            Node* memory_node, Graph* graph,
-                            Node** embedding_node) {
+absl::Status AddConfigureHostNode(const string& host_device_name,
+                                  const string& config, Node* partitioner_node,
+                                  Node* memory_node, Graph* graph,
+                                  Node** embedding_node) {
   NodeDef embedding_def;
   embedding_def.set_name(graph->NewName("configure_tpu_embedding_host"));
   embedding_def.set_op(kConfigureHostOp);
@@ -173,9 +171,9 @@ Status AddConfigureHostNode(const string& host_device_name,
   return absl::OkStatus();
 }
 
-Status AddConnectHostsNode(const string& host_device_name,
-                           absl::Span<Node* const> configure_host_nodes,
-                           Graph* graph, Node** connect_node) {
+absl::Status AddConnectHostsNode(const string& host_device_name,
+                                 absl::Span<Node* const> configure_host_nodes,
+                                 Graph* graph, Node** connect_node) {
   return AddSetupPropagationEmbeddingNode(
       /*device_name=*/host_device_name,
       /*node_name=*/graph->NewName("connect_tpu_embedding_hosts"),
@@ -184,9 +182,9 @@ Status AddConnectHostsNode(const string& host_device_name,
       /*node=*/connect_node);
 }
 
-Status AddFinalizeNode(const string& configuration_device_name,
-                       Node* partitioner_node, Node* memory_node, Graph* graph,
-                       Node** finalize_node) {
+absl::Status AddFinalizeNode(const string& configuration_device_name,
+                             Node* partitioner_node, Node* memory_node,
+                             Graph* graph, Node** finalize_node) {
   NodeDef finalize_def;
   finalize_def.set_name(graph->NewName("finalize_tpu_embedding"));
   finalize_def.set_op(kFinalizeOp);
@@ -203,7 +201,7 @@ Status AddFinalizeNode(const string& configuration_device_name,
 
 }  // namespace
 
-Status ConfigureTPUEmbeddingRewritePass::Run(
+absl::Status ConfigureTPUEmbeddingRewritePass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "ConfigureTPUEmbeddingRewritePass::Run";
 
@@ -226,7 +224,7 @@ Status ConfigureTPUEmbeddingRewritePass::Run(
              const std::vector<Node*>& input_dependencies,
              const std::vector<DistributedTPURewriteHelpers::OutputDependency>&
                  output_dependencies,
-             Graph* graph) -> Status {
+             Graph* graph) -> absl::Status {
             if (host_devices.empty()) {
               return errors::InvalidArgument("TPU job contains no CPU devices");
             }
