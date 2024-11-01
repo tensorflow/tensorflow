@@ -422,4 +422,46 @@ module @reshard attributes {
   let constructor = "CreateIfrtLowerMpmdReshardToCallPass()";
 }
 
+def IfrtPrecompileAtomProgramPreprocessingPass :
+    Pass<"ifrt-precompile-atom-program-preprocessing", "mlir::ModuleOp"> {
+  let summary = "Prepares atom modules for compilation depending on their type";
+  let description = [{
+This passes visits each CallOp and does the following:
+1. it sets `ifrt.module_type` attribute based on the platform name of the
+ devices used by the atom program at compilation time.
+2. depending on the module type it invokes a different preprocessing pipeline on
+ the atom program module to prepare it for compilation (e.g., set MHLO shardings
+ for XLA compilation).
+```
+  }];
+
+  let constructor = "CreateIfrtPrecompileAtomProgramPreprocessingPass()";
+  let options = [
+    ListOption<"platform_names", "platform_names", "std::string",
+               "The mapping from logical device ID to platform name (e.g., tpu, cuda) corresponding to the logical device ID.">
+  ];
+}
+
+def IfrtVerifyDeviceTypeConsistencyPass :
+    Pass<"ifrt-verify-device-type-consistency", "mlir::ModuleOp"> {
+  let summary = "Verify the device types in `ifrt.CallOp` to ensure consistency.";
+  let description = [{
+Verify that each `ifrt.CallOp` uses devices of a single platform type and the
+platform type is consistent with the dialects the callee is using.
+
+
+This pass fails if
+1. any `ifrt.CallOp` uses more than one platform type.
+2. any callee of `ifrt.CallOp` has a mixture of MHLO and TF dialects.
+3. the platform type and dialect in `ifrt.CallOp` callee is inconsistent with
+ each other.
+  }];
+
+  let constructor = "CreateIfrtVerifyDeviceTypeConsistencyPass()";
+  let options = [
+    ListOption<"platform_names", "platform_names", "std::string",
+               "The mapping from logical device ID to platform name (e.g., tpu, cuda) corresponding to the logical device ID.">
+  ];
+}
+
 #endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_
