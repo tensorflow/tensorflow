@@ -34,33 +34,39 @@ namespace xla {
 
 namespace {
 
-// BuildWrappedComputationForAsyncStart is a side-effecting function that
-// returns a clone of the given instruction and populates the async_start_inputs
+// WrapMultipleSendRecvInstructions is a side-effecting function that
+// creates a single computation that wraps all the send/recv instructions.
+// As a side effect, the function populates the async_start_inputs
 // and async_start_input_shapes vectors with the operands and operand shapes of
 // the cloned instruction.
-HloInstruction* BuildWrappedComputationForAsyncStart(
-    HloComputation::Builder& builder, HloInstruction* instruction,
+HloComputation* WrapMultipleSendRecvInstructions(
+    std::vector<HloInstruction*>& send_recv_instructions,
     std::vector<HloInstruction*>& async_start_inputs,
-    std::vector<Shape>& async_start_input_shapes) {
+    std::vector<Shape>& async_start_input_shapes,
+    HloComputation::Builder& builder, HloModule* module) {
   int operand_counter = 0;
-  std::vector<HloInstruction*> operands;
-  for (auto src_operand : instruction->operands()) {
-    operands.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
-        operand_counter, src_operand->shape(),
-        absl::StrCat("param", operand_counter))));
-    async_start_inputs.push_back(src_operand);
-    async_start_input_shapes.push_back(src_operand->shape());
-    ++operand_counter;
+  std::vector<HloInstruction*> new_send_recv_instructions;
+  for (HloInstruction* instruction : send_recv_instructions) {
+    std::vector<HloInstruction*> new_operands;
+    for (HloInstruction* operand : instruction->operands()) {
+      new_operands.push_back(
+          builder.AddInstruction(HloInstruction::CreateParameter(
+              operand_counter, operand->shape(),
+              absl::StrCat("param", operand_counter))));
+      async_start_inputs.push_back(operand);
+      async_start_input_shapes.push_back(operand->shape());
+      operand_counter++;
+    }
+    new_send_recv_instructions.push_back(builder.AddInstruction(
+        instruction->CloneWithNewOperands(instruction->shape(), new_operands)));
   }
-  return builder.AddInstruction(
-      instruction->CloneWithNewOperands(instruction->shape(), operands));
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateTuple(new_send_recv_instructions));
+  return module->AddEmbeddedComputation(builder.Build(root));
 }
 
 absl::Status UpdateControlDependencies(HloInstruction* old_instruction,
                                        HloInstruction* new_instruction) {
-  if (!old_instruction->HasControlDependencies()) {
-    return absl::OkStatus();
-  }
   for (HloInstruction* predecessor : old_instruction->control_predecessors()) {
     TF_RETURN_IF_ERROR(predecessor->RemoveControlDependencyTo(old_instruction));
     TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(new_instruction));
@@ -73,35 +79,68 @@ absl::Status UpdateControlDependencies(HloInstruction* old_instruction,
 }
 
 absl::Status CreateAsyncStartAndAsyncDone(
-    HloInstruction* root, HloComputation::Builder& builder,
-    HloInstruction* instruction, HloComputation* computation, HloModule* module,
-    std::vector<HloInstruction*>& async_start_inputs,
+    std::vector<HloInstruction*>& send_recv_instructions,
+    HloComputation* async_computation, HloComputation* computation,
+    HloModule* module, std::vector<HloInstruction*>& async_start_inputs,
     std::vector<Shape>& async_start_input_shapes, bool& changed) {
-  for (auto instruction_user : instruction->users()) {
-    if (instruction_user->opcode() != HloOpcode::kSendDone &&
-        instruction_user->opcode() != HloOpcode::kRecvDone) {
-      // Ignore instruction users that are not send-done or recv-done.
-      continue;
+  // Async-start shape consists of (tuple_of_operand_shapes,
+  // func_output_shape, s32[]), where s32[] is the context state that is
+  // used to keep track of the asynchronous operation. For more details,
+  // see https://openxla.org/xla/async_ops.
+  Shape async_start_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape(async_start_input_shapes),
+       async_computation->root_instruction()->shape(),
+       ShapeUtil::MakeScalarShape(S32)});
+  HloInstruction* async_start =
+      computation->AddInstruction(HloInstruction::CreateAsyncStart(
+          async_start_shape, async_start_inputs, async_computation));
+  HloInstruction* async_done =
+      computation->AddInstruction(HloInstruction::CreateAsyncDone(
+          async_computation->root_instruction()->shape(), async_start));
+  HloInstruction* replacement_async_done = nullptr;
+  int async_done_gte_index = 0;
+  for (HloInstruction* instruction : send_recv_instructions) {
+    // Create the gte(async-done) instructions to replace send-done/recv-done
+    HloInstruction* unwrapped_async_done =
+        computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+            instruction->shape(), async_done, async_done_gte_index));
+    ++async_done_gte_index;
+    if (instruction->opcode() == HloOpcode::kSend) {
+      // send-done only returns the control-flow token, which is the last
+      // element in the unwrapped async-done tuple
+      replacement_async_done =
+          computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+              unwrapped_async_done->shape().tuple_shapes(2),
+              unwrapped_async_done, 2));
+    } else if (instruction->opcode() == HloOpcode::kRecv) {
+      // recv-done returns the received data and the control-flow token
+      HloInstruction* first_element_in_recv_done =
+          computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+              unwrapped_async_done->shape().tuple_shapes(0),
+              unwrapped_async_done, 0));
+      HloInstruction* second_element_in_recv_done =
+          computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+              unwrapped_async_done->shape().tuple_shapes(2),
+              unwrapped_async_done, 2));
+      HloInstruction* recv_done_tuple =
+          computation->AddInstruction(HloInstruction::CreateTuple(
+              {first_element_in_recv_done, second_element_in_recv_done}));
+      replacement_async_done = recv_done_tuple;
     }
-    Shape async_start_shape = ShapeUtil::MakeTupleShape(
-        {ShapeUtil::MakeTupleShape(async_start_input_shapes), root->shape(),
-         ShapeUtil::MakeScalarShape(S32)});
-    auto async_start =
-        computation->AddInstruction(HloInstruction::CreateAsyncStart(
-            async_start_shape, async_start_inputs,
-            module->AddEmbeddedComputation(builder.Build(root))));
-    auto async_done = computation->AddInstruction(
-        HloInstruction::CreateAsyncDone(root->shape(), async_start));
-    TF_RETURN_IF_ERROR(UpdateControlDependencies(instruction, async_start));
-    TF_RETURN_IF_ERROR(UpdateControlDependencies(instruction_user, async_done));
-    TF_RETURN_IF_ERROR(
-        instruction_user->ReplaceAllUsesWithDifferentShape(async_done));
-    TF_RETURN_IF_ERROR(
-        instruction_user->parent()->RemoveInstruction(instruction_user));
-    TF_RETURN_IF_ERROR(
-        instruction->ReplaceAllUsesWithDifferentShape(async_start));
-    TF_RETURN_IF_ERROR(instruction->parent()->RemoveInstruction(instruction));
-    changed = true;
+
+    for (HloInstruction* instruction_user : instruction->users()) {
+      if (instruction_user->opcode() == HloOpcode::kSendDone ||
+          instruction_user->opcode() == HloOpcode::kRecvDone) {
+        TF_RETURN_IF_ERROR(UpdateControlDependencies(instruction, async_start));
+        TF_RETURN_IF_ERROR(UpdateControlDependencies(instruction_user,
+                                                     replacement_async_done));
+        TF_RETURN_IF_ERROR(
+            instruction_user->ReplaceAllUsesWith(replacement_async_done));
+        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction_user));
+        changed = true;
+      }
+    }
+    TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
   }
   return absl::OkStatus();
 }
@@ -113,26 +152,39 @@ absl::StatusOr<bool> CollectiveSendRecvCombiner::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   int wrapped_computation_index = 0;
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kSend &&
-          instruction->opcode() != HloOpcode::kRecv) {
+  for (HloComputation* computation : module->MakeComputationPostOrder()) {
+    std::vector<HloInstruction*> send_recv_instructions;
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
+      // For now we don't transform partially pipelined send/recv instructions;
+      // in practice this means that the instruction does not feed into a
+      // send-done or recv-done instruction.
+      if (HloPredicateIsNotOp<HloOpcode::kSend, HloOpcode::kRecv>(
+              instruction)) {
         continue;
       }
-
-      // Create a new computation that wraps the send/recv instruction.
-      ++wrapped_computation_index;
-      auto builder = HloComputation::Builder(absl::StrCat(
-          "wrapped_", instruction->name(), wrapped_computation_index));
-      std::vector<HloInstruction*> async_start_inputs;
-      std::vector<Shape> async_start_input_shapes;
-      auto root = BuildWrappedComputationForAsyncStart(
-          builder, instruction, async_start_inputs, async_start_input_shapes);
-
-      TF_RETURN_IF_ERROR(CreateAsyncStartAndAsyncDone(
-          root, builder, instruction, computation, module, async_start_inputs,
-          async_start_input_shapes, changed));
+      if (instruction->users().size() != 1 ||
+          HloPredicateIsNotOp<HloOpcode::kSendDone, HloOpcode::kRecvDone>(
+              instruction->users()[0])) {
+        continue;
+      }
+      send_recv_instructions.push_back(instruction);
     }
+    if (send_recv_instructions.empty()) {
+      continue;
+    }
+    // Create a new computation that wraps the send/recv instructions.
+    ++wrapped_computation_index;
+    HloComputation::Builder builder = HloComputation::Builder(
+        absl::StrCat("wrapped_send_recv_", wrapped_computation_index));
+    std::vector<HloInstruction*> async_start_inputs;
+    std::vector<Shape> async_start_input_shapes;
+    HloComputation* async_computation = WrapMultipleSendRecvInstructions(
+        send_recv_instructions, async_start_inputs, async_start_input_shapes,
+        builder, module);
+    TF_RETURN_IF_ERROR(CreateAsyncStartAndAsyncDone(
+        send_recv_instructions, async_computation, computation, module,
+        async_start_inputs, async_start_input_shapes, changed));
   }
   return changed;
 }
