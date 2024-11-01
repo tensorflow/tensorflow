@@ -19,6 +19,8 @@ limitations under the License.
 // See https://jax.readthedocs.io/en/latest/pytrees.html for the documentation
 // about pytree.
 
+#include <Python.h>
+
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -238,6 +240,8 @@ class PyTreeDef {
       std::optional<std::pair<nanobind::object, nanobind::object>> node_data,
       nanobind::iterable children);
 
+  static PyType_Slot slots_[];
+
  private:
   void SetNumLeavesAndNumNodes();
 
@@ -267,6 +271,8 @@ class PyTreeDef {
 
     // Number of leaf and interior nodes in the subtree rooted at this node.
     int num_nodes = 0;
+
+    int tp_traverse(visitproc visit, void* arg) const;
   };
   template <typename H>
   friend H AbslHashValue(H h, const Node& n);
@@ -290,6 +296,9 @@ class PyTreeDef {
 
   template <typename T>
   nanobind::object UnflattenImpl(T leaves) const;
+
+  static int tp_traverse(PyObject* self, visitproc visit, void* arg);
+  static int tp_clear(PyObject* self);
 
   // Pytree registry. Not owned.
   PyTreeRegistry* registry_;

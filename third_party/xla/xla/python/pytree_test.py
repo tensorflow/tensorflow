@@ -122,6 +122,22 @@ class PyTreeTest(absltest.TestCase):
         ],
         gc.get_referents(registry),
     )
+    k1 = "k1"
+    k2 = "k2"
+
+    t = ExampleType("a", "b")
+    _, treedef = registry.flatten([1, {k1: 2, k2: t}, 5, t])
+
+    self.assertContainsSubset(
+        [
+            pytree.PyTreeDef,
+            registry,
+            k1,
+            k2,
+            ExampleType,
+        ],
+        gc.get_referents(treedef),
+    )
 
 
 if __name__ == "__main__":

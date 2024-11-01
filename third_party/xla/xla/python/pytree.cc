@@ -1287,11 +1287,44 @@ nb_class_ptr<PyTreeDef> PyTreeDef::MakeFromNodeDataAndChildren(
   return result;
 }
 
+int PyTreeDef::Node::tp_traverse(visitproc visit, void* arg) const {
+  Py_VISIT(node_data.ptr());
+  for (const auto& key : sorted_dict_keys) {
+    Py_VISIT(key.ptr());
+  }
+  return 0;
+}
+
+/* static */ int PyTreeDef::tp_traverse(PyObject* self, visitproc visit,
+                                        void* arg) {
+  PyTreeDef* treedef = nb::inst_ptr<PyTreeDef>(self);
+  Py_VISIT(Py_TYPE(self));
+  Py_VISIT(treedef->registry_ref_.ptr());
+  for (const auto& node : treedef->traversal_) {
+    node.tp_traverse(visit, arg);
+  }
+  return 0;
+}
+
+/* static */ int PyTreeDef::tp_clear(PyObject* self) {
+  PyTreeDef* treedef = nb::inst_ptr<PyTreeDef>(self);
+  treedef->registry_ref_.reset();
+  treedef->traversal_.clear();
+  return 0;
+}
+
+/* static */ PyType_Slot PyTreeDef::slots_[] = {
+    {Py_tp_traverse, (void*)PyTreeDef::tp_traverse},
+    {Py_tp_clear, (void*)PyTreeDef::tp_clear},
+    {0, nullptr},
+};
+
 void BuildPytreeSubmodule(nb::module_& m) {
   nb::module_ pytree = m.def_submodule("pytree", "Python tree library");
   pytree.attr("version") = nb::int_(3);
 
-  nb::class_<PyTreeDef> treedef(pytree, "PyTreeDef");
+  nb::class_<PyTreeDef> treedef(pytree, "PyTreeDef",
+                                nb::type_slots(PyTreeDef::slots_));
 
   nb::class_<PyTreeRegistry> registry(m, "PyTreeRegistry", nb::dynamic_attr(),
                                       nb::type_slots(PyTreeRegistry::slots_));
