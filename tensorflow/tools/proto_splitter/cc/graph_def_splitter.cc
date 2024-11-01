@@ -55,7 +55,7 @@ class ConstantSplitter : public SizeSplitter {
  public:
   using SizeSplitter::SizeSplitter;
   absl::StatusOr<int> BuildChunksReturnSize() override {
-    NodeDef* node = tsl::protobuf::DynamicCastToGenerated<NodeDef>(message());
+    NodeDef* node = proto2::DynamicCastMessage<NodeDef>(message());
 
     std::vector<FieldType> tensor_field = {"attr"s, "value"s, "tensor"s};
     std::vector<FieldType> content_field = {"attr"s, "value"s, "tensor"s,
@@ -65,7 +65,7 @@ class ConstantSplitter : public SizeSplitter {
     auto tensor_msg =
         ret.parent->GetReflection()->MutableMessage(ret.parent, ret.field);
     TensorProto* tensor_proto =
-        tsl::protobuf::DynamicCastToGenerated<TensorProto>(tensor_msg);
+        proto2::DynamicCastMessage<TensorProto>(tensor_msg);
 
     int size_diff;
 
@@ -113,7 +113,7 @@ class ConstantSplitterFactory : public SizeSplitterFactory {
       tsl::protobuf::Message* message, ComposableSplitterBase* parent_splitter,
       std::vector<FieldType>* fields_in_parent, int size) override {
     if (size < GetMaxSize()) return nullptr;
-    NodeDef* node = tsl::protobuf::DynamicCastToGenerated<NodeDef>(message);
+    NodeDef* node = proto2::DynamicCastMessage<NodeDef>(message);
     if (node->op() != "Const")
       return absl::UnimplementedError(absl::StrCat(
           "Currently only able to split 'Const' nodes that are larger than the "
@@ -172,7 +172,7 @@ class FunctionDefSplitterFactory : public SizeSplitterFactory {
 
 absl::Status GraphDefSplitter::BuildChunks() {
   TF_RETURN_IF_ERROR(SetMessageAsBaseChunk());
-  GraphDef* g = tsl::protobuf::DynamicCastToGenerated<GraphDef>(message());
+  GraphDef* g = proto2::DynamicCastMessage<GraphDef>(message());
   uint64_t max_size = GetMaxSize();
   size_t graph_size = GetInitialSize();
 
