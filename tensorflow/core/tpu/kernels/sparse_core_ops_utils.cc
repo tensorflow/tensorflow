@@ -69,7 +69,7 @@ int64 ConvertBucketSplitsToBinarySplits(std::vector<int> bucket_splits,
   return binary_splits;
 }
 
-Status ValidateInputCombiner(const std::string& combiner) {
+absl::Status ValidateInputCombiner(const std::string& combiner) {
   if (combiner != "sum" && combiner != "mean" && combiner != "sqrtn") {
     return absl::InvalidArgumentError(
         "Invalid combiner: only \"sum\", \"mean\", and "
@@ -101,12 +101,10 @@ std::function<float(float)> GetCombinerScaleTransformFunction(
   }
 }
 
-Status GetMaxIdsAndUniquesExternal(const std::string& program_key,
-                                   const std::string& table_name,
-                                   int64_t num_samples_per_sparse_core,
-                                   int64_t feature_width,
-                                   int64_t* max_ids_per_partition,
-                                   int64_t* max_unique_ids_per_partition) {
+absl::Status GetMaxIdsAndUniquesExternal(
+    const std::string& program_key, const std::string& table_name,
+    int64_t num_samples_per_sparse_core, int64_t feature_width,
+    int64_t* max_ids_per_partition, int64_t* max_unique_ids_per_partition) {
   SparseCore_GetMaxIdsAndUniques_Params params;
   params.program_key = program_key.c_str();
   params.table_name = table_name.c_str();

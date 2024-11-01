@@ -67,7 +67,8 @@ BuildAotXlaComputationInstance(
   return instance;
 }
 
-Status ShapeTensorToTensorShape(const Tensor& tensor, TensorShape* shape) {
+absl::Status ShapeTensorToTensorShape(const Tensor& tensor,
+                                      TensorShape* shape) {
   if (tensor.dtype() != DT_INT64 ||
       !TensorShapeUtils::IsVector(tensor.shape())) {
     return errors::InvalidArgument("Shape tensor must be an int64 vector.");
@@ -81,8 +82,8 @@ Status ShapeTensorToTensorShape(const Tensor& tensor, TensorShape* shape) {
   return TensorShapeUtils::MakeShape(dims, shape);
 }
 
-Status DynamicShapesToTensorShapes(const OpInputList& dynamic_shapes,
-                                   std::vector<TensorShape>* shapes) {
+absl::Status DynamicShapesToTensorShapes(const OpInputList& dynamic_shapes,
+                                         std::vector<TensorShape>* shapes) {
   shapes->resize(dynamic_shapes.size());
   for (int i = 0; i < dynamic_shapes.size(); ++i) {
     TF_RETURN_IF_ERROR(
@@ -91,8 +92,8 @@ Status DynamicShapesToTensorShapes(const OpInputList& dynamic_shapes,
   return absl::OkStatus();
 }
 
-Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
-                                   std::vector<TensorShape>* shapes) {
+absl::Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
+                                         std::vector<TensorShape>* shapes) {
   shapes->resize(dynamic_shapes.end() - dynamic_shapes.begin());
   size_t i = 0;
   for (auto& dynamic_shape : dynamic_shapes) {

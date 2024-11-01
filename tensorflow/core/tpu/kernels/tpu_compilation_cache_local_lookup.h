@@ -35,13 +35,13 @@ class TpuCompilationCacheLocalLookup : public TpuCompilationCacheLookup {
   explicit TpuCompilationCacheLocalLookup(TpuCompilationCacheInterface* cache);
   ~TpuCompilationCacheLocalLookup() override;
 
-  Status Lookup(const std::string& proto_key,
-                std::unique_ptr<CompilationCacheEntryRef>* entry,
-                CompilationCacheFetchTarget fetch_target) override;
+  absl::Status Lookup(const std::string& proto_key,
+                      std::unique_ptr<CompilationCacheEntryRef>* entry,
+                      CompilationCacheFetchTarget fetch_target) override;
 
-  Status Lookup(int64_t uid, int proto_index,
-                std::unique_ptr<CompilationCacheEntryRef>* entry,
-                CompilationCacheFetchTarget fetch_target) override;
+  absl::Status Lookup(int64_t uid, int proto_index,
+                      std::unique_ptr<CompilationCacheEntryRef>* entry,
+                      CompilationCacheFetchTarget fetch_target) override;
 
   std::string DebugString() const override;
 
