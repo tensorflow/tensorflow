@@ -375,6 +375,7 @@ cc_library(
         "//xla/service/gpu/runtime:nccl_collective_broadcast_thunk",
         "//xla/service/gpu/runtime:nccl_collective_permute_thunk",
         "//xla/service/gpu/runtime:nccl_collective_thunk",
+        "//xla/service/gpu/runtime:nccl_group_thunk",
         "//xla/service/gpu/runtime:nccl_p2p_thunk_common",
         "//xla/service/gpu/runtime:nccl_recv_thunk",
         "//xla/service/gpu/runtime:nccl_send_thunk",

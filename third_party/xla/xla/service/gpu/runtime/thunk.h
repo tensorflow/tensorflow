@@ -144,6 +144,8 @@ class Thunk {
     kNcclCollectivePermute,
     kNcclCollectivePermuteStart,
     kNcclCollectivePermuteDone,
+    kNcclGroupStart,
+    kNcclGroupDone,
     kNcclReduceScatter,
     kNcclReduceScatterStart,
     kNcclReduceScatterDone,

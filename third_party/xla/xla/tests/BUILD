@@ -2455,6 +2455,31 @@ xla_test(
 )
 
 xla_test(
+    name = "nccl_group_execution_test",
+    srcs = ["nccl_group_execution_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+            "no_oss",
+        ],
+    },
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        ":hlo_test_base",
+        ":xla_internal_test_main",
+        "//xla:literal",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_test(
     name = "collective_ops_e2e_test",
     srcs = ["collective_ops_e2e_test.cc"],
     backend_tags = {

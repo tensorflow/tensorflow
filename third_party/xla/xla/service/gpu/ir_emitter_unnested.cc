@@ -2063,6 +2063,11 @@ static const HloInstruction* FindCanonicalSendRecvStartOp(
   return canonical_start_op;
 }
 
+absl::Status IrEmitterUnnested::EmitNcclGroupDoneThunk(
+    const HloInstruction* instr) {
+  return absl::UnimplementedError("EmitNcclGroupDoneThunk not implemented");
+}
+
 absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
                                                   const HloInstruction* inst) {
   // Partial pipelining is only implemented for send/recv.
@@ -2484,6 +2489,11 @@ absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
   return absl::OkStatus();
 }
 
+absl::Status IrEmitterUnnested::EmitNcclGroupStartThunk(
+    const HloInstruction* instruction) {
+  return absl::UnimplementedError("EmittNcclGroupStartThunk not implemented");
+}
+
 absl::Status IrEmitterUnnested::EmitHloInstruction(
     const HloInstruction* instr) {
   switch (instr->opcode()) {
@@ -2505,6 +2515,10 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           all_reduce->use_global_device_ids());
     }
     case HloOpcode::kAsyncDone: {
+      if (!instr->async_wrapped_computation()
+               ->CanExpandIntoSingleInstruction()) {
+        return EmitNcclGroupDoneThunk(instr);
+      }
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
         case HloOpcode::kReduceScatter:
@@ -2533,6 +2547,11 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       }
     }
     case HloOpcode::kAsyncStart: {
+      // Multi-op async start will emit a NCCL group thunk.
+      if (!instr->async_wrapped_computation()
+               ->CanExpandIntoSingleInstruction()) {
+        return EmitNcclGroupStartThunk(instr);
+      }
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
         case HloOpcode::kReduceScatter: {

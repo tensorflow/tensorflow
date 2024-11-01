@@ -259,6 +259,8 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kNcclCollectivePermute);
     CASE(kNcclCollectivePermuteStart);
     CASE(kNcclCollectivePermuteDone);
+    CASE(kNcclGroupStart);
+    CASE(kNcclGroupDone);
     CASE(kNcclReduceScatter);
     CASE(kNcclReduceScatterStart);
     CASE(kNcclReduceScatterDone);
@@ -351,6 +353,8 @@ bool Thunk::IsCollective() const {
     case kNcclSendDone:
     case kNcclRecv:
     case kNcclRecvDone:
+    case kNcclGroupStart:
+    case kNcclGroupDone:
       return true;
     default:
       return false;

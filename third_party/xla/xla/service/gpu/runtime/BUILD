@@ -1052,6 +1052,23 @@ cc_library(
 )
 
 cc_library(
+    name = "nccl_group_thunk",
+    srcs = ["nccl_group_thunk.cc"],
+    hdrs = ["nccl_group_thunk.h"],
+    deps = [
+        ":nccl_api",
+        ":nccl_clique_key",
+        ":nccl_collective_thunk",
+        ":thunk",
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+cc_library(
     name = "norm_thunk",
     srcs = ["norm_thunk.cc"],
     hdrs = ["norm_thunk.h"],

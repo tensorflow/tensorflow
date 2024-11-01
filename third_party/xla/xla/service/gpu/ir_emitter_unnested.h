@@ -200,6 +200,10 @@ class IrEmitterUnnested : public IrEmitter {
 
   absl::Status EmitHloInstruction(const HloInstruction* instr);
 
+  absl::Status EmitNcclGroupStartThunk(const HloInstruction* instr);
+
+  absl::Status EmitNcclGroupDoneThunk(const HloInstruction* instr);
+
   absl::Status EmitTargetElementLoop(
       const HloInstruction& hlo,
       const llvm_ir::ElementGenerator& body_emitter) override;
