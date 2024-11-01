@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -560,10 +561,9 @@ TEST_F(HorizontalLoopFusionTest, DynamicUpdateSlice) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec{0, 0}));
 }
 
-TEST_F(HorizontalLoopFusionTest, NegativeTestForSharedParam) {
+TEST_F(HorizontalLoopFusionTest,
+       AllowSharedParametersWhenNotUsingConcatenation) {
   auto module = ParseAndReturnVerifiedModule(R"(
- HloModule BasicTest
-
  fused_computation.1 {
    arg.1 = f16[123]{0} parameter(0)
    arg.2 = f16[123]{0} parameter(1)
@@ -587,10 +587,40 @@ TEST_F(HorizontalLoopFusionTest, NegativeTestForSharedParam) {
        fusion(arg.3, arg.2), kind=kLoop, calls=fused_computation.2
    ROOT tuple.1 = (f16[123]{0}, f16[123]{0})
        tuple(fusion.1, fusion.2)
- }
-)")
+ })")
                     .value();
 
+  EXPECT_TRUE(HorizontalLoopFusion().Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()
+                  ->parameter_instruction(0)
+                  ->users()[0]
+                  ->fused_instructions_computation()
+                  ->root_instruction(),
+              GmockMatch(m::Tuple(m::Multiply(), m::Add())));
+}
+
+TEST_F(HorizontalLoopFusionTest, ForbidSharedParametersWhenUsingConcatenation) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+f {
+  p = f16[] parameter(0)
+}
+
+g {
+  p = f16[] parameter(0)
+  b = f16[1] bitcast(p)
+}
+
+e {
+  p = f16[] parameter(0)
+  a = f16[] fusion(p), kind=kLoop, calls=f
+  b = f16[1] fusion(p), kind=kLoop, calls=g
+  t = tuple(a, b)
+})"));
+
+  // As fusions f and g have different output shapes, the horizontal fusion
+  // algorithm would only consider merging them using concatenation/slicing.
+  // The horizontal fusion is not supposed to happen in this
+  // example though because f and g share an input parameter.
   EXPECT_FALSE(HorizontalLoopFusion().Run(module.get()).value());
 }
 

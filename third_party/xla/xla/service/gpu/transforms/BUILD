@@ -1985,6 +1985,7 @@ xla_test(
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
