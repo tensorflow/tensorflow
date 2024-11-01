@@ -133,6 +133,33 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
                           group->replica_ids().end());
 }
 
+// Returns the group formation mode of instr, assuming that instr is, or is
+// dervied from, an HloAllGatherInstruction, HloAllReduceInstructionBase,
+// HloAllToAllInstruction, HloCollectiveBroadcastInstruction or
+// HloCollectivePermuteInstruction.
+absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
+    HloInstruction* instr) {
+  if (auto collective = DynCast<HloAllGatherInstruction>(instr)) {
+    return GetCollectiveOpGroupMode(collective->channel_id().has_value(),
+                                    collective->use_global_device_ids());
+  } else if (auto collective = DynCast<HloAllReduceInstructionBase>(instr)) {
+    return GetCollectiveOpGroupMode(collective->channel_id().has_value(),
+                                    collective->use_global_device_ids());
+  } else if (auto collective = DynCast<HloAllToAllInstruction>(instr)) {
+    return GetCollectiveOpGroupMode(collective->channel_id().has_value(),
+                                    std::nullopt);
+  } else if (auto collective =
+                 DynCast<HloCollectiveBroadcastInstruction>(instr)) {
+    return GetCollectiveOpGroupMode(collective->channel_id().has_value(),
+                                    std::nullopt);
+  } else if (auto collective =
+                 DynCast<HloCollectivePermuteInstruction>(instr)) {
+    return GetCollectiveOpGroupMode(collective->channel_id().has_value(),
+                                    std::nullopt);
+  }
+  return Internal("Unexpected instruction type.");
+}
+
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
