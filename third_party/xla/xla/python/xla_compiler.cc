@@ -1279,6 +1279,12 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                        : std::nullopt;
           },
           &ExecutableBuildOptions::set_device_assignment)
+      .def_prop_rw("exec_time_optimization_effort",
+                   &ExecutableBuildOptions::exec_time_optimization_effort,
+                   &ExecutableBuildOptions::set_exec_time_optimization_effort)
+      .def_prop_rw("memory_fitting_effort",
+                   &ExecutableBuildOptions::memory_fitting_effort,
+                   &ExecutableBuildOptions::set_memory_fitting_effort)
       .def_prop_rw("use_spmd_partitioning",
                    &ExecutableBuildOptions::use_spmd_partitioning,
                    &ExecutableBuildOptions::set_use_spmd_partitioning)
