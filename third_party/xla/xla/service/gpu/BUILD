@@ -1439,6 +1439,7 @@ cc_library(
         ":gpu_hlo_schedule",
         ":gpu_latency_hiding_scheduler",
         ":gpu_p2p_pipeliner",
+        ":gpu_reduce_scatter_combiner",
         ":gpu_spmd_pipeline",
         ":hlo_fusion_stats",
         ":ir_emission_utils",
@@ -3211,7 +3212,7 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "reduce_scatter_combiner",
+    name = "gpu_reduce_scatter_combiner",
     srcs = ["reduce_scatter_combiner.cc"],
     hdrs = ["reduce_scatter_combiner.h"],
     deps = [
@@ -3234,7 +3235,7 @@ xla_cc_test(
     name = "reduce_scatter_combiner_test",
     srcs = ["reduce_scatter_combiner_test.cc"],
     deps = [
-        ":reduce_scatter_combiner",
+        ":gpu_reduce_scatter_combiner",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/service:collective_utils",

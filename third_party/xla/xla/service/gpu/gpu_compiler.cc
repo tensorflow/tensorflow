@@ -172,6 +172,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/prepare_hlo_for_ir_emitting_pipeline.h"
+#include "xla/service/gpu/reduce_scatter_combiner.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/runtime_intrinsics.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -230,7 +231,6 @@ limitations under the License.
 #include "xla/service/layout_assignment.h"
 #include "xla/service/layout_normalization.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/reduce_scatter_combiner.h"
 #include "xla/service/reduce_scatter_reassociate.h"
 #include "xla/service/scatter_determinism_expander.h"
 #include "xla/service/scatter_expander.h"
@@ -1107,10 +1107,14 @@ absl::Status RunPostFusionPasses(
   pipeline.AddPass<AllReduceCombiner>(
       opts.xla_gpu_all_reduce_combine_threshold_bytes(),
       /*combine_threshold_count=*/256);
-  pipeline.AddPass<ReduceScatterCombiner>(
+  pipeline.AddPass<GpuReduceScatterCombiner>(
+      device_description, /*default_combine_threshold_in_bytes=*/
+      kDefaultReduceScatterCombineThreshold,
+      /*combine_threshold_in_bytes=*/
       opts.xla_gpu_reduce_scatter_combine_threshold_bytes(),
       /*combine_threshold_count=*/256,
-      opts.xla_gpu_enable_reduce_scatter_combine_by_dim());
+      /*combine_by_dim=*/opts.xla_gpu_enable_reduce_scatter_combine_by_dim(),
+      /*pointer_size=*/pointer_size);
 
   pipeline.AddPass<AllReduceContiguous>();
 
