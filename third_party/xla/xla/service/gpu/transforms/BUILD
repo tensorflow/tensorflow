@@ -715,7 +715,7 @@ cc_library(
     hdrs = ["convert_async_collectives_to_sync.h"],
     deps = [
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:convert_async_collectives_to_sync",
+        "//xla/hlo/transforms/collectives:convert_async_collectives_to_sync",
         "//xla/service/gpu:backend_configs_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
