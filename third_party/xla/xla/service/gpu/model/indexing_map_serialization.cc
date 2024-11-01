@@ -906,7 +906,7 @@ SmallVector<std::string> GetRangeVarNames(const IndexingMap& map) {
 }
 
 SmallVector<std::string> GetRTVarNames(const IndexingMap& map) {
-  SmallVector<std::string, 3> rt_names;
+  SmallVector<std::string> rt_names;
   rt_names.reserve(map.GetRTVarsCount());
   for (const auto& [index, rt_var] : llvm::enumerate(map.GetRTVars())) {
     rt_names.push_back(GetRTVarName(index, rt_var.name));
@@ -915,7 +915,7 @@ SmallVector<std::string> GetRTVarNames(const IndexingMap& map) {
 }
 
 SmallVector<std::string> GetDimVarNames(const IndexingMap& map) {
-  SmallVector<std::string, 3> dim_names;
+  SmallVector<std::string> dim_names;
   dim_names.reserve(map.GetDimVarsCount());
   for (const auto& [index, dim_var] : llvm::enumerate(map.GetDimVars())) {
     dim_names.push_back(GetDimVarName(index, dim_var.name));
@@ -924,7 +924,7 @@ SmallVector<std::string> GetDimVarNames(const IndexingMap& map) {
 }
 
 SmallVector<std::string> GetSymbolVarNames(const IndexingMap& map) {
-  SmallVector<std::string, 3> symbol_names;
+  SmallVector<std::string> symbol_names;
   auto range_names = GetRangeVarNames(map);
   auto rt_names = GetRTVarNames(map);
   symbol_names.reserve(range_names.size() + rt_names.size());
