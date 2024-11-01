@@ -65,10 +65,12 @@ struct IfrtIRCompileOptions
           loaded_exec_binding = {},
       std::shared_ptr<absl::flat_hash_map<
           std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
-          compile_options_overrides = {})
+          compile_options_overrides = {},
+      bool propagate_shardings = false)
       : device_assignments(std::move(device_assignments)),
         loaded_exec_binding(std::move(loaded_exec_binding)),
-        compile_options_overrides(std::move(compile_options_overrides)) {}
+        compile_options_overrides(std::move(compile_options_overrides)),
+        propagate_shardings(propagate_shardings) {}
 
   // Mapping from logical device ids in IFRT IR MLIR module to runtime device
   // ids obtained from IFRT client.
@@ -86,6 +88,10 @@ struct IfrtIRCompileOptions
   std::shared_ptr<absl::flat_hash_map<
       std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
       compile_options_overrides;
+
+  // Whether to propagate shardings from atom program executables for
+  // unspecified shardings.
+  bool propagate_shardings;
 
   // Constructs `IfrtIRCompileOptions` from `IfrtIrCompileOptionsProto`.
   static absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> FromProto(

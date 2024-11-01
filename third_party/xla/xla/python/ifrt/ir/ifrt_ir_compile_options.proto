@@ -23,4 +23,5 @@ import "xla/pjrt/compile_options.proto";
 message IfrtIrCompileOptionsProto {
   repeated int32 device_ids = 1;
   map<string, xla.CompileOptionsProto> compile_option_overrides = 2;
+  bool propagate_shardings = 3;
 }
