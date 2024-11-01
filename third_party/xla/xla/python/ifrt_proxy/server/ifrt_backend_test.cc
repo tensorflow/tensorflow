@@ -32,6 +32,7 @@
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -58,6 +59,7 @@
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
@@ -654,6 +656,51 @@ TEST_P(IfrtBackendHandlerTest, MakeArrayFromHostBufferSuccess) {
   EXPECT_NE(response->make_array_from_host_buffer_response().array_handle(), 0);
 }
 
+TEST_P(IfrtBackendHandlerTest, MakeStringArrayFromHostBufferSuccess) {
+  // Make a string host buffer.
+  const std::vector<absl::Cord> input_strings = {absl::Cord("ab"),
+                                                 absl::Cord("cd")};
+  TF_ASSERT_OK_AND_ASSIGN(const std::string serialized_string_buffer,
+                          SerializeStringHostBuffer(input_strings));
+
+  const uint64_t kHostBufferHandle = 1234;
+  ASSERT_THAT(
+      host_buffer_store_->Store(kHostBufferHandle, serialized_string_buffer),
+      IsOk());
+
+  auto ifrt_request = NewIfrtRequest(NewOpId());
+  auto* make_array =
+      ifrt_request->mutable_make_array_from_host_buffer_request();
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            dtype { kind: KIND_STRING }
+                                            shape { dims: [ 2 ] }
+                                          )pb",
+                                          make_array));
+  make_array->set_host_buffer_handle(kHostBufferHandle);
+  TF_ASSERT_OK_AND_ASSIGN(auto* device,
+                          mock_client_->LookupDevice(DeviceId(1)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      *make_array->mutable_sharding(),
+      SingleDeviceSharding::Create(device, MemoryKind())->ToProto());
+
+  const DType expected_dtype = DType(DType::kString);
+  const Shape expected_shape({2});
+  const std::optional<absl::Span<const int64_t>> expected_byte_strides =
+      std::nullopt;
+
+  tsl::RCReference<xla::ifrt::MockArray> mock_array =
+      tsl::MakeRef<xla::ifrt::MockArray>();
+
+  EXPECT_CALL(*mock_client_,
+              MakeArrayFromHostBuffer(_, expected_dtype, expected_shape,
+                                      expected_byte_strides, _, _, _))
+      .WillOnce(Return(std::move(mock_array)));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
+
+  EXPECT_NE(response->make_array_from_host_buffer_response().array_handle(), 0);
+}
+
 TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
   auto ifrt_request = NewIfrtRequest(NewOpId());
   {
@@ -750,6 +797,84 @@ TEST_P(IfrtBackendHandlerTest, CopyToHostSuccess) {
   // array data needs to be 480 bytes.
   EXPECT_THAT(host_buffer_store_->Lookup(host_buffer_handle),
               IsOkAndHolds(Pointee(SizeIs(480))));
+}
+
+TEST_P(IfrtBackendHandlerTest, CopyToHostSuccessWithStringArray) {
+  // Make a string host buffer.
+  const std::vector<absl::Cord> input_strings = {absl::Cord("ab"),
+                                                 absl::Cord("cd")};
+  TF_ASSERT_OK_AND_ASSIGN(const std::string serialized_string_buffer,
+                          SerializeStringHostBuffer(input_strings));
+
+  const uint64_t kHostBufferHandle = 1234;
+  ASSERT_THAT(
+      host_buffer_store_->Store(kHostBufferHandle, serialized_string_buffer),
+      IsOk());
+
+  auto ifrt_request = NewIfrtRequest(NewOpId());
+  auto* make_array =
+      ifrt_request->mutable_make_array_from_host_buffer_request();
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            dtype { kind: KIND_STRING }
+                                            shape { dims: [ 2 ] }
+                                          )pb",
+                                          make_array));
+  make_array->set_host_buffer_handle(kHostBufferHandle);
+  TF_ASSERT_OK_AND_ASSIGN(auto* device,
+                          mock_client_->LookupDevice(DeviceId(1)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      *make_array->mutable_sharding(),
+      SingleDeviceSharding::Create(device, MemoryKind())->ToProto());
+
+  const DType expected_dtype = DType(DType::kString);
+  const Shape expected_shape({2});
+  const std::optional<absl::Span<const int64_t>> expected_byte_strides =
+      std::nullopt;
+
+  tsl::RCReference<xla::ifrt::MockArray> mock_array =
+      tsl::MakeRef<xla::ifrt::MockArray>();
+  ON_CALL(*mock_array, shape()).WillByDefault(ReturnRef(expected_shape));
+  ON_CALL(*mock_array, dtype()).WillByDefault(Return(expected_dtype));
+
+  ON_CALL(*mock_array, CopyToHostBuffer(_, _, _))
+      .WillByDefault(Invoke(
+          [input_strings = input_strings](
+              void* data, std::optional<absl::Span<const int64_t>> byte_strides,
+              xla::ifrt::ArrayCopySemantics semantics) {
+            auto dst = static_cast<absl::Cord*>(data);
+            for (int i = 0; i < input_strings.size(); ++i) {
+              dst[i] = input_strings[i];
+            }
+            return Future<>(absl::OkStatus());
+          }));
+
+  EXPECT_CALL(*mock_client_,
+              MakeArrayFromHostBuffer(_, expected_dtype, expected_shape,
+                                      expected_byte_strides, _, _, _))
+      .WillOnce(Return(std::move(mock_array)));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
+  ASSERT_NE(response->make_array_from_host_buffer_response().array_handle(), 0);
+  auto array_handle =
+      response->make_array_from_host_buffer_response().array_handle();
+
+  // Copy the contents of the array to a host buffer.
+  ifrt_request = NewIfrtRequest(NewOpId());
+  auto* copy_to_host = ifrt_request->mutable_copy_to_host_buffer_request();
+  copy_to_host->set_array_handle(array_handle);
+  const uint64_t host_buffer_handle = NewHostBufferHandle();
+  copy_to_host->set_host_buffer_handle(host_buffer_handle);
+
+  // Retrieve the serialized string buffer that when deserialized must match the
+  // input strings.
+  ASSERT_THAT(CallBackend(std::move(ifrt_request)), IsOk());
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized_string_buffer_got,
+                          host_buffer_store_->Lookup(host_buffer_handle));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto deserialized_string_buffer_got,
+      DeserializeStringHostBufferFromString(*serialized_string_buffer_got));
+
+  EXPECT_THAT(deserialized_string_buffer_got, ElementsAreArray(input_strings));
 }
 
 TEST_P(IfrtBackendHandlerTest, CopyToHostFailsWithNonExistentArrays) {

@@ -34,6 +34,7 @@
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -79,6 +80,27 @@
 namespace xla {
 namespace ifrt {
 namespace proxy {
+namespace {
+
+absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
+MakeStringArrayFromHostBuffer(
+    Client* client, std::shared_ptr<const std::string> host_buffer, DType dtype,
+    Shape shape, std::optional<absl::Span<const int64_t>> byte_strides,
+    std::shared_ptr<const Sharding> sharding) {
+  TF_ASSIGN_OR_RETURN(std::vector<absl::Cord> string_host_buffer,
+                      DeserializeStringHostBufferFromString(*host_buffer));
+  const void* data = string_host_buffer.data();
+
+  return client->MakeArrayFromHostBuffer(
+      data, dtype, std::move(shape), std::move(byte_strides),
+      std::move(sharding),
+      xla::ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
+      /*on_done_with_host_buffer=*/
+      [host_buffer = std::move(host_buffer),
+       string_host_buffer = std::move(string_host_buffer)]() {});
+}
+
+}  // namespace
 
 IfrtBackend::IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
                          std::shared_ptr<xla::ifrt::Client> ifrt_client,
@@ -432,18 +454,25 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
                       host_buffer_store_->Lookup(host_buffer_handle));
   std::move(cleanup).Invoke();
 
-  TF_ASSIGN_OR_RETURN(const auto mem_region,
-                      ArrayMemRegion::FromMinimalMemRegion(
-                          *host_buffer, dtype, shape, byte_strides));
-
-  TF_ASSIGN_OR_RETURN(
-      auto array,
-      client_->MakeArrayFromHostBuffer(
-          mem_region.zeroth_element(), dtype, std::move(shape),
-          std::move(byte_strides), std::move(sharding),
-          xla::ifrt::Client::HostBufferSemantics::
-              kImmutableUntilTransferCompletes,
-          [hold = std::move(host_buffer)]() mutable { hold.reset(); }));
+  tsl::RCReference<xla::ifrt::Array> array;
+  if (dtype.kind() == DType::kString) {
+    TF_ASSIGN_OR_RETURN(array,
+                        MakeStringArrayFromHostBuffer(
+                            client_.get(), std::move(host_buffer), dtype, shape,
+                            std::move(byte_strides), std::move(sharding)));
+  } else {
+    TF_ASSIGN_OR_RETURN(const auto mem_region,
+                        ArrayMemRegion::FromMinimalMemRegion(
+                            *host_buffer, dtype, shape, byte_strides));
+    TF_ASSIGN_OR_RETURN(
+        array,
+        client_->MakeArrayFromHostBuffer(
+            mem_region.zeroth_element(), dtype, std::move(shape),
+            std::move(byte_strides), std::move(sharding),
+            xla::ifrt::Client::HostBufferSemantics::
+                kImmutableUntilTransferCompletes,
+            [hold = std::move(host_buffer)]() mutable { hold.reset(); }));
+  }
 
   // TODO(b/282757875): Consider merging the handle_generator with the
   // arrays_.
@@ -561,6 +590,59 @@ IfrtBackend::HandleRemapArraysRequest(std::unique_ptr<IfrtRequest> request) {
   return response;
 }
 
+Future<BackendInterface::Response>
+IfrtBackend::HandleCopyToStringHostBufferRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  const CopyToHostBufferRequest& copy_to_host =
+      request->copy_to_host_buffer_request();
+
+  auto array = GetArray(copy_to_host.array_handle());
+  if (!array.ok()) {
+    return Future<Response>(array.status());
+  }
+
+  if (copy_to_host.has_byte_strides()) {
+    return Future<Response>(absl::InvalidArgumentError(
+        "Byte strides are not supported for string arrays."));
+  }
+
+  // Allocate the host buffer and start the copy.
+  auto host_buffer = std::make_unique<std::vector<absl::Cord>>(
+      (*array)->shape().num_elements());
+  Future<> copy_status = (*array)->CopyToHostBuffer(
+      host_buffer->data(), /*byte_strides=*/std::nullopt,
+      ArrayCopySemantics::kAlwaysCopy);
+
+  auto resp_promise = Future<BackendInterface::Response>::CreatePromise();
+  Future<BackendInterface::Response> resp_future(resp_promise);
+
+  // Make the response proto when the copy is done.
+  auto response_maker =
+      [this, op_id = request->request_metadata().op_id(),
+       host_buffer = std::move(host_buffer),
+       host_buffer_handle =
+           copy_to_host.host_buffer_handle()](absl::Status status) mutable
+      -> absl::StatusOr<std::unique_ptr<IfrtResponse>> {
+    TF_RETURN_IF_ERROR(status);
+
+    TF_ASSIGN_OR_RETURN(auto serialized_string_host_buffer,
+                        SerializeStringHostBuffer(*host_buffer));
+    TF_RETURN_IF_ERROR(host_buffer_store_->Store(
+        host_buffer_handle, std::move(serialized_string_host_buffer)));
+
+    std::unique_ptr<IfrtResponse> response = NewIfrtResponse(op_id);
+    response->mutable_copy_to_host_buffer_response();
+    return response;
+  };
+  copy_status.OnReady([promise = std::move(resp_promise),
+                       response_maker = std::move(response_maker)](
+                          absl::Status status) mutable {
+    promise.Set(response_maker(status));
+  });
+
+  return resp_future;
+}
+
 Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
     std::unique_ptr<IfrtRequest> request) {
   const CopyToHostBufferRequest& copy_to_host =
@@ -569,6 +651,10 @@ Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
   auto array = GetArray(copy_to_host.array_handle());
   if (!array.ok()) {
     return Future<Response>(array.status());
+  }
+
+  if ((*array)->dtype().kind() == DType::kString) {
+    return HandleCopyToStringHostBufferRequest(std::move(request));
   }
 
   // Determine the size and allocate the host buffer.
