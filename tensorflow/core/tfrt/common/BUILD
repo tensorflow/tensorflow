@@ -1,5 +1,5 @@
 load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "@local_xla//xla/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")

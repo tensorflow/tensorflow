@@ -1,6 +1,8 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_xla//xla/tsl:tsl.bzl", "if_not_android", "if_oss", "internal_visibility", "nvtx_headers")
 load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("@local_xla//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
+load("@local_xla//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -10,8 +12,6 @@ load(
     "tf_profiler_copts",
     "tf_profiler_pybind_cc_library_wrapper",
 )
-load("//tsl/platform:build_config.bzl", "tsl_cc_test")
-load("//tsl/platform:build_config_root.bzl", "if_static")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 

@@ -1,8 +1,8 @@
-load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load(
     "@local_xla//xla/tsl:tsl.bzl",
     "check_deps",
 )
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",

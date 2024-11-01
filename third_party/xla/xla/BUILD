@@ -1,10 +1,4 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load(
-    "@local_tsl//tsl/platform:build_config.bzl",
-    "tf_proto_library",
-    # copybara:uncomment "tf_pyclif_proto_library",
-)
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 # copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
@@ -12,6 +6,12 @@ load("//xla:package_groups.bzl", "xla_package_groups")
 load("//xla:xla.bzl", "xla_bzl_library", "xla_cc_test", "xla_py_proto_library")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+    # copybara:uncomment "tf_pyclif_proto_library",
+)
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
