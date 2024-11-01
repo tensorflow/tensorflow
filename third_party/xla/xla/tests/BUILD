@@ -14,7 +14,7 @@ load(
 load("//xla:package_groups.bzl", "xla_tests_package_groups")
 load("//xla:xla.bzl", "tests_build_defs_bzl_deps", "xla_cc_binary", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
-load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -1457,7 +1457,7 @@ xla_test(
         "gpu_v100",
         "gpu_a100",
         "gpu_h100",
-    ],
+    ] + if_oss(["gpu_b100"]),
     data = ["data/cudnn_reproducer.hlo"],
     deps = [
         ":hlo_test_base",
