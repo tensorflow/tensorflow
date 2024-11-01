@@ -183,14 +183,6 @@ TEST(HloModuleTest, CloneAndShareConfig) {
   std::unique_ptr<HloModule> pm2 = m1.Clone(kCloneSuffix);
   EXPECT_EQ(&m1.config(), &pm2->config());
   EXPECT_EQ(m1.shared_config().use_count(), 3);
-
-  std::unique_ptr<HloModule> pm3 = m1.Clone(m1.shared_config(), kCloneSuffix);
-  EXPECT_EQ(&m1.config(), &pm3->config());
-  EXPECT_EQ(&pm2->config(), &pm3->config());
-
-  EXPECT_EQ(m1.shared_config().use_count(), 4);
-  EXPECT_EQ(pm2->shared_config().use_count(), 4);
-  EXPECT_EQ(pm3->shared_config().use_count(), 4);
 }
 
 TEST(HloModuleTest, CloneWithNewConfig) {
@@ -199,10 +191,10 @@ TEST(HloModuleTest, CloneWithNewConfig) {
   config1.set_device_memory_size(7);
   HloModule m1("-", HloModuleConfig());
 
-  HloModuleConfig temp = m1.config();
+  HloModuleConfig temp = m1.config();  // copy
   temp.set_device_memory_size(10);
 
-  std::unique_ptr<HloModule> pm2 = m1.Clone(temp, "clone");
+  std::unique_ptr<HloModule> pm2 = m1.Clone("clone", temp);
 
   EXPECT_NE(&m1.config(), &pm2->config());
   EXPECT_EQ(m1.shared_config().use_count(), 2);

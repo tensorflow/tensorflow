@@ -25,7 +25,6 @@ limitations under the License.
 #include <stack>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -1064,22 +1063,27 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted(
   return result;
 }
 
-std::unique_ptr<HloModule> HloModule::Clone(const std::string& suffix) const {
-  return Clone(shared_config(), suffix);
+namespace {
+std::unique_ptr<HloModule> CreateModule(
+    absl::string_view suffix, std::optional<const HloModuleConfig> config_in,
+    const HloModule& source) {
+  std::string div = suffix.empty() ? "" : "-";
+  std::string new_name = absl::StrCat(source.name(), div, suffix);
+  VLOG(1) << "Cloning module :" << source.name() << " --> " << new_name << "\n";
+  std::shared_ptr<const HloModuleConfig> new_config =
+      config_in.has_value()
+          ? std::make_shared<const HloModuleConfig>(*config_in)
+          : source.shared_config();
+  return std::make_unique<HloModule>(
+      new_name, new_config,
+      std::make_unique<CompilationEnvironments>(source.comp_envs()));
 }
-
-std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
-                                            const std::string& suffix) const {
-  return Clone(std::make_shared<const HloModuleConfig>(config), suffix);
-}
+}  // namespace
 
 std::unique_ptr<HloModule> HloModule::Clone(
-    std::shared_ptr<const HloModuleConfig> config,
-    const std::string& suffix) const {
-  VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = std::make_unique<HloModule>(
-      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), std::move(config),
-      std::make_unique<CompilationEnvironments>(*comp_envs_));
+    const std::string& suffix,
+    std::optional<const HloModuleConfig> config_in) const {
+  auto module = CreateModule(suffix, config_in, *this);
 
   HloCloneContext context(module.get(), suffix);
   if (entry_computation_) {
