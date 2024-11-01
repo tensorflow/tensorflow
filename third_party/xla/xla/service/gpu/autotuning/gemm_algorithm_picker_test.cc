@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <variant>
 
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
@@ -135,7 +137,10 @@ ENTRY main {
                 /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
             module.get()));
 
-    AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, debug_opts};
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                            stream_exec()->CreateStream());
+    AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr, stream.get()},
+                       debug_opts};
     GemmAlgorithmPicker gpicker(cfg);
     // Note that, we do not care if the algorithm index has been changed:
     // the thing matters is the # of algorithms left after sorting out.
@@ -175,7 +180,10 @@ ENTRY main {
                 /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
             module.get()));
 
-    AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, debug_opts};
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                            stream_exec()->CreateStream());
+    AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr, stream.get()},
+                       debug_opts};
     GemmAlgorithmPicker gpicker(cfg);
     TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(gpicker, module.get()));
     num_left2 = gpicker.num_algorithms_left();
@@ -208,7 +216,9 @@ ENTRY main {
           m.get()));
   changed = false;
   DebugOptions opts;
-  AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, opts};
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          stream_exec()->CreateStream());
+  AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr, stream.get()}, opts};
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
@@ -273,7 +283,9 @@ ENTRY main {
   changed = false;
 
   DebugOptions opts;
-  AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, opts};
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          stream_exec()->CreateStream());
+  AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr, stream.get()}, opts};
 
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GemmAlgorithmPicker(cfg), m.get()));

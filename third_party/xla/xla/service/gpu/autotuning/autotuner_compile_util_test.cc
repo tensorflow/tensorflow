@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 
+#include <memory>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
@@ -47,9 +49,12 @@ ENTRY main {
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
                           PlatformUtil::GetStreamExecutors(platform));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executors.at(0)->CreateStream());
 
-  AutotuneConfig autotune_config{DeviceConfig{executors.at(0), nullptr},
-                                 GetDebugOptionsForTest()};
+  AutotuneConfig autotune_config{
+      DeviceConfig{executors.at(0), nullptr, stream.get()},
+      GetDebugOptionsForTest()};
 
   auto& root = *module->entry_computation()->root_instruction();
 
@@ -101,8 +106,11 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
                           PlatformUtil::GetStreamExecutors(platform));
 
-  AutotuneConfig autotune_config{DeviceConfig{executors.at(0), nullptr},
-                                 GetDebugOptionsForTest()};
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executors.at(0)->CreateStream());
+  AutotuneConfig autotune_config{
+      DeviceConfig{executors.at(0), nullptr, stream.get()},
+      GetDebugOptionsForTest()};
 
   auto& root = *module->entry_computation()->root_instruction();
 
@@ -154,8 +162,11 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
                           PlatformUtil::GetStreamExecutors(platform));
 
-  AutotuneConfig autotune_config{DeviceConfig{executors.at(0), nullptr},
-                                 GetDebugOptionsForTest()};
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executors.at(0)->CreateStream());
+  AutotuneConfig autotune_config{
+      DeviceConfig{executors.at(0), nullptr, stream.get()},
+      GetDebugOptionsForTest()};
 
   auto& root = *module->entry_computation()->root_instruction();
 

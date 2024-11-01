@@ -48,6 +48,16 @@ se::DeviceMemoryAllocator* ExecutableBuildOptions::device_allocator() const {
   return device_allocator_;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_compute_stream(
+    se::Stream* stream) {
+  compute_stream_ = stream;
+  return *this;
+}
+
+se::Stream* ExecutableBuildOptions::compute_stream() const {
+  return compute_stream_;
+}
+
 ExecutableBuildOptions& ExecutableBuildOptions::set_device_ordinal(
     int device_ordinal) {
   CHECK_GE(device_ordinal, 0);
