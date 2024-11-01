@@ -17,11 +17,7 @@ cc_library(
     name = "math_util",
     hdrs = ["math_util.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = internal_visibility([
-        "//platforms/performance/tf_sim/utils:__subpackages__",
-        "//platforms/xla/service:__subpackages__",
-        "//tensorflow:__subpackages__",
-    ]),
+    visibility = ["//visibility:public"],
     deps = ["@com_google_absl//absl/base:core_headers"],
 )
 
