@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -108,14 +109,27 @@ absl::Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
 }
 }  // namespace
 
-AllReduceCombiner::AllReduceCombiner(int64_t combine_threshold_in_bytes,
-                                     int64_t combine_threshold_count)
-    : combine_threshold_in_bytes_(combine_threshold_in_bytes),
-      combine_threshold_count_(combine_threshold_count) {}
+/*static*/ std::string AllReduceCombiner::GetGroupKeyExtraArgs(
+    AllReduceCombiner::GroupKey& key) {
+  return std::get<1>(key);
+}
 
-absl::StatusOr<bool> AllReduceCombiner::Run(
+/*static*/ std::optional<AllReduceCombiner::GroupKey>
+AllReduceCombiner::CombineKey(const HloInstruction* instruction,
+                              const HloDomainMap& domain_map) {
+  std::optional<AllReduceKey> key = GetAllReduceKey(instruction, &domain_map);
+  if (!key.has_value()) {
+    return std::nullopt;
+  }
+  return AllReduceCombiner::GroupKey{*key, /*extra_args*/ ""};
+}
+
+absl::StatusOr<bool> AllReduceCombiner::RunWithKeyCombiner(
     HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    absl::FunctionRef<std::optional<AllReduceCombiner::GroupKey>(
+        const HloInstruction*, const HloDomainMap&)>
+        combine_key) {
   VLOG(1) << "Running AllReduceCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
@@ -135,24 +149,34 @@ absl::StatusOr<bool> AllReduceCombiner::Run(
        module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
-    auto key_fn =
-        [&domain_map](
-            const HloInstruction* instruction) -> std::optional<AllReduceKey> {
+    auto key_fn = [&domain_map, &combine_key](const HloInstruction* instruction)
+        -> std::optional<AllReduceCombiner::GroupKey> {
       if (instruction->opcode() != HloOpcode::kAllReduce) {
         return std::nullopt;
       }
-      return GetAllReduceKey(instruction, domain_map.get());
+      return combine_key(instruction, *domain_map);
     };
 
     TF_ASSIGN_OR_RETURN(
         bool computation_changed,
-        CombineInstructionsByKey<AllReduceKey>(
+        CombineInstructionsByKey<AllReduceCombiner::GroupKey>(
             computation, key_fn, &CombineAllReduces,
             combine_threshold_in_bytes_, combine_threshold_count_));
     changed |= computation_changed;
   }
 
   return changed;
+}
+
+AllReduceCombiner::AllReduceCombiner(int64_t combine_threshold_in_bytes,
+                                     int64_t combine_threshold_count)
+    : combine_threshold_in_bytes_(combine_threshold_in_bytes),
+      combine_threshold_count_(combine_threshold_count) {}
+
+absl::StatusOr<bool> AllReduceCombiner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return RunWithKeyCombiner(module, execution_threads, CombineKey);
 }
 
 }  // namespace xla

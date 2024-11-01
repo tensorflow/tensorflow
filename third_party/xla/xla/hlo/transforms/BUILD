@@ -1082,6 +1082,7 @@ cc_library(
         "//xla/service:collective_combiner_utils",
         "//xla/service:hlo_domain_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
