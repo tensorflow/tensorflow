@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <algorithm>
 #include <limits>
 #include <memory>
 #include <vector>
