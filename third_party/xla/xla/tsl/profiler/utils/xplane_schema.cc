@@ -523,7 +523,6 @@ bool IsInternalEvent(std::optional<int64_t> event_type) {
 }
 
 bool IsInternalStat(std::optional<int64_t> stat_type) {
-  // TODO(b/162102421): Introduce a prefix for internal stat names.
   if (!stat_type.has_value()) return false;
   switch (*stat_type) {
     case StatType::kKernelDetails:
@@ -533,7 +532,6 @@ bool IsInternalStat(std::optional<int64_t> stat_type) {
     case StatType::kConsumerId:
     case StatType::kIsRoot:
     case StatType::kFlops:
-    case StatType::kBytesAccessed:
     case StatType::kProgramId:
     case StatType::kSymbolId:
       return true;
