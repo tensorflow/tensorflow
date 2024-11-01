@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -147,11 +148,14 @@ absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(HloInstruction* inst) {
   HloCollectivePermuteInstruction* cp =
       DynCast<HloCollectivePermuteInstruction>(inst);
   if (cp == nullptr) return false;
+  VLOG(3) << "Try folding collective-permute(*) at " << cp->ToShortString();
 
   // Operand must be a foldable select, i.e. a select op that this pass'
   // analysis supports.
   std::optional<FoldableSelect> select_match =
       MatchFoldableSelect(inst->mutable_operand(0));
+  VLOG(3) << (select_match.has_value() ? "Matched" : "Did not match")
+          << " foldable select at " << cp->ToShortString();
   if (!select_match.has_value()) return false;
 
   // We have to maintain integrity of relationship between the predicate, which
@@ -161,19 +165,29 @@ absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(HloInstruction* inst) {
       CollectiveOpGroupMode collective_mode,
       GetCollectiveOpGroupMode(cp->channel_id().has_value(),
                                /*use_global_device_ids=*/std::nullopt));
-  if (collective_mode != select_match->collective_mode) return false;
+  bool collective_mode_is_compatible =
+      collective_mode == select_match->collective_mode;
+  VLOG(3) << "Collective mode "
+          << (collective_mode_is_compatible ? "is" : "is not")
+          << " compatible with select predicate";
+  if (!collective_mode_is_compatible) return false;
 
   // We can only actually fold the select if we can evaluate the predicate
   // statically to a known value for all relevant source IDs.
   std::optional<bool> predicate_value =
       StaticallyEvaluatePredicateForAllSourceIDs(*select_match,
                                                  cp->source_target_pairs());
-  if (!predicate_value.has_value()) return false;
+  if (!predicate_value.has_value()) {
+    VLOG(3) << "Static evaluation of the predicate failed";
+    return false;
+  }
+  VLOG(3) << "Static evaluation of the predicate yields " << *predicate_value;
 
   // Fold select and forward the correct operand.
   HloInstruction* new_operand = *predicate_value ? select_match->true_operand
                                                  : select_match->false_operand;
   TF_RETURN_IF_ERROR(cp->ReplaceOperandWith(0, new_operand));
+  VLOG(3) << "Successfully folded select op away";
   return true;
 }
 
