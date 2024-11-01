@@ -248,7 +248,7 @@ absl::Status RecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (skip) return absl::OkStatus();
 
   TraceMe trace(
-      [&] { return TraceMeEncode("RecvDone", {{"channel_d", channel_id_}}); });
+      [&] { return TraceMeEncode("RecvDone", {{"channel_id", channel_id_}}); });
 
   se::StreamExecutor* executor = params.stream->parent();
   TF_ASSIGN_OR_RETURN(auto done_event, events_->Extract(executor, channel_id_));
