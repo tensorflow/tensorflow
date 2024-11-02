@@ -13,16 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
+#include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -35,6 +44,7 @@ limitations under the License.
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/platform/test.h"
 
