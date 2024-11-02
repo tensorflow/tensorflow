@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "third_party/protobuf/util/json_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/util.h"
