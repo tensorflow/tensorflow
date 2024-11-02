@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/tf_status.h"
 #include "tsl/platform/status.h"
 

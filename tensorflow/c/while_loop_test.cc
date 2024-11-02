@@ -13,10 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <initializer_list>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_test_util.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
