@@ -532,6 +532,7 @@ SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
 PjRtLayout = _xla.PjRtLayout
+AutotuneCacheMode = _xla.AutotuneCacheMode
 
 
 def LoadedExecutable_execute(self, arguments, device=None):
