@@ -116,6 +116,7 @@ cc_library(
     hdrs = ["utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//xla:xla_data_proto_cc",
         "//xla/mlir/utils:type_util",
         "//xla/python/ifrt",
         "//xla/python/ifrt/ir",
