@@ -55,7 +55,7 @@ LiteRtStatus ConcatenationOpLegalization::LegalizeOp(
 
   // Look up op input tensors in scope.
   LITERT_ASSIGN_OR_RETURN_STATUS(auto op_ins,
-                                 ::graph_tools::GetOpIns(src.Get()));
+                                 litert::internal::GetOpIns(src.Get()));
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, op_ins.size(), QNN_TENSOR_INIT);
 
   Qnn_Tensor_t* cur_qnn_op_in = qnn_op_ins;
@@ -67,7 +67,7 @@ LiteRtStatus ConcatenationOpLegalization::LegalizeOp(
 
   // QNN concatenation op expects 1 output tensor.
   LITERT_ASSIGN_OR_RETURN_STATUS(auto op_outs,
-                                 ::graph_tools::GetOpOuts(src.Get()));
+                                 litert::internal::GetOpOuts(src.Get()));
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs,
                      kReduceConcatenationOpOutputSize, QNN_TENSOR_INIT);
   LITERT_RETURN_STATUS_IF_NOT_OK(

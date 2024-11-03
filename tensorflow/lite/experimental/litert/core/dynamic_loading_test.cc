@@ -36,7 +36,7 @@ TEST(TestDynamicLoading, GlobNoMatch) {
   TouchTestFile(kNotLiteRtSo, dir);
 
   std::vector<std::string> results;
-  ASSERT_STATUS_OK(litert::FindLiteRtSharedLibs(dir, results));
+  ASSERT_STATUS_OK(litert::internal::FindLiteRtSharedLibs(dir, results));
   EXPECT_EQ(results.size(), 0);
 }
 
@@ -46,7 +46,7 @@ TEST(TestDynamicLoading, GlobOneMatch) {
   TouchTestFile(kNotLiteRtSo, dir);
 
   std::vector<std::string> results;
-  ASSERT_STATUS_OK(litert::FindLiteRtSharedLibs(dir, results));
+  ASSERT_STATUS_OK(litert::internal::FindLiteRtSharedLibs(dir, results));
   EXPECT_EQ(results.size(), 1);
   EXPECT_TRUE(absl::string_view(results.front()).ends_with(kLiteRtSo1));
 }
@@ -58,7 +58,7 @@ TEST(TestDynamicLoading, GlobMultiMatch) {
   TouchTestFile(kNotLiteRtSo, dir);
 
   std::vector<std::string> results;
-  ASSERT_STATUS_OK(litert::FindLiteRtSharedLibs(dir, results));
+  ASSERT_STATUS_OK(litert::internal::FindLiteRtSharedLibs(dir, results));
   EXPECT_EQ(results.size(), 2);
   EXPECT_THAT(results, testing::Contains(testing::HasSubstr(kLiteRtSo1)));
   EXPECT_THAT(results, testing::Contains(testing::HasSubstr(kLiteRtSo2)));

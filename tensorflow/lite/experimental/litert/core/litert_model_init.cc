@@ -42,9 +42,7 @@
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
-using ::litert::BufferRef;
-using ::litert::OwningBufferRef;
-using ::litert::internal::VerifyFlatbuffer;
+namespace litert::internal {
 
 LiteRtStatus IsOpSupported(const tflite::OperatorT& op) {
   // TODO: b/365299994 - Check for supported options.
@@ -346,7 +344,7 @@ LiteRtResult<UniqueLiteRtModel> LoadModel(BufferRef<uint8_t> serialized) {
   return LiteRtResult<UniqueLiteRtModel>::TakeValue(UniqueLiteRtModel(model));
 }
 
-void ModelDestroy(LiteRtModel model) { delete model; }
+void DestroyModel(LiteRtModel model) { delete model; }
 
 //===----------------------------------------------------------------------===//
 //                                 Serialize                                  //
@@ -550,4 +548,4 @@ LiteRtStatus SerializeModel(LiteRtModel model, uint8_t** buf, size_t* size,
   return kLiteRtStatusOk;
 }
 
-// NOLINTEND
+}  // namespace litert::internal

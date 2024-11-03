@@ -23,7 +23,7 @@ TEST(Subgraph, SimpleModel) {
   auto litert_model = litert::testing::LoadTestFileModel("one_mul.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
-                          ::graph_tools::GetSubgraph(litert_model.get()));
+                          litert::internal::GetSubgraph(litert_model.get()));
 
   litert::Subgraph subgraph(litert_subgraph);
   ASSERT_EQ(subgraph.Inputs().size(), 2);

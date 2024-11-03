@@ -336,10 +336,13 @@ class OwningBufferRef : public MutableBufferRef<ByteT> {
   // Debug string.
   absl::string_view TypeName() const override { return "OwningBufferRef"; }
 };
+
 template <typename ByteT = uint8_t, class Allocator = Newlocator<ByteT>>
 OwningBufferRef(const ByteT*, size_t) -> OwningBufferRef<ByteT, Allocator>;
+
 template <typename ByteT = uint8_t, class Allocator = Newlocator<ByteT>>
 OwningBufferRef(ByteT*, size_t) -> OwningBufferRef<ByteT, Allocator>;
+
 template <typename ByteT = char, class Allocator = Newlocator<ByteT>>
 OwningBufferRef(const char*) -> OwningBufferRef<ByteT, Allocator>;
 

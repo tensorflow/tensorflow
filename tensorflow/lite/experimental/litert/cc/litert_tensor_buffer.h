@@ -45,8 +45,7 @@ class TensorBuffer
       LiteRtTensorBufferType buffer_type, const RankedTensorType& tensor_type,
       size_t buffer_size) {
     LiteRtTensorBuffer tensor_buffer;
-    auto& litert_tensor_type =
-        static_cast<const LiteRtRankedTensorType&>(tensor_type);
+    auto litert_tensor_type = static_cast<LiteRtRankedTensorType>(tensor_type);
     if (auto status = LiteRtCreateManagedTensorBuffer(
             buffer_type, &litert_tensor_type, buffer_size, &tensor_buffer);
         status != kLiteRtStatusOk) {

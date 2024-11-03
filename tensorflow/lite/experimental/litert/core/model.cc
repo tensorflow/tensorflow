@@ -26,8 +26,8 @@
 #include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
-using ::litert::BufferRef;
-using ::litert::MutableBufferRef;
+using litert::BufferRef;
+using litert::MutableBufferRef;
 
 //
 // Model
@@ -63,12 +63,6 @@ LiteRtStatus LiteRtGetModelMetadata(LiteRtModel model, const char* metadata_key,
   *metadata_buffer = m_buf.Data();
   *metadata_buffer_size = m_buf.Size();
   return kLiteRtStatusOk;
-}
-
-void ModelDestroy(LiteRtModel model) {
-  if (model != nullptr) {
-    delete model;
-  }
 }
 
 LiteRtStatus LiteRtPushOp(LiteRtOpList op_list, LiteRtOp op) {

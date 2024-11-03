@@ -15,11 +15,13 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_LITERT_MODEL_INIT_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_LITERT_MODEL_INIT_H_
 
-#include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include <memory>
 
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
+#include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
+#include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
+
+namespace litert::internal {
 
 // Load model from flatbuffer file.
 LiteRtStatus LoadModelFromFile(const char* path, LiteRtModel* model);
@@ -33,7 +35,7 @@ LiteRtStatus LoadModel(const uint8_t* buf, size_t buf_size, LiteRtModel* model);
 LiteRtStatus RegisterCustomOpCode(LiteRtModel model, const char* new_op_code);
 
 // Destroy model and any associated storage.
-void ModelDestroy(LiteRtModel model);
+void DestroyModel(LiteRtModel model);
 
 // Adds given metadata buffer to be serialized with the flatbuffer. Weights can
 // be retrieved at runtime under `metadata_name`.
@@ -46,30 +48,16 @@ LiteRtStatus AppendMetadata(LiteRtModel model, const void* metadata,
 LiteRtStatus SerializeModel(LiteRtModel model, uint8_t** buf, size_t* size,
                             size_t* offset);
 
-#ifdef __cplusplus
-}
-
-#include <memory>
-
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
-#include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
-
 struct LiteRtModelDeleter {
-  void operator()(LiteRtModel model) {
-    if (model != nullptr) {
-      ModelDestroy(model);
-    }
-  }
+  void operator()(LiteRtModel model) { DestroyModel(model); }
 };
 
 using UniqueLiteRtModel = std::unique_ptr<LiteRtModelT, LiteRtModelDeleter>;
 
-LiteRtResult<litert::OwningBufferRef<uint8_t>> SerializeModel(
-    UniqueLiteRtModel model);
+LiteRtResult<OwningBufferRef<uint8_t>> SerializeModel(UniqueLiteRtModel model);
 
-LiteRtResult<UniqueLiteRtModel> LoadModel(
-    litert::BufferRef<uint8_t> serialized);
+LiteRtResult<UniqueLiteRtModel> LoadModel(BufferRef<uint8_t> serialized);
 
-#endif  // __cplusplus
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_LITERT_MODEL_INIT_H_

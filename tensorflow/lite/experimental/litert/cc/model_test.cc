@@ -29,7 +29,7 @@ TEST(Model, SimpleModel) {
   auto subgraph_0 = model.Subgraph(0);
   ASSERT_TRUE(subgraph_0.ok());
   ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph_0,
-                          ::graph_tools::GetSubgraph(litert_model.get()));
+                          litert::internal::GetSubgraph(litert_model.get()));
   EXPECT_EQ(subgraph_0->Get(), litert_subgraph_0);
 
   LiteRtParamIndex main_subgraph_index;

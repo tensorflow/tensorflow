@@ -31,7 +31,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 
-namespace litert {
+namespace litert::internal {
 
 LiteRtStatus OpenLib(absl::string_view so_path, void** lib_handle) {
 #ifdef __ANDROID__
@@ -104,4 +104,4 @@ LiteRtStatus FindLiteRtSharedLibs(absl::string_view search_path,
   return kLiteRtStatusErrorUnsupported;
 }
 
-}  // namespace litert
+}  // namespace litert::internal

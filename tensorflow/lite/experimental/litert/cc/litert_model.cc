@@ -19,17 +19,17 @@
 namespace litert {
 
 bool Tensor::IsSubgraphOutput() const {
-  return graph_tools::MatchTensorNoUses(Get());
+  return internal::MatchTensorNoUses(Get());
 }
 
 bool Tensor::IsSubgraphInput() const {
-  return graph_tools::MatchTensorNoDefiningOp(Get()) &&
-         graph_tools::MatchNoWeights(Get());
+  return internal::MatchTensorNoDefiningOp(Get()) &&
+         internal::MatchNoWeights(Get());
 }
 
 bool Tensor::IsConstant() const {
-  return graph_tools::MatchTensorNoDefiningOp(Get()) &&
-         !graph_tools::MatchNoWeights(Get());
+  return internal::MatchTensorNoDefiningOp(Get()) &&
+         !internal::MatchNoWeights(Get());
 }
 
 }  // namespace litert

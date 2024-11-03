@@ -51,7 +51,7 @@ LiteRtStatus ReshapeOpLegalization::LegalizeOp(const litert::Op& src,
   DumpLegalization(*src.Get());
   // Look up op input tensors in scope.
   LITERT_ASSIGN_OR_RETURN_STATUS(auto op_ins,
-                                 ::graph_tools::GetOpIns(src.Get()));
+                                 litert::internal::GetOpIns(src.Get()));
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, kReshapeOpInputSize,
                      QNN_TENSOR_INIT);
   LITERT_RETURN_STATUS_IF_NOT_OK(
@@ -60,7 +60,7 @@ LiteRtStatus ReshapeOpLegalization::LegalizeOp(const litert::Op& src,
   // Legalize op outputs and update scope.
 
   LITERT_ASSIGN_OR_RETURN_STATUS(auto op_outs,
-                                 ::graph_tools::GetOpOuts(src.Get()));
+                                 litert::internal::GetOpOuts(src.Get()));
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs, kReshapeOpOutputSize,
                      QNN_TENSOR_INIT);
   LITERT_RETURN_STATUS_IF_NOT_OK(

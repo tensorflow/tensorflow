@@ -133,9 +133,9 @@ LiteRtStatus LiteRtCompilerPluginPartitionModel(
     LiteRtCompilerPlugin compiler_plugin, LiteRtModel model,
     LiteRtOpList selected_ops) {
   LITERT_ASSIGN_OR_RETURN_STATUS(auto subgraph,
-                                 graph_tools::GetSubgraph(model));
+                                 litert::internal::GetSubgraph(model));
   LITERT_ASSIGN_OR_RETURN_STATUS(auto ops,
-                                 graph_tools::GetSubgraphOps(subgraph));
+                                 litert::internal::GetSubgraphOps(subgraph));
 
   for (auto op : ops) {
     LiteRtOpCode op_code;
@@ -154,7 +154,7 @@ LiteRtStatus CompileSinglePartition(LiteRtParamIndex partition_index,
                                     LiteRtSubgraph subgraph,
                                     LiteRtCompiledResultT& result) {
   LITERT_ASSIGN_OR_RETURN_STATUS(auto ops,
-                                 graph_tools::GetSubgraphOps(subgraph));
+                                 litert::internal::GetSubgraphOps(subgraph));
 
   int num_muls_in_partition = 0;
   for (auto op : ops) {

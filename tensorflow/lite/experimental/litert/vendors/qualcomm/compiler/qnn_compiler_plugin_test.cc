@@ -85,7 +85,7 @@ TEST(TestQnnPlugin, CompileMulSubgraph) {
   auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                          ::graph_tools::GetSubgraph(model.get()));
+                          ::litert::internal::GetSubgraph(model.get()));
 
   LiteRtCompiledResult compiled;
   ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75", &subgraph,
@@ -122,7 +122,7 @@ TEST_P(QnnPluginOpCompatibilityTest, SupportedOpsTest) {
   auto model = litert::testing::LoadTestFileModel(GetParam());
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                          ::graph_tools::GetSubgraph(model.get()));
+                          ::litert::internal::GetSubgraph(model.get()));
 
   LiteRtCompiledResult compiled;
   ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75", &subgraph,

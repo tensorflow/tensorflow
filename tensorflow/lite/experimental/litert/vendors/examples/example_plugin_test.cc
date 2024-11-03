@@ -71,7 +71,8 @@ TEST(TestCallDummyPlugin, CompileMulSubgraph) {
   auto plugin = GetDummyPlugin();
   auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
 
-  ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto subgraph,
+                          litert::internal::GetSubgraph(model.get()));
 
   LiteRtCompiledResult compiled;
   ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(

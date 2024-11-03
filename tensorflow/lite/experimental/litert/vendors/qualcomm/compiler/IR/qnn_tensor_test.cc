@@ -86,9 +86,9 @@ TEST(TestInitQnnTensor, MoveToId) {
 TEST(TestLegalizeTensor, SimpleSupportedTensorSubgraphInput) {
   auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                          ::graph_tools::GetSubgraph(model.get()));
+                          ::litert::internal::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto outputs,
-                          ::graph_tools::GetSubgraphOutputs(subgraph));
+                          ::litert::internal::GetSubgraphOutputs(subgraph));
 
   auto qnn_tensor = litert::qnn::BuildDefaultTensor();
   auto output = litert::Tensor(outputs[0]);
@@ -110,9 +110,10 @@ TEST(TestLegalizeTensor, SimpleSupportedTensor) {
   auto model = litert::testing::LoadTestFileModel("simple_multi_op.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                          ::graph_tools::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, ::graph_tools::GetSubgraphOps(subgraph));
-  ASSERT_RESULT_OK_ASSIGN(auto op_outs, ::graph_tools::GetOpOuts(ops[1]));
+                          ::litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops,
+                          ::litert::internal::GetSubgraphOps(subgraph));
+  ASSERT_RESULT_OK_ASSIGN(auto op_outs, ::litert::internal::GetOpOuts(ops[1]));
 
   auto qnn_tensor = litert::qnn::BuildDefaultTensor();
   auto op_out = litert::Tensor(op_outs[0]);

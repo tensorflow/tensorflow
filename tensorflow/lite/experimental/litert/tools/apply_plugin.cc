@@ -41,22 +41,27 @@
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
 #include "tensorflow/lite/experimental/litert/tools/tool_display.h"
 
-namespace litert::tools {
+using litert::BufferRef;
+using litert::OwningBufferRef;
+using litert::internal::CompilerPlugin;
+using litert::internal::Dump;
+using litert::internal::FinishByteCodePlaceholders;
+using litert::internal::GroupPartitions;
+using litert::internal::kByteCodeMetadataKey;
+using litert::internal::kLiteRtBuildStampKey;
+using litert::internal::kLiteRtDispatchOpCustomCode;
+using litert::internal::LoadModelFromFile;
+using litert::internal::MakeBuildStamp;
+using litert::internal::MakeByteCodePlaceholder;
+using litert::internal::MakeExecInfo;
+using litert::internal::OutlinePartition;
+using litert::internal::RegisterCustomOpCode;
+using litert::internal::Serialization;
+using litert::internal::UniqueLiteRtModel;
+using litert::internal::VerifyFlatbuffer;
+using litert::tools::ApplyPluginRun;
 
-using ::litert::internal::CompilerPlugin;
-using ::litert::internal::Dump;
-using ::litert::internal::FinishByteCodePlaceholders;
-using ::litert::internal::GroupPartitions;
-using ::litert::internal::kByteCodeMetadataKey;
-using ::litert::internal::kLiteRtBuildStampKey;
-using ::litert::internal::kLiteRtDispatchOpCustomCode;
-using ::litert::internal::MakeBuildStamp;
-using ::litert::internal::MakeByteCodePlaceholder;
-using ::litert::internal::MakeExecInfo;
-using ::litert::internal::OutlinePartition;
-using ::litert::internal::Serialization;
-using ::litert::internal::VerifyFlatbuffer;
-using ::litert::tools::ApplyPluginRun;
+namespace litert::tools {
 
 #define LITERT_ENSURE_CONFIG(expr)              \
   if (!(expr)) {                                \

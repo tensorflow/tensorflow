@@ -33,19 +33,19 @@
 #include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
-namespace {
+using litert::BufferRef;
+using litert::internal::GetMetadata;
+using litert::internal::kByteCodeMetadataKey;
+using litert::internal::kLiteRtBuildStampKey;
+using litert::internal::ParseBuildStamp;
+using litert::internal::ParseByteCodePlaceholder;
+using litert::internal::ParseExecInfo;
+using litert::internal::Serialization;
+using litert::tools::ApplyPlugin;
+using litert::tools::ApplyPluginRun;
+using testing::HasSubstr;
 
-using ::graph_tools::GetMetadata;
-using ::litert::BufferRef;
-using ::litert::internal::kByteCodeMetadataKey;
-using ::litert::internal::kLiteRtBuildStampKey;
-using ::litert::internal::ParseBuildStamp;
-using ::litert::internal::ParseByteCodePlaceholder;
-using ::litert::internal::ParseExecInfo;
-using ::litert::internal::Serialization;
-using ::litert::tools::ApplyPlugin;
-using ::litert::tools::ApplyPluginRun;
-using ::testing::HasSubstr;
+namespace {
 
 static constexpr absl::string_view kPluginSearchPath =
     "third_party/tensorflow/lite/experimental/litert/vendors/examples";
@@ -109,10 +109,10 @@ TEST(TestApplyPluginTool, TestNoop) {
   ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
   LiteRtModel model;
-  ASSERT_STATUS_OK(
-      LoadModel(reinterpret_cast<const uint8_t*>(out.view().data()),
-                out.view().size(), &model));
-  UniqueLiteRtModel u_model(model);
+  ASSERT_STATUS_OK(litert::internal::LoadModel(
+      reinterpret_cast<const uint8_t*>(out.view().data()), out.view().size(),
+      &model));
+  litert::internal::UniqueLiteRtModel u_model(model);
 
   EXPECT_EQ(model->subgraphs.size(), 1);
 }
@@ -161,8 +161,9 @@ TEST(TestApplyPluginTool, TestApply) {
   run->outs.push_back(out);
   ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  ASSERT_RESULT_OK_MOVE(auto model, LoadModel(BufferRef<uint8_t>(
-                                        out.str().data(), out.str().size())));
+  ASSERT_RESULT_OK_MOVE(
+      auto model, litert::internal::LoadModel(
+                      BufferRef<uint8_t>(out.str().data(), out.str().size())));
   EXPECT_EQ(model->subgraphs.size(), 1);
 
   {
@@ -204,7 +205,7 @@ TEST(TestApplyPluginTool, TestApplyWithAppendSerialization) {
 
   BufferRef<uint8_t> serialized(out.str().data(), out.str().size());
 
-  ASSERT_RESULT_OK_MOVE(auto model, LoadModel(serialized));
+  ASSERT_RESULT_OK_MOVE(auto model, litert::internal::LoadModel(serialized));
   EXPECT_EQ(model->subgraphs.size(), 1);
 
   {

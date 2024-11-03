@@ -62,7 +62,7 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
 
   // QNN strided slice op expects 1 input tensor.
   LITERT_ASSIGN_OR_RETURN_STATUS(auto op_ins,
-                                 ::graph_tools::GetOpIns(src.Get()));
+                                 litert::internal::GetOpIns(src.Get()));
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, kSliceOpInputSize,
                      QNN_TENSOR_INIT);
   LITERT_RETURN_STATUS_IF_NOT_OK(
@@ -70,7 +70,7 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
 
   // QNN strided slice op expects 1 output tensor.
   LITERT_ASSIGN_OR_RETURN_STATUS(auto op_outs,
-                                 ::graph_tools::GetOpOuts(src.Get()));
+                                 litert::internal::GetOpOuts(src.Get()));
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs, kSliceOpOutputSize,
                      QNN_TENSOR_INIT);
   LITERT_RETURN_STATUS_IF_NOT_OK(
@@ -83,8 +83,10 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
       src_input_tensor.RankedTensorType().Layout().Rank();
 
   // Prepare qnn strided slice parameters.
-  auto src_begin_indices = graph_tools::GetWeights<int32_t>(op_ins[1]).Value();
-  auto src_size_indices = graph_tools::GetWeights<int32_t>(op_ins[2]).Value();
+  auto src_begin_indices =
+      litert::internal::GetWeights<int32_t>(op_ins[1]).Value();
+  auto src_size_indices =
+      litert::internal::GetWeights<int32_t>(op_ins[2]).Value();
 
   // Check if src_begin_indices and src_size_indices are weights tensors.
   if (src_begin_indices.empty() || src_size_indices.empty()) {
