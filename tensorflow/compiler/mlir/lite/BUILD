@@ -1315,6 +1315,7 @@ cc_library(
         ":flatbuffer_tflite_operator_lib",
         ":lite_version",
         ":low_bit_utils",
+        ":region_isolation",
         ":stateful_ops_utils",
         ":string_utils",
         ":tensorflow_lite",
@@ -1338,6 +1339,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -1440,6 +1442,39 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "region_isolation",
+    srcs = [
+        "utils/region_isolation.cc",
+    ],
+    hdrs = [
+        "utils/region_isolation.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+tf_cc_test(
+    name = "region_isolation_test",
+    srcs = [
+        "utils/region_isolation_test.cc",
+    ],
+    deps = [
+        ":region_isolation",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
