@@ -131,6 +131,8 @@ git merge upstream/master --no-edit
   - `no_gpu` tag is used to indicate which tests are excluded from GPU CI in the
     upstream repo. We should not add this tag to any tests.
 
+  If you skip tests in the weekly sync, leave a comment in the format `TODO(rocm): weekly-sync YY-MM-DD` so we can enable it later once it's fixed upstream.
+
 - Document the list of excluded tests amending the commit.
   Also update [this  Excel spreadsheet](https://amdcloud-my.sharepoint.com/:x:/r/personal/deven_amd_com/Documents/TF%20CI%20Unit%20Test%20Status.xlsx?d=w42bd3e2e76534209bd0438aa92857fa6&csf=1&e=5zpGPh)
 
