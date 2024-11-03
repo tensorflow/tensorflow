@@ -931,6 +931,9 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseStablehloShiftLeft(op, error_reporter, allocator,
                                      builtin_data);
     }
+    case BuiltinOperator_STABLEHLO_CASE: {
+      return ParseStablehloCase(op, error_reporter, allocator, builtin_data);
+    }
     // TODO: skip param parsing for now since ops below don't have kernels
     case BuiltinOperator_STABLEHLO_SLICE:
     case BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM:
@@ -2422,6 +2425,46 @@ TfLiteStatus ParseStablehloShiftLeft(const Operator* op,
                                      BuiltinDataAllocator* allocator,
                                      void** builtin_data) {
   return kTfLiteOk;
+}
+
+TfLiteStatus ParseStablehloCase(const Operator* op,
+                                ErrorReporter* error_reporter,
+                                BuiltinDataAllocator* allocator,
+                                void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteStablehloCaseParams>();
+
+  const StablehloCaseOptions* schema_params =
+      op->builtin_options_2_as_StablehloCaseOptions();
+  if (schema_params) {
+    auto LoadAttr =
+        [&error_reporter](
+            int32_t* params_array, const size_t params_array_size_bytes,
+            const flatbuffers::Vector<int32_t>* const flatbuffer_vector,
+            const char* const attr_name) -> TfLiteStatus {
+      TfLiteStatus status = FlatBufferIntVectorToArray(
+          params_array_size_bytes, flatbuffer_vector, params_array,
+          error_reporter, "stablehlo.case");
+      if (status != kTfLiteOk) {
+        TF_LITE_REPORT_ERROR(error_reporter, "Check the '%s' attribute.",
+                             attr_name);
+      }
+      return status;
+    };
+
+    TF_LITE_ENSURE_STATUS(LoadAttr(params->branch_subgraph_indices,
+                                   sizeof(params->branch_subgraph_indices),
+                                   schema_params->branch_subgraph_indices(),
+                                   "branch subgraph indices"));
+    params->num_branches = schema_params->branch_subgraph_indices()->size();
+    *builtin_data = params.release();
+    return kTfLiteOk;
+  }
+  TF_LITE_REPORT_ERROR(error_reporter,
+                       "Could not get 'stablehlo.case' operation parameters.");
+  return kTfLiteError;
 }
 
 // We have this parse function instead of directly returning kTfLiteOk from the

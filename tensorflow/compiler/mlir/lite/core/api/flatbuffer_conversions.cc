@@ -211,6 +211,7 @@ using tflite::BuiltinOperator_STABLEHLO_ABS;
 using tflite::BuiltinOperator_STABLEHLO_ADD;
 using tflite::BuiltinOperator_STABLEHLO_AND;
 using tflite::BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM;
+using tflite::BuiltinOperator_STABLEHLO_CASE;
 using tflite::BuiltinOperator_STABLEHLO_CBRT;
 using tflite::BuiltinOperator_STABLEHLO_CLAMP;
 using tflite::BuiltinOperator_STABLEHLO_COMPARE;
@@ -1245,6 +1246,9 @@ absl::Status ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     }
     case BuiltinOperator_STABLEHLO_SHIFT_LEFT: {
       return ParseStablehloShiftLeft(op, allocator, builtin_data);
+    }
+    case BuiltinOperator_STABLEHLO_CASE: {
+      return ParseStablehloCase(op, allocator, builtin_data);
     }
     // TODO: skip param parsing for now since ops below don't have kernels
     case BuiltinOperator_STABLEHLO_SLICE:
@@ -3126,6 +3130,32 @@ absl::Status ParseWhile(const Operator* op, BuiltinDataAllocator* allocator,
   }
 
   *builtin_data = params.release();
+  return OkStatus();
+}
+
+absl::Status ParseStablehloCase(const Operator* op,
+                                BuiltinDataAllocator* allocator,
+                                void** builtin_data) {
+  CheckParsePointerParams(op, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteStablehloCaseParams>();
+
+  const tflite::StablehloCaseOptions* schema_params =
+      op->builtin_options_2_as_StablehloCaseOptions();
+
+  if (!schema_params) {
+    return absl::InternalError("Could not get 'stablehlo.case' params");
+  }
+
+  TFL_FILE_ENSURE_STATUS(FlatBufferIntVectorToArray(
+      sizeof(params->branch_subgraph_indices),
+      schema_params->branch_subgraph_indices(), params->branch_subgraph_indices,
+      "stablehlo.case"));
+
+  params->num_branches = schema_params->branch_subgraph_indices()->size();
+  *builtin_data = params.release();
+
   return OkStatus();
 }
 

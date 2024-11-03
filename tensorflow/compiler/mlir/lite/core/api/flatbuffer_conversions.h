@@ -418,6 +418,10 @@ absl::Status ParseStablehloShiftLeft(const Operator* op,
                                      BuiltinDataAllocator* allocator,
                                      void** builtin_data);
 
+absl::Status ParseStablehloCase(const Operator* op,
+                                BuiltinDataAllocator* allocator,
+                                void** builtin_data);
+
 }  // namespace flatbuffer_conversions
 }  // namespace tflite_file
 
