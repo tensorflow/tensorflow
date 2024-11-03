@@ -42,7 +42,7 @@ constexpr char kSignatureDefsMetadataName[] = "signature_defs_metadata";
 //
 // On success, returns tensorflow::OkStatus() or error otherwise.
 // On error, `model_data_with_signature_defs` is unchanged.
-tensorflow::Status SetSignatureDefMap(
+absl::Status SetSignatureDefMap(
     const Model* model,
     const std::map<std::string, tensorflow::SignatureDef>& signature_def_map,
     std::string* model_data_with_signature_defs);
@@ -58,15 +58,14 @@ bool HasSignatureDef(const Model* model, const std::string& signature_key);
 //
 // If the Metadata entry does not exist, `signature_def_map` is unchanged.
 // If the Metadata entry exists but cannot be parsed, returns an error.
-tensorflow::Status GetSignatureDefMap(
+absl::Status GetSignatureDefMap(
     const Model* model,
     std::map<std::string, tensorflow::SignatureDef>* signature_def_map);
 
 // The function `ClearSignatureDefs` results in `model_data`
 // containing a serialized Model identical to `model` omitting any
 // SignatureDef-related metadata or buffers.
-tensorflow::Status ClearSignatureDefMap(const Model* model,
-                                        std::string* model_data);
+absl::Status ClearSignatureDefMap(const Model* model, std::string* model_data);
 
 }  // namespace tflite
 
