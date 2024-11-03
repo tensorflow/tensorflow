@@ -60,8 +60,8 @@ xla::Shape GetTPUInfeedLayout(const xla::Shape& shape) {
 // Updates the layout of the given infeed shape, optionally considering the
 // sharding of the op. If the op has tile sharding, assign the layout based on
 // the shard shape.
-Status UpdateInfeedLayout(xla::Shape* shape,
-                          std::optional<xla::OpSharding> sharding) {
+absl::Status UpdateInfeedLayout(xla::Shape* shape,
+                                std::optional<xla::OpSharding> sharding) {
   if (sharding && sharding->type() == xla::OpSharding::OTHER) {
     TF_ASSIGN_OR_RETURN(auto hlo_sharding,
                         xla::HloSharding::FromProto(*sharding));
