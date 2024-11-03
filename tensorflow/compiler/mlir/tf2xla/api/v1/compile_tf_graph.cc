@@ -118,7 +118,7 @@ struct CompilationTimer {
 };
 
 // Populates input_output_alias field in the HLO Module proto.
-Status PopulateInputOutputAliasing(
+absl::Status PopulateInputOutputAliasing(
     mlir::func::FuncOp main_fn,
     XlaCompiler::CompilationResult* compilation_result, bool use_tuple_args) {
   constexpr char kAliasingAttr[] = "tf.aliasing_output";
@@ -162,8 +162,8 @@ bool failed(const absl::Status& status) { return !status.ok(); }
 
 // Transforms the given module to be suitable for export to TensorFlow GraphDef
 // and then exports all functions to the given library.
-Status PrepareAndExportToLibrary(mlir::ModuleOp module,
-                                 FunctionLibraryDefinition* flib_def) {
+absl::Status PrepareAndExportToLibrary(mlir::ModuleOp module,
+                                       FunctionLibraryDefinition* flib_def) {
   // Pass pipeline is defined here instead of leveraging the phase one export
   // pipeline because only the functional to executor dialect conversion and
   // breakup islands passes are common between the export pipeline and here.
@@ -215,7 +215,7 @@ absl::Status CompileTFFunctionWithoutMlir(
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client,
     XlaCompiler::CompilationResult* compilation_result) {
-  Status comp_status = CompileTFFunctionToHlo(
+  absl::Status comp_status = CompileTFFunctionToHlo(
       *function_computation.flib_def, function_computation.graph_def_version,
       shape_determination_funcs, arg_shapes, device_type,
       function_computation.guaranteed_constants, *function_computation.function,
