@@ -40,10 +40,10 @@ TapeContext::~TapeContext() {
 TapeOperation* TapeContext::CreateOperation() {
   return new TapeOperation(parent_ctx_->CreateOperation(), tape_, registry_);
 }
-Status TapeContext::RegisterFunction(AbstractFunction* f) {
+absl::Status TapeContext::RegisterFunction(AbstractFunction* f) {
   return parent_ctx_->RegisterFunction(f);
 }
-Status TapeContext::RemoveFunction(const string& func) {
+absl::Status TapeContext::RemoveFunction(const string& func) {
   return parent_ctx_->RemoveFunction(func);
 }
 
