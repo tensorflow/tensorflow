@@ -366,9 +366,7 @@ xla_test(
     name = "pjrt_c_api_gpu_test",
     srcs = ["pjrt_c_api_gpu_test.cc"],
     backends = ["gpu"],
-    tags = [
-        "cuda-only", #TODO(rocm): weekly sync 241001
-    ] + if_google([
+    tags = if_google([
         "config-cuda-only",
     ]),
     deps = [
