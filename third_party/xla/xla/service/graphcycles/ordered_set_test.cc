@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/graphcycles/ordered_set.h"
 
+#include <array>
+
 #include "tsl/platform/test.h"
 
 namespace xla {
