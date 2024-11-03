@@ -149,8 +149,9 @@ const std::vector<ReplicaGroup>& CollectiveDeviceList::replica_groups() const {
   return *replica_groups_;
 }
 
-std::string CollectiveDeviceList::ToString() const {
-  if (iota_replica_group_list_.has_value()) {
+std::string CollectiveDeviceList::ToString(
+    bool print_full_replica_group_list) const {
+  if (iota_replica_group_list_.has_value() && !print_full_replica_group_list) {
     return iota_replica_group_list_->ToString();
   }
 

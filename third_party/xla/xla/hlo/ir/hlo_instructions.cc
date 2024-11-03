@@ -943,8 +943,12 @@ HloInstructionProto HloCollectiveInstruction::ToProto() const {
 void HloCollectiveInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
   HloChannelInstruction::PrintExtraAttributesImpl(printer, options);
-  printer.Next([this](Printer* printer) {
-    AppendCat(printer, "replica_groups=", device_list_.ToString());
+  printer.Next([this, &options](Printer* printer) {
+    VLOG(4) << name() << " replica_groups="
+            << device_list_.ToString(options.print_full_replica_group_list());
+
+    AppendCat(printer, "replica_groups=",
+              device_list_.ToString(options.print_full_replica_group_list()));
   });
   if (constrain_layout_) {
     printer.Next(
