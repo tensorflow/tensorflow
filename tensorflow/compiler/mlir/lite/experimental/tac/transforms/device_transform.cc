@@ -178,7 +178,7 @@ struct FoldQuantizedI32ToFloat : public OpRewritePattern<TFL::DequantizeOp> {
 
       const float real = (int_value - zp) * scale;
 
-      auto real_int = absl::bit_cast<int32_t>(real);
+      auto real_int = absl::bit_cast<uint32_t>(real);
       return APInt(/*numBits=*/32, real_int);
     };
 
