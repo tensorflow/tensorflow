@@ -1,7 +1,32 @@
+diff --git a/python/repositories.bzl b/python/repositories.bzl
+index d58feef..4ce550d 100644
+--- a/python/repositories.bzl
++++ b/python/repositories.bzl
+@@ -64,7 +64,10 @@ def py_repositories():
+     )
+     http_archive(
+         name = "rules_cc",
+-        urls = ["https://github.com/bazelbuild/rules_cc/releases/download/0.0.9/rules_cc-0.0.9.tar.gz"],
++        urls = [
++            "https://mirror.bazel.build/github.com/bazelbuild/rules_cc/releases/download/0.0.9/rules_cc-0.0.9.tar.gz",
++            "https://github.com/bazelbuild/rules_cc/releases/download/0.0.9/rules_cc-0.0.9.tar.gz"
++        ],
+         sha256 = "2037875b9a4456dce4a79d112a8ae885bbc4aad968e6587dca6e64f3a0900cdf",
+         strip_prefix = "rules_cc-0.0.9",
+     )
 diff --git a/python/versions.bzl b/python/versions.bzl
-index fd385cd1..eb4133f1 100644
+index fd385cd..9a52e80 100644
 --- a/python/versions.bzl
 +++ b/python/versions.bzl
+@@ -20,7 +20,7 @@ MACOS_NAME = "mac os"
+ LINUX_NAME = "linux"
+ WINDOWS_NAME = "windows"
+ 
+-DEFAULT_RELEASE_BASE_URL = "https://github.com/indygreg/python-build-standalone/releases/download"
++DEFAULT_RELEASE_BASE_URL = "https://mirror.bazel.build/github.com/indygreg/python-build-standalone/releases/download"
+ 
+ # When updating the versions and releases, run the following command to get
+ # the hashes:
 @@ -484,6 +484,19 @@ TOOL_VERSIONS = {
          },
          "strip_prefix": "python",
@@ -20,7 +45,7 @@ index fd385cd1..eb4133f1 100644
 +        "strip_prefix": "python",
 +    },
  }
-
+ 
  # buildifier: disable=unsorted-dict-items
 @@ -493,6 +506,7 @@ MINOR_MAPPING = {
      "3.10": "3.10.14",
@@ -28,5 +53,5 @@ index fd385cd1..eb4133f1 100644
      "3.12": "3.12.3",
 +    "3.13": "3.13.0",
  }
-
+ 
  PLATFORMS = {
