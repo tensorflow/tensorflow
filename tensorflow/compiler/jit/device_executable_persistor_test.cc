@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -136,10 +137,11 @@ class DeviceExecutionPersistorTest : public ::testing::Test {
 
   absl::Status CreatePjRtCompilerClient() {
     // Create PjRtClient manually while GetOrCreatePjRtClient() is WIP.
+    xla::CpuClientOptions options;
+    options.asynchronous = true;
+    options.cpu_device_count = 1;
     TF_RETURN_IF_ERROR(SetPjRtClientInTFGlobalResourceManager(
-        DEVICE_CPU_XLA_JIT,
-        xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
-            .value()));
+        DEVICE_CPU_XLA_JIT, xla::GetTfrtCpuClient(options).value()));
     TF_ASSIGN_OR_RETURN(auto pjrt_client,
                         GetOrCreatePjRtClient(DeviceType(DEVICE_CPU_XLA_JIT)));
     pjrt_compiler_client_ =

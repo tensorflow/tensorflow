@@ -34,10 +34,11 @@ using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
 TEST(PjRtUtilTest, SetGetAndDeletePjRtClient) {
+  xla::CpuClientOptions options;
+  options.asynchronous = true;
+  options.cpu_device_count = 1;
   TF_ASSERT_OK(SetPjRtClientInTFGlobalResourceManager(
-      DEVICE_CPU,
-      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
-          .value()));
+      DEVICE_CPU, xla::GetTfrtCpuClient(options).value()));
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetPjRtClient(DEVICE_CPU));
   EXPECT_THAT(pjrt_client, ::testing::NotNull());
 }

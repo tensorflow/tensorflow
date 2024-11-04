@@ -41,9 +41,11 @@ namespace test_util {
 namespace {
 
 absl::StatusOr<std::unique_ptr<xla::ifrt::Client>> CreateIfrtBackendClient() {
+  xla::CpuClientOptions options;
+  options.asynchronous = true;
+  options.cpu_device_count = 4;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> tfrt_cpu_client,
-                      xla::GetTfrtCpuClient(/*asynchronous=*/true,
-                                            /*cpu_device_count=*/4));
+                      xla::GetTfrtCpuClient(options));
   return xla::ifrt::PjRtClient::Create(std::move(tfrt_cpu_client));
 }
 

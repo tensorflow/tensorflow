@@ -74,9 +74,10 @@ class ConvertTfQuantToMhloIntTest : public Test {
     ctx_->loadAllAvailableDialects();
 
     // Create a CPU client with 1 device.
-    TF_ASSERT_OK_AND_ASSIGN(
-        pjrt_client_,
-        xla::GetTfrtCpuClient(/*asynchronous=*/false, /*cpu_device_count=*/1));
+    xla::CpuClientOptions options;
+    options.asynchronous = false;
+    options.cpu_device_count = 1;
+    TF_ASSERT_OK_AND_ASSIGN(pjrt_client_, xla::GetTfrtCpuClient(options));
     device_ = pjrt_client_->addressable_devices().front();
     CHECK(device_);
   }

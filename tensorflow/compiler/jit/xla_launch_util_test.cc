@@ -28,11 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
-#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/device_id_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -90,10 +89,11 @@ class PjRtExecutionUtilTest : public OpsTestBase {
     SetDevice(device_type, std::move(device));
 
     // Create PjRtClient for XLA_CPU.
+    xla::CpuClientOptions options;
+    options.asynchronous = true;
+    options.cpu_device_count = 1;
     TF_CHECK_OK(SetPjRtClientInTFGlobalResourceManager(
-        device_type,
-        xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
-            .value()));
+        device_type, xla::GetTfrtCpuClient(options).value()));
 
     // device_context_ should be a PjRtDeviceContext.
     TF_CHECK_OK(device_->TryGetDeviceContext(&device_context_));
