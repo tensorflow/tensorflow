@@ -24,7 +24,6 @@ limitations under the License.
 #include <optional>
 #include <queue>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -39,7 +38,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/IR/DataLayout.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -74,7 +72,6 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/gpu/target_util.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -91,7 +88,6 @@ limitations under the License.
 #include "tsl/platform/tensor_float_32_utils.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
-#include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
 namespace xla::gpu {
 
@@ -1897,37 +1893,86 @@ class Scopes {
 enum MaskExpandDimension { kMajor = 0, kMinor = 1 };
 
 Value EmitMaskOnInput(ImplicitLocOpBuilder& b,
-                      MaskExpandDimension expand_dimension, Value input,
-                      int denom, Value k, int64_t dims_k, int64_t block_k,
-                      Value pid_k) {
+                      MaskExpandDimension expand_along_dimension, Value input,
+                      int dim_k_denom, Value k, int64_t dims_k, int64_t block_k,
+                      Value pid_k, int64_t other_dim_block_size) {
   auto c32 = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
-  int size = block_k / denom;
-  auto elements_in_tile = b.create<ma::SubIOp>(c32(dims_k / denom), k);
-  auto cond =
-      b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, elements_in_tile, c32(size));
+  int block_k_size = block_k / dim_k_denom;
+  auto dim_k_elements_to_keep =
+      b.create<ma::SubIOp>(c32(dims_k / dim_k_denom), k);
+  auto is_last_tile_cond = b.create<ma::CmpIOp>(
+      ma::CmpIPredicate::slt, dim_k_elements_to_keep, c32(block_k_size));
+  auto input_type = mlir::cast<mlir::RankedTensorType>(input.getType());
+  auto input_element_type = input_type.getElementType();
+
+  // If the input is a scalar, we need to expand it to a 2D tensor.
+  // Otherwise, keep the input type.
+  auto expanded_input_type = [&](Value input) {
+    if (input_type.getRank() != 0) return input_type;
+    // expand along the major dimension.
+    if (expand_along_dimension == kMajor) {
+      return mlir::RankedTensorType::get(
+          ArrayRef<int64_t>{other_dim_block_size, block_k_size},
+          input_element_type);
+    }
+    // expand along the minor dimension.
+    return mlir::RankedTensorType::get(
+        ArrayRef<int64_t>{block_k_size, other_dim_block_size},
+        input_element_type);
+  }(input);
+
+  auto expanded_input = input;
+  // If the input is a scalar, we need to expand it to a 2D tensor.
+  if (input_type.getRank() == 0) {
+    expanded_input = b.create<mt::ExpandDimsOp>(expanded_input, 0);
+    expanded_input = b.create<mt::ExpandDimsOp>(expanded_input, 0);
+    expanded_input =
+        b.create<mt::BroadcastOp>(expanded_input_type, expanded_input);
+  }
+
   auto if_op = b.create<mlir::scf::IfOp>(
-      cond, /*thenBranch=*/
+      is_last_tile_cond, /*thenBranch=*/
       [&](mlir::OpBuilder& builder, mlir::Location loc) {
         ImplicitLocOpBuilder b(loc, builder);
-        auto range_k = Range(b, size);
+        // Make a range vector from 0 to block_k.
+        auto range_from_0_to_k = Range(b, block_k_size);
         if (pid_k != nullptr) {
-          range_k = b.create<ma::AddIOp>(
-              range_k, Splat(b, b.create<ma::MulIOp>(pid_k, c32(size)), size));
+          range_from_0_to_k = b.create<ma::AddIOp>(
+              range_from_0_to_k,
+              Splat(b, b.create<ma::MulIOp>(pid_k, c32(block_k_size)),
+                    block_k_size));
         }
-        auto ty = mlir::cast<mlir::RankedTensorType>(input.getType());
-        TensorValue range_expanded = mlir::cast<TensorValue>(
-            b.create<mt::ExpandDimsOp>(range_k, expand_dimension).getResult());
-        Value mask = b.create<mt::BroadcastOp>(
-            ty.clone(b.getI1Type()),
-            b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, range_expanded,
-                                 Splat(b, elements_in_tile,
-                                       range_expanded.getType().getShape())));
-        auto result = b.create<ma::SelectOp>(mask, input, ZerosLike(b, input));
+        // Make it a 2D matrix.
+        TensorValue range_from_0_to_k_2d = mlir::cast<TensorValue>(
+            b.create<mt::ExpandDimsOp>(range_from_0_to_k,
+                                       expand_along_dimension)
+                .getResult());
+        // Make 2d vector of dim_k_elements_to_keep.
+        auto dim_k_elements_to_keep_2d =
+            Splat(b, dim_k_elements_to_keep,
+                  range_from_0_to_k_2d.getType().getShape());
+        // The mask is true for elements in range_from_0_to_k_2d that are less
+        // than dim_k_elements_to_keep.
+        auto elements_mask_vector =
+            b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, range_from_0_to_k_2d,
+                                 dim_k_elements_to_keep_2d);
+
+        Value elements_mask_matrix = b.create<mt::BroadcastOp>(
+            expanded_input_type.clone(b.getI1Type()), elements_mask_vector);
+
+        // Zeros to use instead of the masked elements.
+        auto zeros = CreateConst(b, input_element_type, 0,
+                                 expanded_input_type.getShape());
+        auto result =
+            b.create<ma::SelectOp>(elements_mask_matrix, expanded_input, zeros);
         b.create<mlir::scf::YieldOp>(mlir::ValueRange(result));
       },
       /*elseBranch=*/
-      [&](mlir::OpBuilder& b, mlir::Location loc) {
-        b.create<mlir::scf::YieldOp>(loc, mlir::ValueRange(input));
+      [&](mlir::OpBuilder& builder, mlir::Location loc) {
+        // We don't need to mask anything but we need to expand the input.
+        // Otherwise Triton complains.
+        ImplicitLocOpBuilder b(loc, builder);
+        b.create<mlir::scf::YieldOp>(mlir::ValueRange(expanded_input));
       });
   return if_op.getResult(0);
 }
@@ -2098,10 +2143,10 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
     if (need_masking) {
       dot_input_lhs = EmitMaskOnInput(b, MaskExpandDimension::kMajor,
                                       dot_input_lhs, is_sparse ? 2 : 1, ki,
-                                      dims.k, block_k, scopes.pid_k());
+                                      dims.k, block_k, scopes.pid_k(), block_m);
       dot_input_rhs =
           EmitMaskOnInput(b, MaskExpandDimension::kMinor, dot_input_rhs, 1, ki,
-                          dims.k, block_k, scopes.pid_k());
+                          dims.k, block_k, scopes.pid_k(), block_n);
       // Masking the metadata is not necessary, as the inputs are masked
       // (i.e. zeroed out), so the padded metadata can hold any values.
     }

@@ -896,6 +896,55 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32) {
   EXPECT_TRUE(ok);
 }
 
+TEST_F(TritonAlgorithmTest, Dot_BF16_X6_WithConst) {
+  constexpr std::string_view kHloText = R"(
+    HloModule Dot_BF16_X6_WithConst
+
+    %triton_fusion_dot (p_0: f32[1,258]) -> f32[258] {
+      %c_1 = f32[] constant(-1.22474492)
+      %r_1 = f32[1]{0} reshape(f32[] %c_1)
+      %r_2 = f32[1,1]{1,0} reshape(f32[1]{0} %r_1)
+      %p_0 = f32[1,258]{1,0} parameter(0)
+      %r_3 = f32[258]{0} reshape(f32[1,258]{1,0} %p_0)
+      %r_4 = f32[258,1]{1,0} reshape(f32[258]{0} %r_3)
+      %dot_0 = f32[1,258]{1,0} dot(f32[1,1]{1,0} %r_2, f32[258,1]{1,0} %r_4),
+          lhs_contracting_dims={0},
+          rhs_contracting_dims={1},
+          algorithm=dot_bf16_bf16_f32_x6
+      %r_5 = f32[258]{0} reshape(f32[1,258]{1,0} %dot_0)
+      %c_2 = f32[] constant(0.282094777)
+      %b_0 = f32[258]{0} broadcast(f32[] %c_2), dimensions={}
+      ROOT %m_0 = f32[258]{0} multiply(f32[258]{0} %r_5, f32[258]{0} %b_0)
+    }
+
+    ENTRY %entry_computation {
+      %p_0 = f32[1,258]{1,0} parameter(0)
+      ROOT %dot = f32[258]{0} fusion(f32[1,258]{1,0} %p_0), 
+        kind=kCustom, 
+        calls=%triton_fusion_dot, 
+        backend_config={
+          "operation_queue_id":"0",
+          "wait_on_operation_queues":[],
+          "fusion_backend_config":{
+            "kind":"__triton_gemm",
+            "triton_gemm_config":{
+              "block_m":"16",
+              "block_n":"256",
+              "block_k":"16",
+              "split_k":"1",
+              "num_stages":"4",
+              "num_warps":"4",
+              "num_ctas":"1"
+            }
+          },
+          "force_earliest_schedule":false
+        }
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
+}
+
 using PC = PrecisionConfig;
 using ::testing::Combine;
 using ::testing::TestParamInfo;
