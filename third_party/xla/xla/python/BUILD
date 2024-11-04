@@ -707,6 +707,7 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
+        ":config",
         ":guard_lib",
         ":jax_jit",
         ":nb_class_ptr",
@@ -757,6 +758,7 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
+        ":config",
         ":jax_jit",
         ":nb_class_ptr",
         ":nb_helpers",
@@ -840,6 +842,43 @@ cc_library(
         "//xla/pjrt:exceptions",
         "@local_tsl//tsl/platform:logging",
     ],
+)
+
+cc_library(
+    name = "config",
+    srcs = ["config.cc"],
+    hdrs = ["config.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":python_ref_manager",
+        # placeholder for index annotation deps
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
+        "@nanobind",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+py_strict_test(
+    name = "config_test",
+    srcs = ["config_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
+    deps = [
+        ":xla_client",
+        ":xla_extension",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+        "@absl_py//absl/testing:absltest",
+    ] + xla_py_test_deps(),
 )
 
 cc_library(
@@ -1201,6 +1240,7 @@ tsl_pybind_extension(
     pytype_srcs = glob(["xla_extension/*.pyi"]),
     visibility = ["//visibility:public"],
     deps = [
+        ":config",
         ":custom_call_sharding",
         ":dlpack",
         ":guard_lib",
