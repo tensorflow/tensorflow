@@ -2231,6 +2231,7 @@ xla_cc_test(
     deps = [
         ":pipelined_p2p_rewriter",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:filecheck",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/strings:string_view",
