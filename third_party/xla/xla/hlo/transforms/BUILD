@@ -1762,6 +1762,7 @@ cc_library(
         "//xla/service:call_graph",
         "//xla/service:hlo_value",
         "//xla/service:host_memory_offload_annotations_hdr",
+        "//xla/service:host_offload_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -1771,7 +1772,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

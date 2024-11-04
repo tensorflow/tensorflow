@@ -1979,7 +1979,15 @@ absl::Status ShapeVerifier::CheckShape(
             if (instruction_memory_space != operand_memory_space &&
                 (instruction_memory_space == Layout::kHostMemorySpace ||
                  operand_memory_space == Layout::kHostMemorySpace)) {
-              // Is a host->device copy for a device->host copy.
+              if (instruction_memory_space == Layout::kHostMemorySpace) {
+                // Unfortunately it might still be a host->host copy before
+                // memory space is propagated. A transpose is allowed in that
+                // case.
+                return instruction->shape().element_type() ==
+                       inferred_shape.element_type();
+              }
+              // A host->device copy or a device->host copy cannot do a
+              // transpose.
               return Shape::Equal().IgnoreMemorySpaceInLayout()(
                   instruction->shape(), inferred_shape);
             }

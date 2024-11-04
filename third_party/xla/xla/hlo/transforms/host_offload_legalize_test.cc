@@ -152,6 +152,27 @@ ENTRY main.24 {
             LayoutUtil::MakeLayout({1, 0}));
 }
 
+TEST_F(HostOffloadLegalizeTest, NoMoveHostToHostCopy) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{1,0:S(5)}}
+
+ENTRY main.24 {
+  Arg_0.1 = f32[16,256]{0,1} parameter(0)
+  cosine.4 = f32[16,256]{0,1} cosine(Arg_0.1)
+  custom-call.5 = f32[16,256]{0,1} custom-call(cosine.4), custom_call_target="MoveToHost"
+  ROOT copy = f32[16,256]{1,0} copy(custom-call.5)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  EXPECT_FALSE(changed);
+  HloInstruction* copy = FindInstruction(module.get(), "copy");
+  EXPECT_NE(copy, nullptr);
+  XLA_VLOG_LINES(1, module->ToString());
+}
+
 TEST_F(HostOffloadLegalizeTest, XposeCopyOnParameterStreaming) {
   const std::string& hlo_string = R"(
 HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1},f32[16,256]{0,1:T(8,128)S(5)})->f32[16,256]{1,0}}
