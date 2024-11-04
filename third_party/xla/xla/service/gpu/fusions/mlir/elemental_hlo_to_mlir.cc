@@ -164,31 +164,6 @@ static auto& kUnsupportedOps =
                                    HloOpcode::kStochasticConvert,
                                    HloOpcode::kCall};
 
-bool IsUnsupportedGather(const HloInstruction* instr) {
-  // We assume gather simplifier ran, so we don't need to support all gather
-  // forms.
-  if (instr->opcode() != HloOpcode::kGather) return false;
-
-  auto* gather = Cast<HloGatherInstruction>(instr);
-  const auto& dims = gather->gather_dimension_numbers();
-  // We allow XLA:GPU's "canonical" gather (2D indices). And the form preferred
-  // by the algebraic simplifier if the second index dimension is degenerate (1D
-  // indices with implicit second dimension).
-  int indices_rank = gather->operand(1)->shape().rank();
-  if (dims.index_vector_dim() != 1 || !dims.collapsed_slice_dims().empty() ||
-      indices_rank == 0 || indices_rank > 2) {
-    return true;
-  }
-
-  for (auto [index, val] : llvm::enumerate(dims.start_index_map())) {
-    if (index != val) return true;
-  }
-  for (auto [index, val] : llvm::enumerate(dims.offset_dims())) {
-    if (index + 1 != val) return true;
-  }
-  return false;
-}
-
 absl::StatusOr<Value> GetSingleOperandValue(
     const OperandProvider& operand_provider, const HloInstruction* instr,
     int operand_index, ValueRange indices) {
