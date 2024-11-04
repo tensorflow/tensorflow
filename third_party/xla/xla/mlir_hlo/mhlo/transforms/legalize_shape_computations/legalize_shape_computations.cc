@@ -16,11 +16,8 @@ limitations under the License.
 // This file implements logic for lowering HLO/LHLO dialect to scalar shape
 // operations.
 
-#include <algorithm>
 #include <memory>
-#include <numeric>
 #include <optional>
-#include <string>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
