@@ -155,7 +155,6 @@ limitations under the License.
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/ir_emitter2.h"
-#include "xla/service/cpu/metrics.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
 #include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/cpu/target_machine_features.h"
@@ -1717,7 +1716,6 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     [[maybe_unused]] se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
   VLOG(1) << "Compiling: " << module->name();
-  RecordCpuCompilerStacktrace();
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
   std::string slow_compilation_msg =

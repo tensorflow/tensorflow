@@ -22,7 +22,6 @@ load(
     "xla_cc_test",
     "xla_internal",
 )
-load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tf_openmp_copts", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
@@ -227,7 +226,6 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":ir_emitter2",
-        ":metrics",
         ":onednn_contraction_rewriter",
         ":onednn_ops_rewriter",
         ":parallel_task_assignment",
@@ -410,31 +408,6 @@ cc_library(
     ]) + if_llvm_x86_available([
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ]),
-)
-
-xla_test(
-    name = "cpu_compiler_test",
-    srcs = ["cpu_compiler_test.cc"],
-    backends = [
-        "cpu",
-    ],
-    deps = [
-        "//xla:shape_util",
-        "//xla/pjrt:pjrt_client",
-        "//xla/service:hlo_runner_interface",
-        "//xla/service:hlo_runner_pjrt",
-        "//xla/service:platform_util",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:new_hlo_test_base",
-        "//xla/tests:pjrt_client_registry",
-        "//xla/tests:pjrt_cpu_client_registry",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/lib/monitoring:collected_metrics",
-        "//xla/tsl/lib/monitoring:collection_registry",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
-    ],
 )
 
 cc_library(
@@ -2091,28 +2064,4 @@ cc_library(
     name = "cpu_executable_run_options",
     hdrs = ["cpu_executable_run_options.h"],
     deps = [":collectives_interface"],
-)
-
-cc_library(
-    name = "metrics",
-    srcs = ["metrics.cc"],
-    hdrs = ["metrics.h"],
-    deps = [
-        "//xla/tsl/lib/monitoring:counter",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:stacktrace",
-    ],
-)
-
-xla_cc_test(
-    name = "metrics_test",
-    srcs = ["metrics_test.cc"],
-    deps = [
-        ":metrics",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/monitoring:collected_metrics",
-        "//xla/tsl/lib/monitoring:collection_registry",
-        "@local_tsl//tsl/platform:test",
-    ],
 )
