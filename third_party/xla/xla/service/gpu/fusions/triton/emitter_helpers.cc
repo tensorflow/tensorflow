@@ -353,19 +353,17 @@ absl::StatusOr<Value> EmitElementwiseLibdeviceFunction(
     triple.setTriple("amdgcn-unknown-unknown");
   }
   llvm::SmallVector<Value, 2> casted_inputs;
-  PrimitiveType casted_output_type = output_type;
   if (output_type == PrimitiveType::BF16 || output_type == PrimitiveType::F16) {
     // Upcast the inputs to F32.
     for (int64_t i = 0; i < inputs.size(); ++i) {
       casted_inputs.push_back(Cast(b, inputs[i], b.getF32Type()));
     }
-    casted_output_type = F32;
   } else {
     casted_inputs.assign(inputs.begin(), inputs.end());
   }
   Value res = b.create<mt::ExternElementwiseOp>(
       casted_inputs[0].getType(), casted_inputs, "libdevice", libdevice_path,
-      ObtainDeviceFunctionName(dev_fn_id.value(), casted_output_type, triple),
+      ObtainDeviceFunctionName(dev_fn_id.value(), output_type, triple),
       /*pure=*/true);
   if (output_type == PrimitiveType::BF16 || output_type == PrimitiveType::F16) {
     // Downcast back to the original output type.

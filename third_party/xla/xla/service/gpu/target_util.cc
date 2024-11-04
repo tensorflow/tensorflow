@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "xla/service/gpu/target_util.h"
 
+#include <cstring>
 #include <functional>
 #include <optional>
 #include <string>
@@ -309,6 +310,14 @@ std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
   return std::nullopt;
 }
 
+namespace {
+// TODO(b/370452608): Add more functions that have a fast approximation for f32
+// that we can use for f16 types.
+bool HasFastF32Approximation(TargetDeviceFunctionID func_id) {
+  return func_id == TargetDeviceFunctionID::kExp;
+}
+}  // namespace
+
 std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
                                      PrimitiveType output_type,
                                      llvm::Triple target_triple) {
@@ -317,8 +326,17 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
   // the root name are specific to the target.
   struct TargetDeviceFunction gpu_root_names = GetDeviceFunctionRoot(func_id);
   if (target_triple.isNVPTX()) {
-    if (output_type == F32) {
-      return StrCat(gpu_root_names.nvptx_root, "f");
+    bool is_supported_output_type =
+        output_type == BF16 || output_type == F16 || output_type == F32;
+    if (is_supported_output_type) {
+      std::string function_name = StrCat(gpu_root_names.nvptx_root, "f");
+      if (HasFastF32Approximation(func_id) &&
+          (output_type == BF16 || output_type == F16)) {
+        // All function names start with "__nv". The approximate version of the
+        // function names continues with "_fast".
+        return function_name.insert(strlen("__nv"), "_fast");
+      }
+      return function_name;
     } else if (output_type == F64) {
       return gpu_root_names.nvptx_root;
     } else {
@@ -326,7 +344,9 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
                  << primitive_util::LowercasePrimitiveTypeName(output_type);
     }
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
-    if (output_type == F32) {
+    // TODO(b/370452608): Are there approximate functions we can use for BF16
+    // and F16 types?
+    if (output_type == BF16 || output_type == F16 || output_type == F32) {
       return StrCat(gpu_root_names.amdgpu_root, "_f32");
     } else if (output_type == F64) {
       return StrCat(gpu_root_names.amdgpu_root, "_f64");
@@ -334,7 +354,9 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
       LOG(FATAL) << "Unexpected type while getting device function name.";
     }
   } else if (target_triple.isSPIR()) {
-    if (output_type == F32) {
+    // TODO(b/370452608): Are there approximate functions we can use for BF16
+    // and F16 types?
+    if (output_type == BF16 || output_type == F16 || output_type == F32) {
       if (gpu_root_names.spir_root == "_Z17__spirv_ocl_hypot" ||
           gpu_root_names.spir_root == "_Z15__spirv_ocl_pow" ||
           gpu_root_names.spir_root == "_Z17__spirv_ocl_atan2" ||

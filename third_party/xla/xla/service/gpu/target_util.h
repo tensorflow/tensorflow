@@ -94,6 +94,8 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
 void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
                                  llvm::IRBuilder<>* b);
 
+// 'output_type' is the type of the math op corresponding to 'func_id' for which
+// we want to obtain the device function name.
 std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
                                      PrimitiveType output_type,
                                      llvm::Triple target_triple);
