@@ -267,6 +267,7 @@ cc_library(
     srcs = ["version.cc"],
     hdrs = ["version.h"],
     deps = [
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
