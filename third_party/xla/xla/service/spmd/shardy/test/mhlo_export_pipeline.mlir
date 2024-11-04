@@ -5,6 +5,7 @@ sdy.mesh @mesh_1 = <["axis_0"=16]>
 sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
 sdy.mesh @mesh_3 = <["a"=2, "b"=2, "c"=2, "d"=2]>
 sdy.mesh @mesh_4 = <["axis_0"=2, "axis_1"=2, "axis_2"=2], device_ids=[0,2,4,6,1,3,5,7]>
+sdy.mesh @mesh_5 = <["i"=2, "j"=2]>
 sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
 sdy.mesh @maximal_mesh_1 = <[], device_ids=[1]>
 sdy.mesh @empty_mesh_0 = <[]>
@@ -189,9 +190,9 @@ func.func @named_sharding_in_manual_computation(
       %arg0: tensor<32x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", "y"}, {}]>})
       -> (tensor<32x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", "y"}, {}]>}) {
   // CHECK-NEXT: %[[COPY_0:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{devices=[32,1]<=[32]}"} : tensor<32x2xi32>
-  // CHECK-NEXT: %[[FULL_TO_SHARD:.*]] = mhlo.custom_call @SPMDFullToShardShape(%0) {mhlo.sharding = "{devices=[1,1,8,4]<=[32] last_tile_dims={manual, replicated}}"} : (tensor<32x2xi32>) -> tensor<4x2xi32>
+  // CHECK-NEXT: %[[FULL_TO_SHARD:.*]] = mhlo.custom_call @SPMDFullToShardShape(%0) {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"} : (tensor<32x2xi32>) -> tensor<4x2xi32>
   // CHECK-NEXT: %[[FOO:.*]] = call @foo(%[[FULL_TO_SHARD]]) {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dim_replicate}"} : (tensor<4x2xi32>) -> tensor<4x2xi32>
-  // CHECK-NEXT: %[[COPY_1:.*]] = mhlo.copy %[[FOO]] {mhlo.sharding = "{devices=[1,1,8,4]<=[32] last_tile_dims={manual, replicated}}"} : tensor<4x2xi32>
+  // CHECK-NEXT: %[[COPY_1:.*]] = mhlo.copy %[[FOO]] {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"} : tensor<4x2xi32>
   // CHECK-NEXT: %[[SHARD_TO_FULL:.*]] = mhlo.custom_call @SPMDShardToFullShape(%[[COPY_1]]) {mhlo.sharding = "{devices=[32,1]<=[32]}"} : (tensor<4x2xi32>) -> tensor<32x2xi32>
   // CHECK-NEXT: return %[[SHARD_TO_FULL]] : tensor<32x2xi32>
   %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh_2, [{"x", "y"}, {}]>] out_shardings=[<@mesh_2, [{"x", "y"}, {}]>] manual_axes={"x"} (%arg1: tensor<4x2xi32>) {
@@ -202,6 +203,28 @@ func.func @named_sharding_in_manual_computation(
     sdy.return %1 : tensor<4x2xi32>
   } : (tensor<32x2xi32>) -> tensor<32x2xi32>
   return %0 : tensor<32x2xi32>
+}
+
+// CHECK-LABEL: func @free_axis_inside_in_out_shardings_manual_computation
+func.func @free_axis_inside_in_out_shardings_manual_computation(
+    %arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{"i"}, {}]>})
+    -> (tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{"i", ?}, {?}]>}) {
+  // CHECK-NEXT: %[[COPY_OPERAND:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"} : tensor<4x8xf32>
+  // CHECK-NEXT: %[[FULL_TO_SHARD:.*]] = mhlo.custom_call @SPMDFullToShardShape(%[[COPY_OPERAND]]) {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dims={manual}}"} : (tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK-NEXT: %[[MULT:.*]] = mhlo.multiply %[[FULL_TO_SHARD]], %[[FULL_TO_SHARD]] {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dims={manual}}"} : tensor<4x8xf32>
+  // CHECK-NEXT: %[[COPY:.*]] = mhlo.copy %[[MULT]] {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dims={manual}}"} : tensor<4x8xf32>
+  // CHECK-NEXT: %[[COPY_RESULT:.*]] = mhlo.copy %[[COPY]] {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dims={manual}}"} : tensor<4x8xf32>
+  // CHECK-NEXT: %[[SHARD_TO_FULL:.*]] = mhlo.custom_call @SPMDShardToFullShape(%[[COPY_RESULT]]) {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dim_replicate}"} : (tensor<4x8xf32>) -> tensor<4x8xf32>
+  // CHECK-NEXT: return %[[SHARD_TO_FULL]] : tensor<4x8xf32>
+  %0 = sdy.manual_computation(%arg0)
+      in_shardings=[<@mesh_5, [{"i", ?}, {?}], replicated={"j"}>]
+      out_shardings=[<@mesh_5, [{"i", ?}, {?}], replicated={"j"}>]
+      manual_axes={"j"} (%arg1: tensor<4x8xf32>) {
+    %1 = mhlo.multiply %arg1, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_5, [{"i"}, {}]>]>} : tensor<4x8xf32>
+    %2 = sdy.reshard %1 <@mesh_5, [{"i"}, {}]> : tensor<4x8xf32>
+    sdy.return %2 : tensor<4x8xf32>
+  } : (tensor<4x8xf32>) -> tensor<4x8xf32>
+  return %0 : tensor<4x8xf32>
 }
 
 // CHECK-LABEL: func private @foo
