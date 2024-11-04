@@ -109,6 +109,7 @@ third_party/py/python_init_repositories.bzl:
 third_party/py/python_init_rules.bzl:
 third_party/py/python_init_toolchains.bzl:
 third_party/py/python_repo.bzl:
+third_party/py/python_wheel_version.bzl:
 third_party/py/verify_manylinux_compliance.py:
 third_party/pybind11.BUILD:
 third_party/pybind11_bazel/BUILD:
