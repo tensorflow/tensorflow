@@ -120,6 +120,16 @@ class AnyBuffer {
     return reinterpret_cast<T*>(buf_->data);
   }
 
+  template <typename T>
+  T* reinterpret_data() const {
+    DCHECK(primitive_util::IsArrayType(element_type()) &&
+           sizeof(T) == primitive_util::ByteWidth(element_type()) &&
+           !(reinterpret_cast<std::uintptr_t>(buf_->data) % alignof(T)))
+        << "Requested type must have the same byte width and alignment as the "
+           "underlying buffer type";
+    return reinterpret_cast<T*>(buf_->data);
+  }
+
   se::DeviceMemoryBase device_memory() const {
     return se::DeviceMemoryBase(untyped_data(), size_bytes());
   }
