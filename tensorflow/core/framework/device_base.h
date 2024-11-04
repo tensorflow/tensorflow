@@ -86,8 +86,9 @@ class DeviceContext : public core::RefCounted {
   }
 
   // Same as CopyCPUTensorToDevice, but in a synchronous way.
-  Status CopyCPUTensorToDeviceSync(const Tensor* cpu_tensor, Device* device,
-                                   Tensor* device_tensor) const;
+  absl::Status CopyCPUTensorToDeviceSync(const Tensor* cpu_tensor,
+                                         Device* device,
+                                         Tensor* device_tensor) const;
 
   // Copies a tensor in this device.
   virtual void CopyTensorInSameDevice(const Tensor* input_tensor,
@@ -106,16 +107,17 @@ class DeviceContext : public core::RefCounted {
   }
 
   // Same as `CopyDeviceTensorToCPU`, but blocks until the copy is done.
-  Status CopyDeviceTensorToCPUSync(const Tensor* device_tensor,
-                                   StringPiece tensor_name, Device* device,
-                                   Tensor* cpu_tensor);
+  absl::Status CopyDeviceTensorToCPUSync(const Tensor* device_tensor,
+                                         StringPiece tensor_name,
+                                         Device* device, Tensor* cpu_tensor);
 
   // If possible, wait for all events on *stream to complete then execute func.
   // A non-OK Status is returned otherwise.  The stream argument should be the
   // one provided by AcceleratorDeviceInfo.  This function is not applicable to
   // devices that don't provide such a value.
-  virtual Status ThenExecute(Device* device, stream_executor::Stream* stream,
-                             std::function<void()> func) {
+  virtual absl::Status ThenExecute(Device* device,
+                                   stream_executor::Stream* stream,
+                                   std::function<void()> func) {
     return errors::Internal("ThenExecute not supported by device");
   }
 
@@ -225,10 +227,10 @@ class DeviceBase {
 
   // This is overridden by GPU devices to reinitialize the derived
   // type returned by MakeGpuDevice.
-  virtual Status ReinitializeGpuDevice(OpKernelContext* /*context*/,
-                                       PerOpGpuDevice* /*device*/,
-                                       DeviceContext* /*dc*/,
-                                       Allocator* /*allocator*/) {
+  virtual absl::Status ReinitializeGpuDevice(OpKernelContext* /*context*/,
+                                             PerOpGpuDevice* /*device*/,
+                                             DeviceContext* /*dc*/,
+                                             Allocator* /*allocator*/) {
     return absl::OkStatus();
   }
 
@@ -253,9 +255,9 @@ class DeviceBase {
   // OpKernelContext and handle the copies from device memory via send
   // and receive nodes, instead of requiring that each device handle
   // the copies here as well as in copy ops.
-  virtual Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                                     const AllocatorAttributes alloc_attrs,
-                                     Tensor* tensor) {
+  virtual absl::Status MakeTensorFromProto(
+      const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
+      Tensor* tensor) {
     return errors::Internal("Device does not implement MakeTensorFromProto()");
   }
 
