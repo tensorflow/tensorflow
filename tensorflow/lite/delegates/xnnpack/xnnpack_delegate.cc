@@ -4621,24 +4621,11 @@ class Subgraph {
     }
 
     if (subgraph != nullptr) {
-      std::array<size_t, XNN_MAX_TENSOR_DIMS> reduction_axes;
+      std::array<int64_t, XNN_MAX_TENSOR_DIMS> reduction_axes;
       for (int i = 0; i < num_reduction_axes; ++i) {
-        if (axes_data[i] < 0) {
-          if (IsDynamicTensor(&input_tensor)) {
-            TF_LITE_MAYBE_KERNEL_LOG(
-                logging_context,
-                "unable to delegate %s node #%d: negative reduction axis only "
-                "supported for non-dynamic input tensors",
-                EnumNameBuiltinOperator(tflite_operator), node_index);
-            return kTfLiteError;
-          }
-          reduction_axes[i] = axes_data[i] + NumDimensions(&input_tensor);
-        } else {
-          reduction_axes[i] = axes_data[i];
-        }
+        reduction_axes[i] = axes_data[i];
       }
-      std::sort(&reduction_axes[0], &reduction_axes[num_reduction_axes]);
-      if (xnn_define_static_reduce(
+      if (xnn_define_static_reduce_v2(
               subgraph, reduce_operator, num_reduction_axes,
               reduction_axes.data(),
               /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
