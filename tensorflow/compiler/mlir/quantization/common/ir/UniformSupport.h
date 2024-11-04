@@ -176,7 +176,7 @@ class UniformQuantizedValueConverter {
     } else {
       signless_result = static_cast<uint8_t>(clamped);
     }
-    return APInt(storage_bit_width_, signless_result);
+    return APInt(storage_bit_width_, signless_result, /*isSigned=*/is_signed_);
   }
 
   // Keep both APFloat and double versions of the quantization parameters
