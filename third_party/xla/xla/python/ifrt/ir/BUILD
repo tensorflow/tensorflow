@@ -161,6 +161,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//xla/python/ifrt:friends"],
     deps = [
+        ":sharding_param_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -169,6 +170,12 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:errors",
     ],
+)
+
+tf_proto_library(
+    name = "sharding_param_proto",
+    srcs = ["sharding_param.proto"],
+    visibility = ["//xla/python/ifrt:friends"],
 )
 
 cc_library(
@@ -222,6 +229,7 @@ cc_library(
     visibility = ["//xla/python/ifrt:friends"],
     deps = [
         ":ifrt_ir_program",
+        "//xla:status_macros",
         "//xla/mlir/utils:error_util",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt/support:module_parsing",

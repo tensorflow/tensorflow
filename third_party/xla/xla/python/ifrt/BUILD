@@ -471,6 +471,7 @@ cc_library(
         ":ifrt",
         ":serdes",
         ":sharding_serdes_proto_cc",
+        "//xla/python/ifrt/ir:sharding_param",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -489,6 +490,7 @@ xla_cc_test(
         ":serdes",
         ":serdes_proto_cc",
         ":sharding_serdes",
+        "//xla/python/ifrt/ir:sharding_param",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
@@ -623,6 +625,7 @@ tf_proto_library(
     protodeps = [
         ":device_proto",
         ":shape_proto",
+        "//xla/python/ifrt/ir:sharding_param_proto",
     ],
 )
 
