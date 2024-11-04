@@ -537,13 +537,6 @@ class Queue {
   //
   TaskQueue<TaskType> low_priority_tasks_ TF_GUARDED_BY(mu_);
 
-  // The enqueued batches for low priority input.
-  // Each element corresponds to a task to be dequeued and processed by
-  // `Queue<TaskType>::ProcessBatch`.
-  //
-  std::deque<std::unique_ptr<Batch<TaskType>>> low_priority_batches_
-      TF_GUARDED_BY(mu_);
-
   // The enqueued batches for high priority input.
   // Each element corresponds to a task to be dequeued and processed by
   // `Queue<TaskType>::ProcessBatch`.

@@ -456,6 +456,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",  # buildcleaner: keep
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:status",
@@ -819,8 +820,11 @@ xla_cc_test(
     srcs = ["kernel_test.cc"],
     deps = [
         ":device_memory",
+        ":kernel",
         ":kernel_spec",
-        ":stream_executor",
+        ":platform",
+        ":platform_manager",
+        ":stream_executor_h",
         ":typed_kernel_factory",
         "//xla/stream_executor/host:host_platform",
         "@local_tsl//tsl/platform:test",
@@ -833,7 +837,9 @@ xla_cc_test(
     name = "stream_executor_test",
     srcs = ["stream_executor_test.cc"],
     deps = [
-        ":stream_executor",
+        ":platform",
+        ":platform_manager",
+        ":stream_executor_h",
         "//xla/stream_executor/host:host_platform",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
@@ -847,7 +853,10 @@ xla_cc_test(
     size = "small",
     srcs = ["stream_test.cc"],
     deps = [
-        ":stream_executor",
+        ":platform",
+        ":platform_manager",
+        ":stream",
+        ":stream_executor_h",
         "//xla/stream_executor/host:host_platform",
         "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:statusor",

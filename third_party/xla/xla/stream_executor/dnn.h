@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
 namespace Eigen {

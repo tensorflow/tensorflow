@@ -43,7 +43,7 @@ class CpuFusionTest : public HloTestBase {
   ErrorSpec error_spec_{0.0001, 1e-5};
 
  private:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_disable_hlo_passes("layout-assignment");
     return debug_options;

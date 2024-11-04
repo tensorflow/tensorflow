@@ -15,6 +15,7 @@ def _python_repository_impl(ctx):
     wheel_name = ctx.os.environ.get("WHEEL_NAME", "tensorflow")
     wheel_collab = ctx.os.environ.get("WHEEL_COLLAB", False)
     output_path = repository_ctx.os.environ.get("OUTPUT_PATH", None)
+    macos_deployment_target = ctx.os.environ.get("MACOSX_DEPLOYMENT_TARGET", "")
 
     requirements = None
     for i in range(0, len(ctx.attr.requirements_locks)):
@@ -59,7 +60,7 @@ Please check python_init_repositories() in your WORKSPACE file.
     )
 
     if use_pywrap_rules:
-        print("!!!Using pywrap rules instead of directly creating .so objects!!!")
+        print("!!!Using pywrap rules instead of directly creating .so objects!!!")  # buildifier: disable=print
 
     ctx.file(
         "py_version.bzl",
@@ -72,6 +73,7 @@ REQUIREMENTS = "{requirements}"
 REQUIREMENTS_WITH_LOCAL_WHEELS = "{requirements_with_local_wheels}"
 USE_PYWRAP_RULES = {use_pywrap_rules}
 OUTPUT_PATH = "{output_path}"
+MACOSX_DEPLOYMENT_TARGET = "{macos_deployment_target}"
 """.format(
             version = version,
             wheel_name = wheel_name,
@@ -80,6 +82,7 @@ OUTPUT_PATH = "{output_path}"
             requirements_with_local_wheels = requirements_with_local_wheels,
             use_pywrap_rules = use_pywrap_rules,
             output_path = output_path,
+            macos_deployment_target = macos_deployment_target,
         ),
     )
 

@@ -130,6 +130,7 @@ tf_proto_library(
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
     protodeps = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
+    visibility = ["//visibility:public"],
     exports = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
 )
 

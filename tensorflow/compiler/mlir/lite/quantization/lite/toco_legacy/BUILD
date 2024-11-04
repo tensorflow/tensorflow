@@ -73,6 +73,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
         "@local_xla//xla/tsl/lib/core:status_test_util",

@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/all_reduce_combiner.h"
 
-#include <algorithm>
-#include <list>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>

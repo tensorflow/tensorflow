@@ -12,10 +12,10 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
 
+#include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/while_loop_analysis.h"
 
 namespace xla {
 

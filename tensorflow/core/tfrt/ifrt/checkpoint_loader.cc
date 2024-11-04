@@ -296,8 +296,7 @@ int64_t GetSizeFromVarHandle(const ResourceHandle& handle) {
 
 }  // namespace
 
-absl::Status CheckpointLoader::PrepareRestore(
-    mlir::OwningOpRef<mlir::ModuleOp> module) {
+absl::Status CheckpointLoader::PrepareRestore(const PrepareRestoreArgs& args) {
   VLOG(1) << "Skip CheckpointLoader::PrepareRestore";
   return absl::OkStatus();
 }

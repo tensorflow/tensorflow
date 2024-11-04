@@ -308,4 +308,117 @@ func.func @main(%arg0: !array0, %arg1: !array1) -> (!array1, !array2)
   let constructor = "CreateIfrtReshardToCopyArraysPass()";
 }
 
+def IfrtLowerShardingToXlaPass :
+    Pass<"ifrt-lower-sharding-to-xla", "mlir::ModuleOp"> {
+  let summary = "Converts IFRT sharding to HLO sharding for xla modules";
+  let description = [{
+Replaces `ifrt.sharding` attr by `mhlo.sharding` attr.
+
+For example, the following code
+
+```mlir
+module attributes {
+  func.func @main(
+    %arg0: tensor<2x2xi32> {
+      ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>})
+    -> (tensor<2x2xi32> {
+      ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>}) {}
+}
+```
+
+will be replaced by
+
+```mlir
+module attributes {
+  func.func @main(
+    %arg0: tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"})
+    -> (tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}) {}
+}
+```
+  }];
+
+  let constructor = "CreateIfrtLowerShardingToXlaPass()";
+}
+
+def IfrtRemoveIfrtAttrsPass :
+    Pass<"ifrt-remove-ifrt-attrs", "mlir::ModuleOp"> {
+  let summary = "Remove IFRT attrs from modules and functions of atom programs";
+  let description = [{
+Remove IFRT-related attributes from module and functions' arguments and
+results.
+
+This is necessary for the compilation of TfSpmd program.
+
+For example, the following code
+
+```mlir
+module {
+  func.func @main(
+      %arg0: tensor<2x2xi32> {
+          ifrt.sharding = #ifrt.sharding_param<1x1 to [0] on 1>})
+      -> (tensor<2x2xi32> {
+          ifrt.sharding = #ifrt.sharding_param<1x1 to [0] on 1>}) {...}
+}
+```
+
+will be replaced by
+
+```mlir
+module {
+  func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {...}
+}
+```
+  }];
+
+  let constructor = "CreateIfrtRemoveIfrtAttrsPass()";
+}
+
+def IfrtLowerMpmdReshardToCallPass :
+    Pass<"ifrt-lower-mpmd-reshard-to-call", "mlir::ModuleOp"> {
+  let summary = "Lowers MPMD `ifrt.Reshard` to `ifrt.Call`";
+  let description = [{
+Replaces each MPMD `ifrt.Reshard` with an `ifrt.Call` to a newly created
+module. The module has a main function with a `ifrt.reshard_function` attribute,
+and that comprises of the `ifrt.Reshard` ops part of the MPMD reshard.
+
+For example, the following code
+```mlir
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+func.func @main(%arg0: !array0) -> (!array1) {
+  %0, %ctrl = ifrt.Reshard(%arg0) : (!array0) -> !array1
+  return %0: !array1
+}
+```
+
+will be replaced by
+
+```mlir
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+func.func @main(%arg0: !array0) -> (!array1) {
+  %0, %ctrl = ifrt.Call(%arg) {ifrt.module_type = "mpmd_reshard"}
+      : (!array0) -> !array1
+  return %0: !array1
+}
+
+module @reshard attributes {
+    ifrt.num_devices = 3,
+    sym_visibility = "private"} {
+  func.func @main(%arg0: !array0) -> !array1
+      attributes {ifrt.reshard_function} {
+    %0, %ctrl = ifrt.Reshard(%arg0) : (!array0) -> !array1
+    return %0 : !array1
+  }
+}
+```
+  }];
+
+  let constructor = "CreateIfrtLowerMpmdReshardToCallPass()";
+}
+
 #endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_

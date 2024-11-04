@@ -144,6 +144,14 @@ message DebugOptions {
   // Pre-existing block-level fusions are left unmodified.
   bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
 
+  // When enabled, the PriorityFusion pass will try to make Triton fusions first
+  // and foremost where it is possible.
+  //
+  // A kCustom fusion with underlying kTritonFusionKind will be created if it
+  // can be tiled correctly, and if all the instructions it contains are
+  // supported by XLA's Triton emitter. Tile sizes are assigned automatically.
+  bool xla_gpu_experimental_enable_triton_heroless_priority_fusion = 340;
+
   // Gates the experimental feature coupling the Triton Softmax pattern matcher
   // with priority fusion.
   bool xla_gpu_experimental_enable_triton_softmax_priority_fusion = 325;
@@ -591,6 +599,7 @@ message DebugOptions {
     CONDITIONALS = 5;
     CUSTOM_CALL = 6;
     CUBLASLT = 7;
+    DYNAMIC_SLICE = 8;
   }
 
   // Determine the types of commands that are recorded into command buffers.
@@ -697,8 +706,6 @@ message DebugOptions {
   bool xla_gpu_exhaustive_tiling_search = 219;
 
   reserved 220;  // Was xla_gpu_enable_triton_softmax_fusion
-
-  bool xla_gpu_enable_priority_fusion = 221;
 
   reserved 286;  // Was xla_gpu_enable_triton_softmax_priority_fusion
 
@@ -993,6 +1000,7 @@ message DebugOptions {
   // Enables strict PGLE checking. If an FDO profile is specified and latency
   // hiding scheduler encounters missing instructions in the profile
   // compilation will halt.
+  // TODO: remove this field - it is replaced by xla_gpu_pgle_accuracy_checker.
   bool xla_gpu_enable_pgle_accuracy_checker = 326;
 
   // Timeouts for RendezvousSingle stuck warning and termination.
@@ -1025,7 +1033,22 @@ message DebugOptions {
   //   coll.2-done = collective(coll.2-start)
   int32 xla_gpu_experimental_parallel_collective_overlap_limit = 336;
 
-  // Next id: 339
+  // If set >= 0, this controls the total bytes(combined sizes of both
+  // operands in bytes) to enable windowed einsum and
+  // xla_gpu_threshold_for_windowed_einsum_mib will be ignored.
+  int64 xla_gpu_operand_bytes_threshold_for_windowed_einsum = 339;
+
+  // Enables strict PGLE checking. If an FDO profile is specified and latency
+  // hiding scheduler encounters missing instructions in the profile
+  // compilation will halt or warn depending on the value of this option.
+  enum PGLEStrictnessLevel {
+    PGLE_STRICTNESS_LEVEL_OFF = 0;
+    PGLE_STRICTNESS_LEVEL_WARN = 1;
+    PGLE_STRICTNESS_LEVEL_ERROR = 2;
+  }
+  PGLEStrictnessLevel xla_gpu_pgle_accuracy_checker = 341;
+
+  // Next id: 342
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1042,7 +1065,8 @@ message DebugOptions {
   // xla_gpu_single_wave_autotuning
   // xla_gpu_enable_persistent_temp_buffers
   // xla_gpu_enable_triton_gemm_int4
-  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 242, 206, 320;
+  // xla_gpu_enable_priority_fusion
+  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320;
 }
 
 // Contains flags which affects the GPU compilation result.

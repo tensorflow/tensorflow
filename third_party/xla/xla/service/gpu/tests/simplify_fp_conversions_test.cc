@@ -24,7 +24,7 @@ namespace {
 
 class SimplifyFPConversionsTest : public HloTestBase {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_allow_excess_precision(
         enable_simplify_all_fp_conversions_);

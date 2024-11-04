@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -66,7 +67,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/framework/allocator.h"
@@ -393,11 +393,20 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
     mlir::ModuleOp module, CompileOptions options) {
   if (!pjrt_c_api()) llvm::report_fatal_error("pjrt_c_api is null");
-  TF_ASSIGN_OR_RETURN(
-      std::string serialized,
-      xla::Serialize(module,
-                     xla::GetDefaultStablehloVersion(
-                         plugin_attributes()->pjrt_c_api_minor_version)));
+
+  auto attributes = plugin_attributes()->attributes;
+  std::string version_string;
+  auto version = attributes.find("stablehlo_current_version");
+  if (version != attributes.end()) {
+    std::vector<int64_t> v = std::get<std::vector<int64_t>>(version->second);
+    version_string = absl::StrFormat("%d.%d.%d", v[0], v[1], v[2]);
+  } else {
+    version_string = xla::GetDefaultStablehloVersion(
+        plugin_attributes()->pjrt_c_api_minor_version);
+  }
+
+  TF_ASSIGN_OR_RETURN(std::string serialized,
+                      xla::Serialize(module, version_string));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
                                   serialized, format);
@@ -413,6 +422,17 @@ PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
   des_args.client = c_client_.get();
   des_args.serialized_executable = serialized.data();
   des_args.serialized_executable_size = serialized.length();
+  des_args.overridden_serialized_compile_options = nullptr;
+  des_args.overridden_serialized_compile_options_size = 0;
+
+  std::string options_str;
+  if (options) {
+    TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
+                        options->ToProto());
+    options_str = options_proto.SerializeAsString();
+    des_args.overridden_serialized_compile_options = options_str.c_str();
+    des_args.overridden_serialized_compile_options_size = options_str.size();
+  }
 
   const PJRT_Api* api = pjrt_c_api();
 

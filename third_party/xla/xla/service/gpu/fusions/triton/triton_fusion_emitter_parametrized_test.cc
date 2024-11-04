@@ -68,7 +68,7 @@ class MixedTypeTest : public GpuCodegenTest,
     }
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // We are testing Triton, remove cuBLAS fallback for these tests.
     debug_options.set_xla_gpu_cublas_fallback(false);
@@ -149,7 +149,7 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, MixedTypeTest,
 
 class TritonTest : public GpuCodegenTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
@@ -800,7 +800,7 @@ INSTANTIATE_TEST_SUITE_P(
 class TritonSoftmaxTest : public GpuCodegenTest,
                           public ::testing::WithParamInterface<PrimitiveType> {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options
         .set_xla_gpu_experimental_enable_triton_softmax_priority_fusion(true);

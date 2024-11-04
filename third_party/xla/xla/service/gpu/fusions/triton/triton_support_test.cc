@@ -86,6 +86,7 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kXor:
     case HloOpcode::kNot:
       return type == PRED || pu::IsIntegralType(type);
+    case HloOpcode::kAtan2:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -94,13 +95,13 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kRsqrt:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
-    case HloOpcode::kCbrt:
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kReal:
     case HloOpcode::kImag:
     case HloOpcode::kLogistic:
       return pu::IsFloatingPointType(type) || pu::IsComplexType(type);
+    case HloOpcode::kCbrt:
     case HloOpcode::kErf:
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
@@ -120,7 +121,6 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
       return pu::IsSignedIntegralType(type) || pu::IsFloatingPointType(type) ||
              pu::IsComplexType(type);
     case HloOpcode::kPower:
-    case HloOpcode::kAtan2:
     case HloOpcode::kDivide:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
@@ -1229,6 +1229,7 @@ constexpr std::array kUnsupportedOps = {HloOpcode::kAddDependency,
                                         HloOpcode::kOutfeed,
                                         HloOpcode::kPad,
                                         HloOpcode::kPartitionId,
+                                        HloOpcode::kRaggedAllToAll,
                                         HloOpcode::kRecv,
                                         HloOpcode::kRecvDone,
                                         HloOpcode::kReduceWindow,

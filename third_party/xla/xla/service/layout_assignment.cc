@@ -275,11 +275,8 @@ absl::Status LayoutAssignment::SetBufferLayout(const Layout& layout,
           << LayoutUtil::HumanString(layout) << " with priority " << priority
           << "; mandatory = " << mandatory << "; dfs = " << dfs << "\n";
   TF_RETURN_IF_ERROR(points_to_analysis_->VerifyBuffer(buffer));
-  if (unconstrained_buffer_ids_.find(buffer.id()) !=
-      unconstrained_buffer_ids_.end()) {
+  if (unconstrained_buffer_ids_.erase(buffer.id()) > 0) {
     VLOG(3) << "Erase buffer from unconstrained ids\n";
-    TF_RET_CHECK(unconstrained_buffer_ids_.erase(buffer.id()) == 1)
-        << buffer.ToString();
   }
 
   if (!buffer.IsArray()) {
@@ -291,32 +288,27 @@ absl::Status LayoutAssignment::SetBufferLayout(const Layout& layout,
   TF_RETURN_IF_ERROR(
       LayoutUtil::ValidateLayoutForShape(layout, buffer.shape()));
 
-  auto iter = buffer_constraints_.find(&buffer);
-  if (iter != buffer_constraints_.end()) {
-    BufferLayoutConstraint curr_constraint = iter->second;
-    if (curr_constraint.UpdateLayout(priority, layout, mandatory, dfs, this,
-                                     user)) {
+  auto& buffer_constraint = buffer_constraints_[&buffer];
+  if (buffer_constraint == nullptr) {
+    buffer_constraint = std::make_unique<BufferLayoutConstraint>(
+        layout, buffer, mandatory, dfs, priority);
+  } else {
+    if (buffer_constraint->UpdateLayout(priority, layout, mandatory, dfs, this,
+                                        user)) {
       if (IsAtMostRank1(buffer.shape())) {
         return absl::OkStatus();
       }
-      iter =
-          buffer_constraints_.insert_or_assign(&buffer, curr_constraint).first;
     } else {
       VLOG(3) << "Unable to update existing Buffer layout for "
-              << curr_constraint.ToString() << " with new layout"
+              << buffer_constraint->ToString() << " with new layout"
               << LayoutUtil::HumanString(layout) << " at priority " << priority
               << "\n";
       return absl::OkStatus();
     }
-  } else {
-    iter = buffer_constraints_
-               .insert(std::make_pair(
-                   &buffer, BufferLayoutConstraint(layout, buffer, mandatory,
-                                                   dfs, priority)))
-               .first;
   }
-  VLOG(3) << "SUCC setting buffer constraint: " << iter->second.ToString();
-  added_constraints_.push_back(&iter->second);
+  VLOG(3) << "SUCC setting buffer constraint: "
+          << buffer_constraint->ToString();
+  added_constraints_.push_back(buffer_constraint.get());
   const HloInstruction* instruction = buffer.instruction();
   if (dynamic_cast<const HloCallableInstruction*>(instruction) != nullptr) {
     // Check and propagate via output-operand aliasing
@@ -540,7 +532,7 @@ absl::Status LayoutAssignment::SetInstructionLayout(
 const BufferLayoutConstraint* LayoutAssignment::GetBufferLayoutConstraint(
     const LogicalBuffer& buffer) const {
   auto it = buffer_constraints_.find(&buffer);
-  return it == buffer_constraints_.end() ? nullptr : &it->second;
+  return it == buffer_constraints_.end() ? nullptr : it->second.get();
 }
 
 const ShapeLayout* LayoutAssignment::LayoutConstraints::OperandLayout(
@@ -2895,6 +2887,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
+    case HloOpcode::kRaggedAllToAll:
       return false;
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:

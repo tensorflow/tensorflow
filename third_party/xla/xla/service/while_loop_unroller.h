@@ -65,7 +65,10 @@ struct UnrollResult {
 // 1. All start indices must be constant zero except only a single dimension.
 // 2. The start index of that dimension should be equal to the enclosing loop
 //    induction variable.
-// 3. And, the size of that dimension must match the loop trip count.
+// 3. The size of that dimension must match the loop trip count.
+// 4. For dynamic-slice, the slice size for the induction variable dimension is
+//    1, and the size of all other dimensions is the same as the shape of the
+//    input.
 // If so, it returns the dynamic index.
 std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,

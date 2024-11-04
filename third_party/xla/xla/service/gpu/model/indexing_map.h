@@ -202,13 +202,15 @@ class RangeEvaluator {
   bool use_constraints_;
 };
 
-// Contains an affine map with N dimension expressions and M symbols:
-//   (d0, ..., d_{N - 1})[s_0, ..., s_{M - 1}] -> f(d_i, s_j)
-// Dimensions d_i correspond to the iteration space of the output tensor. Some
-// or all of the dimensions of the input operands can be expressed as a function
-// of dimensions of output. For example, for broadcasts and cwise ops all
-// dimensions of the inputs are covered by the output dimensions.
-// Domain specifies for what ranges of values the indexing map is specified.
+// Contains an affine map with N dimension expressions and M + K symbols:
+// (d0, ..., d_{N - 1})[s_0, ..., s_{M - 1}]{r_0, ..., r_{K - 1}} -> f(d_i, s_j)
+// Dimensions d_i correspond to the iteration space of the output tensor.
+// Symbols s_j correspond to ranges of the input dimensions.
+// Runtime variables r_k correspond to the runtime variables.
+// Some or all of the dimensions of the input operands can be expressed as a
+// function of dimensions of output. For example, for broadcasts and cwise ops
+// all dimensions of the inputs are covered by the output dimensions. Domain
+// specifies for what ranges of values the indexing map is specified.
 //
 // Example:
 //
@@ -226,7 +228,7 @@ class RangeEvaluator {
 //  reverse = f32[1, 17, 9, 9] reverse(%p0), dimensions={1, 2}
 // ```
 // can be written as `(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)` with
-// d0 in [0, 1), d1 in [0, 16], d2 in [0, 8] and d3 in [0, 8].
+// d0 in [0, 0], d1 in [0, 16], d2 in [0, 8] and d3 in [0, 8].
 class IndexingMap {
  public:
   // Variable represents dimension, range or runtime variable.
@@ -372,9 +374,9 @@ class IndexingMap {
   // Returns a new indexing map with all RangeVars and RTVars converted to
   // DimVars.
   // For example,
-  // (d0, d1, d2)[s0, s1] -> (d0, d1, d2, s0, s1)
+  // (d0, d1, d2)[s0, s1]{r0} -> (d0, d1, d2, s0, s1, r0)
   // will be converted to
-  // (d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)
+  // (d0, d1, d2, d3, d4, d5) -> (d0, d1, d2, d3, d4, d5)
   IndexingMap ConvertSymbolsToDimensions() const;
 
  private:
@@ -391,8 +393,8 @@ class IndexingMap {
                     const llvm::SmallBitVector& unused_symbols);
 
   // Resets the indexing map to the canonical "known" empty indexing map, i.e.
-  // (d0...)[s0...] -> (0...) affine map. Does not change the number of symbols,
-  // dimensions or results.
+  // (d0...)[s0...]{r0...} -> (0...) affine map.
+  // Does not change the number of symbols, dimensions or results.
   void ResetToKnownEmpty();
 
   // Verify if all intervals for DimVars, RangeVars and RTVars are feasible.

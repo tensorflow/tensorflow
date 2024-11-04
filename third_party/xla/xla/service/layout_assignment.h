@@ -754,7 +754,8 @@ class LayoutAssignment : public HloModulePass {
       buffer_sets_cache_;
 
   // The set of BufferLayoutConstraints applied to the computation.
-  absl::node_hash_map<const LogicalBuffer*, BufferLayoutConstraint>
+  absl::flat_hash_map<const LogicalBuffer*,
+                      std::unique_ptr<BufferLayoutConstraint>>
       buffer_constraints_;
 
   // A vector which holds constraints as they are added. Can be cleared with

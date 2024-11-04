@@ -25,10 +25,13 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Transforms binary_op(all-gather(reduce_scatter(a)),
-// all-gather(reduce_scatter(b))) to allgather(binary_op(reduce_scatter(a),
-// reduce_scatter(b)))
-
+// Transforms
+//   binary_op(all-gather(op1(a)),all-gather(op2(b)))
+// to
+//   allgather(binary_op(op1(a),op2(b)))
+//
+// Where binary_op is commutative and takes exactly two operands as input.
+//
 class AllGatherOptimizer : public HloModulePass {
  public:
   AllGatherOptimizer() = default;

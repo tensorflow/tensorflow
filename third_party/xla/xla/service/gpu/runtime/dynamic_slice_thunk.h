@@ -93,9 +93,43 @@ class DynamicSliceThunk : public Thunk {
     std::optional<uint64_t> offset_byte_size;
   };
 
+  const SequentialThunk* get_embeded_thunk() const {
+    return embedded_thunk_.get();
+  }
+
+  std::vector<std::optional<BufferAllocation::Slice>> get_arguments() const {
+    return arguments_;
+  }
+
+  const std::vector<std::unique_ptr<BufferAllocation>>& get_fake_allocations()
+      const {
+    return fake_allocations_;
+  }
+
+  std::vector<std::optional<std::vector<Offset>>> get_offsets() const {
+    return offsets_;
+  }
+
+  std::vector<std::optional<Shape>> get_orig_shapes() const {
+    return orig_shapes_;
+  }
+
+  std::vector<std::optional<Shape>> get_sliced_shapes() const {
+    return sliced_shapes_;
+  }
+
+  std::vector<std::optional<uint64_t>> get_offset_byte_sizes() const {
+    return offset_byte_sizes_;
+  }
+
  private:
   std::unique_ptr<SequentialThunk> embedded_thunk_;
+  std::vector<std::optional<BufferAllocation::Slice>> arguments_;
   std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_;
+  std::vector<std::optional<std::vector<Offset>>> offsets_;
+  std::vector<std::optional<Shape>> orig_shapes_;
+  std::vector<std::optional<Shape>> sliced_shapes_;
+  std::vector<std::optional<uint64_t>> offset_byte_sizes_;
 
   std::vector<SliceDef> slices_;
 

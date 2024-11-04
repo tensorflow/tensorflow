@@ -1,3 +1,4 @@
+compiler/xla/internal/package_groups.bzl:
 compiler/xla/mlir_hlo/WORKSPACE:
 compiler/xla/package_groups.bzl:
 compiler/xla/stream_executor/build_defs.bzl:

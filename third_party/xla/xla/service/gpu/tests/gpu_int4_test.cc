@@ -116,7 +116,7 @@ TEST_F(GpuInt4Test, TestOddElements) {
       ; CHECK-NEXT: br i1 %[[in_bounds]], label %[[in_bounds_true:.*]], label %[[in_bounds_after:.*]]
       ; CHECK: [[in_bounds_true]]:
       ; CHECK: %{{.*}} = load i8, ptr %{{.*}}, align 1
-      ; CHECK: store i8 %{{.*}}, ptr %{{.*}}, align 1
+      ; CHECK: cmpxchg ptr %{{.*}}
       ; CHECK: br label %[[in_bounds_after]]
       ; CHECK: [[in_bounds_after]]:
       ; CHECK-NEXT: ret void)";

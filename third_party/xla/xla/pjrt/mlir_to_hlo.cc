@@ -54,6 +54,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/register.h"
+#include "stablehlo/api/PortableApi.h"
 #include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/Serialization.h"
@@ -204,9 +205,20 @@ absl::StatusOr<std::string> SerializeUsingNativeBytecode(
 }
 
 absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
-    mlir::ModuleOp mlir_module, absl::string_view target, bool inplace) {
+    mlir::ModuleOp mlir_module, absl::string_view requested_target,
+    bool inplace) {
   mlir::MLIRContext* context = mlir_module->getContext();
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
+
+  // Usually the plugin is older than the framework, but occasionally a plugin's
+  // nightly build will use the latest public release of a framework. Serialize
+  // using the framework's version in these cases.
+  auto target = mlir::stablehlo::getSmallerVersion(
+      requested_target, mlir::stablehlo::getCurrentVersion());
+  if (mlir::failed(target)) {
+    return absl::InvalidArgumentError(
+        "Invalid StableHLO target version requested.");
+  }
 
   // Legalize CHLO -> [StableHLO+Shape] -> StableHLO
   // Preserve higher-level ops with XLA support. To be replaced by composites.
@@ -218,7 +230,7 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
       mlir::stablehlo::createChloLegalizeToStablehloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createStablehloCompatibilityExpanderPass(
-          {std::string(target)}));
+          {target.value()}));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createChloLegalizeToStablehloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -243,8 +255,8 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   // Serialize portable artifact
   std::string buffer;
   llvm::raw_string_ostream os(buffer);
-  if (failed(mlir::stablehlo::serializePortableArtifact(mlir_module, target,
-                                                        os))) {
+  if (mlir::failed(mlir::stablehlo::serializePortableArtifact(
+          mlir_module, target.value(), os))) {
     const absl::Status status = diagnostic_handler.ConsumeStatus();
     return absl::InvalidArgumentError(absl::StrCat(
         "Failed to serialize StableHLO;\n\nDetailed error from MLIR: ",

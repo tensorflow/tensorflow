@@ -34,8 +34,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
@@ -47,7 +47,7 @@ using ::testing::ElementsAre;
 using ::testing::SizeIs;
 using ::testing::StrEq;
 
-class HloPassPipelineTest : public HloTestBase {
+class HloPassPipelineTest : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<HloModuleGroup> ParseModuleGroup(
       absl::Span<const std::string> hlo_strings) {

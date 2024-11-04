@@ -20,6 +20,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <limits>

@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
@@ -305,9 +306,9 @@ cc_library(
         ":indexing_analysis",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_cost_analysis",
-        "//xla/service:hlo_dataflow_analysis",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -459,7 +460,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/service:gather_simplifier",
+        "//xla/hlo/transforms:gather_simplifier",
         "//xla/service/gpu:hlo_traversal",
         "//xla/service/gpu:matmul_indexing_utils",
         "@com_google_absl//absl/algorithm:container",
@@ -911,6 +912,7 @@ cc_library(
         "//xla/service:gpu_plugin",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner",
+        "//xla/service:hlo_verifier",
         "//xla/service:interpreter_plugin",
         "//xla/stream_executor:device_description",
         "//xla/tests:test_utils",
@@ -956,6 +958,7 @@ cc_library(
             "@local_tsl//tsl/platform:env",
             "@local_tsl//tsl/platform:path",
             "@local_tsl//tsl/platform:platform_port",
+            "@local_tsl//tsl/platform:protobuf",
             "@local_tsl//tsl/platform:status",
         ],
     )
@@ -966,6 +969,13 @@ cc_library(
         "sm90",
     ]
 ]
+
+build_test(
+    name = "hlo_op_profiler_build_test",
+    targets = [
+        ":hlo_op_profiler_run_sm80",
+    ],
+)
 
 xla_test(
     name = "hlo_op_profiler_test",
@@ -986,6 +996,8 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test_main",
     ],
 )

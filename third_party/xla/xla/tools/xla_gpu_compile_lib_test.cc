@@ -53,7 +53,8 @@ class XlaCompileLibTest : public HloTestBase {
                     GetReferencePlatform()) {}
   void SetUp() override {
     const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
-                                                   "tools", "data", "add.hlo");
+                                                   "../external/local_xla/xla",
+						   "tools", "data", "add.hlo");
     std::string hlo;
     TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &hlo));
     TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
@@ -72,7 +73,8 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithDevice) {
 
 TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
   const std::string target_config_path =
-      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
+                        "../external/local_xla/xla", "service",
                         "xla_aot_compile_test_gpu_target_config.prototxt");
   stream_executor::GpuTargetConfigProto target_config;
   TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
@@ -119,7 +121,9 @@ TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningEnabled) {
   AutotuneResults autotune_results;
   TF_ASSERT_OK(tsl::ReadTextProto(
       tsl::Env::Default(),
-      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
+                        "../external/local_xla/xla",
+	                "service", "gpu",
                         "gpu_compiler_test_autotune_db.textproto"),
       &autotune_results));
   data->autotune_results = autotune_results;
@@ -144,7 +148,9 @@ TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningDisabled) {
   AutotuneResults autotune_results;
   TF_ASSERT_OK(tsl::ReadTextProto(
       tsl::Env::Default(),
-      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
+                        "../external/local_xla/xla",
+	                "service", "gpu",
                         "gpu_compiler_test_autotune_db.textproto"),
       &autotune_results));
   data->autotune_results = autotune_results;

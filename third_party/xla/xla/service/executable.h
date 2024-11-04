@@ -101,9 +101,6 @@ class ExecutionInput {
 
   absl::Status SetDynamicShape(Shape dynamic_shape);
 
-  absl::StatusOr<xla::ShapedBuffer> ToShapedBuffer(
-      se::DeviceMemoryAllocator* allocator, int device_ordinal) const;
-
   void SetBuffer(const ShapeIndex& index, MaybeOwningDeviceMemory buffer) {
     *buffers_.mutable_element(index) = std::move(buffer);
   }

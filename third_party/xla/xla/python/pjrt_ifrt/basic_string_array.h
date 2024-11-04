@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
-#include "absl/strings/string_view.h"
+#include "absl/strings/cord.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -71,7 +71,7 @@ class BasicStringArray final
     : public llvm::RTTIExtends<BasicStringArray, Array> {
  public:
   // Must be in dense major to minor order.
-  using Buffer = absl::Span<const absl::string_view>;
+  using Buffer = absl::Span<const absl::Cord>;
 
   // One Buffer per shard.
   static constexpr int kBuffersInlineSize = 1;
@@ -82,7 +82,7 @@ class BasicStringArray final
   using OnDoneWithBuffer = std::function<void()>;
 
   // General array construction. The `buffers` and their elements
-  // (absl::string_views) must live until the `on_done_with_buffer` is called.
+  // (absl::Cords) must live until the `on_done_with_buffer` is called.
   // The number and order of buffers must match the number and order of devices
   // in `sharding`.
   static absl::StatusOr<tsl::RCReference<BasicStringArray>> Create(

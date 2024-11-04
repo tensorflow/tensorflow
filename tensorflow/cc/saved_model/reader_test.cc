@@ -77,8 +77,8 @@ TEST_F(ReaderTest, NoTagMatch) {
   MetaGraphDef meta_graph_def;
 
   const string export_dir = GetDataDependencyFilepath(TestDataSharded());
-  Status st = ReadMetaGraphDefFromSavedModel(export_dir, {"missing-tag"},
-                                             &meta_graph_def);
+  absl::Status st = ReadMetaGraphDefFromSavedModel(export_dir, {"missing-tag"},
+                                                   &meta_graph_def);
   EXPECT_FALSE(st.ok());
   EXPECT_TRUE(absl::StrContains(
       st.message(),
@@ -90,7 +90,7 @@ TEST_F(ReaderTest, NoTagMatchMultiple) {
   MetaGraphDef meta_graph_def;
 
   const string export_dir = GetDataDependencyFilepath(TestDataSharded());
-  Status st = ReadMetaGraphDefFromSavedModel(
+  absl::Status st = ReadMetaGraphDefFromSavedModel(
       export_dir, {kSavedModelTagServe, "missing-tag"}, &meta_graph_def);
   EXPECT_FALSE(st.ok());
   EXPECT_TRUE(absl::StrContains(
@@ -102,8 +102,8 @@ TEST_F(ReaderTest, InvalidExportPath) {
   MetaGraphDef meta_graph_def;
 
   const string export_dir = GetDataDependencyFilepath("missing-path");
-  Status st = ReadMetaGraphDefFromSavedModel(export_dir, {kSavedModelTagServe},
-                                             &meta_graph_def);
+  absl::Status st = ReadMetaGraphDefFromSavedModel(
+      export_dir, {kSavedModelTagServe}, &meta_graph_def);
   EXPECT_FALSE(st.ok());
 }
 
@@ -119,7 +119,7 @@ TEST_F(ReaderTest, MetricsNotUpdatedFailedRead) {
   const int read_count_v2 = metrics::SavedModelReadCount("2").value();
 
   const string export_dir = GetDataDependencyFilepath("missing-path");
-  Status st =
+  absl::Status st =
       ReadMetaGraphDefFromSavedModel(export_dir, {"serve"}, &meta_graph_def);
 
   EXPECT_FALSE(st.ok());
@@ -132,7 +132,7 @@ TEST_F(ReaderTest, MetricsUpdatedSuccessfulRead) {
   const int read_count_v1 = metrics::SavedModelReadCount("1").value();
 
   const string export_dir = GetDataDependencyFilepath(TestDataSharded());
-  Status st =
+  absl::Status st =
       ReadMetaGraphDefFromSavedModel(export_dir, {"serve"}, &meta_graph_def);
   EXPECT_EQ(metrics::SavedModelReadCount("1").value(), read_count_v1 + 1);
 }

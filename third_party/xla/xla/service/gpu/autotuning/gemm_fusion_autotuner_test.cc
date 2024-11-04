@@ -297,7 +297,7 @@ TEST_F(StatelessAutotunerTest,
 
 class GemmFusionAutotunerTest : public StatelessAutotunerTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         StatelessAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(true);
@@ -349,7 +349,7 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
 class GemmFusionAutotunerTestWithMorePreciseReduction
     : public GemmFusionAutotunerTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         GemmFusionAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(
@@ -850,7 +850,7 @@ ENTRY e {
 class GemmFusionAutotunerLevelTest : public StatelessAutotunerTest,
                                      public ::testing::WithParamInterface<int> {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         StatelessAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(GetParam());
@@ -937,7 +937,7 @@ INSTANTIATE_TEST_SUITE_P(GemmFusionAutotunerLevelSweep,
 
 class GemmFusionAutotunerExhaustiveTest : public GemmFusionAutotunerTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         GemmFusionAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_exhaustive_tiling_search(true);
@@ -995,7 +995,7 @@ ENTRY e {
 
 class GemmFusionAutotunerDisableSplitK : public GemmFusionAutotunerTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         GemmFusionAutotunerTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);

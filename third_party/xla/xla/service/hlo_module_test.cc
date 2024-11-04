@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
@@ -945,6 +946,35 @@ ENTRY main {
   EXPECT_EQ(stack_frame.function_name, index->function_names(0));
   EXPECT_EQ(stack_frame.line, location->line());
   EXPECT_EQ(stack_frame.column, location->column());
+}
+
+TEST_F(HloModuleTest, PrintOriginalValue) {
+  // Create a module with a single computation.
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder("Constant");
+  std::vector<float> values(16, 42.0);
+  auto instruction =
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f));
+  auto original_value = std::make_shared<OriginalValue>(instruction->shape());
+  for (auto& leaf : original_value->leaves()) {
+    leaf.second = {std::string(instruction->name()), leaf.first};
+  }
+  instruction->set_original_value(original_value);
+  builder.AddInstruction(std::move(instruction));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(
+      "HloModule PrintOriginalValue, "
+      "entry_computation_layout={()->f32[]}\n\nENTRY %Constant () -> "
+      "f32[] {\n  ROOT %constant = f32[] constant(42), "
+      "origin={{\"constant\"}}\n}\n\n",
+      module->ToString(HloPrintOptions().set_print_original_value(true)));
+
+  EXPECT_EQ(
+      "HloModule PrintOriginalValue, "
+      "entry_computation_layout={()->f32[]}\n\nENTRY %Constant () -> "
+      "f32[] {\n  ROOT %constant = f32[] constant(42)\n}\n\n",
+      module->ToString(HloPrintOptions().set_print_original_value(false)));
 }
 
 }  // namespace

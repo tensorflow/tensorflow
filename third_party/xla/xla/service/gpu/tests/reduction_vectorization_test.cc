@@ -33,7 +33,7 @@ namespace {
 class ReductionVectorizationTest : public GpuCodegenTest {};
 
 class ReductionVectorizationNoOptTest : public GpuCodegenTest {
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // The test MultiOutputStore contain a MOF fusion and XLA optimizer pass
     // doesn't like this.

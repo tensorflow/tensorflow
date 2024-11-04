@@ -20,15 +20,19 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/mlir/utils/type_util.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 
 namespace xla {
 namespace ifrt {
 
-unsigned IfrtCallOpInfo::getHashValue(xla::ifrt::CallOp call_op) {
+unsigned IfrtCallOpInfo::getHashValue(CallOp call_op) {
   llvm::hash_code hash = {};
   // Use `getInputs()/getOutputs()` instead of `getOperands()/getResults()` to
   // ensure that the control dependencies are not included in the hash.
@@ -49,7 +53,7 @@ unsigned IfrtCallOpInfo::getHashValue(xla::ifrt::CallOp call_op) {
   return hash;
 }
 
-bool IfrtCallOpInfo::isEqual(xla::ifrt::CallOp lhs, xla::ifrt::CallOp rhs) {
+bool IfrtCallOpInfo::isEqual(CallOp lhs, CallOp rhs) {
   if (lhs == rhs) {
     return true;
   }
@@ -79,13 +83,24 @@ mlir::func::FuncOp GetMainFunction(mlir::ModuleOp module) {
   return func;
 }
 
-bool IsReshard(xla::ifrt::IfrtArrayType from, xla::ifrt::IfrtArrayType to) {
+bool IsReshard(IfrtArrayType from, IfrtArrayType to) {
   if (from.getShape() == to.getShape() &&
       from.getShardingAttr() == to.getShardingAttr() &&
       from.getDevices().size() == to.getDevices().size()) {
     return false;
   }
   return true;
+}
+
+void UpdateFunctionType(mlir::func::FuncOp func_op) {
+  func_op.setType(mlir::FunctionType::get(
+      func_op.getContext(), func_op.getBody().getArgumentTypes(),
+      func_op.getBody().front().getTerminator()->getOperandTypes()));
+}
+
+absl::StatusOr<DType> ToIfrtDType(mlir::Type type) {
+  xla::PrimitiveType primitive_type = xla::ConvertMlirTypeToPrimitiveType(type);
+  return ToDType(primitive_type);
 }
 
 }  // namespace ifrt

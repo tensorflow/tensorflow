@@ -318,22 +318,18 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
   return spec;
 }
 
-bool AllGatherDynamicSliceCancellation(
+std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
     const HloAllGatherInstruction* ag, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank,
     HloPredicate match_partition_id, HloPredicate match_replica_id,
     bool allow_intervening_bitcast, bool allow_multiple_users) {
-  auto spec = MatchWithDynamicSlice(
+  return MatchWithDynamicSlice(
       ag, num_partitions, num_replicas, allow_multiple_split_dims,
       allow_intervening_reshape, min_rank, match_partition_id, match_replica_id,
       ag->constrain_layout(), ag->use_global_device_ids(),
       ag->channel_id() && ag->opcode() == HloOpcode::kAllGather,
       allow_intervening_bitcast, allow_multiple_users);
-  if (spec.has_value()) {
-    return true;
-  }
-  return false;
 }
 
 std::optional<ReduceScatterSpec> MatchWithDynamicSlice(

@@ -64,6 +64,8 @@
 # Placeholder: load py_proto_library
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+# copybara:uncomment(google-only) load("//tools/build_defs/go:go_library.bzl", "go_library")
+
 load(
     "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
@@ -1548,11 +1550,13 @@ cc_library(
 alias(
     name = "portable_jpeg_internal",
     actual = "//tensorflow/core/lib/jpeg:portable_jpeg_internal",
+    visibility = ["//visibility:public"],
 )
 
 alias(
     name = "portable_gif_internal",
     actual = "//tensorflow/core/lib/gif:portable_gif_internal",
+    visibility = ["//visibility:public"],
 )
 
 alias(

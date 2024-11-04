@@ -122,8 +122,11 @@ class CoordinationServiceInterface {
   //   - InvalidArgument: Unexpected task request.
   //   - Aborted: (1) task is in error state, or (2) task is in connected state
   //       with a different incarnation, indicating that it restarted.
+  //   - DeadlineExceeded: waited too long for straggler tasks to register.
   virtual absl::Status RegisterTask(const tensorflow::CoordinatedTask& task,
                                     uint64_t incarnation) = 0;
+  virtual void RegisterTaskAsync(const tensorflow::CoordinatedTask& task,
+                                 uint64_t incarnation, StatusCallback done) = 0;
 
   // Wait for all tasks to be up and running, and register local device
   // info. The callback is invoked when all tasks are up and registered, or some

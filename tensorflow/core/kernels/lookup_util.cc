@@ -305,8 +305,8 @@ Status GetReferenceLookupTable(StringPiece input_name, OpKernelContext* ctx,
   return ctx->resource_manager()->Lookup(container, table_handle, table);
 }
 
-Status GetLookupTable(StringPiece input_name, OpKernelContext* ctx,
-                      LookupInterface** table) {
+absl::Status GetLookupTable(StringPiece input_name, OpKernelContext* ctx,
+                            LookupInterface** table) {
   DataType handle_dtype;
   TF_RETURN_IF_ERROR(ctx->input_dtype(input_name, &handle_dtype));
   if (handle_dtype == DT_RESOURCE) {

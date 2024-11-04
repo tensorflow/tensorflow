@@ -94,7 +94,7 @@ class GemmRewriteTest : public GpuCodegenTest {
     }
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // These tests test the cuBLAS rewriter so we have to make sure that we use
     // cuBLAS for them.
@@ -288,7 +288,7 @@ class ParameterizedGemmRewriteTest
     replacements_[kCustomCallTargetPlaceholder] =
         kUsingCublasLt ? "__cublas$lt$matmul" : "__cublas$gemm";
   }
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(GetParam());
     debug_options.set_xla_gpu_enable_triton_gemm(false);
@@ -1447,7 +1447,7 @@ INSTANTIATE_TEST_SUITE_P(CublasTestsBothLegacyAndLt,
 // A test fixture class for tests which are specific to legacy cublas
 class LegacyCublasGemmRewriteTest : public GemmRewriteTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(false);
     debug_options.set_xla_gpu_enable_cublaslt(false);
@@ -2204,7 +2204,7 @@ ENTRY test {
 // A test fixture class for tests which are specific to cublasLt
 class CublasLtGemmRewriteTest : public GemmRewriteTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(true);
     debug_options.set_xla_gpu_enable_triton_gemm(false);
@@ -8046,7 +8046,7 @@ class GemmRewriteAllocationTest : public GpuCodegenTest {
     ASSERT_EQ(allocations.size(), expected_number_of_allocations);
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // Make sure the rewriter does not skip the rewrite for being too small.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
@@ -8079,7 +8079,7 @@ ENTRY AddDotsFunc {
 
 class SmallDotGemmRewriteTest : public GemmRewriteTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(100);
     return debug_options;

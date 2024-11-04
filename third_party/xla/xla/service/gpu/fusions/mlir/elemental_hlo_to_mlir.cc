@@ -612,7 +612,7 @@ SmallVector<Value, 1> MapHloOp(mlir::Type result_type,
   Value result = mhlo::MhloOpToStdScalarOp::mapOpOfType<MhloOp>(
       b.getLoc(), result_type, arg_types,
       typename MhloOp::Adaptor(args, std::forward<ExtraArgs>(extra_args)...),
-      &b);
+      /*attributes=*/std::nullopt, &b);
   if (result.getType().isInteger(1)) {
     result = b.create<mlir::arith::ExtUIOp>(b.getI8Type(), result);
   }
@@ -854,7 +854,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConvert(
   }
   auto out = mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
       builder.getLoc(), result_type_with_sign, result_element_type, arg_types,
-      operands, &builder);
+      operands, /*attributes=*/std::nullopt, &builder);
   if (auto int_ty = mlir::dyn_cast<IntegerType>(out.getType())) {
     auto in = operands[0];
     if (auto float_ty = mlir::dyn_cast<FloatType>(in.getType())) {
@@ -919,7 +919,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitIota(const HloInstruction* instr,
   index = builder.create<arith::IndexCastUIOp>(index_type, index);
   return {{mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
       builder.getLoc(), result_type_with_sign, result_element_type,
-      {index_type}, {index}, &builder)}};
+      {index_type}, {index}, /*attributes=*/std::nullopt, &builder)}};
 }
 
 absl::StatusOr<SmallVector<Value, 1>> EmitCompare(
@@ -934,7 +934,8 @@ absl::StatusOr<SmallVector<Value, 1>> EmitCompare(
   auto result_types = llvm::to_vector(mlir::TypeRange{builder.getI1Type()});
   auto i1 = mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::CompareOp>(
       builder.getLoc(), result_types, arg_types,
-      mhlo::CompareOp::Adaptor(operands, nullptr, properties), &builder);
+      mhlo::CompareOp::Adaptor(operands, nullptr, properties),
+      /*attributes=*/std::nullopt, &builder);
   return {{builder.create<mlir::arith::ExtUIOp>(builder.getI8Type(), i1)
                .getResult()}};
 }

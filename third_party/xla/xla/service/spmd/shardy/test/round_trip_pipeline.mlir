@@ -217,6 +217,17 @@ func.func @main(
   return %2#0 : tensor<32x96xf32>
 }
 
+// -----
+
+// Test that sharding group op is preserved under import and export passes.
+
+// CHECK-LABEL: func @main
+func.func @main(%arg0: tensor<8x16xf32>) -> (tensor<8x16xf32>) {
+  // CHECK: sdy.sharding_group %arg0 group_id=13 : tensor<8x16xf32>
+  sdy.sharding_group %arg0 group_id=13 : tensor<8x16xf32>
+  return %arg0 : tensor<8x16xf32>
+}
+
 // TODO(b/335481977): Add more tests for MHLO ops. So far tested all SDY
 // compiler APIs other than shard as/like (doesn't exist yet). See
 // round_trip_pipeline_manual_computation.mlir for ManualComputationOp tests.

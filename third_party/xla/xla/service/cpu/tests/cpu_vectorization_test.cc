@@ -83,7 +83,7 @@ class CpuVectorizationTest
   }
 
  private:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     HloTestBase::SetAotFastMathDebugOptions(&debug_options);
     return debug_options;
@@ -209,7 +209,7 @@ class JitVectorizationTest
   }
 
  private:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     JitVectorizationTestSpec spec = GetParam();
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_cpu_max_isa(spec.max_isa);

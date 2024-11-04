@@ -162,7 +162,9 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
          GetShapeSize(instruction->shape()) >=
              config_.all_reduce_min_threshold_in_bytes) ||
         (op == HloOpcode::kAllGather &&
-         config_.convert_all_gather(instruction)) ||
+         config_.convert_all_gather(instruction) &&
+         GetShapeSize(instruction->shape()) >=
+             config_.all_gather_min_threshold_in_bytes) ||
         (op == HloOpcode::kCollectiveBroadcast &&
          config_.convert_collective_broadcast(instruction)) ||
         (op == HloOpcode::kCollectivePermute &&

@@ -449,13 +449,30 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("
           << module->unique_id() << ") = " << fingerprint;
 
+  const DebugOptions& options = module->config().debug_options();
   const bool enable_latency_hiding_scheduler =
-      module->config()
-          .debug_options()
-          .xla_gpu_enable_latency_hiding_scheduler();
+      options.xla_gpu_enable_latency_hiding_scheduler();
 
   if (!enable_latency_hiding_scheduler) {
     return ScheduleMetadata{memory_limit};
+  }
+
+  if (options.xla_gpu_pgle_profile_file_or_directory_path().empty() &&
+      module->config().fdo_profile().empty() &&
+      options.xla_gpu_pgle_accuracy_checker() ==
+          DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR) {
+    return absl::InvalidArgumentError(
+        "xla_gpu_pgle_accuracy_checker is set to ERROR, but no profile "
+        "path specified in xla_gpu_pgle_profile_file_or_directory_path");
+  }
+
+  if (options.xla_gpu_pgle_profile_file_or_directory_path().empty() &&
+          module->config().fdo_profile().empty() &&
+          options.xla_gpu_pgle_accuracy_checker(),
+      DebugOptions::PGLE_STRICTNESS_LEVEL_WARN) {
+    LOG(WARNING)
+        << "xla_gpu_pgle_accuracy_checker is set to WARN, but no profile path "
+           "specified in xla_gpu_pgle_profile_file_or_directory_path";
   }
 
   SchedulerConfig config = GetSchedulerConfig(
@@ -481,9 +498,7 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
       ReadPGLEProfile(module, fingerprint);
 
   const bool enable_analytical_latency_estimator =
-      module->config()
-          .debug_options()
-          .xla_gpu_enable_analytical_latency_estimator();
+      options.xla_gpu_enable_analytical_latency_estimator();
   HloPassPipeline pipeline("latency-hiding-scheduler");
   if (profile.has_value()) {
     auto aggregator = std::make_unique<GPUProfileStatisticsAggregator>();
@@ -492,9 +507,10 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
         std::move(aggregator));
     LOG(INFO) << "Found profile, using profile guided latency estimator";
     VLOG(1) << "Profile:\n" << profile->DebugString();
-    if (module->config()
-            .debug_options()
-            .xla_gpu_enable_pgle_accuracy_checker()) {
+    if (options.xla_gpu_pgle_accuracy_checker() ==
+            DebugOptions::PGLE_STRICTNESS_LEVEL_WARN ||
+        options.xla_gpu_pgle_accuracy_checker() ==
+            DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR) {
       pipeline.AddPass<PGLEAccuracyChecker>(*pg_latency_estimator);
     }
     latency_estimator = std::move(pg_latency_estimator);
@@ -511,9 +527,7 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   }
 
   auto async_tracker = [&]() -> std::unique_ptr<AsyncTracker> {
-    return module->config()
-                   .debug_options()
-                   .xla_gpu_lhs_enable_gpu_async_tracker()
+    return options.xla_gpu_lhs_enable_gpu_async_tracker()
                ? std::make_unique<GpuAsyncTracker>(config)
                : std::make_unique<GpuAsyncTrackerBase>(config);
   }();

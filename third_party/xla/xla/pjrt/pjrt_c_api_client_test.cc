@@ -25,10 +25,17 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "stablehlo/dialect/Version.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -161,6 +168,71 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
   std::vector<int32_t> expected(4, 0);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
+}
+
+// TODO: (b/375454646) Eanble once frameworks have bugfix:
+// https://github.com/openxla/xla/commit/2f99455cdf99e844ddad17de9f4714997023d243
+TEST(PjRtClientTest, DISABLED_CompileUsesStableHloVersion) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* c_api, pjrt::PjrtApi("cpu"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  static auto PJRT_Client_Compile_Orig = c_api->PJRT_Client_Compile;
+  constexpr char kProgram[] = "func.func @main() {return}";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+  const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile =
+      [](PJRT_Client_Compile_Args* args) -> PJRT_Error* {
+    mlir::vhlo::Version version = mlir::vhlo::Version::getCurrentVersion();
+    std::string version_string = absl::StrFormat(
+        "%d.%d.%d", version.getMajor(), version.getMinor(), version.getPatch());
+    // MLIR doesn't have any functionality for retrieving the producer of
+    // bytecode files, so just scan the raw string.
+    EXPECT_TRUE(llvm::StringRef(args->program->code, args->program->code_size)
+                    .contains(version_string));
+    return PJRT_Client_Compile_Orig(args);
+  };
+  std::unique_ptr<PjRtLoadedExecutable> executable =
+      client->Compile(*module, CompileOptions()).value();
+  const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile = PJRT_Client_Compile_Orig;
+}
+
+TEST(PjRtClientTest, DeserializeExecutableWithDifferentDeviceAssignment) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  ASSERT_GT(client->addressable_devices().size(), 1);
+
+  XlaBuilder builder("Identity");
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  auto input = Parameter(&builder, 0, shape, "input");
+  auto computation = builder.Build(input).value();
+
+  auto compile_options_for_device = [](int id) -> xla::CompileOptions {
+    xla::DeviceAssignment device_assignment(1, 1);
+    device_assignment(0, 0) = id;
+    xla::CompileOptions options;
+    options.executable_build_options.set_device_assignment(device_assignment);
+    return options;
+  };
+
+  // Compile the executable for device 0 and serialize it.
+  std::unique_ptr<PjRtLoadedExecutable> executable =
+      client->Compile(computation, compile_options_for_device(0)).value();
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
+                          executable->SerializeExecutable());
+
+  // Deserialize the executable for device 1.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto deserialized_executable,
+      client->DeserializeExecutable(serialized_executable,
+                                    compile_options_for_device(1)));
+
+  // Check that the executable's compile options were overridden
+  // with device id 1.
+  EXPECT_EQ(
+      deserialized_executable->addressable_devices()[0]->global_device_id(), 1);
 }
 
 }  // namespace

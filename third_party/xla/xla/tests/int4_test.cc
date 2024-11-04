@@ -158,7 +158,7 @@ XLA_TEST_F(HloTestBase, HorizontalLoopFusion) {
 }
 
 class HloTestBaseWithAlgsimpDisabled : public HloTestBase {
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions options = HloTestBase::GetDebugOptionsForTest();
     options.add_xla_disable_hlo_passes("algsimp");
     return options;
