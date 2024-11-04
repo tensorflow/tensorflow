@@ -95,4 +95,10 @@ absl::StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
 
 std::set<std::string> OptProvider::SupportedStages() { return {"hlo", "html"}; }
 
+absl::StatusOr<std::unique_ptr<HloModule>> OptProvider::GetOptimizedHlo(
+    std::unique_ptr<HloModule> input_module) {
+  return absl::UnimplementedError(
+      "Not supported in platform independent opt tool");
+}
+
 }  // namespace xla
