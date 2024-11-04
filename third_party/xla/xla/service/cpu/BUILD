@@ -226,6 +226,7 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":ir_emitter2",
+        ":metrics",
         ":onednn_contraction_rewriter",
         ":onednn_ops_rewriter",
         ":parallel_task_assignment",
@@ -2064,4 +2065,28 @@ cc_library(
     name = "cpu_executable_run_options",
     hdrs = ["cpu_executable_run_options.h"],
     deps = [":collectives_interface"],
+)
+
+cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = [
+        "//xla/tsl/lib/monitoring:counter",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:stacktrace",
+    ],
+)
+
+xla_cc_test(
+    name = "metrics_test",
+    srcs = ["metrics_test.cc"],
+    deps = [
+        ":metrics",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/monitoring:collected_metrics",
+        "//xla/tsl/lib/monitoring:collection_registry",
+        "@local_tsl//tsl/platform:test",
+    ],
 )
