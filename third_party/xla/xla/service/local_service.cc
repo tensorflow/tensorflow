@@ -94,8 +94,7 @@ LocalService::CompileExecutables(
       false,
       {},
       {build_options.key_value_store(), build_options.process_index(),
-       build_options.process_count()},
-      build_options.compute_stream()};
+       build_options.process_count()}};
   if (build_options.num_partitions() == 1) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,
@@ -140,12 +139,12 @@ LocalService::CompileAotResults(
   // cores per module, but otherwise only uses the first executor.
   std::vector<se::StreamExecutor*> executors(build_options.num_partitions(),
                                              executor);
-  Compiler::CompileOptions compile_options{build_options.device_allocator(),
-                                           build_options.compile_thread_pool()};
-  compile_options.compute_stream = build_options.compute_stream();
+
   return BuildAotResults(
       /*module_protos=*/{&computation.proto()}, std::move(module_configs),
-      execute_backend_.get(), {executors}, compile_options,
+      execute_backend_.get(), {executors},
+      Compiler::CompileOptions{build_options.device_allocator(),
+                               build_options.compile_thread_pool()},
       build_options.run_backend_only());
 }
 

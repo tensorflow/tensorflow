@@ -23,10 +23,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -68,12 +66,9 @@ TEST_F(CustomKernelFusionAutotunerTest, DontRunOnNonCustomFusions) {
 
   HloPassPipeline pipeline("custom_kernel_fusion_autotuner");
   DebugOptions debug_options;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
-                          backend().default_stream_executor()->CreateStream());
-
   AutotuneConfig autotune_config =
       AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
-                                  backend().memory_allocator(), stream.get()},
+                                  backend().memory_allocator()},
                      debug_options};
   pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
 
@@ -105,11 +100,9 @@ TEST_F(CustomKernelFusionAutotunerTest,
 
   HloPassPipeline pipeline("custom_kernel_fusion_autotuner");
   DebugOptions debug_options;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
-                          backend().default_stream_executor()->CreateStream());
   AutotuneConfig autotune_config =
       AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
-                                  backend().memory_allocator(), stream.get()},
+                                  backend().memory_allocator()},
                      debug_options};
   pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
   ASSERT_TRUE(pipeline.Run(hlo_module.get()).ok());
@@ -138,11 +131,9 @@ TEST_F(CustomKernelFusionAutotunerTest,
 
   HloPassPipeline pipeline("custom_kernel_fusion_autotuner");
   DebugOptions debug_options;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
-                          backend().default_stream_executor()->CreateStream());
   AutotuneConfig autotune_config =
       AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
-                                  backend().memory_allocator(), stream.get()},
+                                  backend().memory_allocator()},
                      debug_options};
   pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
 

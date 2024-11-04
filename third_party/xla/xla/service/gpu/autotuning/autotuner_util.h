@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -51,8 +50,6 @@ struct DeviceConfig {
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.
   se::DeviceMemoryAllocator* allocator = nullptr;  // may be null
-
-  se::Stream* compute_stream = nullptr;
 };
 
 struct DevicelessConfig {
@@ -180,14 +177,7 @@ class AutotuneConfig {
 
   absl::StatusOr<se::Stream*> GetStream() const {
     CHECK(std::holds_alternative<DeviceConfig>(config_));
-    se::Stream* stream = std::get<DeviceConfig>(config_).compute_stream;
-    if (stream == nullptr) {
-      if (owned_stream_ == nullptr) {
-        TF_ASSIGN_OR_RETURN(owned_stream_, GetExecutor()->CreateStream());
-      }
-      stream = owned_stream_.get();
-    }
-    return stream;
+    return GetAllocator()->GetStream(GetExecutor()->device_ordinal());
   }
 
   const se::GpuComputeCapability& GetGpuComputeCapability() const {
@@ -211,7 +201,6 @@ class AutotuneConfig {
   bool exhaustive_tiling_search_;
   bool require_complete_aot_autotune_results_;
   mutable std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
-  mutable std::unique_ptr<se::Stream> owned_stream_;
   std::string autotune_cache_dir_;
   DebugOptions::AutotuneCacheMode autotune_cache_mode_;
 };

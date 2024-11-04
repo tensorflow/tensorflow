@@ -40,7 +40,6 @@ namespace stream_executor {
 
 // Forward-declared to avoid StreamExecutor dependency.
 class DeviceMemoryAllocator;
-class Stream;
 
 }  // namespace stream_executor
 
@@ -91,10 +90,6 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_device_allocator(
       se::DeviceMemoryAllocator* allocator);
   se::DeviceMemoryAllocator* device_allocator() const;
-
-  // If set, this specifies a stream that can be used for autotuning.
-  ExecutableBuildOptions& set_compute_stream(se::Stream* stream);
-  se::Stream* compute_stream() const;
 
   // The number of replicas of this computation that are to be executed.
   // Defaults to 1.
@@ -292,7 +287,6 @@ class ExecutableBuildOptions {
   std::optional<CompilationEnvironments> comp_envs_;
   std::optional<DebugOptions> debug_options_;
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
-  se::Stream* compute_stream_ = nullptr;
   int num_replicas_ = 1;
   int num_partitions_ = 1;
   bool use_spmd_partitioning_ = false;
