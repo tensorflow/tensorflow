@@ -42,8 +42,9 @@ namespace cpu {
 
 inline llvm::APFloat GetIeeeF32(float f) { return llvm::APFloat(f); }
 inline llvm::APFloat GetIeeeF32FromBitwiseRep(int32_t bitwise_value) {
-  return llvm::APFloat(llvm::APFloat::IEEEsingle(),
-                       llvm::APInt(/*numBits=*/32, /*val=*/bitwise_value));
+  return llvm::APFloat(
+      llvm::APFloat::IEEEsingle(),
+      llvm::APInt(/*numBits=*/32, /*val=*/bitwise_value, /*isSigned=*/true));
 }
 
 // A thin wrapper around llvm_util.h to make code generating vector math flow
