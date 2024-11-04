@@ -752,10 +752,6 @@ bool IsAMDGPU(const llvm::Module* module) {
   return llvm::Triple(module->getTargetTriple()).isAMDGPU();
 }
 
-bool IsSPIR(const llvm::Module* module) {
-  return llvm::Triple(module->getTargetTriple()).isSPIR();
-}
-
 absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
     const Literal& literal) {
   PrimitiveType element_type = literal.shape().element_type();

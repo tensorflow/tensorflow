@@ -1065,14 +1065,6 @@ TEST_F(IrEmissionUtilsTest, ProtoFingerprintIsDeterministic) {
   EXPECT_EQ(fingerprint, kTestProtoFingerprint);
 }
 
-TEST_F(IrEmissionUtilsTest, BackendConfigFingerprintIsDeterministic) {
-  BackendConfigWrapper wrapper(CreateTestProto());
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::string fingerprint,
-      GetBackendConfigFingerprint<GpuBackendConfig>(wrapper));
-  EXPECT_EQ(fingerprint, kTestProtoFingerprint);
-}
-
 TEST_F(IrEmissionUtilsTest,
        InstructionFingerprintWithBackendConfigIsDeterministic) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

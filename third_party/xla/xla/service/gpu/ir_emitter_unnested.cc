@@ -175,16 +175,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
-
-// Construct the key for looking up the AsyncEvents for Send and Recv. Input
-// kind is the thunk kind for the corresponding done thunk.
-inline std::pair<bool, int64_t> GetSendRecvAsyncEventsKey(Thunk::Kind kind,
-                                                          int64_t channel_id) {
-  return std::make_pair(kind == Thunk::Kind::kNcclRecvDone, channel_id);
-}
-
-}  // namespace
 
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
     : IrEmitter(ir_emitter_context, /*is_nested=*/false),
