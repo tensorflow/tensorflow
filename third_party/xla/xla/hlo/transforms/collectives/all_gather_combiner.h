@@ -36,7 +36,8 @@ class AllGatherCombiner : public HloModulePass {
  public:
   AllGatherCombiner(int64_t combine_threshold_in_bytes,
                     int64_t combine_threshold_count, bool combine_by_dim,
-                    bool combine_different_dtypes = true);
+                    bool combine_different_dtypes = true,
+                    bool combine_while_loops = true);
 
   absl::string_view name() const override { return "all-gather-combiner"; }
 
@@ -87,6 +88,9 @@ class AllGatherCombiner : public HloModulePass {
 
   // Combine all-gather ops with different dtypes.
   bool combine_different_dtypes_;
+
+  // Combine all-gather ops inside while loop bodies.
+  bool combine_while_loops_;
 };
 
 }  // namespace xla
