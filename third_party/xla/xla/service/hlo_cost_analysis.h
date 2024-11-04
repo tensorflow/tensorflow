@@ -49,10 +49,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       "optimal_seconds";
   static inline constexpr absl::string_view kUtilizationKey = "utilization";
 
-  // Keys reserved for use by subclasses.  These get the same special "fast
+  // Key reserved for use by subclasses.  This gets the same special "fast
   // path" treatment in Properties as the other keys above.
   static inline constexpr absl::string_view kReserved0Key = "reserved0";
-  static inline constexpr absl::string_view kReserved1Key = "reserved1";
 
   // A data structure like hash_map<string, float> for storing info about an HLO
   // instruction or computation.
@@ -101,8 +100,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
           operand0_bytes_accessed_(0),
           operand1_bytes_accessed_(0),
           output_root_bytes_accessed_(0),
-          reserved0_(0),
-          reserved1_(0) {
+          reserved0_(0) {
       DCHECK_EQ(kOperand0UtilizationKey, GetOperandUtilizationKey(0, {}));
       DCHECK_EQ(kOperand1UtilizationKey, GetOperandUtilizationKey(1, {}));
       DCHECK_EQ(kOperand0BytesAccessedKey, GetOperandBytesAccessedKey(0, {}));
@@ -144,9 +142,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       if (property == kReserved0Key) {
         return reserved0_;
       }
-      if (property == kReserved1Key) {
-        return reserved1_;
-      }
 
       auto it = named_props_.lazy_emplace(property, [&](const auto& ctor) {
         ctor(std::string(property), 0.f);
@@ -187,9 +182,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       }
       if (property == kReserved0Key) {
         return reserved0_;
-      }
-      if (property == kReserved1Key) {
-        return reserved1_;
       }
 
       auto it = named_props_.find(property);
@@ -234,10 +226,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       if (reserved0_ != 0) {
         fn(kReserved0Key, reserved0_);
       }
-      if (reserved1_ != 0) {
-        fn(kReserved1Key, reserved1_);
-      }
-
       for (const auto& [k, v] : named_props_) {
         if (v != 0) {
           fn(k, v);
@@ -346,12 +334,11 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
           " operand1_bytes_accessed: %f\n"
           " output_root_bytes_accessed: %f\n"
           " reserved0: %f\n"
-          " reserved1: %f\n"
           "}",
           flops_, transcendentals_, bytes_accessed_, optimal_seconds_,
           utilization_, operand0_utilization_, operand1_utilization_,
           operand0_bytes_accessed_, operand1_bytes_accessed_,
-          output_root_bytes_accessed_, reserved0_, reserved1_);
+          output_root_bytes_accessed_, reserved0_);
     }
 
    private:
@@ -381,9 +368,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
     float output_root_bytes_accessed_;
 
-    // Fields reserved for use by subclasses.
+    // Field reserved for use by subclasses.
     float reserved0_;
-    float reserved1_;
 
     absl::flat_hash_map<std::string, float> named_props_;
   };
