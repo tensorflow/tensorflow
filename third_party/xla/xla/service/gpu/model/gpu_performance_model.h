@@ -56,31 +56,7 @@ class GpuPerformanceModel : public GpuPerformanceModelBase {
       const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config);
 
-  static absl::Duration EstimateUnfusedExecTime(
-      const HloInstruction* producer,
-      const EstimateRunTimeData& producer_runtime,
-      const se::DeviceDescription& device_info,
-      const GpuHloCostAnalysis* cost_analysis,
-      const GpuPerformanceModelOptions& config,
-      absl::Span<const HloInstruction* const> fused_consumers);
-
-  static absl::Duration EstimateFusedExecTime(
-      const HloInstruction* producer,
-      const EstimateRunTimeData& producer_runtime,
-      const se::DeviceDescription& device_info,
-      const GpuHloCostAnalysis* cost_analysis,
-      const GpuPerformanceModelOptions& config,
-      absl::Span<const HloInstruction* const> fused_consumers,
-      bool multi_output);
-
   static RunTimes EstimateRunTimes(
-      const HloInstruction* producer, const se::DeviceDescription& device_info,
-      const GpuHloCostAnalysis* cost_analysis,
-      const GpuPerformanceModelOptions& config,
-      absl::Span<const HloInstruction* const> fused_consumers = {},
-      bool multi_output = false);
-
-  static RunTimes EstimateRunTimesForPriorityFusion(
       const HloInstruction* producer, const se::DeviceDescription& device_info,
       const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,

@@ -280,7 +280,7 @@ class PriorityFusionQueue {
           runtime_data,
           gpu_indexing_performance_model_.EstimateRunTimeForTriton(producer));
     } else {
-      auto config = GpuPerformanceModelOptions::PriorityFusion(
+      auto config = GpuPerformanceModelOptions::Default(
           &fusion_analysis_cache_, &gpu_performance_model_cache_);
       runtime_data = GpuPerformanceModel::EstimateRunTimeForInstruction(
           producer, *device_info_, &cost_analysis_, config);
@@ -506,10 +506,10 @@ class PriorityFusionQueue {
             ? operands_to_new_consumers_.find(producer)->second
             : absl::MakeConstSpan(producer->users());
     GpuPerformanceModel::RunTimes run_times =
-        GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
+        GpuPerformanceModel::EstimateRunTimes(
             producer, *device_info_, &cost_analysis_,
-            GpuPerformanceModelOptions::PriorityFusion(
-                &fusion_analysis_cache_, &gpu_performance_model_cache_),
+            GpuPerformanceModelOptions::Default(&fusion_analysis_cache_,
+                                                &gpu_performance_model_cache_),
             fused_consumers);
     Priority current_priority;
     if (is_incremental_update) {
