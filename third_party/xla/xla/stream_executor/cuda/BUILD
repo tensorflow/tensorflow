@@ -627,18 +627,19 @@ xla_test(
     ],
 )
 
-cuda_library(
+cc_library(
     name = "command_buffer_kernels",
     srcs = [
         "command_buffer_kernels.cc",
-        "command_buffer_kernels.cu.cc",
     ],
     hdrs = ["command_buffer_kernels.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    tags = ["cuda-only"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         "//xla/stream_executor:kernel_spec",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "@com_google_absl//absl/status:statusor",
     ],
 )
