@@ -186,7 +186,8 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
     return "xla::ifrt::proxy::TestProgram";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     CHECK(llvm::isa<TestProgram>(serializable));
     return "";
   }
@@ -216,7 +217,8 @@ class TestCompileOptionsSerDes
     return "xla::ifrt::proxy::TestCompileOptions";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     CHECK(llvm::isa<TestCompileOptions>(serializable));
     return "";
   }
@@ -334,10 +336,10 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     CompileRequest* compile_request = request->mutable_compile_request();
     TestProgram program;
     TF_ASSIGN_OR_RETURN(*compile_request->mutable_program(),
-                        Serialize(program));
+                        Serialize(program, /*options=*/nullptr));
     TestCompileOptions compile_options;
     TF_ASSIGN_OR_RETURN(*compile_request->mutable_compile_options(),
-                        Serialize(compile_options));
+                        Serialize(compile_options, /*options=*/nullptr));
 
     EXPECT_CALL(mock_compiler_, Compile(_, _))
         .WillOnce(Return(ByMove(std::move(loaded_executable))));
@@ -1593,10 +1595,10 @@ TEST_P(IfrtBackendHandlerTest, LoadedHostCallbackExecute) {
 
     TestProgram program;
     TF_ASSERT_OK_AND_ASSIGN(*compile_request->mutable_program(),
-                            Serialize(program));
+                            Serialize(program, /*options=*/nullptr));
     xla::ifrt::XlaCompileOptions compile_options;
     TF_ASSERT_OK_AND_ASSIGN(*compile_request->mutable_compile_options(),
-                            Serialize(compile_options));
+                            Serialize(compile_options, /*options=*/nullptr));
 
     TF_ASSERT_OK_AND_ASSIGN(std::string host_callback_serialized,
                             hcb->Serialize());

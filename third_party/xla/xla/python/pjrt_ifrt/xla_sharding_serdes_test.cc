@@ -43,7 +43,8 @@ TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
   auto sharding = HloSharding::Create(device_list, MemoryKind("abc"),
                                       /*xla_hlo_sharding=*/xla_hlo_sharding);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
+                          Serialize(*sharding, /*options=*/nullptr));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,

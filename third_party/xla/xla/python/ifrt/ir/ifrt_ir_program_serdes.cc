@@ -48,7 +48,8 @@ class IfrtIRProgramSerDes
     return "xla::ifrt::IfrtIRProgram";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     const auto& program = llvm::cast<IfrtIRProgram>(serializable);
     if (program.mlir_module == nullptr) {
       return absl::InvalidArgumentError("Unable to serialize null MLIR module");
@@ -88,7 +89,8 @@ class IfrtIRCompileOptionsSerDes
     return "xla::ifrt::IfrtIRCompileOptions";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     const auto& options = llvm::cast<IfrtIRCompileOptions>(serializable);
     TF_ASSIGN_OR_RETURN(IfrtIrCompileOptionsProto options_proto,
                         options.ToProto());

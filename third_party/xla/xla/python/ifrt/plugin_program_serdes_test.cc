@@ -30,7 +30,8 @@ namespace {
 TEST(PluginProgramSerDesTest, RoundTrip) {
   PluginProgram orig;
   orig.data = "foo";
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(orig));
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                          Serialize(orig, /*options=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PluginProgram> deserialized_program,
       Deserialize<PluginProgram>(serialized, /*options=*/nullptr));
@@ -40,7 +41,8 @@ TEST(PluginProgramSerDesTest, RoundTrip) {
 
 TEST(PluginCompileOptionsSerDesTest, RoundTrip) {
   PluginCompileOptions orig;
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(orig));
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                          Serialize(orig, /*options=*/nullptr));
   TF_EXPECT_OK(
       Deserialize<PluginCompileOptions>(serialized, /*options=*/nullptr)
           .status());
