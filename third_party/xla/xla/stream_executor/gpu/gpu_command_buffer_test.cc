@@ -62,12 +62,6 @@ static Platform* GpuPlatform() {
   return PlatformManager::PlatformWithName(name).value();
 }
 
-static MultiKernelLoaderSpec GetAddI32KernelSpec() {
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
-  return spec;
-}
-
 using AddI32Kernel =
     TypedKernelFactory<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
                        DeviceMemory<int32_t>>;

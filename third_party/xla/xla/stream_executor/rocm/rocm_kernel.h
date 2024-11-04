@@ -27,7 +27,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "rocm/include/hip/hip_runtime.h"
-#include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -35,7 +34,7 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-class RocmKernel : public GpuKernel {
+class RocmKernel : public Kernel {
  public:
   explicit RocmKernel(StreamExecutor* executor) : executor_(executor) {}
 
@@ -52,7 +51,7 @@ class RocmKernel : public GpuKernel {
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const override;
 
   // Simple accessor methods.
-  hipFunction_t gpu_function() const override { return rocm_function_; }
+  hipFunction_t gpu_function() const { return rocm_function_; }
   void set_gpu_function(hipFunction_t rocm_function) {
     rocm_function_ = rocm_function;
   }
@@ -63,7 +62,7 @@ class RocmKernel : public GpuKernel {
  private:
   StreamExecutor* executor_ = nullptr;
 
-  hipFunction_t rocm_function_ = nullptr;  // wrapped CUDA kernel handle
+  hipFunction_t rocm_function_ = nullptr;  // wrapped HIP kernel handle
   unsigned arity_ = 0;  // number of formal parameters the kernel takes
 };
 

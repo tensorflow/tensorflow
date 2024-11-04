@@ -1,5 +1,3 @@
-#include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/cuda/cuda_context.h"
 /* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,14 +26,18 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_collectives.h"
+#include "xla/stream_executor/cuda/cuda_context.h"
+#include "xla/stream_executor/cuda/cuda_kernel.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
@@ -43,7 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -137,6 +138,10 @@ class CudaExecutor : public GpuExecutor {
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
+  // Returns a CudaKernel pointer for a given Kernel, if the kernel is
+  // associated with this executor. Otherwise a NotFound error is returned.
+  absl::StatusOr<const CudaKernel*> GetCudaKernel(const Kernel* kernel);
+
  private:
   // Loads a module in cubin format.
   absl::StatusOr<ModuleHandle> LoadModuleFromCuBin(const char* cubin)
@@ -169,6 +174,11 @@ class CudaExecutor : public GpuExecutor {
   // Loaded GPU module handle -> {CUDA module, reference count}.
   absl::flat_hash_map<ModuleHandle, std::pair<CUmodule, uint64_t>>
       gpu_binary_to_module_ ABSL_GUARDED_BY(in_memory_modules_mu_);
+
+  // Set of loaded kernels. This contains all kernels loaded by this executor,
+  // including in-process kernels.
+  absl::flat_hash_set<const Kernel*> loaded_kernels_
+      ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   // Handle for the CUDA device being operated on. Immutable
   // post-initialization.

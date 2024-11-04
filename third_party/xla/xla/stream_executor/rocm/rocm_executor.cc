@@ -53,10 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/host_memory_allocation.h"
@@ -1096,6 +1093,15 @@ absl::StatusOr<MemoryType> RocmExecutor::GetPointerMemorySpace(
       "failed to query device pointer for memory space: ", ToString(result)));
 }
 
+absl::StatusOr<const RocmKernel*> RocmExecutor::GetRocmKernel(
+    const Kernel* kernel) {
+  absl::MutexLock lock{&in_memory_modules_mu_};
+  auto it = loaded_kernels_.find(kernel);
+  if (it == loaded_kernels_.end()) {
+    return absl::NotFoundError("Kernel not loaded in this executor.");
+  }
+  return static_cast<const RocmKernel*>(*it);
+}
 }  // namespace gpu
 
 }  // namespace stream_executor

@@ -331,15 +331,6 @@ tsl_gpu_library(
 )
 
 gpu_only_cc_library(
-    name = "gpu_kernel_header",
-    hdrs = ["gpu_kernel.h"],
-    deps = [
-        ":gpu_types_header",
-        "//xla/stream_executor:kernel",
-    ],
-)
-
-gpu_only_cc_library(
     name = "gpu_stream_header",
     hdrs = ["gpu_stream.h"],
     deps = [
@@ -638,7 +629,9 @@ gpu_kernel_library(
     srcs = ["gpu_test_kernels.cu.cc"],
     hdrs = ["gpu_test_kernels.h"],
     tags = ["gpu"],
-    deps = if_cuda_is_configured([
+    deps = [
+        "//xla/stream_executor:kernel_spec",
+    ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",

@@ -26,7 +26,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/gpu/gpu_kernel.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -34,7 +34,7 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-class CudaKernel : public GpuKernel {
+class CudaKernel : public Kernel {
  public:
   explicit CudaKernel(StreamExecutor* executor) : executor_(executor) {}
 
@@ -51,7 +51,7 @@ class CudaKernel : public GpuKernel {
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const override;
 
   // Simple accessor methods.
-  CUfunction gpu_function() const override { return gpu_function_; }
+  CUfunction gpu_function() const { return gpu_function_; }
   void set_gpu_function(CUfunction gpu_function) {
     gpu_function_ = gpu_function;
   }
