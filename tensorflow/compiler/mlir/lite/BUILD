@@ -37,6 +37,10 @@ package_group(
     ],
 )
 
+exports_files(glob([
+    "testdata/*.bin",
+]))
+
 filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
@@ -1331,6 +1335,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/compiler/mlir/lite/tools/versioning",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
@@ -1339,8 +1344,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

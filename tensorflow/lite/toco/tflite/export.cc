@@ -26,6 +26,7 @@ limitations under the License.
 #include "flatbuffers/vector.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantize_weights.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/tflite/types.h"
 #include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 

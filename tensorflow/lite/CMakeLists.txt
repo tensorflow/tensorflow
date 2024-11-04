@@ -396,6 +396,7 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_SRCS}
     ${TFLITE_SOURCE_DIR}/tools/versioning/gpu_compatibility.cc
     ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
+    ${TF_SOURCE_DIR}/compiler/mlir/lite/tools/versioning/op_signature.cc
   )
   include_directories(
     AFTER
@@ -692,6 +693,7 @@ set(_ALL_TFLITE_SRCS
   ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/flatbuffer_conversions.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/verifier.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/core/c/tflite_types.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/core/macros.h

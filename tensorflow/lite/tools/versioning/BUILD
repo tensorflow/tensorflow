@@ -67,6 +67,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/compiler/mlir/lite/tools/versioning:op_signature",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:c_api_types",
