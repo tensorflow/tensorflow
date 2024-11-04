@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -357,6 +358,95 @@ TEST_F(CollectiveSelectFolderTest, WrongNesting_NotTransformed) {
     }
   )";
   TF_ASSERT_OK(ExpectNoTranform(hlo));
+}
+
+// This select predicate operates on `replica-id` while the two collectives are
+// in the different partition dimension, so the predicate and collectives reason
+// over DIFFERENT ids. We can therefore NOT fold this select away on either
+// path.
+// Represents real-life usecase.
+TEST_F(CollectiveSelectFolderTest,
+       CondensedPipelineParallelism_IncompatibleGroupMode) {
+  const absl::string_view kHlo = R"(
+    HloModule test
+
+    ENTRY computation {
+      param = (f32[8192], f32[8192]) parameter(0)
+      replica_id = u32[] replica-id()
+      c0 = u32[] constant(0)
+      c3 = u32[] constant(3)
+      operand_predicate = pred[] compare(replica_id, c3), direction=EQ
+      result_predicate = pred[] compare(replica_id, c0), direction=EQ
+      operand_bwd = f32[8192] get-tuple-element(param), index=0
+      operand_fwd = f32[8192] get-tuple-element(param), index=1
+      select_operand = f32[8192] select(operand_predicate, operand_bwd,
+          operand_fwd)
+      cp.backward = f32[8192] collective-permute(select_operand), channel_id=1,
+          source_target_pairs={{3,0}}
+      cp.forward = f32[8192] collective-permute(select_operand), channel_id=2,
+          source_target_pairs={{0,1},{1,2},{2,3}}
+      ROOT select_result = f32[8192] select(result_predicate, cp.backward,
+          cp.forward)
+    }
+  )";
+  TF_ASSERT_OK(ExpectNoTranform(kHlo));
+}
+
+// This select predicate operates on `partition-id` with collectives in the same
+// partition dimension, so the predicate and collectives reason over the same
+// ids. The tested id, 3, appears as an exclusive source in one of the
+// collectives and does not appear as a source in the other collective. We can
+// therefore fold the select away on both paths.
+// Represents real-life usecase.
+TEST_F(CollectiveSelectFolderTest,
+       CondensedPipelineParallelism_CompatibleGroupMode) {
+  const absl::string_view kHlo = R"(
+    HloModule test
+
+    ENTRY computation {
+      param = (f32[8192], f32[8192]) parameter(0)
+      partition_id = u32[] partition-id()
+      c0 = u32[] constant(0)
+      c3 = u32[] constant(3)
+      operand_predicate = pred[] compare(partition_id, c3), direction=EQ
+      result_predicate = pred[] compare(partition_id, c0), direction=EQ
+      operand_bwd = f32[8192] get-tuple-element(param), index=0
+      operand_fwd = f32[8192] get-tuple-element(param), index=1
+      select_operand = f32[8192] select(operand_predicate, operand_bwd,
+          operand_fwd)
+      cp.backward = f32[8192] collective-permute(select_operand), channel_id=1,
+          source_target_pairs={{3,0}}
+      cp.forward = f32[8192] collective-permute(select_operand), channel_id=2,
+          source_target_pairs={{0,1},{1,2},{2,3}}
+      ROOT select_result = f32[8192] select(result_predicate, cp.backward,
+          cp.forward)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunAndCheckHloRewrite(kHlo, CollectiveSelectFolder(),
+                                                /*expect_change=*/true));
+  const absl::string_view kExpected = R"(
+    // CHECK:      ENTRY %computation
+    // CHECK:        %[[PARAM:.*]] = (f32[8192]{0}, f32[8192]{0}) parameter(0)
+    // CHECK:        %[[OPERAND_BWD:.*]] = {{.*}} get-tuple-element
+    // CHECK-SAME:       ({{.*}} %[[PARAM]]), index=0
+    // CHECK:        %[[OPERAND_FWD:.*]] = {{.*}} get-tuple-element
+    // CHECK-SAME:       ({{.*}} %[[PARAM]]), index=1
+    // CHECK:        %[[CP_BWD:.*]] = {{.*}} collective-permute
+    // CHECK-SAME:       ({{.*}} %[[OPERAND_BWD]]), channel_id=1,
+    // CHECK-SAME:       source_target_pairs={{\{}}{3,0}}
+    // CHECK:        %[[CP_FWD:.*]] = {{.*}} collective-permute
+    // CHECK-SAME:       ({{.*}} %[[OPERAND_FWD]]), channel_id=2,
+    // CHECK-SAME:       source_target_pairs={{\{}}{0,1},{1,2},{2,3}}
+    // CHECK:        ROOT %{{.*}} =
+    // CHECK-SAME:       select({{.*}} %{{.*}}, {{.*}} %[[CP_BWD]],
+    // CHECK-SAME:       %[[CP_FWD]])
+    // CHECK:      }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                          RunFileCheck(module->ToString(), kExpected));
+  EXPECT_TRUE(filecheck_result);
 }
 
 }  // namespace

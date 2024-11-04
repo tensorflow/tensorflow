@@ -518,6 +518,7 @@ xla_cc_test(
     deps = [
         ":collective_select_folder",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
