@@ -1061,7 +1061,7 @@ cc_library(
         ":nccl_collective_thunk",
         ":thunk",
         "//xla/hlo/ir:hlo",
-        "//xla/stream_executor",
+        "//xla/stream_executor:stream",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:errors",

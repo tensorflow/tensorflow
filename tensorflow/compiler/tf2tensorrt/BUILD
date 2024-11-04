@@ -1102,7 +1102,6 @@ pybind_extension(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
-        "@local_xla//xla/stream_executor",
         "@pybind11",
     ],
 )
