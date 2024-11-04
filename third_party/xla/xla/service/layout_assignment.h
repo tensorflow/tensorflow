@@ -157,8 +157,15 @@ class ComputationLayoutConstraint : public LayoutConstraint {
                           : kComputationLayoutIsSet),
         computation_layout_(
             (computation_layout == nullptr)
-                ? ComputationLayout(computation->ComputeProgramShape(),
-                                    /*ignore_layouts=*/false)
+                ? ComputationLayout(
+                      computation->ComputeProgramShape(),
+                      // Computation callers need layout to be set and
+                      // computation parameters may miss the layout, so we
+                      // cannot rely on them and need to reset/ignore the
+                      // layout. Entry computation is special because unset
+                      // layouts there are used to indicate that the layout
+                      // should be automatically inferred.
+                      /*ignore_layouts=*/!computation->IsEntryComputation())
                 : *computation_layout) {}
 
   const ComputationLayout& computation_layout() const {

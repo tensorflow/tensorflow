@@ -1955,5 +1955,46 @@ ENTRY %main {
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
 }
 
+TEST_F(LayoutAssignmentTest, WorksWithWhileLoopWithoutLayout) {
+  const char* module_str = R"(
+HloModule t
+
+while_condition {
+  tuple = (f32[5,16], u32[]) parameter(0)
+  i = u32[] get-tuple-element(tuple), index=1
+  n = u32[] constant(8)
+  ROOT predicate = pred[] compare(i, n), direction=LT
+}
+
+while_body {
+  tuple = (f32[5,16], u32[]) parameter(0)
+  input = f32[5,16] get-tuple-element(tuple), index=0
+  i = u32[] get-tuple-element(tuple), index=1
+  c1 = u32[] constant(1)
+  i_ = add(i, c1)
+  output = add(input, input)
+  ROOT tuple1 = (f32[5,16], u32[]) tuple(output, i_)
+}
+
+ENTRY main {
+  input = f32[5,16] parameter(0)
+  c0 = u32[] constant(0)
+  tuple = (f32[5,16], u32[]) tuple(input, c0)
+  tuple_ = (f32[5,16], u32[]) while(tuple), condition=while_condition, body=while_body
+  ROOT output_ = f32[5,16] get-tuple-element(tuple_), index=0
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(
+          module_str, {}, HloParserOptions().set_fill_missing_layouts(false)));
+  TF_CHECK_OK(backend()
+                  .compiler()
+                  ->RunHloPasses(m->Clone(),
+                                 backend().default_stream_executor(),
+                                 /*device_allocator=*/nullptr)
+                  .status());
+}
+
 }  // namespace
 }  // namespace xla
