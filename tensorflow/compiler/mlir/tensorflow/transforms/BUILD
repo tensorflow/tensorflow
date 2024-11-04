@@ -957,7 +957,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/stream_executor",
     ],
     alwayslink = 1,
 )
