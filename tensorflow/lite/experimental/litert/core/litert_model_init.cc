@@ -17,6 +17,8 @@
 #define FLATBUFFERS_DEBUG_VERIFICATION_FAILURE
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/allocation.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #endif
 
 #include <cstddef>
@@ -294,57 +296,58 @@ LiteRtStatus ModelUnpacker::Unpack(LiteRtModel model) {
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus RegisterCustomOpCode(LiteRtModel model, const char* new_op_code) {
-  model->custom_op_code.assign(new_op_code);
+LiteRtStatus RegisterCustomOpCode(const Model& model, const char* new_op_code) {
+  model.Get()->custom_op_code.assign(new_op_code);
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LoadModel(std::unique_ptr<tflite::ModelT> flatbuffer,
-                       LiteRtModel* model) {
-  auto litert_model = std::make_unique<LiteRtModelT>();
-  litert_model->flatbuffer_model = std::move(flatbuffer);
-  litert_model->subgraphs.reserve(100);
+namespace {
 
-  LITERT_RETURN_STATUS_IF_NOT_OK(ModelUnpacker::Unpack(litert_model.get()));
+LiteRtResult<Model> LoadModel(std::unique_ptr<tflite::ModelT> flatbuffer) {
+  auto model = Model::CreateFromOwnedHandle(new LiteRtModelT);
+  model.Get()->flatbuffer_model = std::move(flatbuffer);
+  model.Get()->subgraphs.reserve(100);
 
-  litert_model->flatbuffer_model->subgraphs.clear();
-
-  // Set as empty string in case its not set explictly.
-  LITERT_RETURN_STATUS_IF_NOT_OK(RegisterCustomOpCode(litert_model.get(), ""));
-
-  *model = litert_model.release();
-
-  return kLiteRtStatusOk;
-}
-
-LiteRtStatus LoadModel(const uint8_t* buf, size_t buf_size,
-                       LiteRtModel* model) {
-  LITERT_ENSURE(VerifyFlatbuffer(buf, buf_size),
-                kLiteRtStatusErrorInvalidFlatbuffer,
-                "Failed to verify flatbuffer");
-  return LoadModel(tflite::UnPackModel(buf), model);
-}
-
-LiteRtStatus LoadModelFromFile(const char* path, LiteRtModel* model) {
-  std::unique_ptr<tflite::Allocation> alloc =
-      tflite::GetAllocationFromFile(path, tflite::DefaultErrorReporter());
-  if (!alloc->valid()) {
-    return kLiteRtStatusErrorFileIO;
+  if (auto status = ModelUnpacker::Unpack(model.Get());
+      status != kLiteRtStatusOk) {
+    return LiteRtResult<Model>::FromStatus(status);
   }
 
-  return LoadModel(reinterpret_cast<const uint8_t*>(alloc->base()),
-                   alloc->bytes(), model);
+  model.Get()->flatbuffer_model->subgraphs.clear();
+
+  // Set as empty string in case its not set explictly.
+  if (auto status = RegisterCustomOpCode(model, "");
+      status != kLiteRtStatusOk) {
+    return LiteRtResult<Model>::FromStatus(status);
+  }
+
+  return LiteRtResult<Model>::TakeValue(
+      Model::CreateFromOwnedHandle(model.Release()));
 }
 
-LiteRtResult<UniqueLiteRtModel> LoadModel(BufferRef<uint8_t> serialized) {
-  LiteRtModel model;
-  LITERT_RETURN_RESULT_IF_NOT_OK(
-      LoadModel(serialized.Data(), serialized.Size(), &model),
-      UniqueLiteRtModel);
-  return LiteRtResult<UniqueLiteRtModel>::TakeValue(UniqueLiteRtModel(model));
+}  // namespace
+
+LiteRtResult<Model> LoadModelFromBuffer(const void* buf_addr, size_t buf_size) {
+  if (!VerifyFlatbuffer(static_cast<const uint8_t*>(buf_addr), buf_size)) {
+    return LiteRtResult<Model>::FromStatus(kLiteRtStatusErrorInvalidFlatbuffer);
+  }
+  return LoadModel(tflite::UnPackModel(buf_addr));
 }
 
-void DestroyModel(LiteRtModel model) { delete model; }
+LiteRtResult<Model> LoadModelFromFile(const std::string& filename) {
+  std::unique_ptr<tflite::Allocation> alloc = tflite::GetAllocationFromFile(
+      filename.c_str(), tflite::DefaultErrorReporter());
+  if (!alloc->valid()) {
+    return LiteRtResult<Model>::FromStatus(kLiteRtStatusErrorFileIO);
+  }
+
+  return LoadModelFromBuffer(reinterpret_cast<const uint8_t*>(alloc->base()),
+                             alloc->bytes());
+}
+
+LiteRtResult<Model> LoadModelFromBuffer(BufferRef<uint8_t> serialized) {
+  return LoadModelFromBuffer(serialized.Data(), serialized.Size());
+}
 
 //===----------------------------------------------------------------------===//
 //                                 Serialize                                  //
@@ -513,19 +516,20 @@ LiteRtStatus ModelRepacker::Repack(LiteRtModel model) {
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus AppendMetadata(LiteRtModel model, const void* metadata,
+LiteRtStatus AppendMetadata(const Model& model, const void* metadata,
                             size_t metadata_size, const char* metadata_name) {
   BufferRef<uint8_t> m_buf(metadata, metadata_size);
-  return model->PushMetadata(absl::string_view(metadata_name), m_buf);
+  return model.Get()->PushMetadata(absl::string_view(metadata_name), m_buf);
   return kLiteRtStatusOk;
 }
 
-LiteRtResult<OwningBufferRef<uint8_t>> SerializeModel(UniqueLiteRtModel model) {
-  LITERT_RETURN_RESULT_IF_NOT_OK(ModelRepacker::Repack(model.get()),
+LiteRtResult<OwningBufferRef<uint8_t>> SerializeModel(Model&& model) {
+  LITERT_RETURN_RESULT_IF_NOT_OK(ModelRepacker::Repack(model.Get()),
                                  OwningBufferRef<uint8_t>);
 
   flatbuffers::FlatBufferBuilder b;
-  auto model_offset = tflite::Model::Pack(b, model->flatbuffer_model.get());
+  auto model_offset =
+      tflite::Model::Pack(b, model.Get()->flatbuffer_model.get());
   tflite::FinishModelBuffer(b, model_offset);
 
   OwningBufferRef<uint8_t> buffer;
@@ -540,10 +544,10 @@ LiteRtResult<OwningBufferRef<uint8_t>> SerializeModel(UniqueLiteRtModel model) {
   return LiteRtResult<OwningBufferRef<uint8_t>>::TakeValue(std::move(buffer));
 }
 
-LiteRtStatus SerializeModel(LiteRtModel model, uint8_t** buf, size_t* size,
+LiteRtStatus SerializeModel(Model&& model, uint8_t** buf, size_t* size,
                             size_t* offset) {
   LITERT_ASSIGN_OR_RETURN_STATUS(auto serialized,
-                                 SerializeModel(UniqueLiteRtModel(model)));
+                                 SerializeModel(std::move(model)));
   std::tie(*buf, *size, *offset) = serialized.Release();
   return kLiteRtStatusOk;
 }

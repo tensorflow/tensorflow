@@ -22,21 +22,27 @@
 namespace {
 
 TEST(Model, SimpleModel) {
-  auto litert_model = litert::testing::LoadTestFileModel("one_mul.tflite");
-  litert::Model model(litert_model.get());
+  auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
 
+  LiteRtParamIndex num_subgraphs;
+  ASSERT_EQ(LiteRtGetNumModelSubgraphs(model.Get(), &num_subgraphs),
+            kLiteRtStatusOk);
+  EXPECT_EQ(model.NumSubgraphs(), num_subgraphs);
   EXPECT_EQ(model.NumSubgraphs(), 1);
-  auto subgraph_0 = model.Subgraph(0);
-  ASSERT_TRUE(subgraph_0.ok());
-  ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph_0,
-                          litert::internal::GetSubgraph(litert_model.get()));
-  EXPECT_EQ(subgraph_0->Get(), litert_subgraph_0);
 
   LiteRtParamIndex main_subgraph_index;
-  ASSERT_EQ(
-      LiteRtGetMainModelSubgraphIndex(litert_model.get(), &main_subgraph_index),
-      kLiteRtStatusOk);
+  ASSERT_EQ(LiteRtGetMainModelSubgraphIndex(model.Get(), &main_subgraph_index),
+            kLiteRtStatusOk);
   EXPECT_EQ(main_subgraph_index, 0);
+
+  LiteRtSubgraph litert_subgraph_0;
+  ASSERT_EQ(LiteRtGetModelSubgraph(model.Get(), /*subgraph_index=*/0,
+                                   &litert_subgraph_0),
+            kLiteRtStatusOk);
+
+  auto subgraph_0 = model.Subgraph(0);
+  ASSERT_TRUE(subgraph_0.ok());
+  EXPECT_EQ(subgraph_0->Get(), litert_subgraph_0);
 
   auto main_subgraph = model.MainSubgraph();
   EXPECT_EQ(main_subgraph->Get(), subgraph_0->Get());

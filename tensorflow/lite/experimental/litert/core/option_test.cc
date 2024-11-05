@@ -26,9 +26,10 @@
 namespace {
 TEST(GetOpOptionTest, TestGetAddOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_add_op.tflite");
-  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
+
+  auto ops = subgraph->Ops();
   auto op = ops[0];
 
   uint32_t fused_activation;
@@ -39,9 +40,10 @@ TEST(GetOpOptionTest, TestGetAddOptions) {
 TEST(GetOpOptionTest, TestGetBatchMatmulOptions) {
   auto model =
       litert::testing::LoadTestFileModel("simple_batch_matmul_op.tflite");
-  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
+
+  auto ops = subgraph->Ops();
   auto op = ops[0];
 
   bool adj_x;
@@ -61,9 +63,10 @@ TEST(GetOpOptionTest, TestGetBatchMatmulOptions) {
 TEST(GetOpOptionTest, TestGetConcatenationOptions) {
   auto model =
       litert::testing::LoadTestFileModel("simple_concatenation_op.tflite");
-  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
+
+  auto ops = subgraph->Ops();
   auto op = ops[0];
 
   uint32_t fused_activation;
@@ -78,9 +81,10 @@ TEST(GetOpOptionTest, TestGetConcatenationOptions) {
 
 TEST(GetOpOptionTest, TestGetDivOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_div_op.tflite");
-  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
+
+  auto ops = subgraph->Ops();
   auto op = ops[0];
 
   uint32_t fused_activation;
@@ -91,9 +95,10 @@ TEST(GetOpOptionTest, TestGetDivOptions) {
 TEST(GetOpOptionTest, TestGetFullyConnectedOptions) {
   auto model =
       litert::testing::LoadTestFileModel("simple_fully_connected_op.tflite");
-  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
+
+  auto ops = subgraph->Ops();
   auto op = ops[0];
 
   uint32_t fused_activation;
@@ -124,9 +129,10 @@ TEST(GetOpOptionTest, TestGetFullyConnectedOptions) {
 
 TEST(GetOpOptionTest, TestGetMulOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_mul_op.tflite");
-  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
+
+  auto ops = subgraph->Ops();
   auto op = ops[0];
 
   uint32_t fused_activation;
@@ -136,9 +142,10 @@ TEST(GetOpOptionTest, TestGetMulOptions) {
 
 TEST(GetOpOptionTest, TestGetSoftmaxOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_softmax_op.tflite");
-  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
+
+  auto ops = subgraph->Ops();
   auto op = ops[0];
 
   float beta;
@@ -149,9 +156,10 @@ TEST(GetOpOptionTest, TestGetSoftmaxOptions) {
 TEST(GetOpOptionTest, TestGetStridedSliceOptions) {
   auto model =
       litert::testing::LoadTestFileModel("simple_strided_slice_op.tflite");
-  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
+
+  auto ops = subgraph->Ops();
   auto op = ops[0];
 
   int32_t begin_mask;
@@ -182,9 +190,10 @@ TEST(GetOpOptionTest, TestGetStridedSliceOptions) {
 
 TEST(GetOpOptionTest, TestGetSubOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_sub_op.tflite");
-  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
+
+  auto ops = subgraph->Ops();
   auto op = ops[0];
 
   uint32_t fused_activation;
@@ -194,9 +203,10 @@ TEST(GetOpOptionTest, TestGetSubOptions) {
 
 TEST(GetOpOptionTest, TestGetReshapeOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_reshape_op.tflite");
-  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
+
+  auto ops = subgraph->Ops();
   auto op = ops[0];
 
   int32_t* new_shape = nullptr;
@@ -208,9 +218,10 @@ TEST(GetOpOptionTest, TestGetReshapeOptions) {
 
 TEST(GetOpOptionTest, TestGetSumOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_sum_op.tflite");
-  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
+
+  auto ops = subgraph->Ops();
   auto op = ops[0];
 
   bool keepdims;

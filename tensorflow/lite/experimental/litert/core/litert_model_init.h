@@ -16,47 +16,40 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_LITERT_MODEL_INIT_H_
 
 #include <memory>
+#include <string>
 
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
 
 namespace litert::internal {
 
 // Load model from flatbuffer file.
-LiteRtStatus LoadModelFromFile(const char* path, LiteRtModel* model);
+LiteRtResult<Model> LoadModelFromFile(const std::string& filename);
 
 // Load model from flatbuffer memory.
-LiteRtStatus LoadModel(const uint8_t* buf, size_t buf_size, LiteRtModel* model);
+LiteRtResult<Model> LoadModelFromBuffer(const void* buf_addr, size_t buf_size);
+
+LiteRtResult<Model> LoadModelFromBuffer(BufferRef<uint8_t> serialized);
 
 // Add a new custom code to the registry in this model. This will be associated
 // with all custom ops and should only can be set once.
 // TODO consider expanding this to allow for "custom op builder" hook.
-LiteRtStatus RegisterCustomOpCode(LiteRtModel model, const char* new_op_code);
-
-// Destroy model and any associated storage.
-void DestroyModel(LiteRtModel model);
+LiteRtStatus RegisterCustomOpCode(const Model& model, const char* new_op_code);
 
 // Adds given metadata buffer to be serialized with the flatbuffer. Weights can
 // be retrieved at runtime under `metadata_name`.
-LiteRtStatus AppendMetadata(LiteRtModel model, const void* metadata,
+LiteRtStatus AppendMetadata(const Model& model, const void* metadata,
                             size_t metadata_size, const char* metadata_name);
 
 // Serializes model to bytes. NOTE this destroys the model before it returns.
 // NOTE: Caller takes ownership of `buf`. Flatbuffers are packed into their
 // arrays back to front, so the valid flatbuffer is buf[offset, size].
-LiteRtStatus SerializeModel(LiteRtModel model, uint8_t** buf, size_t* size,
+LiteRtStatus SerializeModel(Model&& model, uint8_t** buf, size_t* size,
                             size_t* offset);
 
-struct LiteRtModelDeleter {
-  void operator()(LiteRtModel model) { DestroyModel(model); }
-};
-
-using UniqueLiteRtModel = std::unique_ptr<LiteRtModelT, LiteRtModelDeleter>;
-
-LiteRtResult<OwningBufferRef<uint8_t>> SerializeModel(UniqueLiteRtModel model);
-
-LiteRtResult<UniqueLiteRtModel> LoadModel(BufferRef<uint8_t> serialized);
+LiteRtResult<OwningBufferRef<uint8_t>> SerializeModel(Model&& model);
 
 }  // namespace litert::internal
 

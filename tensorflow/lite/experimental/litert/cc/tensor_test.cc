@@ -24,14 +24,12 @@
 namespace {
 
 TEST(Tensor, SimpleModel) {
-  auto litert_model = litert::testing::LoadTestFileModel("one_mul.tflite");
+  auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
+  EXPECT_EQ(model.NumSubgraphs(), 1);
 
-  ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
-                          litert::internal::GetSubgraph(litert_model.get()));
+  auto subgraph = model.Subgraph(0);
 
-  litert::Subgraph subgraph(litert_subgraph);
-
-  auto inputs = subgraph.Inputs();
+  auto inputs = subgraph->Inputs();
   ASSERT_EQ(inputs.size(), 2);
 
   litert::Tensor input_tensor(inputs[0]);
@@ -54,7 +52,7 @@ TEST(Tensor, SimpleModel) {
   ASSERT_EQ(input_uses.size(), 1);
   ASSERT_EQ(input_user_arg_indices.size(), 1);
 
-  auto outputs = subgraph.Outputs();
+  auto outputs = subgraph->Outputs();
   ASSERT_EQ(outputs.size(), 1);
 
   litert::Tensor output_tensor(outputs[0]);

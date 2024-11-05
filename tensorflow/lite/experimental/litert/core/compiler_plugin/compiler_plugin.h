@@ -24,6 +24,7 @@
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/core/model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
@@ -88,7 +89,7 @@ class CompilerPlugin {
   const std::vector<std::string>& SocModels() const { return soc_models_; }
 
   // Selects ops for the plugin to compile.
-  LiteRtResult<std::vector<LiteRtOp>> PartitionModel(const LiteRtModelT& model);
+  LiteRtResult<std::vector<LiteRtOp>> PartitionModel(const Model& model);
 
   // Compile given LiteRtSubgraphs for target "soc_model". Write compiled byte
   // code to the given stream. For each given subgraph, write opaque data about

@@ -58,10 +58,9 @@ TEST_P(OpCompatibilityTest, SupportedOpsTest) {
   auto test_params = GetParam();
   std::string model_path = absl::StrFormat(kOpTpl, test_params.op_name);
   auto model = litert::testing::LoadTestFileModel(model_path);
-  ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                          ::litert::internal::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops,
-                          ::litert::internal::GetSubgraphOps(subgraph));
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
+  auto ops = subgraph->Ops();
 
   Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();
   ASSERT_STATUS_OK(litert::qnn::LegalizeOp(ops[0], qnn_op));

@@ -27,6 +27,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_support.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
 #include "tensorflow/lite/experimental/litert/core/model.h"
@@ -265,10 +266,10 @@ LiteRtResult<LiteRtApiVersion> CompilerPlugin::ApiVersion() const {
 }
 
 LiteRtResult<std::vector<LiteRtOp>> CompilerPlugin::PartitionModel(
-    const LiteRtModelT& model) {
+    const Model& model) {
   LiteRtOpListT ops;
   // TODO: Use const where appropriate in the C compiler plugin api.
-  LiteRtModel c_model = const_cast<LiteRtModel>(&model);
+  LiteRtModel c_model = model.Get();
   LITERT_RETURN_RESULT_IF_NOT_OK(plugin_api_.compiler_plugin_partition_model(
                                      plugin_handle_, c_model, &ops),
                                  std::vector<LiteRtOp>);

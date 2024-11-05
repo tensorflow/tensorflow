@@ -108,13 +108,10 @@ TEST(TestApplyPluginTool, TestNoop) {
   run->outs.push_back(out);
   ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  LiteRtModel model;
-  ASSERT_STATUS_OK(litert::internal::LoadModel(
-      reinterpret_cast<const uint8_t*>(out.view().data()), out.view().size(),
-      &model));
-  litert::internal::UniqueLiteRtModel u_model(model);
-
-  EXPECT_EQ(model->subgraphs.size(), 1);
+  auto model = litert::internal::LoadModelFromBuffer(
+      reinterpret_cast<const uint8_t*>(out.view().data()), out.view().size());
+  EXPECT_EQ(model.Status(), kLiteRtStatusOk);
+  EXPECT_EQ(model.Value().Get()->subgraphs.size(), 1);
 }
 
 TEST(TestApplyPluginTool, TestPartitionBadConfig) {
@@ -161,14 +158,15 @@ TEST(TestApplyPluginTool, TestApply) {
   run->outs.push_back(out);
   ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  ASSERT_RESULT_OK_MOVE(
-      auto model, litert::internal::LoadModel(
-                      BufferRef<uint8_t>(out.str().data(), out.str().size())));
-  EXPECT_EQ(model->subgraphs.size(), 1);
+  auto model = litert::internal::LoadModelFromBuffer(
+      reinterpret_cast<const uint8_t*>(out.view().data()), out.view().size());
+  EXPECT_EQ(model.Status(), kLiteRtStatusOk);
+  EXPECT_EQ(model.Value().Get()->subgraphs.size(), 1);
 
   {
-    ASSERT_RESULT_OK_ASSIGN(auto stamp_buffer,
-                            GetMetadata(model.get(), kLiteRtBuildStampKey));
+    ASSERT_RESULT_OK_ASSIGN(
+        auto stamp_buffer,
+        GetMetadata(model.Value().Get(), kLiteRtBuildStampKey));
     ASSERT_RESULT_OK_ASSIGN(auto stamp, ParseBuildStamp(stamp_buffer));
     auto [man, soc_model, serial] = stamp;
     EXPECT_EQ(man, kSocManufacturer);
@@ -177,14 +175,15 @@ TEST(TestApplyPluginTool, TestApply) {
   }
 
   {
-    auto custom_op = model->subgraphs.front().ops.front();
+    auto custom_op = model.Value().Get()->subgraphs.front().ops.front();
     ASSERT_EQ(custom_op->op_code, kLiteRtOpCodeTflCustom);
     EXPECT_EQ(custom_op->custom_options.StrView(), "Partition_0");
   }
 
   {
-    ASSERT_RESULT_OK_ASSIGN(auto byte_code_buffer,
-                            GetMetadata(model.get(), kByteCodeMetadataKey));
+    ASSERT_RESULT_OK_ASSIGN(
+        auto byte_code_buffer,
+        GetMetadata(model.Value().Get(), kByteCodeMetadataKey));
     EXPECT_THAT(byte_code_buffer.StrView(),
                 HasSubstr("Partition_0_with_1_muls"));
   }
@@ -205,12 +204,14 @@ TEST(TestApplyPluginTool, TestApplyWithAppendSerialization) {
 
   BufferRef<uint8_t> serialized(out.str().data(), out.str().size());
 
-  ASSERT_RESULT_OK_MOVE(auto model, litert::internal::LoadModel(serialized));
-  EXPECT_EQ(model->subgraphs.size(), 1);
+  auto model = litert::internal::LoadModelFromBuffer(serialized);
+  EXPECT_EQ(model.Status(), kLiteRtStatusOk);
+  EXPECT_EQ(model.Value().Get()->subgraphs.size(), 1);
 
   {
-    ASSERT_RESULT_OK_ASSIGN(auto stamp_buffer,
-                            GetMetadata(model.get(), kLiteRtBuildStampKey));
+    ASSERT_RESULT_OK_ASSIGN(
+        auto stamp_buffer,
+        GetMetadata(model.Value().Get(), kLiteRtBuildStampKey));
     ASSERT_RESULT_OK_ASSIGN(auto stamp, ParseBuildStamp(stamp_buffer));
     auto [man, model, serial] = stamp;
     EXPECT_EQ(man, kSocManufacturer);
@@ -219,7 +220,7 @@ TEST(TestApplyPluginTool, TestApplyWithAppendSerialization) {
   }
 
   {
-    auto custom_op = model->subgraphs.front().ops.front();
+    auto custom_op = model.Value().Get()->subgraphs.front().ops.front();
     ASSERT_EQ(custom_op->op_code, kLiteRtOpCodeTflCustom);
 
     ASSERT_RESULT_OK_ASSIGN(auto options,
@@ -227,7 +228,8 @@ TEST(TestApplyPluginTool, TestApplyWithAppendSerialization) {
     auto [entry_point, metadata_key] = options;
     EXPECT_EQ(entry_point, "Partition_0");
 
-    ASSERT_RESULT_OK_ASSIGN(auto metadata, model->FindMetadata(metadata_key));
+    ASSERT_RESULT_OK_ASSIGN(auto metadata,
+                            model.Value().Get()->FindMetadata(metadata_key));
     ASSERT_RESULT_OK_ASSIGN(auto byte_code_info,
                             ParseByteCodePlaceholder(metadata));
     auto [offset, size] = byte_code_info;

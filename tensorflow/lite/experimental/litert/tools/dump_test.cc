@@ -32,12 +32,13 @@ TEST(DumpTest, TestDump) {
 
   {
     std::ostringstream model_dump;
-    Dump(*model, model_dump);
+    Dump(*model.Get(), model_dump);
     EXPECT_EQ(model_dump.view(), "LiteRtModel : [ #subgraphs=1 ]\n");
   }
 
   {
-    const LiteRtTensorT& in_tensor = *model->subgraphs.front().inputs.front();
+    const LiteRtTensorT& in_tensor =
+        *model.Get()->subgraphs.front().inputs.front();
     std::ostringstream in_tensor_dump;
     Dump(in_tensor, in_tensor_dump);
     EXPECT_EQ(in_tensor_dump.view(),
@@ -45,7 +46,8 @@ TEST(DumpTest, TestDump) {
   }
 
   {
-    const LiteRtTensorT& out_tensor = *model->subgraphs.front().outputs.front();
+    const LiteRtTensorT& out_tensor =
+        *model.Get()->subgraphs.front().outputs.front();
     std::ostringstream out_tensor_dump;
     Dump(out_tensor, out_tensor_dump);
     EXPECT_EQ(out_tensor_dump.view(),
@@ -53,7 +55,7 @@ TEST(DumpTest, TestDump) {
   }
 
   {
-    const LiteRtOpT& op = *model->subgraphs.front().ops.front();
+    const LiteRtOpT& op = *model.Get()->subgraphs.front().ops.front();
     std::ostringstream op_dump;
     Dump(op, op_dump);
     EXPECT_EQ(op_dump.view(),
@@ -61,7 +63,7 @@ TEST(DumpTest, TestDump) {
   }
 
   {
-    const LiteRtSubgraphT& subgraph = model->subgraphs.front();
+    const LiteRtSubgraphT& subgraph = model.Get()->subgraphs.front();
     std::ostringstream subgraph_dump;
     Dump(subgraph, subgraph_dump);
     EXPECT_EQ(
@@ -73,7 +75,7 @@ TEST(DumpTest, TestDump) {
 
 TEST(DumpTest, TestDumpOptions) {
   auto model = LoadTestFileModel("simple_strided_slice_op.tflite");
-  const LiteRtOpT& op = *model->subgraphs.front().ops.front();
+  const LiteRtOpT& op = *model.Get()->subgraphs.front().ops.front();
   std::ostringstream op_dump;
   DumpOptions(op, op_dump);
   EXPECT_EQ(op_dump.view(),
