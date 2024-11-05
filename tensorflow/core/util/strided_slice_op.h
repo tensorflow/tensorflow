@@ -64,7 +64,7 @@ struct StridedSliceShapeSpec {
 // (-1). Any validation that can be done without complete information is
 // performed.
 //
-Status ValidateStridedSliceOp(
+absl::Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
     int32_t begin_mask_spec, int32_t end_mask_spec, int32_t ellipsis_mask,
@@ -77,7 +77,7 @@ Status ValidateStridedSliceOp(
     StridedSliceShapeSpec* shape_spec = nullptr);
 
 // Same as above, but the outputs are TensorShape, not PartialTensorShape
-Status ValidateStridedSliceOp(
+absl::Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
     int32_t begin_mask_spec, int32_t end_mask_spec, int32_t ellipsis_mask,
