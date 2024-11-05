@@ -15,6 +15,15 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_module_group.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_group_metadata.h"

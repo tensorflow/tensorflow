@@ -16,15 +16,20 @@ limitations under the License.
 #include "xla/service/hlo_module_group_util.h"
 
 #include <algorithm>
-#include <list>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <stack>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"

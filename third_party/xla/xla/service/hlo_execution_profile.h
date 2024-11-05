@@ -16,9 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_EXECUTION_PROFILE_H_
 #define XLA_SERVICE_HLO_EXECUTION_PROFILE_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/map_util.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_execution_profile_data.pb.h"

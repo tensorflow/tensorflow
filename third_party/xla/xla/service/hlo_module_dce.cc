@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "xla/service/hlo_module_dce.h"
 
-#include <deque>
+#include <cstdint>
+#include <memory>
+#include <vector>
 
-#include "absl/status/status.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_liveness_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

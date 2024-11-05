@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_module_metadata.h"
 
+#include <cstdint>
+
+#include "xla/service/hlo.pb.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 

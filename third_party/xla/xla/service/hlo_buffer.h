@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_BUFFER_H_
 #define XLA_SERVICE_HLO_BUFFER_H_
 
+#include <cstdint>
 #include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_tree.h"
 #include "xla/types.h"

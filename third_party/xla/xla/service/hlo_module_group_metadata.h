@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_MODULE_GROUP_METADATA_H_
 #define XLA_SERVICE_HLO_MODULE_GROUP_METADATA_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
@@ -23,8 +24,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

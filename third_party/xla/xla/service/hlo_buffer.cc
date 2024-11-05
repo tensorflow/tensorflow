@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <ostream>
-#include <utility>
+#include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_instruction.h"

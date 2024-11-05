@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 

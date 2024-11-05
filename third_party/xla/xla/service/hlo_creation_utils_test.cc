@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/service/hlo_creation_utils.h"
 
+#include <cstdint>
 #include <memory>
 
+#include "absl/log/check.h"
+#include "absl/types/span.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
