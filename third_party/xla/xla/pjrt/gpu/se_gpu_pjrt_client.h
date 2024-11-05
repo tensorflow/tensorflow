@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/shape.h"
@@ -281,27 +282,6 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     std::optional<std::string_view> mock_gpu_topology = std::nullopt,
     absl::Duration get_local_topology_timeout = absl::Minutes(2),
     absl::Duration get_global_topology_timeout = absl::Minutes(5));
-
-struct GpuClientOptions {
-  GpuAllocatorConfig allocator_config;
-
-  int node_id = 0;
-
-  int num_nodes = 1;
-
-  std::optional<std::set<int>> allowed_devices = std::nullopt;
-
-  std::optional<std::string> platform_name = std::nullopt;
-
-  bool should_stage_host_to_device_transfers = true;
-
-  // kv_store must be non-null if num_nodes > 1.
-  std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
-
-  bool enable_mock_nccl = false;
-
-  std::optional<std::string> mock_gpu_topology;
-};
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     const GpuClientOptions& options);

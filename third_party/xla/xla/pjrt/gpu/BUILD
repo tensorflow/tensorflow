@@ -82,6 +82,7 @@ cc_library(
         "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed:topology_util",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:compiler",
         "//xla/service:computation_placer_hdr",
         "//xla/service:executable",

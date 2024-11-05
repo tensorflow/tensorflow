@@ -21,6 +21,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xla_gpu_client_options",
+    srcs = [],
+    hdrs = ["xla_gpu_client_options.h"],
+    deps = [
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/pjrt/gpu:gpu_helpers",
+    ],
+)
+
 xla_test(
     name = "xla_gpu_pjrt_client_test",
     srcs = ["xla_gpu_pjrt_client_test.cc"],
