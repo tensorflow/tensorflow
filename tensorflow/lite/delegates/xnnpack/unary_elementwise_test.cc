@@ -27,7 +27,21 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(ReluMinus1To1, 4D) {
+ToleranceInfo GetTolerance(BuiltinOperator op) {
+  switch (op) {
+    case BuiltinOperator_TANH:
+    case BuiltinOperator_LOGISTIC:
+      return ToleranceInfo{.relative = 1.0e+4f};
+    case BuiltinOperator_GELU:
+      return ToleranceInfo{.relative = 5.0f, .absolute = 10.0f};
+    default:
+      return ToleranceInfo{};
+  }
+}
+
+class UnaryTest : public testing::TestWithParam<BuiltinOperator> {};
+
+TEST_P(UnaryTest, 4D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -43,10 +57,11 @@ TEST(ReluMinus1To1, 4D) {
 
   UnaryElementwiseTester()
       .Shape({batch, height, width, channels})
-      .Test(BuiltinOperator_RELU_N1_TO_1, xnnpack_delegate.get());
+      .Tolerance(GetTolerance(GetParam()))
+      .Test(GetParam(), xnnpack_delegate.get());
 }
 
-TEST(ReluMinus1To1, 3D) {
+TEST_P(UnaryTest, 3D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -61,10 +76,11 @@ TEST(ReluMinus1To1, 3D) {
 
   UnaryElementwiseTester()
       .Shape({batch, width, channels})
-      .Test(BuiltinOperator_RELU_N1_TO_1, xnnpack_delegate.get());
+      .Tolerance(GetTolerance(GetParam()))
+      .Test(GetParam(), xnnpack_delegate.get());
 }
 
-TEST(ReluMinus1To1, 2D) {
+TEST_P(UnaryTest, 2D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -78,10 +94,11 @@ TEST(ReluMinus1To1, 2D) {
 
   UnaryElementwiseTester()
       .Shape({batch, channels})
-      .Test(BuiltinOperator_RELU_N1_TO_1, xnnpack_delegate.get());
+      .Tolerance(GetTolerance(GetParam()))
+      .Test(GetParam(), xnnpack_delegate.get());
 }
 
-TEST(ReluMinus1To1, 1D) {
+TEST_P(UnaryTest, 1D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -92,11 +109,13 @@ TEST(ReluMinus1To1, 1D) {
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
   const auto batch = shape_rng();
 
-  UnaryElementwiseTester().Shape({batch}).Test(BuiltinOperator_RELU_N1_TO_1,
-                                               xnnpack_delegate.get());
+  UnaryElementwiseTester()
+      .Shape({batch})
+      .Tolerance(GetTolerance(GetParam()))
+      .Test(GetParam(), xnnpack_delegate.get());
 }
 
-TEST(ReluMinus1To1, MultiThreading) {
+TEST_P(UnaryTest, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
@@ -115,8 +134,24 @@ TEST(ReluMinus1To1, MultiThreading) {
 
   UnaryElementwiseTester()
       .Shape({batch, height, width, channels})
-      .Test(BuiltinOperator_RELU_N1_TO_1, xnnpack_delegate.get());
+      .Tolerance(GetTolerance(GetParam()))
+      .Test(GetParam(), xnnpack_delegate.get());
 }
+
+BuiltinOperator all_unary_ops[] = {
+    BuiltinOperator_ABS,          BuiltinOperator_CEIL,   BuiltinOperator_ELU,
+    BuiltinOperator_FLOOR,        BuiltinOperator_GELU,   BuiltinOperator_NEG,
+    BuiltinOperator_HARD_SWISH,   BuiltinOperator_RELU,   BuiltinOperator_RELU6,
+    BuiltinOperator_RELU_N1_TO_1, BuiltinOperator_ROUND,  BuiltinOperator_RSQRT,
+    BuiltinOperator_SQRT,         BuiltinOperator_SQUARE, BuiltinOperator_TANH,
+    BuiltinOperator_LOGISTIC,
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    UnaryTest, UnaryTest, testing::ValuesIn(all_unary_ops),
+    [](const testing::TestParamInfo<UnaryTest::ParamType>& info) {
+      return EnumNameBuiltinOperator(info.param);
+    });
 
 }  // namespace xnnpack
 }  // namespace tflite
