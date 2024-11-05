@@ -303,6 +303,7 @@ cc_library(
         "//xla/service:computation_layout",
         "//xla/service:sharding_propagation",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

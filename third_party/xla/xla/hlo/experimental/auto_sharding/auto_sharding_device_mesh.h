@@ -37,6 +37,8 @@ struct DeviceMesh {
     is_iota = true;
   }
 
+  bool operator==(const DeviceMesh& other) const = default;
+
   void SetValues(absl::Span<const int64_t> values);
 
   int64_t num_dimensions() const { return device_array.num_dimensions(); }
@@ -78,6 +80,11 @@ struct DeviceMesh {
   void Each(
       absl::FunctionRef<void(absl::Span<const int64_t>, int64_t)> f) const {
     device_array.Each(f);
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const DeviceMesh& mesh) {
+    return H::combine(std::move(h), mesh.device_array, mesh.is_iota);
   }
 };
 
