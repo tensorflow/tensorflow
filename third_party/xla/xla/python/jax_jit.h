@@ -214,8 +214,6 @@ struct CallSignature {
   std::optional<nanobind::object> global_extra_jit_context;
   std::optional<nanobind::object> thread_local_extra_jit_context;
 
-  std::vector<nanobind::object> configs;
-
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
     return !(*this == other);
