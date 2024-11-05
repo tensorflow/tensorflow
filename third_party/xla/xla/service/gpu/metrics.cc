@@ -113,8 +113,8 @@ void RecordGpuCompilerStacktrace() {
   stack.pop_back();
 
   const int kMaxStackDepth = 10;
-  while (stack.size() > kMaxStackDepth) {
-    stack.pop_back();
+  if (stack.size() > kMaxStackDepth) {
+    stack.resize(kMaxStackDepth);
   }
 
   // Stack traces with addresses would make too many unique streamz cells.
