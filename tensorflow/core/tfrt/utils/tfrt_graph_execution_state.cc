@@ -120,18 +120,20 @@ absl::StatusOr<absl::flat_hash_set<std::string>> PreprocessGraph(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<TfrtGraphExecutionState>>
-TfrtGraphExecutionState::Create(const TfrtGraphExecutionState::Options& options,
-                                tensorflow::GraphDef graph_def,
-                                const FallbackState& fallback_state) {
+TfrtGraphExecutionState::Create(
+    const TfrtGraphExecutionState::Options& options,
+    tensorflow::GraphDef graph_def, const FallbackState& fallback_state,
+    tensorflow::tfrt_stub::RuntimeConfig* runtime_config) {
   TF_ASSIGN_OR_RETURN(
       auto functions_to_optimize,
       PreprocessGraph(graph_def, options.run_placer_grappler_on_functions));
 
   // `CreateGraphExecutionState()` will preprocess the graph (e.g., apply
   // Placer to the top level graph).
-  TF_ASSIGN_OR_RETURN(auto graph_execution_state,
-                      fallback_state.CreateGraphExecutionState(
-                          std::move(graph_def), options.run_placer_on_graph));
+  TF_ASSIGN_OR_RETURN(
+      auto graph_execution_state,
+      fallback_state.CreateGraphExecutionState(
+          std::move(graph_def), options.run_placer_on_graph, runtime_config));
 
   return std::make_unique<TfrtGraphExecutionState>(
       options, std::move(graph_execution_state), fallback_state,

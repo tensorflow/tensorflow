@@ -584,7 +584,9 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
             &context, meta_graph_def, *fallback_state,
             std::string(saved_model_dir),
             /*import_user_signatures=*/!options.enable_lazy_loading,
-            options.graph_execution_options.run_placer_grappler_on_functions));
+            options.graph_execution_options.run_placer_grappler_on_functions,
+            /*import_signature_names=*/{},
+            &options.graph_execution_options.runtime_config));
   }
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
@@ -720,7 +722,8 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
                             std::move(fallback_state),
                             std::move(resource_context),
                             std::move(*meta_graph_def.mutable_graph_def()),
-                            std::move(kernel_registry)));
+                            std::move(kernel_registry),
+                            &options.graph_execution_options.runtime_config));
 
   symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(mlir_module.get());
   const auto compile_duration = absl::Now() - compile_start_time;

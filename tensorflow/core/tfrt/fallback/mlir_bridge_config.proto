@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package tensorflow.tfrt_stub;
+
+message MlirBridgeConfig {
+  bool disable_mlir_bridge = 1;
+}

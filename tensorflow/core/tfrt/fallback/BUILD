@@ -38,7 +38,9 @@ cc_library(
     name = "fallback_state",
     srcs = ["fallback_state.cc"],
     hdrs = ["fallback_state.h"],
+    visibility = ["//visibility:public"],
     deps = [
+        ":mlir_bridge_config_proto_cc",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -48,7 +50,9 @@ cc_library(
         "//tensorflow/core/common_runtime:device_set",
         "//tensorflow/core/framework:device_attributes_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/platform:stacktrace",
         "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/tfrt/graph_executor:config",
         "//tensorflow/core/tpu:virtual_device",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/status",
@@ -173,4 +177,9 @@ tf_cuda_cc_test(
 tf_proto_library(
     name = "op_cost_map_proto",
     srcs = ["op_cost_map.proto"],
+)
+
+tf_proto_library(
+    name = "mlir_bridge_config_proto",
+    srcs = ["mlir_bridge_config.proto"],
 )

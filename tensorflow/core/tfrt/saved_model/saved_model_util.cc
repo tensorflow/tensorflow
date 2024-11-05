@@ -247,7 +247,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
     bool import_user_signatures, bool run_placer_grappler_on_functions,
-    const std::vector<std::string>& import_signature_names) {
+    const std::vector<std::string>& import_signature_names,
+    tensorflow::tfrt_stub::RuntimeConfig* runtime_config) {
   std::vector<std::string> signature_names;
   if (import_user_signatures) {
     if (!import_signature_names.empty()) {
@@ -269,7 +270,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
   TF_ASSIGN_OR_RETURN(auto import_input,
                       TfrtSavedModelMLIRImportInput::Create(
                           fallback_state, &meta_graph_def, /*debug_info=*/{},
-                          run_placer_grappler_on_functions));
+                          run_placer_grappler_on_functions, runtime_config));
 
   TF_ASSIGN_OR_RETURN(
       auto module,

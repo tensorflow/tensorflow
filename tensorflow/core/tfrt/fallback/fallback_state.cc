@@ -36,10 +36,12 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/tfrt/fallback/mlir_bridge_config.pb.h"
 #include "tensorflow/core/tpu/virtual_device.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
@@ -155,8 +157,9 @@ FallbackState::FallbackState(const SessionOptions &session_options,
 }
 
 absl::StatusOr<std::unique_ptr<GraphExecutionState>>
-FallbackState::CreateGraphExecutionState(GraphDef graph_def,
-                                         bool run_placer) const {
+FallbackState::CreateGraphExecutionState(
+    GraphDef graph_def, bool run_placer,
+    tensorflow::tfrt_stub::RuntimeConfig *runtime_config) const {
   // Create GraphExecutionState which contains the preprocessed graph including
   // device information. The following code is adapted from
   // http://cs?q=tensorflow/core/common_runtime/direct_session.cc:427%20at_cl:352783230
@@ -166,6 +169,26 @@ FallbackState::CreateGraphExecutionState(GraphDef graph_def,
   options.session_options = &session_options_;
   options.session_handle = "tfrt_fallback_handle";
   options.run_placer = run_placer;
+
+  if (runtime_config != nullptr) {
+    LOG(INFO) << "runtime_config is not null\n"
+              << runtime_config->ToProto().DebugString();
+    LOG(INFO) << tensorflow::CurrentStackTrace();
+  } else {
+    LOG(INFO) << "runtime_config is null\n";
+    LOG(INFO) << tensorflow::CurrentStackTrace();
+  }
+
+  bool disable_tf2xla_mlir_bridge = false;
+  if (runtime_config != nullptr) {
+    if (auto compilation_config =
+            runtime_config->Get<tensorflow::tfrt_stub::MlirBridgeConfig>();
+        compilation_config.ok()) {
+      LOG(INFO) << "disable_mlir_bridge is "
+                << compilation_config->disable_mlir_bridge();
+      disable_tf2xla_mlir_bridge = compilation_config->disable_mlir_bridge();
+    }
+  }
 
   std::unique_ptr<GraphExecutionState> execution_state;
   TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(
