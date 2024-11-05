@@ -732,3 +732,15 @@ func.func @int4_constant(%arg0: tensor<3xi4>, %arg1: index) -> i4 {
 // CHECK: llvm.mlir.global private constant
 // CHECK-SAME: dense<[18, 48]>
 // CHECK-LABEL: @int4_constant
+
+// -----
+
+func.func @complex_expm1_approx(%arg0: tensor<3xcomplex<f32>>, %i: index)
+    -> complex<f32> {
+  %extracted = tensor.extract %arg0[%i] : tensor<3xcomplex<f32>>
+  %expm1 = complex.expm1 %extracted : complex<f32>
+  return %expm1 : complex<f32>
+}
+// CHECK-LABEL: @complex_expm1_approx
+// CHECK: math.expm1
+// CHECK-COUNT-6: math.fma
