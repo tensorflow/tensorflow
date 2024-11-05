@@ -147,6 +147,7 @@ limitations under the License.
 #include "xla/service/float_support.h"
 #include "xla/service/gather_expander.h"
 #include "xla/service/gpu/all_gather_combiner.h"
+#include "xla/service/gpu/all_reduce_combiner.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/custom_kernel_fusion_autotuner.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
@@ -1104,9 +1105,10 @@ absl::Status RunPostFusionPasses(
       /*combine_threshold_count=*/256,
       /*combine_by_dim=*/opts.xla_gpu_enable_all_gather_combine_by_dim(),
       /*combine_different_dtypes=*/true, /*pointer_size=*/pointer_size);
-  pipeline.AddPass<AllReduceCombiner>(
+  pipeline.AddPass<GpuAllReduceCombiner>(
+      device_description, kDefaultAllReduceCombineThreshold,
       opts.xla_gpu_all_reduce_combine_threshold_bytes(),
-      /*combine_threshold_count=*/256);
+      /*combine_threshold_count=*/256, /*pointer_size=*/pointer_size);
   pipeline.AddPass<GpuReduceScatterCombiner>(
       device_description, /*default_combine_threshold_in_bytes=*/
       kDefaultReduceScatterCombineThreshold,

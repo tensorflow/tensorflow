@@ -1436,6 +1436,7 @@ cc_library(
         ":fusion_dispatch_pipeline",
         ":fusion_pipeline",
         ":gpu_all_gather_combiner",
+        ":gpu_all_reduce_combiner",
         ":gpu_constants",
         ":gpu_executable",
         ":gpu_float_support",
@@ -1607,10 +1608,7 @@ cc_library(
         "//xla/service:call_inliner",
         "//xla/service:collective_permute_decomposer",
         "//xla/service:collective_pipeliner",
-        "//xla/service:collective_quantizer",
         "//xla/service:collective_utils",
-        "//xla/service:collectives_schedule_linearizer",
-        "//xla/service:comparison_expander",
         "//xla/service:compiler",
         "//xla/service:conditional_simplifier",
         "//xla/service:copy_insertion",
@@ -1649,9 +1647,12 @@ cc_library(
         "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:dnn",
+        "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/monitoring:counter",
         "//xla:autotune_results_proto_cc",
         "//xla:debug_options_flags",
@@ -1676,11 +1677,7 @@ cc_library(
         # go/keep-sorted end
     ]) + xla_internal(["service:export_hlo"]) + if_google([
         "//xla/hlo/experimental/auto_sharding",
-    ]) + [
-        "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:stream_executor_h",
-    ],
+    ]),
 )
 
 xla_test(
