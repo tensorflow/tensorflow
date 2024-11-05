@@ -15,10 +15,19 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/ram_file_block_cache.h"
 
+#include <algorithm>
+#include <cctype>
+#include <chrono>
+#include <cstdint>
 #include <cstring>
+#include <list>
+#include <memory>
+#include <set>
+#include <vector>
 
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/cloud/now_seconds_env.h"
