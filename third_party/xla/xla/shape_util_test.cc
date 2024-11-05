@@ -1225,9 +1225,11 @@ TEST(ShapeUtilTest, Int4ShapeSize) {
   EXPECT_EQ(ShapeUtil::ArrayDataSize(int4_shape2), 9216 * 6144 / 2);
   EXPECT_EQ(ShapeUtil::ArraySize(int4_shape2), 9216 * 6144 / 2);
 
-  // Changing the type to PRED should clear element_size_in_bits.
+  // Changing the type should clear element_size_in_bits.
   Shape pred_shape = ShapeUtil::ChangeElementType(int4_shape, PRED);
   EXPECT_EQ(pred_shape.layout().element_size_in_bits(), 0);
+  Shape u8_shape = ShapeUtil::ChangeElementType(int4_shape, U8);
+  EXPECT_EQ(u8_shape.layout().element_size_in_bits(), 0);
   Shape u4_shape = ShapeUtil::ChangeElementType(int4_shape, U4);
   EXPECT_EQ(u4_shape.layout().element_size_in_bits(), 4);
 }

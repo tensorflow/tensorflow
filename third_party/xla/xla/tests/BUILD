@@ -1588,6 +1588,8 @@ xla_test(
         ":xla_internal_test_main",
         "//xla:test",
         "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
     ],
 )

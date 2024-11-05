@@ -1067,7 +1067,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   } else {
     Shape new_shape = original;
     new_shape.set_element_type(type);
-    if (new_shape.has_layout() && type == PRED) {
+    if (new_shape.has_layout() && !primitive_util::IsSubByteNonPredType(type)) {
       new_shape.mutable_layout()->set_element_size_in_bits(0);
     }
     return new_shape;

@@ -75,6 +75,7 @@ absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kFusion:
     case HloOpcode::kGetTupleElement:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kParameter:
     case HloOpcode::kSlice:
     case HloOpcode::kTuple:
@@ -86,7 +87,9 @@ absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
       }
       ABSL_FALLTHROUGH_INTENDED;
     default:
-      return verify_subshape(instruction);
+      if (!instruction->IsElementwise()) {
+        return verify_subshape(instruction);
+      }
   }
 
   return absl::OkStatus();

@@ -162,7 +162,7 @@ TEST_F(TritonGemmTest, RejectDotInt4HLO) {
               StatusIs(tsl::error::INVALID_ARGUMENT));
 }
 
-TEST_F(TritonGemmTest, RejectInt4NegatePlusConvertHLO) {
+TEST_F(TritonGemmTest, Int4NegatePlusConvertHLO) {
   constexpr std::string_view kHloText = R"(
     HloModule t
 
@@ -178,8 +178,8 @@ TEST_F(TritonGemmTest, RejectInt4NegatePlusConvertHLO) {
           rhs_batch_dims={0}
     }
   )";
-  EXPECT_THAT(GetOptimizedModule(kHloText).status(),
-              StatusIs(tsl::error::INVALID_ARGUMENT));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, RejectTritonFusionForInt4WithMinorBatchDim) {
