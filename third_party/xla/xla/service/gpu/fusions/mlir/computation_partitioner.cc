@@ -108,15 +108,6 @@ std::string PartitionedComputation::ToString(int indentation) const {
   return ss.str();
 }
 
-std::string PartitionedComputations::ToString() const {
-  std::ostringstream ss;
-  ss << "PartitionedComputations:";
-  for (const auto& partitioned_computation : partitioned_computations_) {
-    ss << "\n" << partitioned_computation.ToString();
-  }
-  return ss.str();
-}
-
 template <typename C, typename F>
 bool AllIdentical(const C& c, F&& f) {
   auto begin = std::begin(c);

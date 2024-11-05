@@ -139,11 +139,6 @@ struct MlirReductionFusion::EmitterState {
                             const HloValueMap& per_thread_values,
                             int max_dist = WarpSize() / 2);
 
-  SmallVector<Value> FusionParams() {
-    return ValueRange(entry_function.getArguments().take_front(
-        fusion.fused_parameters().size()));
-  }
-
   mlir::ValueRange FusionOutputs() {
     return entry_function.getArguments().drop_front(
         fusion.fused_parameters().size());
@@ -1051,12 +1046,6 @@ IndexingMap MlirMultiRowReductionFusion::ComputeReductionOutputIndexing(
   // by GetIndexingMap (since they don't show up in the output index
   // computation).
   return projected_index;
-}
-
-int MlirMultiRowReductionFusion::GetRowsPerWarp() const {
-  return RowReductionGetRowsPerWarp(
-             input_shape_[ReductionDimensions::kRowMinorReducedDimension]) *
-         tile_sizes_per_thread_[1];
 }
 
 llvm::SmallVector<mlir::Value> MlirMultiRowReductionFusion::EmitReduction(

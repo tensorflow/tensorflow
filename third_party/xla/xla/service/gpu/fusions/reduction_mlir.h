@@ -99,10 +99,6 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
       absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints,
       absl::Span<int64_t const> symbol_sizes = {}) const;
 
-  Shape GetReduceOperandShape() const {
-    return first_reduce_->operand(0)->shape();
-  }
-
   // Returns the input indexing. The inputs are given in the projected shape
   // (i.e., the indexing map has three results).
   virtual IndexingMap ComputeReductionInputIndexing(
@@ -187,7 +183,6 @@ class MlirMultiRowReductionFusion : public MlirReductionFusion {
       const ReductionDimensions& reduction_dimensions,
       const absl::InlinedVector<int64_t, 4>& num_threads);
 
-  int GetRowsPerWarp() const;
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
   IndexingMap ComputeReductionInputIndexing(

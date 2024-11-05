@@ -47,16 +47,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-bool IsParameterOrGteOfParameter(const HloInstruction* instr) {
-  if (instr->opcode() == HloOpcode::kParameter) {
-    return true;
-  }
-  if (instr->opcode() == HloOpcode::kGetTupleElement) {
-    return IsParameterOrGteOfParameter(instr->operand(0));
-  }
-  return false;
-}
-
 bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
   return absl::c_all_of(
       analysis.fusion_roots(), [](const HloInstructionAdaptor& root) {

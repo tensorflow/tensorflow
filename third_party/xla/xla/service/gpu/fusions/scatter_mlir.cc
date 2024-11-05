@@ -76,18 +76,6 @@ MlirScatterFusion::MlirScatterFusion(const HloFusionAnalysis& analysis)
   config_ = ComputeLoopFusionConfig(analysis, scatter_update_shape);
 }
 
-bool MlirScatterFusion::IsSupported(const HloFusionAnalysis& analysis) {
-  const auto* scatter =
-      Cast<HloScatterInstruction>(&analysis.fusion_hero(0).instruction());
-  if (scatter->scatter_operand_count() != 1) {
-    LOG(ERROR) << "Variadic scatter is not supported like in the legacy "
-                  "emitter, although it is possible to make it work when the "
-                  "indices are unique.";
-    return false;
-  }
-  return true;
-}
-
 std::optional<IndexingMap> MlirScatterFusion::ComputeThreadIdToOutputIndexing(
     int64_t root_index, mlir::MLIRContext* ctx) const {
   return std::nullopt;

@@ -184,8 +184,6 @@ class PartitionedComputations {
                       mlir::func::FuncOp>
   DeclareFunctions(mlir::ModuleOp module) const;
 
-  std::string ToString() const;
-
  private:
   std::vector<PartitionedComputation> partitioned_computations_;
   absl::flat_hash_map<const HloComputation*, const PartitionedComputation*>

@@ -608,38 +608,6 @@ SmallVector<Value, 1> MapElementwiseOp(
 
 }  // namespace
 
-Value UnrealizedConversionCast(mlir::Type type, Value value,
-                               ImplicitLocOpBuilder& b) {
-  SmallVector<Value> converted;
-  b.createOrFold<mlir::UnrealizedConversionCastOp>(converted, type, value);
-  return converted.front();
-}
-
-SmallVector<Value, 2> UnrealizedConversionCast(mlir::TypeRange types,
-                                               ValueRange values,
-                                               ImplicitLocOpBuilder& b) {
-  SmallVector<Value, 2> converted;
-  for (auto [type, value] : llvm::zip(types, values)) {
-    converted.push_back(UnrealizedConversionCast(type, value, b));
-  }
-  return converted;
-}
-
-Value ApplyAffineExpr(mlir::AffineExpr expr, ValueRange dims,
-                      ValueRange symbols, ImplicitLocOpBuilder& b) {
-  // For unknown (but undoubtedly good) reasons, affine.apply removes unused
-  // trailing dimensions, but only in the expression.
-  while (!dims.empty() && !expr.isFunctionOfDim(dims.size() - 1)) {
-    dims = dims.drop_back();
-  }
-  while (!symbols.empty() && !expr.isFunctionOfSymbol(symbols.size() - 1)) {
-    symbols = symbols.drop_back();
-  }
-  SmallVector<Value> args(dims);
-  absl::c_copy(symbols, std::back_inserter(args));
-  return b.createOrFold<mlir::affine::AffineApplyOp>(expr, args);
-}
-
 SmallVector<Value, 3> ApplyIndexing(IndexingMap map, ValueRange dims,
                                     ValueRange symbols,
                                     ImplicitLocOpBuilder& b) {
