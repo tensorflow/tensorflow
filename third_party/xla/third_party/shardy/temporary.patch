@@ -1,267 +1,621 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 99cc661..509398d 100644
+index 509398d..babbda4 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,214 +1 @@
+@@ -1 +1,601 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/clang/include/clang/Driver/Options.td b/clang/include/clang/Driver/Options.td
----- a/clang/include/clang/Driver/Options.td
--+++ b/clang/include/clang/Driver/Options.td
--@@ -1786,12 +1786,6 @@
--   PosFlag<SetTrue, [], [ClangOption, CC1Option],
--           "Emit extra debug info to make sample profile more accurate">,
--   NegFlag<SetFalse>>;
---def fprofile_generate_cold_function_coverage : Flag<["-"], "fprofile-generate-cold-function-coverage">, 
---    Group<f_Group>, Visibility<[ClangOption, CLOption]>,
---    HelpText<"Generate instrumented code to collect coverage info for cold functions into default.profraw file (overridden by '=' form of option or LLVM_PROFILE_FILE env var)">;
---def fprofile_generate_cold_function_coverage_EQ : Joined<["-"], "fprofile-generate-cold-function-coverage=">, 
---    Group<f_Group>, Visibility<[ClangOption, CLOption]>, MetaVarName<"<directory>">,
---    HelpText<"Generate instrumented code to collect coverage info for cold functions into <directory>/default.profraw (overridden by LLVM_PROFILE_FILE env var)">; 
-- def fprofile_instr_generate : Flag<["-"], "fprofile-instr-generate">,
--     Group<f_Group>, Visibility<[ClangOption, CLOption]>,
--     HelpText<"Generate instrumented code to collect execution counts into default.profraw file (overridden by '=' form of option or LLVM_PROFILE_FILE env var)">;
--diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChain.cpp b/clang/lib/Driver/ToolChain.cpp
----- a/clang/lib/Driver/ToolChain.cpp
--+++ b/clang/lib/Driver/ToolChain.cpp
--@@ -897,9 +897,7 @@
--          Args.hasArg(options::OPT_fprofile_instr_generate) ||
--          Args.hasArg(options::OPT_fprofile_instr_generate_EQ) ||
--          Args.hasArg(options::OPT_fcreate_profile) ||
---         Args.hasArg(options::OPT_forder_file_instrumentation) ||
---         Args.hasArg(options::OPT_fprofile_generate_cold_function_coverage) ||
---         Args.hasArg(options::OPT_fprofile_generate_cold_function_coverage_EQ);
--+         Args.hasArg(options::OPT_forder_file_instrumentation);
-- }
-- 
-- bool ToolChain::needsGCovInstrumentation(const llvm::opt::ArgList &Args) {
--diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
----- a/clang/lib/Driver/ToolChains/Clang.cpp
--+++ b/clang/lib/Driver/ToolChains/Clang.cpp
--@@ -632,26 +632,6 @@
--     }
--   }
-- 
---  if (auto *ColdFuncCoverageArg = Args.getLastArg(
---          options::OPT_fprofile_generate_cold_function_coverage,
---          options::OPT_fprofile_generate_cold_function_coverage_EQ)) {
---    SmallString<128> Path(
---        ColdFuncCoverageArg->getOption().matches(
---            options::OPT_fprofile_generate_cold_function_coverage_EQ)
---            ? ColdFuncCoverageArg->getValue()
---            : "");
---    llvm::sys::path::append(Path, "default_%m.profraw");
---    // FIXME: Idealy the file path should be passed through
---    // `-fprofile-instrument-path=`(InstrProfileOutput), however, this field is
---    // shared with other profile use path(see PGOOptions), we need to refactor
---    // PGOOptions to make it work.
---    CmdArgs.push_back("-mllvm");
---    CmdArgs.push_back(Args.MakeArgString(
---        Twine("--instrument-cold-function-only-path=") + Path));
---    CmdArgs.push_back("-mllvm");
---    CmdArgs.push_back("--pgo-function-entry-coverage");
---  }
---
--   Arg *PGOGenArg = nullptr;
--   if (PGOGenerateArg) {
--     assert(!CSPGOGenerateArg);
--diff -ruN --strip-trailing-cr a/clang/test/CodeGen/pgo-cold-function-coverage.c b/clang/test/CodeGen/pgo-cold-function-coverage.c
----- a/clang/test/CodeGen/pgo-cold-function-coverage.c
--+++ b/clang/test/CodeGen/pgo-cold-function-coverage.c
--@@ -1,19 +0,0 @@
---// Test -fprofile-generate-cold-function-coverage 
---
---// RUN: rm -rf %t && split-file %s %t
---// RUN: %clang --target=x86_64 -O2 -fprofile-generate-cold-function-coverage=/xxx/yyy/ -fprofile-sample-accurate -fprofile-sample-use=%t/pgo-cold-func.prof  -S -emit-llvm -o - %t/pgo-cold-func.c | FileCheck %s
---
---// CHECK: @__llvm_profile_filename = {{.*}} c"/xxx/yyy/default_%m.profraw\00"
---
---// CHECK: store i8 0, ptr @__profc_bar, align 1
---// CHECK-NOT: @__profc_foo 
---
---//--- pgo-cold-func.prof
---foo:1:1
--- 1: 1
---
---//--- pgo-cold-func.c
---int bar(int x) { return x;}
---int foo(int x) { 
---    return x;
---}
--diff -ruN --strip-trailing-cr a/clang/test/Driver/fprofile-generate-cold-function-coverage.c b/clang/test/Driver/fprofile-generate-cold-function-coverage.c
----- a/clang/test/Driver/fprofile-generate-cold-function-coverage.c
--+++ b/clang/test/Driver/fprofile-generate-cold-function-coverage.c
--@@ -1,8 +0,0 @@
---// RUN: %clang -### -c -fprofile-generate-cold-function-coverage %s 2>&1 | FileCheck %s
---// CHECK: "--instrument-cold-function-only-path=default_%m.profraw" 
---// CHECK: "--pgo-function-entry-coverage"
---// CHECK-NOT:  "-fprofile-instrument"
---// CHECK-NOT:  "-fprofile-instrument-path=
---
---// RUN: %clang -### -c -fprofile-generate-cold-function-coverage=dir %s 2>&1 | FileCheck %s --check-prefix=CHECK-EQ
---// CHECK-EQ: "--instrument-cold-function-only-path=dir{{/|\\\\}}default_%m.profraw" 
--diff -ruN --strip-trailing-cr a/llvm/lib/Passes/PassBuilderPipelines.cpp b/llvm/lib/Passes/PassBuilderPipelines.cpp
----- a/llvm/lib/Passes/PassBuilderPipelines.cpp
--+++ b/llvm/lib/Passes/PassBuilderPipelines.cpp
--@@ -296,12 +296,7 @@
--     "enable-loop-versioning-licm", cl::init(false), cl::Hidden,
--     cl::desc("Enable the experimental Loop Versioning LICM pass"));
-- 
---static cl::opt<std::string> InstrumentColdFuncOnlyPath(
---    "instrument-cold-function-only-path", cl::init(""),
---    cl::desc("File path for cold function only instrumentation"), cl::Hidden);
---
-- extern cl::opt<std::string> UseCtxProfile;
---extern cl::opt<bool> PGOInstrumentColdFunctionOnly;
-- 
-- namespace llvm {
-- extern cl::opt<bool> EnableMemProfContextDisambiguation;
--@@ -1187,13 +1182,8 @@
--   const bool IsCtxProfUse =
--       !UseCtxProfile.empty() && Phase == ThinOrFullLTOPhase::ThinLTOPreLink;
-- 
---  // Enable cold function coverage instrumentation if
---  // InstrumentColdFuncOnlyPath is provided.
---  const bool IsColdFuncOnlyInstrGen = PGOInstrumentColdFunctionOnly =
---      IsPGOPreLink && !InstrumentColdFuncOnlyPath.empty();
---
--   if (IsPGOInstrGen || IsPGOInstrUse || IsMemprofUse || IsCtxProfGen ||
---      IsCtxProfUse || IsColdFuncOnlyInstrGen)
--+      IsCtxProfUse)
--     addPreInlinerPasses(MPM, Level, Phase);
-- 
--   // Add all the requested passes for instrumentation PGO, if requested.
--@@ -1215,11 +1205,6 @@
--       return MPM;
--     addPostPGOLoopRotation(MPM, Level);
--     MPM.addPass(PGOCtxProfLoweringPass());
---  } else if (IsColdFuncOnlyInstrGen) {
---    addPGOInstrPasses(
---        MPM, Level, /* RunProfileGen */ true, /* IsCS */ false,
---        /* AtomicCounterUpdate */ false, InstrumentColdFuncOnlyPath,
---        /* ProfileRemappingFile */ "", IntrusiveRefCntPtr<vfs::FileSystem>());
--   }
-- 
--   if (IsPGOInstrGen || IsPGOInstrUse || IsCtxProfGen)
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp b/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
----- a/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
--+++ b/llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp
--@@ -319,20 +319,6 @@
--     cl::desc("Do not instrument functions with the number of critical edges "
--              " greater than this threshold."));
-- 
---static cl::opt<uint64_t> PGOColdInstrumentEntryThreshold(
---    "pgo-cold-instrument-entry-threshold", cl::init(0), cl::Hidden,
---    cl::desc("For cold function instrumentation, skip instrumenting functions "
---             "whose entry count is above the given value."));
---
---static cl::opt<bool> PGOTreatUnknownAsCold(
---    "pgo-treat-unknown-as-cold", cl::init(false), cl::Hidden,
---    cl::desc("For cold function instrumentation, treat count unknown(e.g. "
---             "unprofiled) functions as cold."));
---
---cl::opt<bool> PGOInstrumentColdFunctionOnly(
---    "pgo-instrument-cold-function-only", cl::init(false), cl::Hidden,
---    cl::desc("Enable cold function only instrumentation."));
---
-- extern cl::opt<unsigned> MaxNumVTableAnnotations;
-- 
-- namespace llvm {
--@@ -1911,11 +1897,6 @@
--     return true;
--   if (F.getInstructionCount() < PGOFunctionSizeThreshold)
--     return true;
---  if (PGOInstrumentColdFunctionOnly) {
---    if (auto EntryCount = F.getEntryCount())
---      return EntryCount->getCount() > PGOColdInstrumentEntryThreshold;
---    return !PGOTreatUnknownAsCold;
---  }
--   return false;
-- }
-- 
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/PGOProfile/instr-gen-cold-function.ll b/llvm/test/Transforms/PGOProfile/instr-gen-cold-function.ll
----- a/llvm/test/Transforms/PGOProfile/instr-gen-cold-function.ll
--+++ b/llvm/test/Transforms/PGOProfile/instr-gen-cold-function.ll
--@@ -1,35 +0,0 @@
---; RUN: opt < %s  --passes=pgo-instr-gen -pgo-instrument-cold-function-only -pgo-function-entry-coverage -S  | FileCheck --check-prefixes=COLD %s
---; RUN: opt < %s  --passes=pgo-instr-gen -pgo-instrument-cold-function-only -pgo-function-entry-coverage -pgo-cold-instrument-entry-threshold=1 -S  | FileCheck --check-prefixes=ENTRY-COUNT %s
---; RUN: opt < %s  --passes=pgo-instr-gen -pgo-instrument-cold-function-only -pgo-function-entry-coverage -pgo-treat-unknown-as-cold -S  | FileCheck --check-prefixes=UNKNOWN-FUNC %s
---
---; COLD: call void @llvm.instrprof.cover(ptr @__profn_foo, i64  [[#]], i32 1, i32 0)
---; COLD-NOT: __profn_main
---; COLD-NOT: __profn_bar
---
---; ENTRY-COUNT: call void @llvm.instrprof.cover(ptr @__profn_foo, i64  [[#]], i32 1, i32 0)
---; ENTRY-COUNT: call void @llvm.instrprof.cover(ptr @__profn_main, i64 [[#]], i32 1, i32 0)
---
---; UNKNOWN-FUNC: call void @llvm.instrprof.cover(ptr @__profn_bar, i64  [[#]], i32 1, i32 0)
---; UNKNOWN-FUNC: call void @llvm.instrprof.cover(ptr @__profn_foo, i64  [[#]], i32 1, i32 0)
---
---
---target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
---target triple = "x86_64-unknown-linux-gnu"
---
---define void @bar() {
---entry:
---  ret void
---}
---
---define void @foo() !prof !0 {
---entry:
---  ret void
---}
---
---define i32 @main() !prof !1 {
---entry:
---  ret i32 0
---}
---
---!0 = !{!"function_entry_count", i64 0}
---!1 = !{!"function_entry_count", i64 1}
++diff -ruN --strip-trailing-cr a/clang/include/clang/AST/DeclTemplate.h b/clang/include/clang/AST/DeclTemplate.h
++--- a/clang/include/clang/AST/DeclTemplate.h
+++++ b/clang/include/clang/AST/DeclTemplate.h
++@@ -857,16 +857,6 @@
++   /// \endcode
++   bool isMemberSpecialization() const { return Common.getInt(); }
++ 
++-  /// Determines whether any redeclaration of this template was
++-  /// a specialization of a member template.
++-  bool hasMemberSpecialization() const {
++-    for (const auto *D : redecls()) {
++-      if (D->isMemberSpecialization())
++-        return true;
++-    }
++-    return false;
++-  }
++-
++   /// Note that this member template is a specialization.
++   void setMemberSpecialization() {
++     assert(!isMemberSpecialization() && "already a member specialization");
++@@ -1965,13 +1955,7 @@
++   /// specialization which was specialized by this.
++   llvm::PointerUnion<ClassTemplateDecl *,
++                      ClassTemplatePartialSpecializationDecl *>
++-  getSpecializedTemplateOrPartial() const {
++-    if (const auto *PartialSpec =
++-            SpecializedTemplate.dyn_cast<SpecializedPartialSpecialization *>())
++-      return PartialSpec->PartialSpecialization;
++-
++-    return SpecializedTemplate.get<ClassTemplateDecl*>();
++-  }
+++  getSpecializedTemplateOrPartial() const;
++ 
++   /// Retrieve the set of template arguments that should be used
++   /// to instantiate members of the class template or class template partial
++@@ -2208,17 +2192,6 @@
++     return InstantiatedFromMember.getInt();
++   }
++ 
++-  /// Determines whether any redeclaration of this this class template partial
++-  /// specialization was a specialization of a member partial specialization.
++-  bool hasMemberSpecialization() const {
++-    for (const auto *D : redecls()) {
++-      if (cast<ClassTemplatePartialSpecializationDecl>(D)
++-              ->isMemberSpecialization())
++-        return true;
++-    }
++-    return false;
++-  }
++-
++   /// Note that this member template is a specialization.
++   void setMemberSpecialization() { return InstantiatedFromMember.setInt(true); }
++ 
++@@ -2740,13 +2713,7 @@
++   /// Retrieve the variable template or variable template partial
++   /// specialization which was specialized by this.
++   llvm::PointerUnion<VarTemplateDecl *, VarTemplatePartialSpecializationDecl *>
++-  getSpecializedTemplateOrPartial() const {
++-    if (const auto *PartialSpec =
++-            SpecializedTemplate.dyn_cast<SpecializedPartialSpecialization *>())
++-      return PartialSpec->PartialSpecialization;
++-
++-    return SpecializedTemplate.get<VarTemplateDecl *>();
++-  }
+++  getSpecializedTemplateOrPartial() const;
++ 
++   /// Retrieve the set of template arguments that should be used
++   /// to instantiate the initializer of the variable template or variable
++@@ -2980,18 +2947,6 @@
++     return InstantiatedFromMember.getInt();
++   }
++ 
++-  /// Determines whether any redeclaration of this this variable template
++-  /// partial specialization was a specialization of a member partial
++-  /// specialization.
++-  bool hasMemberSpecialization() const {
++-    for (const auto *D : redecls()) {
++-      if (cast<VarTemplatePartialSpecializationDecl>(D)
++-              ->isMemberSpecialization())
++-        return true;
++-    }
++-    return false;
++-  }
++-
++   /// Note that this member template is a specialization.
++   void setMemberSpecialization() { return InstantiatedFromMember.setInt(true); }
++ 
++@@ -3164,6 +3119,9 @@
++     return makeSpecIterator(getSpecializations(), true);
++   }
++ 
+++  /// Merge \p Prev with our RedeclarableTemplateDecl::Common.
+++  void mergePrevDecl(VarTemplateDecl *Prev);
+++
++   // Implement isa/cast/dyncast support
++   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
++   static bool classofKind(Kind K) { return K == VarTemplate; }
++diff -ruN --strip-trailing-cr a/clang/lib/AST/ASTImporter.cpp b/clang/lib/AST/ASTImporter.cpp
++--- a/clang/lib/AST/ASTImporter.cpp
+++++ b/clang/lib/AST/ASTImporter.cpp
++@@ -6190,7 +6190,8 @@
++ ExpectedDecl ASTNodeImporter::VisitClassTemplateSpecializationDecl(
++                                           ClassTemplateSpecializationDecl *D) {
++   ClassTemplateDecl *ClassTemplate;
++-  if (Error Err = importInto(ClassTemplate, D->getSpecializedTemplate()))
+++  if (Error Err = importInto(ClassTemplate,
+++                             D->getSpecializedTemplate()->getCanonicalDecl()))
++     return std::move(Err);
++ 
++   // Import the context of this declaration.
++diff -ruN --strip-trailing-cr a/clang/lib/AST/Decl.cpp b/clang/lib/AST/Decl.cpp
++--- a/clang/lib/AST/Decl.cpp
+++++ b/clang/lib/AST/Decl.cpp
++@@ -2708,7 +2708,7 @@
++     if (isTemplateInstantiation(VDTemplSpec->getTemplateSpecializationKind())) {
++       auto From = VDTemplSpec->getInstantiatedFrom();
++       if (auto *VTD = From.dyn_cast<VarTemplateDecl *>()) {
++-        while (!VTD->hasMemberSpecialization()) {
+++        while (!VTD->isMemberSpecialization()) {
++           if (auto *NewVTD = VTD->getInstantiatedFromMemberTemplate())
++             VTD = NewVTD;
++           else
++@@ -2718,7 +2718,7 @@
++       }
++       if (auto *VTPSD =
++               From.dyn_cast<VarTemplatePartialSpecializationDecl *>()) {
++-        while (!VTPSD->hasMemberSpecialization()) {
+++        while (!VTPSD->isMemberSpecialization()) {
++           if (auto *NewVTPSD = VTPSD->getInstantiatedFromMember())
++             VTPSD = NewVTPSD;
++           else
++@@ -2732,7 +2732,7 @@
++   // If this is the pattern of a variable template, find where it was
++   // instantiated from. FIXME: Is this necessary?
++   if (VarTemplateDecl *VTD = VD->getDescribedVarTemplate()) {
++-    while (!VTD->hasMemberSpecialization()) {
+++    while (!VTD->isMemberSpecialization()) {
++       if (auto *NewVTD = VTD->getInstantiatedFromMemberTemplate())
++         VTD = NewVTD;
++       else
++@@ -4153,7 +4153,7 @@
++   if (FunctionTemplateDecl *Primary = getPrimaryTemplate()) {
++     // If we hit a point where the user provided a specialization of this
++     // template, we're done looking.
++-    while (!ForDefinition || !Primary->hasMemberSpecialization()) {
+++    while (!ForDefinition || !Primary->isMemberSpecialization()) {
++       if (auto *NewPrimary = Primary->getInstantiatedFromMemberTemplate())
++         Primary = NewPrimary;
++       else
++@@ -4170,7 +4170,7 @@
++   if (FunctionTemplateSpecializationInfo *Info
++         = TemplateOrSpecialization
++             .dyn_cast<FunctionTemplateSpecializationInfo*>()) {
++-    return Info->getTemplate();
+++    return Info->getTemplate()->getMostRecentDecl();
++   }
++   return nullptr;
++ }
++diff -ruN --strip-trailing-cr a/clang/lib/AST/DeclCXX.cpp b/clang/lib/AST/DeclCXX.cpp
++--- a/clang/lib/AST/DeclCXX.cpp
+++++ b/clang/lib/AST/DeclCXX.cpp
++@@ -2030,7 +2030,7 @@
++   if (auto *TD = dyn_cast<ClassTemplateSpecializationDecl>(this)) {
++     auto From = TD->getInstantiatedFrom();
++     if (auto *CTD = From.dyn_cast<ClassTemplateDecl *>()) {
++-      while (!CTD->hasMemberSpecialization()) {
+++      while (!CTD->isMemberSpecialization()) {
++         if (auto *NewCTD = CTD->getInstantiatedFromMemberTemplate())
++           CTD = NewCTD;
++         else
++@@ -2040,7 +2040,7 @@
++     }
++     if (auto *CTPSD =
++             From.dyn_cast<ClassTemplatePartialSpecializationDecl *>()) {
++-      while (!CTPSD->hasMemberSpecialization()) {
+++      while (!CTPSD->isMemberSpecialization()) {
++         if (auto *NewCTPSD = CTPSD->getInstantiatedFromMemberTemplate())
++           CTPSD = NewCTPSD;
++         else
++diff -ruN --strip-trailing-cr a/clang/lib/AST/DeclTemplate.cpp b/clang/lib/AST/DeclTemplate.cpp
++--- a/clang/lib/AST/DeclTemplate.cpp
+++++ b/clang/lib/AST/DeclTemplate.cpp
++@@ -993,7 +993,17 @@
++   if (const auto *PartialSpec =
++           SpecializedTemplate.dyn_cast<SpecializedPartialSpecialization*>())
++     return PartialSpec->PartialSpecialization->getSpecializedTemplate();
++-  return SpecializedTemplate.get<ClassTemplateDecl*>();
+++  return SpecializedTemplate.get<ClassTemplateDecl *>()->getMostRecentDecl();
+++}
+++
+++llvm::PointerUnion<ClassTemplateDecl *,
+++                   ClassTemplatePartialSpecializationDecl *>
+++ClassTemplateSpecializationDecl::getSpecializedTemplateOrPartial() const {
+++  if (const auto *PartialSpec =
+++          SpecializedTemplate.dyn_cast<SpecializedPartialSpecialization *>())
+++    return PartialSpec->PartialSpecialization->getMostRecentDecl();
+++
+++  return SpecializedTemplate.get<ClassTemplateDecl *>()->getMostRecentDecl();
++ }
++ 
++ SourceRange
++@@ -1283,6 +1293,39 @@
++   return CommonPtr;
++ }
++ 
+++void VarTemplateDecl::mergePrevDecl(VarTemplateDecl *Prev) {
+++  // If we haven't created a common pointer yet, then it can just be created
+++  // with the usual method.
+++  if (!getCommonPtrInternal())
+++    return;
+++
+++  Common *ThisCommon = static_cast<Common *>(getCommonPtrInternal());
+++  Common *PrevCommon = nullptr;
+++  SmallVector<VarTemplateDecl *, 8> PreviousDecls;
+++  for (; Prev; Prev = Prev->getPreviousDecl()) {
+++    if (CommonBase *C = Prev->getCommonPtrInternal()) {
+++      PrevCommon = static_cast<Common *>(C);
+++      break;
+++    }
+++    PreviousDecls.push_back(Prev);
+++  }
+++
+++  // If the previous redecl chain hasn't created a common pointer yet, then just
+++  // use this common pointer.
+++  if (!PrevCommon) {
+++    for (auto *D : PreviousDecls)
+++      D->setCommonPtr(ThisCommon);
+++    return;
+++  }
+++
+++  // Ensure we don't leak any important state.
+++  assert(ThisCommon->Specializations.empty() &&
+++         ThisCommon->PartialSpecializations.empty() &&
+++         "Can't merge incompatible declarations!");
+++
+++  setCommonPtr(PrevCommon);
+++}
+++
++ VarTemplateSpecializationDecl *
++ VarTemplateDecl::findSpecialization(ArrayRef<TemplateArgument> Args,
++                                     void *&InsertPos) {
++@@ -1405,7 +1448,16 @@
++   if (const auto *PartialSpec =
++           SpecializedTemplate.dyn_cast<SpecializedPartialSpecialization *>())
++     return PartialSpec->PartialSpecialization->getSpecializedTemplate();
++-  return SpecializedTemplate.get<VarTemplateDecl *>();
+++  return SpecializedTemplate.get<VarTemplateDecl *>()->getMostRecentDecl();
+++}
+++
+++llvm::PointerUnion<VarTemplateDecl *, VarTemplatePartialSpecializationDecl *>
+++VarTemplateSpecializationDecl::getSpecializedTemplateOrPartial() const {
+++  if (const auto *PartialSpec =
+++          SpecializedTemplate.dyn_cast<SpecializedPartialSpecialization *>())
+++    return PartialSpec->PartialSpecialization->getMostRecentDecl();
+++
+++  return SpecializedTemplate.get<VarTemplateDecl *>()->getMostRecentDecl();
++ }
++ 
++ SourceRange VarTemplateSpecializationDecl::getSourceRange() const {
++diff -ruN --strip-trailing-cr a/clang/lib/AST/Type.cpp b/clang/lib/AST/Type.cpp
++--- a/clang/lib/AST/Type.cpp
+++++ b/clang/lib/AST/Type.cpp
++@@ -43,6 +43,7 @@
++ #include "llvm/ADT/APSInt.h"
++ #include "llvm/ADT/ArrayRef.h"
++ #include "llvm/ADT/FoldingSet.h"
+++#include "llvm/ADT/STLExtras.h"
++ #include "llvm/ADT/SmallVector.h"
++ #include "llvm/Support/Casting.h"
++ #include "llvm/Support/ErrorHandling.h"
++@@ -4774,7 +4775,10 @@
++                 ->getTemplateName()
++                 .getAsTemplateDecl())
++       if (auto *CTD = dyn_cast<ClassTemplateDecl>(templateDecl))
++-        return CTD->getTemplatedDecl()->hasAttr<TypeNullableAttr>();
+++        return llvm::any_of(
+++            CTD->redecls(), [](const RedeclarableTemplateDecl *RTD) {
+++              return RTD->getTemplatedDecl()->hasAttr<TypeNullableAttr>();
+++            });
++     return ResultIfUnknown;
++ 
++   case Type::Builtin:
++@@ -4841,10 +4845,14 @@
++     // For template specializations, look only at primary template attributes.
++     // This is a consistent regardless of whether the instantiation is known.
++     if (const auto *CTSD = dyn_cast<ClassTemplateSpecializationDecl>(RD))
++-      return CTSD->getSpecializedTemplate()
++-          ->getTemplatedDecl()
++-          ->hasAttr<TypeNullableAttr>();
++-    return RD->hasAttr<TypeNullableAttr>();
+++      return llvm::any_of(
+++          CTSD->getSpecializedTemplate()->redecls(),
+++          [](const RedeclarableTemplateDecl *RTD) {
+++            return RTD->getTemplatedDecl()->hasAttr<TypeNullableAttr>();
+++          });
+++    return llvm::any_of(RD->redecls(), [](const TagDecl *RD) {
+++      return RD->hasAttr<TypeNullableAttr>();
+++    });
++   }
++ 
++   // Non-pointer types.
++diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
++--- a/clang/lib/Sema/SemaDecl.cpp
+++++ b/clang/lib/Sema/SemaDecl.cpp
++@@ -4694,8 +4694,10 @@
++ 
++   // Keep a chain of previous declarations.
++   New->setPreviousDecl(Old);
++-  if (NewTemplate)
+++  if (NewTemplate) {
+++    NewTemplate->mergePrevDecl(OldTemplate);
++     NewTemplate->setPreviousDecl(OldTemplate);
+++  }
++ 
++   // Inherit access appropriately.
++   New->setAccess(Old->getAccess());
++diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaInit.cpp b/clang/lib/Sema/SemaInit.cpp
++--- a/clang/lib/Sema/SemaInit.cpp
+++++ b/clang/lib/Sema/SemaInit.cpp
++@@ -9954,7 +9954,7 @@
++     auto SynthesizeAggrGuide = [&](InitListExpr *ListInit) {
++       auto *Pattern = Template;
++       while (Pattern->getInstantiatedFromMemberTemplate()) {
++-        if (Pattern->hasMemberSpecialization())
+++        if (Pattern->isMemberSpecialization())
++           break;
++         Pattern = Pattern->getInstantiatedFromMemberTemplate();
++       }
++diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaTemplateInstantiate.cpp b/clang/lib/Sema/SemaTemplateInstantiate.cpp
++--- a/clang/lib/Sema/SemaTemplateInstantiate.cpp
+++++ b/clang/lib/Sema/SemaTemplateInstantiate.cpp
++@@ -343,7 +343,7 @@
++       // If this function was instantiated from a specialized member that is
++       // a function template, we're done.
++       assert(FD->getPrimaryTemplate() && "No function template?");
++-      if (FD->getPrimaryTemplate()->hasMemberSpecialization())
+++      if (FD->getPrimaryTemplate()->isMemberSpecialization())
++         return Done();
++ 
++       // If this function is a generic lambda specialization, we are done.
++@@ -442,11 +442,11 @@
++         Specialized = CTSD->getSpecializedTemplateOrPartial();
++     if (auto *CTPSD =
++             Specialized.dyn_cast<ClassTemplatePartialSpecializationDecl *>()) {
++-      if (CTPSD->hasMemberSpecialization())
+++      if (CTPSD->isMemberSpecialization())
++         return Done();
++     } else {
++       auto *CTD = Specialized.get<ClassTemplateDecl *>();
++-      if (CTD->hasMemberSpecialization())
+++      if (CTD->isMemberSpecialization())
++         return Done();
++     }
++     return UseNextDecl(CTSD);
++@@ -478,11 +478,11 @@
++         Specialized = VTSD->getSpecializedTemplateOrPartial();
++     if (auto *VTPSD =
++             Specialized.dyn_cast<VarTemplatePartialSpecializationDecl *>()) {
++-      if (VTPSD->hasMemberSpecialization())
+++      if (VTPSD->isMemberSpecialization())
++         return Done();
++     } else {
++       auto *VTD = Specialized.get<VarTemplateDecl *>();
++-      if (VTD->hasMemberSpecialization())
+++      if (VTD->isMemberSpecialization())
++         return Done();
++     }
++     return UseNextDecl(VTSD);
++@@ -4141,7 +4141,7 @@
++   CXXRecordDecl *Pattern = nullptr;
++   Specialized = ClassTemplateSpec->getSpecializedTemplateOrPartial();
++   if (auto *CTD = Specialized.dyn_cast<ClassTemplateDecl *>()) {
++-    while (!CTD->hasMemberSpecialization()) {
+++    while (!CTD->isMemberSpecialization()) {
++       if (auto *NewCTD = CTD->getInstantiatedFromMemberTemplate())
++         CTD = NewCTD;
++       else
++@@ -4151,7 +4151,7 @@
++   } else if (auto *CTPSD =
++                  Specialized
++                      .dyn_cast<ClassTemplatePartialSpecializationDecl *>()) {
++-    while (!CTPSD->hasMemberSpecialization()) {
+++    while (!CTPSD->isMemberSpecialization()) {
++       if (auto *NewCTPSD = CTPSD->getInstantiatedFromMemberTemplate())
++         CTPSD = NewCTPSD;
++       else
++diff -ruN --strip-trailing-cr a/clang/test/AST/ast-dump-decl.cpp b/clang/test/AST/ast-dump-decl.cpp
++--- a/clang/test/AST/ast-dump-decl.cpp
+++++ b/clang/test/AST/ast-dump-decl.cpp
++@@ -530,7 +530,7 @@
++   // CHECK-NEXT: |   `-ClassTemplateDecl 0x{{.+}} parent 0x{{.+}} <col:5, col:40> col:40 friend_undeclared TestClassTemplate{{$}}
++   // CHECK-NEXT: |     |-TemplateTypeParmDecl 0x{{.+}} <col:14, col:23> col:23 typename depth 1 index 0 T2{{$}}
++   // CHECK-NEXT: |     `-CXXRecordDecl 0x{{.+}} parent 0x{{.+}} <col:34, col:40> col:40 class TestClassTemplate{{$}}
++-  // CHECK-NEXT: `-ClassTemplateSpecializationDecl 0x{{.+}} <line:[[@LINE-19]]:3, line:[[@LINE-17]]:3> line:[[@LINE-19]]:31 class TestClassTemplate definition implicit_instantiation{{$}}
+++  // CHECK-NEXT: `-ClassTemplateSpecializationDecl 0x{{.+}} <col:5, col:40> line:[[@LINE-19]]:31 class TestClassTemplate definition implicit_instantiation{{$}}
++   // CHECK-NEXT:   |-DefinitionData pass_in_registers empty aggregate standard_layout trivially_copyable pod trivial literal has_constexpr_non_copy_move_ctor can_const_default_init{{$}}
++   // CHECK-NEXT:   | |-DefaultConstructor exists trivial constexpr defaulted_is_constexpr{{$}}
++   // CHECK-NEXT:   | |-CopyConstructor simple trivial has_const_param implicit_has_const_param{{$}}
++diff -ruN --strip-trailing-cr a/clang/test/ASTMerge/class-template-spec/Inputs/class-template-spec.cpp b/clang/test/ASTMerge/class-template-spec/Inputs/class-template-spec.cpp
++--- a/clang/test/ASTMerge/class-template-spec/Inputs/class-template-spec.cpp
+++++ b/clang/test/ASTMerge/class-template-spec/Inputs/class-template-spec.cpp
++@@ -0,0 +1,47 @@
+++namespace N0 {
+++  template<typename T>
+++  struct A {
+++    template<typename U>
+++    friend struct A;
+++  };
+++
+++  template struct A<long>;
+++} // namespace N0
+++
+++namespace N1 {
+++  template<typename T>
+++  struct A;
+++
+++  template<typename T>
+++  struct A {
+++    template<typename U>
+++    friend struct A;
+++  };
+++
+++  template struct A<long>;
+++} // namespace N1
+++
+++namespace N2 {
+++  template<typename T>
+++  struct A {
+++    template<typename U>
+++    friend struct A;
+++  };
+++
+++  template<typename T>
+++  struct A;
+++
+++  template struct A<long>;
+++} // namespace N2
+++
+++namespace N3 {
+++  struct A {
+++    template<typename T>
+++    friend struct B;
+++  };
+++
+++  template<typename T>
+++  struct B { };
+++
+++  template struct B<long>;
+++} // namespace N3
++diff -ruN --strip-trailing-cr a/clang/test/ASTMerge/class-template-spec/test.cpp b/clang/test/ASTMerge/class-template-spec/test.cpp
++--- a/clang/test/ASTMerge/class-template-spec/test.cpp
+++++ b/clang/test/ASTMerge/class-template-spec/test.cpp
++@@ -0,0 +1,8 @@
+++// RUN: %clang_cc1 -emit-pch -o %t.1.ast %S/Inputs/class-template-spec.cpp
+++// RUN: %clang_cc1 -ast-merge %t.1.ast -fsyntax-only -verify %s
+++// expected-no-diagnostics
+++
+++template struct N0::A<short>;
+++template struct N1::A<short>;
+++template struct N2::A<short>;
+++template struct N3::B<short>;
++diff -ruN --strip-trailing-cr a/clang/test/CXX/temp/temp.spec/temp.expl.spec/p7.cpp b/clang/test/CXX/temp/temp.spec/temp.expl.spec/p7.cpp
++--- a/clang/test/CXX/temp/temp.spec/temp.expl.spec/p7.cpp
+++++ b/clang/test/CXX/temp/temp.spec/temp.expl.spec/p7.cpp
++@@ -177,6 +177,93 @@
++   static_assert(A<short>::B<int*>::y == 2);
++ } // namespace Defined
++ 
+++namespace Constrained {
+++  template<typename T>
+++  struct A {
+++    template<typename U, bool V> requires V
+++    static constexpr int f(); // expected-note {{declared here}}
+++
+++    template<typename U, bool V> requires V
+++    static const int x; // expected-note {{declared here}}
+++
+++    template<typename U, bool V> requires V
+++    static const int x<U*, V>; // expected-note {{declared here}}
+++
+++    template<typename U, bool V> requires V
+++    struct B; // expected-note {{template is declared here}}
+++
+++    template<typename U, bool V> requires V
+++    struct B<U*, V>; // expected-note {{template is declared here}}
+++  };
+++
+++  template<>
+++  template<typename U, bool V> requires V
+++  constexpr int A<short>::f() {
+++    return A<long>::f<U, V>();
+++  }
+++
+++  template<>
+++  template<typename U, bool V> requires V
+++  constexpr int A<short>::x = A<long>::x<U, V>;
+++
+++  template<>
+++  template<typename U, bool V> requires V
+++  constexpr int A<short>::x<U*, V> = A<long>::x<U*, V>;
+++
+++  template<>
+++  template<typename U, bool V> requires V
+++  struct A<short>::B<U*, V> {
+++    static constexpr int y = A<long>::B<U*, V>::y;
+++  };
+++
+++  template<>
+++  template<typename U, bool V> requires V
+++  struct A<short>::B {
+++    static constexpr int y = A<long>::B<U, V>::y;
+++  };
+++
+++  template<>
+++  template<typename U, bool V> requires V
+++  constexpr int A<long>::f() {
+++    return 1;
+++  }
+++
+++  template<>
+++  template<typename U, bool V> requires V
+++  constexpr int A<long>::x = 1;
+++
+++  template<>
+++  template<typename U, bool V> requires V
+++  constexpr int A<long>::x<U*, V> = 2;
+++
+++  template<>
+++  template<typename U, bool V> requires V
+++  struct A<long>::B {
+++    static constexpr int y = 1;
+++  };
+++
+++  template<>
+++  template<typename U, bool V> requires V
+++  struct A<long>::B<U*, V> {
+++    static constexpr int y = 2;
+++  };
+++
+++  static_assert(A<int>::f<int, true>() == 0); // expected-error {{static assertion expression is not an integral constant expression}}
+++                                              // expected-note@-1 {{undefined function 'f<int, true>' cannot be used in a constant expression}}
+++  static_assert(A<int>::x<int, true> == 0); // expected-error {{static assertion expression is not an integral constant expression}}
+++                                            // expected-note@-1 {{initializer of 'x<int, true>' is unknown}}
+++  static_assert(A<int>::x<int*, true> == 0); // expected-error {{static assertion expression is not an integral constant expression}}
+++                                             // expected-note@-1 {{initializer of 'x<int *, true>' is unknown}}
+++  static_assert(A<int>::B<int, true>::y == 0); // expected-error {{implicit instantiation of undefined template 'Constrained::A<int>::B<int, true>'}}
+++  static_assert(A<int>::B<int*, true>::y == 0); // expected-error {{implicit instantiation of undefined template 'Constrained::A<int>::B<int *, true>'}}
+++
+++  static_assert(A<short>::f<int, true>() == 1);
+++  static_assert(A<short>::x<int, true> == 1);
+++  static_assert(A<short>::x<int*, true> == 2);
+++  static_assert(A<short>::B<int, true>::y == 1);
+++  static_assert(A<short>::B<int*, true>::y == 2);
+++} // namespace Constrained
+++
++ namespace Dependent {
++   template<int I>
++   struct A {
++diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/nullability_redecl.cpp b/clang/test/SemaCXX/nullability_redecl.cpp
++--- a/clang/test/SemaCXX/nullability_redecl.cpp
+++++ b/clang/test/SemaCXX/nullability_redecl.cpp
++@@ -0,0 +1,27 @@
+++// RUN: %clang_cc1 -std=c++11 -fsyntax-only -Wno-nullability-declspec %s -verify -Wnullable-to-nonnull-conversion -I%S/Inputs
+++
+++class Foo;
+++using Foo1 = Foo _Nonnull; // expected-error{{nullability specifier '_Nonnull' cannot be applied to non-pointer type 'Foo'}}
+++class _Nullable Foo;
+++using Foo2 = Foo _Nonnull;
+++class Foo;
+++using Foo3 = Foo _Nonnull;
+++
+++template <class T>
+++class Bar;
+++using Bar1 = Bar<int> _Nonnull; // expected-error{{nullability specifier '_Nonnull' cannot be applied to non-pointer type 'Bar<int>'}}
+++template <class T>
+++class _Nullable Bar;
+++using Bar2 = Bar<int> _Nonnull;
+++template <class T>
+++class Bar;
+++using Bar3 = Bar<int> _Nonnull;
+++
+++namespace std {
+++  template<class T> class unique_ptr;
+++  using UP1 = unique_ptr<int> _Nonnull;
+++  class X { template<class T> friend class unique_ptr; };
+++  using UP2 = unique_ptr<int> _Nonnull;
+++  template<class T> class unique_ptr;
+++  using UP3 = unique_ptr<int> _Nonnull;
+++}
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++@@ -3172,6 +3172,7 @@
++         ":TransformUtils",
++         ":Transforms",
++         ":VectorDialect",
+++        ":VectorTransforms",
++         "//llvm:Support",
++     ],
++ )
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index df7e70f..cf4291b 100644
+index cf4291b..7d0a20f 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "95c2d798148f12565dd4c9ddc753d196e47f230f"
--    LLVM_SHA256 = "f11e5bbf17d50ff31addc9e1737d64e64a144fce928166de5878c72a1efcf9b4"
-+    LLVM_COMMIT = "bef3b54ea10a564a2de72f658f2efd64f537c079"
-+    LLVM_SHA256 = "2760b1a270c5c66a98c0b383c7e6a5c7af3fe181237220784f8b21e9822648b4"
+-    LLVM_COMMIT = "bef3b54ea10a564a2de72f658f2efd64f537c079"
+-    LLVM_SHA256 = "2760b1a270c5c66a98c0b383c7e6a5c7af3fe181237220784f8b21e9822648b4"
++    LLVM_COMMIT = "308c00749ddb76b2e77934e986001b7fd4ad5cdc"
++    LLVM_SHA256 = "265d4d26d710110b7a3cb9379d1ece306ce46acbcfbdc61492da8772e299f066"
  
      tf_http_archive(
          name = name,
-diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index 056e395..8b13789 100755
---- a/third_party/stablehlo/temporary.patch
-+++ b/third_party/stablehlo/temporary.patch
-@@ -1,13 +1 @@
--diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
----- stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
--+++ stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
--@@ -1212,7 +1212,7 @@
-- 
--   LogicalResult matchAndRewrite(SortOp op,
--                                 PatternRewriter &rewriter) const override {
---    if (op.getResults().size() == 0 ||
--+    if (op.getResults().empty() ||
--         static_cast<int64_t>(op.getDimension()) != -1)
--       return rewriter.notifyMatchFailure(op,
--                                          "dimension already set or no results");
- 
-diff --git a/third_party/stablehlo/workspace.bzl b/third_party/stablehlo/workspace.bzl
-index 79f8bf0..8299809 100644
---- a/third_party/stablehlo/workspace.bzl
-+++ b/third_party/stablehlo/workspace.bzl
-@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
- 
- def repo():
-     #
--    STABLEHLO_COMMIT = "92e33a7ce2484f2e0083baee7f0dd558f56363f8"
--    STABLEHLO_SHA256 = "70425bfb34816191f8665b04f32ea0729209a4440ccebac883983cfd8a4d4bd2"
-+    STABLEHLO_COMMIT = "de5103d9613143d754519745673ea17b1cc78437"
-+    STABLEHLO_SHA256 = "a355437d5076a854c0ffea15906d956a894f9f36ec63b8c53b4136482227ed65"
-     #
- 
-     tf_http_archive(
