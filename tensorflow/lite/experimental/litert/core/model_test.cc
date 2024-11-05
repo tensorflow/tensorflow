@@ -34,15 +34,22 @@
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
+using litert::BufferRef;
+using litert::OwningBufferRef;
+using litert::internal::AppendMetadata;
+using litert::internal::GetMetadata;
+using litert::internal::LoadModel;
+using litert::internal::LoadModelFromFile;
+using litert::internal::RegisterCustomOpCode;
+using litert::internal::SerializeModel;
+using litert::internal::UniqueLiteRtModel;
+using litert::internal::VerifyFlatbuffer;
+using litert::testing::LoadTestFileModel;
+
 namespace {
 
-using ::graph_tools::GetMetadata;
-using ::litert::BufferRef;
-using ::litert::OwningBufferRef;
-using ::litert::internal::VerifyFlatbuffer;
-
 inline UniqueLiteRtModel LoadModelThroughRoundTrip(std::string_view path) {
-  auto model = litert::testing::LoadTestFileModel(path);
+  auto model = LoadTestFileModel(path);
 
   OwningBufferRef buf;
   auto [data, size, offset] = buf.GetWeak();
@@ -68,7 +75,7 @@ class TopologyTest : public ::testing::TestWithParam<LiteRtModel> {
     std::vector<LiteRtModel> result;
 
     for (auto p : paths) {
-      result.push_back(litert::testing::LoadTestFileModel(p).release());
+      result.push_back(LoadTestFileModel(p).release());
       result.push_back(LoadModelThroughRoundTrip(p).release());
     }
 
@@ -104,7 +111,7 @@ TEST(LiteRtModelTest, TestLoadTestDataBadFileData) {
 }
 
 TEST(TestSerializeModel, TestAllocations) {
-  auto model = litert::testing::LoadTestFileModel("add_simple.tflite");
+  auto model = LoadTestFileModel("add_simple.tflite");
 
   OwningBufferRef buf;
   auto [data, size, offset] = buf.GetWeak();
@@ -114,7 +121,7 @@ TEST(TestSerializeModel, TestAllocations) {
 }
 
 TEST(TestSerializeModel, TestMetadata) {
-  auto model = litert::testing::LoadTestFileModel("add_simple.tflite");
+  auto model = LoadTestFileModel("add_simple.tflite");
 
   constexpr static std::string_view kMetadataName = "an_soc_manufacturer";
   constexpr static std::string_view kMetadataData = "My_Meta_Data";
@@ -156,7 +163,7 @@ TEST(TestSerializeModel, TestMetadata) {
 }
 
 TEST(TestSerializeModel, TestCustomOpCode) {
-  auto model = litert::testing::LoadTestFileModel("add_simple.tflite");
+  auto model = LoadTestFileModel("add_simple.tflite");
 
   constexpr static std::string_view kCustomCode = "MyCustomCode";
   ASSERT_STATUS_OK(RegisterCustomOpCode(model.get(), kCustomCode.data()));
@@ -181,7 +188,7 @@ TEST(TestSerializeModel, TestCustomOpCode) {
 }
 
 TEST_P(TestWithPath, TestConstructDestroy) {
-  UniqueLiteRtModel model = litert::testing::LoadTestFileModel(GetParam());
+  UniqueLiteRtModel model = LoadTestFileModel(GetParam());
 }
 
 TEST_P(TestWithPath, TestConstructDestroyRoundTrip) {
@@ -204,36 +211,37 @@ TEST_P(AddSimpleTest, TestBuildModelAddSimple) {
   //
 
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          graph_tools::GetSubgraph(model.get()));
+                          litert::internal::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_inputs,
-                          graph_tools::GetSubgraphInputs(subgraph));
+                          litert::internal::GetSubgraphInputs(subgraph));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_outputs,
-                          graph_tools::GetSubgraphOutputs(subgraph));
+                          litert::internal::GetSubgraphOutputs(subgraph));
 
   ASSERT_EQ(subgraph_inputs.size(), 1);
   ASSERT_EQ(subgraph_outputs.size(), 1);
 
-  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
-  ASSERT_TRUE(graph_tools::ValidateTopology(ops));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  ASSERT_TRUE(litert::internal::ValidateTopology(ops));
 
   ASSERT_EQ(ops.size(), 1);
   auto op = ops[0];
 
-  graph_tools::RankedTypeInfo float_2by2_type(kLiteRtElementTypeFloat32,
-                                              {2, 2});
-  ASSERT_TRUE(graph_tools::MatchOpType(op, {float_2by2_type, float_2by2_type},
-                                       {float_2by2_type}, kLiteRtOpCodeTflAdd));
+  litert::internal::RankedTypeInfo float_2by2_type(kLiteRtElementTypeFloat32,
+                                                   {2, 2});
+  ASSERT_TRUE(
+      litert::internal::MatchOpType(op, {float_2by2_type, float_2by2_type},
+                                    {float_2by2_type}, kLiteRtOpCodeTflAdd));
 
-  ASSERT_RESULT_OK_ASSIGN(auto op_inputs, graph_tools::GetOpIns(op));
+  ASSERT_RESULT_OK_ASSIGN(auto op_inputs, litert::internal::GetOpIns(op));
   ASSERT_EQ(op_inputs.size(), 2);
   ASSERT_EQ(op_inputs[0], subgraph_inputs[0]);
   ASSERT_EQ(op_inputs[0], op_inputs[1]);
 
-  ASSERT_RESULT_OK_ASSIGN(auto op_out, graph_tools::GetOnlyOpOut(op));
+  ASSERT_RESULT_OK_ASSIGN(auto op_out, litert::internal::GetOnlyOpOut(op));
   ASSERT_EQ(op_out, subgraph_outputs[0]);
 
-  ASSERT_TRUE(graph_tools::MatchNoWeights(subgraph_outputs[0]));
-  ASSERT_TRUE(graph_tools::MatchNoWeights(subgraph_inputs[0]));
+  ASSERT_TRUE(litert::internal::MatchNoWeights(subgraph_outputs[0]));
+  ASSERT_TRUE(litert::internal::MatchNoWeights(subgraph_inputs[0]));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -252,36 +260,38 @@ TEST_P(AddCstTest, TestBuildModelAddCst) {
   //
 
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          graph_tools::GetSubgraph(model.get()));
+                          litert::internal::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_inputs,
-                          graph_tools::GetSubgraphInputs(subgraph));
+                          litert::internal::GetSubgraphInputs(subgraph));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_outputs,
-                          graph_tools::GetSubgraphOutputs(subgraph));
+                          litert::internal::GetSubgraphOutputs(subgraph));
 
   ASSERT_EQ(subgraph_inputs.size(), 1);
   ASSERT_EQ(subgraph_outputs.size(), 1);
 
-  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
-  ASSERT_TRUE(graph_tools::ValidateTopology(ops));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  ASSERT_TRUE(litert::internal::ValidateTopology(ops));
 
   ASSERT_EQ(ops.size(), 1);
   auto op = ops[0];
 
-  graph_tools::RankedTypeInfo float_2by2_type(kLiteRtElementTypeFloat32, {4});
-  ASSERT_TRUE(graph_tools::MatchOpType(op, {float_2by2_type, float_2by2_type},
-                                       {float_2by2_type}, kLiteRtOpCodeTflAdd));
+  litert::internal::RankedTypeInfo float_2by2_type(kLiteRtElementTypeFloat32,
+                                                   {4});
+  ASSERT_TRUE(
+      litert::internal::MatchOpType(op, {float_2by2_type, float_2by2_type},
+                                    {float_2by2_type}, kLiteRtOpCodeTflAdd));
 
-  ASSERT_RESULT_OK_ASSIGN(auto op_inputs, graph_tools::GetOpIns(op));
+  ASSERT_RESULT_OK_ASSIGN(auto op_inputs, litert::internal::GetOpIns(op));
   ASSERT_EQ(op_inputs.size(), 2);
   ASSERT_EQ(op_inputs[0], subgraph_inputs[0]);
-  ASSERT_TRUE(graph_tools::MatchWeights(
+  ASSERT_TRUE(litert::internal::MatchWeights(
       op_inputs[1], llvm::ArrayRef<float>{1.0, 2.0, 3.0, 4.0}));
 
-  ASSERT_RESULT_OK_ASSIGN(auto op_out, graph_tools::GetOnlyOpOut(op));
+  ASSERT_RESULT_OK_ASSIGN(auto op_out, litert::internal::GetOnlyOpOut(op));
   ASSERT_EQ(op_out, subgraph_outputs[0]);
 
-  ASSERT_TRUE(graph_tools::MatchNoWeights(subgraph_outputs[0]));
-  ASSERT_TRUE(graph_tools::MatchNoWeights(subgraph_inputs[0]));
+  ASSERT_TRUE(litert::internal::MatchNoWeights(subgraph_outputs[0]));
+  ASSERT_TRUE(litert::internal::MatchNoWeights(subgraph_inputs[0]));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -301,31 +311,31 @@ TEST_P(SimpleMultiOpTest, TestBuildModelSimpleMultiAdd) {
   //   return 3
 
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          graph_tools::GetSubgraph(model.get()));
+                          litert::internal::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_inputs,
-                          graph_tools::GetSubgraphInputs(subgraph));
+                          litert::internal::GetSubgraphInputs(subgraph));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_outputs,
-                          graph_tools::GetSubgraphOutputs(subgraph));
+                          litert::internal::GetSubgraphOutputs(subgraph));
 
   ASSERT_EQ(subgraph_inputs.size(), 1);
   ASSERT_EQ(subgraph_outputs.size(), 1);
 
-  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
-  ASSERT_TRUE(graph_tools::ValidateTopology(ops));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  ASSERT_TRUE(litert::internal::ValidateTopology(ops));
 
   ASSERT_EQ(ops.size(), 4);
   for (auto op : ops) {
-    ASSERT_RESULT_OK_ASSIGN(auto inputs, graph_tools::GetOpIns(op));
+    ASSERT_RESULT_OK_ASSIGN(auto inputs, litert::internal::GetOpIns(op));
     ASSERT_EQ(inputs.size(), 2);
     ASSERT_EQ(inputs[0], inputs[1]);
   }
 
-  graph_tools::RankedTypeInfo float_2by2_type(kLiteRtElementTypeFloat32,
-                                              {2, 2});
+  litert::internal::RankedTypeInfo float_2by2_type(kLiteRtElementTypeFloat32,
+                                                   {2, 2});
 
-  ASSERT_TRUE(graph_tools::MatchOpType(ops[2],
-                                       {float_2by2_type, float_2by2_type},
-                                       {float_2by2_type}, kLiteRtOpCodeTflMul));
+  ASSERT_TRUE(
+      litert::internal::MatchOpType(ops[2], {float_2by2_type, float_2by2_type},
+                                    {float_2by2_type}, kLiteRtOpCodeTflMul));
 }
 
 INSTANTIATE_TEST_SUITE_P(SimpleMultiOpTests, SimpleMultiOpTest,

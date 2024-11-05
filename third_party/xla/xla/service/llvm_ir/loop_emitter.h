@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_LLVM_IR_LOOP_EMITTER_H_
 
 #include <functional>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"

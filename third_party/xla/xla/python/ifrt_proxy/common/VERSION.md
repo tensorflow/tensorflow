@@ -47,3 +47,9 @@
 *   Added date: 2024-10-11.
 *   Changes:
     *   Added support for `SingleDeviceShardSemantics` in Array assembly and disassembly operations.
+
+## Version 9
+
+*   Added date: 2024-10-31.
+*   Changes:
+    *   Added support for string Arrays (i.e., arrays with dtype `DType::kString`).

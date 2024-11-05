@@ -27,19 +27,18 @@
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 
+using litert::BufferRef;
+using litert::Mallocator;
+using litert::MutableBufferRef;
+using litert::Newlocator;
+using litert::OwningBufferRef;
+using litert::internal::FbBufToStr;
+using testing::ElementsAreArray;
+using testing::Eq;
+using testing::Pointwise;
+using testing::StartsWith;
+
 namespace {
-
-using ::testing::ElementsAreArray;
-using ::testing::Eq;
-using ::testing::Pointwise;
-using ::testing::StartsWith;
-
-using ::litert::BufferRef;
-using ::litert::Mallocator;
-using ::litert::MutableBufferRef;
-using ::litert::Newlocator;
-using ::litert::OwningBufferRef;
-using ::litert::internal::FbBufToStr;
 
 static constexpr size_t kOffset = 4;
 

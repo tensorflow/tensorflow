@@ -103,7 +103,7 @@ class CollectiveDeviceList {
     return iota_replica_group_list_;
   }
 
-  std::string ToString() const;
+  std::string ToString(bool print_full_replica_group_list = false) const;
 
   CollectiveDeviceListProto ToProto() const;
 

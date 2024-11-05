@@ -21,12 +21,14 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
@@ -47,7 +49,9 @@ namespace gpu {
 namespace {
 
 using ::testing::Each;
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::IsEmpty;
 using ::tsl::testing::IsOk;
 
 class CudaStreamTest : public ::testing::Test {
@@ -234,6 +238,72 @@ TEST_F(CudaStreamTest, SetName) {
   constexpr absl::string_view kStreamName = "Test stream";
   stream->SetName(std::string(kStreamName));
   EXPECT_EQ(stream->GetName(), kStreamName);
+}
+
+TEST_F(CudaStreamTest, WaitForEvent) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+
+  TF_ASSERT_OK_AND_ASSIGN(CudaEvent event,
+                          CudaEvent::Create(executor_, /*allow_timing=*/false));
+
+  EXPECT_THAT(stream->WaitFor(&event), IsOk());
+
+  bool callback_called = false;
+  EXPECT_THAT(
+      stream->DoHostCallback([&callback_called]() { callback_called = true; }),
+      IsOk());
+
+  EXPECT_FALSE(callback_called);
+  EXPECT_THAT(stream->RecordEvent(&event), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_TRUE(callback_called);
+}
+
+TEST_F(CudaStreamTest, WaitForOtherStream) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream1,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream2,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+
+  TF_ASSERT_OK_AND_ASSIGN(CudaEvent event,
+                          CudaEvent::Create(executor_, /*allow_timing=*/false));
+
+  enum class ExecutionStage {
+    kBeforeWaitForEvent,
+    kAfterWaitForEvent,
+    kAfterWaitForStream
+  };
+
+  std::vector<ExecutionStage> execution_order;
+
+  // - stream1 waits for the event to be recorded and
+  // - stream2 waits for stream1 to be done.
+  // - Afterwards stream2 invokes the host callback.
+  EXPECT_THAT(stream1->DoHostCallback([&execution_order]() {
+    execution_order.push_back(ExecutionStage::kBeforeWaitForEvent);
+  }),
+              IsOk());
+  EXPECT_THAT(stream1->WaitFor(&event), IsOk());
+  EXPECT_THAT(stream1->DoHostCallback([&execution_order]() {
+    execution_order.push_back(ExecutionStage::kAfterWaitForEvent);
+  }),
+              IsOk());
+  EXPECT_THAT(stream2->WaitFor(stream1.get()), IsOk());
+  EXPECT_THAT(stream2->DoHostCallback([&execution_order]() {
+    execution_order.push_back(ExecutionStage::kAfterWaitForStream);
+  }),
+              IsOk());
+
+  EXPECT_THAT(stream1->RecordEvent(&event), IsOk());
+  EXPECT_THAT(stream2->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(execution_order,
+              ElementsAre(ExecutionStage::kBeforeWaitForEvent,
+                          ExecutionStage::kAfterWaitForEvent,
+                          ExecutionStage::kAfterWaitForStream));
 }
 
 }  // namespace

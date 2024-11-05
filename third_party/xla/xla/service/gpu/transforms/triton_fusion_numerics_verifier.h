@@ -71,7 +71,7 @@ namespace triton_fusion_numerics_pass_internal {
 absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
     AutotunerCompileUtil& util, const HloFusionInstruction& fusion,
     const AutotuneConfig& config, const DebugOptions& debug_opts,
-    bool clear_backend_config);
+    bool disable_triton);
 absl::Status CompareBuffers(const ScopedShapedBuffer& current,
                             const ScopedShapedBuffer& expected,
                             const Shape& shape, const HloModuleConfig& config,

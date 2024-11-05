@@ -132,5 +132,50 @@ ENTRY comp {
           _));
 }
 
+// Test Conditional with branch_index
+TEST_F(ConditionalToSelectTest,
+       MapConditionalConstants_ConditionalWithBranchIndex) {
+  const char* kModuleStr = R"(
+  HloModule m
+
+  c0 {
+    %pif = () parameter(0)
+    ROOT %cif = f32[] constant(0)
+  }
+
+  c1 {
+    %pelse = () parameter(0)
+    ROOT %celse = f32[] constant(1)
+  }
+
+  mapped {
+    %a = f32[] parameter(0)
+    %b = f32[] parameter(1)
+    %lt = pred[] compare(%a, %b), direction=LT
+    %s = s32[] convert(%lt)
+    %t = () tuple()
+    ROOT %conditional = f32[] conditional(%s, %t, %t), branch_computations={c0, c1}
+  }
+
+  ENTRY comp {
+    %p1 = f32[1000]{0} parameter(0)
+    %p2 = f32[1000]{0} parameter(1)
+    ROOT %mapped = f32[1000]{0} map(%p1, %p2), dimensions={0}, to_apply=mapped
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(ConditionalToSelect().Run(module.get()).value());
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kMap);
+  HloComputation* mapped = root->called_computations()[0];
+  EXPECT_THAT(
+      mapped->root_instruction(),
+      op::Select(
+          op::Convert(op::Convert(op::Lt(op::Parameter(0), op::Parameter(1)))),
+          op::Constant(), op::Constant()));
+}
+
 }  // namespace
 }  // namespace xla

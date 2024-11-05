@@ -4124,6 +4124,12 @@ absl::StatusOr<bool> AutoSharding::Run(
     }
   }
 
+  // A negative solver timeout means we want to disable iterative ND sharding.
+  if (option_.solver_timeout_in_seconds < 0) {
+    option_.solve_nd_sharding_iteratively = false;
+    option_.solver_timeout_in_seconds *= -1;
+  }
+
   bool module_is_changed = false;
   VLOG(1) << "Original mesh shape "
           << spmd::ToString(option_.device_mesh_shape);

@@ -76,6 +76,10 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
                                  bool use_tuple_args, bool return_tuple,
                                  MlirToHloConversionOptions options = {});
 
+absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
+                                 ::xla::HloProto* hlo_proto,
+                                 MlirToHloConversionOptions options);
+
 // Converts a MLIR module in HLO dialect into a HloModule with HloModuleConfig.
 // This method preserves config data stored in MHLO module attributes.
 //

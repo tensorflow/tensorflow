@@ -137,7 +137,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(
       kDefaultReduceScatterCombineThreshold);
   opts.set_xla_gpu_enable_all_gather_combine_by_dim(false);
-  opts.set_xla_gpu_enable_reduce_scatter_combine_by_dim(true);
+  opts.set_xla_gpu_enable_reduce_scatter_combine_by_dim(false);
   opts.set_xla_gpu_enable_approx_costly_collectives(false);
 
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
@@ -247,13 +247,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_bf16_3way_gemm(false);
   opts.set_xla_gpu_nccl_collective_max_nchannels(0);
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
-
-#if GOOGLE_CUDA
-  opts.set_xla_gpu_mlir_emitter_level(4);
-#else
-  opts.set_xla_gpu_mlir_emitter_level(0);
-#endif
-
   opts.set_xla_gpu_multi_streamed_windowed_einsum(false);
 
   // Minimum combined size of matrices in matrix multiplication to
@@ -310,16 +303,20 @@ static DebugOptions* flag_values;
 static std::vector<tsl::Flag>* flag_objects;
 
 // Maps pass -> initial fuel values (parsed when AllocateFlags was run).
-static absl::flat_hash_map<std::string, int64_t>* initial_fuel;
+static absl::flat_hash_map<std::string, int64_t>* const initial_fuel =
+    new absl::flat_hash_map<std::string, int64_t>();
 
 // Maps pass -> whether fuel was ever consumed for that pass.
-static absl::node_hash_map<std::string, std::atomic<bool>>* fuel_ever_consumed;
+static absl::node_hash_map<std::string, std::atomic<bool>>* const
+    fuel_ever_consumed =
+        new absl::node_hash_map<std::string, std::atomic<bool>>();
 
 // Maps pass -> remaining fuel.
 //
 // All threads start off using this global fuel pool, but ResetThreadLocalFuel()
 // switches them to a thread-local fuel pool.
-static absl::node_hash_map<std::string, std::atomic<int64_t>>* global_fuel;
+static absl::node_hash_map<std::string, std::atomic<int64_t>>* const
+    global_fuel = new absl::node_hash_map<std::string, std::atomic<int64_t>>();
 
 // If we're using thread-local fuel, this stores it.
 static thread_local std::unique_ptr<
@@ -583,10 +580,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   // locking on the fuel global variables.  This means that it's
   // illegal/undefined behavior to modify this flag value while the compiler is
   // running.
-  initial_fuel = new absl::flat_hash_map<std::string, int64_t>();
-  fuel_ever_consumed =
-      new absl::node_hash_map<std::string, std::atomic<bool>>();
-  global_fuel = new absl::node_hash_map<std::string, std::atomic<int64_t>>();
   auto setter_for_xla_fuel = [](std::string xla_fuel_value) {
     initial_fuel->clear();
     global_fuel->clear();
@@ -1891,12 +1884,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Specify the maximum number of channels(SMs) NCCL will use "
       "for p2p operations. Default is 0 which is to let "
       "NCCL decide."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_mlir_emitter_level",
-                int64_setter_for(&DebugOptions::set_xla_gpu_mlir_emitter_level),
-                debug_options->xla_gpu_mlir_emitter_level(),
-                "Enable new MLIR-based emitters. Level 0 means disabled, "
-                "higher levels enable more of the emitters."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_multi_streamed_windowed_einsum",
       bool_setter_for(

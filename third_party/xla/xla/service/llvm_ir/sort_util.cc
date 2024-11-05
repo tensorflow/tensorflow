@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/sort_util.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <vector>
 

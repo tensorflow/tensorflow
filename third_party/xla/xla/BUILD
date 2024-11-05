@@ -1189,8 +1189,6 @@ xla_cc_test(
         "debug_options_parsers.h",
         "debug_options_parsers_test.cc",
     ],
-    # TODO(https://github.com/openxla/xla/issues/17808)
-    tags = ["noasan"],
     deps =
         [
             ":debug_options_flags",

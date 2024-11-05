@@ -57,6 +57,7 @@ Registry* registry() {
 }  // namespace
 
 char Serializable::ID = 0;
+char SerializeOptions::ID = 0;
 char DeserializeOptions::ID = 0;
 char SerDes::ID = 0;
 
@@ -80,7 +81,8 @@ void RegisterSerDes(const void* type_id, std::unique_ptr<SerDes> serdes) {
   serdes.release();
 }
 
-absl::StatusOr<Serialized> Serialize(Serializable& serializable) {
+absl::StatusOr<Serialized> Serialize(
+    Serializable& serializable, std::unique_ptr<SerializeOptions> options) {
   SerDes* serdes;
   {
     Registry* const r = registry();
@@ -93,7 +95,8 @@ absl::StatusOr<Serialized> Serialize(Serializable& serializable) {
     }
     serdes = it->second;
   }
-  TF_ASSIGN_OR_RETURN(std::string data, serdes->Serialize(serializable));
+  TF_ASSIGN_OR_RETURN(std::string data,
+                      serdes->Serialize(serializable, std::move(options)));
 
   Serialized proto;
   proto.set_type_name(std::string(serdes->type_name()));

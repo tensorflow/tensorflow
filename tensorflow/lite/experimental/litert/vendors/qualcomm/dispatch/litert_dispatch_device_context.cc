@@ -104,9 +104,10 @@ LiteRtDispatchDeviceContextT::RegisterTensorBuffer(
     return absl::InternalError("Failed to get tensor buffer's type");
   }
 
+  auto element_type =
+      static_cast<enum litert::ElementType>(tensor_type.element_type);
   Qnn_DataType_t tensor_data_type;
-  if (kLiteRtStatusOk !=
-      LegalizeElementType(tensor_type.element_type, &tensor_data_type)) {
+  if (kLiteRtStatusOk != LegalizeElementType(element_type, &tensor_data_type)) {
     return absl::InternalError("Failed to legalize datatype");
   }
 

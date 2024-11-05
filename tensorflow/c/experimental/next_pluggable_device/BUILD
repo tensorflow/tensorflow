@@ -89,6 +89,7 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/pjrt:pjrt_api",
         "@local_xla//xla/pjrt:pjrt_c_api_client",

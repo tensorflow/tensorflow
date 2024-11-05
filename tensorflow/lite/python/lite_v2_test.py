@@ -1591,6 +1591,24 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         metadata.options.modelOptimizationModes,
     )
 
+  def testSerializeDebugMetadata(self):
+    root = self._getSimpleVariableModel()
+    input_data = tf.constant(1.0, shape=[1])
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func], root
+    )
+    converter.serialize_debug_metadata = True
+    tflite_model = flatbuffer_utils.convert_bytearray_to_object(
+        converter.convert()
+    )
+
+    # Check the debug metadata.
+    metadata_names = [m.name for m in tflite_model.metadata]
+    self.assertIn(b'debug_metadata', metadata_names)
+
 
 class FromSavedModelTest(lite_v2_test_util.ModelTest):
 

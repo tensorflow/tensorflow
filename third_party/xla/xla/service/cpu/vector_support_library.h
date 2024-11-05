@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_VECTOR_SUPPORT_LIBRARY_H_
 #define XLA_SERVICE_CPU_VECTOR_SUPPORT_LIBRARY_H_
 
+#include <cstdint>
+#include <initializer_list>
 #include <string>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "llvm/ADT/APFloat.h"
@@ -39,8 +42,9 @@ namespace cpu {
 
 inline llvm::APFloat GetIeeeF32(float f) { return llvm::APFloat(f); }
 inline llvm::APFloat GetIeeeF32FromBitwiseRep(int32_t bitwise_value) {
-  return llvm::APFloat(llvm::APFloat::IEEEsingle(),
-                       llvm::APInt(/*numBits=*/32, /*val=*/bitwise_value));
+  return llvm::APFloat(
+      llvm::APFloat::IEEEsingle(),
+      llvm::APInt(/*numBits=*/32, /*val=*/bitwise_value, /*isSigned=*/true));
 }
 
 // A thin wrapper around llvm_util.h to make code generating vector math flow

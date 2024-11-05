@@ -48,6 +48,7 @@ cc_library(
         "flatbuffer_tools.h",
     ],
     deps = [
+        ":buffer_ref",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",

@@ -18,7 +18,11 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <set>
+#include <string>
+#include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -29,6 +33,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;

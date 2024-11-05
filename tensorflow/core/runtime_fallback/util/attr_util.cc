@@ -442,7 +442,7 @@ Status ParseBoolAttrValue(absl::string_view attr_value, bool* bool_val) {
   }
 }
 
-Status ParseIntAttrValue(absl::string_view attr_value, int64_t* int_val) {
+absl::Status ParseIntAttrValue(absl::string_view attr_value, int64_t* int_val) {
   bool success = absl::SimpleAtoi(attr_value, int_val);
   if (!success) {
     return errors::InvalidArgument("Could not parse int from \"", attr_value,

@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
@@ -46,7 +48,9 @@ namespace gpu {
 namespace {
 
 using ::testing::Each;
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::IsEmpty;
 using ::tsl::testing::IsOk;
 
 class RocmStreamTest : public ::testing::Test {
@@ -233,6 +237,74 @@ TEST_F(RocmStreamTest, SetName) {
   constexpr absl::string_view kStreamName = "Test stream";
   stream->SetName(std::string(kStreamName));
   EXPECT_EQ(stream->GetName(), kStreamName);
+}
+
+TEST_F(RocmStreamTest, WaitForEvent) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
+                          RocmStream::Create(&executor_.value(),
+                                             /*priority=*/std::nullopt));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      RocmEvent event,
+      RocmEvent::Create(&executor_.value(), /*allow_timing=*/false));
+
+  EXPECT_THAT(stream->WaitFor(&event), IsOk());
+
+  bool callback_called = false;
+  EXPECT_THAT(
+      stream->DoHostCallback([&callback_called]() { callback_called = true; }),
+      IsOk());
+
+  EXPECT_FALSE(callback_called);
+  EXPECT_THAT(stream->RecordEvent(&event), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_TRUE(callback_called);
+}
+
+TEST_F(RocmStreamTest, WaitForOtherStream) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream1,
+                          RocmStream::Create(&executor_.value(),
+                                             /*priority=*/std::nullopt));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream2,
+                          RocmStream::Create(&executor_.value(),
+                                             /*priority=*/std::nullopt));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      RocmEvent event,
+      RocmEvent::Create(&executor_.value(), /*allow_timing=*/false));
+
+  enum class ExecutionStage {
+    kBeforeWaitForEvent,
+    kAfterWaitForEvent,
+    kAfterWaitForStream
+  };
+
+  std::vector<ExecutionStage> execution_order;
+
+  // - stream1 waits for the event to be recorded and
+  // - stream2 waits for stream1 to be done.
+  // - Afterwards stream2 invokes the host callback.
+  EXPECT_THAT(stream1->DoHostCallback([&execution_order]() {
+    execution_order.push_back(ExecutionStage::kBeforeWaitForEvent);
+  }),
+              IsOk());
+  EXPECT_THAT(stream1->WaitFor(&event), IsOk());
+  EXPECT_THAT(stream1->DoHostCallback([&execution_order]() {
+    execution_order.push_back(ExecutionStage::kAfterWaitForEvent);
+  }),
+              IsOk());
+  EXPECT_THAT(stream2->WaitFor(stream1.get()), IsOk());
+  EXPECT_THAT(stream2->DoHostCallback([&execution_order]() {
+    execution_order.push_back(ExecutionStage::kAfterWaitForStream);
+  }),
+              IsOk());
+
+  EXPECT_THAT(stream1->RecordEvent(&event), IsOk());
+  EXPECT_THAT(stream2->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(execution_order,
+              ElementsAre(ExecutionStage::kBeforeWaitForEvent,
+                          ExecutionStage::kAfterWaitForEvent,
+                          ExecutionStage::kAfterWaitForStream));
 }
 
 }  // namespace

@@ -15,9 +15,10 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 
 #include <memory>
-#include <string>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/status.h"

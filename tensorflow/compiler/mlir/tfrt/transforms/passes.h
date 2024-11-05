@@ -141,13 +141,13 @@ void CreateTfToTfrtPipeline(mlir::OpPassManager& pm,
 
 // Creates a pipeline of passes that lowers MLIR TF dialect from tf.function to
 // TFRT dialect. SavedModel related conversions are not included.
-Status CreateTfExecutorToTfrtPipeline(mlir::PassManager& pm,
-                                      const TfrtPipelineOptions& options);
+absl::Status CreateTfExecutorToTfrtPipeline(mlir::PassManager& pm,
+                                            const TfrtPipelineOptions& options);
 
 // Creates a pipeline of passes that lowers MLIR TF Executor dialect to TF
 // dialect for CoreRT purposes.
-Status CreateTFExecutorToTFPipeline(mlir::PassManager& pm,
-                                    const TfrtPipelineOptions& options);
+absl::Status CreateTFExecutorToTFPipeline(mlir::PassManager& pm,
+                                          const TfrtPipelineOptions& options);
 
 // TODO(deqiangc): refactor below helpers once mlrt is OSSed.
 void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
@@ -155,7 +155,7 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
 void CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
     mlir::OpPassManager& pm, const TfrtPipelineOptions& options);
 
-Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
+absl::Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
     mlir::PassManager& pm, const TfrtPipelineOptions& options);
 
 }  // namespace tensorflow

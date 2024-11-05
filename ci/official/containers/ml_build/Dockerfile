@@ -23,8 +23,12 @@ COPY builder.requirements.txt /builder.requirements.txt
 RUN /setup.python.sh python3.9 builder.requirements.txt
 RUN /setup.python.sh python3.10 builder.requirements.txt
 RUN /setup.python.sh python3.11 builder.requirements.txt
-RUN /setup.python.sh python3.12 builder.requirements.txt
 RUN /setup.python.sh python3.13 builder.requirements.txt
+
+# Since we are using python3.12 as the default python version, we need to
+# install python3.12 last for now.
+# TODO(b/376338367): switch to pyenv.
+RUN /setup.python.sh python3.12 builder.requirements.txt
 
 # Setup links for TensorFlow to compile.
 # Referenced in devel.usertools/*.bazelrc.

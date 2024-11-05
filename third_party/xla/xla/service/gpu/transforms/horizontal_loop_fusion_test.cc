@@ -31,7 +31,9 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/transforms/instruction_fusion.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/transforms/priority_fusion.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -303,10 +306,13 @@ TEST_F(HorizontalLoopFusionTest, HorizontalLoopFusionAfterVerticalFusion) {
   HloPassPipeline fusion("fusion");
   const se::DeviceDescription device_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/false,
-                                                 device_info);
-  fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/true,
-                                                 device_info);
+  GpuHloCostAnalysis::Options cost_analysis_options{
+      HloCostAnalysis::DefaultShapeSize,
+      /*per_second_rates=*/{},
+      /*min_latencies_seconds=*/{},
+      /*count_multiple_input_accesses=*/true};
+  fusion.AddPass<xla::gpu::PriorityFusion>(/*thread_pool=*/nullptr, device_info,
+                                           cost_analysis_options);
   EXPECT_TRUE(fusion.Run(module.get()).value());
   EXPECT_TRUE(HorizontalLoopFusion().Run(module.get()).value());
   TF_ASSERT_OK(verifier().Run(module.get()).status());
@@ -555,10 +561,9 @@ TEST_F(HorizontalLoopFusionTest, DynamicUpdateSlice) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec{0, 0}));
 }
 
-TEST_F(HorizontalLoopFusionTest, NegativeTestForSharedParam) {
+TEST_F(HorizontalLoopFusionTest,
+       AllowSharedParametersWhenNotUsingConcatenation) {
   auto module = ParseAndReturnVerifiedModule(R"(
- HloModule BasicTest
-
  fused_computation.1 {
    arg.1 = f16[123]{0} parameter(0)
    arg.2 = f16[123]{0} parameter(1)
@@ -582,10 +587,40 @@ TEST_F(HorizontalLoopFusionTest, NegativeTestForSharedParam) {
        fusion(arg.3, arg.2), kind=kLoop, calls=fused_computation.2
    ROOT tuple.1 = (f16[123]{0}, f16[123]{0})
        tuple(fusion.1, fusion.2)
- }
-)")
+ })")
                     .value();
 
+  EXPECT_TRUE(HorizontalLoopFusion().Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()
+                  ->parameter_instruction(0)
+                  ->users()[0]
+                  ->fused_instructions_computation()
+                  ->root_instruction(),
+              GmockMatch(m::Tuple(m::Multiply(), m::Add())));
+}
+
+TEST_F(HorizontalLoopFusionTest, ForbidSharedParametersWhenUsingConcatenation) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+f {
+  p = f16[] parameter(0)
+}
+
+g {
+  p = f16[] parameter(0)
+  b = f16[1] bitcast(p)
+}
+
+e {
+  p = f16[] parameter(0)
+  a = f16[] fusion(p), kind=kLoop, calls=f
+  b = f16[1] fusion(p), kind=kLoop, calls=g
+  t = tuple(a, b)
+})"));
+
+  // As fusions f and g have different output shapes, the horizontal fusion
+  // algorithm would only consider merging them using concatenation/slicing.
+  // The horizontal fusion is not supposed to happen in this
+  // example though because f and g share an input parameter.
   EXPECT_FALSE(HorizontalLoopFusion().Run(module.get()).value());
 }
 
@@ -846,6 +881,86 @@ TEST_F(HorizontalLoopFusionTest, DoNotMergeVariadicReductions) {
   EXPECT_FALSE(HorizontalLoopFusion().Run(module.get()).value());
 }
 
+TEST_F(HorizontalLoopFusionTest, DoFusionInsideWhileLoop) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+b {
+  a = (s8[]) parameter(0)
+  b = s8[] get-tuple-element(a), index=0
+  c = s8[] add(b, b)
+  d = s8[] multiply(b, b)
+  e = s8[] subtract(c, d)
+  t = tuple(e)
+}
+
+c {
+  p = (s8[]) parameter(0)
+  r = pred[] constant(true)
+}
+
+e {
+  p = (s8[]) parameter(0)
+  r = (s8[]) while(p), condition=c, body=b
+})"));
+
+  EXPECT_TRUE(HorizontalLoopFusion().Run(module.get()).value());
+}
+
+TEST_F(HorizontalLoopFusionTest, FuseNonDefaultLayoutsUsingTuple) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+f {
+  p = s8[2,2]{0,1} parameter(0)
+  b = s8[2,2]{1,0} bitcast(p)
+  n = s8[2,2]{1,0} negate(b)
+ }
+
+g {
+  p = s8[2,2]{0,1} parameter(0)
+  b = s8[2,2]{1,0} bitcast(p)
+  a = s8[2,2]{1,0} add(b, b)
+}
+
+e {
+  p0 = s8[2,2]{0,1} parameter(0)
+  p1 = s8[2,2]{0,1} parameter(1)
+  a = s8[2,2] fusion(p0), kind=kLoop, calls=f
+  b = s8[2,2] fusion(p1), kind=kLoop, calls=g
+  t = tuple(a, b)
+})"));
+
+  EXPECT_TRUE(HorizontalLoopFusion().Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()
+                  ->parameter_instruction(0)
+                  ->users()[0]
+                  ->fused_instructions_computation()
+                  ->root_instruction(),
+              GmockMatch(m::Tuple(m::Negate(), m::Add())));
+}
+
+TEST_F(HorizontalLoopFusionTest, FuseNonDefaultLayoutsUsingConcatenation) {
+  const std::string kHloText = R"(
+HloModule m, entry_computation_layout={()->(s32[2,3]{0,1}, s32[2,3]{1,0})}
+
+e {
+  a = s32[2,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 } })
+  b = s32[2,3]{1,0} constant({ { 10, 20, 30 }, { 40, 50, 60 } })
+  t = tuple(a, b)
+})";
+
+  MatchOptimizedHlo(kHloText, R"(
+CHECK: copy_horizontally_fused_computation
+CHECK: %[[p0:.+]] = s32[2,3]{0,1} parameter(0)
+CHECK: %[[c0:.+]] = s32[2,3]{0,1} copy(%[[p0]])
+CHECK: %[[b0:.+]] = s32[3,2]{1,0} bitcast(%[[c0]])
+CHECK: %[[r0:.+]] = s32[6]{0} reshape(%[[b0]])
+CHECK: %[[p1:.+]] = s32[2,3]{1,0} parameter(1)
+CHECK: %[[c1:.+]] = s32[2,3]{1,0} copy(%[[p1]])
+CHECK: %[[r1:.+]] = s32[6]{0} reshape(%[[c1]])
+CHECK: s32[12]{0} concatenate(%[[r0]], %[[r1]]), dimensions={0}
+)");
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0}));
+}
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

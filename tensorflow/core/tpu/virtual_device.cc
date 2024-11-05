@@ -69,16 +69,16 @@ VirtualDevice::VirtualDevice(Env* env,
                              const DeviceAttributes& device_attributes)
     : Device(env, device_attributes) {}
 
-Status VirtualDevice::Sync() { return absl::OkStatus(); }
+absl::Status VirtualDevice::Sync() { return absl::OkStatus(); }
 
 Allocator* VirtualDevice::GetAllocator(AllocatorAttributes attr) {
   // Tensors always live on the host.
   return cpu_allocator();
 }
 
-Status VirtualDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
-                                          const AllocatorAttributes alloc_attrs,
-                                          Tensor* tensor) {
+absl::Status VirtualDevice::MakeTensorFromProto(
+    const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
+    Tensor* tensor) {
   Tensor parsed(tensor_proto.dtype());
   Allocator* allocator = cpu_allocator();
   if (!parsed.FromProto(allocator, tensor_proto)) {
@@ -89,7 +89,7 @@ Status VirtualDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   return absl::OkStatus();
 }
 
-Status VirtualDevice::TryGetDeviceContext(DeviceContext** out_context) {
+absl::Status VirtualDevice::TryGetDeviceContext(DeviceContext** out_context) {
   *out_context = new VirtualDeviceContext;
   return absl::OkStatus();
 }

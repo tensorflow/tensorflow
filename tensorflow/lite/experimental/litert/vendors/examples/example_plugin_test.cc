@@ -31,21 +31,25 @@ namespace {
 
 UniqueLiteRtCompilerPlugin GetDummyPlugin() {
   LiteRtCompilerPlugin dummy_plugin;
-  LITERT_CHECK_STATUS_OK(LiteRtPluginInit(&dummy_plugin));
+  LITERT_CHECK_STATUS_OK(LiteRtCreateCompilerPlugin(&dummy_plugin));
   ABSL_CHECK_NE(dummy_plugin, nullptr);
   return UniqueLiteRtCompilerPlugin(dummy_plugin);
 }
 
 TEST(TestDummyPlugin, GetConfigInfo) {
-  ASSERT_STREQ(LiteRtPluginSocManufacturer(), "ExampleSocManufacturer");
+  ASSERT_STREQ(LiteRtGetCompilerPluginSocManufacturer(),
+               "ExampleSocManufacturer");
 
   auto plugin = GetDummyPlugin();
 
-  ASSERT_EQ(1, LiteRtPluginNumSupportedSocModels(plugin.get()));
+  LiteRtParamIndex num_supported_soc_models;
+  ASSERT_STATUS_OK(LiteRtGetNumCompilerPluginSupportedSocModels(
+      plugin.get(), &num_supported_soc_models));
+  ASSERT_EQ(num_supported_soc_models, 1);
 
   const char* soc_model_name;
-  ASSERT_STATUS_OK(
-      LiteRtPluginGetSupportedSocModel(plugin.get(), 0, &soc_model_name));
+  ASSERT_STATUS_OK(LiteRtGetCompilerPluginSupportedSocModel(plugin.get(), 0,
+                                                            &soc_model_name));
   ASSERT_STREQ(soc_model_name, "ExampleSocModel");
 }
 
@@ -54,8 +58,8 @@ TEST(TestCallDummyPlugin, PartitionSimpleMultiAdd) {
   auto model = litert::testing::LoadTestFileModel("simple_multi_op.tflite");
 
   LiteRtOpListT selected_op_list;
-  ASSERT_STATUS_OK(
-      LiteRtPluginPartitionModel(plugin.get(), model.get(), &selected_op_list));
+  ASSERT_STATUS_OK(LiteRtCompilerPluginPartitionModel(plugin.get(), model.get(),
+                                                      &selected_op_list));
   const auto selected_ops = selected_op_list.Vec();
 
   ASSERT_EQ(selected_ops.size(), 2);
@@ -67,17 +71,18 @@ TEST(TestCallDummyPlugin, CompileMulSubgraph) {
   auto plugin = GetDummyPlugin();
   auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
 
-  ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto subgraph,
+                          litert::internal::GetSubgraph(model.get()));
 
   LiteRtCompiledResult compiled;
-  ASSERT_STATUS_OK(LiteRtPluginCompile(plugin.get(), /*soc_model=*/nullptr,
-                                       &subgraph, 1, &compiled));
+  ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(
+      plugin.get(), /*soc_model=*/nullptr, &subgraph, 1, &compiled));
 
   const void* byte_code;
   size_t byte_code_size;
 
   ASSERT_STATUS_OK(
-      LiteRtCompiledResultGetByteCode(compiled, &byte_code, &byte_code_size));
+      LiteRtGetCompiledResultByteCode(compiled, &byte_code, &byte_code_size));
 
   std::string byte_code_string(reinterpret_cast<const char*>(byte_code),
                                byte_code_size);
@@ -87,13 +92,13 @@ TEST(TestCallDummyPlugin, CompileMulSubgraph) {
   size_t op_data_size;
 
   ASSERT_STATUS_OK(
-      LiteRtCompiledResultGetCallInfo(compiled, 0, &op_data, &op_data_size));
+      LiteRtGetCompiledResultCallInfo(compiled, 0, &op_data, &op_data_size));
 
   std::string op_data_string(reinterpret_cast<const char*>(op_data),
                              op_data_size);
   ASSERT_EQ(op_data_string, "Partition_0");
 
-  LiteRtCompiledResultDestroy(compiled);
+  LiteRtDestroyCompiledResult(compiled);
 }
 
 }  // namespace

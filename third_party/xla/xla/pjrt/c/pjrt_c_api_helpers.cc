@@ -640,7 +640,9 @@ const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes() {
       // TODO: (b/375454646) Uncomment once frameworks have bugfix:
       // https://github.com/openxla/xla/commit/2f99455cdf99e844ddad17de9f4714997023d243
       // StableHloVersion<0>("stablehlo_current_version",
-      //                     mlir::vhlo::Version::getCurrentVersion()),
+      //                    mlir::vhlo::Version::getCurrentVersion()),
+      StableHloVersion<0>("stablehlo_current_version",
+                          mlir::vhlo::Version(1, 7, 0)),
       StableHloVersion<1>("stablehlo_minimum_version",
                           mlir::vhlo::Version::getMinimumVersion()),
   });

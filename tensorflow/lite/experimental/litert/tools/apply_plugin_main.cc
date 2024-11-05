@@ -8,7 +8,7 @@
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either expruns or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
@@ -20,8 +20,10 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/CommandLine.h"
+#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/tools/apply_plugin.h"
 
+using ::litert::internal::Serialization;
 using ::litert::tools::ApplyPlugin;
 using ::litert::tools::ApplyPluginRun;
 
@@ -55,7 +57,9 @@ static llvm::cl::list<std::string> libs(
     llvm::cl::desc("List of directories in which to search for suitable "
                    "compiler plugin shared libraries."),
     llvm::cl::list_init(llvm::ArrayRef<std::string>{
-        "third_party/tensorflow/lite/experimental/litert/vendors/examples"}));
+        "third_party/tensorflow/lite/experimental/litert/vendors/examples",
+        "third_party/tensorflow/lite/experimental/litert/vendors/qualcomm/"
+        "compiler"}));
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> out(
@@ -78,19 +82,6 @@ static llvm::cl::opt<std::string> serialization(
 ApplyPluginRun::Ptr ParseFlags() {
   auto res = std::make_unique<ApplyPluginRun>();
 
-  std::ofstream file_out;
-  if (out != "-") {
-    file_out.open(out);
-    res->outs.clear();
-    res->outs.push_back(file_out);
-  }
-
-  std::ofstream file_err;
-  if (err != "-") {
-    file_err.open(err);
-    res->dump_out.emplace(file_err);
-  }
-
   if (!model.empty()) {
     res->model = model;
   }
@@ -112,6 +103,14 @@ ApplyPluginRun::Ptr ParseFlags() {
     res->cmd = ApplyPluginRun::Cmd::NOOP;
   }
 
+  if (serialization == "METADATA") {
+    res->serialization = Serialization::kMetadata;
+  } else if (serialization == "APPEND") {
+    res->serialization = Serialization::kAppend;
+  } else {
+    res->serialization = Serialization::kUnknown;
+  }
+
   return res;
 }
 
@@ -121,6 +120,19 @@ int main(int argc, char* argv[]) {
   auto run = ParseFlags();
   if (run == nullptr) {
     return 1;
+  }
+
+  std::ofstream file_out;
+  if (out != "-") {
+    file_out.open(out);
+    run->outs.clear();
+    run->outs.push_back(file_out);
+  }
+
+  std::ofstream file_err;
+  if (err != "-") {
+    file_err.open(err);
+    run->dump_out.emplace(file_err);
   }
 
   return ApplyPlugin(std::move(run));

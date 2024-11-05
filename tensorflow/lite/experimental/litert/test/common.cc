@@ -65,12 +65,12 @@ absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename) {
   return buffer;
 }
 
-UniqueLiteRtModel LoadTestFileModel(absl::string_view filename) {
+internal::UniqueLiteRtModel LoadTestFileModel(absl::string_view filename) {
   LiteRtModel model = nullptr;
   LITERT_CHECK_STATUS_OK(
-      LoadModelFromFile(GetTestFilePath(filename).data(), &model));
+      internal::LoadModelFromFile(GetTestFilePath(filename).data(), &model));
   ABSL_CHECK_NE(model, nullptr);
-  return UniqueLiteRtModel(model);
+  return internal::UniqueLiteRtModel(model);
 }
 
 void TouchTestFile(absl::string_view filename, absl::string_view dir) {

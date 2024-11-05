@@ -413,12 +413,16 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
        (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8 ||
         filter->type == kTfLiteInt4));
 
+  if (filter->quantization.type == kTfLiteAffineQuantization) {
+    TF_LITE_ENSURE(context, filter->quantization.params);
+    TF_LITE_ENSURE(context, reinterpret_cast<TfLiteAffineQuantization*>(
+                                filter->quantization.params)
+                                ->scale);
+  }
+
   if (is_hybrid &&
       (filter->type == kTfLiteInt8 || filter->type == kTfLiteInt4) &&
       filter->quantization.type == kTfLiteAffineQuantization &&
-      filter->quantization.params &&
-      reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params)
-          ->scale &&
       reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params)
               ->scale->size > 1) {
     const auto* affine_quantization =
@@ -1170,6 +1174,15 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
                     GetTemporarySafe(context, node, data->scaling_factors_index,
                                      &scaling_factors_tensor));
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors_tensor);
+  float scale = filter->params.scale;
+  if (filter->quantization.type == kTfLiteAffineQuantization) {
+    const auto* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            filter->quantization.params);
+    if (affine_quantization->scale->size > 1) {
+      scale = affine_quantization->scale->data[0];
+    }
+  }
 
   // Per-batch input quantization for higher accuracy.
   {
@@ -1180,7 +1193,7 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
       tensor_utils::SymmetricQuantizeFloats(
           input_ptr + offset, input_size, quantized_input_ptr_batch + offset,
           &unused_min, &unused_max, &scaling_factors_ptr[b]);
-      scaling_factors_ptr[b] *= filter->params.scale;
+      scaling_factors_ptr[b] *= scale;
     }
   }
 

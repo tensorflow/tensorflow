@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_context.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
+#include "xla/stream_executor/rocm/rocm_kernel.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -127,6 +128,10 @@ class RocmExecutor : public GpuExecutor {
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
+  // Returns a RocmKernel pointer for a given Kernel, if the kernel is
+  // associated with this executor. Otherwise a NotFound error is returned.
+  absl::StatusOr<const RocmKernel*> GetRocmKernel(const Kernel* kernel);
+
  private:
   // Loads a module in HSACO format.
   absl::StatusOr<ModuleHandle> LoadModuleFromHsaco(const char* hsaco)
@@ -183,6 +188,11 @@ class RocmExecutor : public GpuExecutor {
   // Lookup map for alive streams, from raw stream pointers.
   absl::flat_hash_map<void*, Stream*> alive_gpu_streams_
       ABSL_GUARDED_BY(alive_gpu_streams_mu_);
+
+  // Set of loaded kernels. This contains all kernels loaded by this executor,
+  // including in-process kernels.
+  absl::flat_hash_set<const Kernel*> loaded_kernels_
+      ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   // GPU ISA version for device_.
   int version_;

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/resource/resource_variable.h"
 
+#include <cstdlib>
+#include <cstring>
 #include <vector>
 
 #include <gmock/gmock.h>

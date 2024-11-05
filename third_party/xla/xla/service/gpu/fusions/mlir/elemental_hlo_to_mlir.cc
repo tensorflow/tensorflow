@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <optional>
 #include <queue>
 #include <utility>
 #include <vector>
@@ -162,31 +163,6 @@ static auto& kUnsupportedOps =
                                    HloOpcode::kConditional,
                                    HloOpcode::kStochasticConvert,
                                    HloOpcode::kCall};
-
-bool IsUnsupportedGather(const HloInstruction* instr) {
-  // We assume gather simplifier ran, so we don't need to support all gather
-  // forms.
-  if (instr->opcode() != HloOpcode::kGather) return false;
-
-  auto* gather = Cast<HloGatherInstruction>(instr);
-  const auto& dims = gather->gather_dimension_numbers();
-  // We allow XLA:GPU's "canonical" gather (2D indices). And the form preferred
-  // by the algebraic simplifier if the second index dimension is degenerate (1D
-  // indices with implicit second dimension).
-  int indices_rank = gather->operand(1)->shape().rank();
-  if (dims.index_vector_dim() != 1 || !dims.collapsed_slice_dims().empty() ||
-      indices_rank == 0 || indices_rank > 2) {
-    return true;
-  }
-
-  for (auto [index, val] : llvm::enumerate(dims.start_index_map())) {
-    if (index != val) return true;
-  }
-  for (auto [index, val] : llvm::enumerate(dims.offset_dims())) {
-    if (index + 1 != val) return true;
-  }
-  return false;
-}
 
 absl::StatusOr<Value> GetSingleOperandValue(
     const OperandProvider& operand_provider, const HloInstruction* instr,
@@ -607,12 +583,13 @@ template <typename MhloOp, typename... ExtraArgs>
 SmallVector<Value, 1> MapHloOp(mlir::Type result_type,
                                llvm::ArrayRef<mlir::Type> arg_types,
                                llvm::ArrayRef<Value> args,
+                               llvm::ArrayRef<mlir::NamedAttribute> attributes,
                                ImplicitLocOpBuilder& b,
                                ExtraArgs&&... extra_args) {
   Value result = mhlo::MhloOpToStdScalarOp::mapOpOfType<MhloOp>(
       b.getLoc(), result_type, arg_types,
       typename MhloOp::Adaptor(args, std::forward<ExtraArgs>(extra_args)...),
-      /*attributes=*/std::nullopt, &b);
+      attributes, &b);
   if (result.getType().isInteger(1)) {
     result = b.create<mlir::arith::ExtUIOp>(b.getI8Type(), result);
   }
@@ -620,11 +597,13 @@ SmallVector<Value, 1> MapHloOp(mlir::Type result_type,
 }
 
 template <typename MhloOp>
-SmallVector<Value, 1> MapElementwiseOp(llvm::ArrayRef<mlir::Type> arg_types,
-                                       llvm::ArrayRef<Value> args,
-                                       ImplicitLocOpBuilder& b) {
+SmallVector<Value, 1> MapElementwiseOp(
+    llvm::ArrayRef<mlir::Type> arg_types, llvm::ArrayRef<Value> args,
+    ImplicitLocOpBuilder& b,
+    llvm::ArrayRef<mlir::NamedAttribute> attributes = std::nullopt) {
   // We use the last argument's type because of select.
-  return MapHloOp<MhloOp>(args.back().getType(), arg_types, args, b);
+  return MapHloOp<MhloOp>(args.back().getType(), arg_types, args, attributes,
+                          b);
 }
 
 }  // namespace
@@ -946,9 +925,9 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReducePrecision(
   mhlo::ReducePrecisionOp::Properties properties;
   properties.exponent_bits = builder.getI32IntegerAttr(instr->exponent_bits());
   properties.mantissa_bits = builder.getI32IntegerAttr(instr->mantissa_bits());
-  return MapHloOp<mhlo::ReducePrecisionOp>(operands.front().getType(),
-                                           arg_types, operands, builder,
-                                           nullptr, properties);
+  return MapHloOp<mhlo::ReducePrecisionOp>(
+      operands.front().getType(), arg_types, operands,
+      /*attributes=*/std::nullopt, builder, nullptr, properties);
 }
 
 absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
@@ -1014,11 +993,12 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
   TF_ASSIGN_OR_RETURN(auto operands,
                       GetOperands(instr, indices, operand_provider, builder));
 
+  llvm::SmallVector<mlir::NamedAttribute> attributes;
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
-      return {
-          MapHloOp<mhlo::AbsOp>(PrimitiveTypeToMlirType(element_type, builder),
-                                arg_types, operands, builder)};
+      return {MapHloOp<mhlo::AbsOp>(
+          PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
+          /*attributes=*/std::nullopt, builder)};
     case HloOpcode::kAdd:
       if (element_type == PRED) {
         return MapElementwiseOp<mhlo::OrOp>(arg_types, operands, builder);
@@ -1041,7 +1021,7 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kComplex:
       return MapHloOp<mhlo::ComplexOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          builder);
+          /*attributes=*/std::nullopt, builder);
     case HloOpcode::kCos:
       return MapElementwiseOp<mhlo::CosineOp>(arg_types, operands, builder);
     case HloOpcode::kDivide:
@@ -1049,18 +1029,26 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kErf:
       return MapElementwiseOp<mhlo::ErfOp>(arg_types, operands, builder);
     case HloOpcode::kExp:
-      return MapElementwiseOp<mhlo::ExpOp>(arg_types, operands, builder);
+      if (element_type == F16 || element_type == BF16) {
+        attributes.emplace_back(
+            mlir::StringAttr::get(builder.getContext(), "fastmath"),
+            mlir::arith::FastMathFlagsAttr::get(
+                builder.getContext(), mlir::arith::FastMathFlags::afn));
+      }
+      return MapElementwiseOp<mhlo::ExpOp>(arg_types, operands, builder,
+                                           attributes);
     case HloOpcode::kExpm1:
       return MapElementwiseOp<mhlo::Expm1Op>(arg_types, operands, builder);
     case HloOpcode::kFloor:
       return MapElementwiseOp<mhlo::FloorOp>(arg_types, operands, builder);
     case HloOpcode::kIsFinite:
       return MapHloOp<mhlo::IsFiniteOp>(builder.getI1Type(), arg_types,
-                                        operands, builder);
+                                        operands, /*attributes=*/std::nullopt,
+                                        builder);
     case HloOpcode::kImag:
       return MapHloOp<mhlo::ImagOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          builder);
+          /*attributes=*/std::nullopt, builder);
     case HloOpcode::kLog:
       return MapElementwiseOp<mhlo::LogOp>(arg_types, operands, builder);
     case HloOpcode::kLog1p:
@@ -1106,13 +1094,13 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kPopulationCount:
       return MapHloOp<mhlo::PopulationCountOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          builder);
+          /*attributes=*/std::nullopt, builder);
     case HloOpcode::kPower:
       return MapElementwiseOp<mhlo::PowOp>(arg_types, operands, builder);
     case HloOpcode::kReal:
       return MapHloOp<mhlo::RealOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          builder);
+          /*attributes=*/std::nullopt, builder);
     case HloOpcode::kReducePrecision:
       return EmitReducePrecision(instr, arg_types, operands, builder);
     case HloOpcode::kRemainder:
@@ -1154,7 +1142,7 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kBitcastConvert:
       return MapHloOp<mhlo::BitcastConvertOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
-          builder);
+          /*attributes=*/std::nullopt, builder);
     case HloOpcode::kConvert:
       return EmitConvert(instr, arg_types, operands, builder);
     case HloOpcode::kBitcast:
@@ -1265,7 +1253,7 @@ class SubgraphConverter {
   absl::StatusOr<SmallVector<Value>> EmitInstruction(
       const HloInstruction* instr, ValueRange indices);
   absl::StatusOr<SmallVector<Value>> EmitElementwiseInstruction(
-      const HloInstruction* instr, ValueRange indices);
+      const HloInstruction* root, ValueRange indices);
 
  private:
   const PartitionedComputation& computation_;

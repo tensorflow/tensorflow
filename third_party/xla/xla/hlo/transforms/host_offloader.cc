@@ -218,6 +218,10 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
           "a very high overhead.",
           instruction->name());
       SetHostComputeFrontendAttribute(*instruction);
+    } else if (instruction->opcode() == HloOpcode::kCopy) {
+      // A host-to-host copy is allowed and should be rewritten to a host
+      // compute later.
+      SetHostComputeFrontendAttribute(*instruction);
     } else {
       // Found an instruction which is invalid during host memory offloading.
       return absl::InvalidArgumentError(

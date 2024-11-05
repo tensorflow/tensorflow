@@ -230,4 +230,21 @@ TEST(StringUtil, TestShapes) {
   EXPECT_EQ(t0->dims->data[1], 2);
 }
 
+TEST(StringUtil, EmptyStringWithEmptyBuffer) {
+  Interpreter interpreter;
+  interpreter.AddTensors(1);
+  TfLiteTensor* t0 = interpreter.tensor(0);
+  t0->type = kTfLiteString;
+  t0->allocation_type = kTfLiteDynamic;
+
+  DynamicBuffer buf;
+  std::string empty_string;
+  ASSERT_EQ(buf.AddString(empty_string.data(), empty_string.length()),
+            kTfLiteOk);
+  buf.WriteToTensorAsVector(t0);
+
+  StringRef added_string = GetString(t0, 0);
+  EXPECT_EQ(added_string.len, 0);
+}
+
 }  // namespace tflite

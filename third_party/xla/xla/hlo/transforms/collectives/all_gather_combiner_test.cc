@@ -118,6 +118,45 @@ ENTRY entry {
                         op::AllGather(op::Parameter(1))));
 }
 
+// Tests that AllGather instructions inside while loop bodies are not combined
+// when combine_while_loops is false.
+TEST_F(AllGatherCombinerTest, DoNotCombineInWhileLoop) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+while_body {
+  param0 = (f32[32], s32[32]) parameter(0)
+  param0.0 = f32[32] get-tuple-element(param0), index=0
+  param0.1 = s32[32] get-tuple-element(param0), index=1
+  allgather0 = f32[128] all-gather(param0.0), replica_groups={}, dimensions={0}
+  allgather1 = s32[128] all-gather(param0.1), replica_groups={}, dimensions={0}
+  ROOT tuple = (f32[32], s32[32]) tuple(param0.0, param0.1)
+}
+
+while_cond {
+  param0 = (f32[32], s32[32]) parameter(0)
+  ROOT cond = pred[] constant(true)
+}
+
+ENTRY entry {
+  param0 = f32[32] parameter(0)
+  param1 = s32[32] parameter(1)
+  while_init = (f32[32], s32[32]) tuple(param0, param1)
+  while_loop = (f32[32], s32[32]) while(while_init), condition=while_cond, body=while_body
+  ROOT gte = f32[32] get-tuple-element(while_loop), index=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
+                            /*combine_by_dim=*/true,
+                            /*combine_different_dtypes=*/true,
+                            /*combine_while_loops=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 // Tests combination of several cross replica gather instructions with
 // different gather dimensions.
 TEST_F(AllGatherCombinerTest, CombineAllGathersByAllGatherDimension) {

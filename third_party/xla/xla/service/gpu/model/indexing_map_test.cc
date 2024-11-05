@@ -801,6 +801,8 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ConstantDims) {
     domain:
     d0 in [5, 5]
   )");
+  EXPECT_FALSE(
+      indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve));
   EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                                                   (d0) -> (5),

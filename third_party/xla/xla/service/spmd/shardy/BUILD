@@ -1,7 +1,7 @@
 # Integrates Shardy into the current XLA pipeline.
 
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
+load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
@@ -15,10 +15,9 @@ package(
 
 package_group(
     name = "friends",
-    packages = [
+    packages = xla_internal(["..."]) + [
         "//learning/deepmind/jax/ocean/...",
         "//learning/deepmind/partir/...",
-        "//platforms/xla/...",
         "//third_party/openxla/shardy/...",
     ],
 )

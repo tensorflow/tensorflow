@@ -17,11 +17,10 @@
 
 #include <cstdint>
 #include <list>
-#include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
@@ -130,6 +129,13 @@ struct LiteRtModelT {
   // if it exists.
   LiteRtResult<litert::MutableBufferRef<uint8_t>> FindMetadata(
       absl::string_view key) const;
+
+  // Adds a new metadata buffer to the model. Fails if it already exists.
+  LiteRtStatus PushMetadata(absl::string_view key,
+                            litert::BufferRef<uint8_t> data);
+
+ private:
+  LiteRtStatus FindMetadataInd(absl::string_view key, uint32_t& ind) const;
 };
 
 //

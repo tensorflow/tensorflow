@@ -488,7 +488,7 @@ EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
   for (const HloInstruction* instr : entry_computation->instructions()) {
     total_run_time += GpuPerformanceModel::EstimateRunTimeForInstruction(
                           instr, device_info, &cost_analysis,
-                          GpuPerformanceModelOptions::PriorityFusion())
+                          GpuPerformanceModelOptions::Default())
                           .exec_time;
   }
 

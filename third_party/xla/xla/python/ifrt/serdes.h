@@ -31,6 +31,11 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+// Base class for serialization options to be passed to `Serialize`.
+struct SerializeOptions : llvm::RTTIExtends<SerializeOptions, llvm::RTTIRoot> {
+  static char ID;  // NOLINT
+};
+
 // Base class for deserialization options to be passed to `Deserialize`.
 struct DeserializeOptions
     : llvm::RTTIExtends<DeserializeOptions, llvm::RTTIRoot> {
@@ -42,8 +47,9 @@ class Serializable : public llvm::RTTIExtends<Serializable, llvm::RTTIRoot> {
  public:
   static char ID;  // NOLINT
 
-  // Expected `DeserializeOptions` type. A subclass of `Serializable` can
-  // customize it.
+  // Expected `SerializeOptions` and `DeserializeOptions` types. A subclass of
+  // `Serializable` can customize them.
+  using SerializeOptions = ::xla::ifrt::SerializeOptions;
   using DeserializeOptions = ::xla::ifrt::DeserializeOptions;
 };
 
@@ -56,7 +62,9 @@ class SerDes : public llvm::RTTIExtends<SerDes, llvm::RTTIRoot> {
   // qualified type name of the class that implements `Serializable`.
   virtual absl::string_view type_name() const = 0;
 
-  virtual absl::StatusOr<std::string> Serialize(Serializable& serializable) = 0;
+  virtual absl::StatusOr<std::string> Serialize(
+      Serializable& serializable,
+      std::unique_ptr<SerializeOptions> options) = 0;
 
   virtual absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
@@ -96,7 +104,8 @@ absl::StatusOr<std::unique_ptr<Serializable>> DeserializeUnchecked(
 //
 // Returns an error if the `Serializable` type does not have a corresponding
 // `SerDes` registered or the `SerDes` returns an error.
-absl::StatusOr<Serialized> Serialize(Serializable& serializable);
+absl::StatusOr<Serialized> Serialize(Serializable& serializable,
+                                     std::unique_ptr<SerializeOptions> options);
 
 // Deserializes the given proto message produced by `Serialize()` back to an
 // object of type `InterfaceType`, where `serialized.type_name()` is expected to

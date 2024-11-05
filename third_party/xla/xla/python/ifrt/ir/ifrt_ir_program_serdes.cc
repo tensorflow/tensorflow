@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/support/module_parsing.h"
+#include "xla/status_macros.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -39,6 +40,7 @@ namespace ifrt {
 
 namespace {
 
+// Serialization/deserialization for `IfrtIRProgram`.
 class IfrtIRProgramSerDes
     : public llvm::RTTIExtends<IfrtIRProgramSerDes, SerDes> {
  public:
@@ -46,7 +48,8 @@ class IfrtIRProgramSerDes
     return "xla::ifrt::IfrtIRProgram";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     const auto& program = llvm::cast<IfrtIRProgram>(serializable);
     if (program.mlir_module == nullptr) {
       return absl::InvalidArgumentError("Unable to serialize null MLIR module");
@@ -78,11 +81,45 @@ class IfrtIRProgramSerDes
   static char ID;  // NOLINT
 };
 
-char IfrtIRProgramSerDes::ID = 0;  // NOLINT
+// Serialization/deserialization for `IfrtIRCompileOptions`.
+class IfrtIRCompileOptionsSerDes
+    : public llvm::RTTIExtends<IfrtIRCompileOptionsSerDes, SerDes> {
+ public:
+  absl::string_view type_name() const override {
+    return "xla::ifrt::IfrtIRCompileOptions";
+  }
+
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+    const auto& options = llvm::cast<IfrtIRCompileOptions>(serializable);
+    TF_ASSIGN_OR_RETURN(IfrtIrCompileOptionsProto options_proto,
+                        options.ToProto());
+    return options_proto.SerializeAsString();
+  }
+
+  absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
+      const std::string& serialized,
+      std::unique_ptr<DeserializeOptions>) override {
+    IfrtIrCompileOptionsProto options_proto;
+    TF_RET_CHECK(options_proto.ParseFromString(serialized))
+        << "Failed to parse IfrtIrCompileOptionsProto";
+    return IfrtIRCompileOptions::FromProto(options_proto);
+  }
+
+  static char ID;  // NOLINT
+};
+
+[[maybe_unused]] char IfrtIRCompileOptionsSerDes::ID = 0;  // NOLINT
+[[maybe_unused]] char IfrtIRProgramSerDes::ID = 0;         // NOLINT
 
 // clang-format off
 bool register_ifrt_ir_program_serdes = ([]() {
   RegisterSerDes<IfrtIRProgram>(std::make_unique<IfrtIRProgramSerDes>());
+}(), true);
+
+bool register_ifrt_ir_compile_options_serdes = ([]() {
+  RegisterSerDes<IfrtIRCompileOptions>(
+      std::make_unique<IfrtIRCompileOptionsSerDes>());
 }(), true);
 // clang-format on
 

@@ -214,6 +214,15 @@ bool IsNestableVariadicReduction(const HloInstruction& instr) {
            instr.fused_expression_root()->opcode() == HloOpcode::kReduce));
 }
 
+bool IsNestableVariadicReduceWindow(const HloInstruction& instr) {
+  return instr.shape().IsTuple() &&
+         (instr.opcode() == HloOpcode::kReduceWindow ||
+          (instr.opcode() == HloOpcode::kFusion &&
+           instr.fusion_kind() == HloInstruction::FusionKind::kLoop &&
+           instr.fused_expression_root()->opcode() ==
+               HloOpcode::kReduceWindow));
+}
+
 bool IsInputFusibleTranspose(const HloInstruction& instr) {
   if (instr.opcode() == HloOpcode::kBitcast || instr.IsCustomFusion()) {
     return false;
@@ -801,9 +810,10 @@ FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
       MaxOperandsAndOutputsPerFusion()) {
     return FusionDecision::Allow();
   } else {
-    VLOG(5) << "Operand count of " << "(" << instr1.ToString()
-            << " ) = " << instr1.operand_count() << " and ( "
-            << instr2.ToString() << " ) = " << instr2.operand_count()
+    VLOG(5) << "Operand count of "
+            << "(" << instr1.ToString() << " ) = " << instr1.operand_count()
+            << " and ( " << instr2.ToString()
+            << " ) = " << instr2.operand_count()
             << " and num_output_buffers = " << num_output_buffers
             << " is bigger than the bound of "
             << MaxOperandsAndOutputsPerFusion();
@@ -924,8 +934,9 @@ HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
 bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
                                   const HloInstruction& consumer) {
   return absl::c_all_of(instr.users(), [&](const HloInstruction* user) {
-    if (user->opcode() == HloOpcode::kGetTupleElement) {
-      // Skip GTE.
+    if (user->opcode() == HloOpcode::kGetTupleElement ||
+        user->opcode() == HloOpcode::kBitcast) {
+      // Skip no-op instructions.
       return IsConsumerTheOnlyNonRootUser(*user, consumer);
     }
     // `user` is `consumer` or consumed by ROOT.
@@ -1005,11 +1016,6 @@ bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
       case HloOpcode::kReduceWindow:
       case HloOpcode::kSort:
       case HloOpcode::kDot:
-      case HloOpcode::kSin:
-      case HloOpcode::kCos:
-      case HloOpcode::kTan:
-      case HloOpcode::kPower:
-      case HloOpcode::kAtan2:
         return true;
       case HloOpcode::kConcatenate:
         return node.instruction().operand_count() >

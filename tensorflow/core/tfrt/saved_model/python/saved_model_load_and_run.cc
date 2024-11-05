@@ -111,7 +111,7 @@ std::vector<tensorflow::Tensor> RunConvertor(PyObject* args) {
   return input_run;
 }
 
-tensorflow::Status Run(
+absl::Status Run(
     SavedModel* saved_model,
     const tensorflow::tfrt_stub::GraphExecutionRunOptions& run_options,
     absl::string_view name, const std::vector<tensorflow::Tensor>& inputs,

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_IR_IR_ARRAY_H_
 #define XLA_SERVICE_LLVM_IR_IR_ARRAY_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <vector>
 

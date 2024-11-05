@@ -14,12 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/ram_file_block_cache.h"
 
+#include <cstdint>
 #include <cstring>
+#include <iostream>
+#include <iterator>
+#include <limits>
 #include <memory>
 #include <sstream>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/cleanup.h"
 
 namespace tf_gcs_filesystem {

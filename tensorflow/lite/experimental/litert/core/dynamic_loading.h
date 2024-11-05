@@ -18,13 +18,24 @@
 #include <dlfcn.h>
 #include <stdlib.h>
 
+#include <vector>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 
-namespace litert {
+namespace litert::internal {
 
 constexpr absl::string_view kLiteRtSharedLibPrefix = "libLiteRt";
+
+// Check for null and print the last dlerror.
+inline void LogDlError() {
+  char* err = ::dlerror();
+  if (err == nullptr) {
+    return;
+  }
+  LITERT_LOG(LITERT_WARNING, "::dlerror() : %s", err);
+}
 
 // Loads shared library at given path.
 LiteRtStatus OpenLib(absl::string_view so_path, void** lib_handle);
@@ -39,8 +50,8 @@ inline static LiteRtStatus ResolveLibSymbol(void* lib_handle,
                                             Sym* sym_handle) {
   Sym ptr = (Sym)::dlsym(lib_handle, sym_name.data());
   if (ptr == nullptr) {
-    LITERT_LOG(LITERT_ERROR, "Faild to resolve symbol: %s, with err: %s\n",
-               sym_name, ::dlerror());
+    LITERT_LOG(LITERT_ERROR, "Faild to resolve symbol: %s\n", sym_name.data());
+    LogDlError();
     return kLiteRtStatusErrorDynamicLoading;
   }
   *sym_handle = ptr;
@@ -52,6 +63,6 @@ inline static LiteRtStatus ResolveLibSymbol(void* lib_handle,
 LiteRtStatus FindLiteRtSharedLibs(absl::string_view search_path,
                                   std::vector<std::string>& results);
 
-}  // namespace litert
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_DYNAMIC_LOADING_H_

@@ -191,8 +191,9 @@ absl::StatusOr<std::unique_ptr<Sharding>> Sharding::FromProto(
 
 absl::StatusOr<ShardingProto> Sharding::ToProto() const {
   ShardingProto sharding_proto;
-  TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
-                      Serialize(const_cast<Sharding&>(*this)));
+  TF_ASSIGN_OR_RETURN(
+      *sharding_proto.mutable_serialized_sharding(),
+      Serialize(const_cast<Sharding&>(*this), /*options=*/nullptr));
   return sharding_proto;
 }
 

@@ -155,6 +155,7 @@ limitations under the License.
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/ir_emitter2.h"
+#include "xla/service/cpu/metrics.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
 #include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/cpu/target_machine_features.h"
@@ -481,7 +482,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pre_sharding_pipeline.AddPass<BatchedGatherScatterNormalizer>();
   TF_RETURN_IF_ERROR(pre_sharding_pipeline.Run(module).status());
 
-  const DebugOptions& debug_options = module->config().debug_options();
   const int64_t num_partitions = module->config().num_partitions();
   if (num_partitions > 1) {
     if (!module->config().use_spmd_partitioning()) {
@@ -525,7 +525,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         SubByteNormalization::SET_ELEMENT_SIZE);
     TF_RETURN_IF_ERROR(subbyte_packer_pipeline.Run(module).status());
   }
-
   HloPassPipeline pipeline("HLO passes through layout assignment");
   AddHloVerifier(&pipeline);
 
@@ -569,7 +568,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Rewrite to custom calls with target as oneDNN library calls.
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
-  bool is_thunk_runtime = debug_options.xla_cpu_use_thunk_runtime();
+  bool is_thunk_runtime =
+      module->config().debug_options().xla_cpu_use_thunk_runtime();
   if (!is_aot_compile && !is_thunk_runtime) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
@@ -642,11 +642,14 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
 
-  if (debug_options.xla_reduce_window_rewrite_base_length() != 0) {
+  if (module->config()
+          .debug_options()
+          .xla_reduce_window_rewrite_base_length() != 0) {
     pipeline.AddPass<HloPassFix<ReduceWindowRewriter>>(
-        debug_options.xla_reduce_window_rewrite_base_length());
+        module->config()
+            .debug_options()
+            .xla_reduce_window_rewrite_base_length());
   }
-
   auto dynamic_padder_options = DynamicPadderOptions();
   // TODO(pgavin): ShapeChecks were never implemented correctly by the dynamic
   // padder.  The mode defaults to kIgnore, and it was not overridden for nested
@@ -760,7 +763,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<SubByteNormalization>(
         SubByteNormalization::SET_ELEMENT_SIZE);
   }
-
   return pipeline.Run(module).status();
 }
 
@@ -1715,6 +1717,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     [[maybe_unused]] se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
   VLOG(1) << "Compiling: " << module->name();
+  RecordCpuCompilerStacktrace();
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
   std::string slow_compilation_msg =

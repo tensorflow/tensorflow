@@ -40,7 +40,7 @@ class IncompleteNodeDefBuilder {
 
   IncompleteNodeDefBuilder& Device(const string& device);
 
-  Status Build(Graph* graph, Node** n);
+  absl::Status Build(Graph* graph, Node** n);
 
   static IncompleteNodeDefBuilder Identity(const string& name,
                                            const DataType& type,

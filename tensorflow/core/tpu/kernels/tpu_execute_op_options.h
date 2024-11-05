@@ -29,7 +29,7 @@ enum class TpuCancellationClosesChipsMode : int {
 
 // Set TPU cancellation closing chips mode from an integer. See the enum
 // definition of `TpuCancellationClosesChipsConfig` above for valid values.
-Status SetTpuCancellationClosesChips(int val);
+absl::Status SetTpuCancellationClosesChips(int val);
 
 // Get whether to close chips when TPUExecutionOp is cancelled. If unset, return
 // the value specified by the `default_value` argument.

@@ -27,7 +27,7 @@ DeviceResolverDistributed::DeviceResolverDistributed(const DeviceMgr* dev_mgr) {
   }
 }
 
-Status DeviceResolverDistributed::GetDeviceAttributes(
+absl::Status DeviceResolverDistributed::GetDeviceAttributes(
     const string& device, DeviceAttributes* attributes) {
   mutex_lock l(mu_);
   auto it = attr_table_.find(device);
@@ -38,7 +38,7 @@ Status DeviceResolverDistributed::GetDeviceAttributes(
   return absl::OkStatus();
 }
 
-Status DeviceResolverDistributed::GetAllDeviceAttributes(
+absl::Status DeviceResolverDistributed::GetAllDeviceAttributes(
     const string& task, std::vector<DeviceAttributes>* attributes) {
   mutex_lock l(mu_);
   attributes->clear();
@@ -54,7 +54,7 @@ Status DeviceResolverDistributed::GetAllDeviceAttributes(
   return absl::OkStatus();
 }
 
-Status DeviceResolverDistributed::UpdateDeviceAttributes(
+absl::Status DeviceResolverDistributed::UpdateDeviceAttributes(
     const std::vector<DeviceAttributes>& attributes) {
   mutex_lock l(mu_);
   for (const DeviceAttributes& attr : attributes) {

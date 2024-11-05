@@ -53,3 +53,22 @@ In the minimal_build directory,
 ```sh
 ./minimal <path/to/tflite/model>
 ```
+
+#### Optional: Link with tensorflowlite_flex library
+
+You may want to link with tensorflowlite_flex library to use TF select Ops in
+your model.
+
+First tensorflowlite_flex needs to be compiled using bazel in tensorflow_src
+directory: `sh bazel build -c opt --cxxopt='--std=c++17' --config=monolithic
+tensorflow/lite/delegates/flex:tensorflowlite_flex`
+
+Then when configuring cmake build
+([Step 4](#step-4-create-cmake-build-directory-and-run-cmake-tool)), add the
+following option:
+
+```sh
+cmake ../tensorflow_src/tensorflow/lite/examples/minimal -DLINK_TFLITE_FLEX="ON"
+```
+
+And build: `sh cmake --build . -j`

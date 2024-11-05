@@ -119,6 +119,35 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_FALSE(result);
 }
 
+TEST_F(ScatterDeterminismExpanderTest, DoNotEliminateScatterWithOneUpdate) {
+  const char* const kModuleStr = R"(
+    HloModule scatter_determinism_expander
+
+    scatter_computation {
+      arg1.173 = f32[] parameter(1)
+      arg0.172 = f32[] parameter(0)
+      ROOT add.48 = f32[] add(arg0.172, arg1.173)
+    }
+
+    ENTRY scatter_add_computation {
+      operand = f32[1] constant({0})
+      indices = s32[1,1] constant({{1}})
+      updates = f32[1] constant({2})
+      ROOT scatter.48 = f32[1] scatter(operand, indices, updates),
+        update_window_dims={}, inserted_window_dims={0},
+        scatter_dims_to_operand_dims={0}, index_vector_dim=1,
+        to_apply=scatter_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  ScatterDeterminismExpander scatter_determinism_expander;
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  EXPECT_FALSE(result);
+}
+
 TEST_F(ScatterDeterminismExpanderTest, ScatterAddCorrectnessTest) {
   const char* const kModuleStr = R"(
     HloModule scatter_determinism_expander

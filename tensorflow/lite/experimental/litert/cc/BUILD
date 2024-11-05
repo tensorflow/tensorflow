@@ -19,8 +19,12 @@ package(
 
 cc_library(
     name = "litert_cc_api",
+    srcs = [
+        "litert_model.cc",
+    ],
     hdrs = [
         "litert_any.h",
+        "litert_handle.h",
         "litert_model.h",
         "litert_support.h",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin.h",
@@ -29,6 +33,12 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/core:model",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
@@ -102,7 +112,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
-        "//tensorflow/lite/experimental/litert/core:tensor_buffer",
+        "//tensorflow/lite/experimental/litert/runtime:tensor_buffer",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -122,51 +132,63 @@ cc_test(
     ],
 )
 
-cc_library(
-    name = "litert_tensor",
-    srcs = ["litert_tensor.cc"],
-    hdrs = ["litert_tensor.h"],
-    deps = [
-        ":litert_cc_api",
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/core:graph_tools",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
 cc_test(
-    name = "litert_tensor_test",
-    srcs = ["litert_tensor_test.cc"],
+    name = "tensor_test",
+    srcs = ["tensor_test.cc"],
     data = [
         "//tensorflow/lite/experimental/litert/test:tflite_test_data",
     ],
     deps = [
-        ":litert_tensor",
+        ":litert_cc_api",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/core:graph_tools",
-        "//tensorflow/lite/experimental/litert/core:model",
         "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
-cc_library(
-    name = "litert_op",
-    srcs = ["litert_op.cc"],
-    hdrs = ["litert_op.h"],
-    deps = ["//tensorflow/lite/experimental/litert/c:litert_c_api"],
-)
-
 cc_test(
-    name = "litert_op_test",
-    srcs = ["litert_op_test.cc"],
+    name = "op_test",
+    srcs = ["op_test.cc"],
     data = [
         "//tensorflow/lite/experimental/litert/test:tflite_test_data",
     ],
     deps = [
-        ":litert_op",
+        ":litert_cc_api",
+        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/test:common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "subgraph_test",
+    srcs = ["subgraph_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/litert/test:tflite_test_data",
+    ],
+    deps = [
+        ":litert_cc_api",
+        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/test:common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "model_test",
+    srcs = ["model_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/litert/test:tflite_test_data",
+    ],
+    deps = [
+        ":litert_cc_api",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/core:graph_tools",

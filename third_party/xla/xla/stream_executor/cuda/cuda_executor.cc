@@ -63,12 +63,7 @@ limitations under the License.
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_kernel.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/host_memory_allocation.h"
@@ -712,6 +707,12 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
   }
   VLOG(3) << "LoadKernel on kernel : " << *kernel_name;
 
+  {
+    // Keep track of loaded kernels.
+    absl::MutexLock lock{&in_memory_modules_mu_};
+    loaded_kernels_.insert(cuda_kernel.get());
+  }
+
   // Update CUDA kernel properties after it was loaded in the CUDA context.
   cuda_kernel->set_name(*kernel_name);
 
@@ -761,6 +762,8 @@ void CudaExecutor::UnloadKernel(const Kernel* kernel) {
   VLOG(3) << "Unloading kernel " << kernel << " : " << kernel->name();
 
   absl::MutexLock lock{&in_memory_modules_mu_};
+  loaded_kernels_.erase(kernel);
+
   auto gpu_binary_it = kernel_to_gpu_binary_.find(kernel);
   if (kernel_to_gpu_binary_.end() == gpu_binary_it) {
     // We might never see kernel being explicitly loaded if it was resolved from
@@ -1305,5 +1308,14 @@ absl::StatusOr<MemoryType> CudaExecutor::GetPointerMemorySpace(
   }
 }
 
+absl::StatusOr<const CudaKernel*> CudaExecutor::GetCudaKernel(
+    const Kernel* kernel) {
+  absl::MutexLock lock{&in_memory_modules_mu_};
+  auto it = loaded_kernels_.find(kernel);
+  if (it == loaded_kernels_.end()) {
+    return absl::NotFoundError("Kernel not loaded in this executor.");
+  }
+  return static_cast<const CudaKernel*>(*it);
+}
 }  // namespace gpu
 }  // namespace stream_executor

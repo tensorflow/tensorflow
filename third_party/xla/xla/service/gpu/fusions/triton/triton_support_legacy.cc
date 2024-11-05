@@ -144,6 +144,7 @@ std::vector<HloOpcode> TritonSupportedUnaryElementwiseUpToFloatNormalization(
   ret.push_back(HloOpcode::kNegate);
   if (element_type == PrimitiveType::F32 ||
       element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F16 ||
       element_type == PrimitiveType::F64) {
     absl::c_copy(std::vector<HloOpcode>{HloOpcode::kCos, HloOpcode::kExp,
                                         HloOpcode::kExpm1, HloOpcode::kFloor,
@@ -168,10 +169,13 @@ std::vector<HloOpcode> TritonSupportedBinaryElementwiseUpToFloatNormalization(
                                 HloOpcode::kMultiply, HloOpcode::kSubtract};
   if (element_type == PrimitiveType::F32 ||
       element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F16 ||
       element_type == PrimitiveType::F64) {
     ret.push_back(HloOpcode::kAtan2);
-    ret.push_back(HloOpcode::kDivide);
     ret.push_back(HloOpcode::kPower);
+    if (element_type != PrimitiveType::F16) {
+      ret.push_back(HloOpcode::kDivide);
+    }
   }
   return ret;
 }

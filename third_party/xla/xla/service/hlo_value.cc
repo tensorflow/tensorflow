@@ -103,8 +103,8 @@ std::string HloValue::ToString(int indent) const {
   } else {
     StrAppend(&out, indentation, " uses are not initialized yet.\n");
   }
-  StrAppend(&out, indentation,
-            " from instruction: ", instruction()->ToString());
+  StrAppend(&out, indentation, " from instruction: ", instruction()->ToString(),
+            "\n");
   return out;
 }
 

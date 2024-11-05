@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 
+#include <cstdint>
+#include <functional>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"

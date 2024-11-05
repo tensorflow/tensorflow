@@ -15,6 +15,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -25,41 +26,46 @@ class LiteRtTensorBufferRequirementsT {
   LiteRtTensorBufferRequirementsT(
       int num_supported_tensor_buffer_types,
       const LiteRtTensorBufferType* supported_tensor_buffer_types,
-      size_t buffer_size)
+      size_t buffer_size, std::vector<uint32_t>&& strides)
       : supported_buffer_types_(
             supported_tensor_buffer_types,
             supported_tensor_buffer_types + num_supported_tensor_buffer_types),
-        buffer_size_(buffer_size) {}
-  std::vector<LiteRtTensorBufferType> supported_buffer_types() const {
+        buffer_size_(buffer_size),
+        strides_(strides) {}
+  std::vector<LiteRtTensorBufferType> SupportedBufferTypes() const {
     return supported_buffer_types_;
   }
-  size_t buffer_size() const { return buffer_size_; }
+  size_t BufferSize() const { return buffer_size_; }
+  const std::vector<uint32_t>& Strides() const { return strides_; }
 
  private:
   std::vector<LiteRtTensorBufferType> supported_buffer_types_;
   size_t buffer_size_;
+  // Stride per each dimension.
+  std::vector<uint32_t> strides_;
 };
 
 LiteRtStatus LiteRtCreateTensorBufferRequirements(
     int num_supported_tensor_buffer_types,
     const LiteRtTensorBufferType* supported_tensor_buffer_types,
-    size_t buffer_size, LiteRtTensorBufferRequirements* requirements) {
+    size_t buffer_size, int num_strides, const uint32_t* strides,
+    LiteRtTensorBufferRequirements* requirements) {
   if (num_supported_tensor_buffer_types < 1 || !supported_tensor_buffer_types ||
       !requirements) {
     return kLiteRtStatusErrorInvalidArgument;
   }
   *requirements = new LiteRtTensorBufferRequirementsT(
       num_supported_tensor_buffer_types, supported_tensor_buffer_types,
-      buffer_size);
+      buffer_size, std::vector<uint32_t>(strides, strides + num_strides));
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+LiteRtStatus LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
     LiteRtTensorBufferRequirements requirements, int* num_types) {
   if (!requirements || !num_types) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *num_types = requirements->supported_buffer_types().size();
+  *num_types = requirements->SupportedBufferTypes().size();
   return kLiteRtStatusOk;
 }
 
@@ -67,10 +73,10 @@ LiteRtStatus LiteRtGetTensorBufferRequirementsSupportedTensorBufferType(
     LiteRtTensorBufferRequirements requirements, int type_index,
     LiteRtTensorBufferType* type) {
   if (!requirements || type_index < 0 ||
-      type_index >= requirements->supported_buffer_types().size()) {
+      type_index >= requirements->SupportedBufferTypes().size()) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *type = requirements->supported_buffer_types()[type_index];
+  *type = requirements->SupportedBufferTypes()[type_index];
   return kLiteRtStatusOk;
 }
 
@@ -79,7 +85,19 @@ LiteRtStatus LiteRtGetTensorBufferRequirementsBufferSize(
   if (!requirements || !buffer_size) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *buffer_size = requirements->buffer_size();
+  *buffer_size = requirements->BufferSize();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetTensorBufferRequirementsStrides(
+    LiteRtTensorBufferRequirements requirements, int* num_strides,
+    const uint32_t** strides) {
+  if (!requirements || !num_strides || !strides) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& s = requirements->Strides();
+  *num_strides = s.size();
+  *strides = s.data();
   return kLiteRtStatusOk;
 }
 

@@ -48,6 +48,8 @@ inline constexpr llvm::StringLiteral kIfrtDevicesAttrName = "ifrt.devices";
 inline constexpr llvm::StringLiteral kIfrtNumDevicesAttrName =
     "ifrt.num_devices";
 inline constexpr llvm::StringLiteral kIfrtShardingAttrName = "ifrt.sharding";
+inline constexpr llvm::StringLiteral kIfrtMemoryKindAttrName =
+    "ifrt.memory_kind";
 inline constexpr llvm::StringLiteral kIfrtEntryFunctionAttrName =
     "ifrt.entry_function";
 
@@ -55,6 +57,9 @@ inline constexpr llvm::StringLiteral kCalleeMainFuncName = "main";
 
 // Name of StringAttr used to store the HloSharding.
 inline constexpr llvm::StringLiteral kHloShardingAttrName = "mhlo.sharding";
+// Name of StringAttr used to store memory kind.
+inline constexpr llvm::StringLiteral kHloMemoryKindAttrName =
+    "mhlo.memory_kind";
 
 inline constexpr llvm::StringLiteral kIfrtModuleTypeAttrName =
     "ifrt.module_type";

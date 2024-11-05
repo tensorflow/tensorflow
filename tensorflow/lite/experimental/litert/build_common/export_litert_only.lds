@@ -11,22 +11,15 @@ VERS_1.0 {
 
     /* Compiler Plugin */
 
-    *LiteRtCompilerPlugin;
-    *LiteRtPluginInit;
-    *LiteRtPluginDestroy;
-    *LiteRtPluginSocManufacturer;
-    *LiteRtPluginNumSupportedSocModels;
-    *LiteRtPluginGetSupportedSocModel;
-    *LiteRtPluginPartitionModel;
-    *LiteRtPluginCompile;
+    LiteRt*CompilerPlugin*;
 
     /* Compiled Result */
 
-    *LiteRtCompiledResult;
-    *LiteRtCompiledResultDestroy;
-    *LiteRtCompiledResultGetByteCode;
-    *LiteRtCompiledResultGetCallInfo;
-    *LiteRtCompiledResultGetNumCalls;
+    LiteRt*CompiledResult*;
+
+    /* Dispatch */
+
+    LiteRtDispatch*;
 
   local:
 

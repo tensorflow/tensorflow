@@ -457,24 +457,6 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     return ScheduleMetadata{memory_limit};
   }
 
-  if (options.xla_gpu_pgle_profile_file_or_directory_path().empty() &&
-      module->config().fdo_profile().empty() &&
-      options.xla_gpu_pgle_accuracy_checker() ==
-          DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR) {
-    return absl::InvalidArgumentError(
-        "xla_gpu_pgle_accuracy_checker is set to ERROR, but no profile "
-        "path specified in xla_gpu_pgle_profile_file_or_directory_path");
-  }
-
-  if (options.xla_gpu_pgle_profile_file_or_directory_path().empty() &&
-          module->config().fdo_profile().empty() &&
-          options.xla_gpu_pgle_accuracy_checker(),
-      DebugOptions::PGLE_STRICTNESS_LEVEL_WARN) {
-    LOG(WARNING)
-        << "xla_gpu_pgle_accuracy_checker is set to WARN, but no profile path "
-           "specified in xla_gpu_pgle_profile_file_or_directory_path";
-  }
-
   SchedulerConfig config = GetSchedulerConfig(
       memory_limit,
       module->config()

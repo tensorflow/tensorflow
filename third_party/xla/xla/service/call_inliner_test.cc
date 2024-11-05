@@ -464,13 +464,13 @@ TEST_F(CallInlinerTest, UseShardManualComputationBodyNotInlined) {
   EXPECT_EQ(call->to_apply()->name(), "xla.sdy.manual_computation_body.4");
 }
 
-// Inliner only checks if the name of the function has
-// "xla.sdy.manual_computation_body" a prefix, not if it contains it.
-TEST_F(CallInlinerTest, UseShardManualComputationBodyInlined) {
+// Make sure we check the name of the called function contains the string, not
+// just the prefix/suffix.
+TEST_F(CallInlinerTest, UseShardManualComputationBodySurroundedNotInlined) {
   const char* const hloString = R"(
     HloModule jit_f, entry_computation_layout={(f32[8,8]{1,0})->f32[8,8]{1,0}}
 
-    %prefix_xla.sdy.manual_computation_body.4 (Arg_0.5: f32[1,8]) -> f32[1,8] {
+    %my_model.___call__.fwd.xla.sdy.manual_computation_body_14.1234 (Arg_0.5: f32[1,8]) -> f32[1,8] {
       %Arg_0.5 = f32[1,8]{1,0} parameter(0)
       ROOT %add.6 = f32[1,8]{1,0} add(f32[1,8]{1,0} %Arg_0.5, f32[1,8]{1,0} %Arg_0.5), metadata={source_file="-" source_line=11}
     }
@@ -478,15 +478,20 @@ TEST_F(CallInlinerTest, UseShardManualComputationBodyInlined) {
     ENTRY %main.10 (Arg_0.1: f32[8,8]) -> f32[8,8] {
       %Arg_0.1 = f32[8,8]{1,0} parameter(0)
       %custom-call.3 = f32[1,8]{1,0} custom-call(f32[8,8]{1,0} %Arg_0.1), custom_call_target="SPMDFullToShardShape", sharding={manual}, metadata={source_file="-" source_line=4}
-      %call.7 = f32[1,8]{1,0} call(f32[1,8]{1,0} %custom-call.3), to_apply=%prefix_xla.sdy.manual_computation_body.4
+      %call.7 = f32[1,8]{1,0} call(f32[1,8]{1,0} %custom-call.3), to_apply=%my_model.___call__.fwd.xla.sdy.manual_computation_body_14.1234
       ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %call.7), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
   module->mutable_config().set_use_shardy_partitioner(true);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()));
-  VLOG(1) << module->ToString();
-  // Will be inlined.
-  EXPECT_TRUE(changed);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, CallInliner().Run(module.get()))
+  // The single call in the module is not inlined.
+  EXPECT_FALSE(changed);
+
+  HloInstruction* call = FindInstruction(module.get(), xla::HloOpcode::kCall);
+  EXPECT_NE(call, nullptr);
+  EXPECT_TRUE(call->has_to_apply());
+  EXPECT_EQ(call->to_apply()->name(),
+            "my_model.___call__.fwd.xla.sdy.manual_computation_body_14.1234");
 }
 
 }  // namespace

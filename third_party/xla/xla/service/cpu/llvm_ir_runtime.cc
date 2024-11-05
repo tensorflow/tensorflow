@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/cpu/llvm_ir_runtime.h"
 
+#include <cstdint>
+#include <functional>
+#include <vector>
+
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
@@ -22,6 +26,7 @@ limitations under the License.
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "xla/service/cpu/vector_support_library.h"
 #include "xla/service/llvm_ir/math_ops.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {

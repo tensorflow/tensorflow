@@ -194,14 +194,12 @@ bool Parser::ParseVarName(std::string* var_name) {
 }
 
 bool Parser::ParseInt(int64_t* value) {
-  int val;
   if (current_token_.kind != Token::Kind::kIntLiteral ||
-      current_token_.spelling.getAsInteger(/*radix=*/0, val)) {
+      current_token_.spelling.getAsInteger(/*radix=*/0, *value)) {
     llvm::errs() << "Expected int literal, got: " << current_token_.spelling
                  << "\n";
     return false;
   }
-  *value = static_cast<int64_t>(val);
   Advance();
   return true;
 }
@@ -889,33 +887,50 @@ std::string ToString(const IndexingMap& indexing_map,
 }
 
 std::string ToString(const IndexingMap& indexing_map) {
-  // Get variable names for DimVars.
-  SmallVector<std::string, 3> dim_names;
-  dim_names.reserve(indexing_map.GetDimensionCount());
-  for (const auto& [index, dim_var] :
-       llvm::enumerate(indexing_map.GetDimVars())) {
-    dim_names.push_back(GetDimVarName(index, dim_var.name));
-  }
-  // Get variable names for RangeVars.
-  SmallVector<std::string, 3> range_names;
-  range_names.reserve(indexing_map.GetRangeVarsCount());
-  for (const auto& [index, range_var] :
-       llvm::enumerate(indexing_map.GetRangeVars())) {
-    range_names.push_back(GetRangeVarName(index, range_var.name));
-  }
-  // Get variable names for RTVars.
-  SmallVector<std::string, 3> rt_names;
-  rt_names.reserve(indexing_map.GetRTVarsCount());
-  for (const auto& [index, rt_var] :
-       llvm::enumerate(indexing_map.GetRTVars())) {
-    rt_names.push_back(GetRTVarName(index, rt_var.name));
-  }
-  return ToString(indexing_map, dim_names, range_names, rt_names);
+  return ToString(indexing_map, GetDimVarNames(indexing_map),
+                  GetRangeVarNames(indexing_map), GetRTVarNames(indexing_map));
 }
 
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
   out << ToString(indexing_map);
   return out;
+}
+
+SmallVector<std::string> GetRangeVarNames(const IndexingMap& map) {
+  SmallVector<std::string, 3> range_names;
+  range_names.reserve(map.GetRangeVarsCount());
+  for (const auto& [index, range_var] : llvm::enumerate(map.GetRangeVars())) {
+    range_names.push_back(GetRangeVarName(index, range_var.name));
+  }
+  return range_names;
+}
+
+SmallVector<std::string> GetRTVarNames(const IndexingMap& map) {
+  SmallVector<std::string> rt_names;
+  rt_names.reserve(map.GetRTVarsCount());
+  for (const auto& [index, rt_var] : llvm::enumerate(map.GetRTVars())) {
+    rt_names.push_back(GetRTVarName(index, rt_var.name));
+  }
+  return rt_names;
+}
+
+SmallVector<std::string> GetDimVarNames(const IndexingMap& map) {
+  SmallVector<std::string> dim_names;
+  dim_names.reserve(map.GetDimVarsCount());
+  for (const auto& [index, dim_var] : llvm::enumerate(map.GetDimVars())) {
+    dim_names.push_back(GetDimVarName(index, dim_var.name));
+  }
+  return dim_names;
+}
+
+SmallVector<std::string> GetSymbolVarNames(const IndexingMap& map) {
+  SmallVector<std::string> symbol_names;
+  auto range_names = GetRangeVarNames(map);
+  auto rt_names = GetRTVarNames(map);
+  symbol_names.reserve(range_names.size() + rt_names.size());
+  symbol_names.append(range_names.begin(), range_names.end());
+  symbol_names.append(rt_names.begin(), rt_names.end());
+  return symbol_names;
 }
 
 }  // namespace gpu

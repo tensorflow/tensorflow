@@ -158,7 +158,10 @@ xla_test(
         "//xla/service/gpu/model:indexing_test_utils",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:test",
     ],
 )

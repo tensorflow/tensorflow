@@ -94,13 +94,20 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
         global_id = Cast<HloAllGatherInstruction>(hlo)->use_global_device_ids();
       }
       if (global_id) {
+        // TODO(philipphack): The following is incorrect if partitions are
+        // replicated differently on replicas, or if replicas are replicated
+        // differently on partitions.
         bool replicated_across_partitions = true;
         bool replicated_across_replicas = true;
         const int64_t num_partitions =
             hlo->GetModule()->config().num_partitions();
         absl::flat_hash_set<int64_t> visited_partitions;
         absl::flat_hash_set<int64_t> visited_replicas;
+        std::vector<int64_t> device_set;
+        std::vector<absl::Span<const int64_t>> device_sets;
+        std::vector<std::vector<int64_t>> device_sets_storage;
         for (const auto& group : hlo->replica_groups()) {
+          device_set.clear();
           visited_partitions.clear();
           visited_replicas.clear();
           visited_replicas.reserve(group.replica_ids().size());
@@ -110,16 +117,25 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
             int64_t pid = id % num_partitions;
             visited_partitions.insert(pid);
             visited_replicas.insert(rid);
+            if (support_partial_replication) {
+              device_set.push_back(cross_partition_spmd ? pid : rid);
+            }
           }
           replicated_across_partitions &=
               visited_partitions.size() == num_partitions;
           replicated_across_replicas &=
               visited_replicas.size() ==
               hlo->GetModule()->config().replica_count();
+          if (support_partial_replication) {
+            device_sets_storage.push_back(device_set);
+            device_sets.push_back(device_sets_storage.back());
+          }
         }
         if ((cross_partition_spmd && replicated_across_partitions) ||
             (!cross_partition_spmd && replicated_across_replicas)) {
           return HloReplication::ReplicatedOnAllDevices();
+        } else if (support_partial_replication) {
+          return HloReplication::PartiallyReplicated(device_sets);
         } else {
           return HloReplication::UniqueOnAllDevices();
         }

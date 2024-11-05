@@ -1337,6 +1337,43 @@ TEST_F(ElementalHloToMlirTest, ConvertToUnsigned64Saturation) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, ExpF16_UsesFastmathFlag) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f16[4] parameter(0)
+      ROOT exp = f16[4] exponential(p0)
+    })",
+                   R"(
+    // CHECK:      @main_exp(
+    // CHECK:        math.exp %{{.*}} fastmath<afn> : f16
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ExpBF16_UsesFastmathFlag) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = bf16[4] parameter(0)
+      ROOT exp = bf16[4] exponential(p0)
+    })",
+                   R"(
+    // CHECK:      @main_exp(
+    // CHECK:        math.exp %{{.*}} fastmath<afn> : bf16
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ExpF32_DoesntUseFastmathFlag) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      ROOT exp = f32[4] exponential(p0)
+    })",
+                   R"(
+    // CHECK:      @main_exp(
+    // CHECK:        math.exp
+    // CHECK-NOT: fastmath
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, PopulationCountUnsigned) {
   TF_EXPECT_OK(Run(R"(
      ENTRY main{

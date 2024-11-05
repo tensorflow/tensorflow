@@ -32,7 +32,7 @@ LITERT_DEFINE_HANDLE(LiteRtOp);
 //  - FusedActivationOption : uint32_t
 //
 //==============================================================================
-LiteRtStatus LiteRtAddGetFusedActivationOption(LiteRtOp op,
+LiteRtStatus LiteRtGetAddFusedActivationOption(LiteRtOp op,
                                                uint32_t* fused_activation);
 
 //==============================================================================
@@ -44,9 +44,9 @@ LiteRtStatus LiteRtAddGetFusedActivationOption(LiteRtOp op,
 //  - AsymmtericQuantizeInputOption : bool
 //
 //==============================================================================
-LiteRtStatus LiteRtBatchMatmulGetAdjXOption(LiteRtOp op, bool* adj_x);
-LiteRtStatus LiteRtBatchMatmulGetAdjYOption(LiteRtOp op, bool* adj_y);
-LiteRtStatus LiteRtBatchMatmulGetAsymmetricQuantizeInputOption(
+LiteRtStatus LiteRtGetBatchMatmulAdjXOption(LiteRtOp op, bool* adj_x);
+LiteRtStatus LiteRtGetBatchMatmulAdjYOption(LiteRtOp op, bool* adj_y);
+LiteRtStatus LiteRtGetBatchMatmulAsymmetricQuantizeInputOption(
     LiteRtOp op, bool* asymmetric_quantize_input);
 
 //==============================================================================
@@ -57,9 +57,9 @@ LiteRtStatus LiteRtBatchMatmulGetAsymmetricQuantizeInputOption(
 //  - AxisOption : int32_t
 //
 //==============================================================================
-LiteRtStatus LiteRtConcatenationGetFusedActivationOption(
+LiteRtStatus LiteRtGetConcatenationFusedActivationOption(
     LiteRtOp op, uint32_t* fused_activation);
-LiteRtStatus LiteRtConcatenationGetAxisOption(LiteRtOp op, int32_t* axis);
+LiteRtStatus LiteRtGetConcatenationAxisOption(LiteRtOp op, int32_t* axis);
 
 //==============================================================================
 //
@@ -68,7 +68,7 @@ LiteRtStatus LiteRtConcatenationGetAxisOption(LiteRtOp op, int32_t* axis);
 //  - FusedActivationOption : uint32_t
 //
 //==============================================================================
-LiteRtStatus LiteRtDivGetFusedActivationOption(LiteRtOp op,
+LiteRtStatus LiteRtGetDivFusedActivationOption(LiteRtOp op,
                                                uint32_t* fused_activation);
 
 //==============================================================================
@@ -82,15 +82,15 @@ LiteRtStatus LiteRtDivGetFusedActivationOption(LiteRtOp op,
 //  - AsymmtericQuantizeInputOption : bool
 //
 //==============================================================================
-LiteRtStatus LiteRtFullyConnectedGetFusedActivationOption(
+LiteRtStatus LiteRtGetFullyConnectedFusedActivationOption(
     LiteRtOp op, uint32_t* fused_activation);
-LiteRtStatus LiteRtFullyConnectedGetWeightsFormatOption(
+LiteRtStatus LiteRtGetFullyConnectedWeightsFormatOption(
     LiteRtOp op, uint32_t* weights_format);
-LiteRtStatus LiteRtFullyConnectedGetKeepNumDimsOption(LiteRtOp op,
+LiteRtStatus LiteRtGetFullyConnectedKeepNumDimsOption(LiteRtOp op,
                                                       bool* keep_num_dims);
 LiteRtStatus LiteRtFullyConnectedGetQuantizedBiasTypeOption(
     LiteRtOp op, uint32_t* quantized_bias_type);
-LiteRtStatus LiteRtFullyConnectedGetAsymmetricQuantizeInputOption(
+LiteRtStatus LiteRtGetFullyConnectedAsymmetricQuantizeInputOption(
     LiteRtOp op, bool* asymmetric_quantize_input);
 
 //==============================================================================
@@ -100,7 +100,7 @@ LiteRtStatus LiteRtFullyConnectedGetAsymmetricQuantizeInputOption(
 //  - FusedActivationOption : uint32_t
 //
 //==============================================================================
-LiteRtStatus LiteRtMulGetFusedActivationOption(LiteRtOp op,
+LiteRtStatus LiteRtGetMulFusedActivationOption(LiteRtOp op,
                                                uint32_t* fused_activation);
 
 //==============================================================================
@@ -110,7 +110,7 @@ LiteRtStatus LiteRtMulGetFusedActivationOption(LiteRtOp op,
 //  - BetaOption : float
 //
 //==============================================================================
-LiteRtStatus LiteRtSoftmaxGetBetaOption(LiteRtOp op, float* beta);
+LiteRtStatus LiteRtGetSoftmaxBetaOption(LiteRtOp op, float* beta);
 
 //==============================================================================
 //
@@ -124,16 +124,16 @@ LiteRtStatus LiteRtSoftmaxGetBetaOption(LiteRtOp op, float* beta);
 //  - OffsetOption : bool
 
 //==============================================================================
-LiteRtStatus LiteRtStridedSliceGetBeginMaskOption(LiteRtOp op,
+LiteRtStatus LiteRtGetStridedSliceBeginMaskOption(LiteRtOp op,
                                                   int32_t* begin_mask);
-LiteRtStatus LiteRtStridedSliceGetEndMaskOption(LiteRtOp op, int32_t* end_mask);
-LiteRtStatus LiteRtStridedSliceGetEllipsisMaskOption(LiteRtOp op,
+LiteRtStatus LiteRtGetStridedSliceEndMaskOption(LiteRtOp op, int32_t* end_mask);
+LiteRtStatus LiteRtGetStridedSliceEllipsisMaskOption(LiteRtOp op,
                                                      int32_t* ellipsis_mask);
-LiteRtStatus LiteRtStridedSliceGetNewAxisMaskOption(LiteRtOp op,
+LiteRtStatus LiteRtGetStridedSliceNewAxisMaskOption(LiteRtOp op,
                                                     int32_t* new_axis_mask);
-LiteRtStatus LiteRtStridedSliceGetShrinkAxisMaskOption(
+LiteRtStatus LiteRtGetStridedSliceShrinkAxisMaskOption(
     LiteRtOp op, int32_t* shrink_axis_mask);
-LiteRtStatus LiteRtStridedSliceGetOffsetOption(LiteRtOp op, bool* offset);
+LiteRtStatus LiteRtGetStridedSliceOffsetOption(LiteRtOp op, bool* offset);
 
 //==============================================================================
 //
@@ -143,7 +143,7 @@ LiteRtStatus LiteRtStridedSliceGetOffsetOption(LiteRtOp op, bool* offset);
 //  - (Not supported) PotScaleInt16Option : bool
 //
 //==============================================================================
-LiteRtStatus LiteRtSubGetFusedActivationOption(LiteRtOp op,
+LiteRtStatus LiteRtGetSubFusedActivationOption(LiteRtOp op,
                                                uint32_t* fused_activation);
 
 //==============================================================================
@@ -153,8 +153,17 @@ LiteRtStatus LiteRtSubGetFusedActivationOption(LiteRtOp op,
 //  - new_shape : int32_t[]
 //
 //==============================================================================
-LiteRtStatus LiteRtReshapeGetNewShapeOption(LiteRtOp op, int32_t** new_shape,
+LiteRtStatus LiteRtGetReshapeNewShapeOption(LiteRtOp op, int32_t** new_shape,
                                             int32_t* new_shape_size);
+
+//==============================================================================
+//
+// Get option APIs for LiteRt Sum op.
+//  Options:
+// - KeepdimsOption : bool
+//
+//==============================================================================
+LiteRtStatus LiteRtGetSumKeepDimsOption(LiteRtOp op, bool* keepdims);
 
 #ifdef __cplusplus
 }

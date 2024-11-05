@@ -17,7 +17,7 @@
 
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
 namespace litert::qnn {
 
@@ -49,6 +49,10 @@ void SetInputTensorAttrs(Qnn_Tensor_t& tensor);
 // Adds attributes to given tensor making it amenable for use as graph output.
 void SetOutputTensorAttrs(Qnn_Tensor_t& tensor);
 
+// Adds attributes to given tensor making it amenable for uses a intermediate
+// output.
+void SetResultTensorAttrs(Qnn_Tensor_t& tensor);
+
 // Reset the given tensor, deallocating anything on the heap that it points to.
 void ResetTensor(Qnn_Tensor_t& tensor);
 
@@ -62,7 +66,7 @@ uint32_t MoveToId(Qnn_Tensor_t& tensor);
 //
 
 // Map src tensor onto dest. Resets dest before doing anything.
-LiteRtStatus LegalizeTensor(LiteRtTensor src, Qnn_Tensor_t& dest);
+LiteRtStatus LegalizeTensor(const litert::Tensor& src, Qnn_Tensor_t& dest);
 
 }  // namespace litert::qnn
 

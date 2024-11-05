@@ -138,14 +138,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Bind all argument IrArrays of `fusion` to `fused_emitter`.
   void BindFusionArguments(const HloInstruction* fusion,
                            FusedIrEmitter* fused_emitter);
-
-  // Emit a fence for AMDGPU if necessary.
-  void MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering atomic_ordering,
-                               const char* sync_scope_id);
-
- private:
-  // A convenience method to determine whether or not IR is emitted for AMDGPU.
-  bool IsEmittingForAMDGPU() const;
 };
 
 }  // namespace gpu

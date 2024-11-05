@@ -33,6 +33,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/core/c:c_api_types",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
@@ -81,7 +82,6 @@ cc_library(
         ":api_internal",
         ":model",
         ":option",
-        "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:stderr_reporter",
@@ -90,43 +90,40 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings:string_view",
         "@flatbuffers//:runtime_cc",
     ],
 )
 
 cc_library(
-    name = "litert_model_serialize",
-    srcs = ["litert_model_serialize.cc"],
-    hdrs = ["litert_model_serialize.h"],
+    name = "byte_code_util",
+    srcs = ["byte_code_util.cc"],
+    hdrs = ["byte_code_util.h"],
     deps = [
         ":litert_model_init",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/core/util:buffer_ref",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
 cc_test(
-    name = "litert_model_serialize_test",
-    srcs = ["litert_model_serialize_test.cc"],
+    name = "byte_code_util_test",
+    srcs = ["byte_code_util_test.cc"],
     data = [
         "//tensorflow/lite/experimental/litert/test:tflite_test_data",
     ],
     deps = [
-        ":graph_tools",
-        ":litert_model_init",
-        ":litert_model_serialize",
-        ":model",
+        ":byte_code_util",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
         "//tensorflow/lite/experimental/litert/core/util:buffer_ref",
-        "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/experimental/litert/test:common",
-        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
@@ -164,7 +161,7 @@ cc_test(
         ":api_internal",
         ":graph_tools",
         ":litert_model_init",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
@@ -195,7 +192,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
@@ -218,44 +215,11 @@ cc_library(
 #         "//testing/base/public:unique-test-directory",
 #         "@com_google_absl//absl/strings:string_view",
 #         "//tensorflow/lite/experimental/litert/c:litert_c_api",
+#         "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
 #         "//tensorflow/lite/experimental/litert/test:common",
 #     ],
 # )
 # copybara:uncomment_end
-
-cc_library(
-    name = "tensor_buffer",
-    srcs = [
-        "ahwb_buffer.cc",
-        "dmabuf_buffer.cc",
-        "event.cc",
-        "fastrpc_buffer.cc",
-        "ion_buffer.cc",
-        "tensor_buffer.cc",
-    ],
-    hdrs = [
-        "ahwb_buffer.h",
-        "dmabuf_buffer.h",
-        "event.h",
-        "fastrpc_buffer.h",
-        "ion_buffer.h",
-        "tensor_buffer.h",
-        "//tensorflow/lite/experimental/litert/c:litert_event.h",
-        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer.h",
-        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer_requirements.h",
-    ],
-    deps = [
-        ":utils",
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-    ],
-)
 
 cc_library(
     name = "utils",
@@ -267,28 +231,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "tfl_utils",
-    srcs = [
-        "tfl_utils.cc",
-    ],
-    hdrs = [
-        "tfl_utils.h",
-    ],
-    deps = [
-        "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:c_api_opaque",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

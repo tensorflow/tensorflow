@@ -87,7 +87,8 @@ namespace xla {
 //   will be fused.
 class WhileLoopFusibleSinking : public HloModulePass {
  public:
-  WhileLoopFusibleSinking() = default;
+  explicit WhileLoopFusibleSinking(bool sink_broadcast_of_constant = true)
+      : sink_broadcast_of_constant_(sink_broadcast_of_constant) {}
 
   ~WhileLoopFusibleSinking() override = default;
 
@@ -112,6 +113,7 @@ class WhileLoopFusibleSinking : public HloModulePass {
   HloInstruction* CreateSinkableFusion(HloInstruction* while_operand);
 
   absl::flat_hash_map<HloComputation*, int> call_counts_;
+  const bool sink_broadcast_of_constant_;
 };
 }  // namespace xla
 

@@ -21,6 +21,7 @@
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemInterface.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,46 +45,46 @@ static const char kLibQnnHtpSo[] = "libQnnHtp.so";
 static const char kLibQnnSystemSo[] = "libQnnSystem.so";
 
 // Map LiteRT element type to Qnn counterpart.
-inline LiteRtStatus LegalizeElementType(LiteRtElementType litert_type,
+inline LiteRtStatus LegalizeElementType(litert::ElementType litert_type,
                                         Qnn_DataType_t* qnn_type) {
   switch (litert_type) {
-    case kLiteRtElementTypeBool:
+    case litert::ElementType::Bool:
       *qnn_type = QNN_DATATYPE_BOOL_8;
       break;
-    case kLiteRtElementTypeInt4:
+    case litert::ElementType::Int4:
       *qnn_type = QNN_DATATYPE_SFIXED_POINT_4;
       break;
-    case kLiteRtElementTypeInt8:
+    case litert::ElementType::Int8:
       *qnn_type = QNN_DATATYPE_INT_8;
       break;
-    case kLiteRtElementTypeInt16:
+    case litert::ElementType::Int16:
       *qnn_type = QNN_DATATYPE_INT_16;
       break;
-    case kLiteRtElementTypeInt32:
+    case litert::ElementType::Int32:
       *qnn_type = QNN_DATATYPE_INT_32;
       break;
-    case kLiteRtElementTypeInt64:
+    case litert::ElementType::Int64:
       *qnn_type = QNN_DATATYPE_INT_64;
       break;
-    case kLiteRtElementTypeUInt8:
+    case litert::ElementType::UInt8:
       *qnn_type = QNN_DATATYPE_UINT_8;
       break;
-    case kLiteRtElementTypeUInt16:
+    case litert::ElementType::UInt16:
       *qnn_type = QNN_DATATYPE_UINT_16;
       break;
-    case kLiteRtElementTypeUInt32:
+    case litert::ElementType::UInt32:
       *qnn_type = QNN_DATATYPE_UINT_32;
       break;
-    case kLiteRtElementTypeUInt64:
+    case litert::ElementType::UInt64:
       *qnn_type = QNN_DATATYPE_UINT_64;
       break;
-    case kLiteRtElementTypeFloat16:
+    case litert::ElementType::Float16:
       *qnn_type = QNN_DATATYPE_FLOAT_16;
       break;
-    case kLiteRtElementTypeFloat32:
+    case litert::ElementType::Float32:
       *qnn_type = QNN_DATATYPE_FLOAT_32;
       break;
-    case kLiteRtElementTypeFloat64:
+    case litert::ElementType::Float64:
       *qnn_type = QNN_DATATYPE_FLOAT_64;
       break;
     default:

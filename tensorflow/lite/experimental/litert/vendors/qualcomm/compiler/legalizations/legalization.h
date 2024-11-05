@@ -17,7 +17,7 @@
 
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_op.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
 
 #define STRINGIFY(x) #x
@@ -30,7 +30,7 @@ class Legalization {
   Legalization() = default;
   virtual ~Legalization() = default;
 
-  virtual LiteRtStatus LegalizeOp(LiteRtOpManager& src, Qnn_OpConfig_t& dest,
+  virtual LiteRtStatus LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
                                   GraphMapper& graph_mapper) = 0;
 
   // Sets the op name, package name, and type.

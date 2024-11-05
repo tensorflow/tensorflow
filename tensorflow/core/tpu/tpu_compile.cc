@@ -89,7 +89,7 @@ static constexpr char kRetvalOp[] = "_Retval";
 
 // Sets arg shape, arg core mapping, and per core arg shapes for a given
 // argument, depending on its sharding.
-Status SetPerCoreArgShapes(
+absl::Status SetPerCoreArgShapes(
     const tpu::TPUCompileMetadataProto::Arg& proto_arg, const int arg_index,
     xla::Shape* xla_arg_shape,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
@@ -141,10 +141,11 @@ Status SetPerCoreArgShapes(
 // them the compilation metadata.
 // Function arguments and return values lose their device assignments, so we
 // must recreate them.
-Status AssignDevicesToArgsAndRetvals(
+absl::Status AssignDevicesToArgsAndRetvals(
     absl::Span<const tpu::ShardingAndIndex> arg_core_mapping,
     absl::Span<const tpu::ShardingAndIndex> retval_core_mapping, Graph* graph) {
-  auto assign = [&](Node* node, const xla::OpSharding& sharding) -> Status {
+  auto assign = [&](Node* node,
+                    const xla::OpSharding& sharding) -> absl::Status {
     if (sharding.type() == xla::OpSharding::MAXIMAL) {
       const string device = CoreDevice(sharding.tile_assignment_devices(0));
       node->set_assigned_device_name(device);
@@ -214,10 +215,11 @@ bool DoNotConsiderOpsInBlockList(const Node* n) {
 
 // Optimizes `graph`, given the argument descriptions in `metadata` and
 // `arg_shapes`.
-Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
-                     const std::vector<PartialTensorShape>& arg_shapes,
-                     std::unique_ptr<Graph>* graph, FunctionLibraryRuntime* flr,
-                     FunctionLibraryDefinition* fld) {
+absl::Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
+                           const std::vector<PartialTensorShape>& arg_shapes,
+                           std::unique_ptr<Graph>* graph,
+                           FunctionLibraryRuntime* flr,
+                           FunctionLibraryDefinition* fld) {
   // Sets up options for the optimization passes that need to be done. Notice
   // that CSE is not needed as XLA has its own CSE passes later in the
   // compilation stage.
@@ -270,7 +272,7 @@ Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
 }
 
 // Populates the mapping from return value to ShardingAndIndex.
-Status AssignReturnValueToCore(
+absl::Status AssignReturnValueToCore(
     const tpu::TPUCompileMetadataProto& metadata,
     std::vector<tpu::ShardingAndIndex>* retval_core_mapping) {
   std::vector<int> per_core_retval_counts(metadata.num_cores_per_replica(), 0);
@@ -304,7 +306,7 @@ Status AssignReturnValueToCore(
 
 // If the metadata specifies any bounded dynamic shapes in the arg then create
 // the matching xla shape  for the Argument.
-Status MaybeBuildBoundedDynamicArgValues(
+absl::Status MaybeBuildBoundedDynamicArgValues(
     const tpu::TPUCompileMetadataProto::Arg& proto_arg,
     const TensorShape& shape, XlaCompiler::Argument& arg) {
   // If any entry in the is_bounded_dynamic_dim list is true then we update the
@@ -324,7 +326,7 @@ Status MaybeBuildBoundedDynamicArgValues(
 
 // Populates the arguments, core mapping and per core argument shape for the
 // computation.
-Status BuildComputationArgumentDescriptions(
+absl::Status BuildComputationArgumentDescriptions(
     const std::vector<TensorShape>& arg_shapes,
     const GuaranteedConsts& guaranteed_constants, const XlaCompiler& compiler,
     const tpu::TPUCompileMetadataProto& metadata,
@@ -414,7 +416,7 @@ Status BuildComputationArgumentDescriptions(
 }  // namespace
 
 namespace internal {
-Status RunShapeInferenceOnComputation(
+absl::Status RunShapeInferenceOnComputation(
     const tpu::TPUCompileMetadataProto& metadata,
     const std::vector<PartialTensorShape>& arg_shapes, Graph* graph,
     FunctionLibraryRuntime* flr, GraphShapeInfo* shape_info) {
@@ -447,7 +449,7 @@ Status RunShapeInferenceOnComputation(
 }
 }  // namespace internal
 
-Status CompileTFFunctionToHlo(
+absl::Status CompileTFFunctionToHlo(
     const FunctionLibraryDefinition& flib_def, int graph_def_version,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     const std::vector<TensorShape>& arg_shapes, const DeviceType& device_type,
@@ -527,7 +529,7 @@ Status CompileTFFunctionToHlo(
                                 args, compilation_result);
 }
 
-Status GetShardingInfo(
+absl::Status GetShardingInfo(
     const tpu::TPUCompileMetadataProto& metadata,
     absl::Span<const TensorShape> arg_shapes,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,

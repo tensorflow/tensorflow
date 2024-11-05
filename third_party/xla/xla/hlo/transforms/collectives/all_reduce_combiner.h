@@ -17,12 +17,19 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_COLLECTIVES_ALL_REDUCE_COMBINER_H_
 
 #include <cstdint>
+#include <optional>
+#include <string>
+#include <tuple>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/all_reduce_key.h"
+#include "xla/service/hlo_domain_map.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -43,7 +50,23 @@ class AllReduceCombiner : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
- private:
+  using GroupKey = std::tuple<AllReduceKey, /*extra_args*/ std::string>;
+
+  static std::string GetGroupKeyExtraArgs(AllReduceCombiner::GroupKey& key);
+
+  // Returns a key that will be equal for instructions that might be combined,
+  // or different if not.
+  static std::optional<AllReduceCombiner::GroupKey> CombineKey(
+      const HloInstruction* instruction, const HloDomainMap& domain_map);
+
+ protected:
+  absl::StatusOr<bool> RunWithKeyCombiner(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      absl::FunctionRef<std::optional<AllReduceCombiner::GroupKey>(
+          const HloInstruction*, const HloDomainMap&)>
+          combine_key);
+
   // Combine all reduce ops up to this threshold.
   int64_t combine_threshold_in_bytes_;
 

@@ -816,8 +816,9 @@ absl::Status ValidateDotDimensionNumbers(
                      lhs_batch_dimensions) ||
       !dims_in_range(rhs.rank(), rhs_contracting_dimensions,
                      rhs_batch_dimensions)) {
-    return InvalidArgument("A dimension number is out of range in Dot: %s.",
-                           dimension_numbers.DebugString());
+    return InvalidArgument(
+        "A dimension number is out of range in Dot: %s. %s %s",
+        dimension_numbers.DebugString(), lhs.ToString(), rhs.ToString());
   }
 
   // Check that dimension numbers are unique.

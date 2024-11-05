@@ -4335,8 +4335,9 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   // consumed multiple times by the same instruction. We can just find the
   // previous allocation and use that allocation.
   if (request.inclusive_start_time == request.end_time) {
-    Allocation* allocation =
-        GetLiveAllocationAt(*allocation_sequence, request.end_time);
+    Allocation* allocation = GetLiveAllocationAt(
+        *request.allocation_value_to_update->mutable_allocation_sequence(),
+        request.end_time);
     CHECK_NE(allocation, nullptr);
     allocation->AddUse(request.use->hlo_use);
     return Result::kSuccess;

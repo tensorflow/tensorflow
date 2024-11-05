@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/while_loop_fusible_sinking.h"
 
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <vector>
 
@@ -527,13 +528,15 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::Run(
     changed |= result;
   }
 
-  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
-    for (HloInstruction* instr : comp->instructions()) {
-      // TODO: b/358837872 - Handle loops with sharding.
-      if (Match(instr, match::While()) && !instr->has_sharding()) {
-        TF_ASSIGN_OR_RETURN(bool result,
-                            TryRewritingBroadcastAsAllocateBuffer(instr));
-        changed |= result;
+  if (sink_broadcast_of_constant_) {
+    for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
+      for (HloInstruction* instr : comp->instructions()) {
+        // TODO: b/358837872 - Handle loops with sharding.
+        if (Match(instr, match::While()) && !instr->has_sharding()) {
+          TF_ASSIGN_OR_RETURN(bool result,
+                              TryRewritingBroadcastAsAllocateBuffer(instr));
+          changed |= result;
+        }
       }
     }
   }

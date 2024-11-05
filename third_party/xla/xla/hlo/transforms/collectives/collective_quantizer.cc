@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/collective_quantizer.h"
 
-#include "xla/hlo/analysis/hlo_replication_analysis.h"
+#include "xla/service/collective_ops_utils.h"
+#include "xla/service/hlo_replication_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 
@@ -36,13 +37,29 @@ struct ConversionSubgraph {
   // Unary instructions following a dequantization or preceding a quantization
   // in top-down order (operand-to-user).
   std::vector<HloInstruction*> unaries;
+
+  std::string ToString() const {
+    auto short_string = [](const HloInstruction* instr) -> std::string {
+      return instr ? instr->ToShortString() : "null";
+    };
+
+    std::ostringstream oss;
+    oss << "conversion: " << short_string(convert)
+        << ", binary: " << short_string(binary)
+        << ", clamp: " << short_string(clamp)
+        << ", scale broadcast: " << short_string(scale_bcast);
+    for (int k = 0; k < unaries.size(); ++k) {
+      oss << ", unary" << k << ": " << short_string(unaries[k]);
+    }
+    return oss.str();
+  }
 };
 
 // Matches a broadcast of a scalar operand.
 template <typename... Args>
 auto ScalarBroadcast(Args... args) {
   return m::Broadcast(args...).WithPredicate([](const HloInstruction* instr) {
-    return ShapeUtil::IsScalar(instr->operand(0)->shape());
+    return ShapeUtil::IsEffectiveScalar(instr->operand(0)->shape());
   });
 }
 
@@ -97,10 +114,13 @@ HloInstruction* ApplyUnaries(HloInstruction* instr,
   return instr;
 }
 
-// Returns whether instr is replicated across all partitions associated with
-// module. Returns false when there are multiple replicas.
-absl::StatusOr<bool> InstrIsReplicated(HloModule* module,
-                                       HloInstruction* instr) {
+// Returns whether instr is replicated across replica_groups. When
+// replica_groups is empty, returns whether instr is replicated across all
+// partitions associated with module. Returns false when there are multiple
+// replicas.
+absl::StatusOr<bool> InstrIsReplicated(
+    HloModule* module, HloInstruction* instr,
+    absl::Span<const ReplicaGroup> replica_groups) {
   // The replication analysis only verifies the replication of instr across
   // partitions, not replicas. The replica count must be one to ensure instr is
   // replicated across all devices.
@@ -108,11 +128,12 @@ absl::StatusOr<bool> InstrIsReplicated(HloModule* module,
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto replication_analysis,
-      HloReplicationAnalysis::Run(module,
-                                  /*cross_partition_spmd=*/true));
-  return replication_analysis->HloInstructionIsReplicatedAt(instr, {});
+  TF_ASSIGN_OR_RETURN(auto replication_analysis,
+                      HloReplicationAnalysis::RunWithPartialReplication(
+                          module,
+                          /*cross_partition_spmd=*/true));
+  return replication_analysis->HloInstructionIsReplicatedAt(instr, {},
+                                                            replica_groups);
 }
 
 // Recursively collects and returns unary, divide, or multiply operands of instr
@@ -180,6 +201,9 @@ std::optional<ConversionSubgraph> IsSupportedDequantization(
     VLOG(5) << "Did not find type conversion or dequantization pattern.";
     return std::nullopt;
   }
+
+  VLOG(5) << "Found type conversion or dequantization pattern for instruction "
+          << instr->ToShortString() << " " << subgraph.ToString();
 
   // The collected unary ops between dequantization/type conversion and
   // collective may only include bitcast, copy, reshape and slice instructions.
@@ -249,6 +273,9 @@ std::optional<ConversionSubgraph> IsSupportedQuantization(
     return std::nullopt;
   }
 
+  VLOG(5) << "Found type conversion or quantization pattern for instruction "
+          << instr->ToShortString() << " " << subgraph.ToString();
+
   // The collected unary ops between collective and quantization/type conversion
   // may only include bitcast, copy, reshape and slice instructions.
   for (HloInstruction* unary : subgraph.unaries) {
@@ -261,21 +288,36 @@ std::optional<ConversionSubgraph> IsSupportedQuantization(
   return std::make_optional<ConversionSubgraph>(std::move(subgraph));
 }
 
-absl::Status MatchDequantization(HloInstruction* instr, bool* changed) {
+absl::StatusOr<bool> MatchDequantization(HloInstruction* instr) {
+  VLOG(5) << "Attempting to identify dequantization or conversion to wider "
+             "type preceding collective "
+          << instr->ToShortString();
   std::optional<ConversionSubgraph> subgraph =
       IsSupportedDequantization(instr->mutable_operand(0));
 
   if (!subgraph.has_value()) {
-    return absl::OkStatus();
+    return false;
   }
 
   if (subgraph->scale_bcast) {
-    // The scale must be replicated across all devices.
+    // The scale must be replicated across the sets of replica groups
+    // participating in the collective. The group mode of the collective must be
+    // kCrossPartition or kFlattenedID since the replication is verified aross
+    // partitions, not replicas.
+    TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                        GetCollectiveOpGroupMode(instr));
+    if (group_mode != CollectiveOpGroupMode::kCrossPartition &&
+        group_mode != CollectiveOpGroupMode::kFlattenedID) {
+      return false;
+    }
     TF_ASSIGN_OR_RETURN(
         bool scale_is_replicated,
-        InstrIsReplicated(instr->parent()->parent(), subgraph->scale_bcast));
+        InstrIsReplicated(instr->parent()->parent(), subgraph->scale_bcast,
+                          instr->opcode() == HloOpcode::kCollectivePermute
+                              ? absl::Span<const ReplicaGroup>{}
+                              : instr->replica_groups()));
     if (!scale_is_replicated) {
-      return absl::OkStatus();
+      return false;
     }
   }
 
@@ -307,29 +349,44 @@ absl::Status MatchDequantization(HloInstruction* instr, bool* changed) {
   TF_RETURN_IF_ERROR(
       instr->ReplaceAllUsesWith(subgraph->binary ? new_binary : new_convert));
 
-  *changed = true;
-  VLOG(5) << "Quantized collective " << new_collective->ToShortString();
+  VLOG(5) << "Collective " << instr->ToString() << " has been replaced with "
+          << new_collective->ToString();
 
-  return absl::OkStatus();
+  return true;
 }
 
-absl::Status MatchQuantization(HloInstruction* instr, bool* changed) {
+absl::StatusOr<bool> MatchQuantization(HloInstruction* instr) {
+  VLOG(5) << "Attempting to identify quantization or conversion to narrower "
+             "type following collective "
+          << instr->ToShortString();
   std::optional<ConversionSubgraph> subgraph;
   if (instr->user_count() == 1) {
     subgraph = IsSupportedQuantization(instr->users()[0]);
   }
 
   if (!subgraph.has_value()) {
-    return absl::OkStatus();
+    return false;
   }
 
   if (subgraph->scale_bcast) {
-    // The scale must be replicated across all devices.
+    // The scale must be replicated across the sets of replica groups
+    // participating in the collective. The group mode of the collective must be
+    // kCrossPartition or kFlattenedID since the replication is verified aross
+    // partitions, not replicas.
+    TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                        GetCollectiveOpGroupMode(instr));
+    if (group_mode != CollectiveOpGroupMode::kCrossPartition &&
+        group_mode != CollectiveOpGroupMode::kFlattenedID) {
+      return false;
+    }
     TF_ASSIGN_OR_RETURN(
         bool scale_is_replicated,
-        InstrIsReplicated(instr->parent()->parent(), subgraph->scale_bcast));
+        InstrIsReplicated(instr->parent()->parent(), subgraph->scale_bcast,
+                          instr->opcode() == HloOpcode::kCollectivePermute
+                              ? absl::Span<const ReplicaGroup>{}
+                              : instr->replica_groups()));
     if (!scale_is_replicated) {
-      return absl::OkStatus();
+      return false;
     }
   }
 
@@ -365,10 +422,10 @@ absl::Status MatchQuantization(HloInstruction* instr, bool* changed) {
   new_collective = ApplyUnaries(new_collective, subgraph->unaries);
   TF_RETURN_IF_ERROR(subgraph->convert->ReplaceAllUsesWith(new_collective));
 
-  *changed = true;
-  VLOG(5) << "Quantized collective " << new_collective->ToShortString();
+  VLOG(5) << "Collective " << instr->ToString() << " has been replaced with "
+          << new_collective->ToString();
 
-  return absl::OkStatus();
+  return true;
 }
 
 }  // namespace
@@ -381,8 +438,11 @@ absl::StatusOr<bool> CollectiveQuantizer::Run(
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
       if (IsSupportedCollective(instr)) {
-        TF_RETURN_IF_ERROR(MatchDequantization(instr, &changed));
-        TF_RETURN_IF_ERROR(MatchQuantization(instr, &changed));
+        TF_ASSIGN_OR_RETURN(bool instr_changed, MatchDequantization(instr));
+        if (!instr_changed) {
+          TF_ASSIGN_OR_RETURN(instr_changed, MatchQuantization(instr));
+        }
+        changed |= instr_changed;
       }
     }
   }

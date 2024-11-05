@@ -22,6 +22,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
@@ -192,6 +193,27 @@ TEST(ArrayMemRegion, FromBadMemRegionSizeFails) {
       data_without_some_bytes, kDType, kShape,
       /*byte_strides=*/std::nullopt);
   EXPECT_THAT(mem_region3.status(), Not(IsOk()));
+}
+
+TEST(StringHostBufferTest, SerializeDeserializeWithString) {
+  std::vector<absl::Cord> input = {absl::Cord("foo"), absl::Cord("bar")};
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized, SerializeStringHostBuffer(input));
+  TF_ASSERT_OK_AND_ASSIGN(auto deserialized,
+                          DeserializeStringHostBufferFromString(serialized));
+  EXPECT_EQ(deserialized, input);
+}
+
+TEST(StringHostBufferTest,
+     DeserializeFromCordIntoPreallocatedStringHostBuffer) {
+  std::vector<absl::Cord> input = {absl::Cord("foo"), absl::Cord("bar")};
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized, SerializeStringHostBuffer(input));
+
+  std::vector<absl::Cord> deserialized(input.size());
+  ASSERT_THAT(DeserializeFromCordIntoPreallocatedStringHostBuffer(
+                  absl::Cord(serialized), deserialized.data()),
+              IsOk());
+
+  EXPECT_EQ(deserialized, input);
 }
 
 }  // namespace

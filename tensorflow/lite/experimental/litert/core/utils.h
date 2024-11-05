@@ -22,8 +22,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 
-namespace litert {
-namespace internal {
+namespace litert::internal {
 
 struct Ratio {
   using Type = int;
@@ -42,7 +41,6 @@ absl::StatusOr<size_t> GetNumElements(
 absl::StatusOr<size_t> GetNumPackedBytes(
     const LiteRtRankedTensorType& tensor_type);
 
-}  // namespace internal
-}  // namespace litert
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTILS_H_

@@ -27,12 +27,12 @@ namespace {
 TEST(GetOpOptionTest, TestGetAddOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_add_op.tflite");
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          graph_tools::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
+                          litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
   auto op = ops[0];
 
   uint32_t fused_activation;
-  ASSERT_STATUS_OK(LiteRtAddGetFusedActivationOption(op, &fused_activation));
+  ASSERT_STATUS_OK(LiteRtGetAddFusedActivationOption(op, &fused_activation));
   ASSERT_EQ(fused_activation, 0);
 }
 
@@ -40,20 +40,20 @@ TEST(GetOpOptionTest, TestGetBatchMatmulOptions) {
   auto model =
       litert::testing::LoadTestFileModel("simple_batch_matmul_op.tflite");
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          graph_tools::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
+                          litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
   auto op = ops[0];
 
   bool adj_x;
-  ASSERT_STATUS_OK(LiteRtBatchMatmulGetAdjXOption(op, &adj_x));
+  ASSERT_STATUS_OK(LiteRtGetBatchMatmulAdjXOption(op, &adj_x));
   ASSERT_EQ(adj_x, false);
 
   bool adj_y;
-  ASSERT_STATUS_OK(LiteRtBatchMatmulGetAdjYOption(op, &adj_y));
+  ASSERT_STATUS_OK(LiteRtGetBatchMatmulAdjYOption(op, &adj_y));
   ASSERT_EQ(adj_y, false);
 
   bool asymmetric_quantize_input;
-  ASSERT_STATUS_OK(LiteRtBatchMatmulGetAsymmetricQuantizeInputOption(
+  ASSERT_STATUS_OK(LiteRtGetBatchMatmulAsymmetricQuantizeInputOption(
       op, &asymmetric_quantize_input));
   ASSERT_EQ(asymmetric_quantize_input, false);
 }
@@ -62,29 +62,29 @@ TEST(GetOpOptionTest, TestGetConcatenationOptions) {
   auto model =
       litert::testing::LoadTestFileModel("simple_concatenation_op.tflite");
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          graph_tools::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
+                          litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
   auto op = ops[0];
 
   uint32_t fused_activation;
   ASSERT_STATUS_OK(
-      LiteRtConcatenationGetFusedActivationOption(op, &fused_activation));
+      LiteRtGetConcatenationFusedActivationOption(op, &fused_activation));
   ASSERT_EQ(fused_activation, 0);
 
   int32_t axis;
-  ASSERT_STATUS_OK(LiteRtConcatenationGetAxisOption(op, &axis));
+  ASSERT_STATUS_OK(LiteRtGetConcatenationAxisOption(op, &axis));
   ASSERT_EQ(axis, 2);
 }
 
 TEST(GetOpOptionTest, TestGetDivOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_div_op.tflite");
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          graph_tools::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
+                          litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
   auto op = ops[0];
 
   uint32_t fused_activation;
-  ASSERT_STATUS_OK(LiteRtDivGetFusedActivationOption(op, &fused_activation));
+  ASSERT_STATUS_OK(LiteRtGetDivFusedActivationOption(op, &fused_activation));
   ASSERT_EQ(fused_activation, 0);
 }
 
@@ -92,23 +92,23 @@ TEST(GetOpOptionTest, TestGetFullyConnectedOptions) {
   auto model =
       litert::testing::LoadTestFileModel("simple_fully_connected_op.tflite");
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          graph_tools::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
+                          litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
   auto op = ops[0];
 
   uint32_t fused_activation;
   ASSERT_STATUS_OK(
-      LiteRtFullyConnectedGetFusedActivationOption(op, &fused_activation));
+      LiteRtGetFullyConnectedFusedActivationOption(op, &fused_activation));
   ASSERT_EQ(fused_activation, 0);
 
   uint32_t weights_format;
   ASSERT_STATUS_OK(
-      LiteRtFullyConnectedGetWeightsFormatOption(op, &weights_format));
+      LiteRtGetFullyConnectedWeightsFormatOption(op, &weights_format));
   ASSERT_EQ(weights_format, 0);
 
   bool keep_num_dims;
   ASSERT_STATUS_OK(
-      LiteRtFullyConnectedGetKeepNumDimsOption(op, &keep_num_dims));
+      LiteRtGetFullyConnectedKeepNumDimsOption(op, &keep_num_dims));
   ASSERT_EQ(keep_num_dims, true);
 
   uint32_t quantized_bias_type;
@@ -117,7 +117,7 @@ TEST(GetOpOptionTest, TestGetFullyConnectedOptions) {
   ASSERT_EQ(quantized_bias_type, 0);
 
   bool asymmetric_quantize_input;
-  ASSERT_STATUS_OK(LiteRtFullyConnectedGetAsymmetricQuantizeInputOption(
+  ASSERT_STATUS_OK(LiteRtGetFullyConnectedAsymmetricQuantizeInputOption(
       op, &asymmetric_quantize_input));
   ASSERT_EQ(asymmetric_quantize_input, false);
 }
@@ -125,24 +125,24 @@ TEST(GetOpOptionTest, TestGetFullyConnectedOptions) {
 TEST(GetOpOptionTest, TestGetMulOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_mul_op.tflite");
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          graph_tools::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
+                          litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
   auto op = ops[0];
 
   uint32_t fused_activation;
-  ASSERT_STATUS_OK(LiteRtMulGetFusedActivationOption(op, &fused_activation));
+  ASSERT_STATUS_OK(LiteRtGetMulFusedActivationOption(op, &fused_activation));
   ASSERT_EQ(fused_activation, 0);
 }
 
 TEST(GetOpOptionTest, TestGetSoftmaxOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_softmax_op.tflite");
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          graph_tools::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
+                          litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
   auto op = ops[0];
 
   float beta;
-  ASSERT_STATUS_OK(LiteRtSoftmaxGetBetaOption(op, &beta));
+  ASSERT_STATUS_OK(LiteRtGetSoftmaxBetaOption(op, &beta));
   EXPECT_FLOAT_EQ(beta, 1.0);
 }
 
@@ -150,60 +150,72 @@ TEST(GetOpOptionTest, TestGetStridedSliceOptions) {
   auto model =
       litert::testing::LoadTestFileModel("simple_strided_slice_op.tflite");
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          graph_tools::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
+                          litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
   auto op = ops[0];
 
   int32_t begin_mask;
-  ASSERT_STATUS_OK(LiteRtStridedSliceGetBeginMaskOption(op, &begin_mask));
+  ASSERT_STATUS_OK(LiteRtGetStridedSliceBeginMaskOption(op, &begin_mask));
   ASSERT_EQ(begin_mask, 0);
 
   int32_t end_mask;
-  ASSERT_STATUS_OK(LiteRtStridedSliceGetEndMaskOption(op, &end_mask));
+  ASSERT_STATUS_OK(LiteRtGetStridedSliceEndMaskOption(op, &end_mask));
   ASSERT_EQ(end_mask, 0);
 
   int32_t ellipsis_mask;
-  ASSERT_STATUS_OK(LiteRtStridedSliceGetEllipsisMaskOption(op, &ellipsis_mask));
+  ASSERT_STATUS_OK(LiteRtGetStridedSliceEllipsisMaskOption(op, &ellipsis_mask));
   ASSERT_EQ(ellipsis_mask, 0);
 
   int32_t new_axis_mask;
-  ASSERT_STATUS_OK(LiteRtStridedSliceGetNewAxisMaskOption(op, &new_axis_mask));
+  ASSERT_STATUS_OK(LiteRtGetStridedSliceNewAxisMaskOption(op, &new_axis_mask));
   ASSERT_EQ(new_axis_mask, 0);
 
   int32_t shrink_axis_mask;
   ASSERT_STATUS_OK(
-      LiteRtStridedSliceGetShrinkAxisMaskOption(op, &shrink_axis_mask));
+      LiteRtGetStridedSliceShrinkAxisMaskOption(op, &shrink_axis_mask));
   ASSERT_EQ(shrink_axis_mask, 0);
 
   bool offset;
-  ASSERT_STATUS_OK(LiteRtStridedSliceGetOffsetOption(op, &offset));
+  ASSERT_STATUS_OK(LiteRtGetStridedSliceOffsetOption(op, &offset));
   ASSERT_EQ(offset, false);
 }
 
 TEST(GetOpOptionTest, TestGetSubOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_sub_op.tflite");
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          graph_tools::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
+                          litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
   auto op = ops[0];
 
   uint32_t fused_activation;
-  ASSERT_STATUS_OK(LiteRtSubGetFusedActivationOption(op, &fused_activation));
+  ASSERT_STATUS_OK(LiteRtGetSubFusedActivationOption(op, &fused_activation));
   ASSERT_EQ(fused_activation, 0);
 }
 
 TEST(GetOpOptionTest, TestGetReshapeOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_reshape_op.tflite");
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          graph_tools::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
+                          litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
   auto op = ops[0];
 
   int32_t* new_shape = nullptr;
   int32_t new_shape_size;
   ASSERT_STATUS_OK(
-      LiteRtReshapeGetNewShapeOption(op, &new_shape, &new_shape_size));
+      LiteRtGetReshapeNewShapeOption(op, &new_shape, &new_shape_size));
   ASSERT_EQ(new_shape_size, -1);
+}
+
+TEST(GetOpOptionTest, TestGetSumOptions) {
+  auto model = litert::testing::LoadTestFileModel("simple_sum_op.tflite");
+  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
+                          litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, litert::internal::GetSubgraphOps(subgraph));
+  auto op = ops[0];
+
+  bool keepdims;
+  ASSERT_STATUS_OK(LiteRtGetSumKeepDimsOption(op, &keepdims));
+  ASSERT_EQ(keepdims, true);
 }
 
 }  // namespace

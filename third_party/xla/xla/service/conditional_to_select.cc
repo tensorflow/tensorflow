@@ -30,10 +30,46 @@ limitations under the License.
 namespace xla {
 
 static absl::StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
+  if (conditional->shape().IsTuple()) {
+    VLOG(1) << "Not transforming tuples to 'select'";
+    return false;
+  }
+  bool is_form2 = false;
+  HloInstruction* true_operand;
+  HloInstruction* false_operand;
+  HloComputation* true_computation;
+  HloComputation* false_computation;
+
+  if (ShapeUtil::IsScalarWithElementType(conditional->operand(0)->shape(),
+                                         PrimitiveType::PRED)) {
+    // Form 1
+    // Conditional(pred, true_oprnd, true_comp, false_oprnd, false_comp)
+    true_operand = conditional->mutable_operand(1);
+    false_operand = conditional->mutable_operand(2);
+    true_computation = conditional->true_computation();
+    false_computation = conditional->false_computation();
+  } else if (ShapeUtil::IsScalarWithElementType(
+                 conditional->operand(0)->shape(), PrimitiveType::S32)) {
+    // Form 2
+    // Conditional(branch_index, branch_computations, branch_operands)
+    if (conditional->branch_computations().size() != 2) {
+      VLOG(1)
+          << "Not transforming conditional; branch_computations size is not 2";
+      return false;
+    }
+    false_operand = conditional->mutable_operand(1);
+    true_operand = conditional->mutable_operand(2);
+    false_computation = conditional->branch_computations()[0];
+    true_computation = conditional->branch_computations()[1];
+    is_form2 = true;
+  } else {
+    VLOG(1) << "Not transforming conditional; Unexpected operand0 type";
+    return false;
+  }
+
   // Only allow conditional to select if the called computations
   // do not have side effects.
-  if (conditional->true_computation()->HasSideEffect() ||
-      conditional->false_computation()->HasSideEffect()) {
+  if (true_computation->HasSideEffect() || false_computation->HasSideEffect()) {
     VLOG(1) << "Not transforming conditional; branches have side effects:"
             << conditional->ToString();
     return false;
@@ -44,18 +80,18 @@ static absl::StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
   // Create new instructions
   HloInstruction* if_call_op =
       computation->AddInstruction(HloInstruction::CreateCall(
-          conditional->shape(), {conditional->mutable_operand(1)},
-          conditional->true_computation()));
+          conditional->shape(), {true_operand}, true_computation));
   conditional->SetupDerivedInstruction(if_call_op);
   HloInstruction* else_call_op =
       computation->AddInstruction(HloInstruction::CreateCall(
-          conditional->shape(), {conditional->mutable_operand(2)},
-          conditional->false_computation()));
+          conditional->shape(), {false_operand}, false_computation));
   conditional->SetupDerivedInstruction(else_call_op);
   HloInstruction* condition = conditional->mutable_operand(0);
-  if (else_call_op->shape().IsTuple()) {
-    VLOG(1) << "Not transforming tuples to 'select'";
-    return false;
+  if (is_form2) {
+    // If Form2 => convert operand0 of type S32 to PRED
+    condition = computation->AddInstruction(HloInstruction::CreateConvert(
+        ShapeUtil::ChangeElementType(condition->shape(), PrimitiveType::PRED),
+        condition));
   }
   TF_ASSIGN_OR_RETURN(
       HloInstruction * select_op,

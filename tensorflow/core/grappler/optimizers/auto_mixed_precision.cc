@@ -291,7 +291,7 @@ class NodeTypeAttrMap {
 
   explicit NodeTypeAttrMap(const GraphDef& graph) { TF_CHECK_OK(Init(graph)); }
 
-  Status Init(const GraphDef& graph) {
+  absl::Status Init(const GraphDef& graph) {
     if (graph_ != nullptr) {
       return errors::InvalidArgument("NodeTypeAttrMap is already initialized.");
     }
@@ -350,7 +350,7 @@ class NodeTypeAttrMap {
   }
 
  private:
-  Status AddNode(const NodeDef& node) {
+  absl::Status AddNode(const NodeDef& node) {
     const OpDef* op_def_ptr = nullptr;
     TF_RETURN_IF_ERROR(function_library_->LookUpOpDef(node.op(), &op_def_ptr));
     const OpDef& op_def = *op_def_ptr;
@@ -476,10 +476,11 @@ class GraphTypeTopologyView {
   // computing graph topology. Example: Tensorflow runtime allows concurrent
   // execution of dequeue/enqueue ops from the same queue resource, but we might
   // want to enforce ordering between them for the purpose of graph analysis.
-  Status InitializeFromGraph(const GraphDef& graph,
-                             const NodeTypeAttrMap& node_type_map);
+  absl::Status InitializeFromGraph(const GraphDef& graph,
+                                   const NodeTypeAttrMap& node_type_map);
 
-  Status AddEphemeralEdges(absl::Span<const NodeTypeIdEdge> ephemeral_edges);
+  absl::Status AddEphemeralEdges(
+      absl::Span<const NodeTypeIdEdge> ephemeral_edges);
 
   bool is_initialized() const { return graph_ != nullptr; }
   int num_nodes() const { return num_nodes_; }
@@ -550,7 +551,7 @@ inline void SortAndRemoveDuplicates(T* v) {
   v->erase(std::unique(v->begin(), v->end()), v->end());
 }
 
-Status GraphTypeTopologyView::InitializeFromGraph(
+absl::Status GraphTypeTopologyView::InitializeFromGraph(
     const GraphDef& graph, const NodeTypeAttrMap& node_type_map) {
   if (graph_ != nullptr) {
     return errors::InvalidArgument(
@@ -634,7 +635,7 @@ Status GraphTypeTopologyView::InitializeFromGraph(
   return absl::OkStatus();
 }
 
-Status GraphTypeTopologyView::AddEphemeralEdges(
+absl::Status GraphTypeTopologyView::AddEphemeralEdges(
     absl::Span<const NodeTypeIdEdge> ephemeral_edges) {
   // Add ephemeral edges to the adjacency lists.
   for (const NodeTypeIdEdge& edge : ephemeral_edges) {
@@ -914,10 +915,10 @@ DataTypeSet AllowedDataTypes(const OpDef& op_def, const TypeAttrId& t_attr_id) {
   return AllowedDataTypes(*attr_def);
 }
 
-Status ValidateLists(const gtl::FlatSet<string>& allow_list,
-                     const gtl::FlatSet<string>& deny_list,
-                     const gtl::FlatSet<string>& infer_list,
-                     const gtl::FlatSet<string>& clear_list) {
+absl::Status ValidateLists(const gtl::FlatSet<string>& allow_list,
+                           const gtl::FlatSet<string>& deny_list,
+                           const gtl::FlatSet<string>& infer_list,
+                           const gtl::FlatSet<string>& clear_list) {
   std::vector<gtl::FlatSet<string>> lists{allow_list, deny_list, infer_list,
                                           clear_list};
   std::multiset<string> counts;
@@ -940,7 +941,7 @@ Status ValidateLists(const gtl::FlatSet<string>& allow_list,
 
 bool HasInputOrOutputRefs(const NodeDef& node) {
   const OpDef* op_def;
-  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  absl::Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
   if (!status.ok()) {
     return true;
   }
@@ -1059,7 +1060,7 @@ class AutoMixedPrecisionImpl {
                           ? DT_HALF
                           : DT_BFLOAT16) {}
 
-  Status Optimize();
+  absl::Status Optimize();
 
  private:
   typedef absl::flat_hash_set<NodeTypeId> NodeTypeIdSet;
@@ -1081,7 +1082,7 @@ class AutoMixedPrecisionImpl {
             0, 0, AutoMixedPrecisionMode::FP16_CPU);
     }
   }
-  Status PrintDebugLogs(bool preop, size_t timestamp);
+  absl::Status PrintDebugLogs(bool preop, size_t timestamp);
   void LogSkippedNode(const NodeDef& node, const string& device_type) const;
   bool MustPreserve(const NodeDef& node) const;
   bool IsOnDevice(const NodeDef& node, const string& device_type) const;
@@ -1116,7 +1117,7 @@ class AutoMixedPrecisionImpl {
                                     absl::flat_hash_set<int>* allow_set) const;
   void PropagateAllowThroughClear(const absl::flat_hash_set<int>& deny_set,
                                   absl::flat_hash_set<int>* allow_set) const;
-  Status ForceColorMatchOnRecurrentEdges(
+  absl::Status ForceColorMatchOnRecurrentEdges(
       absl::flat_hash_set<int>* allow_set) const;
   void MakeCastsAllowIfAllOutputsAllow(
       absl::flat_hash_set<int>* allow_set) const;
@@ -1130,7 +1131,8 @@ class AutoMixedPrecisionImpl {
   void CollectOutputPorts(
       const TypeAttrId& type_attr, NodeDef* node,
       std::vector<MutableGraphView::OutputPort>& output_ports) const;
-  Status ChangeTypeAttrsAndAddCasts(const absl::flat_hash_set<int>& allow_set);
+  absl::Status ChangeTypeAttrsAndAddCasts(
+      const absl::flat_hash_set<int>& allow_set);
 
   std::unordered_map<string, DeviceProperties> devices_;
   VirtualPlacer virtual_placer_;
@@ -1197,7 +1199,8 @@ bool AutoMixedPrecisionImpl::NodeHasF16KernelForTypeAttr(
   return IsKernelRegisteredForNode(node_copy).ok();
 }
 
-Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
+absl::Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop,
+                                                    size_t timestamp) {
   string prepend_path;
   TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
       "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LOG_PATH", "", &prepend_path));
@@ -1319,7 +1322,7 @@ bool IsTensorListWriterOp(const string& op) {
 
 bool AutoMixedPrecisionImpl::SupportsF16(const NodeTypeId& node_type) const {
   const OpDef* op_def;
-  Status status =
+  absl::Status status =
       OpRegistry::Global()->LookUpOpDef(node_type.node->op(), &op_def);
   if (!status.ok()) return false;
   return AllowedDataTypes(*op_def, node_type.type_attr)
@@ -1330,7 +1333,7 @@ bool AutoMixedPrecisionImpl::SupportsF16(const NodeTypeId& node_type) const {
 bool AutoMixedPrecisionImpl::SupportsF16DataType(
     const NodeTypeId& node_type) const {
   const OpDef* op_def;
-  Status status =
+  absl::Status status =
       OpRegistry::Global()->LookUpOpDef(node_type.node->op(), &op_def);
   if (!status.ok()) return false;
   return AllowedDataTypes(*op_def, node_type.type_attr).Contains(target_dtype_);
@@ -1384,7 +1387,7 @@ bool ShouldIgnorePerformance() {
   return is_enabled;
 }
 
-Status AutoMixedPrecisionImpl::Optimize() {
+absl::Status AutoMixedPrecisionImpl::Optimize() {
   string optimization_level;
   TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
       "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL", "", &optimization_level));
@@ -1920,7 +1923,7 @@ void AutoMixedPrecisionImpl::RemoveAllowsetWithFp32(
 // color. Specifically, it removes them all from allow_set if any of the Merge
 // nodes is not in allow_set, otherwise it adds the NextIteration node to
 // allow_set.
-Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
+absl::Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
     absl::flat_hash_set<int>* allow_set) const {
   for (const NodeDef& node : graph_->node()) {
     if (node.op() == "NextIteration") {
@@ -2170,7 +2173,7 @@ void AutoMixedPrecisionImpl::CollectOutputPorts(
 // Changes all allow-painted type attributes to DT_HALF or DT_BFLOAT16, and
 // inserts Cast nodes at node outputs for all edges that connect
 // allow-painted <-> non-allow-painted type attributes.
-Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
+absl::Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
     const absl::flat_hash_set<int>& allow_set) {
   int num_nodes_changed = 0;
   const int num_nodes_preop = graph_->node_size();
@@ -2284,8 +2287,9 @@ int GetNumGPUs(const Cluster& cluster) {
 
 }  // end namespace
 
-Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                    GraphDef* output) {
+absl::Status AutoMixedPrecision::Optimize(Cluster* cluster,
+                                          const GrapplerItem& item,
+                                          GraphDef* output) {
   if (cluster == nullptr) {
     return errors::InvalidArgument("cluster == nullptr");
   }
@@ -2334,7 +2338,7 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
   } else {
     VLOG(1) << "Running " << name() << " graph optimizer on " << item.id;
   }
-  Status status = optimizer.Optimize();
+  absl::Status status = optimizer.Optimize();
   if (!status.ok()) {
     // Restore the original graph.
     *output = item.graph;

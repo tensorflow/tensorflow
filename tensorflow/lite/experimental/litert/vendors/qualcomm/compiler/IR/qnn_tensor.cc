@@ -14,36 +14,34 @@
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_tensor.h"
 
-#include <memory>
+#include <cstdint>
 
 #include "absl/log/absl_check.h"
 #include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_support.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_tensor.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 
 namespace litert::qnn {
 
-using ::litert::LiteRtTensorManager;
-
 namespace {
 
-LiteRtStatus LegalizeShapeInfo(const LiteRtTensorManager& src,
-                               Qnn_Tensor_t& dest) {
+LiteRtStatus LegalizeShapeInfo(const litert::Layout& src, Qnn_Tensor_t& dest) {
   LITERT_ENSURE_SUPPORTED(!src.HasStrides(), "Strides not yet supported");
 
   dest.v2.rank = src.Rank();
   dest.v2.dimensions = new uint32_t[dest.v2.rank];
   for (int i = 0; i < dest.v2.rank; ++i) {
-    const auto src_dim = src.Dims()[i];
+    const auto src_dim = src.Dimensions()[i];
     LITERT_ENSURE(src_dim >= 1, kLiteRtStatusErrorInvalidArgument,
                   "Cannot pass dim < 1 to QNN Tensor.");
 
-    dest.v2.dimensions[i] = src.Dims()[i];
+    dest.v2.dimensions[i] = src.Dimensions()[i];
   }
   return kLiteRtStatusOk;
 }
@@ -69,6 +67,11 @@ void SetInputTensorAttrs(Qnn_Tensor_t& tensor) {
 void SetOutputTensorAttrs(Qnn_Tensor_t& tensor) {
   ABSL_DCHECK(tensor.version == QNN_TENSOR_VERSION_2);
   tensor.v2.type = QNN_TENSOR_TYPE_APP_READ;
+}
+
+void SetResultTensorAttrs(Qnn_Tensor_t& tensor) {
+  ABSL_DCHECK(tensor.version == QNN_TENSOR_VERSION_2);
+  tensor.v2.type = QNN_TENSOR_TYPE_NATIVE;
 }
 
 void ResetTensor(Qnn_Tensor_t& tensor) {
@@ -114,31 +117,49 @@ uint32_t MoveToId(Qnn_Tensor_t& tensor) {
   return id;
 }
 
-LiteRtStatus LegalizeTensor(LiteRtTensor src, Qnn_Tensor_t& dest) {
-  ResetTensor(dest);
+LiteRtStatus LegalizeTensor(const litert::Tensor& src, Qnn_Tensor_t& dest) {
+  if (src.TypeId() != kLiteRtRankedTensorType) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
 
-  LiteRtTensorManager::Unique src_tensor;
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      LiteRtTensorManager::MakeFromTensor(src, src_tensor));
+  ResetTensor(dest);
 
   Qnn_DataType_t* qnn_data_type = &dest.v2.dataType;
   LITERT_RETURN_STATUS_IF_NOT_OK(
-      LegalizeElementType(src_tensor->ElementType(), qnn_data_type));
+      LegalizeElementType(src.RankedTensorType().ElementType(), qnn_data_type));
 
-  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeShapeInfo(*src_tensor, dest));
+  LITERT_RETURN_STATUS_IF_NOT_OK(
+      LegalizeShapeInfo(src.RankedTensorType().Layout(), dest));
 
-  const bool is_subgraph_in = src_tensor->IsSubgraphInput();
-  const bool is_subgraph_out = src_tensor->IsSubgraphOutput();
+  const bool is_subgraph_in = src.IsSubgraphInput();
+  const bool is_subgraph_out = src.IsSubgraphOutput();
+  const bool is_constant = src.IsConstant();
 
   LITERT_ENSURE(!(is_subgraph_in && is_subgraph_out),
                 kLiteRtStatusErrorInvalidArgument,
                 "Malformed tensor, cannot be both subgraph in and out.");
+  if (is_constant) {
+    LITERT_LOG(LITERT_INFO, "Adding constant tensor %s to qnn graph",
+               dest.v2.name);
+    LITERT_ENSURE(src.HasWeights(), kLiteRtStatusErrorInvalidLegalization,
+                  "Empty weights for constant tensor.");
+    Qnn_ClientBuffer_t client_buf = BuildDefaultClientBuffer();
+    client_buf.data = (void*)src.Weights().Bytes().data();
+    client_buf.dataSize = src.Weights().Bytes().size();
+    dest.v2.clientBuf = client_buf;
+    dest.v2.memType = QNN_TENSORMEMTYPE_RAW;
+    dest.v2.type = QNN_TENSOR_TYPE_STATIC;
+    dest.v2.isDynamicDimensions = nullptr;
+  }
 
   if (is_subgraph_in) {
     SetInputTensorAttrs(dest);
   }
   if (is_subgraph_out) {
     SetOutputTensorAttrs(dest);
+  }
+  if (!is_constant && !is_subgraph_in && !is_subgraph_out) {
+    SetResultTensorAttrs(dest);
   }
 
   return kLiteRtStatusOk;

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
@@ -55,10 +56,13 @@ class FusionDeduplicationCache {
       std::tuple</*producer=*/InstructionId, /*consumer=*/InstructionId,
                  /*operand_index=*/int64_t>;
 
-  // Initializes the cache for all instructions in the given module. Identical
-  // HLO instructions (in terms of `HloInstruction::Identical`) will be assigned
-  // the same id.
-  static FusionDeduplicationCache Create(const HloModule& module);
+  // Initializes the cache for all fusible instructions in the given module.
+  // `is_fusible_fn` callback returns true if the instruction is fusible.
+  // Identical HLO instructions (in terms of `HloInstruction::Identical`) will
+  // be assigned the same id.
+  static FusionDeduplicationCache Create(
+      const HloModule& module,
+      absl::FunctionRef<bool(const HloInstruction&)> is_fusible_fn);
 
   // Returns the id for the given instruction. The instruction should have an id
   // already assigned, either during the initialization process in `Create` or

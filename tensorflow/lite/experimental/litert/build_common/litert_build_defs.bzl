@@ -139,6 +139,31 @@ def litert_lib(
         **cc_lib_kwargs
     )
 
+def litert_bin(
+        ungrte = False,
+        export_litert_only = False,
+        **cc_bin_kwargs):
+    """
+    LiteRT binary rule.
+
+    Args:
+      ungrte: Whether to link against system libraries ("ungrte").
+      export_litert_only: Whether to export only LiteRT symbols.
+      **cc_bin_kwargs: Keyword arguments to pass to the underlying rule.
+    """
+    if export_litert_only:
+        append_rule_kwargs(
+            cc_bin_kwargs,
+            linkopts = [_EXPORT_LRT_ONLY_LINKOPT],
+            deps = [_EXPORT_LRT_ONLY_SCRIPT],
+        )
+
+    _litert_base(
+        native.cc_binary,
+        ungrte,
+        **cc_bin_kwargs
+    )
+
 def litert_dynamic_lib(
         name,
         shared_lib_name,

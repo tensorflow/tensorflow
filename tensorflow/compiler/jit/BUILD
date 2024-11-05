@@ -676,7 +676,7 @@ tf_cc_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:pjrt_common",
-        "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
+        "@local_xla//xla/pjrt/cpu:cpu_client",
         "@local_xla//xla/tests:literal_test_util",
         "@local_xla//xla/tsl/framework:device_id_utils",
         "@local_xla//xla/tsl/lib/core:status_test_util",
@@ -860,7 +860,10 @@ cc_library(
     visibility = [":internal"],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -1856,6 +1859,7 @@ tf_cc_test(
         "@local_xla//xla/client:local_client",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
+        "@local_xla//xla/pjrt/cpu:cpu_client",
     ],
 )
 
@@ -1973,6 +1977,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/tfrt/common:pjrt_util",
         "//tensorflow/core/tpu:tpu_defs",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
+        "@local_xla//xla/pjrt/cpu:cpu_client",
     ],
 )

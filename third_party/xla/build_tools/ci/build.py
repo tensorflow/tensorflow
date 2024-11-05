@@ -234,7 +234,7 @@ def _tag_filters_for_compute_capability(
     compute_capability: int,
 ) -> Tuple[str, ...]:
   tag_filters = (f"requires-gpu-sm{compute_capability}-only",)
-  for cc in (60, 70, 80, 90):
+  for cc in (60, 70, 80, 90, 100):
     if compute_capability >= cc:
       tag_filters += (f"requires-gpu-sm{cc}",)
     else:

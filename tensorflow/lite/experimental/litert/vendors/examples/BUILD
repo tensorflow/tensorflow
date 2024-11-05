@@ -26,7 +26,7 @@ litert_dynamic_lib(
     export_litert_only = True,
     linkstatic = 1,
     shared_lib_name = "example_plugin_so",
-    so_name = "libLiteRtPlugin_ExampleSocManufacturer_ExampleSocModel.so",
+    so_name = "libLiteRtCompilerPlugin_Example.so",
     visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_c_api",

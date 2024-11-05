@@ -173,6 +173,15 @@ void HostOffloadEventProcessor::ProcessHostOffloadOpEvent(
     const XStatMetadata& async_stat = *plane_builder_->GetOrCreateStatMetadata(
         GetStatTypeStr(StatType::kIsAsync));
     event_builder.AddStatValue(async_stat, 1);
+
+    // Set metadata stats for the event.
+    const XStatMetadata& bytes_stat = *plane_builder_->GetOrCreateStatMetadata(
+        GetStatTypeStr(StatType::kBytesAccessed));
+    event.Metadata().ForEachStat([&](const XStatVisitor& stat) {
+      if (stat.Type() == StatType::kBytesAccessed) {
+        event_builder.AddStatValue(bytes_stat, stat.IntValue());
+      }
+    });
   }
 }
 

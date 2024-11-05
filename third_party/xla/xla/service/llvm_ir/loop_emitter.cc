@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/loop_emitter.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"

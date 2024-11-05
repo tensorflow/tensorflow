@@ -37,6 +37,10 @@ package_group(
     ],
 )
 
+exports_files(glob([
+    "testdata/*.bin",
+]))
+
 filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
@@ -1315,6 +1319,7 @@ cc_library(
         ":flatbuffer_tflite_operator_lib",
         ":lite_version",
         ":low_bit_utils",
+        ":region_isolation",
         ":stateful_ops_utils",
         ":string_utils",
         ":tensorflow_lite",
@@ -1330,6 +1335,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/compiler/mlir/lite/tools/versioning",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
@@ -1338,7 +1344,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1440,6 +1445,39 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "region_isolation",
+    srcs = [
+        "utils/region_isolation.cc",
+    ],
+    hdrs = [
+        "utils/region_isolation.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+tf_cc_test(
+    name = "region_isolation_test",
+    srcs = [
+        "utils/region_isolation_test.cc",
+    ],
+    deps = [
+        ":region_isolation",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

@@ -110,17 +110,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   bool MatchReductionForSplit(HloReduceInstruction *reduce,
                               const HloModuleConfig &config) {
     // MLIR emitters only support race-free reductions.
-    // TODO(jreiffers: Verify performance and implement atomics for reductions
+    // TODO(jreiffers): Verify performance and implement atomics for reductions
     // if needed.
-    bool reductions_via_mlir_disabled =
-        config.debug_options().xla_gpu_mlir_emitter_level() < 4;
-    if (reductions_via_mlir_disabled && IsMinMaxReduction(reduce)) {
-      // TODO(cheshire): Also enable for integers.
-      VLOG(1) << "Not performing tree expansion on min/max-reduction: "
-              << reduce->ToString()
-              << " since min/max operations are associative";
-      return false;
-    }
     if (!IsReductionFromOrToContiguousDimensions(*reduce)) {
       VLOG(3) << "Is not a reduction from or to contiguous dimensions";
       return false;

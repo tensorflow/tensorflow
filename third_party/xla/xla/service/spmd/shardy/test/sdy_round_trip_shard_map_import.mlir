@@ -26,6 +26,22 @@ func.func @single_manual_comp(%arg0: tensor<8x16xf32>, %arg1: tensor<16x32xf32>)
   return %2 : tensor<8x32xf32>
 }
 
+func.func @single_manual_comp_name_is_not_prefix_nor_suffix(%arg0: tensor<8x8xf32>) -> (tensor<8x8xf32>) {
+  // CHECK-NOT: call @my_model.___call__.fwd.xla.sdy.manual_computation_body_14.1234
+  // CHECK:               %[[MAN_COMP:.*]] = sdy.manual_computation(%arg0)
+  // CHECK-SAME{LITERAL}:     in_shardings=[<@mesh_0, [{"a"}, {}]>]
+  // CHECK-SAME{LITERAL}:     out_shardings=[<@mesh_0, [{"a"}, {}]>]
+  // CHECK-SAME{LITERAL}:     manual_axes={"a"}
+  // CHECK-SAME:              (%arg1: tensor<2x8xf32>) {
+  // CHECK-NEXT:            sdy.return %arg1 : tensor<2x8xf32>
+  // CHECK-NEXT:          } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  // CHECK-NEXT:          return %[[MAN_COMP]] : tensor<8x8xf32>
+  %0 = mhlo.custom_call @local_xla.sdy.GlobalToLocalShape(%arg0) : (tensor<8x8xf32>) -> tensor<2x8xf32>
+  %1 = call @my_model.___call__.fwd.xla.sdy.manual_computation_body_14.1234(%0) {mhlo.frontend_attributes = {xla.sdy.in_shardings = "#sdy.sharding_per_value<[<@mesh_0, [{\\\22a\\\22}, {}]>]>", xla.sdy.manual_axes = "#sdy<manual_axes{\\\22a\\\22}>", xla.sdy.out_shardings = "#sdy.sharding_per_value<[<@mesh_0, [{\\\22a\\\22}, {}]>]>"}} : (tensor<2x8xf32>) -> tensor<2x8xf32>
+  %2 = mhlo.custom_call @local_xla.sdy.LocalToGlobalShape(%1) : (tensor<2x8xf32>) -> tensor<8x8xf32>
+  return %2 : tensor<8x8xf32>
+}
+
 func.func @manual_comp_using_another(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
   // CHECK-NOT: call @local_xla.sdy.manual_computation_body_0
   // CHECK:               %[[MAN_COMP_0:.*]] = sdy.manual_computation(%arg0)
@@ -158,6 +174,10 @@ func.func @local_xla.sdy.manual_computation_body(%arg0: tensor<2x8xf32>, %arg1: 
     stablehlo.return %3 : tensor<f32>
   }) : (tensor<2x32xf32>) -> tensor<2x32xf32>
   return %2 : tensor<2x32xf32>
+}
+
+func.func @my_model.___call__.fwd.xla.sdy.manual_computation_body_14.1234(%arg0: tensor<2x8xf32>) -> tensor<2x8xf32> {
+  return %arg0 : tensor<2x8xf32>
 }
 
 // CHECK-NOT: func @local_xla.sdy.manual_computation_body_0(

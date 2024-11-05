@@ -162,7 +162,8 @@ absl::Status FusionContext::PropagateDimensionOrdersToParameters(
 
     if (!std::holds_alternative<DimOrdersAndReqs>(result)) {
       return FailedPrecondition(
-          "Can not propagate dim orders and requirements.");
+          "Can not propagate dim orders and requirements: %s",
+          std::get<FusionDecision>(result).Explain());
     }
 
     if (!CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result))) {

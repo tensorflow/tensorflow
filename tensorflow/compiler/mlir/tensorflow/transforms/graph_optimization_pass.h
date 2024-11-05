@@ -40,7 +40,7 @@ class MlirGraphOptimizationPass : public ::tensorflow::MlirOptimizationPass {
                : tensorflow::MlirOptimizationPassState::Disabled;
   }
 
-  ::tensorflow::Status Run(
+  absl::Status Run(
       const std::string& function_name,
       const ::tensorflow::ConfigProto& config_proto, ModuleOp module,
       const ::tensorflow::Graph& graph,

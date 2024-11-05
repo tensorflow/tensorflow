@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -68,6 +69,15 @@ std::string ToString(const IndexingMap& indexing_map,
                      absl::Span<const std::string> rt_names);
 
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
+
+// Dimension variable names.
+llvm::SmallVector<std::string> GetDimVarNames(const IndexingMap& map);
+// Range variables names.
+llvm::SmallVector<std::string> GetRangeVarNames(const IndexingMap& map);
+// Runtime variable names.
+llvm::SmallVector<std::string> GetRTVarNames(const IndexingMap& map);
+// Symbol variable names: concatenation of range and runtime variables.
+llvm::SmallVector<std::string> GetSymbolVarNames(const IndexingMap& map);
 
 }  // namespace gpu
 }  // namespace xla

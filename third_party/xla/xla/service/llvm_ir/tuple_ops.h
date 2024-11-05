@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_IR_TUPLE_OPS_H_
 #define XLA_SERVICE_LLVM_IR_TUPLE_OPS_H_
 
+#include <cstdint>
+#include <vector>
+
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"

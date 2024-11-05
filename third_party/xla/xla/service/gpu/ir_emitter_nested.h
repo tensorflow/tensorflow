@@ -61,20 +61,6 @@ absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements_addrs);
 
-// Emits an atomic operation that implements `nested_computation` in the
-// sequentially consistent memory model. `output_address` and `source_address`
-// are the arguments of the nested computation. For example,
-// atomicAdd(output_address, *source_address).
-//
-// If the computation can be implemented using a single atomic operation, it
-// will, otherwise it will be emitted as a compare-and-swap and a loop.
-//
-// The computation must have exactly two parameters.
-absl::Status EmitAtomicOperationForNestedComputation(
-    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
-    const HloComputation& computation, llvm::Value* output_address,
-    llvm::Value* source_address, llvm::Type* element_type);
-
 }  // namespace gpu
 }  // namespace xla
 

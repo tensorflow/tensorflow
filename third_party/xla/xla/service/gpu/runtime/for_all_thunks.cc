@@ -106,6 +106,8 @@ void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn,
     case Thunk::kPartitionId:
     case Thunk::kRecv:
     case Thunk::kRecvDone:
+    case Thunk::kNcclGroupStart:
+    case Thunk::kNcclGroupDone:
     case Thunk::kReplicaId:
     case Thunk::kSend:
     case Thunk::kSendDone:
