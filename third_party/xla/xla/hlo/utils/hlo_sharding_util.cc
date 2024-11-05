@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/hlo/utils/hlo_container_util.h"
 #include "xla/literal_util.h"
 #include "xla/map_util.h"
 #include "xla/protobuf_util.h"
@@ -1078,19 +1079,10 @@ bool ContainsTileSharding(const HloModule& module) {
   return false;
 }
 
-template <typename T>
-std::vector<int64_t> argsort(absl::Span<const T> data) {
-  std::vector<int64_t> indices(data.size());
-  std::iota(indices.begin(), indices.end(), 0);
-  std::sort(indices.begin(), indices.end(),
-            [&data](int64_t i, int64_t j) { return data[i] < data[j]; });
-  return indices;
-}
-
 // Given a `source_sharding`, preserve the tiles along the `source_dims` and
 // replicate the rest. The `target_dims` are used to determine the order of the
 // dimensions in the resulting sharding. If `source_dims` and `target_dims` are
-// in the different order (i.e., different argsort results), we need to
+// in the different order (i.e., different ArgSort results), we need to
 // transpose the tile assignment.
 //
 // Given the following input,
@@ -1115,8 +1107,8 @@ HloSharding PropagateShardingAlongDimsAndReplicateOthers(
     return replicate_other_dims;
   }
 
-  std::vector<int64_t> argsort_source_dims = argsort(source_dims);
-  std::vector<int64_t> argsort_target_dims = argsort(target_dims);
+  std::vector<int64_t> argsort_source_dims = ArgSort(source_dims);
+  std::vector<int64_t> argsort_target_dims = ArgSort(target_dims);
   if (argsort_source_dims != argsort_target_dims) {
     std::vector<int64_t> perm(
         replicate_other_dims.tile_assignment().num_dimensions(), -1);
