@@ -17,10 +17,21 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <functional>
+#include <ios>
+#include <memory>
+#include <string>
+#include <utility>
 #include <variant>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/variant.h"
 #include "google/cloud/storage/client.h"
 #include "tensorflow/c/env.h"

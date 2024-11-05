@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
 
-#include "absl/strings/numbers.h"
+#include <utility>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_util.h"

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 
+#include <memory>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"

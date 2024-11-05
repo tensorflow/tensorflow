@@ -15,7 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 
+#include <memory>
+#include <sstream>
+
+#include "absl/status/status.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
 
