@@ -4249,7 +4249,8 @@ class Subgraph {
         // solution for delegating to `qp8_f32_qc4w` GEMM kernels.
         const size_t convert_flags =
             (filter_datatype == xnn_datatype_qcint4 &&
-             filter_tensor.params.zero_point == 8)
+             (filter_tensor.params.zero_point == 0 ||
+              filter_tensor.params.zero_point == 8))
                 ? 0x00000080 /*XNN_FLAG_MAYBE_PACK_FOR_GEMM*/
                 : 0;
         status = xnn_define_convert(
