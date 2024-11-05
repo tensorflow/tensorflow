@@ -246,3 +246,9 @@ LiteRtStatus LiteRtGetRankedTensorType(
   *ranked_tensor_type = tensor->type_detail.ranked_tensor_type;
   return kLiteRtStatusOk;
 }
+
+namespace litert::internal {
+
+void LiteRtDestroyModel(LiteRtModel model) { delete model; }
+
+}  // namespace litert::internal

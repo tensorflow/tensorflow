@@ -273,12 +273,23 @@ class Subgraph : public internal::NonOwnedHandle<LiteRtSubgraph> {
   }
 };
 
+namespace internal {
+void LiteRtDestroyModel(LiteRtModel model);
+}  // namespace internal
+
 // Model. C++ equivalent of LiteRtModel.
-class Model : public internal::NonOwnedHandle<LiteRtModel> {
+class Model
+    : public internal::Handle<LiteRtModel, internal::LiteRtDestroyModel> {
  public:
   Model() = default;
-  explicit Model(LiteRtModel model)
-      : internal::NonOwnedHandle<LiteRtModel>(model) {}
+
+  static Model CreateFromOwnedHandle(LiteRtModel model) {
+    return Model(model, /*owned=*/true);
+  }
+
+  static Model CreateFromNonOwnedHandle(LiteRtModel model) {
+    return Model(model, /*owned=*/false);
+  }
 
   absl::StatusOr<absl::Span<const uint8_t>> Metadata(
       const std::string& metadata_key) const {
@@ -313,6 +324,13 @@ class Model : public internal::NonOwnedHandle<LiteRtModel> {
     }
     return litert::Subgraph(subgraph);
   }
+
+ private:
+  // Parameter `owned` indicates if the created TensorBuffer object should take
+  // ownership of the provided `tensor_buffer` handle.
+  Model(LiteRtModel model, bool owned)
+      : internal::Handle<LiteRtModel, internal::LiteRtDestroyModel>(model,
+                                                                    owned) {}
 };
 
 }  // namespace litert

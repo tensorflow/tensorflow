@@ -21,15 +21,15 @@
 namespace {
 
 TEST(Op, SimpleSupportedOp) {
-  auto litert_model = litert::testing::LoadTestFileModel("one_mul.tflite");
-  ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
-                          litert::internal::GetSubgraph(litert_model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto litert_ops,
-                          litert::internal::GetSubgraphOps(litert_subgraph));
+  auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
 
-  litert::Op op(litert_ops[0]);
+  auto ops = subgraph->Ops();
+
+  auto op = litert::Op(ops[0]);
   EXPECT_EQ(op.Code(), kLiteRtOpCodeTflMul);
-  EXPECT_EQ(op.Get(), litert_ops[0]);
+  EXPECT_EQ(op.Get(), ops[0]);
 }
 
 }  // namespace

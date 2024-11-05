@@ -48,6 +48,8 @@ class Handle {
   // Return the underlying LiteRtTensorBuffer handle.
   H Get() const noexcept { return ptr_.get(); }
 
+  H Release() noexcept { return ptr_.release(); }
+
  private:
   std::unique_ptr<std::remove_pointer_t<H>, void (*)(H)> ptr_ = {nullptr,
                                                                  DummyDeleter};

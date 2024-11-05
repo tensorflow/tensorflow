@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/graph_tools.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
@@ -20,15 +22,24 @@
 namespace {
 
 TEST(Subgraph, SimpleModel) {
-  auto litert_model = litert::testing::LoadTestFileModel("one_mul.tflite");
+  auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
 
-  ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
-                          litert::internal::GetSubgraph(litert_model.get()));
+  LiteRtParamIndex main_subgraph_index;
+  ASSERT_EQ(LiteRtGetMainModelSubgraphIndex(model.Get(), &main_subgraph_index),
+            kLiteRtStatusOk);
 
-  litert::Subgraph subgraph(litert_subgraph);
-  ASSERT_EQ(subgraph.Inputs().size(), 2);
-  ASSERT_EQ(subgraph.Outputs().size(), 1);
-  ASSERT_EQ(subgraph.Ops().size(), 1);
+  LiteRtSubgraph litert_main_subgraph;
+  ASSERT_EQ(LiteRtGetModelSubgraph(model.Get(), main_subgraph_index,
+                                   &litert_main_subgraph),
+            kLiteRtStatusOk);
+
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph.ok());
+  ASSERT_EQ(subgraph->Get(), litert_main_subgraph);
+
+  ASSERT_EQ(subgraph->Inputs().size(), 2);
+  ASSERT_EQ(subgraph->Outputs().size(), 1);
+  ASSERT_EQ(subgraph->Ops().size(), 1);
 }
 
 }  // namespace

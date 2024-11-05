@@ -31,6 +31,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_support.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/core/compiler_plugin/algo.h"
@@ -57,7 +58,6 @@ using litert::internal::MakeExecInfo;
 using litert::internal::OutlinePartition;
 using litert::internal::RegisterCustomOpCode;
 using litert::internal::Serialization;
-using litert::internal::UniqueLiteRtModel;
 using litert::internal::VerifyFlatbuffer;
 using litert::tools::ApplyPluginRun;
 
@@ -194,33 +194,33 @@ CompilerPlugin::ResultT LoadPlugin(Context* ctx) {
   return CompilerPlugin::ResultT::FromStatus(kLiteRtStatusErrorNotFound);
 }
 
-LiteRtResult<UniqueLiteRtModel> LoadModel(Context* ctx) {
+LiteRtResult<litert::Model> LoadModel(Context* ctx) {
   ctx->Dump().Start("Load Model");
   ctx->Dump().Labeled() << absl::StreamFormat("Loading model from: %s\n",
                                               ctx->Run().model.value());
 
-  LiteRtModel model;
-  if (LoadModelFromFile(ctx->Run().model->data(), &model) != kLiteRtStatusOk) {
+  auto model = LoadModelFromFile(ctx->Run().model->data());
+  if (model.Status() != kLiteRtStatusOk) {
     ctx->Dump().Fail();
-    return LiteRtResult<UniqueLiteRtModel>::FromStatus(
-        kLiteRtStatusErrorFileIO);
+    return LiteRtResult<litert::Model>::FromStatus(kLiteRtStatusErrorFileIO);
   }
 
   ctx->Dump().Labeled();
-  Dump(*model, ctx->Dump().Display());
+  Dump(*model.Value().Get(), ctx->Dump().Display());
 
   ctx->Dump().Done();
-  return LiteRtResult<UniqueLiteRtModel>::TakeValue(UniqueLiteRtModel(model));
+  return model;
 }
 
-std::vector<LiteRtOp> ApplyPartition(Context* ctx, LiteRtModelT& model,
+std::vector<LiteRtOp> ApplyPartition(Context* ctx, const Model& model,
                                      CompilerPlugin& plugin) {
   ctx->Dump().Start("Partition Model");
   LITERT_RETURN_VAL_IF_NOT_OK(
-      RegisterCustomOpCode(&model, kLiteRtDispatchOpCustomCode.data()), {});
+      RegisterCustomOpCode(model, kLiteRtDispatchOpCustomCode.data()), {});
 
   ctx->Dump().Labeled() << "Input model: \n";
-  for (auto it = model.subgraphs.begin(); it < model.subgraphs.end(); ++it) {
+  for (auto it = model.Get()->subgraphs.begin();
+       it < model.Get()->subgraphs.end(); ++it) {
     ctx->Dump().Labeled();
     ctx->Dump().Indented() << "(input graph) ";
     Dump(*it, ctx->Dump().Display());
@@ -240,17 +240,18 @@ std::vector<LiteRtOp> ApplyPartition(Context* ctx, LiteRtModelT& model,
 
   std::vector<LiteRtOp> res;
   for (auto& partition : grouped_partitions) {
-    LiteRtOp custom_op = OutlinePartition(
-        model.subgraphs.front(), &model.subgraphs.emplace_back(), partition);
+    LiteRtOp custom_op =
+        OutlinePartition(model.Get()->subgraphs.front(),
+                         &model.Get()->subgraphs.emplace_back(), partition);
     res.push_back(custom_op);
   }
 
   ctx->Dump().Labeled() << "Partitioned model: \n";
   ctx->Dump().Labeled();
   ctx->Dump().Indented() << "(initial graph) ";
-  Dump(model.subgraphs.front(), ctx->Dump().Display());
-  for (auto it = model.subgraphs.begin() + 1; it < model.subgraphs.end();
-       ++it) {
+  Dump(model.Get()->subgraphs.front(), ctx->Dump().Display());
+  for (auto it = model.Get()->subgraphs.begin() + 1;
+       it < model.Get()->subgraphs.end(); ++it) {
     ctx->Dump().Labeled();
     ctx->Dump().Indented() << "(new graph) ";
     Dump(*it, ctx->Dump().Display());
@@ -260,15 +261,14 @@ std::vector<LiteRtOp> ApplyPartition(Context* ctx, LiteRtModelT& model,
   return res;
 }
 
-LiteRtResult<UniqueLiteRtModel> PartitionModel(Context* ctx,
-                                               UniqueLiteRtModel model,
-                                               CompilerPlugin& plugin) {
-  auto custom_ops = ApplyPartition(ctx, *model, plugin);
+LiteRtResult<litert::Model> PartitionModel(Context* ctx, Model&& model,
+                                           CompilerPlugin& plugin) {
+  auto custom_ops = ApplyPartition(ctx, model, plugin);
   if (custom_ops.empty()) {
-    return LiteRtResult<UniqueLiteRtModel>::FromStatus(
+    return LiteRtResult<litert::Model>::FromStatus(
         kLiteRtStatusErrorGraphModification);
   }
-  return LiteRtResult<UniqueLiteRtModel>::TakeValue(std::move(model));
+  return LiteRtResult<litert::Model>::TakeValue(std::move(model));
 }
 
 LiteRtResult<std::vector<std::string>> CompilePartitions(
@@ -396,8 +396,8 @@ LiteRtStatus Compile(Context* ctx) {
   LITERT_MOVE_OR_RETURN_STATUS(auto plugin, LoadPlugin(ctx));
 
   std::vector<LiteRtSubgraph> compilation_input;
-  compilation_input.reserve(model->subgraphs.size());
-  for (auto& subgraph : model->subgraphs) {
+  compilation_input.reserve(model.Get()->subgraphs.size());
+  for (auto& subgraph : model.Get()->subgraphs) {
     compilation_input.push_back(&subgraph);
   }
   LITERT_MOVE_OR_RETURN_STATUS(
@@ -422,7 +422,7 @@ LiteRtStatus StampModel(Context* ctx, LiteRtModel model) {
 LiteRtResult<OwningBufferRef<uint8_t>> DoMetadataSerialization(
     Context* ctx, std::vector<LiteRtOp>& custom_ops,
     std::vector<std::string>& call_info, BufferRef<uint8_t> compilation_out,
-    UniqueLiteRtModel model) {
+    litert::Model&& model) {
   using ResT = OwningBufferRef<uint8_t>;
 
   ctx->Dump().Start("Serializing with bytecode in METADATA");
@@ -444,7 +444,7 @@ LiteRtResult<OwningBufferRef<uint8_t>> DoMetadataSerialization(
         compilation_out.Size());
 
     LITERT_RETURN_RESULT_IF_NOT_OK(
-        model->PushMetadata(kByteCodeMetadataKey, compilation_out), ResT);
+        model.Get()->PushMetadata(kByteCodeMetadataKey, compilation_out), ResT);
   }
 
   LITERT_ASSIGN_OR_RETURN_RESULT(auto serialized,
@@ -464,7 +464,7 @@ LiteRtResult<OwningBufferRef<uint8_t>> DoMetadataSerialization(
 LiteRtResult<OwningBufferRef<uint8_t>> DoAppendSerialization(
     Context* ctx, std::vector<LiteRtOp>& custom_ops,
     std::vector<std::string>& call_info, BufferRef<uint8_t> compilation_out,
-    UniqueLiteRtModel model) {
+    litert::Model&& model) {
   using ResT = OwningBufferRef<uint8_t>;
   ctx->Dump().Start("Serializing with bytecode APPEND");
 
@@ -472,8 +472,8 @@ LiteRtResult<OwningBufferRef<uint8_t>> DoAppendSerialization(
   static constexpr absl::string_view kSharedByteCodePlaceholderName =
       kByteCodeMetadataKey;
   LITERT_RETURN_RESULT_IF_NOT_OK(
-      model->PushMetadata(kSharedByteCodePlaceholderName,
-                          std::move(MakeByteCodePlaceholder())),
+      model.Get()->PushMetadata(kSharedByteCodePlaceholderName,
+                                std::move(MakeByteCodePlaceholder())),
       ResT);
 
   {
@@ -528,18 +528,18 @@ LiteRtStatus Apply(Context* ctx) {
   LITERT_MOVE_OR_RETURN_STATUS(auto model, LoadModel(ctx));
   LITERT_MOVE_OR_RETURN_STATUS(auto plugin, LoadPlugin(ctx));
   static constexpr size_t kNumInputSubgraphs = 1;
-  LITERT_ENSURE_SUPPORTED(model->subgraphs.size() == kNumInputSubgraphs,
+  LITERT_ENSURE_SUPPORTED(model.Get()->subgraphs.size() == kNumInputSubgraphs,
                           "Only single subgraph models currently supported.");
 
   // Query plugin for compilable ops and slice partitions out of the graph,
   // replacing use with single custom op..
-  auto custom_ops = ApplyPartition(ctx, *model, plugin);
+  auto custom_ops = ApplyPartition(ctx, model, plugin);
   LITERT_ENSURE(!custom_ops.empty(), kLiteRtStatusErrorGraphModification,
                 "Failed to partiion graph.");
   // All new subgraphs to be compiled are appended to the model's subgraphs.
   std::vector<LiteRtSubgraph> compilation_input;
-  for (auto it = model->subgraphs.begin() + kNumInputSubgraphs;
-       it < model->subgraphs.end(); ++it) {
+  for (auto it = model.Get()->subgraphs.begin() + kNumInputSubgraphs;
+       it < model.Get()->subgraphs.end(); ++it) {
     compilation_input.push_back(&*it);
   }
 
@@ -555,8 +555,8 @@ LiteRtStatus Apply(Context* ctx) {
                 kLiteRtStatusErrorCompilationr,
                 "Failed to verify entry point information.");
 
-  model->subgraphs.resize(kNumInputSubgraphs);
-  LITERT_RETURN_STATUS_IF_NOT_OK(StampModel(ctx, model.get()));
+  model.Get()->subgraphs.resize(kNumInputSubgraphs);
+  LITERT_RETURN_STATUS_IF_NOT_OK(StampModel(ctx, model.Get()));
 
   BufferRef<uint8_t> compiled_buffer(compilation_out.view().data(),
                                      compilation_out.view().size());

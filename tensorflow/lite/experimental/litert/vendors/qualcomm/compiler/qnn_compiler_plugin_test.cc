@@ -72,7 +72,7 @@ TEST(TestQnnPlugin, PartitionMulOps) {
   auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
 
   LiteRtOpListT selected_op_list;
-  ASSERT_STATUS_OK(LiteRtCompilerPluginPartitionModel(plugin.get(), model.get(),
+  ASSERT_STATUS_OK(LiteRtCompilerPluginPartitionModel(plugin.get(), model.Get(),
                                                       &selected_op_list));
   const auto selected_ops = selected_op_list.Vec();
 
@@ -85,7 +85,7 @@ TEST(TestQnnPlugin, CompileMulSubgraph) {
   auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                          ::litert::internal::GetSubgraph(model.get()));
+                          ::litert::internal::GetSubgraph(model.Get()));
 
   LiteRtCompiledResult compiled;
   ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75", &subgraph,
@@ -122,7 +122,7 @@ TEST_P(QnnPluginOpCompatibilityTest, SupportedOpsTest) {
   auto model = litert::testing::LoadTestFileModel(GetParam());
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                          ::litert::internal::GetSubgraph(model.get()));
+                          ::litert::internal::GetSubgraph(model.Get()));
 
   LiteRtCompiledResult compiled;
   ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75", &subgraph,

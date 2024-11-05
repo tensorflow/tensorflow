@@ -17,6 +17,7 @@
 #include <fstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>  // IWYU pragma: keep
@@ -26,6 +27,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/core/graph_tools.h"
 #include "tensorflow/lite/experimental/litert/core/litert_model_init.h"
@@ -38,32 +40,27 @@ using litert::BufferRef;
 using litert::OwningBufferRef;
 using litert::internal::AppendMetadata;
 using litert::internal::GetMetadata;
-using litert::internal::LoadModel;
+using litert::internal::LoadModelFromBuffer;
 using litert::internal::LoadModelFromFile;
 using litert::internal::RegisterCustomOpCode;
 using litert::internal::SerializeModel;
-using litert::internal::UniqueLiteRtModel;
 using litert::internal::VerifyFlatbuffer;
 using litert::testing::LoadTestFileModel;
 
 namespace {
 
-inline UniqueLiteRtModel LoadModelThroughRoundTrip(std::string_view path) {
+LiteRtResult<litert::Model> LoadModelThroughRoundTrip(std::string_view path) {
   auto model = LoadTestFileModel(path);
 
   OwningBufferRef buf;
   auto [data, size, offset] = buf.GetWeak();
 
   LITERT_CHECK_STATUS_OK_MSG(
-      SerializeModel(model.release(), &data, &size, &offset),
+      SerializeModel(std::move(model), &data, &size, &offset),
       "Failed to serialize model");
 
   // Reload model.
-  LiteRtModel result = nullptr;
-  LITERT_CHECK_STATUS_OK_MSG(LoadModel(buf.Data(), buf.Size(), &result),
-                             "Failed to re load model");
-
-  return UniqueLiteRtModel(result);
+  return LoadModelFromBuffer(buf.Data(), buf.Size());
 }
 
 class TestWithPath : public ::testing::TestWithParam<std::string_view> {};
@@ -75,8 +72,8 @@ class TopologyTest : public ::testing::TestWithParam<LiteRtModel> {
     std::vector<LiteRtModel> result;
 
     for (auto p : paths) {
-      result.push_back(LoadTestFileModel(p).release());
-      result.push_back(LoadModelThroughRoundTrip(p).release());
+      result.push_back(LoadTestFileModel(p).Release());
+      result.push_back(LoadModelThroughRoundTrip(p).Value().Release());
     }
 
     return result;
@@ -84,9 +81,8 @@ class TopologyTest : public ::testing::TestWithParam<LiteRtModel> {
 };
 
 TEST(LiteRtModelTest, TestLoadTestDataBadFilepath) {
-  LiteRtModel model = nullptr;
-  ASSERT_STATUS_HAS_CODE(LoadModelFromFile("bad_path", &model),
-                         kLiteRtStatusErrorFileIO);
+  auto model = LoadModelFromFile("bad_path");
+  ASSERT_EQ(model.Status(), kLiteRtStatusErrorFileIO);
 }
 
 TEST(LiteRtModelTest, TestLoadTestDataBadFileData) {
@@ -104,9 +100,8 @@ TEST(LiteRtModelTest, TestLoadTestDataBadFileData) {
   bad_file << "not_tflite";
   bad_file.close();
 
-  LiteRtModel model = nullptr;
-  ASSERT_STATUS_HAS_CODE(LoadModelFromFile(test_file_path.c_str(), &model),
-                         kLiteRtStatusErrorInvalidFlatbuffer);
+  auto model = LoadModelFromFile(test_file_path);
+  ASSERT_EQ(model.Status(), kLiteRtStatusErrorInvalidFlatbuffer);
   // NOLINTEND
 }
 
@@ -116,7 +111,7 @@ TEST(TestSerializeModel, TestAllocations) {
   OwningBufferRef buf;
   auto [data, size, offset] = buf.GetWeak();
 
-  ASSERT_STATUS_OK(SerializeModel(model.release(), &data, &size, &offset));
+  ASSERT_STATUS_OK(SerializeModel(std::move(model), &data, &size, &offset));
   EXPECT_TRUE(VerifyFlatbuffer(data + offset, size - offset));
 }
 
@@ -126,16 +121,16 @@ TEST(TestSerializeModel, TestMetadata) {
   constexpr static std::string_view kMetadataName = "an_soc_manufacturer";
   constexpr static std::string_view kMetadataData = "My_Meta_Data";
 
-  ASSERT_STATUS_OK(AppendMetadata(model.get(), kMetadataData.data(),
+  ASSERT_STATUS_OK(AppendMetadata(model, kMetadataData.data(),
                                   kMetadataData.size(), kMetadataName.data()));
   ASSERT_RESULT_OK_ASSIGN(auto m_buffer,
-                          GetMetadata(model.get(), kMetadataName));
+                          GetMetadata(model.Get(), kMetadataName));
   EXPECT_EQ(m_buffer.StrView(), kMetadataData);
 
   OwningBufferRef buf;
   auto [data, size, offset] = buf.GetWeak();
 
-  ASSERT_STATUS_OK(SerializeModel(model.release(), &data, &size, &offset));
+  ASSERT_STATUS_OK(SerializeModel(std::move(model), &data, &size, &offset));
   EXPECT_TRUE(VerifyFlatbuffer(buf.Span()));
 
   auto new_model = tflite::UnPackModel(buf.Data());
@@ -166,12 +161,12 @@ TEST(TestSerializeModel, TestCustomOpCode) {
   auto model = LoadTestFileModel("add_simple.tflite");
 
   constexpr static std::string_view kCustomCode = "MyCustomCode";
-  ASSERT_STATUS_OK(RegisterCustomOpCode(model.get(), kCustomCode.data()));
+  ASSERT_STATUS_OK(RegisterCustomOpCode(model, kCustomCode.data()));
 
   OwningBufferRef buf;
   auto [data, size, offset] = buf.GetWeak();
 
-  ASSERT_STATUS_OK(SerializeModel(model.release(), &data, &size, &offset));
+  ASSERT_STATUS_OK(SerializeModel(std::move(model), &data, &size, &offset));
   EXPECT_TRUE(VerifyFlatbuffer(buf.Span()));
   auto new_model = tflite::UnPackModel(buf.Data());
 
@@ -188,11 +183,13 @@ TEST(TestSerializeModel, TestCustomOpCode) {
 }
 
 TEST_P(TestWithPath, TestConstructDestroy) {
-  UniqueLiteRtModel model = LoadTestFileModel(GetParam());
+  auto model = LoadTestFileModel(GetParam());
+  (void)model;
 }
 
 TEST_P(TestWithPath, TestConstructDestroyRoundTrip) {
-  UniqueLiteRtModel model = LoadModelThroughRoundTrip(GetParam());
+  auto model = LoadModelThroughRoundTrip(GetParam());
+  EXPECT_TRUE(model.HasValue());
 }
 
 INSTANTIATE_TEST_SUITE_P(InstTestWithPath, TestWithPath,
@@ -203,7 +200,7 @@ INSTANTIATE_TEST_SUITE_P(InstTestWithPath, TestWithPath,
 using AddSimpleTest = TopologyTest;
 
 TEST_P(AddSimpleTest, TestBuildModelAddSimple) {
-  UniqueLiteRtModel model(GetParam());
+  auto model = litert::Model::CreateFromOwnedHandle(GetParam());
 
   // func(arg0)
   //  output = tfl.add(arg0, arg0)
@@ -211,7 +208,7 @@ TEST_P(AddSimpleTest, TestBuildModelAddSimple) {
   //
 
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
+                          litert::internal::GetSubgraph(model.Get()));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_inputs,
                           litert::internal::GetSubgraphInputs(subgraph));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_outputs,
@@ -251,7 +248,7 @@ INSTANTIATE_TEST_SUITE_P(
 using AddCstTest = TopologyTest;
 
 TEST_P(AddCstTest, TestBuildModelAddCst) {
-  UniqueLiteRtModel model(GetParam());
+  auto model = litert::Model::CreateFromOwnedHandle(GetParam());
 
   // func(arg0)
   //  cst = ConstantTensor([1, 2, 3, 4])
@@ -260,7 +257,7 @@ TEST_P(AddCstTest, TestBuildModelAddCst) {
   //
 
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
+                          litert::internal::GetSubgraph(model.Get()));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_inputs,
                           litert::internal::GetSubgraphInputs(subgraph));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_outputs,
@@ -301,7 +298,7 @@ INSTANTIATE_TEST_SUITE_P(
 using SimpleMultiOpTest = TopologyTest;
 
 TEST_P(SimpleMultiOpTest, TestBuildModelSimpleMultiAdd) {
-  UniqueLiteRtModel model(GetParam());
+  auto model = litert::Model::CreateFromOwnedHandle(GetParam());
 
   // func.func @main(arg0)
   //   0 = tfl.add arg0, arg0
@@ -311,7 +308,7 @@ TEST_P(SimpleMultiOpTest, TestBuildModelSimpleMultiAdd) {
   //   return 3
 
   ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
-                          litert::internal::GetSubgraph(model.get()));
+                          litert::internal::GetSubgraph(model.Get()));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_inputs,
                           litert::internal::GetSubgraphInputs(subgraph));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_outputs,
