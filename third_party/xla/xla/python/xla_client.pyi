@@ -238,7 +238,7 @@ def make_replica_groups(
 ) -> list[ReplicaGroup]:
   ...
 
-def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
+def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...) -> _xla.WeakrefLRUCache:
   ...
 
 def batched_copy_array_to_devices_with_sharding(

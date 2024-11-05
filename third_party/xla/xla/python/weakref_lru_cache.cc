@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/python/weakref_lru_cache.h"
 
+#include <Python.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -126,6 +128,13 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     nb::args args() const { return args_; }
     nb::kwargs kwargs() const { return kwargs_; }
 
+    int tp_traverse(visitproc visit, void* arg) const {
+      Py_VISIT(context_.ptr());
+      Py_VISIT(args_.ptr());
+      Py_VISIT(kwargs_.ptr());
+      return 0;
+    }
+
    private:
     nb::object context_;
     nb::args args_;
@@ -138,6 +147,11 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     nb::object result;
     absl::Notification completed;
     std::thread::id thread_id = std::this_thread::get_id();
+
+    int tp_traverse(visitproc visit, void* arg) const {
+      Py_VISIT(result.ptr());
+      return 0;
+    }
   };
 
   struct CacheInfo {
@@ -310,12 +324,49 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
   int64_t misses_ = 0;
   int64_t total_queries_ = 0;
   absl::Mutex mu_;
+
+  static int tp_traverse(PyObject* self, visitproc visit, void* arg) {
+    WeakrefLRUCache* cache = nb::inst_ptr<WeakrefLRUCache>(self);
+    Py_VISIT(Py_TYPE(self));
+    Py_VISIT(cache->cache_context_fn_.ptr());
+    Py_VISIT(cache->fn_.ptr());
+    for (const auto& [wr_key, wr_value] : cache->entries_) {
+      Py_VISIT(wr_key.ref.ptr());
+      for (const auto& [key, cache_value] : *wr_value.cache) {
+        int rval = key.tp_traverse(visit, arg);
+        if (rval != 0) {
+          return rval;
+        }
+        if (cache_value.value.has_value()) {
+          cache_value.value->get()->tp_traverse(visit, arg);
+        }
+      }
+    }
+    return 0;
+  }
+
+  static int tp_clear(PyObject* self) {
+    WeakrefLRUCache* cache = nb::inst_ptr<WeakrefLRUCache>(self);
+    cache->Clear();
+    cache->cache_context_fn_.reset();
+    cache->fn_.reset();
+    return 0;
+  }
+
+  static PyType_Slot slots_[];
+};
+
+/* static */ PyType_Slot WeakrefLRUCache::slots_[] = {
+    {Py_tp_traverse, (void*)WeakrefLRUCache::tp_traverse},
+    {Py_tp_clear, (void*)WeakrefLRUCache::tp_clear},
+    {0, nullptr},
 };
 
 void BuildWeakrefLRUCacheAPI(nb::module_& m) {
   auto weakref_lru_cache =
       nb::class_<WeakrefLRUCache>(m, "WeakrefLRUCache",
-                                  nb::is_weak_referenceable())
+                                  nb::is_weak_referenceable(),
+                                  nb::type_slots(WeakrefLRUCache::slots_))
           .def("__call__", &WeakrefLRUCache::Call)
           .def("cache_keys", &WeakrefLRUCache::GetKeys)
           .def("cache_info", &WeakrefLRUCache::GetCacheInfo)
