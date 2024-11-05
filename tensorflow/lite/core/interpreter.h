@@ -693,13 +693,14 @@ class Interpreter {
   /// \brief Gets the profiler used for op tracing.
   Profiler* GetProfiler();
 
-  // The default capacity of `tensors_` vector.
-  static constexpr int kTensorsReservedCapacity = 128;
-  /// The capacity headroom of `tensors_` vector before calling ops'
-  /// `prepare` and `invoke` function. In these functions, it's guaranteed
-  /// allocating up to `kTensorsCapacityHeadroom` more tensors won't invalidate
+  /// The default capacity of the tensors vector.
+  static const int& kTensorsReservedCapacity;
+
+  /// The capacity headroom of the tensors vector before calling ops'
+  /// `prepare` and `invoke` function. In those functions, it's guaranteed
+  /// allocating up to this many more tensors won't invalidate
   /// pointers to existing tensors.
-  static constexpr int kTensorsCapacityHeadroom = 16;
+  static const int& kTensorsCapacityHeadroom;
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief Set if buffer handle output is allowed.

@@ -8,6 +8,14 @@
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+* `LiteRT`, a.k.a. `tf.lite`:
+  * C++ API:
+    * The public constants `tflite::Interpreter:kTensorsReservedCapacity`
+      and `tflite::Interpreter:kTensorsCapacityHeadroom` are now const
+      references, rather than `constexpr` compile-time constants.
+      (This is to enable better API compatibility for TFLite in Play services
+      while preserving the implementation flexibility to change the values of
+      these constants in the future.)
 
 ### Known Caveats
 

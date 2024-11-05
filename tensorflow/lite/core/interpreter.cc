@@ -66,6 +66,9 @@ static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
 
 namespace tflite {
 
+const int& Interpreter::kTensorsReservedCapacity = 128;
+const int& Interpreter::kTensorsCapacityHeadroom = 16;
+
 namespace {
 
 // Gets the current TfLiteQuantization from the legacy TfLiteQuantizationParams.
