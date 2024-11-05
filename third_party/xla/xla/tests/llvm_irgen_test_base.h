@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef XLA_TESTS_LLVM_IRGEN_TEST_BASE_H_
 #define XLA_TESTS_LLVM_IRGEN_TEST_BASE_H_
 
+#include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/tests/codegen_test_base.h"
 

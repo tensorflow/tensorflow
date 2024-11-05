@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "xla/tests/literal_test_util.h"
 
+#include <optional>
+#include <string>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/literal_comparison.h"
 #include "tsl/platform/env.h"

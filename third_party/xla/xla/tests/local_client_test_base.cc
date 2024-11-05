@@ -12,6 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+#include <utility>
+
+#include "absl/base/const_init.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #define EIGEN_USE_THREADS
 
 #include "xla/tests/local_client_test_base.h"

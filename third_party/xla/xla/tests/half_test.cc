@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <cstdint>
+#include <functional>
+#include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/log/check.h"
+#include "absl/types/span.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/test.h"

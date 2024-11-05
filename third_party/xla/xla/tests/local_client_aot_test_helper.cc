@@ -17,6 +17,8 @@ limitations under the License.
 // resulting object file to stdout.
 
 #include <iostream>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "llvm/TargetParser/Host.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
 

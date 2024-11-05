@@ -16,9 +16,12 @@ limitations under the License.
 #include "xla/tests/llvm_irgen_test_base.h"
 
 #include <functional>
+#include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tsl/lib/core/status_test_util.h"

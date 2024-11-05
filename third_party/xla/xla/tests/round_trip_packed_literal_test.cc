@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 
 #include "absl/base/casts.h"
 #include "absl/status/statusor.h"
