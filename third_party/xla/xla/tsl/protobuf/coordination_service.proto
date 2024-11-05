@@ -214,13 +214,20 @@ message BarrierRequest {
   repeated CoordinatedTask tasks = 3;
   // Task that is making the request.
   CoordinatedTask source_task = 4;
+  // The same id can be reused, so this tracks each unique invocation.
+  int64 counter = 5;
 }
 
-message BarrierResponse {}
+message BarrierResponse {
+  // Acknowledge the service-side barrier counter that was invoked.
+  int64 counter = 1;
+}
 
 // Request and response messages for  cancelling generic sync barriers.
 message CancelBarrierRequest {
+  // Barrier key.
   string barrier_id = 1;
+  int64 counter = 3;
   // Task that is making the request.
   CoordinatedTask source_task = 2;
 }

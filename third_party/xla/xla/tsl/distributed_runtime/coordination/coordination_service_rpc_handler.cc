@@ -282,11 +282,14 @@ void CoordinationServiceRpcHandler::BarrierAsync(
   }
   std::vector<CoordinatedTask> tasks = {request->tasks().begin(),
                                         request->tasks().end()};
-  service_->BarrierAsync(
-      request->barrier_id(),
-      absl::Milliseconds(request->barrier_timeout_in_ms()),
-      request->source_task(), tasks,
-      [done = std::move(done)](const absl::Status& status) { done(status); });
+  service_->BarrierAsync(request->barrier_id(), request->counter(),
+                         absl::Milliseconds(request->barrier_timeout_in_ms()),
+                         request->source_task(), tasks,
+                         [done = std::move(done), response](
+                             const absl::Status& status, int64_t counter) {
+                           response->set_counter(counter);
+                           done(status);
+                         });
 }
 
 void CoordinationServiceRpcHandler::CancelBarrierAsync(
@@ -298,7 +301,8 @@ void CoordinationServiceRpcHandler::CancelBarrierAsync(
         absl::InternalError("Coordination service is not enabled.")));
     return;
   }
-  done(service_->CancelBarrier(request->barrier_id(), request->source_task()));
+  done(service_->CancelBarrier(request->barrier_id(), request->counter(),
+                               request->source_task()));
 }
 
 void CoordinationServiceRpcHandler::PollForErrorAsync(
