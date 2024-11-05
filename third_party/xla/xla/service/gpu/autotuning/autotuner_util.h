@@ -353,8 +353,7 @@ struct AutotunerUtil {
 absl::StatusOr<std::string> AutotuneResultsToString(
     const AutotuneResults& results, bool as_textproto);
 
-// Exposed only for testing. Returns the SHA-256 hash of the input string,
-// encoded in base64.
+// Returns the SHA-256 hash of the input string, encoded in base64.
 //
 // SHA-256 was chosen to follow industry best practices and avoid collisions.
 // Git is also transitioning to SHA-256. This is probably better than

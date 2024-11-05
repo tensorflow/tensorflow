@@ -183,7 +183,8 @@ xla_test(
         "gpu",
     ],
     data = [
-        "data/multiple_gemm_fusions.hlo",
+        "data/multiple_gemm_fusions_1.hlo",
+        "data/multiple_gemm_fusions_2.hlo",
         "data/sharded_16_devices.hlo",
         "data/sharded_2_devices.hlo",
         "data/single_device.hlo",

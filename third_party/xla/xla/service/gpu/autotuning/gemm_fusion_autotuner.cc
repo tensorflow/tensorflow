@@ -1367,27 +1367,30 @@ static BackendConfigs TrimConfigs(const BackendConfigs& gemm_config_sets,
 
 // Exchange the results with the other ranks.
 absl::Status ExchangeResults(KeyValueStoreInterface& key_value_store,
-                             const int module_id, const int shard_index,
-                             const int shard_count) {
+                             absl::string_view fusion_set_fingerprint,
+                             const int shard_index, const int shard_count) {
   AutotuneResults results;
   TF_RETURN_IF_ERROR(AutotunerUtil::SerializeAutotuneResults(&results));
   TF_ASSIGN_OR_RETURN(std::string results_str,
                       AutotuneResultsToString(results, true));
   constexpr absl::string_view kKeyPrefix = "gemm_fusion_autotuning_results";
-  TF_RETURN_IF_ERROR(key_value_store.Set(
-      absl::StrFormat("%s_%d_%d", kKeyPrefix, module_id, shard_index),
-      results_str));
-  VLOG(2) << "Rank " << shard_index << ": published results";
+  TF_RET_CHECK(!fusion_set_fingerprint.empty());
+  const std::string local_key = absl::StrFormat(
+      "%s_%s_%d", kKeyPrefix, fusion_set_fingerprint, shard_index);
+  TF_RETURN_IF_ERROR(key_value_store.Set(local_key, results_str));
+  VLOG(2) << "Rank " << shard_index << ": published results at " << local_key;
   for (int i = 0; i < shard_count; ++i) {
     if (i == shard_index) {
       continue;
     }
+    const std::string remote_key =
+        absl::StrFormat("%s_%s_%d", kKeyPrefix, fusion_set_fingerprint, i);
     VLOG(2) << "Rank " << shard_index << ": waiting for results from rank " << i
-            << " / " << shard_count;
+            << " / " << shard_count << " at " << remote_key;
     TF_ASSIGN_OR_RETURN(
         std::string autotune_results_str,
         key_value_store.Get(
-            absl::StrFormat("%s_%d_%d", kKeyPrefix, module_id, i),
+            remote_key,
             // TODO(b/361009609): reset to infinite duration once solved.
             // Using an infinite duration here leads to issues with MPI, see
             // https://github.com/google/jax/issues/22995.
@@ -1450,11 +1453,19 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
     const bool shard_autotuning = debug_options.xla_gpu_shard_autotuning() &&
                                   key_value_store_.process_count > 1 &&
                                   total_fusion_count > 0;
+    std::string fusion_set_fingerprint;
     if (shard_autotuning) {
       if (key_value_store_.key_value_store == nullptr) {
         return absl::FailedPreconditionError(
             "Sharded autotuning requested but key-value store is missing.");
       }
+
+      for (const auto& [fusion, _] : gemm_config_sets) {
+        fusion_set_fingerprint += fusion->ToString();
+      }
+      TF_ASSIGN_OR_RETURN(fusion_set_fingerprint,
+                          GetBase64EncodedSha256Hash(fusion_set_fingerprint));
+
       gemm_config_sets =
           TrimConfigs(gemm_config_sets, key_value_store_.process_index,
                       key_value_store_.process_count);
@@ -1471,7 +1482,7 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
 
     if (shard_autotuning) {
       TF_RETURN_IF_ERROR(ExchangeResults(
-          *key_value_store_.key_value_store, module->unique_id(),
+          *key_value_store_.key_value_store, fusion_set_fingerprint,
           key_value_store_.process_index, key_value_store_.process_count));
     }
   }

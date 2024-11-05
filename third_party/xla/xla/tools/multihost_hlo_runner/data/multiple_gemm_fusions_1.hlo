@@ -30,7 +30,10 @@ fa {
   p1 = f32[64,64,64]{2,1,0} parameter(1)
   p2 = f32[64,64,64]{2,1,0} parameter(2)
   a1 = f32[64,64,64]{2,1,0} add(p2, p1)
-  ROOT a = f32[64,64,64]{2,1,0} add(p0, a1)
+  a2 = f32[64,64,64]{2,1,0} add(p0, a1)
+  c = f32[] constant(1)
+  b = f32[64,64,64]{2,1,0} broadcast(c)
+  ROOT a3 = f32[64,64,64]{2,1,0} add(a2, b)
 }
 
 ENTRY e {
