@@ -1121,10 +1121,7 @@ cc_library(
         ":runtime_lightweight_check",
         "//xla:executable_run_options",
         "//xla/backends/cpu/runtime:convolution_thunk_internal",
-        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
-        "//xla/tsl/framework/convolution:eigen_helpers",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:mutex",  # build_cleaner: keep
     ],

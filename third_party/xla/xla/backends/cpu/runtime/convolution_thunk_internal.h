@@ -26,6 +26,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 #include "Eigen/Core"
+#include "Eigen/ThreadPool"
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu::internal {
@@ -47,7 +48,7 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
                  Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,
                  Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
                  Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
-                 std::function<void()> done_callback) {
+                 std::function<void()> done_callback, bool use_thunk_runtime) {
   const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 4, Eigen::RowMajor>,
                          Eigen::Aligned>
       input(lhs, input_batch, input_x, input_y, input_channels);
@@ -119,8 +120,12 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
   constexpr bool use_thread_pool =
       std::is_same_v<EigenDevice, Eigen::ThreadPoolDevice>;
 
-  // Done callback must be provided only if we use a thread pool device.
-  CHECK_EQ(use_thread_pool, static_cast<bool>(done_callback));  // Crash OK
+  // For thunk runtime, `done_callback` must be provided only if we use a thread
+  // pool device. This check is not true for classic runtime which does not
+  // support async execution.
+  if (use_thunk_runtime) {
+    CHECK_EQ(use_thread_pool, static_cast<bool>(done_callback));  // Crash OK
+  }
 
   if constexpr (use_thread_pool) {
     // Although we schedule at most one tasks for each thread, individual
@@ -129,14 +134,29 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
     auto task_size = Eigen::numext::div_ceil(feature_group_count, max_tasks);
     auto num_tasks = Eigen::numext::div_ceil(feature_group_count, task_size);
 
-    ScheduleAll(&device, num_tasks, [=, &device](Eigen::Index task_index) {
-      Eigen::Index start = task_index * task_size;
-      Eigen::Index end = std::min(start + task_size, feature_group_count);
-      for (Eigen::Index i = start; i < end; ++i) {
-        auto [output, convolved] = convolve_group(i);
-        output.device(device, done_callback) = convolved;
-      }
-    });
+    if (use_thunk_runtime) {
+      ScheduleAll(&device, num_tasks, [=, &device](Eigen::Index task_index) {
+        Eigen::Index start = task_index * task_size;
+        Eigen::Index end = std::min(start + task_size, feature_group_count);
+        for (Eigen::Index i = start; i < end; ++i) {
+          auto [output, convolved] = convolve_group(i);
+          output.device(device, done_callback) = convolved;
+        }
+      });
+    } else {
+      Eigen::Barrier barrier(num_tasks);
+      ScheduleAll(
+          &device, num_tasks, [=, &device, &barrier](Eigen::Index task_index) {
+            Eigen::Index start = task_index * task_size;
+            Eigen::Index end = std::min(start + task_size, feature_group_count);
+            for (Eigen::Index i = start; i < end; ++i) {
+              auto [output, convolved] = convolve_group(i);
+              output.device(device) = convolved;
+            }
+            barrier.Notify();
+          });
+      barrier.Wait();
+    }
 
   } else {
     // Convolve all feature groups sequentially in the caller thread.
@@ -258,7 +278,7 @@ void EigenConv3D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
       Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,           \
       Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,            \
       Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,       \
-      std::function<void()> done_callback)
+      std::function<void()> done_callback, bool use_thunk_runtime)
 
 CONV2D_EXTERN_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
 CONV2D_EXTERN_TEMPLATE(Eigen::DefaultDevice, float);
@@ -307,7 +327,7 @@ CONV3D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, float);
       Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,           \
       Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,            \
       Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,       \
-      std::function<void()> done_callback)
+      std::function<void()> done_callback, bool use_thunk_runtime)
 
 #define CONV3D_INSTANTIATE_TEMPLATE(DEVICE, SCALAR_TYPE)                       \
   template void xla::cpu::internal::EigenConv3D<DEVICE, SCALAR_TYPE>(          \
