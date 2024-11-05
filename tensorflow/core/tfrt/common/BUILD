@@ -288,7 +288,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/pjrt:pjrt_client",
-        "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "@local_xla//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "@local_xla//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
     ],
     alwayslink = True,
 )
