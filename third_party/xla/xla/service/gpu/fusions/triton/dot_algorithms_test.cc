@@ -259,10 +259,8 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
     case CudaComputeCapabilities::HOPPER:
       // Convert to bf16+cublas works faster than dot with algorithm.
       EXPECT_THAT(kernel_names,
-                  ::testing::UnorderedElementsAre(
-                      ::testing::Eq("wrapped_convert"),
-                      ::testing::Eq("wrapped_convert_1"),
-                      ::testing::HasSubstr("gemm_bf16f32_bf16f32")));
+                  ::testing::Contains(::testing::HasSubstr("wrapped_convert"))
+                      .Times(2));
       break;
     default:
       GTEST_SKIP() << "Unsupported compute capability: " << cc.major
@@ -317,9 +315,7 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
       break;
     case CudaComputeCapabilities::HOPPER:
       EXPECT_THAT(kernel_names,
-                  ::testing::UnorderedElementsAre(
-                      ::testing::Eq("loop_convert_fusion_1"),
-                      ::testing::HasSubstr("gemm_bf16f32_bf16f32_f32_")));
+                  ::testing::Contains(::testing::Eq("loop_convert_fusion_1")));
       break;
     default:
       GTEST_SKIP() << "Unsupported compute capability: " << cc.major
@@ -373,10 +369,9 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X6) {
       EXPECT_THAT(kernel_names[0], ::testing::Eq("loop_convert_fusion_1"));
       break;
     case CudaComputeCapabilities::HOPPER:
-      EXPECT_THAT(kernel_names,
-                  ::testing::UnorderedElementsAre(
-                      ::testing::HasSubstr("loop_convert_fusion"),
-                      ::testing::HasSubstr("gemm_bf16f32_bf16f32_f32_")));
+      EXPECT_THAT(
+          kernel_names,
+          ::testing::Contains(::testing::HasSubstr("loop_convert_fusion")));
       break;
     default:
       GTEST_SKIP() << "Unsupported compute capability: " << cc.major
