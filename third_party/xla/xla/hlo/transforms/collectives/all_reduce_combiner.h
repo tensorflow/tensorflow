@@ -67,7 +67,6 @@ class AllReduceCombiner : public HloModulePass {
           const HloInstruction*, const HloDomainMap&)>
           combine_key);
 
- private:
   // Combine all reduce ops up to this threshold.
   int64_t combine_threshold_in_bytes_;
 
