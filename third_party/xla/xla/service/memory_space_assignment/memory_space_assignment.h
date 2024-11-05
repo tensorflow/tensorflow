@@ -307,6 +307,8 @@ class MemorySpaceAssignment {
   // Calculates asynchronous copy statistics.
   absl::StatusOr<AsyncCopyStats> CalculateAsyncCopyStats() const;
 
+  absl::Status VerifyAllocations() const;
+
   // Verify that the memory space assignment is free of overlapping buffers and
   // export heap simulator trace to be used by buffer_assignment.
   //

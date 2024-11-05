@@ -347,6 +347,31 @@ MemorySpaceAssignment::Run(HloModule* module,
                                                           alias_analysis);
 }
 
+absl::Status MemorySpaceAssignment::VerifyAllocations() const {
+  BufferIntervalTree interval_tree;
+  auto add_allocation_and_verify =
+      [&](const Allocation* allocation) -> absl::Status {
+    for (const HeapSimulator::Chunk& overlapping_chunk :
+         interval_tree.ChunksOverlappingInTime(allocation->start_time(),
+                                               allocation->end_time() - 1)) {
+      CHECK(!allocation->chunk().OverlapsWith(overlapping_chunk))
+          << "Chunks are overlapping at Allocation level (before fixing the "
+             "schedule): "
+          << allocation->ToString()
+          << " overlaps with allocated chunk: " << overlapping_chunk.ToString();
+    }
+    interval_tree.Add(allocation->start_time(), allocation->end_time() - 1,
+                      allocation->chunk());
+    return absl::OkStatus();
+  };
+  for (const auto& allocation : allocations_) {
+    if (allocation->memory_space() == MemorySpace::kAlternate) {
+      TF_RETURN_IF_ERROR(add_allocation_and_verify(allocation.get()));
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::unique_ptr<PresetAssignments>>
 MemorySpaceAssignment::RunMemorySpaceAssignment(
     const HloLiveRange& hlo_live_range,
@@ -365,6 +390,9 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   }
 
   TF_RETURN_IF_ERROR(Process(hlo_live_range));
+  if (options_.verify) {
+    TF_RETURN_IF_ERROR(VerifyAllocations());
+  }
   // DEBUG_LOG_ALLOCATIONS_AT
   //
   // Uncomment the following to log the alternate memory allocations that MSA
