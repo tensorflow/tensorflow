@@ -822,7 +822,7 @@ ENTRY main {
               GmockMatch(m::Reduce(m::Parameter(), m::Constant())));
 }
 
-TEST_F(PriorityFusionTest, DoNotFuseProducerConsumerMergedTooLarge) {
+TEST_F(PriorityFusionTest, FuseProducerConsumerMergedNotTooLarge) {
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule module
 

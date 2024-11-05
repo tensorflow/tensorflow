@@ -1365,7 +1365,7 @@ ENTRY %reproducer (param_0.1090: f64[64,64], param_1.1377: f64[64,64], param_2.1
   EXPECT_FALSE(mof_.Run(module.get()).value());
 }
 
-TEST_F(MultiOutputFusionTest, NoFusionToAvoidCodeDuplication) {
+TEST_F(MultiOutputFusionTest, NoProblemWithCodeDuplication) {
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule module
 
