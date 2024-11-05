@@ -101,7 +101,7 @@ void AddTfDialectToExecutorPasses(OpPassManager &pm) {
   pm.addPass(mlir::TF::CreateVerifySuitableForExportPass());
 }
 
-tensorflow::Status RecordStatusIfError(absl::Status status) {
+absl::Status RecordStatusIfError(absl::Status status) {
   if (status.ok()) {
     return absl::OkStatus();
   }
@@ -127,7 +127,7 @@ tensorflow::Status RecordStatusIfError(absl::Status status) {
 
 }  // namespace
 
-tensorflow::Status ExportFromTensorflowDialectToExecutor(
+absl::Status ExportFromTensorflowDialectToExecutor(
     ModuleOp module, llvm::StringRef module_name) {
   PassManager tf_to_executor(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(tf_to_executor);
