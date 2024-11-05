@@ -169,7 +169,8 @@ mlir::arith::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder& b,
   auto tensor_type = mlir::RankedTensorType::get(shape, type);
   if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
     return b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
-        tensor_type, mlir::APInt(int_type.getIntOrFloatBitWidth(), value)));
+        tensor_type, mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
+                                 /*isSigned=*/std::is_signed_v<T>)));
   }
   if (auto float_type = mlir::dyn_cast<mlir::FloatType>(type)) {
     return b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
