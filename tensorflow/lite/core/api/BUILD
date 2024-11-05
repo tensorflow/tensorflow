@@ -12,7 +12,6 @@ filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
         ":error_reporter.h",
-        ":op_resolver.cc",
         ":op_resolver.h",
         ":op_resolver_internal.h",
         ":verifier.h",
