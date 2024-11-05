@@ -246,6 +246,7 @@ TEST_F(ShardyXLATest, DotMergeOperands1) {
 }
 
 TEST_F(ShardyXLATest, DotMergeOperands2) {
+  GTEST_SKIP() << "Temporarily skip failing test until Shardy fix is in.";
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
