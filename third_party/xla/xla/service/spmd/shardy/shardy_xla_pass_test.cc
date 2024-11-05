@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -246,7 +246,6 @@ TEST_F(ShardyXLATest, DotMergeOperands1) {
 }
 
 TEST_F(ShardyXLATest, DotMergeOperands2) {
-  GTEST_SKIP() << "Temporarily skip failing test until Shardy fix is in.";
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -267,7 +266,7 @@ TEST_F(ShardyXLATest, DotMergeOperands2) {
               op::Sharding("{devices=[2,2,2]<=[8]}"));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Sharding("{devices=[2,1,1,4]<=[8] last_tile_dim_replicate}"));
+              op::Sharding("{devices=[2,2,1,2]<=[8] last_tile_dim_replicate}"));
 }
 
 TEST_F(ShardyXLATest, DotMergeOperands3) {
