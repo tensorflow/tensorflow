@@ -492,6 +492,25 @@ static SortDims GetSortDims(const Shape& shape, int64_t dimension) {
                   num_iterations};
 }
 
+template <class Iterator, class NativeT>
+static void Sort1DArrInplace(int64_t sort_dims_size, int64_t offset,
+                             Iterator begin, bool is_stable,
+                             SortThunk::SortDirection direction) {
+  if (direction == SortThunk::SortDirection::kAscending) {
+    if (is_stable) {
+      std::stable_sort(begin, begin + sort_dims_size, std::less<NativeT>());
+    } else {
+      std::sort(begin, begin + sort_dims_size, std::less<NativeT>());
+    }
+  } else {
+    if (is_stable) {
+      std::stable_sort(begin, begin + sort_dims_size, std::greater<NativeT>());
+    } else {
+      std::sort(begin, begin + sort_dims_size, std::greater<NativeT>());
+    }
+  };
+}
+
 // The most efficient way to sort a single buffer is to use the builtin
 // comparator functions.
 template <PrimitiveType Type>
@@ -501,25 +520,17 @@ static void Sort1DArrInplace(const SortDims& sort_dims, int64_t offset,
                              SortThunk::SortDirection direction) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<Type>::type;
   DCHECK_EQ(data.size(), 1);
-
   NativeT* begin = reinterpret_cast<NativeT*>(data[0].opaque()) + offset;
 
-  if (direction == SortThunk::SortDirection::kAscending) {
-    if (is_stable) {
-      std::stable_sort(begin, begin + sort_dims.sort_dim_size,
-                       std::less<NativeT>());
-    } else {
-      std::sort(begin, begin + sort_dims.sort_dim_size, std::less<NativeT>());
-    }
+  if (sort_dims.inner_dim_size == 1) {
+    Sort1DArrInplace<NativeT*, NativeT>(sort_dims.sort_dim_size, offset, begin,
+                                        is_stable, direction);
   } else {
-    if (is_stable) {
-      std::stable_sort(begin, begin + sort_dims.sort_dim_size,
-                       std::greater<NativeT>());
-    } else {
-      std::sort(begin, begin + sort_dims.sort_dim_size,
-                std::greater<NativeT>());
-    }
-  };
+    using Iterator = SortIterator<NativeT, NativeT&, NativeT*>;
+    Iterator begin_iter(begin, /*stride=*/sort_dims.inner_dim_size);
+    Sort1DArrInplace<Iterator, NativeT>(sort_dims.sort_dim_size, offset,
+                                        begin_iter, is_stable, direction);
+  }
 }
 
 // Sorts `n` buffers in place.
