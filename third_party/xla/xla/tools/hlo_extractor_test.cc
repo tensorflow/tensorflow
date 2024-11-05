@@ -447,5 +447,36 @@ ENTRY %entry {
   }
 }
 
+TEST_F(HloExtractorTest, TestWithCalledComputationsAndFusion) {
+  const char* hlo = R"(
+  HloModule test
+  computation.1 {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    ROOT tuple = (s32[], s32[]) tuple(p.0, p.1)
+  }
+  computation.2 {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    ROOT tuple = (s32[], s32[]) tuple(p.0, p.1)
+  }
+  ENTRY main {
+    p.0 = s32[] parameter(0)
+    p.1 = s32[] parameter(1)
+    p.2 = s32[] parameter(2)
+    call.1 = (s32[], s32[]) call(p.0, p.1), to_apply=computation.1
+    fused.1 = (s32[], s32[]) fusion(p.0, p.2), kind=kInput, calls=computation.2
+    gte.1 = get-tuple-element(call.1), index=0
+    gte.2 = get-tuple-element(fused.1), index=0
+    ROOT tuple = tuple(gte.1, gte.2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  auto extracted =
+      ExtractModule(module->entry_computation()->root_instruction(), -1,
+                    nullptr, nullptr, false, true);
+  EXPECT_THAT(extracted->entry_computation()->root_instruction(),
+              op::Tuple(op::Parameter(0), op::Parameter(0)));
+}
+
 }  // namespace
 }  // namespace xla

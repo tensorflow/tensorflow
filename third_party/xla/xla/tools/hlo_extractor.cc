@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "xla/tools/hlo_extractor.h"
 
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/service/call_inliner.h"
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -322,12 +327,30 @@ void ComputeBoundary(const HloInstruction* root, int64_t limit,
   }
 }
 
+absl::Status Inline(HloModule* module) {
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kFusion) {
+        TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+            instruction, HloInstruction::CreateCall(
+                             instruction->shape(), instruction->operands(),
+                             instruction->fused_instructions_computation())));
+      }
+    }
+  }
+  TF_RETURN_IF_ERROR(CallInliner().Run(module).status());
+  TF_RETURN_IF_ERROR(
+      AlgebraicSimplifier(AlgebraicSimplifierOptions{}).Run(module).status());
+  TF_RETURN_IF_ERROR(HloDCE(true).Run(module).status());
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 std::unique_ptr<HloModule> ExtractModule(
     const HloInstruction* instruction, int64_t height,
     ExtractSelector extract_selector, ReplaceTypeSelector replace_type_selector,
-    bool cross_computation) {
+    bool cross_computation, bool inline_calls_and_fusions) {
   QCHECK(height == -1 || !cross_computation)
       << "Boundary cannnot be calculated across the computations.";
 
@@ -341,6 +364,12 @@ std::unique_ptr<HloModule> ExtractModule(
   TF_CHECK_OK(instruction->Accept(&visitor, /*call_finish_visit=*/true,
                                   /*ignore_control_predecessors=*/false,
                                   /*cross_computation=*/cross_computation));
+
+  // Inline called computations and fusions if the flag
+  // `inline_calls_and_fusions` is true.
+  if (inline_calls_and_fusions) {
+    TF_CHECK_OK(Inline(visitor.module()));
+  }
 
   // The first pass may leave unused parameter instructions in the entry
   // computation. Do another extraction pass to remove unused parameters in the
