@@ -1,601 +1,797 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/include/clang/AST/DeclTemplate.h b/clang/include/clang/AST/DeclTemplate.h
---- a/clang/include/clang/AST/DeclTemplate.h
-+++ b/clang/include/clang/AST/DeclTemplate.h
-@@ -857,16 +857,6 @@
-   /// \endcode
-   bool isMemberSpecialization() const { return Common.getInt(); }
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/load-store.ll b/llvm/test/CodeGen/NVPTX/load-store.ll
+--- a/llvm/test/CodeGen/NVPTX/load-store.ll
++++ b/llvm/test/CodeGen/NVPTX/load-store.ll
+@@ -167,25 +167,25 @@
+ ; CHECK-NEXT:  // %bb.0:
+ ; CHECK-NEXT:    ld.param.u64 %rd1, [generic_4xi8_param_0];
+ ; CHECK-NEXT:    ld.u32 %r1, [%rd1];
+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+ ; CHECK-NEXT:    st.u32 [%rd1], %r12;
+ ; CHECK-NEXT:    ret;
+   %a.load = load <4 x i8>, ptr %a
+@@ -511,25 +511,25 @@
+ ; CHECK-NEXT:  // %bb.0:
+ ; CHECK-NEXT:    ld.param.u64 %rd1, [generic_volatile_4xi8_param_0];
+ ; CHECK-NEXT:    ld.volatile.u32 %r1, [%rd1];
+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+ ; CHECK-NEXT:    st.volatile.u32 [%rd1], %r12;
+ ; CHECK-NEXT:    ret;
+   %a.load = load volatile <4 x i8>, ptr %a
+@@ -1416,25 +1416,25 @@
+ ; CHECK-NEXT:  // %bb.0:
+ ; CHECK-NEXT:    ld.param.u64 %rd1, [global_4xi8_param_0];
+ ; CHECK-NEXT:    ld.global.u32 %r1, [%rd1];
+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+ ; CHECK-NEXT:    st.global.u32 [%rd1], %r12;
+ ; CHECK-NEXT:    ret;
+   %a.load = load <4 x i8>, ptr addrspace(1) %a
+@@ -1741,25 +1741,25 @@
+ ; CHECK-NEXT:  // %bb.0:
+ ; CHECK-NEXT:    ld.param.u64 %rd1, [global_volatile_4xi8_param_0];
+ ; CHECK-NEXT:    ld.volatile.global.u32 %r1, [%rd1];
+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+ ; CHECK-NEXT:    st.volatile.global.u32 [%rd1], %r12;
+ ; CHECK-NEXT:    ret;
+   %a.load = load volatile <4 x i8>, ptr addrspace(1) %a
+@@ -2788,25 +2788,25 @@
+ ; CHECK-NEXT:  // %bb.0:
+ ; CHECK-NEXT:    ld.param.u64 %rd1, [shared_4xi8_param_0];
+ ; CHECK-NEXT:    ld.shared.u32 %r1, [%rd1];
+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+ ; CHECK-NEXT:    st.shared.u32 [%rd1], %r12;
+ ; CHECK-NEXT:    ret;
+   %a.load = load <4 x i8>, ptr addrspace(3) %a
+@@ -3113,25 +3113,25 @@
+ ; CHECK-NEXT:  // %bb.0:
+ ; CHECK-NEXT:    ld.param.u64 %rd1, [shared_volatile_4xi8_param_0];
+ ; CHECK-NEXT:    ld.volatile.shared.u32 %r1, [%rd1];
+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+ ; CHECK-NEXT:    st.volatile.shared.u32 [%rd1], %r12;
+ ; CHECK-NEXT:    ret;
+   %a.load = load volatile <4 x i8>, ptr addrspace(3) %a
+@@ -4018,25 +4018,25 @@
+ ; CHECK-NEXT:  // %bb.0:
+ ; CHECK-NEXT:    ld.param.u64 %rd1, [local_4xi8_param_0];
+ ; CHECK-NEXT:    ld.local.u32 %r1, [%rd1];
+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+ ; CHECK-NEXT:    st.local.u32 [%rd1], %r12;
+ ; CHECK-NEXT:    ret;
+   %a.load = load <4 x i8>, ptr addrspace(5) %a
+@@ -4343,25 +4343,25 @@
+ ; CHECK-NEXT:  // %bb.0:
+ ; CHECK-NEXT:    ld.param.u64 %rd1, [local_volatile_4xi8_param_0];
+ ; CHECK-NEXT:    ld.local.u32 %r1, [%rd1];
+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+ ; CHECK-NEXT:    st.local.u32 [%rd1], %r12;
+ ; CHECK-NEXT:    ret;
+   %a.load = load volatile <4 x i8>, ptr addrspace(5) %a
+diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/IRAttributes.cpp b/mlir/lib/Bindings/Python/IRAttributes.cpp
+--- a/mlir/lib/Bindings/Python/IRAttributes.cpp
++++ b/mlir/lib/Bindings/Python/IRAttributes.cpp
+@@ -13,7 +13,6 @@
+ #include "IRModule.h"
  
--  /// Determines whether any redeclaration of this template was
--  /// a specialization of a member template.
--  bool hasMemberSpecialization() const {
--    for (const auto *D : redecls()) {
--      if (D->isMemberSpecialization())
--        return true;
--    }
--    return false;
--  }
--
-   /// Note that this member template is a specialization.
-   void setMemberSpecialization() {
-     assert(!isMemberSpecialization() && "already a member specialization");
-@@ -1965,13 +1955,7 @@
-   /// specialization which was specialized by this.
-   llvm::PointerUnion<ClassTemplateDecl *,
-                      ClassTemplatePartialSpecializationDecl *>
--  getSpecializedTemplateOrPartial() const {
--    if (const auto *PartialSpec =
--            SpecializedTemplate.dyn_cast<SpecializedPartialSpecialization *>())
--      return PartialSpec->PartialSpecialization;
--
--    return SpecializedTemplate.get<ClassTemplateDecl*>();
--  }
-+  getSpecializedTemplateOrPartial() const;
+ #include "PybindUtils.h"
+-#include <pybind11/numpy.h>
  
-   /// Retrieve the set of template arguments that should be used
-   /// to instantiate members of the class template or class template partial
-@@ -2208,17 +2192,6 @@
-     return InstantiatedFromMember.getInt();
-   }
- 
--  /// Determines whether any redeclaration of this this class template partial
--  /// specialization was a specialization of a member partial specialization.
--  bool hasMemberSpecialization() const {
--    for (const auto *D : redecls()) {
--      if (cast<ClassTemplatePartialSpecializationDecl>(D)
--              ->isMemberSpecialization())
--        return true;
--    }
--    return false;
--  }
--
-   /// Note that this member template is a specialization.
-   void setMemberSpecialization() { return InstantiatedFromMember.setInt(true); }
- 
-@@ -2740,13 +2713,7 @@
-   /// Retrieve the variable template or variable template partial
-   /// specialization which was specialized by this.
-   llvm::PointerUnion<VarTemplateDecl *, VarTemplatePartialSpecializationDecl *>
--  getSpecializedTemplateOrPartial() const {
--    if (const auto *PartialSpec =
--            SpecializedTemplate.dyn_cast<SpecializedPartialSpecialization *>())
--      return PartialSpec->PartialSpecialization;
--
--    return SpecializedTemplate.get<VarTemplateDecl *>();
--  }
-+  getSpecializedTemplateOrPartial() const;
- 
-   /// Retrieve the set of template arguments that should be used
-   /// to instantiate the initializer of the variable template or variable
-@@ -2980,18 +2947,6 @@
-     return InstantiatedFromMember.getInt();
-   }
- 
--  /// Determines whether any redeclaration of this this variable template
--  /// partial specialization was a specialization of a member partial
--  /// specialization.
--  bool hasMemberSpecialization() const {
--    for (const auto *D : redecls()) {
--      if (cast<VarTemplatePartialSpecializationDecl>(D)
--              ->isMemberSpecialization())
--        return true;
--    }
--    return false;
--  }
--
-   /// Note that this member template is a specialization.
-   void setMemberSpecialization() { return InstantiatedFromMember.setInt(true); }
- 
-@@ -3164,6 +3119,9 @@
-     return makeSpecIterator(getSpecializations(), true);
-   }
- 
-+  /// Merge \p Prev with our RedeclarableTemplateDecl::Common.
-+  void mergePrevDecl(VarTemplateDecl *Prev);
-+
-   // Implement isa/cast/dyncast support
-   static bool classof(const Decl *D) { return classofKind(D->getKind()); }
-   static bool classofKind(Kind K) { return K == VarTemplate; }
-diff -ruN --strip-trailing-cr a/clang/lib/AST/ASTImporter.cpp b/clang/lib/AST/ASTImporter.cpp
---- a/clang/lib/AST/ASTImporter.cpp
-+++ b/clang/lib/AST/ASTImporter.cpp
-@@ -6190,7 +6190,8 @@
- ExpectedDecl ASTNodeImporter::VisitClassTemplateSpecializationDecl(
-                                           ClassTemplateSpecializationDecl *D) {
-   ClassTemplateDecl *ClassTemplate;
--  if (Error Err = importInto(ClassTemplate, D->getSpecializedTemplate()))
-+  if (Error Err = importInto(ClassTemplate,
-+                             D->getSpecializedTemplate()->getCanonicalDecl()))
-     return std::move(Err);
- 
-   // Import the context of this declaration.
-diff -ruN --strip-trailing-cr a/clang/lib/AST/Decl.cpp b/clang/lib/AST/Decl.cpp
---- a/clang/lib/AST/Decl.cpp
-+++ b/clang/lib/AST/Decl.cpp
-@@ -2708,7 +2708,7 @@
-     if (isTemplateInstantiation(VDTemplSpec->getTemplateSpecializationKind())) {
-       auto From = VDTemplSpec->getInstantiatedFrom();
-       if (auto *VTD = From.dyn_cast<VarTemplateDecl *>()) {
--        while (!VTD->hasMemberSpecialization()) {
-+        while (!VTD->isMemberSpecialization()) {
-           if (auto *NewVTD = VTD->getInstantiatedFromMemberTemplate())
-             VTD = NewVTD;
-           else
-@@ -2718,7 +2718,7 @@
-       }
-       if (auto *VTPSD =
-               From.dyn_cast<VarTemplatePartialSpecializationDecl *>()) {
--        while (!VTPSD->hasMemberSpecialization()) {
-+        while (!VTPSD->isMemberSpecialization()) {
-           if (auto *NewVTPSD = VTPSD->getInstantiatedFromMember())
-             VTPSD = NewVTPSD;
-           else
-@@ -2732,7 +2732,7 @@
-   // If this is the pattern of a variable template, find where it was
-   // instantiated from. FIXME: Is this necessary?
-   if (VarTemplateDecl *VTD = VD->getDescribedVarTemplate()) {
--    while (!VTD->hasMemberSpecialization()) {
-+    while (!VTD->isMemberSpecialization()) {
-       if (auto *NewVTD = VTD->getInstantiatedFromMemberTemplate())
-         VTD = NewVTD;
-       else
-@@ -4153,7 +4153,7 @@
-   if (FunctionTemplateDecl *Primary = getPrimaryTemplate()) {
-     // If we hit a point where the user provided a specialization of this
-     // template, we're done looking.
--    while (!ForDefinition || !Primary->hasMemberSpecialization()) {
-+    while (!ForDefinition || !Primary->isMemberSpecialization()) {
-       if (auto *NewPrimary = Primary->getInstantiatedFromMemberTemplate())
-         Primary = NewPrimary;
-       else
-@@ -4170,7 +4170,7 @@
-   if (FunctionTemplateSpecializationInfo *Info
-         = TemplateOrSpecialization
-             .dyn_cast<FunctionTemplateSpecializationInfo*>()) {
--    return Info->getTemplate();
-+    return Info->getTemplate()->getMostRecentDecl();
-   }
-   return nullptr;
- }
-diff -ruN --strip-trailing-cr a/clang/lib/AST/DeclCXX.cpp b/clang/lib/AST/DeclCXX.cpp
---- a/clang/lib/AST/DeclCXX.cpp
-+++ b/clang/lib/AST/DeclCXX.cpp
-@@ -2030,7 +2030,7 @@
-   if (auto *TD = dyn_cast<ClassTemplateSpecializationDecl>(this)) {
-     auto From = TD->getInstantiatedFrom();
-     if (auto *CTD = From.dyn_cast<ClassTemplateDecl *>()) {
--      while (!CTD->hasMemberSpecialization()) {
-+      while (!CTD->isMemberSpecialization()) {
-         if (auto *NewCTD = CTD->getInstantiatedFromMemberTemplate())
-           CTD = NewCTD;
-         else
-@@ -2040,7 +2040,7 @@
+ #include "llvm/ADT/ScopeExit.h"
+ #include "llvm/Support/raw_ostream.h"
+@@ -758,10 +757,103 @@
+       throw py::error_already_set();
      }
-     if (auto *CTPSD =
-             From.dyn_cast<ClassTemplatePartialSpecializationDecl *>()) {
--      while (!CTPSD->hasMemberSpecialization()) {
-+      while (!CTPSD->isMemberSpecialization()) {
-         if (auto *NewCTPSD = CTPSD->getInstantiatedFromMemberTemplate())
-           CTPSD = NewCTPSD;
-         else
-diff -ruN --strip-trailing-cr a/clang/lib/AST/DeclTemplate.cpp b/clang/lib/AST/DeclTemplate.cpp
---- a/clang/lib/AST/DeclTemplate.cpp
-+++ b/clang/lib/AST/DeclTemplate.cpp
-@@ -993,7 +993,17 @@
-   if (const auto *PartialSpec =
-           SpecializedTemplate.dyn_cast<SpecializedPartialSpecialization*>())
-     return PartialSpec->PartialSpecialization->getSpecializedTemplate();
--  return SpecializedTemplate.get<ClassTemplateDecl*>();
-+  return SpecializedTemplate.get<ClassTemplateDecl *>()->getMostRecentDecl();
-+}
-+
-+llvm::PointerUnion<ClassTemplateDecl *,
-+                   ClassTemplatePartialSpecializationDecl *>
-+ClassTemplateSpecializationDecl::getSpecializedTemplateOrPartial() const {
-+  if (const auto *PartialSpec =
-+          SpecializedTemplate.dyn_cast<SpecializedPartialSpecialization *>())
-+    return PartialSpec->PartialSpecialization->getMostRecentDecl();
-+
-+  return SpecializedTemplate.get<ClassTemplateDecl *>()->getMostRecentDecl();
- }
- 
- SourceRange
-@@ -1283,6 +1293,39 @@
-   return CommonPtr;
- }
- 
-+void VarTemplateDecl::mergePrevDecl(VarTemplateDecl *Prev) {
-+  // If we haven't created a common pointer yet, then it can just be created
-+  // with the usual method.
-+  if (!getCommonPtrInternal())
-+    return;
-+
-+  Common *ThisCommon = static_cast<Common *>(getCommonPtrInternal());
-+  Common *PrevCommon = nullptr;
-+  SmallVector<VarTemplateDecl *, 8> PreviousDecls;
-+  for (; Prev; Prev = Prev->getPreviousDecl()) {
-+    if (CommonBase *C = Prev->getCommonPtrInternal()) {
-+      PrevCommon = static_cast<Common *>(C);
-+      break;
+     auto freeBuffer = llvm::make_scope_exit([&]() { PyBuffer_Release(&view); });
++    SmallVector<int64_t> shape;
++    if (explicitShape) {
++      shape.append(explicitShape->begin(), explicitShape->end());
++    } else {
++      shape.append(view.shape, view.shape + view.ndim);
 +    }
-+    PreviousDecls.push_back(Prev);
-+  }
-+
-+  // If the previous redecl chain hasn't created a common pointer yet, then just
-+  // use this common pointer.
-+  if (!PrevCommon) {
-+    for (auto *D : PreviousDecls)
-+      D->setCommonPtr(ThisCommon);
-+    return;
-+  }
-+
-+  // Ensure we don't leak any important state.
-+  assert(ThisCommon->Specializations.empty() &&
-+         ThisCommon->PartialSpecializations.empty() &&
-+         "Can't merge incompatible declarations!");
-+
-+  setCommonPtr(PrevCommon);
-+}
-+
- VarTemplateSpecializationDecl *
- VarTemplateDecl::findSpecialization(ArrayRef<TemplateArgument> Args,
-                                     void *&InsertPos) {
-@@ -1405,7 +1448,16 @@
-   if (const auto *PartialSpec =
-           SpecializedTemplate.dyn_cast<SpecializedPartialSpecialization *>())
-     return PartialSpec->PartialSpecialization->getSpecializedTemplate();
--  return SpecializedTemplate.get<VarTemplateDecl *>();
-+  return SpecializedTemplate.get<VarTemplateDecl *>()->getMostRecentDecl();
-+}
-+
-+llvm::PointerUnion<VarTemplateDecl *, VarTemplatePartialSpecializationDecl *>
-+VarTemplateSpecializationDecl::getSpecializedTemplateOrPartial() const {
-+  if (const auto *PartialSpec =
-+          SpecializedTemplate.dyn_cast<SpecializedPartialSpecialization *>())
-+    return PartialSpec->PartialSpecialization->getMostRecentDecl();
-+
-+  return SpecializedTemplate.get<VarTemplateDecl *>()->getMostRecentDecl();
- }
  
- SourceRange VarTemplateSpecializationDecl::getSourceRange() const {
-diff -ruN --strip-trailing-cr a/clang/lib/AST/Type.cpp b/clang/lib/AST/Type.cpp
---- a/clang/lib/AST/Type.cpp
-+++ b/clang/lib/AST/Type.cpp
-@@ -43,6 +43,7 @@
- #include "llvm/ADT/APSInt.h"
- #include "llvm/ADT/ArrayRef.h"
- #include "llvm/ADT/FoldingSet.h"
-+#include "llvm/ADT/STLExtras.h"
- #include "llvm/ADT/SmallVector.h"
- #include "llvm/Support/Casting.h"
- #include "llvm/Support/ErrorHandling.h"
-@@ -4774,7 +4775,10 @@
-                 ->getTemplateName()
-                 .getAsTemplateDecl())
-       if (auto *CTD = dyn_cast<ClassTemplateDecl>(templateDecl))
--        return CTD->getTemplatedDecl()->hasAttr<TypeNullableAttr>();
-+        return llvm::any_of(
-+            CTD->redecls(), [](const RedeclarableTemplateDecl *RTD) {
-+              return RTD->getTemplatedDecl()->hasAttr<TypeNullableAttr>();
-+            });
-     return ResultIfUnknown;
++    MlirAttribute encodingAttr = mlirAttributeGetNull();
+     MlirContext context = contextWrapper->get();
+-    MlirAttribute attr = getAttributeFromBuffer(view, signless, explicitType,
+-                                                explicitShape, context);
++
++    // Detect format codes that are suitable for bulk loading. This includes
++    // all byte aligned integer and floating point types up to 8 bytes.
++    // Notably, this excludes, bool (which needs to be bit-packed) and
++    // other exotics which do not have a direct representation in the buffer
++    // protocol (i.e. complex, etc).
++    std::optional<MlirType> bulkLoadElementType;
++    if (explicitType) {
++      bulkLoadElementType = *explicitType;
++    } else {
++      std::string_view format(view.format);
++      if (format == "f") {
++        // f32
++        assert(view.itemsize == 4 && "mismatched array itemsize");
++        bulkLoadElementType = mlirF32TypeGet(context);
++      } else if (format == "d") {
++        // f64
++        assert(view.itemsize == 8 && "mismatched array itemsize");
++        bulkLoadElementType = mlirF64TypeGet(context);
++      } else if (format == "e") {
++        // f16
++        assert(view.itemsize == 2 && "mismatched array itemsize");
++        bulkLoadElementType = mlirF16TypeGet(context);
++      } else if (isSignedIntegerFormat(format)) {
++        if (view.itemsize == 4) {
++          // i32
++          bulkLoadElementType = signless
++                                    ? mlirIntegerTypeGet(context, 32)
++                                    : mlirIntegerTypeSignedGet(context, 32);
++        } else if (view.itemsize == 8) {
++          // i64
++          bulkLoadElementType = signless
++                                    ? mlirIntegerTypeGet(context, 64)
++                                    : mlirIntegerTypeSignedGet(context, 64);
++        } else if (view.itemsize == 1) {
++          // i8
++          bulkLoadElementType = signless ? mlirIntegerTypeGet(context, 8)
++                                         : mlirIntegerTypeSignedGet(context, 8);
++        } else if (view.itemsize == 2) {
++          // i16
++          bulkLoadElementType = signless
++                                    ? mlirIntegerTypeGet(context, 16)
++                                    : mlirIntegerTypeSignedGet(context, 16);
++        }
++      } else if (isUnsignedIntegerFormat(format)) {
++        if (view.itemsize == 4) {
++          // unsigned i32
++          bulkLoadElementType = signless
++                                    ? mlirIntegerTypeGet(context, 32)
++                                    : mlirIntegerTypeUnsignedGet(context, 32);
++        } else if (view.itemsize == 8) {
++          // unsigned i64
++          bulkLoadElementType = signless
++                                    ? mlirIntegerTypeGet(context, 64)
++                                    : mlirIntegerTypeUnsignedGet(context, 64);
++        } else if (view.itemsize == 1) {
++          // i8
++          bulkLoadElementType = signless
++                                    ? mlirIntegerTypeGet(context, 8)
++                                    : mlirIntegerTypeUnsignedGet(context, 8);
++        } else if (view.itemsize == 2) {
++          // i16
++          bulkLoadElementType = signless
++                                    ? mlirIntegerTypeGet(context, 16)
++                                    : mlirIntegerTypeUnsignedGet(context, 16);
++        }
++      }
++      if (!bulkLoadElementType) {
++        throw std::invalid_argument(
++            std::string("unimplemented array format conversion from format: ") +
++            std::string(format));
++      }
++    }
++
++    MlirType shapedType;
++    if (mlirTypeIsAShaped(*bulkLoadElementType)) {
++      if (explicitShape) {
++        throw std::invalid_argument("Shape can only be specified explicitly "
++                                    "when the type is not a shaped type.");
++      }
++      shapedType = *bulkLoadElementType;
++    } else {
++      shapedType = mlirRankedTensorTypeGet(shape.size(), shape.data(),
++                                           *bulkLoadElementType, encodingAttr);
++    }
++    size_t rawBufferSize = view.len;
++    MlirAttribute attr =
++        mlirDenseElementsAttrRawBufferGet(shapedType, rawBufferSize, view.buf);
+     if (mlirAttributeIsNull(attr)) {
+       throw std::invalid_argument(
+           "DenseElementsAttr could not be constructed from the given buffer. "
+@@ -871,13 +963,6 @@
+         // unsigned i16
+         return bufferInfo<uint16_t>(shapedType);
+       }
+-    } else if (mlirTypeIsAInteger(elementType) &&
+-               mlirIntegerTypeGetWidth(elementType) == 1) {
+-      // i1 / bool
+-      // We can not send the buffer directly back to Python, because the i1
+-      // values are bitpacked within MLIR. We call numpy's unpackbits function
+-      // to convert the bytes.
+-      return getBooleanBufferFromBitpackedAttribute();
+     }
  
-   case Type::Builtin:
-@@ -4841,10 +4845,14 @@
-     // For template specializations, look only at primary template attributes.
-     // This is a consistent regardless of whether the instantiation is known.
-     if (const auto *CTSD = dyn_cast<ClassTemplateSpecializationDecl>(RD))
--      return CTSD->getSpecializedTemplate()
--          ->getTemplatedDecl()
--          ->hasAttr<TypeNullableAttr>();
--    return RD->hasAttr<TypeNullableAttr>();
-+      return llvm::any_of(
-+          CTSD->getSpecializedTemplate()->redecls(),
-+          [](const RedeclarableTemplateDecl *RTD) {
-+            return RTD->getTemplatedDecl()->hasAttr<TypeNullableAttr>();
-+          });
-+    return llvm::any_of(RD->redecls(), [](const TagDecl *RD) {
-+      return RD->hasAttr<TypeNullableAttr>();
-+    });
+     // TODO: Currently crashes the program.
+@@ -931,183 +1016,14 @@
+            code == 'q';
    }
  
-   // Non-pointer types.
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
---- a/clang/lib/Sema/SemaDecl.cpp
-+++ b/clang/lib/Sema/SemaDecl.cpp
-@@ -4694,8 +4694,10 @@
+-  static MlirType
+-  getShapedType(std::optional<MlirType> bulkLoadElementType,
+-                std::optional<std::vector<int64_t>> explicitShape,
+-                Py_buffer &view) {
+-    SmallVector<int64_t> shape;
+-    if (explicitShape) {
+-      shape.append(explicitShape->begin(), explicitShape->end());
+-    } else {
+-      shape.append(view.shape, view.shape + view.ndim);
+-    }
+-
+-    if (mlirTypeIsAShaped(*bulkLoadElementType)) {
+-      if (explicitShape) {
+-        throw std::invalid_argument("Shape can only be specified explicitly "
+-                                    "when the type is not a shaped type.");
+-      }
+-      return *bulkLoadElementType;
+-    } else {
+-      MlirAttribute encodingAttr = mlirAttributeGetNull();
+-      return mlirRankedTensorTypeGet(shape.size(), shape.data(),
+-                                     *bulkLoadElementType, encodingAttr);
+-    }
+-  }
+-
+-  static MlirAttribute getAttributeFromBuffer(
+-      Py_buffer &view, bool signless, std::optional<PyType> explicitType,
+-      std::optional<std::vector<int64_t>> explicitShape, MlirContext &context) {
+-    // Detect format codes that are suitable for bulk loading. This includes
+-    // all byte aligned integer and floating point types up to 8 bytes.
+-    // Notably, this excludes exotics types which do not have a direct
+-    // representation in the buffer protocol (i.e. complex, etc).
+-    std::optional<MlirType> bulkLoadElementType;
+-    if (explicitType) {
+-      bulkLoadElementType = *explicitType;
+-    } else {
+-      std::string_view format(view.format);
+-      if (format == "f") {
+-        // f32
+-        assert(view.itemsize == 4 && "mismatched array itemsize");
+-        bulkLoadElementType = mlirF32TypeGet(context);
+-      } else if (format == "d") {
+-        // f64
+-        assert(view.itemsize == 8 && "mismatched array itemsize");
+-        bulkLoadElementType = mlirF64TypeGet(context);
+-      } else if (format == "e") {
+-        // f16
+-        assert(view.itemsize == 2 && "mismatched array itemsize");
+-        bulkLoadElementType = mlirF16TypeGet(context);
+-      } else if (format == "?") {
+-        // i1
+-        // The i1 type needs to be bit-packed, so we will handle it seperately
+-        return getBitpackedAttributeFromBooleanBuffer(view, explicitShape,
+-                                                      context);
+-      } else if (isSignedIntegerFormat(format)) {
+-        if (view.itemsize == 4) {
+-          // i32
+-          bulkLoadElementType = signless
+-                                    ? mlirIntegerTypeGet(context, 32)
+-                                    : mlirIntegerTypeSignedGet(context, 32);
+-        } else if (view.itemsize == 8) {
+-          // i64
+-          bulkLoadElementType = signless
+-                                    ? mlirIntegerTypeGet(context, 64)
+-                                    : mlirIntegerTypeSignedGet(context, 64);
+-        } else if (view.itemsize == 1) {
+-          // i8
+-          bulkLoadElementType = signless ? mlirIntegerTypeGet(context, 8)
+-                                         : mlirIntegerTypeSignedGet(context, 8);
+-        } else if (view.itemsize == 2) {
+-          // i16
+-          bulkLoadElementType = signless
+-                                    ? mlirIntegerTypeGet(context, 16)
+-                                    : mlirIntegerTypeSignedGet(context, 16);
+-        }
+-      } else if (isUnsignedIntegerFormat(format)) {
+-        if (view.itemsize == 4) {
+-          // unsigned i32
+-          bulkLoadElementType = signless
+-                                    ? mlirIntegerTypeGet(context, 32)
+-                                    : mlirIntegerTypeUnsignedGet(context, 32);
+-        } else if (view.itemsize == 8) {
+-          // unsigned i64
+-          bulkLoadElementType = signless
+-                                    ? mlirIntegerTypeGet(context, 64)
+-                                    : mlirIntegerTypeUnsignedGet(context, 64);
+-        } else if (view.itemsize == 1) {
+-          // i8
+-          bulkLoadElementType = signless
+-                                    ? mlirIntegerTypeGet(context, 8)
+-                                    : mlirIntegerTypeUnsignedGet(context, 8);
+-        } else if (view.itemsize == 2) {
+-          // i16
+-          bulkLoadElementType = signless
+-                                    ? mlirIntegerTypeGet(context, 16)
+-                                    : mlirIntegerTypeUnsignedGet(context, 16);
+-        }
+-      }
+-      if (!bulkLoadElementType) {
+-        throw std::invalid_argument(
+-            std::string("unimplemented array format conversion from format: ") +
+-            std::string(format));
+-      }
+-    }
+-
+-    MlirType type = getShapedType(bulkLoadElementType, explicitShape, view);
+-    return mlirDenseElementsAttrRawBufferGet(type, view.len, view.buf);
+-  }
+-
+-  // There is a complication for boolean numpy arrays, as numpy represents them
+-  // as 8 bits (1 byte) per boolean, whereas MLIR bitpacks them into 8 booleans
+-  // per byte.
+-  static MlirAttribute getBitpackedAttributeFromBooleanBuffer(
+-      Py_buffer &view, std::optional<std::vector<int64_t>> explicitShape,
+-      MlirContext &context) {
+-    if (llvm::endianness::native != llvm::endianness::little) {
+-      // Given we have no good way of testing the behavior on big-endian systems
+-      // we will throw
+-      throw py::type_error("Constructing a bit-packed MLIR attribute is "
+-                           "unsupported on big-endian systems");
+-    }
+-
+-    py::array_t<uint8_t> unpackedArray(view.len,
+-                                       static_cast<uint8_t *>(view.buf));
+-
+-    py::module numpy = py::module::import("numpy");
+-    py::object packbits_func = numpy.attr("packbits");
+-    py::object packed_booleans =
+-        packbits_func(unpackedArray, "bitorder"_a = "little");
+-    py::buffer_info pythonBuffer = packed_booleans.cast<py::buffer>().request();
+-
+-    MlirType bitpackedType =
+-        getShapedType(mlirIntegerTypeGet(context, 1), explicitShape, view);
+-    return mlirDenseElementsAttrRawBufferGet(bitpackedType, pythonBuffer.size,
+-                                             pythonBuffer.ptr);
+-  }
+-
+-  // This does the opposite transformation of
+-  // `getBitpackedAttributeFromBooleanBuffer`
+-  py::buffer_info getBooleanBufferFromBitpackedAttribute() {
+-    if (llvm::endianness::native != llvm::endianness::little) {
+-      // Given we have no good way of testing the behavior on big-endian systems
+-      // we will throw
+-      throw py::type_error("Constructing a numpy array from a MLIR attribute "
+-                           "is unsupported on big-endian systems");
+-    }
+-
+-    int64_t numBooleans = mlirElementsAttrGetNumElements(*this);
+-    int64_t numBitpackedBytes = llvm::divideCeil(numBooleans, 8);
+-    uint8_t *bitpackedData = static_cast<uint8_t *>(
+-        const_cast<void *>(mlirDenseElementsAttrGetRawData(*this)));
+-    py::array_t<uint8_t> packedArray(numBitpackedBytes, bitpackedData);
+-
+-    py::module numpy = py::module::import("numpy");
+-    py::object unpackbits_func = numpy.attr("unpackbits");
+-    py::object unpacked_booleans =
+-        unpackbits_func(packedArray, "bitorder"_a = "little");
+-    py::buffer_info pythonBuffer =
+-        unpacked_booleans.cast<py::buffer>().request();
+-
+-    MlirType shapedType = mlirAttributeGetType(*this);
+-    return bufferInfo<bool>(shapedType, (bool *)pythonBuffer.ptr, "?");
+-  }
+-
+   template <typename Type>
+   py::buffer_info bufferInfo(MlirType shapedType,
+                              const char *explicitFormat = nullptr) {
++    intptr_t rank = mlirShapedTypeGetRank(shapedType);
+     // Prepare the data for the buffer_info.
+-    // Buffer is configured for read-only access inside the `bufferInfo` call.
++    // Buffer is configured for read-only access below.
+     Type *data = static_cast<Type *>(
+         const_cast<void *>(mlirDenseElementsAttrGetRawData(*this)));
+-    return bufferInfo<Type>(shapedType, data, explicitFormat);
+-  }
+-
+-  template <typename Type>
+-  py::buffer_info bufferInfo(MlirType shapedType, Type *data,
+-                             const char *explicitFormat = nullptr) {
+-    intptr_t rank = mlirShapedTypeGetRank(shapedType);
+     // Prepare the shape for the buffer_info.
+     SmallVector<intptr_t, 4> shape;
+     for (intptr_t i = 0; i < rank; ++i)
+diff -ruN --strip-trailing-cr a/mlir/test/python/ir/array_attributes.py b/mlir/test/python/ir/array_attributes.py
+--- a/mlir/test/python/ir/array_attributes.py
++++ b/mlir/test/python/ir/array_attributes.py
+@@ -326,78 +326,6 @@
+         print(np.array(attr))
  
-   // Keep a chain of previous declarations.
-   New->setPreviousDecl(Old);
--  if (NewTemplate)
-+  if (NewTemplate) {
-+    NewTemplate->mergePrevDecl(OldTemplate);
-     NewTemplate->setPreviousDecl(OldTemplate);
-+  }
  
-   // Inherit access appropriately.
-   New->setAccess(Old->getAccess());
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaInit.cpp b/clang/lib/Sema/SemaInit.cpp
---- a/clang/lib/Sema/SemaInit.cpp
-+++ b/clang/lib/Sema/SemaInit.cpp
-@@ -9954,7 +9954,7 @@
-     auto SynthesizeAggrGuide = [&](InitListExpr *ListInit) {
-       auto *Pattern = Template;
-       while (Pattern->getInstantiatedFromMemberTemplate()) {
--        if (Pattern->hasMemberSpecialization())
-+        if (Pattern->isMemberSpecialization())
-           break;
-         Pattern = Pattern->getInstantiatedFromMemberTemplate();
-       }
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaTemplateInstantiate.cpp b/clang/lib/Sema/SemaTemplateInstantiate.cpp
---- a/clang/lib/Sema/SemaTemplateInstantiate.cpp
-+++ b/clang/lib/Sema/SemaTemplateInstantiate.cpp
-@@ -343,7 +343,7 @@
-       // If this function was instantiated from a specialized member that is
-       // a function template, we're done.
-       assert(FD->getPrimaryTemplate() && "No function template?");
--      if (FD->getPrimaryTemplate()->hasMemberSpecialization())
-+      if (FD->getPrimaryTemplate()->isMemberSpecialization())
-         return Done();
+-### 1 bit/boolean integer arrays
+-# CHECK-LABEL: TEST: testGetDenseElementsI1Signless
+-@run
+-def testGetDenseElementsI1Signless():
+-    with Context():
+-        array = np.array([True], dtype=np.bool_)
+-        attr = DenseElementsAttr.get(array)
+-        # CHECK: dense<true> : tensor<1xi1>
+-        print(attr)
+-        # CHECK{LITERAL}: [ True]
+-        print(np.array(attr))
+-
+-        array = np.array([[True, False, True], [True, True, False]], dtype=np.bool_)
+-        attr = DenseElementsAttr.get(array)
+-        # CHECK{LITERAL}: dense<[[true, false, true], [true, true, false]]> : tensor<2x3xi1>
+-        print(attr)
+-        # CHECK{LITERAL}: [[ True False True]
+-        # CHECK{LITERAL}:  [ True True False]]
+-        print(np.array(attr))
+-
+-        array = np.array(
+-            [[True, True, False, False], [True, False, True, False]], dtype=np.bool_
+-        )
+-        attr = DenseElementsAttr.get(array)
+-        # CHECK{LITERAL}: dense<[[true, true, false, false], [true, false, true, false]]> : tensor<2x4xi1>
+-        print(attr)
+-        # CHECK{LITERAL}: [[ True True False False]
+-        # CHECK{LITERAL}:  [ True False True False]]
+-        print(np.array(attr))
+-
+-        array = np.array(
+-            [
+-                [True, True, False, False],
+-                [True, False, True, False],
+-                [False, False, False, False],
+-                [True, True, True, True],
+-                [True, False, False, True],
+-            ],
+-            dtype=np.bool_,
+-        )
+-        attr = DenseElementsAttr.get(array)
+-        # CHECK{LITERAL}: dense<[[true, true, false, false], [true, false, true, false], [false, false, false, false], [true, true, true, true], [true, false, false, true]]> : tensor<5x4xi1>
+-        print(attr)
+-        # CHECK{LITERAL}: [[ True True False False]
+-        # CHECK{LITERAL}:  [ True False True False]
+-        # CHECK{LITERAL}:  [False False False False]
+-        # CHECK{LITERAL}:  [ True True True True]
+-        # CHECK{LITERAL}:  [ True False False True]]
+-        print(np.array(attr))
+-
+-        array = np.array(
+-            [
+-                [True, True, False, False, True, True, False, False, False],
+-                [False, False, False, True, False, True, True, False, True],
+-            ],
+-            dtype=np.bool_,
+-        )
+-        attr = DenseElementsAttr.get(array)
+-        # CHECK{LITERAL}: dense<[[true, true, false, false, true, true, false, false, false], [false, false, false, true, false, true, true, false, true]]> : tensor<2x9xi1>
+-        print(attr)
+-        # CHECK{LITERAL}: [[ True True False False True True False False False]
+-        # CHECK{LITERAL}:  [False False False True False True True False True]]
+-        print(np.array(attr))
+-
+-        array = np.array([], dtype=np.bool_)
+-        attr = DenseElementsAttr.get(array)
+-        # CHECK: dense<> : tensor<0xi1>
+-        print(attr)
+-        # CHECK{LITERAL}: []
+-        print(np.array(attr))
+-
+-
+ ### 16 bit integer arrays
+ # CHECK-LABEL: TEST: testGetDenseElementsI16Signless
+ @run
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -198,6 +198,30 @@
+ ############################ Type Proxy Header Files ###########################
  
-       // If this function is a generic lambda specialization, we are done.
-@@ -442,11 +442,11 @@
-         Specialized = CTSD->getSpecializedTemplateOrPartial();
-     if (auto *CTPSD =
-             Specialized.dyn_cast<ClassTemplatePartialSpecializationDecl *>()) {
--      if (CTPSD->hasMemberSpecialization())
-+      if (CTPSD->isMemberSpecialization())
-         return Done();
-     } else {
-       auto *CTD = Specialized.get<ClassTemplateDecl *>();
--      if (CTD->hasMemberSpecialization())
-+      if (CTD->isMemberSpecialization())
-         return Done();
-     }
-     return UseNextDecl(CTSD);
-@@ -478,11 +478,11 @@
-         Specialized = VTSD->getSpecializedTemplateOrPartial();
-     if (auto *VTPSD =
-             Specialized.dyn_cast<VarTemplatePartialSpecializationDecl *>()) {
--      if (VTPSD->hasMemberSpecialization())
-+      if (VTPSD->isMemberSpecialization())
-         return Done();
-     } else {
-       auto *VTD = Specialized.get<VarTemplateDecl *>();
--      if (VTD->hasMemberSpecialization())
-+      if (VTD->isMemberSpecialization())
-         return Done();
-     }
-     return UseNextDecl(VTSD);
-@@ -4141,7 +4141,7 @@
-   CXXRecordDecl *Pattern = nullptr;
-   Specialized = ClassTemplateSpec->getSpecializedTemplateOrPartial();
-   if (auto *CTD = Specialized.dyn_cast<ClassTemplateDecl *>()) {
--    while (!CTD->hasMemberSpecialization()) {
-+    while (!CTD->isMemberSpecialization()) {
-       if (auto *NewCTD = CTD->getInstantiatedFromMemberTemplate())
-         CTD = NewCTD;
-       else
-@@ -4151,7 +4151,7 @@
-   } else if (auto *CTPSD =
-                  Specialized
-                      .dyn_cast<ClassTemplatePartialSpecializationDecl *>()) {
--    while (!CTPSD->hasMemberSpecialization()) {
-+    while (!CTPSD->isMemberSpecialization()) {
-       if (auto *NewCTPSD = CTPSD->getInstantiatedFromMemberTemplate())
-         CTPSD = NewCTPSD;
-       else
-diff -ruN --strip-trailing-cr a/clang/test/AST/ast-dump-decl.cpp b/clang/test/AST/ast-dump-decl.cpp
---- a/clang/test/AST/ast-dump-decl.cpp
-+++ b/clang/test/AST/ast-dump-decl.cpp
-@@ -530,7 +530,7 @@
-   // CHECK-NEXT: |   `-ClassTemplateDecl 0x{{.+}} parent 0x{{.+}} <col:5, col:40> col:40 friend_undeclared TestClassTemplate{{$}}
-   // CHECK-NEXT: |     |-TemplateTypeParmDecl 0x{{.+}} <col:14, col:23> col:23 typename depth 1 index 0 T2{{$}}
-   // CHECK-NEXT: |     `-CXXRecordDecl 0x{{.+}} parent 0x{{.+}} <col:34, col:40> col:40 class TestClassTemplate{{$}}
--  // CHECK-NEXT: `-ClassTemplateSpecializationDecl 0x{{.+}} <line:[[@LINE-19]]:3, line:[[@LINE-17]]:3> line:[[@LINE-19]]:31 class TestClassTemplate definition implicit_instantiation{{$}}
-+  // CHECK-NEXT: `-ClassTemplateSpecializationDecl 0x{{.+}} <col:5, col:40> line:[[@LINE-19]]:31 class TestClassTemplate definition implicit_instantiation{{$}}
-   // CHECK-NEXT:   |-DefinitionData pass_in_registers empty aggregate standard_layout trivially_copyable pod trivial literal has_constexpr_non_copy_move_ctor can_const_default_init{{$}}
-   // CHECK-NEXT:   | |-DefaultConstructor exists trivial constexpr defaulted_is_constexpr{{$}}
-   // CHECK-NEXT:   | |-CopyConstructor simple trivial has_const_param implicit_has_const_param{{$}}
-diff -ruN --strip-trailing-cr a/clang/test/ASTMerge/class-template-spec/Inputs/class-template-spec.cpp b/clang/test/ASTMerge/class-template-spec/Inputs/class-template-spec.cpp
---- a/clang/test/ASTMerge/class-template-spec/Inputs/class-template-spec.cpp
-+++ b/clang/test/ASTMerge/class-template-spec/Inputs/class-template-spec.cpp
-@@ -0,0 +1,47 @@
-+namespace N0 {
-+  template<typename T>
-+  struct A {
-+    template<typename U>
-+    friend struct A;
-+  };
+ libc_support_library(
++    name = "func_aligned_alloc",
++    hdrs = ["hdr/func/aligned_alloc.h"],
++    deps = [":hdr_stdlib_overlay"],
++)
 +
-+  template struct A<long>;
-+} // namespace N0
++libc_support_library(
++    name = "func_free",
++    hdrs = ["hdr/func/free.h"],
++    deps = [":hdr_stdlib_overlay"],
++)
 +
-+namespace N1 {
-+  template<typename T>
-+  struct A;
++libc_support_library(
++    name = "func_malloc",
++    hdrs = ["hdr/func/malloc.h"],
++    deps = [":hdr_stdlib_overlay"],
++)
 +
-+  template<typename T>
-+  struct A {
-+    template<typename U>
-+    friend struct A;
-+  };
++libc_support_library(
++    name = "func_realloc",
++    hdrs = ["hdr/func/realloc.h"],
++    deps = [":hdr_stdlib_overlay"],
++)
 +
-+  template struct A<long>;
-+} // namespace N1
-+
-+namespace N2 {
-+  template<typename T>
-+  struct A {
-+    template<typename U>
-+    friend struct A;
-+  };
-+
-+  template<typename T>
-+  struct A;
-+
-+  template struct A<long>;
-+} // namespace N2
-+
-+namespace N3 {
-+  struct A {
-+    template<typename T>
-+    friend struct B;
-+  };
-+
-+  template<typename T>
-+  struct B { };
-+
-+  template struct B<long>;
-+} // namespace N3
-diff -ruN --strip-trailing-cr a/clang/test/ASTMerge/class-template-spec/test.cpp b/clang/test/ASTMerge/class-template-spec/test.cpp
---- a/clang/test/ASTMerge/class-template-spec/test.cpp
-+++ b/clang/test/ASTMerge/class-template-spec/test.cpp
-@@ -0,0 +1,8 @@
-+// RUN: %clang_cc1 -emit-pch -o %t.1.ast %S/Inputs/class-template-spec.cpp
-+// RUN: %clang_cc1 -ast-merge %t.1.ast -fsyntax-only -verify %s
-+// expected-no-diagnostics
-+
-+template struct N0::A<short>;
-+template struct N1::A<short>;
-+template struct N2::A<short>;
-+template struct N3::B<short>;
-diff -ruN --strip-trailing-cr a/clang/test/CXX/temp/temp.spec/temp.expl.spec/p7.cpp b/clang/test/CXX/temp/temp.spec/temp.expl.spec/p7.cpp
---- a/clang/test/CXX/temp/temp.spec/temp.expl.spec/p7.cpp
-+++ b/clang/test/CXX/temp/temp.spec/temp.expl.spec/p7.cpp
-@@ -177,6 +177,93 @@
-   static_assert(A<short>::B<int*>::y == 2);
- } // namespace Defined
- 
-+namespace Constrained {
-+  template<typename T>
-+  struct A {
-+    template<typename U, bool V> requires V
-+    static constexpr int f(); // expected-note {{declared here}}
-+
-+    template<typename U, bool V> requires V
-+    static const int x; // expected-note {{declared here}}
-+
-+    template<typename U, bool V> requires V
-+    static const int x<U*, V>; // expected-note {{declared here}}
-+
-+    template<typename U, bool V> requires V
-+    struct B; // expected-note {{template is declared here}}
-+
-+    template<typename U, bool V> requires V
-+    struct B<U*, V>; // expected-note {{template is declared here}}
-+  };
-+
-+  template<>
-+  template<typename U, bool V> requires V
-+  constexpr int A<short>::f() {
-+    return A<long>::f<U, V>();
-+  }
-+
-+  template<>
-+  template<typename U, bool V> requires V
-+  constexpr int A<short>::x = A<long>::x<U, V>;
-+
-+  template<>
-+  template<typename U, bool V> requires V
-+  constexpr int A<short>::x<U*, V> = A<long>::x<U*, V>;
-+
-+  template<>
-+  template<typename U, bool V> requires V
-+  struct A<short>::B<U*, V> {
-+    static constexpr int y = A<long>::B<U*, V>::y;
-+  };
-+
-+  template<>
-+  template<typename U, bool V> requires V
-+  struct A<short>::B {
-+    static constexpr int y = A<long>::B<U, V>::y;
-+  };
-+
-+  template<>
-+  template<typename U, bool V> requires V
-+  constexpr int A<long>::f() {
-+    return 1;
-+  }
-+
-+  template<>
-+  template<typename U, bool V> requires V
-+  constexpr int A<long>::x = 1;
-+
-+  template<>
-+  template<typename U, bool V> requires V
-+  constexpr int A<long>::x<U*, V> = 2;
-+
-+  template<>
-+  template<typename U, bool V> requires V
-+  struct A<long>::B {
-+    static constexpr int y = 1;
-+  };
-+
-+  template<>
-+  template<typename U, bool V> requires V
-+  struct A<long>::B<U*, V> {
-+    static constexpr int y = 2;
-+  };
-+
-+  static_assert(A<int>::f<int, true>() == 0); // expected-error {{static assertion expression is not an integral constant expression}}
-+                                              // expected-note@-1 {{undefined function 'f<int, true>' cannot be used in a constant expression}}
-+  static_assert(A<int>::x<int, true> == 0); // expected-error {{static assertion expression is not an integral constant expression}}
-+                                            // expected-note@-1 {{initializer of 'x<int, true>' is unknown}}
-+  static_assert(A<int>::x<int*, true> == 0); // expected-error {{static assertion expression is not an integral constant expression}}
-+                                             // expected-note@-1 {{initializer of 'x<int *, true>' is unknown}}
-+  static_assert(A<int>::B<int, true>::y == 0); // expected-error {{implicit instantiation of undefined template 'Constrained::A<int>::B<int, true>'}}
-+  static_assert(A<int>::B<int*, true>::y == 0); // expected-error {{implicit instantiation of undefined template 'Constrained::A<int>::B<int *, true>'}}
-+
-+  static_assert(A<short>::f<int, true>() == 1);
-+  static_assert(A<short>::x<int, true> == 1);
-+  static_assert(A<short>::x<int*, true> == 2);
-+  static_assert(A<short>::B<int, true>::y == 1);
-+  static_assert(A<short>::B<int*, true>::y == 2);
-+} // namespace Constrained
-+
- namespace Dependent {
-   template<int I>
-   struct A {
-diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/nullability_redecl.cpp b/clang/test/SemaCXX/nullability_redecl.cpp
---- a/clang/test/SemaCXX/nullability_redecl.cpp
-+++ b/clang/test/SemaCXX/nullability_redecl.cpp
-@@ -0,0 +1,27 @@
-+// RUN: %clang_cc1 -std=c++11 -fsyntax-only -Wno-nullability-declspec %s -verify -Wnullable-to-nonnull-conversion -I%S/Inputs
-+
-+class Foo;
-+using Foo1 = Foo _Nonnull; // expected-error{{nullability specifier '_Nonnull' cannot be applied to non-pointer type 'Foo'}}
-+class _Nullable Foo;
-+using Foo2 = Foo _Nonnull;
-+class Foo;
-+using Foo3 = Foo _Nonnull;
-+
-+template <class T>
-+class Bar;
-+using Bar1 = Bar<int> _Nonnull; // expected-error{{nullability specifier '_Nonnull' cannot be applied to non-pointer type 'Bar<int>'}}
-+template <class T>
-+class _Nullable Bar;
-+using Bar2 = Bar<int> _Nonnull;
-+template <class T>
-+class Bar;
-+using Bar3 = Bar<int> _Nonnull;
-+
-+namespace std {
-+  template<class T> class unique_ptr;
-+  using UP1 = unique_ptr<int> _Nonnull;
-+  class X { template<class T> friend class unique_ptr; };
-+  using UP2 = unique_ptr<int> _Nonnull;
-+  template<class T> class unique_ptr;
-+  using UP3 = unique_ptr<int> _Nonnull;
-+}
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-@@ -3172,6 +3172,7 @@
-         ":TransformUtils",
-         ":Transforms",
-         ":VectorDialect",
-+        ":VectorTransforms",
-         "//llvm:Support",
++libc_support_library(
+     name = "types_clockid_t",
+     hdrs = ["hdr/types/clockid_t.h"],
+ )
+@@ -503,6 +527,9 @@
+     deps = [
+         ":__support_common",
+         ":__support_macros_properties_os",
++        ":func_aligned_alloc",
++        ":func_free",
++        ":func_malloc",
      ],
  )
+ 
+@@ -549,6 +576,9 @@
+         ":__support_common",
+         ":__support_cpp_string_view",
+         ":__support_integer_to_string",
++        ":func_free",
++        ":func_malloc",
++        ":func_realloc",
+         ":string_memory_utils",
+         ":string_utils",
+     ],
+@@ -630,6 +660,9 @@
+     hdrs = ["src/__support/char_vector.h"],
+     deps = [
+         ":__support_common",
++        ":func_free",
++        ":func_malloc",
++        ":func_realloc",
+     ],
+ )
+ 
+@@ -834,6 +867,10 @@
+         ":__support_error_or",
+         ":__support_threads_mutex",
+         ":errno",
++        ":func_aligned_alloc",
++        ":func_free",
++        ":func_malloc",
++        ":func_realloc",
+         ":hdr_stdio_macros",
+         ":hdr_stdio_overlay",
+         ":types_off_t",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/libc_test_rules.bzl b/utils/bazel/llvm-project-overlay/libc/test/libc_test_rules.bzl
+--- a/utils/bazel/llvm-project-overlay/libc/test/libc_test_rules.bzl
++++ b/utils/bazel/llvm-project-overlay/libc/test/libc_test_rules.bzl
+@@ -35,6 +35,10 @@
+         deps = [libc_internal_target(d) for d in all_function_deps] + [
+             "//libc/test/UnitTest:LibcUnitTest",
+             "//libc:__support_macros_config",
++            "//libc:func_aligned_alloc",
++            "//libc:func_free",
++            "//libc:func_malloc",
++            "//libc:func_realloc",
+         ] + deps,
+         copts = copts + libc_common_copts(),
+         linkstatic = 1,
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
+@@ -22,6 +22,10 @@
+         "//libc:__support_macros_properties_types",
+         "//libc:__support_osutil_io",
+         "//libc:__support_uint128",
++        "//libc:func_aligned_alloc",
++        "//libc:func_free",
++        "//libc:func_malloc",
++        "//libc:func_realloc",
+     ],
+ )
+ 
+@@ -61,6 +65,10 @@
+         "//libc:errno",
+         "//libc:llvm_libc_macros_stdfix_macros",
+         "//llvm:Support",
++        "//libc:func_aligned_alloc",
++        "//libc:func_free",
++        "//libc:func_malloc",
++        "//libc:func_realloc",
+     ],
+ )
+ 
