@@ -321,13 +321,9 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_v100",
-<<<<<<< HEAD
-    ],
-    tags = ["cuda-only"], # TODO(rocm) 240729 Test checks only for cuda capability
-=======
         "gpu_amd_any",
     ] + if_oss(["gpu_b100"]),
->>>>>>> upstream/master
+    tags = ["cuda-only"], # TODO(rocm) 240729 Test checks only for cuda capability
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
@@ -704,12 +700,8 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-<<<<<<< HEAD
-    ],
-=======
     ] + if_oss(["gpu_b100"]),
     tags = ["cuda-only"],
->>>>>>> upstream/master
     deps = if_cuda_is_configured(
         [
             ":gpu_codegen_test",

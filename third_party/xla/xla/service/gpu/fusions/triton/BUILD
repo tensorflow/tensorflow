@@ -763,14 +763,9 @@ xla_test(
         "gpu_a100",
         "gpu_h100",
         "gpu_amd_any",
-<<<<<<< HEAD
-    ],
+    ] + if_oss(["gpu_b100"]),
     tags = ["no_mac",
             "cuda-only"], # TODO(rocm) 240729
-=======
-    ] + if_oss(["gpu_b100"]),
-    tags = ["no_mac"],
->>>>>>> upstream/master
     deps = [
         ":kernel_name_tracer",
         ":triton_fusion_emitter",
