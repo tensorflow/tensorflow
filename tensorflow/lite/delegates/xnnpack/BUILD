@@ -1234,23 +1234,6 @@ cc_test(
 )
 
 cc_test(
-    name = "add_test",
-    srcs = ["add_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":binary_elementwise_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
     name = "average_pool_2d_test",
     srcs = ["average_pool_2d_test.cc"],
     linkopts = select({
@@ -1279,6 +1262,26 @@ cc_test(
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite/c:c_api_types",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "binary_elementwise_test",
+    srcs = [
+        "binary_elementwise_test.cc",
+    ],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":binary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1410,23 +1413,6 @@ cc_test(
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite/c:c_api_types",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "div_test",
-    srcs = ["div_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":binary_elementwise_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1618,23 +1604,6 @@ cc_test(
 )
 
 cc_test(
-    name = "maximum_test",
-    srcs = ["maximum_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":binary_elementwise_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
     name = "reduce_test",
     srcs = ["reduce_test.cc"],
     linkopts = select({
@@ -1643,40 +1612,6 @@ cc_test(
     }),
     deps = [
         ":reduce_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "minimum_test",
-    srcs = ["minimum_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":binary_elementwise_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "mul_test",
-    srcs = ["mul_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite/c:c_api_types",
@@ -2515,21 +2450,6 @@ cc_test(
 )
 
 cc_test(
-    name = "squared_difference_test",
-    srcs = ["squared_difference_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":binary_elementwise_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
     name = "strided_slice_test",
     srcs = ["strided_slice_test.cc"],
     linkopts = select({
@@ -2538,21 +2458,6 @@ cc_test(
     }),
     deps = [
         ":strided_slice_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "sub_test",
-    srcs = ["sub_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
