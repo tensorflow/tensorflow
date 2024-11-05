@@ -17,7 +17,9 @@ limitations under the License.
 
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/dialect.h"
 
 namespace mlir {

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TRANSFORMS_UTILS_EVAL_UTILS_H_
 
 #include <memory>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
