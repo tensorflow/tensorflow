@@ -18,6 +18,7 @@
 #include <functional>
 #include <optional>
 #include <ostream>
+#include <string>
 
 #include "absl/strings/string_view.h"
 

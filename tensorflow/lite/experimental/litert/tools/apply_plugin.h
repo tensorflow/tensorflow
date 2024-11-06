@@ -18,7 +18,9 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <ostream>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
