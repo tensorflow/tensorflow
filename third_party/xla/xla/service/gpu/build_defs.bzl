@@ -195,4 +195,5 @@ def gen_gpu_hlo_compile_tests(
                 ] + xla_flags,
                 data = ["//xla/tools/multihost_hlo_runner:hlo_runner_main_gpu", data_label],
                 tags = backend_tags[backend] + ["requires-mem:16g", "nozapfhahn"] + tags,
+                timeout = "long",
             )
