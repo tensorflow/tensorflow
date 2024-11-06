@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_PROFILING_TELEMETRY_C_TELEMETRY_SETTING_INTERNAL_H_
 #define TENSORFLOW_LITE_PROFILING_TELEMETRY_C_TELEMETRY_SETTING_INTERNAL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
