@@ -1264,7 +1264,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kSendDone: {
       return ImportAsyncOpDone(instruction, loc, operands, attributes,
-                               result_type, func_builder);
+                               result_type, func_builder, HloOpcode::kSend);
     }
     case HloOpcode::kRecv: {
       return ImportRecv(instruction, loc, operands, attributes, result_type,
@@ -1272,7 +1272,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kRecvDone: {
       return ImportAsyncOpDone(instruction, loc, operands, attributes,
-                               result_type, func_builder);
+                               result_type, func_builder, HloOpcode::kRecv);
     }
     case HloOpcode::kConditional: {
       llvm::SmallVector<Type, 4> rets;

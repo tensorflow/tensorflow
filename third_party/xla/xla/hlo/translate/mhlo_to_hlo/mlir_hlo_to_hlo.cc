@@ -2428,14 +2428,51 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   else
     data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
-  token = xla::internal::XlaBuilderFriend::BuildRecv(
-      ctx.builder, token, data_shape,
-      Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
-  xla::XlaOp xla_result = xla::internal::XlaBuilderFriend::BuildRecvDone(
-      ctx.builder, token, data_shape,
-      Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  if (ctx.builder->sharding().has_value()) {
+    // HLO Recv needs a 3-tuple maximal sharding, but MHLO RecvOp has a 2-tuple
+    // maximal sharding.
+    std::optional<xla::OpSharding> sharding = *ctx.builder->sharding();
+    auto* tuple_shardings = sharding->mutable_tuple_shardings();
+    const xla::OpSharding maximal_sharding = tuple_shardings->Get(0);
+    tuple_shardings->Add(xla::OpSharding(maximal_sharding));
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    token = xla::internal::XlaBuilderFriend::BuildRecv(
+        ctx.builder, token, data_shape,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  } else {
+    token = xla::internal::XlaBuilderFriend::BuildRecv(
+        ctx.builder, token, data_shape,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  }
 
-  auto data_tuple_element = xla::GetTupleElement(xla_result, 0);
+  xla::XlaOp xla_result;
+  {
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder,
+                                                    ctx.builder->sharding());
+    xla_result = xla::internal::XlaBuilderFriend::BuildRecvDone(
+        ctx.builder, token, data_shape,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+  }
+
+  xla::XlaOp data_tuple_element;
+  if (ctx.builder->sharding().has_value()) {
+    // HLO GetTupleElement needs a single maximal sharding, but MHLO RecvOp has
+    // a 2-tuple maximal sharding.
+    std::optional<xla::OpSharding> sharding = *ctx.builder->sharding();
+    auto* tuple_shardings = sharding->mutable_tuple_shardings();
+    sharding->set_type(xla::OpSharding::MAXIMAL);
+    sharding->clear_tile_assignment_dimensions();
+    *sharding->mutable_tile_assignment_dimensions() =
+        tuple_shardings->Get(0).tile_assignment_dimensions();
+    *sharding->mutable_tile_assignment_devices() =
+        tuple_shardings->Get(0).tile_assignment_devices();
+    tuple_shardings->Clear();
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    data_tuple_element = xla::GetTupleElement(xla_result, 0);
+  } else {
+    data_tuple_element = xla::GetTupleElement(xla_result, 0);
+  }
+
   if (subshapes.size() == 1) {
     value_map[op.getResult(0)] = data_tuple_element;
   } else {
@@ -2656,6 +2693,18 @@ LogicalResult ExportXlaOp(SelectAndScatterOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
+  // SendOp has 1 result, but HLO Send has 3 results. Convert the sharding to a
+  // tuple sharding with 3 entries, all maximal.
+  std::optional<xla::OpSharding> sharding = std::nullopt;
+  if (ctx.builder->sharding().has_value()) {
+    sharding = *ctx.builder->sharding();
+    const xla::OpSharding maximal_sharding = sharding.value();
+    sharding->set_type(xla::OpSharding::TUPLE);
+    auto* tuple_shardings = sharding->mutable_tuple_shardings();
+    tuple_shardings->Add(xla::OpSharding(maximal_sharding));
+    tuple_shardings->Add(xla::OpSharding(maximal_sharding));
+    tuple_shardings->Add(xla::OpSharding(maximal_sharding));
+  }
   auto& value_map = *ctx.values;
 
   llvm::SmallVector<xla::XlaOp> operands;
@@ -2670,12 +2719,15 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   xla::XlaOp token;
   if (failed(GetXlaOp(op.getToken(), value_map, &token, op))) return failure();
 
-  token = xla::internal::XlaBuilderFriend::BuildSend(
-      ctx.builder, operand, token,
-      Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
-  value_map[op] = xla::internal::XlaBuilderFriend::BuildSendDone(
-      ctx.builder, token, Convert_channel_handle(op.getChannelHandle()),
-      op.getIsHostTransfer());
+  {
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    token = xla::internal::XlaBuilderFriend::BuildSend(
+        ctx.builder, operand, token,
+        Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
+    value_map[op] = xla::internal::XlaBuilderFriend::BuildSendDone(
+        ctx.builder, token, Convert_channel_handle(op.getChannelHandle()),
+        op.getIsHostTransfer());
+  }
   return success();
 }
 
