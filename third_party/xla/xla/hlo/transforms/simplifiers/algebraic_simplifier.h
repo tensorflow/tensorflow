@@ -554,6 +554,28 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   const AlgebraicSimplifierOptions& options_;
 
  private:
+  // Rewrite dot as mul(broadcast(transpose(x)),broadcast(transpose(y)))
+  absl::Status RewriteAsMultiplyDotWithZeroLhsContractingDim(
+      HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,
+      const DotDimensionNumbers& dnums);
+
+  enum class RewriteResult {
+    kNoRewrite,
+    kRewritten,
+    kStopRewrites,
+  };
+
+  // Reorder nested dots with associativity using flops as a heuristic
+  // Could return kStopRewrites if the rewrite is too expensive.
+  absl::StatusOr<RewriteResult> AssociativeReorderNestedDot(
+      HloDotInstruction* dot, HloInstruction* lhs, HloInstruction* rhs);
+
+  // If the lhs or rhs have only batch and contracting dimensions, a dot can be
+  // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
+  absl::Status RewriteBatchPlusContractingAsReduce(
+      HloDotInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,
+      const DotDimensionNumbers& dnums);
+
   // Removes degenerate dimension from dot.
   absl::StatusOr<bool> RemoveDegenerateDimensionFromDot(HloDotInstruction* dot);
 
