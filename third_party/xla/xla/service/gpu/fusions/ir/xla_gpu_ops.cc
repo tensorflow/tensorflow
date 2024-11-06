@@ -465,40 +465,29 @@ struct FoldApplyIndexingOperands
     new_operands.reserve(new_num_operands);
     SmallVector<IndexingMap::Variable, 2> new_dim_vars;
     new_dim_vars.reserve(num_dims);
-    SmallVector<IndexingMap::Variable, 2> new_range_vars;
-    new_range_vars.reserve(num_symbols);
 
     unsigned new_num_dims = 0;
-    unsigned new_num_symbols = 0;
     for (auto [operand, constant_value] :
          llvm::zip(indexing_op->getOpOperands(), constant_values)) {
       unsigned operand_id = operand.getOperandNumber();
+      if (operand_id >= num_dims) {
+        return rewriter.notifyMatchFailure(
+            indexing_op,
+            absl::StrCat("operand ", operand_id,
+                         " is outside of dimension range [0, ", num_dims, ")"));
+      }
       if (constant_value.has_value()) {
-        if (operand_id < num_dims) {
-          dim_replacements.push_back(
-              getAffineConstantExpr(*constant_value, ctx));
-        } else {
-          symbol_replacements.push_back(
-              getAffineConstantExpr(*constant_value, ctx));
-        }
+        dim_replacements.push_back(getAffineConstantExpr(*constant_value, ctx));
       } else {
         new_operands.push_back(operand.get());
-        if (operand_id < num_dims) {
-          dim_replacements.push_back(getAffineDimExpr(new_num_dims++, ctx));
-          new_dim_vars.push_back(indexing_map.GetDimVars(operand_id));
-        } else {
-          symbol_replacements.push_back(
-              getAffineSymbolExpr(new_num_symbols++, ctx));
-          new_range_vars.push_back(
-              indexing_map.GetRangeVar(operand_id - num_dims));
-        }
+        dim_replacements.push_back(getAffineDimExpr(new_num_dims++, ctx));
+        new_dim_vars.push_back(indexing_map.GetDimVars(operand_id));
       }
     }
     rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
         indexing_op, new_operands,
-        affine_map.replaceDimsAndSymbols(dim_replacements, symbol_replacements,
-                                         new_num_dims, new_num_symbols),
-        new_dim_vars, new_range_vars);
+        affine_map.replaceDimsAndSymbols(dim_replacements, {}, new_num_dims, 0),
+        new_dim_vars, SmallVector<IndexingMap::Variable>());
     return success();
   }
 };
