@@ -1,586 +1,324 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 5d1288a..38cc391 100644
+index 38cc391..d311765 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,76 +1,377 @@
- Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/clang/lib/AST/Type.cpp b/clang/lib/AST/Type.cpp
----- a/clang/lib/AST/Type.cpp
--+++ b/clang/lib/AST/Type.cpp
--@@ -43,6 +43,7 @@
-- #include "llvm/ADT/APSInt.h"
-- #include "llvm/ADT/ArrayRef.h"
-- #include "llvm/ADT/FoldingSet.h"
--+#include "llvm/ADT/STLExtras.h"
-- #include "llvm/ADT/SmallVector.h"
-- #include "llvm/Support/Casting.h"
-- #include "llvm/Support/ErrorHandling.h"
--@@ -4774,7 +4775,10 @@
--                 ->getTemplateName()
--                 .getAsTemplateDecl())
--       if (auto *CTD = dyn_cast<ClassTemplateDecl>(templateDecl))
---        return CTD->getTemplatedDecl()->hasAttr<TypeNullableAttr>();
--+        return llvm::any_of(
--+            CTD->redecls(), [](const RedeclarableTemplateDecl *RTD) {
--+              return RTD->getTemplatedDecl()->hasAttr<TypeNullableAttr>();
--+            });
--     return ResultIfUnknown;
-- 
--   case Type::Builtin:
--@@ -4841,10 +4845,14 @@
--     // For template specializations, look only at primary template attributes.
--     // This is a consistent regardless of whether the instantiation is known.
--     if (const auto *CTSD = dyn_cast<ClassTemplateSpecializationDecl>(RD))
---      return CTSD->getSpecializedTemplate()
---          ->getTemplatedDecl()
---          ->hasAttr<TypeNullableAttr>();
---    return RD->hasAttr<TypeNullableAttr>();
--+      return llvm::any_of(
--+          CTSD->getSpecializedTemplate()->redecls(),
--+          [](const RedeclarableTemplateDecl *RTD) {
--+            return RTD->getTemplatedDecl()->hasAttr<TypeNullableAttr>();
--+          });
--+    return llvm::any_of(RD->redecls(), [](const TagDecl *RD) {
--+      return RD->hasAttr<TypeNullableAttr>();
--+    });
--   }
-- 
--   // Non-pointer types.
--diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/nullability_redecl.cpp b/clang/test/SemaCXX/nullability_redecl.cpp
----- a/clang/test/SemaCXX/nullability_redecl.cpp
--+++ b/clang/test/SemaCXX/nullability_redecl.cpp
--@@ -0,0 +1,27 @@
--+// RUN: %clang_cc1 -std=c++11 -fsyntax-only -Wno-nullability-declspec %s -verify -Wnullable-to-nonnull-conversion -I%S/Inputs
--+
--+class Foo;
--+using Foo1 = Foo _Nonnull; // expected-error{{nullability specifier '_Nonnull' cannot be applied to non-pointer type 'Foo'}}
--+class _Nullable Foo;
--+using Foo2 = Foo _Nonnull;
--+class Foo;
--+using Foo3 = Foo _Nonnull;
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+@@ -7046,7 +7046,8 @@
-+                 OrdersType Order;
-+                 SmallVector<Value *> PointerOps;
-+                 // Segmented load detected - vectorize at maximum vector factor.
-+-                if (TTI.isLegalInterleavedAccessType(
-++                if (InterleaveFactor <= Slice.size() &&
-++                    TTI.isLegalInterleavedAccessType(
-+                         getWidenedType(Slice.front()->getType(), VF),
-+                         InterleaveFactor,
-+                         cast<LoadInst>(Slice.front())->getAlign(),
-+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/load-store.ll b/llvm/test/CodeGen/NVPTX/load-store.ll
-+--- a/llvm/test/CodeGen/NVPTX/load-store.ll
-++++ b/llvm/test/CodeGen/NVPTX/load-store.ll
-+@@ -167,25 +167,25 @@
-+ ; CHECK-NEXT:  // %bb.0:
-+ ; CHECK-NEXT:    ld.param.u64 %rd1, [generic_4xi8_param_0];
-+ ; CHECK-NEXT:    ld.u32 %r1, [%rd1];
-+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
-++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
-+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
-+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
-++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
-+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
-+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
-+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
-++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
-++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
-+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
-+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
-+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
-+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
-++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
-++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
-+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
-+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
-+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
-++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
-++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
-++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
-+ ; CHECK-NEXT:    st.u32 [%rd1], %r12;
-+ ; CHECK-NEXT:    ret;
-+   %a.load = load <4 x i8>, ptr %a
-+@@ -511,25 +511,25 @@
-+ ; CHECK-NEXT:  // %bb.0:
-+ ; CHECK-NEXT:    ld.param.u64 %rd1, [generic_volatile_4xi8_param_0];
-+ ; CHECK-NEXT:    ld.volatile.u32 %r1, [%rd1];
-+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
-++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
-+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
-+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
-++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
-+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
-+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
-+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
-++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
-++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
-+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
-+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
-+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
-+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
-++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
-++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
-+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
-+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
-+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
-++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
-++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
-++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
-+ ; CHECK-NEXT:    st.volatile.u32 [%rd1], %r12;
-+ ; CHECK-NEXT:    ret;
-+   %a.load = load volatile <4 x i8>, ptr %a
-+@@ -1416,25 +1416,25 @@
-+ ; CHECK-NEXT:  // %bb.0:
-+ ; CHECK-NEXT:    ld.param.u64 %rd1, [global_4xi8_param_0];
-+ ; CHECK-NEXT:    ld.global.u32 %r1, [%rd1];
-+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
-++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
-+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
-+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
-++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
-+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
-+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
-+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
-++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
-++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
-+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
-+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
-+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
-+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
-++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
-++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
-+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
-+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
-+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
-++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
-++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
-++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
-+ ; CHECK-NEXT:    st.global.u32 [%rd1], %r12;
-+ ; CHECK-NEXT:    ret;
-+   %a.load = load <4 x i8>, ptr addrspace(1) %a
-+@@ -1741,25 +1741,25 @@
-+ ; CHECK-NEXT:  // %bb.0:
-+ ; CHECK-NEXT:    ld.param.u64 %rd1, [global_volatile_4xi8_param_0];
-+ ; CHECK-NEXT:    ld.volatile.global.u32 %r1, [%rd1];
-+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
-++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
-+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
-+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
-++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
-+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
-+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
-+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
-++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
-++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
-+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
-+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
-+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
-+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
-++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
-++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
-+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
-+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
-+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
-++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
-++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
-++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
-+ ; CHECK-NEXT:    st.volatile.global.u32 [%rd1], %r12;
-+ ; CHECK-NEXT:    ret;
-+   %a.load = load volatile <4 x i8>, ptr addrspace(1) %a
-+@@ -2788,25 +2788,25 @@
-+ ; CHECK-NEXT:  // %bb.0:
-+ ; CHECK-NEXT:    ld.param.u64 %rd1, [shared_4xi8_param_0];
-+ ; CHECK-NEXT:    ld.shared.u32 %r1, [%rd1];
-+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
-++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
-+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
-+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
-++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
-+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
-+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
-+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
-++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
-++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
-+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
-+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
-+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
-+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
-++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
-++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
-+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
-+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
-+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
-++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
-++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
-++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
-+ ; CHECK-NEXT:    st.shared.u32 [%rd1], %r12;
-+ ; CHECK-NEXT:    ret;
-+   %a.load = load <4 x i8>, ptr addrspace(3) %a
-+@@ -3113,25 +3113,25 @@
-+ ; CHECK-NEXT:  // %bb.0:
-+ ; CHECK-NEXT:    ld.param.u64 %rd1, [shared_volatile_4xi8_param_0];
-+ ; CHECK-NEXT:    ld.volatile.shared.u32 %r1, [%rd1];
-+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
-++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
-+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
-+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
-++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
-+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
-+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
-+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
-++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
-++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
-+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
-+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
-+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
-+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
-++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
-++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
-+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
-+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
-+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
-++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
-++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
-++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
-+ ; CHECK-NEXT:    st.volatile.shared.u32 [%rd1], %r12;
-+ ; CHECK-NEXT:    ret;
-+   %a.load = load volatile <4 x i8>, ptr addrspace(3) %a
-+@@ -4018,25 +4018,25 @@
-+ ; CHECK-NEXT:  // %bb.0:
-+ ; CHECK-NEXT:    ld.param.u64 %rd1, [local_4xi8_param_0];
-+ ; CHECK-NEXT:    ld.local.u32 %r1, [%rd1];
-+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
-++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
-+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
-+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
-++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
-+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
-+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
-+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
-++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
-++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
-+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
-+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
-+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
-+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
-++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
-++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
-+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
-+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
-+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
-++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
-++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
-++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
-+ ; CHECK-NEXT:    st.local.u32 [%rd1], %r12;
-+ ; CHECK-NEXT:    ret;
-+   %a.load = load <4 x i8>, ptr addrspace(5) %a
-+@@ -4343,25 +4343,25 @@
-+ ; CHECK-NEXT:  // %bb.0:
-+ ; CHECK-NEXT:    ld.param.u64 %rd1, [local_volatile_4xi8_param_0];
-+ ; CHECK-NEXT:    ld.local.u32 %r1, [%rd1];
-+-; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
-++; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
-+ ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
-+-; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
-++; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
-+ ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
-+-; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
-+-; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
-++; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
-++; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
-+ ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
-+ ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
-+ ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
-+-; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
-+-; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
-+-; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
-++; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
-++; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
-+ ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
-+-; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
-+-; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
-++; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
-++; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
-++; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
-+ ; CHECK-NEXT:    st.local.u32 [%rd1], %r12;
-+ ; CHECK-NEXT:    ret;
-+   %a.load = load volatile <4 x i8>, ptr addrspace(5) %a
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/RISCV/interleave-greater-than-slice.ll b/llvm/test/Transforms/SLPVectorizer/RISCV/interleave-greater-than-slice.ll
-+--- a/llvm/test/Transforms/SLPVectorizer/RISCV/interleave-greater-than-slice.ll
-++++ b/llvm/test/Transforms/SLPVectorizer/RISCV/interleave-greater-than-slice.ll
-+@@ -0,0 +1,74 @@
-++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
-++; RUN: opt -S --passes=slp-vectorizer -mtriple=riscv64-unknown-linux -mattr=+v,+zvl128b < %s | FileCheck %s
- +
--+template <class T>
--+class Bar;
--+using Bar1 = Bar<int> _Nonnull; // expected-error{{nullability specifier '_Nonnull' cannot be applied to non-pointer type 'Bar<int>'}}
--+template <class T>
--+class _Nullable Bar;
--+using Bar2 = Bar<int> _Nonnull;
--+template <class T>
--+class Bar;
--+using Bar3 = Bar<int> _Nonnull;
--+
--+namespace std {
--+  template<class T> class unique_ptr;
--+  using UP1 = unique_ptr<int> _Nonnull;
--+  class X { template<class T> friend class unique_ptr; };
--+  using UP2 = unique_ptr<int> _Nonnull;
--+  template<class T> class unique_ptr;
--+  using UP3 = unique_ptr<int> _Nonnull;
-++define void @test(ptr %a, float %0) {
-++; CHECK-LABEL: define void @test(
-++; CHECK-SAME: ptr [[A:%.*]], float [[TMP0:%.*]]) #[[ATTR0:[0-9]+]] {
-++; CHECK-NEXT:  [[ENTRY:.*:]]
-++; CHECK-NEXT:    [[TMP1:%.*]] = load ptr, ptr [[A]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr i8, ptr [[TMP1]], i64 84
-++; CHECK-NEXT:    [[TMP2:%.*]] = load float, ptr [[ARRAYIDX]], align 4
-++; CHECK-NEXT:    [[TMP3:%.*]] = tail call float @llvm.fmuladd.f32(float [[TMP2]], float 0.000000e+00, float 0.000000e+00)
-++; CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr i8, ptr [[TMP1]], i64 28
-++; CHECK-NEXT:    [[TMP4:%.*]] = load float, ptr [[ARRAYIDX1]], align 4
-++; CHECK-NEXT:    [[TMP5:%.*]] = tail call float @llvm.fmuladd.f32(float [[TMP4]], float 0.000000e+00, float [[TMP3]])
-++; CHECK-NEXT:    [[ARRAYIDX2:%.*]] = getelementptr i8, ptr [[TMP1]], i64 8
-++; CHECK-NEXT:    [[TMP6:%.*]] = load float, ptr [[ARRAYIDX2]], align 4
-++; CHECK-NEXT:    [[TMP7:%.*]] = tail call float @llvm.fmuladd.f32(float [[TMP6]], float 0.000000e+00, float 0.000000e+00)
-++; CHECK-NEXT:    [[ARRAYIDX3:%.*]] = getelementptr i8, ptr [[TMP1]], i64 68
-++; CHECK-NEXT:    [[TMP8:%.*]] = load float, ptr [[ARRAYIDX3]], align 4
-++; CHECK-NEXT:    [[TMP9:%.*]] = tail call float @llvm.fmuladd.f32(float [[TMP8]], float 0.000000e+00, float [[TMP5]])
-++; CHECK-NEXT:    [[ARRAYIDX4:%.*]] = getelementptr i8, ptr [[TMP1]], i64 88
-++; CHECK-NEXT:    [[TMP10:%.*]] = load float, ptr [[ARRAYIDX4]], align 4
-++; CHECK-NEXT:    [[TMP11:%.*]] = tail call float @llvm.fmuladd.f32(float [[TMP10]], float 0.000000e+00, float [[TMP7]])
-++; CHECK-NEXT:    [[ARRAYIDX5:%.*]] = getelementptr i8, ptr [[TMP1]], i64 92
-++; CHECK-NEXT:    [[TMP12:%.*]] = load float, ptr [[ARRAYIDX5]], align 4
-++; CHECK-NEXT:    [[TMP13:%.*]] = tail call float @llvm.fmuladd.f32(float [[TMP12]], float 0.000000e+00, float [[TMP11]])
-++; CHECK-NEXT:    [[TMP14:%.*]] = tail call float @llvm.fmuladd.f32(float [[TMP0]], float 0.000000e+00, float [[TMP9]])
-++; CHECK-NEXT:    [[ARRAYIDX6:%.*]] = getelementptr i8, ptr [[TMP1]], i64 96
-++; CHECK-NEXT:    [[TMP15:%.*]] = load float, ptr [[ARRAYIDX6]], align 4
-++; CHECK-NEXT:    [[TMP16:%.*]] = tail call float @llvm.fmuladd.f32(float [[TMP15]], float 0.000000e+00, float [[TMP13]])
-++; CHECK-NEXT:    [[ARRAYIDX7:%.*]] = getelementptr i8, ptr [[TMP1]], i64 80
-++; CHECK-NEXT:    [[TMP17:%.*]] = load float, ptr [[ARRAYIDX7]], align 4
-++; CHECK-NEXT:    [[TMP18:%.*]] = tail call float @llvm.fmuladd.f32(float [[TMP0]], float [[TMP17]], float [[TMP16]])
-++; CHECK-NEXT:    [[ARRAYIDX8:%.*]] = getelementptr i8, ptr [[TMP1]], i64 100
-++; CHECK-NEXT:    [[TMP19:%.*]] = load float, ptr [[ARRAYIDX8]], align 4
-++; CHECK-NEXT:    [[TMP20:%.*]] = tail call float @llvm.fmuladd.f32(float [[TMP19]], float 0.000000e+00, float [[TMP14]])
-++; CHECK-NEXT:    [[ADD:%.*]] = fadd float [[TMP18]], [[TMP20]]
-++; CHECK-NEXT:    store float [[ADD]], ptr [[A]], align 4
-++; CHECK-NEXT:    ret void
-++;
-++entry:
-++  %1 = load ptr, ptr %a, align 8
-++  %arrayidx = getelementptr i8, ptr %1, i64 84
-++  %2 = load float, ptr %arrayidx, align 4
-++  %3 = tail call float @llvm.fmuladd.f32(float %2, float 0.000000e+00, float 0.000000e+00)
-++  %arrayidx1 = getelementptr i8, ptr %1, i64 28
-++  %4 = load float, ptr %arrayidx1, align 4
-++  %5 = tail call float @llvm.fmuladd.f32(float %4, float 0.000000e+00, float %3)
-++  %arrayidx2 = getelementptr i8, ptr %1, i64 8
-++  %6 = load float, ptr %arrayidx2, align 4
-++  %7 = tail call float @llvm.fmuladd.f32(float %6, float 0.000000e+00, float 0.000000e+00)
-++  %arrayidx3 = getelementptr i8, ptr %1, i64 68
-++  %8 = load float, ptr %arrayidx3, align 4
-++  %9 = tail call float @llvm.fmuladd.f32(float %8, float 0.000000e+00, float %5)
-++  %arrayidx4 = getelementptr i8, ptr %1, i64 88
-++  %10 = load float, ptr %arrayidx4, align 4
-++  %11 = tail call float @llvm.fmuladd.f32(float %10, float 0.000000e+00, float %7)
-++  %arrayidx5 = getelementptr i8, ptr %1, i64 92
-++  %12 = load float, ptr %arrayidx5, align 4
-++  %13 = tail call float @llvm.fmuladd.f32(float %12, float 0.000000e+00, float %11)
-++  %14 = tail call float @llvm.fmuladd.f32(float %0, float 0.000000e+00, float %9)
-++  %arrayidx6 = getelementptr i8, ptr %1, i64 96
-++  %15 = load float, ptr %arrayidx6, align 4
-++  %16 = tail call float @llvm.fmuladd.f32(float %15, float 0.000000e+00, float %13)
-++  %arrayidx7 = getelementptr i8, ptr %1, i64 80
-++  %17 = load float, ptr %arrayidx7, align 4
-++  %18 = tail call float @llvm.fmuladd.f32(float %0, float %17, float %16)
-++  %arrayidx8 = getelementptr i8, ptr %1, i64 100
-++  %19 = load float, ptr %arrayidx8, align 4
-++  %20 = tail call float @llvm.fmuladd.f32(float %19, float 0.000000e+00, float %14)
-++  %add = fadd float %18, %20
-++  store float %add, ptr %a, align 4
-++  ret void
- +}
- diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/IRAttributes.cpp b/mlir/lib/Bindings/Python/IRAttributes.cpp
- --- a/mlir/lib/Bindings/Python/IRAttributes.cpp
-@@ -471,3 +772,117 @@ diff -ruN --strip-trailing-cr a/mlir/test/python/ir/array_attributes.py b/mlir/t
-  ### 16 bit integer arrays
-  # CHECK-LABEL: TEST: testGetDenseElementsI16Signless
-  @run
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-+@@ -198,6 +198,30 @@
-+ ############################ Type Proxy Header Files ###########################
-+ 
-+ libc_support_library(
-++    name = "func_aligned_alloc",
-++    hdrs = ["hdr/func/aligned_alloc.h"],
-++    deps = [":hdr_stdlib_overlay"],
-++)
-++
-++libc_support_library(
-++    name = "func_free",
-++    hdrs = ["hdr/func/free.h"],
-++    deps = [":hdr_stdlib_overlay"],
-++)
-++
-++libc_support_library(
-++    name = "func_malloc",
-++    hdrs = ["hdr/func/malloc.h"],
-++    deps = [":hdr_stdlib_overlay"],
-++)
-++
-++libc_support_library(
-++    name = "func_realloc",
-++    hdrs = ["hdr/func/realloc.h"],
-++    deps = [":hdr_stdlib_overlay"],
-++)
-++
-++libc_support_library(
-+     name = "types_clockid_t",
-+     hdrs = ["hdr/types/clockid_t.h"],
-+ )
-+@@ -503,6 +527,9 @@
-+     deps = [
-+         ":__support_common",
-+         ":__support_macros_properties_os",
-++        ":func_aligned_alloc",
-++        ":func_free",
-++        ":func_malloc",
-+     ],
-+ )
-+ 
-+@@ -549,6 +576,9 @@
-+         ":__support_common",
-+         ":__support_cpp_string_view",
-+         ":__support_integer_to_string",
-++        ":func_free",
-++        ":func_malloc",
-++        ":func_realloc",
-+         ":string_memory_utils",
-+         ":string_utils",
-+     ],
-+@@ -630,6 +660,9 @@
-+     hdrs = ["src/__support/char_vector.h"],
-+     deps = [
-+         ":__support_common",
-++        ":func_free",
-++        ":func_malloc",
-++        ":func_realloc",
-+     ],
-+ )
-+ 
-+@@ -834,6 +867,10 @@
-+         ":__support_error_or",
-+         ":__support_threads_mutex",
-+         ":errno",
-++        ":func_aligned_alloc",
-++        ":func_free",
-++        ":func_malloc",
-++        ":func_realloc",
-+         ":hdr_stdio_macros",
-+         ":hdr_stdio_overlay",
-+         ":types_off_t",
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/libc_test_rules.bzl b/utils/bazel/llvm-project-overlay/libc/test/libc_test_rules.bzl
-+--- a/utils/bazel/llvm-project-overlay/libc/test/libc_test_rules.bzl
-++++ b/utils/bazel/llvm-project-overlay/libc/test/libc_test_rules.bzl
-+@@ -35,6 +35,10 @@
-+         deps = [libc_internal_target(d) for d in all_function_deps] + [
-+             "//libc/test/UnitTest:LibcUnitTest",
-+             "//libc:__support_macros_config",
-++            "//libc:func_aligned_alloc",
-++            "//libc:func_free",
-++            "//libc:func_malloc",
-++            "//libc:func_realloc",
-+         ] + deps,
-+         copts = copts + libc_common_copts(),
-+         linkstatic = 1,
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
-+@@ -22,6 +22,10 @@
-+         "//libc:__support_macros_properties_types",
-+         "//libc:__support_osutil_io",
-+         "//libc:__support_uint128",
-++        "//libc:func_aligned_alloc",
-++        "//libc:func_free",
-++        "//libc:func_malloc",
-++        "//libc:func_realloc",
-+     ],
-+ )
-+ 
-+@@ -61,6 +65,10 @@
-+         "//libc:errno",
-+         "//libc:llvm_libc_macros_stdfix_macros",
-+         "//llvm:Support",
-++        "//libc:func_aligned_alloc",
-++        "//libc:func_free",
-++        "//libc:func_malloc",
-++        "//libc:func_realloc",
-+     ],
-+ )
-+ 
+@@ -12,289 +12,6 @@ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+                          getWidenedType(Slice.front()->getType(), VF),
+                          InterleaveFactor,
+                          cast<LoadInst>(Slice.front())->getAlign(),
+-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/load-store.ll b/llvm/test/CodeGen/NVPTX/load-store.ll
+---- a/llvm/test/CodeGen/NVPTX/load-store.ll
+-+++ b/llvm/test/CodeGen/NVPTX/load-store.ll
+-@@ -167,25 +167,25 @@
+- ; CHECK-NEXT:  // %bb.0:
+- ; CHECK-NEXT:    ld.param.u64 %rd1, [generic_4xi8_param_0];
+- ; CHECK-NEXT:    ld.u32 %r1, [%rd1];
+--; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
+-+; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+- ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+--; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
+-+; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+- ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+--; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+--; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
+-+; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
+-+; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+- ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+--; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+--; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+--; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
+-+; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
+-+; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+- ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+--; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+--; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
+-+; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
+-+; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
+-+; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+- ; CHECK-NEXT:    st.u32 [%rd1], %r12;
+- ; CHECK-NEXT:    ret;
+-   %a.load = load <4 x i8>, ptr %a
+-@@ -511,25 +511,25 @@
+- ; CHECK-NEXT:  // %bb.0:
+- ; CHECK-NEXT:    ld.param.u64 %rd1, [generic_volatile_4xi8_param_0];
+- ; CHECK-NEXT:    ld.volatile.u32 %r1, [%rd1];
+--; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
+-+; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+- ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+--; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
+-+; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+- ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+--; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+--; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
+-+; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
+-+; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+- ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+--; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+--; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+--; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
+-+; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
+-+; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+- ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+--; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+--; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
+-+; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
+-+; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
+-+; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+- ; CHECK-NEXT:    st.volatile.u32 [%rd1], %r12;
+- ; CHECK-NEXT:    ret;
+-   %a.load = load volatile <4 x i8>, ptr %a
+-@@ -1416,25 +1416,25 @@
+- ; CHECK-NEXT:  // %bb.0:
+- ; CHECK-NEXT:    ld.param.u64 %rd1, [global_4xi8_param_0];
+- ; CHECK-NEXT:    ld.global.u32 %r1, [%rd1];
+--; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
+-+; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+- ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+--; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
+-+; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+- ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+--; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+--; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
+-+; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
+-+; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+- ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+--; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+--; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+--; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
+-+; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
+-+; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+- ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+--; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+--; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
+-+; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
+-+; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
+-+; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+- ; CHECK-NEXT:    st.global.u32 [%rd1], %r12;
+- ; CHECK-NEXT:    ret;
+-   %a.load = load <4 x i8>, ptr addrspace(1) %a
+-@@ -1741,25 +1741,25 @@
+- ; CHECK-NEXT:  // %bb.0:
+- ; CHECK-NEXT:    ld.param.u64 %rd1, [global_volatile_4xi8_param_0];
+- ; CHECK-NEXT:    ld.volatile.global.u32 %r1, [%rd1];
+--; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
+-+; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+- ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+--; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
+-+; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+- ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+--; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+--; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
+-+; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
+-+; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+- ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+--; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+--; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+--; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
+-+; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
+-+; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+- ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+--; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+--; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
+-+; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
+-+; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
+-+; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+- ; CHECK-NEXT:    st.volatile.global.u32 [%rd1], %r12;
+- ; CHECK-NEXT:    ret;
+-   %a.load = load volatile <4 x i8>, ptr addrspace(1) %a
+-@@ -2788,25 +2788,25 @@
+- ; CHECK-NEXT:  // %bb.0:
+- ; CHECK-NEXT:    ld.param.u64 %rd1, [shared_4xi8_param_0];
+- ; CHECK-NEXT:    ld.shared.u32 %r1, [%rd1];
+--; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
+-+; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+- ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+--; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
+-+; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+- ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+--; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+--; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
+-+; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
+-+; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+- ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+--; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+--; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+--; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
+-+; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
+-+; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+- ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+--; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+--; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
+-+; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
+-+; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
+-+; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+- ; CHECK-NEXT:    st.shared.u32 [%rd1], %r12;
+- ; CHECK-NEXT:    ret;
+-   %a.load = load <4 x i8>, ptr addrspace(3) %a
+-@@ -3113,25 +3113,25 @@
+- ; CHECK-NEXT:  // %bb.0:
+- ; CHECK-NEXT:    ld.param.u64 %rd1, [shared_volatile_4xi8_param_0];
+- ; CHECK-NEXT:    ld.volatile.shared.u32 %r1, [%rd1];
+--; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
+-+; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+- ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+--; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
+-+; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+- ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+--; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+--; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
+-+; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
+-+; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+- ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+--; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+--; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+--; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
+-+; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
+-+; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+- ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+--; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+--; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
+-+; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
+-+; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
+-+; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+- ; CHECK-NEXT:    st.volatile.shared.u32 [%rd1], %r12;
+- ; CHECK-NEXT:    ret;
+-   %a.load = load volatile <4 x i8>, ptr addrspace(3) %a
+-@@ -4018,25 +4018,25 @@
+- ; CHECK-NEXT:  // %bb.0:
+- ; CHECK-NEXT:    ld.param.u64 %rd1, [local_4xi8_param_0];
+- ; CHECK-NEXT:    ld.local.u32 %r1, [%rd1];
+--; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
+-+; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+- ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+--; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
+-+; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+- ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+--; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+--; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
+-+; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
+-+; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+- ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+--; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+--; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+--; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
+-+; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
+-+; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+- ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+--; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+--; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
+-+; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
+-+; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
+-+; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+- ; CHECK-NEXT:    st.local.u32 [%rd1], %r12;
+- ; CHECK-NEXT:    ret;
+-   %a.load = load <4 x i8>, ptr addrspace(5) %a
+-@@ -4343,25 +4343,25 @@
+- ; CHECK-NEXT:  // %bb.0:
+- ; CHECK-NEXT:    ld.param.u64 %rd1, [local_volatile_4xi8_param_0];
+- ; CHECK-NEXT:    ld.local.u32 %r1, [%rd1];
+--; CHECK-NEXT:    bfe.u32 %r2, %r1, 0, 8;
+-+; CHECK-NEXT:    bfe.u32 %r2, %r1, 24, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs1, %r2;
+- ; CHECK-NEXT:    add.s16 %rs2, %rs1, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r3, %rs2;
+--; CHECK-NEXT:    bfe.u32 %r4, %r1, 8, 8;
+-+; CHECK-NEXT:    bfe.u32 %r4, %r1, 16, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs3, %r4;
+- ; CHECK-NEXT:    add.s16 %rs4, %rs3, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r5, %rs4;
+--; CHECK-NEXT:    bfi.b32 %r6, %r5, %r3, 8, 8;
+--; CHECK-NEXT:    bfe.u32 %r7, %r1, 16, 8;
+-+; CHECK-NEXT:    prmt.b32 %r6, %r5, %r3, 13120;
+-+; CHECK-NEXT:    bfe.u32 %r7, %r1, 8, 8;
+- ; CHECK-NEXT:    cvt.u16.u32 %rs5, %r7;
+- ; CHECK-NEXT:    add.s16 %rs6, %rs5, 1;
+- ; CHECK-NEXT:    cvt.u32.u16 %r8, %rs6;
+--; CHECK-NEXT:    bfi.b32 %r9, %r8, %r6, 16, 8;
+--; CHECK-NEXT:    bfe.u32 %r10, %r1, 24, 8;
+--; CHECK-NEXT:    cvt.u16.u32 %rs7, %r10;
+-+; CHECK-NEXT:    bfe.u32 %r9, %r1, 0, 8;
+-+; CHECK-NEXT:    cvt.u16.u32 %rs7, %r9;
+- ; CHECK-NEXT:    add.s16 %rs8, %rs7, 1;
+--; CHECK-NEXT:    cvt.u32.u16 %r11, %rs8;
+--; CHECK-NEXT:    bfi.b32 %r12, %r11, %r9, 24, 8;
+-+; CHECK-NEXT:    cvt.u32.u16 %r10, %rs8;
+-+; CHECK-NEXT:    prmt.b32 %r11, %r10, %r8, 13120;
+-+; CHECK-NEXT:    prmt.b32 %r12, %r11, %r6, 21520;
+- ; CHECK-NEXT:    st.local.u32 [%rd1], %r12;
+- ; CHECK-NEXT:    ret;
+-   %a.load = load volatile <4 x i8>, ptr addrspace(5) %a
+ diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/RISCV/interleave-greater-than-slice.ll b/llvm/test/Transforms/SLPVectorizer/RISCV/interleave-greater-than-slice.ll
+ --- a/llvm/test/Transforms/SLPVectorizer/RISCV/interleave-greater-than-slice.ll
+ +++ b/llvm/test/Transforms/SLPVectorizer/RISCV/interleave-greater-than-slice.ll
+@@ -886,3 +603,14 @@ diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/UnitT
+      ],
+  )
+  
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++@@ -23,6 +23,7 @@
++ exports_files([
++     "LICENSE.TXT",
++     "cmake/modules/llvm-driver-template.cpp.in",
+++    "include/llvm/BinaryFormat/Dwarf.def",
++     "include/llvm/CodeGen/SDNodeProperties.td",
++     "include/llvm/CodeGen/ValueTypes.td",
++     "include/llvm/Frontend/Directive/DirectiveBase.td",
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index cbf4d37..364146d 100644
+index 364146d..8e9b100 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "5b32c5954b1d00435a2264f8d1bd1fd9db9cb022"
--    LLVM_SHA256 = "c4b5566c7c4a419503d036b0c415a63c000fec302de3a32b872afdc70094fd93"
-+    LLVM_COMMIT = "17d8ed717fced72ed313ee7553309345630b0097"
-+    LLVM_SHA256 = "4151ee12583e7d7697ea581dd29a7c57f43060abdff4421062d530e1151c6131"
+-    LLVM_COMMIT = "17d8ed717fced72ed313ee7553309345630b0097"
+-    LLVM_SHA256 = "4151ee12583e7d7697ea581dd29a7c57f43060abdff4421062d530e1151c6131"
++    LLVM_COMMIT = "bb9ff32867d633787b5dd2572bc6e2fe5dade107"
++    LLVM_SHA256 = "a1a3d041d035054266a691c1779f0c463a4362df83d246151508bf013bf54daa"
  
      tf_http_archive(
          name = name,
