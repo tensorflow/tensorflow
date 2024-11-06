@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/microfrontend/lib/log_lut.h"
+
+#include <stdint.h>
 const uint16_t kLogLut[]
 #ifndef _MSC_VER
     __attribute__((aligned(4)))

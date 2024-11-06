@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/microfrontend/lib/log_scale.h"
 
+#include <stdint.h>
+
 #include "tensorflow/lite/experimental/microfrontend/lib/bits.h"
 #include "tensorflow/lite/experimental/microfrontend/lib/log_lut.h"
 
