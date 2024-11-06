@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_TRANSPOSE_CONV_TESTER_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_TRANSPOSE_CONV_TESTER_H_
 
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <random>

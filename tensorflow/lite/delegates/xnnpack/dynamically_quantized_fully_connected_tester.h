@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_DYNAMICALLY_QUANTIZED_FULLY_CONNECTED_TESTER_H_
 
 #include <cstdint>
+#include <initializer_list>
 #include <vector>
 
 #include <gmock/gmock.h>

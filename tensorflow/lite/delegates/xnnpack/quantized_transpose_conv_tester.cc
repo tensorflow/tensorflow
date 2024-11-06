@@ -17,12 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <numeric>
 #include <random>
-#include <type_traits>
 #include <vector>
 
 #include <gtest/gtest.h>
