@@ -122,7 +122,6 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(TryGetKeyValue);
   UNIMPLEMENTED(GetKeyValueDir);
   UNIMPLEMENTED(DeleteKeyValue);
-  UNIMPLEMENTED(Barrier);
   UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
 
@@ -134,6 +133,7 @@ class TestCoordinationClient : public CoordinationClient {
   }
 
   UNIMPLEMENTED_WITH_CALL_OPTS(GetKeyValue);
+  UNIMPLEMENTED_WITH_CALL_OPTS(Barrier);
   UNIMPLEMENTED_WITH_CALL_OPTS(Heartbeat);
   UNIMPLEMENTED_WITH_CALL_OPTS(ShutdownTask);
   UNIMPLEMENTED_WITH_CALL_OPTS(PollForError);

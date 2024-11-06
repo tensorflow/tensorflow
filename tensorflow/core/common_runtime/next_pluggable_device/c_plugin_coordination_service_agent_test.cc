@@ -124,7 +124,7 @@ class TestCoordinationClient : public CoordinationClient {
       StatusCallback done) override {
     done(absl::UnimplementedError("ReportErrorToServiceAsync"));
   }
-  void BarrierAsync(const tsl::BarrierRequest* request,
+  void BarrierAsync(CallOptions* call_opts, const tsl::BarrierRequest* request,
                     tsl::BarrierResponse* response,
                     StatusCallback done) override {
     done(absl::UnimplementedError("BarrierAsync"));

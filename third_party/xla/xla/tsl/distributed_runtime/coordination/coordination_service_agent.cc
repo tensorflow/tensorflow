@@ -636,7 +636,7 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
     state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
   }
 
-  // Cancel all pending GetKeyValue() RPC calls.
+  // Cancel all pending GetKeyValue() and WaitAtBarrier() RPC calls.
   cancellation_manager_.StartCancel();
   return status;
 }
@@ -928,9 +928,24 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
   *request->mutable_source_task() = task_;
   *request->mutable_tasks() = {tasks.begin(), tasks.end()};
   VLOG(3) << "WaitAtBarrierRequest: " << request->DebugString();
+  auto call_opts = std::make_shared<CallOptions>();
+
+  const CancellationToken token =
+      cancellation_manager_.get_cancellation_token();
+  const bool already_cancelled = !cancellation_manager_.RegisterCallback(
+      token, [call_opts]() { call_opts->StartCancel(); });
+  if (already_cancelled) {
+    done(absl::CancelledError("WaitAtBarrierAsync() was cancelled."));
+    return;
+  }
+
   leader_client_->BarrierAsync(
-      request.get(), response.get(),
-      [request, response, done = std::move(done)](const absl::Status& s) {
+      call_opts.get(), request.get(), response.get(),
+      [call_opts, request, response, done = std::move(done),
+       &cm = cancellation_manager_, token](const absl::Status& s) {
+        // RPC call has completed (no longer needs to be cancelled if agent is
+        // destroyed).
+        cm.TryDeregisterCallback(token);
         auto status = TrimCoordinationErrorMessage(s);
         done(status);
         VLOG(3) << "WaitAtBarrierResponse: " << status;

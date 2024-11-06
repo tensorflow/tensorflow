@@ -74,8 +74,10 @@ MATCHER_P2(IsKvEntry, key, value, "") {
 
 class ClientServerTest : public ::testing::Test {
  public:
-  CoordinationServiceConfig GetConfig(absl::Duration init_and_shutdown_timeout,
-                                      bool shutdown_on_destruction = true) {
+  CoordinationServiceConfig GetConfig(
+      absl::Duration init_and_shutdown_timeout,
+      bool shutdown_on_destruction = true,
+      bool cluster_register_with_barrier = true) {
     // Set config.
     tensorflow::CoordinationServiceConfig config;
     config.set_service_type("standalone");
@@ -90,14 +92,17 @@ class ClientServerTest : public ::testing::Test {
     config.set_agent_destruction_without_shutdown(!shutdown_on_destruction);
     // TODO(b/369222279): Add more test cases that exercise TF behaviour (no
     // barrier).
-    config.set_cluster_register_with_barrier(true);
+    config.set_cluster_register_with_barrier(cluster_register_with_barrier);
     config.set_poll_for_error_from_service_at_startup(true);
     return config;
   }
 
   CoordinationServiceConfig GetServiceConfig(
-      int num_nodes, absl::Duration init_and_shutdown_timeout) {
-    auto config = GetConfig(init_and_shutdown_timeout);
+      int num_nodes, absl::Duration init_and_shutdown_timeout,
+      bool cluster_register_with_barrier) {
+    auto config = GetConfig(init_and_shutdown_timeout,
+                            /*shutdown_on_destruction=*/true,
+                            cluster_register_with_barrier);
     tensorflow::CoordinatedJob* job =
         config.mutable_coordinated_job_list()->Add();
     job->set_name("agent");
@@ -132,9 +137,11 @@ class ClientServerTest : public ::testing::Test {
     return coord_agent;
   }
 
-  void StartService(int num_nodes, absl::Duration init_and_shutdown_timeout =
-                                       absl::Seconds(1)) {
-    auto config = GetServiceConfig(num_nodes, init_and_shutdown_timeout);
+  void StartService(int num_nodes,
+                    absl::Duration init_and_shutdown_timeout = absl::Seconds(2),
+                    bool cluster_register_with_barrier = true) {
+    auto config = GetServiceConfig(num_nodes, init_and_shutdown_timeout,
+                                   cluster_register_with_barrier);
 
     int port = tsl::testing::PickUnusedPortOrDie();
     grpc::ServerBuilder builder;
@@ -870,6 +877,32 @@ TEST_F(ClientServerTest, DeleteKeyValue_Directory) {
   auto kvs = client->GetKeyValueDir("test_dir/");
   TF_ASSERT_OK(kvs.status());
   EXPECT_THAT(kvs.value(), IsEmpty());
+}
+
+TEST_F(ClientServerTest, Dtor_CancelsOngoingGetKeyValueAndBarrier) {
+  // Set 2 nodes with no register barrier to allowing pending barrier RPC.
+  StartService(/*num_nodes=*/2, /*init_and_shutdown_timeout=*/absl::Seconds(2),
+               /*cluster_register_with_barrier=*/false);
+  auto client = GetClient(/*node_id=*/0,
+                          /*init_and_shutdown_timeout=*/absl::Seconds(2),
+                          /*shutdown_on_destruction=*/false);
+  TF_ASSERT_OK(client->Connect());
+  absl::Status barrier_status, get_key_value_status;
+  client->WaitAtBarrierAsync(
+      "barrier", absl::Seconds(2), {},
+      [&barrier_status](absl::Status s) { barrier_status = s; });
+  client->GetKeyValueAsync(
+      "test_key",
+      [&get_key_value_status](const absl::StatusOr<std::string>& s) {
+        get_key_value_status = s.status();
+      });
+
+  // Destroy client.
+  client = nullptr;
+
+  // Pending RPCs should be cancelled.
+  EXPECT_EQ(barrier_status.code(), tsl::error::CANCELLED);
+  EXPECT_EQ(get_key_value_status.code(), tsl::error::CANCELLED);
 }
 
 }  // namespace
