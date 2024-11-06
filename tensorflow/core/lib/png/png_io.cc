@@ -18,6 +18,9 @@ limitations under the License.
 #include <string.h>
 #include <sys/types.h>
 #include <zlib.h>
+
+#include <csetjmp>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
