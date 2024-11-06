@@ -218,11 +218,12 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
     return batch_function.name();
   }
 
-  static Status Create(OpKernelContext* c,
-                       const serving::BatchResourceOptions& options,
-                       mlrt::bc::Function function,
-                       bool enable_large_batch_splitting, bool disable_padding,
-                       std::unique_ptr<MlrtBatchResource>* resource) {
+  static absl::Status Create(OpKernelContext* c,
+                             const serving::BatchResourceOptions& options,
+                             mlrt::bc::Function function,
+                             bool enable_large_batch_splitting,
+                             bool disable_padding,
+                             std::unique_ptr<MlrtBatchResource>* resource) {
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = options.num_batch_threads;
     std::shared_ptr<BatcherT> batcher;
@@ -245,7 +246,7 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
     return absl::OkStatus();
   }
 
-  static Status Create(
+  static absl::Status Create(
       OpKernelContext* c,
       AdaptiveBatcherT::Options adaptive_shared_batch_scheduler_options,
       int32_t max_batch_size, int32_t batch_timeout_micros,
@@ -293,7 +294,7 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
   void ProcessFuncBatchImpl(
       const BatchTask& last_task, absl::Span<const Tensor> inputs,
       std::vector<Tensor>* combined_outputs,
-      std::function<void(const Status&)> done) const override;
+      std::function<void(const absl::Status&)> done) const override;
 
   mlrt::bc::Function batch_function_;
 };
@@ -301,7 +302,7 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
 void MlrtBatchResource::ProcessFuncBatchImpl(
     const BatchTask& last_task, absl::Span<const Tensor> inputs,
     std::vector<Tensor>* combined_outputs,
-    std::function<void(const Status&)> done) const {
+    std::function<void(const absl::Status&)> done) const {
   std::vector<mlrt::Value> arguments;
   arguments.reserve(inputs.size());
   for (const auto& input : inputs) {
