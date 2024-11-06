@@ -30,7 +30,7 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
-tensorflow::Status RunTransformOnGraph(
+absl::Status RunTransformOnGraph(
     tensorflow::Graph* graph,
     const std::initializer_list<
         llvm::function_ref<std::unique_ptr<mlir::Pass>()>>& passes,
