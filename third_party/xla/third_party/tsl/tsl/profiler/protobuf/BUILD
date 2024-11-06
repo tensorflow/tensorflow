@@ -8,6 +8,7 @@ load("//tsl/platform:build_config.bzl", "tf_proto_library")
 package_group(
     name = "friends",
     includes = [
+        "//cloud/tpu/tools/c2xprof:friends",
         "@local_xla//xla/tsl/profiler:friends",
     ],
 )
