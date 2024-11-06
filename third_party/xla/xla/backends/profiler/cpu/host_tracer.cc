@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/profiler/cpu/host_tracer.h"
 
+#include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
