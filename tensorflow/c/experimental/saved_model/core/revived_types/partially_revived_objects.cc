@@ -56,7 +56,7 @@ using StructuredValueDictEntry =
 using NamedParamMap =
     gtl::FlatMap<StringPiece, const TensorSpecProto*, StringPieceHasher>;
 
-Status AssertAllCreateResourceFunctionsHaveNoCaptures(
+absl::Status AssertAllCreateResourceFunctionsHaveNoCaptures(
     const PartiallyRevivedObjects& objects) {
   for (const auto& id_and_resource : objects.restored_resources) {
     int node_id = id_and_resource.first;
@@ -76,14 +76,15 @@ Status AssertAllCreateResourceFunctionsHaveNoCaptures(
           "Create Resource functions with captures are currently unsupported.");
     }
   }
-  return Status();
+  return absl::Status();
 }
 
 // Retrieves the TensorHandle associated with `node_id` from `obj_graph`, and
 // set `*handle` to point to it.
-Status TensorHandleFromNode(int node_id, const SavedObjectGraph& obj_graph,
-                            const PartiallyRevivedObjects& objects,
-                            ImmediateExecutionTensorHandle** handle) {
+absl::Status TensorHandleFromNode(int node_id,
+                                  const SavedObjectGraph& obj_graph,
+                                  const PartiallyRevivedObjects& objects,
+                                  ImmediateExecutionTensorHandle** handle) {
   const SavedObject& node = obj_graph.nodes(node_id);
   SavedObject::KindCase kind = node.kind_case();
   switch (kind) {
@@ -95,7 +96,7 @@ Status TensorHandleFromNode(int node_id, const SavedObjectGraph& obj_graph,
             " of type variable to tensor but the variable wasn't initialized"));
       }
       *handle = variables_iter->second->handle();
-      return Status();
+      return absl::Status();
     }
     case SavedObject::kConstant: {
       const auto& constants_iter = objects.constants.find(node_id);
@@ -106,7 +107,7 @@ Status TensorHandleFromNode(int node_id, const SavedObjectGraph& obj_graph,
                          "constant wasn't initialized"));
       }
       *handle = constants_iter->second->handle();
-      return Status();
+      return absl::Status();
     }
     case SavedObject::kAsset: {
       const auto& assets_iter = objects.assets.find(node_id);
@@ -116,7 +117,7 @@ Status TensorHandleFromNode(int node_id, const SavedObjectGraph& obj_graph,
             " of type asset to tensor but the asset wasn't initialized"));
       }
       *handle = assets_iter->second->handle();
-      return Status();
+      return absl::Status();
     }
     case SavedObject::kResource: {
       const auto& resource_iter = objects.restored_resources.find(node_id);
@@ -132,7 +133,7 @@ Status TensorHandleFromNode(int node_id, const SavedObjectGraph& obj_graph,
             " should have its resource_handle created, but was nullptr."));
       }
       *handle = resource.resource_handle.get();
-      return Status();
+      return absl::Status();
     }
     default: {
       return absl::FailedPreconditionError(absl::StrCat(
@@ -165,7 +166,7 @@ std::vector<SignatureDefParam> SignatureDefParamsFromNamedParamMap(
 // field of a SavedConcreteFunction, ensures it conforms to the structure of
 // tuple(tuple(), dict<string,TensorSpec>()), and "returns" a list of
 // SignatureDefParams of the SignatureDefFunction's arguments.
-Status SignatureDefArgsFromInputs(
+absl::Status SignatureDefArgsFromInputs(
     const StructuredValue& canonicalized_input_signature,
     std::vector<SignatureDefParam>* out) {
   // Note(bmzhao): canonicalized_input_signature should be a tuple of
@@ -221,15 +222,16 @@ Status SignatureDefArgsFromInputs(
 
   *out = SignatureDefParamsFromNamedParamMap(result);
 
-  return Status();
+  return absl::Status();
 }
 
 // SignatureDefReturnsFromOutputs takes the "output_signature" field of a
 // SavedConcreteFunction, ensures it conforms to the structure of
 // dict<string,TensorSpec>(), and "returns" a list of SignatureDefParams of the
 // SignatureDefFunction's returns.
-Status SignatureDefReturnsFromOutputs(const StructuredValue& output_signature,
-                                      std::vector<SignatureDefParam>* out) {
+absl::Status SignatureDefReturnsFromOutputs(
+    const StructuredValue& output_signature,
+    std::vector<SignatureDefParam>* out) {
   if (!output_signature.has_dict_value()) {
     return absl::FailedPreconditionError(absl::StrCat(
         "SignatureDefFunction's output_signature must be a dictionary, but "
@@ -254,7 +256,7 @@ Status SignatureDefReturnsFromOutputs(const StructuredValue& output_signature,
   }
   *out = SignatureDefParamsFromNamedParamMap(result);
 
-  return Status();
+  return absl::Status();
 }
 
 // The implementation takes advantage of the fact that SignatureDefFunction's
@@ -264,7 +266,7 @@ Status SignatureDefReturnsFromOutputs(const StructuredValue& output_signature,
 // Additionally, we take advantage of the fact that the SignatureDefFunction's
 // associated functiondef has lexicographically ordered inputs/outputs due to
 // nest.flatten.
-Status LoadSignatureDefFunctionMetadata(
+absl::Status LoadSignatureDefFunctionMetadata(
     const SavedConcreteFunction& saved_concrete_function,
     SignatureDefFunctionMetadata* out) {
   std::vector<SignatureDefParam> args;
@@ -276,16 +278,16 @@ Status LoadSignatureDefFunctionMetadata(
       saved_concrete_function.output_signature(), &rets));
 
   *out = SignatureDefFunctionMetadata(std::move(args), std::move(rets));
-  return Status();
+  return absl::Status();
 }
 
 // This function finds the necessary captures, then forwards to the builder
 // method
-Status CreateConcreteFunction(ImmediateExecutionContext* ctx,
-                              const TFConcreteFunctionRevivalState& builder,
-                              const SavedObjectGraph& obj_graph,
-                              const PartiallyRevivedObjects& objects,
-                              std::unique_ptr<TFConcreteFunction>* out) {
+absl::Status CreateConcreteFunction(
+    ImmediateExecutionContext* ctx,
+    const TFConcreteFunctionRevivalState& builder,
+    const SavedObjectGraph& obj_graph, const PartiallyRevivedObjects& objects,
+    std::unique_ptr<TFConcreteFunction>* out) {
   const auto& capture_node_ids = builder.saved_concrete_func->bound_inputs();
   std::vector<ImmediateExecutionTensorHandle*> captures;
   captures.reserve(capture_node_ids.size());
@@ -303,7 +305,7 @@ Status CreateConcreteFunction(ImmediateExecutionContext* ctx,
                                     /*out=*/out);
 }
 
-Status CreateSignatureDefFunction(
+absl::Status CreateSignatureDefFunction(
     ImmediateExecutionContext* ctx,
     const TFSignatureDefFunctionRevivalState& builder,
     const SavedObjectGraph& obj_graph, const PartiallyRevivedObjects& objects,
@@ -329,10 +331,9 @@ Status CreateSignatureDefFunction(
                                         /*out=*/out);
 }
 
-Status InitializeCreateResourceFunctions(ImmediateExecutionContext* ctx,
-                                         const SavedObjectGraph& obj_graph,
-                                         const PartiallyRevivedObjects& objects,
-                                         RevivedObjects* revived) {
+absl::Status InitializeCreateResourceFunctions(
+    ImmediateExecutionContext* ctx, const SavedObjectGraph& obj_graph,
+    const PartiallyRevivedObjects& objects, RevivedObjects* revived) {
   for (const auto& id_and_resource : objects.restored_resources) {
     const RestoredResourceRevivalState& resource = id_and_resource.second;
     const TFConcreteFunctionRevivalState* create_resource_fn =
@@ -351,13 +352,13 @@ Status InitializeCreateResourceFunctions(ImmediateExecutionContext* ctx,
     revived->concrete_functions.Insert(std::move(out),
                                        create_resource_fn->node_id);
   }
-  return Status();
+  return absl::Status();
 }
 
-Status InitializeAllFunctions(ImmediateExecutionContext* ctx,
-                              const SavedObjectGraph& obj_graph,
-                              const PartiallyRevivedObjects& objects,
-                              RevivedObjects* revived) {
+absl::Status InitializeAllFunctions(ImmediateExecutionContext* ctx,
+                                    const SavedObjectGraph& obj_graph,
+                                    const PartiallyRevivedObjects& objects,
+                                    RevivedObjects* revived) {
   gtl::FlatMap<int, std::unique_ptr<TFSignatureDefFunction>>*
       destination_sig_map = &revived->signature_def_functions;
 
@@ -392,13 +393,13 @@ Status InitializeAllFunctions(ImmediateExecutionContext* ctx,
     (*destination_sig_map)[node_id] = std::move(out);
   }
 
-  return Status();
+  return absl::Status();
 }
 
-Status CreateAllResourceHandles(ImmediateExecutionContext* ctx,
-                                const SavedObjectGraph& obj_graph,
-                                PartiallyRevivedObjects* objects,
-                                RevivedObjects* revived) {
+absl::Status CreateAllResourceHandles(ImmediateExecutionContext* ctx,
+                                      const SavedObjectGraph& obj_graph,
+                                      PartiallyRevivedObjects* objects,
+                                      RevivedObjects* revived) {
   for (auto& id_and_resource : objects->restored_resources) {
     RestoredResourceRevivalState& resource = id_and_resource.second;
     int create_resource_fn_node = resource.create_resource->node_id;
@@ -428,13 +429,13 @@ Status CreateAllResourceHandles(ImmediateExecutionContext* ctx,
             owned_resource_handle.release()));
     resource.resource_handle = std::move(result);
   }
-  return Status();
+  return absl::Status();
 }
 
-Status BuildResources(ImmediateExecutionContext* ctx,
-                      const SavedObjectGraph& obj_graph,
-                      PartiallyRevivedObjects* objects,
-                      RevivedObjects* revived) {
+absl::Status BuildResources(ImmediateExecutionContext* ctx,
+                            const SavedObjectGraph& obj_graph,
+                            PartiallyRevivedObjects* objects,
+                            RevivedObjects* revived) {
   for (auto& id_and_resource : objects->restored_resources) {
     int node_id = id_and_resource.first;
     RestoredResourceRevivalState& resource_revival_state =
@@ -491,14 +492,14 @@ Status BuildResources(ImmediateExecutionContext* ctx,
                      /*resource_handle=*/
                      std::move(resource_revival_state.resource_handle)));
   }
-  return Status();
+  return absl::Status();
 }
 
 }  // namespace
 
-Status PartiallyRevivedObjects::Build(ImmediateExecutionContext* ctx,
-                                      const SavedObjectGraph& obj_graph,
-                                      RevivedObjects* revived) {
+absl::Status PartiallyRevivedObjects::Build(ImmediateExecutionContext* ctx,
+                                            const SavedObjectGraph& obj_graph,
+                                            RevivedObjects* revived) {
   // Step 1: We would like to initialize all functions; this requires setting up
   // their captured tensorhandles, which may come from variables, assets,
   // constants, or resources. The first three are trivial; However,
@@ -536,7 +537,7 @@ Status PartiallyRevivedObjects::Build(ImmediateExecutionContext* ctx,
   // 3b. Move over resources.
   TF_RETURN_IF_ERROR(BuildResources(ctx, obj_graph, this, revived));
 
-  return Status();
+  return absl::Status();
 }
 
 }  // namespace tensorflow

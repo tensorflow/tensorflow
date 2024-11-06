@@ -54,8 +54,9 @@ struct PartiallyRevivedObjects {
   gtl::FlatMap<int, RestoredResourceRevivalState> restored_resources;
   gtl::FlatMap<std::string, int> signatures_map;
 
-  Status Build(ImmediateExecutionContext* ctx,
-               const SavedObjectGraph& obj_graph, RevivedObjects* revived);
+  absl::Status Build(ImmediateExecutionContext* ctx,
+                     const SavedObjectGraph& obj_graph,
+                     RevivedObjects* revived);
 };
 
 }  // namespace tensorflow

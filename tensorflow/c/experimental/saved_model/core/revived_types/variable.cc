@@ -53,7 +53,7 @@ Variable::~Variable() {
     return;
   }
 
-  Status status = internal::DestroyResource(ctx_, handle_.get());
+  absl::Status status = internal::DestroyResource(ctx_, handle_.get());
   if (!status.ok()) {
     LOG(ERROR) << "Error destroying variable: " << name_
                << "due to: " << status;
@@ -64,15 +64,15 @@ DataType Variable::dtype() { return dtype_; }
 
 TensorShape Variable::shape() { return shape_; }
 
-Status Variable::Assign(ImmediateExecutionTensorHandle* handle) {
+absl::Status Variable::Assign(ImmediateExecutionTensorHandle* handle) {
   return internal::AssignVariable(ctx_, handle_.get(), dtype_, handle);
 }
 
-Status Variable::ReadValue(ImmediateTensorHandlePtr* out) {
+absl::Status Variable::ReadValue(ImmediateTensorHandlePtr* out) {
   return internal::ReadVariable(ctx_, handle_.get(), dtype_, out);
 }
 
-Status Variable::CreateUninitialized(
+absl::Status Variable::CreateUninitialized(
     ImmediateExecutionContext* ctx, DataType dtype, TensorShape shape,
     absl::optional<std::string> name, const char* raw_device_name,
     const std::vector<std::string>& component_devices,
@@ -84,7 +84,7 @@ Status Variable::CreateUninitialized(
         ctx, dtype, shape, raw_device_name, &handle));
     output->reset(
         new Variable(ctx, dtype, shape, std::move(name), std::move(handle)));
-    return Status();
+    return absl::Status();
   }
 
   if (!tensorflow::isa<EagerContext>(ctx)) {
@@ -121,7 +121,7 @@ Status Variable::CreateUninitialized(
   handle.reset(packed_handle);
   output->reset(
       new Variable(ctx, dtype, shape, std::move(name), std::move(handle)));
-  return Status();
+  return absl::Status();
 }
 
 }  // namespace tensorflow

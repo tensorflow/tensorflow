@@ -30,10 +30,10 @@ namespace tensorflow {
 
 class Asset : public TensorHandleConvertible {
  public:
-  static Status Create(ImmediateExecutionContext* ctx,
-                       const std::string& saved_model_dir,
-                       const std::string& asset_filename,
-                       std::unique_ptr<Asset>* output);
+  static absl::Status Create(ImmediateExecutionContext* ctx,
+                             const std::string& saved_model_dir,
+                             const std::string& asset_filename,
+                             std::unique_ptr<Asset>* output);
 
   // Asset is movable, but not copyable.
   Asset(Asset&& other) = default;
