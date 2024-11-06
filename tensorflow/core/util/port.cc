@@ -127,6 +127,7 @@ inline bool DefaultOneDnnPolicy() {
 }
 
 bool IsMklEnabled() {
+  return false;
 #ifndef INTEL_MKL
   return false;
 #endif
