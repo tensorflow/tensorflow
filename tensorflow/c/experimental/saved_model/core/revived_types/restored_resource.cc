@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/revived_types/restored_resource.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"

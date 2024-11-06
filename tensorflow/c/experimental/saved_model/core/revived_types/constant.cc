@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
 
 #include <memory>
+#include <utility>
 
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"

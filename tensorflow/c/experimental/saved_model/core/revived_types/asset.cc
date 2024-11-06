@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/revived_types/asset.h"
 
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"

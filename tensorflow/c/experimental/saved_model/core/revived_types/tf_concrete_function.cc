@@ -16,7 +16,8 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
 
 #include <memory>
-#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"

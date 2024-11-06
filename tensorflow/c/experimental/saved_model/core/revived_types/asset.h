@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_REVIVED_TYPES_ASSET_H_
 #define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_REVIVED_TYPES_ASSET_H_
 
+#include <memory>
 #include <string>
 
 #include "tensorflow/c/eager/immediate_execution_context.h"

@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_REVIVED_TYPES_VARIABLE_H_
 
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
