@@ -315,6 +315,13 @@ genrule(
     cmd = "echo '' > $@",
 )
 
+
+sh_binary(
+    name = "copy_wheel",
+    srcs = ['copy_wheel.sh'],
+    data = [":wheel"],
+)
+
 py_test(
     name = "prebuilt_wheel_import_api_packages_test",
     srcs = if_wheel_dependency(
