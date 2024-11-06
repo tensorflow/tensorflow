@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/concatenate_mlir.h"
 
 #include <cstdint>
-#include <iterator>
 #include <numeric>
 #include <optional>
 #include <vector>
