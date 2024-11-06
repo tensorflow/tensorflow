@@ -2064,7 +2064,7 @@ def TF_CacheDatasetV2Op : TF_Op<"CacheDatasetV2", []> {
   );
 }
 
-def TF_CastOp : TF_Op<"Cast", [Pure, SameOperandsAndResultShape]> {
+def TF_CastOp : TF_Op<"Cast", [Pure, SameOperandsAndResultShape, TF_CwiseUnary]> {
   let summary = "Cast x of type SrcT to y of DstT.";
 
   let arguments = (ins
