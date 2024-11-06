@@ -365,6 +365,13 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   }
 
   TF_RETURN_IF_ERROR(Process(hlo_live_range));
+  // DEBUG_LOG_ALLOCATIONS_AT
+  //
+  // Uncomment the following to log the alternate memory allocations that MSA
+  // made at a given schedule time.
+  //
+  // AllocationSequenceDebugging::LogAltMemAllocationsAt(
+  //     allocations_, /*time*/1);
   ScheduleAsynchronousCopies();
   TF_RETURN_IF_ERROR(SimplifyGraph());
   TF_RETURN_IF_ERROR(FixSchedule());
