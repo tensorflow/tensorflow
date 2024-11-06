@@ -443,7 +443,8 @@ tf_cc_test(
         "@llvm-project//mlir:Pass",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/client:client_library",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
 
