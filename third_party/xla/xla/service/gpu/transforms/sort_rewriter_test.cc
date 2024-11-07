@@ -444,6 +444,35 @@ ENTRY %main {
                                   m::GetTupleElement(m::CustomCall(), 1))));
 }
 
+TEST_F(SortRewriterTest, SortPairsComparerLikeStableSortExpanderNoIota) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = u16[] parameter(0)
+  %rhs = u16[] parameter(1)
+  %lhs_index = s32[] parameter(2)
+  %rhs_index = s32[] parameter(3)
+
+  cmp_indices = pred[] compare(%lhs_index, %rhs_index), direction=LT
+  cmp_lr = pred[] compare(%lhs, %rhs), direction=GT
+  cmp_rl = pred[] compare(%rhs, %lhs), direction=GT
+  cmp_eq = pred[] compare(cmp_lr, cmp_rl), direction=EQ
+
+  ROOT %lt = pred[] select(cmp_eq, cmp_indices, cmp_lr)
+}
+
+ENTRY %main {
+  %inputs = u16[1000] parameter(0)
+  %values = s32[1000] parameter(1)
+  ROOT %sort = (u16[1000], s32[1000]) sort(%inputs, %values),
+      dimensions={0}, to_apply=%compare
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_FALSE(RunModuleAndPass(module.get()));
+}
+
 TEST_F(SortRewriterTest, SortSizeThresholdIsSet) {
   EXPECT_EQ(SortRewriter::SortSizeThreshold(), 1000);
 }

@@ -51,6 +51,9 @@ namespace {
 struct SortComputationAnalysis {
   int key_operand;  // 0 or 1
   bool descending;
+  // Whether the matched comparator is stable. Needed to check an additional
+  // condition whether we can just ignore the comparison computation or not.
+  bool comparator_is_stable;
 };
 
 std::pair<int64_t, int64_t> ParametersFromCmpOperands(
@@ -97,7 +100,8 @@ std::optional<SortComputationAnalysis> AnalyzeCompareOp(
   bool descending = compare->direction() == ComparisonDirection::kGt ||
                     compare->direction() == ComparisonDirection::kGe;
   bool reverse = first_index != index0;
-  return SortComputationAnalysis{first_index / 2, descending != reverse};
+  return SortComputationAnalysis{first_index / 2, descending != reverse,
+                                 /*comparator_is_stable=*/false};
 }
 
 // Detects a sort with these properties:
@@ -162,7 +166,12 @@ std::optional<SortComputationAnalysis> AnalyzeComplexSortComputation(
   }
 
   // At this point only the last operand of the select needs to be verified.
-  return AnalyzeCompareOp(root->operand(2));
+  auto res = AnalyzeCompareOp(root->operand(2));
+  if (!res.has_value()) {
+    return std::nullopt;
+  }
+  res->comparator_is_stable = true;
+  return res;
 }
 
 std::optional<SortComputationAnalysis> AnalyzeSortOp(
@@ -328,6 +337,13 @@ bool IsCubCompatibleSort(const HloSortInstruction* sort_op) {
   auto sort_config = AnalyzeSortOp(*sort_op);
   if (!sort_config.has_value()) {
     VLOG(2) << "Only simple compare computations are supported";
+    return false;
+  }
+  if (sort_config->comparator_is_stable &&
+      sort_op->operand(1 - sort_config->key_operand)->opcode() !=
+          HloOpcode::kIota) {
+    VLOG(2)
+        << "For stable sort comparison we expect a iota op as values operand";
     return false;
   }
   if (!CreateRunner(sort_op, *sort_config).ok()) {
