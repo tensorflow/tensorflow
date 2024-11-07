@@ -3,22 +3,6 @@ The PR is open at the moment of writing, so only remove this patch when the chan
 and is included in an integration. Note that I had to modify the dialect names as these
 got updated later on but we are still using the old names.
 
-diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
---- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
-+++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
-@@ -112,7 +112,11 @@ warpsPerTileV3(Operation *dotOp, const A
-   SetVector<Operation *> slices;
-   mlir::getForwardSlice(dotOp->getResult(0), &slices);
-   if (llvm::find_if(slices, [&](Operation *op) {
--        return dotOp->getName() == op->getName();
-+        return dotOp->getName() == op->getName() ||
-+            // Contains a chained dot. We prefer to assign warps to one axis
-+            // to facilitate use cases like flash attention, allowing reductions
-+            // within the same warp.
-+            op->hasTrait<OpTrait::DotLike>();
-       }) != slices.end())
-     return {(unsigned)numWarps, 1};
- 
 diff --git a/test/TritonGPU/accelerate-matmul.mlir b/test/TritonGPU/accelerate-matmul.mlir
 --- a/test/TritonGPU/accelerate-matmul.mlir
 +++ b/test/TritonGPU/accelerate-matmul.mlir
