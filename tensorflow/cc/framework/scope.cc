@@ -506,7 +506,8 @@ Status Scope::DoShapeInference(Node* node) const {
 class InternalScope {
  public:
   // NewScope doesn't take ownership of the inputs.
-  static Scope NewScope(Graph* graph, Status* status, ShapeRefiner* refiner) {
+  static Scope NewScope(Graph* graph, absl::Status* status,
+                        ShapeRefiner* refiner) {
     Scope::Impl::NameMap* name_map = new Scope::Impl::NameMap;
     for (const Node* node : graph->nodes()) {
       const string& name = node->name();
