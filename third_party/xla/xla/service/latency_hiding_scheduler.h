@@ -882,7 +882,8 @@ class DefaultSchedulerCore : public SchedulerCore {
         shareable_resource_occupiers;
     // List of the graph nodes that release selective resources.
     std::vector<HloGraphNode*> selective_resource_releasers;
-
+    // Similar to ready set, but only contains the no-op instructions.
+    ReadyQueueSet nop_set;
     // Reference to this scheduler run configuration.
     const SchedulerConfig& config;
     SchedulingState(const HloInstructionSequence* instr_sequence,

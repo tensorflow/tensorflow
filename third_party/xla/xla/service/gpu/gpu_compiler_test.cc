@@ -751,11 +751,11 @@ ENTRY test_computation {
 CHECK:       recv-done
 CHECK-SAME:    channel_id=[[CHANNEL_ID:[0-9]+]]
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
+CHECK:       %[[AFTER_ALL:.*]] = after-all
 CHECK:       send-done
 CHECK-SAME:    channel_id=[[CHANNEL_ID]]
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
 CHECK:       %[[CUSTOM_CALL:.*]] = custom-call
-CHECK:       %[[AFTER_ALL:.*]] = after-all
 CHECK:       %[[RESULT_RECV:.*]] = recv(%[[AFTER_ALL]])
 CHECK-SAME:    channel_id=[[CHANNEL_ID]]
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",

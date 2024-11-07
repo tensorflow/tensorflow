@@ -843,12 +843,6 @@ class ReadySetLt {
             "kForceDelay")) {
       return *value;
     }
-    // Prioritize instructions that are NOPs as they have no memory pressure
-    // issue and unlock different operations for being scheduled.
-    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-            IsNop(*a.node), a, IsNop(*b.node), b, "kIsNop")) {
-      return *value;
-    }
     std::pair<int64_t, int64_t> a_increase = std::make_pair(0LL, 0LL);
     std::pair<int64_t, int64_t> b_increase = std::make_pair(0LL, 0LL);
     // Check if memory pressure tracking is enabled. Even if it evaluate memory
@@ -1305,6 +1299,12 @@ absl::StatusOr<HloGraphNode*>
 DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     DefaultSchedulerCore::SchedulingState& sched_state,
     DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node) {
+  // Schedule a nop instruction if available.
+  if (!sched_state.nop_set.empty()) {
+    HloGraphNode* node = sched_state.nop_set.back();
+    sched_state.nop_set.pop_back();
+    return node;
+  }
   absl::InlinedVector<std::pair<HloGraphNode*, SkipNodeReason>, 2>
       skipped_nodes_and_reasons;
   auto scheduling_instruction_crosses_overlap_limit =
@@ -1705,6 +1705,12 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
       }
     }
     edge.Target().SetReadyTime(ready_time);
+    // We are adding the no-op instructions to a separate set so that we can
+    // immediately schedule them when they are ready.
+    if (IsNopInstruction(edge.Target().GetInstr())) {
+      sched_state->nop_set.push_back(&edge.Target());
+      continue;
+    }
     sched_state->ready_set.push_back(&edge.Target());
     if (edge.Target().GetReadyTime() > current_time) {
       sched_state->next_ready_stack.push_back(&edge.Target());
@@ -2116,7 +2122,7 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   sched_state.ready_set.insert(sched_state.ready_set.end(), roots.begin(),
                                roots.end());
   // Schedule in order bottom up.
-  while (!sched_state.ready_set.empty()) {
+  while (!sched_state.ready_set.empty() || !sched_state.nop_set.empty()) {
     VLOG(10) << "Current ready time: " << sched_state.current_time;
     VLOG(2) << "Current ready queue:";
     XLA_VLOG_LINES(2, [&sched_state]() {
