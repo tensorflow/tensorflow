@@ -88,10 +88,11 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   if (block_level_parameters.num_stages == kAmdDoubleBuffering &&
       ccRocm.has_amd_matrix_core()) {
-    pm.addPass(mlir::createTritonAMDGPUStreamPipelinePass());
+    pm.addPass(mlir::createTritonAMDGPUStreamPipelineV2Pass(
+        block_level_parameters.num_stages));
     pm.addPass(mlir::createCanonicalizerPass());
   }
-  pm.addPass(mt::createInsertInstructionSchedHintsPass());
+  pm.addPass(mt::createTritonAMDGPUInsertInstructionSchedHintsPass());
   pm.addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm.addPass(mt::gpu::createTritonGPUReduceDataDuplication());
@@ -123,8 +124,9 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
-  pm.addPass(mt::createLowerInstructionSchedHintsPass("default"));
-  pm.addPass(mt::createConvertBuiltinFuncToLLVMPass());
+  pm.addPass(mt::createTritonAMDGPULowerInstructionSchedHintsPass(
+      block_level_parameters.num_stages, "default"));
+  pm.addPass(mt::createConvertBuiltinFuncToLLVMPass(/*ftz=*/true));
   // There is no clusters in ROCm for now.
   out_cluster_info.clusterDimX = 1;
   out_cluster_info.clusterDimY = 1;

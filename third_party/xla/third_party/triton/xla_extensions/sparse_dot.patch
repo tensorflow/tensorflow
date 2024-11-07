@@ -226,14 +226,32 @@ index d74e0a224..4e45f7c4c 100644
      seen.clear();
      dfs(&op, 0, &op);
 @@ -433,7 +445,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
-         continue;
      }
  
+     bool hasSharedEncoding = false;
 -    if (use->hasTrait<OpTrait::DotLike>()) {
 +    if (isDotLikeOp(use)) {
-       loadInfo.usedByDot = true;
        if (loadIsMMAv3(op)) {
-         loadInfo.loadIsMMAV3 = true;
+         hasSharedEncoding = true;
+       } else if (isa<tt::ExperimentalDescriptorLoadOp>(op)) {
+@@ -522,7 +522,7 @@ getTransitiveUserInBlock(Operation *baseOp, scf::ForOp &forOp) {
+             return;
+           }
+           if (isa<tt::LoadOp, tt::ExperimentalDescriptorLoadOp>(op) ||
+-              op->hasTrait<OpTrait::DotLike>()) {
++              isDotLikeOp(op)) {
+             // Stop recursion when hitting a LoadOp or a DotOp.
+             users.push_back(op);
+             return;
+@@ -586,7 +586,7 @@ assignMemoryLayouts(scf::ForOp &forOp, tt::CoarseSchedule &schedule,
+     loadsToPipeline.insert(&op);
+     LoadInfo loadInfo;
+     for (auto use : users) {
+-      if (use->hasTrait<OpTrait::DotLike>()) {
++      if (isDotLikeOp(use)) {
+         loadInfo.usedByDot = true;
+         if (loadIsMMAv3(&op)) {
+           loadInfo.loadIsMMAV3 = true;
 diff --git a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
 index fb0e7f6fd..37795c20c 100644
 --- a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp

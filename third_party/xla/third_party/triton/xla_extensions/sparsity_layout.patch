@@ -14,11 +14,10 @@ index 34fb89954..a0172e107 100644
 +                                                        inputs);
      llvm_unreachable("Argument rematerialization should not happen in Triton "
                       "-> TritonGPU conversion");
-     return Value();
-@@ -67,6 +73,12 @@ TritonGPUTypeConverter::TritonGPUTypeConverter(MLIRContext *context,
+     return {};
+@@ -67,5 +73,11 @@ TritonGPUTypeConverter::TritonGPUTypeConverter(MLIRContext *context,
    addSourceMaterialization([&](OpBuilder &builder, RankedTensorType tensorType,
-                                ValueRange inputs,
-                                Location loc) -> Value {
+                                ValueRange inputs, Location loc) -> Value {
 +    // Allows partial TTIR to TTGIR conversion by materializing a conversion for
 +    // remaining uses of values that have been converted to a new type.
 +    // We use this to rewrite triton_xla.sparse_dot in a separate pass after
@@ -27,7 +26,7 @@ index 34fb89954..a0172e107 100644
 +                                                        inputs);
      llvm_unreachable("Source rematerialization should not happen in Triton -> "
                       "TritonGPU Conversion");
-     return Value();
+     return {};
 diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dialect.cpp
 index df3d3b042..e38c184f6 100644
 --- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
