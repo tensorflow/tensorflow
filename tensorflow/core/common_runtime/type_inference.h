@@ -40,7 +40,7 @@ namespace tensorflow {
 // TODO(mdan): Use a regular union-based algorithm instead?
 class TypeInferencePass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 // A version of TypeInferencePass that prints a warning on error, instead
