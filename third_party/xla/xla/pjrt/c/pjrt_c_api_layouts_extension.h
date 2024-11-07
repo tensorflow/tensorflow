@@ -49,8 +49,9 @@ struct PJRT_Layouts_MemoryLayout_Destroy_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
   PJRT_Layouts_MemoryLayout* layout;
+  PJRT_Struct_Sentinel sentinel;  // mark end of struct
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_MemoryLayout_Destroy_Args, layout);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_MemoryLayout_Destroy_Args);
 
 // Frees `layout`. `layout` can be nullptr.
 typedef PJRT_Error* PJRT_Layouts_MemoryLayout_Destroy(
@@ -71,9 +72,9 @@ struct PJRT_Layouts_MemoryLayout_Serialize_Args {
   // Should only be called once on serialized_layout.
   void (*serialized_layout_deleter)(
       PJRT_Layouts_SerializedLayout* s_layout);  // out
+  PJRT_Struct_Sentinel sentinel;                 // mark end of struct
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_MemoryLayout_Serialize_Args,
-                          serialized_layout_deleter);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_MemoryLayout_Serialize_Args);
 
 // Serializes the memory layout into a string.
 typedef PJRT_Error* PJRT_Layouts_MemoryLayout_Serialize(
@@ -84,8 +85,9 @@ struct PJRT_Layouts_PJRT_Buffer_MemoryLayout_Args {
   PJRT_Extension_Base* extension_start;
   PJRT_Buffer* buffer;
   PJRT_Layouts_MemoryLayout* layout;  // out
+  PJRT_Struct_Sentinel sentinel;      // mark end of struct
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_PJRT_Buffer_MemoryLayout_Args, layout);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_PJRT_Buffer_MemoryLayout_Args);
 
 // Returns the memory layout of the data in this buffer. Returned `layout` must
 // be freed via PJRT_Layouts_MemoryLayout_Destroy.
@@ -100,9 +102,9 @@ struct PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args {
   const int64_t* dims;
   size_t num_dims;
   PJRT_Layouts_MemoryLayout* layout;  // out
+  PJRT_Struct_Sentinel sentinel;      // mark end of struct
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args,
-                          layout);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args);
 
 // Returns the default memory layout of the client given buffer type and dims.
 typedef PJRT_Error* PJRT_Layouts_PJRT_Client_GetDefaultLayout(
@@ -122,9 +124,9 @@ typedef struct PJRT_Layouts_Extension {
       PJRT_Layouts_PJRT_Client_GetDefaultLayout;
 
   PJRT_Layouts_PJRT_Buffer_MemoryLayout* PJRT_Layouts_PJRT_Buffer_MemoryLayout;
+  PJRT_Struct_Sentinel sentinel;  // mark end of struct
 } PJRT_Layouts_Extension;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_Extension,
-                          PJRT_Layouts_PJRT_Buffer_MemoryLayout);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Layouts_Extension);
 
 #ifdef __cplusplus
 }

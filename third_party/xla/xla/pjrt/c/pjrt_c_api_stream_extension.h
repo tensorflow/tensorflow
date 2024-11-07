@@ -31,9 +31,9 @@ struct PJRT_Get_Stream_For_External_Ready_Events_Args {
   size_t struct_size;
   PJRT_Device* device;
   intptr_t stream;  // out
+  PJRT_Struct_Sentinel sentinel;  // mark end of struct
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Get_Stream_For_External_Ready_Events_Args,
-                          stream);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Get_Stream_For_External_Ready_Events_Args);
 
 // Returns a platform-specific stream handle that should be used to track when
 // an externally-managed buffer is ready to use on this device.
@@ -44,8 +44,9 @@ struct PJRT_Wait_Until_Buffer_Ready_On_Stream_Args {
   size_t struct_size;
   intptr_t stream;
   PJRT_Buffer* buffer;
+  PJRT_Struct_Sentinel sentinel;  // mark end of struct
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Wait_Until_Buffer_Ready_On_Stream_Args, buffer);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Wait_Until_Buffer_Ready_On_Stream_Args);
 
 // Waits until buffer is ready on stream.
 typedef PJRT_Error* PJRT_Wait_Until_Buffer_Ready_On_Stream(
@@ -57,8 +58,9 @@ typedef struct PJRT_Stream_Extension {
   PJRT_Extension_Base* next;
   PJRT_Get_Stream_For_External_Ready_Events* get_stream;
   PJRT_Wait_Until_Buffer_Ready_On_Stream* wait_stream;
+  PJRT_Struct_Sentinel sentinel;  // mark end of struct
 } PJRT_Stream_Extension;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Stream_Extension, wait_stream);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Stream_Extension);
 
 #ifdef __cplusplus
 }

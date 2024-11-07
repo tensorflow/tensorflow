@@ -36,8 +36,9 @@ typedef struct PJRT_Profiler_Extension {
   PLUGIN_Profiler_Api* profiler_api;
   // valid only when used as an args extension
   int64_t traceme_context_id;
+  PJRT_Struct_Sentinel sentinel;  // mark end of struct
 } PJRT_Profiler_Extension;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Profiler_Extension, traceme_context_id);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Profiler_Extension);
 
 #ifdef __cplusplus
 }

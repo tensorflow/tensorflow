@@ -111,8 +111,9 @@ struct PJRT_Register_Custom_Partitioner_Args {
   const char* name;  // lifetime of the call.
   size_t name_size;
   JAX_CustomCallPartitioner_Callbacks* callbacks;
+  PJRT_Struct_Sentinel sentinel;  // mark end of struct
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Register_Custom_Partitioner_Args, callbacks);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Register_Custom_Partitioner_Args);
 
 // Registers a custom partitioner.
 typedef PJRT_Error* PJRT_Register_Custom_Partitioner(
@@ -123,9 +124,9 @@ typedef struct PJRT_Custom_Partitioner_Extension {
   PJRT_Extension_Type type;
   PJRT_Extension_Base* next;
   PJRT_Register_Custom_Partitioner* register_custom_partitioner;
+  PJRT_Struct_Sentinel sentinel;  // mark end of struct
 } PJRT_Custom_Partitioner_Extension;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Custom_Partitioner_Extension,
-                          register_custom_partitioner);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Custom_Partitioner_Extension);
 
 #ifdef __cplusplus
 }
