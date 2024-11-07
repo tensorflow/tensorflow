@@ -91,10 +91,10 @@ Status FunctionDefToBodyHelper(
   return absl::OkStatus();
 }
 
-Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,
-                               const AttrSlice& attrs,
-                               const FunctionLibraryDefinition* lib_def,
-                               std::unique_ptr<FunctionBody>* fbody) {
+absl::Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,
+                                     const AttrSlice& attrs,
+                                     const FunctionLibraryDefinition* lib_def,
+                                     std::unique_ptr<FunctionBody>* fbody) {
   const auto get_func_sig = [&lib_def](const string& op, const OpDef** sig) {
     return lib_def->LookUpOpDef(op, sig);
   };

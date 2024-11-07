@@ -197,7 +197,7 @@ class ExecutorBarrier {
   int pending_ TF_GUARDED_BY(mu_) = 0;
   StatusGroup status_group_ TF_GUARDED_BY(mu_);
 
-  void WhenDone(const Status& s) {
+  void WhenDone(const absl::Status& s) {
     Rendezvous* error_rendez = nullptr;
     StatusCallback done = nullptr;
     Status status;
