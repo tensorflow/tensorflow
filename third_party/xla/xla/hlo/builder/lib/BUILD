@@ -646,7 +646,10 @@ xla_test(
     srcs = ["svd_test.cc"],
     real_hardware_only = True,
     shard_count = 10,
-    tags = ["optonly"],
+    tags = [
+        "optonly",
+        "cuda-only" #TODO(rocm): weekly sync 24-11-05
+    ],
     deps = [
         ":arithmetic",
         ":constants",
