@@ -633,7 +633,7 @@ class ShardedVariableMixin(trackable.Trackable):
     # Example:
     #   base = 10, extra = 2, partitions: [0, 11), [11, 22), [22, 32)
     #   index = 10 -> partition_assignment = 0
-    #   index = 22 -> partition_assiment = 2
+    #   index = 22 -> partition_assignment = 2
     partition_assignments = math_ops.maximum(
         indices // (base + 1), (indices - extra) // base
     )
