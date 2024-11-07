@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_COMPILER_PLUGIN_ALGO_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_COMPILER_PLUGIN_ALGO_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_COMPILER_PLUGIN_ALGO_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_COMPILER_PLUGIN_ALGO_H_
 
 #include <vector>
 
@@ -36,4 +36,4 @@ LiteRtOp OutlinePartition(LiteRtSubgraphT& root, LiteRtSubgraph slice,
 
 }  // namespace litert::internal
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_COMPILER_PLUGIN_ALGO_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_COMPILER_PLUGIN_ALGO_H_

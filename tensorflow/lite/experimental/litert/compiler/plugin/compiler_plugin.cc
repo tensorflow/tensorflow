@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/core/compiler_plugin/compiler_plugin.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 
 #include <ostream>
 #include <string>

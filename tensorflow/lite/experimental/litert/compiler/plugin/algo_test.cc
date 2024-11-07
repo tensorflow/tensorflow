@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/core/compiler_plugin/algo.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/algo.h"
 
 #include <memory>
 #include <unordered_set>
