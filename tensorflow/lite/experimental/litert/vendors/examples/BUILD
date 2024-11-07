@@ -29,10 +29,11 @@ litert_dynamic_lib(
     so_name = "libLiteRtCompilerPlugin_Example.so",
     visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/cc:litert_support",
         "//tensorflow/lite/experimental/litert/core:graph_tools",
-        "//tensorflow/lite/experimental/litert/core:model",
     ],
 )
 
@@ -44,11 +45,12 @@ cc_test(
     data = ["//tensorflow/lite/experimental/litert/test:tflite_test_data"],
     deps = [
         ":example_plugin",  # buildcleaner: keep
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/cc:litert_support",
         "//tensorflow/lite/experimental/litert/core:graph_tools",
-        "//tensorflow/lite/experimental/litert/core:model",
+        "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_googletest//:gtest_main",

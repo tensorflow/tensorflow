@@ -36,32 +36,32 @@
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/core/compiler_plugin/algo.h"
 #include "tensorflow/lite/experimental/litert/core/compiler_plugin/compiler_plugin.h"
-#include "tensorflow/lite/experimental/litert/core/litert_model_init.h"
+#include "tensorflow/lite/experimental/litert/core/model/model_load.h"
+#include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
 #include "tensorflow/lite/experimental/litert/tools/tool_display.h"
 
-using litert::BufferRef;
-using litert::OwningBufferRef;
-using litert::internal::CompilerPlugin;
-using litert::internal::Dump;
-using litert::internal::FinishByteCodePlaceholders;
-using litert::internal::GroupPartitions;
-using litert::internal::kByteCodeMetadataKey;
-using litert::internal::kLiteRtBuildStampKey;
-using litert::internal::kLiteRtDispatchOpCustomCode;
-using litert::internal::LoadModelFromFile;
-using litert::internal::MakeBuildStamp;
-using litert::internal::MakeByteCodePlaceholder;
-using litert::internal::MakeExecInfo;
-using litert::internal::OutlinePartition;
-using litert::internal::RegisterCustomOpCode;
-using litert::internal::Serialization;
-using litert::internal::VerifyFlatbuffer;
-using litert::tools::ApplyPluginRun;
-
 namespace litert::tools {
+
+using ::litert::BufferRef;
+using ::litert::OwningBufferRef;
+using ::litert::internal::CompilerPlugin;
+using ::litert::internal::Dump;
+using ::litert::internal::FinishByteCodePlaceholders;
+using ::litert::internal::GroupPartitions;
+using ::litert::internal::kByteCodeMetadataKey;
+using ::litert::internal::kLiteRtBuildStampKey;
+using ::litert::internal::kLiteRtDispatchOpCustomCode;
+using ::litert::internal::LoadModelFromFile;
+using ::litert::internal::MakeBuildStamp;
+using ::litert::internal::MakeByteCodePlaceholder;
+using ::litert::internal::MakeExecInfo;
+using ::litert::internal::OutlinePartition;
+using ::litert::internal::Serialization;
+using ::litert::internal::VerifyFlatbuffer;
+using ::litert::tools::ApplyPluginRun;
 
 #define LITERT_ENSURE_CONFIG(expr)              \
   if (!(expr)) {                                \
@@ -194,29 +194,28 @@ CompilerPlugin::ResultT LoadPlugin(Context* ctx) {
   return CompilerPlugin::ResultT::FromStatus(kLiteRtStatusErrorNotFound);
 }
 
-LiteRtResult<litert::Model> LoadModel(Context* ctx) {
+LiteRtResult<Model> LoadModel(Context* ctx) {
   ctx->Dump().Start("Load Model");
   ctx->Dump().Labeled() << absl::StreamFormat("Loading model from: %s\n",
                                               ctx->Run().model.value());
-
-  auto model = LoadModelFromFile(ctx->Run().model->data());
-  if (model.Status() != kLiteRtStatusOk) {
+  auto model_result = LoadModelFromFile(ctx->Run().model->data());
+  if (!model_result.HasValue()) {
+    ctx->Dump().Labeled() << "Failed to load model from file.";
     ctx->Dump().Fail();
-    return LiteRtResult<litert::Model>::FromStatus(kLiteRtStatusErrorFileIO);
+    return model_result;
   }
 
   ctx->Dump().Labeled();
-  Dump(*model.Value().Get(), ctx->Dump().Display());
-
+  Dump(*model_result.Value().Get(), ctx->Dump().Display());
   ctx->Dump().Done();
-  return model;
+
+  return model_result;
 }
 
 std::vector<LiteRtOp> ApplyPartition(Context* ctx, const Model& model,
                                      CompilerPlugin& plugin) {
   ctx->Dump().Start("Partition Model");
-  LITERT_RETURN_VAL_IF_NOT_OK(
-      RegisterCustomOpCode(model, kLiteRtDispatchOpCustomCode.data()), {});
+  model.Get()->custom_op_code = kLiteRtDispatchOpCustomCode;
 
   ctx->Dump().Labeled() << "Input model: \n";
   for (auto it = model.Get()->subgraphs.begin();
@@ -261,14 +260,13 @@ std::vector<LiteRtOp> ApplyPartition(Context* ctx, const Model& model,
   return res;
 }
 
-LiteRtResult<litert::Model> PartitionModel(Context* ctx, Model&& model,
-                                           CompilerPlugin& plugin) {
+LiteRtResult<Model> PartitionModel(Context* ctx, Model&& model,
+                                   CompilerPlugin& plugin) {
   auto custom_ops = ApplyPartition(ctx, model, plugin);
   if (custom_ops.empty()) {
-    return LiteRtResult<litert::Model>::FromStatus(
-        kLiteRtStatusErrorGraphModification);
+    return LiteRtResult<Model>::FromStatus(kLiteRtStatusErrorGraphModification);
   }
-  return LiteRtResult<litert::Model>::TakeValue(std::move(model));
+  return LiteRtResult<Model>::TakeValue(std::move(model));
 }
 
 LiteRtResult<std::vector<std::string>> CompilePartitions(
@@ -422,7 +420,7 @@ LiteRtStatus StampModel(Context* ctx, LiteRtModel model) {
 LiteRtResult<OwningBufferRef<uint8_t>> DoMetadataSerialization(
     Context* ctx, std::vector<LiteRtOp>& custom_ops,
     std::vector<std::string>& call_info, BufferRef<uint8_t> compilation_out,
-    litert::Model&& model) {
+    Model&& model) {
   using ResT = OwningBufferRef<uint8_t>;
 
   ctx->Dump().Start("Serializing with bytecode in METADATA");
@@ -464,7 +462,7 @@ LiteRtResult<OwningBufferRef<uint8_t>> DoMetadataSerialization(
 LiteRtResult<OwningBufferRef<uint8_t>> DoAppendSerialization(
     Context* ctx, std::vector<LiteRtOp>& custom_ops,
     std::vector<std::string>& call_info, BufferRef<uint8_t> compilation_out,
-    litert::Model&& model) {
+    Model&& model) {
   using ResT = OwningBufferRef<uint8_t>;
   ctx->Dump().Start("Serializing with bytecode APPEND");
 

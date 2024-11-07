@@ -20,12 +20,7 @@
 #include <tuple>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
-#include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
-
-#ifndef NDEBUG
-#endif
-
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
@@ -34,39 +29,17 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
+#include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
 
-#define _D_MATCH_TRUE(v)                             \
-  {                                                  \
-    if (!(v)) {                                      \
-      LITERT_LOG(LITERT_ERROR, "Failed MATCH_TRUE"); \
-      return false;                                  \
-    }                                                \
-  }
-
-#define _D_MATCH_EQ(lhs, rhs)                      \
-  {                                                \
-    if ((lhs) != (rhs)) {                          \
-      LITERT_LOG(LITERT_ERROR, "Failed MATCH_EQ"); \
-      return false;                                \
-    }                                              \
-  }
-
-#define _MATCH_TRUE(v)      \
+#define MATCH_TRUE(v)       \
   {                         \
     if (!(v)) return false; \
   }
 
-#define _MATCH_EQ(lhs, rhs)           \
+#define MATCH_EQ(lhs, rhs)            \
   {                                   \
     if ((lhs) != (rhs)) return false; \
   }
-#ifndef NDEBUG
-#define MATCH_EQ(lhs, rhs) _D_MATCH_EQ(lhs, rhs)
-#define MATCH_TRUE(v) _D_MATCH_TRUE(v)
-#else
-#define MATCH_EQ(lhs, rhs) _MATCH_EQ(lhs, rhs)
-#define MATCH_TRUE(v) _MATCH_TRUE(v)
-#endif
 
 namespace litert::internal {
 
@@ -79,8 +52,7 @@ using ::litert::BufferRef;
 //                               Getters                                      //
 //===----------------------------------------------------------------------===//
 
-// TODO: b/365299994 - Switch llvm container types for mobile friendly ones.
-// Likely will need to define them.
+// TODO: b/365299994 - Switch llvm container types for absl.
 
 // Get the ops that reference given tensor.
 inline LiteRtResult<llvm::SmallVector<TensorUseInfo>> GetTensorUses(
@@ -364,7 +336,7 @@ inline LiteRtResult<llvm::ArrayRef<T>> GetWeights(LiteRtTensor tensor) {
 
 // Match weights behind given tensor contains data.
 template <typename T>
-inline bool MatchWeights(LiteRtTensor tensor, llvm::ArrayRef<T> expected_data) {
+inline bool MatchWeights(LiteRtTensor tensor, absl::Span<T> expected_data) {
   LiteRtWeights weights = nullptr;
   LITERT_RETURN_VAL_IF_NOT_OK(LiteRtGetTensorWeights(tensor, &weights), false);
   MATCH_TRUE(weights != nullptr);
@@ -376,8 +348,8 @@ inline bool MatchWeights(LiteRtTensor tensor, llvm::ArrayRef<T> expected_data) {
   MATCH_TRUE(data != nullptr);
 
   MATCH_EQ(size, expected_data.size() * sizeof(T));
-  return llvm::ArrayRef<T>(static_cast<const T*>(data), expected_data.size()) ==
-         expected_data;
+  return absl::MakeConstSpan(static_cast<const T*>(data),
+                             expected_data.size()) == expected_data;
 }
 
 // Match given tensor having no (empty) weights.

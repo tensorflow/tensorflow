@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_H_
 
 #include <cstdint>
 #include <list>
@@ -162,4 +162,4 @@ class LiteRtOpListT {
   std::list<LiteRtOp> ops_;
 };
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_H_

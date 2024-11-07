@@ -26,7 +26,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_support.h"  // IWYU pragma: export
-#include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 
 // Flatbuffer's raw char type.
 typedef uint8_t FbCharT;
@@ -56,18 +55,6 @@ inline absl::string_view FbBufToStr(FbBufferT fb_buf) {
 #define _CONCAT_NAME(x, y) _CONCAT_NAME_IMPL(x, y)
 
 #define _RETURN_VAL(val) return val
-
-// TODO: b/365295276 - Put all smart pointer wrappers in support.h.
-struct LiteRtCompilerPluginDeleter {
-  void operator()(LiteRtCompilerPlugin plugin) {
-    if (plugin != nullptr) {
-      LiteRtDestroyCompilerPlugin(plugin);
-    }
-  }
-};
-
-using UniqueLiteRtCompilerPlugin =
-    std::unique_ptr<LiteRtCompilerPluginT, LiteRtCompilerPluginDeleter>;
 
 // `StatusOr` analog for litert. Very basic currently.
 // TODO: b/365295276 - Figure out how to better infer template param

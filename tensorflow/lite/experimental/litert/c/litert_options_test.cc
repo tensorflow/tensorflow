@@ -17,7 +17,6 @@
 
 #include <gmock/gmock.h>  // IWYU pragma: keep
 #include <gtest/gtest.h>
-#include "llvm/ADT/ArrayRef.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_options.h"
 #include "tensorflow/lite/experimental/litert/core/graph_tools.h"

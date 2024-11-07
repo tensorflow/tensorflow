@@ -49,15 +49,15 @@ cc_library(
         "common.h",
     ],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
-        "//tensorflow/lite/experimental/litert/core:litert_model_init",
-        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_support",
+        "//tensorflow/lite/experimental/litert/core/model",
+        "//tensorflow/lite/experimental/litert/core/model:model_load",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@flatbuffers//:runtime_cc",
         "@local_tsl//tsl/platform",
     ],
 )
@@ -74,7 +74,7 @@ cc_library(
         "testdata/simple_model_qualcomm.bin",
     ],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
     ],
 )
 
@@ -91,6 +91,6 @@ cc_library(
         "testdata/simple_model_qualcomm.bin",
     ],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
     ],
 )

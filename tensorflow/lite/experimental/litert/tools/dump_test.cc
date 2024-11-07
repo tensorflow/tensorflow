@@ -18,7 +18,7 @@
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/litert/core/model.h"
+#include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
 namespace {

@@ -16,12 +16,11 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TEST_COMMON_H_
 
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/litert/core/litert_model_init.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
 #define _ASSERT_RESULT_OK_ASSIGN(decl, expr, result) \
   auto result = (expr);                              \

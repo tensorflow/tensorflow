@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/core/model.h"
+#include "tensorflow/lite/experimental/litert/core/model/model.h"
 
 namespace litert::internal {
 

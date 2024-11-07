@@ -18,31 +18,18 @@ package(
 )
 
 cc_library(
-    name = "compiler_plugin_hdr",
-    hdrs = ["compiler_plugin.h"],
-    deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
-        "//tensorflow/lite/experimental/litert/core:dynamic_loading",
-        "//tensorflow/lite/experimental/litert/core:model",
-        "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin_api",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "compiler_plugin",
     srcs = ["compiler_plugin.cc"],
     hdrs = ["compiler_plugin.h"],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/c:litert_support",
+        "//tensorflow/lite/experimental/litert/cc:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_support",
         "//tensorflow/lite/experimental/litert/core:dynamic_loading",
-        "//tensorflow/lite/experimental/litert/core:model",
+        "//tensorflow/lite/experimental/litert/core/model",
+        "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin_api",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
@@ -84,9 +71,9 @@ cc_library(
     srcs = ["algo.cc"],
     hdrs = ["algo.h"],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
-        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
-        "//tensorflow/lite/experimental/litert/core:model",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/cc:litert_support",
+        "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
@@ -102,9 +89,10 @@ cc_test(
     deps = [
         ":algo",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/core:api_internal",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/cc:litert_support",
         "//tensorflow/lite/experimental/litert/core:graph_tools",
-        "//tensorflow/lite/experimental/litert/core:model",
+        "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_googletest//:gtest_main",
     ],

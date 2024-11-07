@@ -45,8 +45,9 @@ litert_dynamic_lib(
     so_name = "libLiteRtDispatch.so",
     visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/core:utils",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
@@ -72,7 +73,7 @@ cc_test(
     }),
     deps = [
         ":dispatch_api",
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:simple_model",

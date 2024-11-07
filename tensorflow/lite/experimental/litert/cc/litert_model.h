@@ -26,7 +26,6 @@
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/c/litert_support.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 
@@ -273,13 +272,8 @@ class Subgraph : public internal::NonOwnedHandle<LiteRtSubgraph> {
   }
 };
 
-namespace internal {
-void LiteRtDestroyModel(LiteRtModel model);
-}  // namespace internal
-
 // Model. C++ equivalent of LiteRtModel.
-class Model
-    : public internal::Handle<LiteRtModel, internal::LiteRtDestroyModel> {
+class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
  public:
   Model() = default;
 
@@ -329,8 +323,7 @@ class Model
   // Parameter `owned` indicates if the created TensorBuffer object should take
   // ownership of the provided `tensor_buffer` handle.
   Model(LiteRtModel model, bool owned)
-      : internal::Handle<LiteRtModel, internal::LiteRtDestroyModel>(model,
-                                                                    owned) {}
+      : internal::Handle<LiteRtModel, LiteRtModelDestroy>(model, owned) {}
 };
 
 }  // namespace litert

@@ -206,6 +206,9 @@ LiteRtStatus LiteRtGetModelSubgraph(LiteRtModel model,
                                     LiteRtParamIndex subgraph_index,
                                     LiteRtSubgraph* subgraph);
 
+// Destroy the given model, freeing any memory it owns.
+void LiteRtModelDestroy(LiteRtModel model);
+
 //
 // Utility Types
 //

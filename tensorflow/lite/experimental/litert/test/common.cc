@@ -26,10 +26,9 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
-#include "tensorflow/lite/experimental/litert/core/litert_model_init.h"
+#include "tensorflow/lite/experimental/litert/core/model/model_load.h"
 #include "tsl/platform/platform.h"
 
 namespace litert {
@@ -69,6 +68,8 @@ absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename) {
 }
 
 Model LoadTestFileModel(absl::string_view filename) {
+  auto model_result = internal::LoadModelFromFile(filename);
+
   auto model = internal::LoadModelFromFile(GetTestFilePath(filename).data());
   ABSL_CHECK_EQ(model.Status(), kLiteRtStatusOk);
   return std::move(model.Value());

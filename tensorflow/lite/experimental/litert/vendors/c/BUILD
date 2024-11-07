@@ -20,7 +20,10 @@ package(
 cc_library(
     name = "litert_compiler_plugin",
     hdrs = ["litert_compiler_plugin.h"],
-    deps = ["//tensorflow/lite/experimental/litert/c:litert_c_api"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+    ],
 )
 
 cc_library(
@@ -28,7 +31,8 @@ cc_library(
     hdrs = ["litert_compiler_plugin_api.h"],
     deps = [
         ":litert_compiler_plugin",
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
     ],
 )
 
@@ -39,7 +43,8 @@ cc_library(
         "litert_dispatch_api.h",
     ],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/runtime/dispatch",
     ],
