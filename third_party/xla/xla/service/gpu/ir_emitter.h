@@ -87,7 +87,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     return absl::OkStatus();
   }
 
-  llvm::IRBuilder<>* builder() { return &b_; }
+  llvm::IRBuilderBase* builder() { return &b_; }
 
  protected:
   // Constructs an IrEmitter with the given IrEmitter context.

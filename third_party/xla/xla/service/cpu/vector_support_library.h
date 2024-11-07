@@ -56,7 +56,7 @@ class VectorSupportLibrary {
   // instance (i.e. LoadVector will load a vector of type <`vector_size` x
   // `primitive_type`>).
   VectorSupportLibrary(PrimitiveType primitive_type, int64_t vector_size,
-                       llvm::IRBuilder<>* b, std::string name);
+                       llvm::IRBuilderBase* b, std::string name);
 
   llvm::Value* Mul(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* Mul(int64_t lhs, llvm::Value* rhs) {
@@ -237,7 +237,7 @@ class VectorSupportLibrary {
   llvm::Value* GetZeroVector();
   llvm::Value* GetZeroScalar();
 
-  llvm::IRBuilder<>* b() const { return b_; }
+  llvm::IRBuilderBase* b() const { return b_; }
   int64_t vector_size() const { return vector_size_; }
   llvm::Type* vector_type() const { return vector_type_; }
   llvm::Type* vector_pointer_type() const { return vector_pointer_type_; }
@@ -295,7 +295,7 @@ class VectorSupportLibrary {
 
   int64_t vector_size_;
   PrimitiveType primitive_type_;
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
   llvm::Type* vector_type_;
   llvm::Type* vector_pointer_type_;
   llvm::Type* scalar_type_;
@@ -307,14 +307,14 @@ class VectorSupportLibrary {
 // can later convert to a SSA value.
 class LlvmVariable {
  public:
-  LlvmVariable(llvm::Type*, llvm::IRBuilder<>* b);
+  LlvmVariable(llvm::Type*, llvm::IRBuilderBase* b);
 
   llvm::Value* Get() const;
   void Set(llvm::Value* new_value);
 
  private:
   llvm::AllocaInst* alloca_;
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
 };
 
 class VectorVariable : public LlvmVariable {

@@ -40,7 +40,7 @@ using EmitCallToNestedComputationCallback =
 absl::Status EmitSortInPlace(
     int64_t dimension_to_sort, const std::vector<IrArray>& values_arrays,
     absl::string_view name, absl::Span<const int64_t> xor_masks,
-    llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
+    llvm::IRBuilderBase* b, const gpu::LaunchDimensions& launch_dimensions,
     int64_t num_iterations_in_sort_dim, int64_t tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback);
 }  // namespace llvm_ir

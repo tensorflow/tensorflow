@@ -221,12 +221,13 @@ class IrEmitter2 {
       absl::Span<const KernelParameter> arguments,
       absl::Span<const KernelParameter> results);
 
-  KernelThreadDims EmitKernelThreadDims(llvm::IRBuilder<>& b,
+  KernelThreadDims EmitKernelThreadDims(llvm::IRBuilderBase& b,
                                         llvm::Value* call_frame);
 
-  KernelThread EmitKernelThread(llvm::IRBuilder<>& b, llvm::Value* call_frame);
+  KernelThread EmitKernelThread(llvm::IRBuilderBase& b,
+                                llvm::Value* call_frame);
 
-  llvm_ir::IrArray EmitKernelArgument(llvm::IRBuilder<>& b,
+  llvm_ir::IrArray EmitKernelArgument(llvm::IRBuilderBase& b,
                                       llvm::Value* call_frame, int64_t index,
                                       const Shape& shape);
 
@@ -239,7 +240,7 @@ class IrEmitter2 {
   // Emits LLVM IR that computes parallel partition bounds from the call frame's
   // block and thread dimensions and parallel execution config.
   ParallelPartitionBounds EmitParallelPartitionBounds(
-      llvm::IRBuilder<>& b, const KernelPrototype& kernel_prototype,
+      llvm::IRBuilderBase& b, const KernelPrototype& kernel_prototype,
       const ParallelConfig& parallel_config, const Shape& shape,
       std::string_view name);
 
@@ -247,7 +248,7 @@ class IrEmitter2 {
   // If the instruction is parallelized, it will emit a parallel loop partition
   // and return the requested number of execution threads.
   absl::StatusOr<se::ThreadDim> EmitElementalLoops(
-      llvm::IRBuilder<>& b, const HloInstruction* instr,
+      llvm::IRBuilderBase& b, const HloInstruction* instr,
       const KernelPrototype& kernel_prototype,
       const llvm_ir::ElementGenerator& element_generator);
 

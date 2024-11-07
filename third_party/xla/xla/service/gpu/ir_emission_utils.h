@@ -119,12 +119,12 @@ bool IsContiguousSlice(const HloInstruction& instr);
 //
 // https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
 llvm::Value* EmitFullWarpShuffleDown(
-    llvm::Value* value, llvm::Value* offset, llvm::IRBuilder<>* builder,
+    llvm::Value* value, llvm::Value* offset, llvm::IRBuilderBase* builder,
     const se::DeviceDescription& gpu_device_info);
 
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
-llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
+llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b);
 
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
@@ -210,7 +210,7 @@ void VerifyModule(const llvm::Module& module);
 //    range of i32.
 // Otherwise, the return type is i64.
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
-                                  int64_t launch_size, llvm::IRBuilder<>* b);
+                                  int64_t launch_size, llvm::IRBuilderBase* b);
 
 // Whether the module's target is an AMD GPU.
 bool IsAMDGPU(const llvm::Module* module);

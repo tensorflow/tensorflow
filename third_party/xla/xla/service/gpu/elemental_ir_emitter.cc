@@ -56,7 +56,7 @@ namespace xla {
 namespace gpu {
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
-    IrEmitterContext& ir_emitter_context, llvm::IRBuilder<>* b)
+    IrEmitterContext& ir_emitter_context, llvm::IRBuilderBase* b)
     : ElementalIrEmitter(ir_emitter_context.llvm_module(), b),
       ir_emitter_context_(ir_emitter_context) {}
 

@@ -47,7 +47,7 @@ namespace {
 using IrEmitterTest = HloTestBase;
 
 static std::pair<llvm::Function*, llvm::BasicBlock*> CreateFunction(
-    llvm::LLVMContext& context, llvm::Module* module, llvm::IRBuilder<>* b) {
+    llvm::LLVMContext& context, llvm::Module* module, llvm::IRBuilderBase* b) {
   llvm::PointerType* ptrtype = llvm::PointerType::getUnqual(context);
   llvm::FunctionType* ftype = llvm::FunctionType::get(ptrtype, ptrtype, false);
 
@@ -90,7 +90,7 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
   IrEmitter ir_emitter(nullptr, *hlo, *buffer_assignment, module.get(), {}, {},
                        {}, &target_machine, false);
 
-  llvm::IRBuilder<>* b = ir_emitter.b();
+  llvm::IRBuilderBase* b = ir_emitter.b();
   ASSERT_NE(b, nullptr);
 
   const std::pair<llvm::Function*, llvm::BasicBlock*> fb =

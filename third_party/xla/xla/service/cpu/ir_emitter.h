@@ -141,11 +141,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       bool allow_reassociation,
       absl::Span<const llvm::Attribute::AttrKind> function_attributes = {});
 
-  llvm::IRBuilder<>* b() { return current_builder_; }
-  const llvm::IRBuilder<>* b() const { return current_builder_; }
+  llvm::IRBuilderBase* b() { return current_builder_; }
+  const llvm::IRBuilderBase* b() const { return current_builder_; }
   // builder() is for IrBuilderMixin.
-  llvm::IRBuilder<>* builder() { return current_builder_; }
-  const llvm::IRBuilder<>* builder() const { return current_builder_; }
+  llvm::IRBuilderBase* builder() { return current_builder_; }
+  const llvm::IRBuilderBase* builder() const { return current_builder_; }
 
   IrFunction* compute_function() { return &compute_function_.top(); }
 
@@ -160,7 +160,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   }
 
   // Used by IrEmitter2
-  void PushComputeFunction(llvm::IRBuilder<>* b, llvm::Module* llvm_module,
+  void PushComputeFunction(llvm::IRBuilderBase* b, llvm::Module* llvm_module,
                            int64_t num_dynamic_loop_bounds,
                            llvm::Function* function,
                            llvm::Value* dynamic_loop_bounds_arg,
@@ -214,7 +214,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // This is convenient for reusing the same logic with a different builder.
   class IRBuilderGuard {
    public:
-    explicit IRBuilderGuard(IrEmitter* ir_emitter, llvm::IRBuilder<>* builder)
+    explicit IRBuilderGuard(IrEmitter* ir_emitter, llvm::IRBuilderBase* builder)
         : ir_emitter_(ir_emitter),
           original_builder_(ir_emitter->current_builder_) {
       ir_emitter_->current_builder_ = builder;
@@ -227,12 +227,12 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
    private:
     IrEmitter* ir_emitter_;
-    llvm::IRBuilder<>* original_builder_;
+    llvm::IRBuilderBase* original_builder_;
   };
 
   // WithBuilder is a convenience function that creates and returns a
   // IRBuilderGuard for the current IrEmitter.
-  [[nodiscard]] IRBuilderGuard WithBuilder(llvm::IRBuilder<>& builder) {
+  [[nodiscard]] IRBuilderGuard WithBuilder(llvm::IRBuilderBase& builder) {
     return IRBuilderGuard(this, &builder);
   }
 
@@ -517,7 +517,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                               const llvm_ir::IrArray& containing_array);
 
   using ReductionGenerator = std ::function<llvm::Value*(
-      llvm::IRBuilder<>*, llvm::Value*, llvm::Value*)>;
+      llvm::IRBuilderBase*, llvm::Value*, llvm::Value*)>;
 
   // Tries to match the reduction function "function" to a known reduction
   // pattern.  Returns a non-null ReductionGenerator on a successful match,
@@ -628,7 +628,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   llvm::IRBuilder<> main_builder_;
   // The current builder to use for IR emission. This is either `main_builder_`
   // or a temporary builder that replaces it.
-  llvm::IRBuilder<>* current_builder_;
+  llvm::IRBuilderBase* current_builder_;
   std::stack<IrFunction> compute_function_;
   mlir::MLIRContext* mlir_context_;
   bool allow_reassociation_;
@@ -694,21 +694,21 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     explicit ProfilingState(bool use_rdtscp) : use_rdtscp_(use_rdtscp) {}
 
     // Record the cycle counter before an HLO executes.
-    void RecordCycleStart(llvm::IRBuilder<>* b, HloInstruction* hlo);
+    void RecordCycleStart(llvm::IRBuilderBase* b, HloInstruction* hlo);
     // Record the number of cycles it took for an HLO to execute.
-    void RecordCycleDelta(llvm::IRBuilder<>* b, HloInstruction* hlo,
+    void RecordCycleDelta(llvm::IRBuilderBase* b, HloInstruction* hlo,
                           llvm::Value* prof_counter);
     // Record the number of cycles it took for the entire computation to
     // execute.
-    void RecordCompleteComputation(llvm::IRBuilder<>* b,
+    void RecordCompleteComputation(llvm::IRBuilderBase* b,
                                    llvm::Value* prof_counter);
 
     // Convenience function to generate a call to an intrinsic which reads the
     // CPU cycle counter.
-    llvm::Value* ReadCycleCounter(llvm::IRBuilder<>* b);
+    llvm::Value* ReadCycleCounter(llvm::IRBuilderBase* b);
 
     // Store the cycle counter delta to the per-HLO profile counter.
-    void UpdateProfileCounter(llvm::IRBuilder<>* b, llvm::Value* prof_counter,
+    void UpdateProfileCounter(llvm::IRBuilderBase* b, llvm::Value* prof_counter,
                               llvm::Value* cycle_end, llvm::Value* cycle_start);
 
    private:
@@ -733,9 +733,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
    public:
     TracingState() : enabled_(false) {}
     void set_enabled(bool value) { enabled_ = value; }
-    void EmitTracingStart(llvm::IRBuilder<>* b, HloInstruction* hlo,
+    void EmitTracingStart(llvm::IRBuilderBase* b, HloInstruction* hlo,
                           llvm::Value* run_options);
-    void EmitTracingEnd(llvm::IRBuilder<>* b, HloInstruction* hlo,
+    void EmitTracingEnd(llvm::IRBuilderBase* b, HloInstruction* hlo,
                         llvm::Value* run_options);
 
    private:
@@ -832,14 +832,14 @@ void EmitTransferElements(llvm::Value* target, llvm::Value* source,
                           int64_t element_count, PrimitiveType primitive_type,
                           const llvm_ir::IrArray& target_array,
                           const llvm_ir::IrArray& source_array,
-                          llvm::Module* module, llvm::IRBuilder<>& b);
+                          llvm::Module* module, llvm::IRBuilderBase& b);
 
 // Decoupled implementation of IrEmitter::EmitFastConcatenate.
 absl::Status EmitFastConcatenate(
     const HloInstruction* instr,
     absl::Span<const llvm_ir::IrArray> source_arrays,
     const llvm_ir::IrArray& target_array, llvm::Module* module,
-    llvm::IRBuilder<>& b);
+    llvm::IRBuilderBase& b);
 
 }  // namespace cpu
 }  // namespace xla

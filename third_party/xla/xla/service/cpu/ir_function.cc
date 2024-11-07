@@ -51,7 +51,7 @@ static std::vector<llvm::Type*> GetComputeFunctionParams(
 IrFunction::IrFunction(const std::string& function_name,
                        llvm::Function::LinkageTypes linkage,
                        const HloModuleConfig& module_config,
-                       llvm::Module* llvm_module, llvm::IRBuilder<>* b,
+                       llvm::Module* llvm_module, llvm::IRBuilderBase* b,
                        int64_t num_dynamic_loop_bounds)
     : b_(b),
       llvm_module_(llvm_module),
@@ -60,7 +60,7 @@ IrFunction::IrFunction(const std::string& function_name,
   Initialize(function_name, linkage, module_config);
 }
 
-IrFunction::IrFunction(llvm::IRBuilder<>* b, llvm::Module* llvm_module,
+IrFunction::IrFunction(llvm::IRBuilderBase* b, llvm::Module* llvm_module,
                        int64_t num_dynamic_loop_bounds,
                        llvm::Function* function,
                        llvm::Value* dynamic_loop_bounds_arg,
@@ -226,7 +226,7 @@ llvm::Value* IrFunction::GetDynamicLoopBound(const int64_t offset) {
 
 llvm::Value* EncodeArrayFunctionArguments(
     absl::Span<llvm::Value* const> arguments, absl::string_view name,
-    llvm::IRBuilder<>* b) {
+    llvm::IRBuilderBase* b) {
   llvm::Value* arguments_buffer;
   if (arguments.empty()) {
     arguments_buffer = llvm::Constant::getNullValue(b->getPtrTy());
@@ -249,7 +249,7 @@ llvm::Value* EncodeArrayFunctionArguments(
 // Returns an array of compute function call arguments (including parameter
 // address buffer).
 std::vector<llvm::Value*> GetArrayFunctionCallArguments(
-    absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,
+    absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilderBase* b,
     absl::string_view name, llvm::Value* return_value_buffer,
     llvm::Value* exec_run_options_arg, llvm::Value* buffer_table_arg,
     llvm::Value* status_arg, llvm::Value* profile_counters_arg) {
@@ -265,8 +265,9 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
 // calls to 'parallel_function' (and joins threads before returning).
 absl::Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
-    absl::Span<const int64_t> dimension_partition_counts, llvm::IRBuilder<>* b,
-    llvm::Function* parallel_function, absl::string_view name) {
+    absl::Span<const int64_t> dimension_partition_counts,
+    llvm::IRBuilderBase* b, llvm::Function* parallel_function,
+    absl::string_view name) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
 
   // Build ParallelForkJoin function type.

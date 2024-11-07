@@ -46,7 +46,7 @@ class MemoryTile {
   // `tile_size_along_major_dim` vectors from the matrix `matrix`, starting at
   // `major_dim_offset` in the major dimension.  The tile size along the minor
   // dimension is the vector size, and that is implicitly determined by `vsl`.
-  MemoryTile(VectorSupportLibrary* vsl, llvm::IRBuilder<>* b,
+  MemoryTile(VectorSupportLibrary* vsl, llvm::IRBuilderBase* b,
              llvm::Value* matrix, int64_t matrix_size_along_minor_dim,
              llvm::Value* major_dim_offset, int64_t tile_size_along_major_dim)
       : vsl_(vsl), b_(b) {
@@ -106,7 +106,7 @@ class MemoryTile {
 
  private:
   VectorSupportLibrary* vsl_;
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
   std::vector<llvm::Value*> pointers_;
 };
 
@@ -246,7 +246,7 @@ class ColumnMajorMatrixVectorProductEmitter
   ColumnMajorMatrixVectorProductEmitter(const Config& config, llvm::Value* lhs,
                                         llvm::Value* rhs, llvm::Value* addend,
                                         llvm::Value* result,
-                                        llvm::IRBuilder<>* b)
+                                        llvm::IRBuilderBase* b)
       : config_(config),
         lhs_(lhs),
         rhs_(rhs),
@@ -299,7 +299,7 @@ class ColumnMajorMatrixVectorProductEmitter
   llvm::Value* rhs_;
   llvm::Value* addend_;
   llvm::Value* result_;
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
   KernelSupportLibrary ksl_;
   VectorSupportLibrary vsl_;
 };
@@ -474,7 +474,8 @@ class RowMajorMatrixVectorProductEmitter
 
   RowMajorMatrixVectorProductEmitter(const Config& config, llvm::Value* lhs,
                                      llvm::Value* rhs, llvm::Value* addend,
-                                     llvm::Value* result, llvm::IRBuilder<>* b)
+                                     llvm::Value* result,
+                                     llvm::IRBuilderBase* b)
       : config_(config),
         lhs_(lhs),
         rhs_(rhs),
@@ -513,7 +514,7 @@ class RowMajorMatrixVectorProductEmitter
   llvm::Value* rhs_;
   llvm::Value* addend_;
   llvm::Value* result_;
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
   KernelSupportLibrary ksl_;
   VectorSupportLibrary vsl_;
 };
@@ -718,7 +719,7 @@ class TiledSmallGemmEmitter {
   // `lhs` with `rhs` and stores the result in `result`.
   explicit TiledSmallGemmEmitter(Config config, llvm::Value* lhs,
                                  llvm::Value* rhs, llvm::Value* result,
-                                 llvm::IRBuilder<>* b)
+                                 llvm::IRBuilderBase* b)
       : lhs_(lhs),
         rhs_(rhs),
         result_(result),
@@ -780,7 +781,7 @@ class TiledSmallGemmEmitter {
   llvm::Value* result_;
   Config config_;
 
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
   KernelSupportLibrary ksl_;
 };
 
@@ -968,7 +969,7 @@ void TiledSmallGemmEmitter::EmitTiledGemm(
 void EmitRowMajorGemv(PrimitiveType scalar_type, int64_t tile_rows,
                       int64_t tile_cols, int64_t m, int64_t k, llvm::Value* lhs,
                       llvm::Value* rhs, llvm::Value* addend,
-                      llvm::Value* result, llvm::IRBuilder<>* b,
+                      llvm::Value* result, llvm::IRBuilderBase* b,
                       const HloModuleConfig& module_config) {
   RowMajorMatrixVectorProductEmitter::Config config(
       /*scalar_type=*/scalar_type,
@@ -989,7 +990,7 @@ void EmitColumnMajorGemv(PrimitiveType scalar_type, int64_t tile_rows,
                          int64_t tile_cols, int64_t m, int64_t k,
                          llvm::Value* lhs, llvm::Value* rhs,
                          llvm::Value* addend, llvm::Value* result,
-                         llvm::IRBuilder<>* b,
+                         llvm::IRBuilderBase* b,
                          const HloModuleConfig& module_config) {
   ColumnMajorMatrixVectorProductEmitter::Config config(
       /*scalar_type=*/scalar_type,
@@ -1010,7 +1011,7 @@ void EmitSmallGemm(PrimitiveType scalar_type, int64_t m, int64_t k, int64_t n,
                    int64_t max_vectorization_width, int64_t max_vector_count,
                    int64_t min_vectorization_width, int64_t tile_size_m,
                    int64_t tile_size_k, llvm::Value* lhs, llvm::Value* rhs,
-                   llvm::Value* result, llvm::IRBuilder<>* b,
+                   llvm::Value* result, llvm::IRBuilderBase* b,
                    const HloModuleConfig& module_config) {
   TiledSmallGemmEmitter::Config config(
       /*scalar_type=*/scalar_type,

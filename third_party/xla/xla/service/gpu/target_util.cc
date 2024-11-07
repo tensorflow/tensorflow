@@ -64,10 +64,10 @@ using absl::StrCat;
 struct TargetIntrinsics {
   llvm::Intrinsic::ID nvptx_intrinsic;
   std::variant<llvm::Intrinsic::ID,
-               std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>
+               std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>
       amdgpu_intrinsic_or_function;
   std::variant<llvm::Intrinsic::ID,
-               std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>
+               std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>
       spir_intrinsic_or_function;
 };
 
@@ -79,7 +79,7 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       return {
           llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x,
           llvm::Intrinsic::amdgcn_workitem_id_x,
-          [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
             return EmitDeviceFunctionCall(
                 "_Z32__spirv_BuiltInLocalInvocationIdi", {b_->getInt32(0)},
                 {U32}, U64, {b_->getContext()}, b_);
@@ -90,7 +90,7 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       return {
           llvm::Intrinsic::nvvm_read_ptx_sreg_tid_y,
           llvm::Intrinsic::amdgcn_workitem_id_y,
-          [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
             return EmitDeviceFunctionCall(
                 "_Z32__spirv_BuiltInLocalInvocationIdi", {b_->getInt32(1)},
                 {U32}, U64, {b_->getContext()}, b_);
@@ -101,7 +101,7 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       return {
           llvm::Intrinsic::nvvm_read_ptx_sreg_tid_z,
           llvm::Intrinsic::amdgcn_workitem_id_z,
-          [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
             return EmitDeviceFunctionCall(
                 "_Z32__spirv_BuiltInLocalInvocationIdi", {b_->getInt32(2)},
                 {U32}, U64, {b_->getContext()}, b_);
@@ -112,7 +112,7 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       return {
           llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x,
           llvm::Intrinsic::amdgcn_workgroup_id_x,
-          [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
             return EmitDeviceFunctionCall("_Z26__spirv_BuiltInWorkgroupIdi",
                                           {b_->getInt32(0)}, {U32}, U64,
                                           {b_->getContext()}, b_);
@@ -123,7 +123,7 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       return {
           llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_y,
           llvm::Intrinsic::amdgcn_workgroup_id_y,
-          [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
             return EmitDeviceFunctionCall("_Z26__spirv_BuiltInWorkgroupIdi",
                                           {b_->getInt32(1)}, {U32}, U64,
                                           {b_->getContext()}, b_);
@@ -134,7 +134,7 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       return {
           llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_z,
           llvm::Intrinsic::amdgcn_workgroup_id_z,
-          [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
             return EmitDeviceFunctionCall("_Z26__spirv_BuiltInWorkgroupIdi",
                                           {b_->getInt32(2)}, {U32}, U64,
                                           {b_->getContext()}, b_);
@@ -143,7 +143,7 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
     }
     case TargetIntrinsicID::kBarrierId: {
       return {llvm::Intrinsic::nvvm_barrier0, llvm::Intrinsic::amdgcn_s_barrier,
-              [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall(
                     "_Z22__spirv_ControlBarrierjjj",
                     {b_->getInt32(2), b_->getInt32(2), b_->getInt32(272)},
@@ -155,12 +155,12 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
     }
     case TargetIntrinsicID::kBlockDimx: {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_x,
-              [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
                                               {b_->getInt32(0)}, {U32}, U64,
                                               {b_->getContext()}, b_);
               },
-              [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall(
                     "_Z28__spirv_BuiltInWorkgroupSizei", {b_->getInt32(0)},
                     {U32}, U64, {b_->getContext()}, b_);
@@ -168,12 +168,12 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
     }
     case TargetIntrinsicID::kBlockDimy: {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_y,
-              [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
                                               {b_->getInt32(1)}, {U32}, U64,
                                               {b_->getContext()}, b_);
               },
-              [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall(
                     "_Z28__spirv_BuiltInWorkgroupSizei", {b_->getInt32(1)},
                     {U32}, U64, {b_->getContext()}, b_);
@@ -181,12 +181,12 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
     }
     case TargetIntrinsicID::kBlockDimz: {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_z,
-              [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
                                               {b_->getInt32(2)}, {U32}, U64,
                                               {b_->getContext()}, b_);
               },
-              [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall(
                     "_Z28__spirv_BuiltInWorkgroupSizei", {b_->getInt32(2)},
                     {U32}, U64, {b_->getContext()}, b_);
@@ -195,7 +195,7 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
     case TargetIntrinsicID::kGroupBarrierId: {
       return {llvm::Intrinsic::nvvm_bar_warp_sync,
               llvm::Intrinsic::amdgcn_wave_barrier,
-              [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall(
                     "_Z22__spirv_ControlBarrierjjj",
                     {b_->getInt32(2), b_->getInt32(2), b_->getInt32(272)},
@@ -385,7 +385,7 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
 llvm::CallInst* EmitDeviceFunctionCall(
     const std::string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
-    const llvm::AttrBuilder& attributes, llvm::IRBuilder<>* b,
+    const llvm::AttrBuilder& attributes, llvm::IRBuilderBase* b,
     absl::string_view name) {
   std::vector<llvm::Type*> ir_input_types;
   llvm::Module* module = b->GetInsertBlock()->getModule();
@@ -415,7 +415,7 @@ llvm::CallInst* EmitDeviceFunctionCall(
 
 llvm::CallInst* EmitCallToTargetIntrinsic(
     TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
-    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilderBase* b) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
   struct TargetIntrinsics gpu_intrinsic_id = GetIntrinsic(intrinsic_id);
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
@@ -429,8 +429,8 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
     if (llvm_intrinsic_id_ptr) {
       llvm_intrinsic_id = *llvm_intrinsic_id_ptr;
     } else {
-      std::function<llvm::CallInst*(llvm::IRBuilder<>*)>* builder_func =
-          std::get_if<std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>(
+      std::function<llvm::CallInst*(llvm::IRBuilderBase*)>* builder_func =
+          std::get_if<std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>(
               &gpu_intrinsic_id.amdgpu_intrinsic_or_function);
       return (*builder_func)(b);
     }
@@ -441,8 +441,8 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
     if (llvm_intrinsic_id_ptr) {
       llvm_intrinsic_id = *llvm_intrinsic_id_ptr;
     } else {
-      std::function<llvm::CallInst*(llvm::IRBuilder<>*)>* builder_func =
-          std::get_if<std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>(
+      std::function<llvm::CallInst*(llvm::IRBuilderBase*)>* builder_func =
+          std::get_if<std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>(
               &gpu_intrinsic_id.spir_intrinsic_or_function);
       return (*builder_func)(b);
     }
@@ -456,7 +456,7 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
 }
 
 void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
-                                 llvm::IRBuilder<>* b) {
+                                 llvm::IRBuilderBase* b) {
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   if (target_triple.isNVPTX()) {
     // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX

@@ -48,7 +48,7 @@ namespace xla {
 namespace cpu {
 VectorSupportLibrary::VectorSupportLibrary(PrimitiveType primitive_type,
                                            int64_t vector_size,
-                                           llvm::IRBuilder<>* b,
+                                           llvm::IRBuilderBase* b,
                                            std::string name)
     : vector_size_(vector_size),
       primitive_type_(primitive_type),
@@ -434,7 +434,7 @@ llvm::Value* VectorSupportLibrary::GetZeroScalar() {
   return llvm::Constant::getNullValue(scalar_type());
 }
 
-LlvmVariable::LlvmVariable(llvm::Type* type, llvm::IRBuilder<>* b) : b_(b) {
+LlvmVariable::LlvmVariable(llvm::Type* type, llvm::IRBuilderBase* b) : b_(b) {
   alloca_ = llvm_ir::EmitAllocaAtFunctionEntry(type, "", b_);
 }
 

@@ -47,11 +47,11 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   using HloToElementGeneratorMap =
       absl::flat_hash_map<const HloInstruction*, llvm_ir::ElementGenerator>;
 
-  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilder<>* b,
+  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilderBase* b,
                      const Options& options)
       : b_(b), module_(module), options_(options) {}
 
-  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilder<>* b)
+  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilderBase* b)
       : ElementalIrEmitter(module, b, Options()) {}
 
   virtual ~ElementalIrEmitter() = default;
@@ -62,10 +62,10 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator);
 
-  llvm::IRBuilder<>* b() { return b_; }
+  llvm::IRBuilderBase* b() { return b_; }
 
   // builder() is for IrBuilderMixin.
-  llvm::IRBuilder<>* builder() { return b_; }
+  llvm::IRBuilderBase* builder() { return b_; }
 
   llvm::Module* module() { return module_; }
 
@@ -321,7 +321,7 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   virtual bool fast_min_max() = 0;
 
-  llvm::IRBuilder<>* const b_;
+  llvm::IRBuilderBase* const b_;
 
   llvm::Module* module_;
 
@@ -333,7 +333,7 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 // Allow to instantiate IR emitter in tests.
 class ElementalIrEmitterForTests : public ElementalIrEmitter {
  public:
-  ElementalIrEmitterForTests(llvm::Module* module, llvm::IRBuilder<>* builder)
+  ElementalIrEmitterForTests(llvm::Module* module, llvm::IRBuilderBase* builder)
       : ElementalIrEmitter(module, builder) {}
 
   absl::Status TestElementalDot(const HloInstruction* hlo,

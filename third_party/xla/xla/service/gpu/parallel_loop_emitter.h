@@ -44,7 +44,7 @@ class ParallelLoopEmitter {
   // how to parallelize.
   ParallelLoopEmitter(llvm_ir::BodyEmitter body_emitter, const Shape& shape,
                       const LaunchDimensions& launch_dimensions,
-                      llvm::IRBuilder<>* b,
+                      llvm::IRBuilderBase* b,
                       LaunchDimensionsConfig launch_config = {});
 
   // Constructs a loop emitter for a loop that generates on element of each of N
@@ -55,7 +55,7 @@ class ParallelLoopEmitter {
   ParallelLoopEmitter(const llvm_ir::ElementGenerator& target_element_generator,
                       absl::Span<const llvm_ir::IrArray> target_arrays,
                       const LaunchDimensions& launch_dimensions,
-                      llvm::IRBuilder<>* b,
+                      llvm::IRBuilderBase* b,
                       LaunchDimensionsConfig launch_config = {});
 
   ParallelLoopEmitter(const ParallelLoopEmitter&) = delete;
@@ -93,7 +93,7 @@ class ParallelLoopEmitter {
   // Points to the exit block of the emitted loop.
   llvm::BasicBlock* exit_bb_;
 
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
 };
 
 }  // namespace gpu

@@ -209,7 +209,7 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      absl::Span<const KernelArgument> arguments,
                      size_t num_inputs,
                      const LaunchDimensions& launch_dimensions,
-                     llvm::IRBuilder<>* builder) {
+                     llvm::IRBuilderBase* builder) {
   return BuildKernelPrototypeFromUniqueName(
       ir_emitter_context,
       GetSanitizedUniqueName(ir_emitter_context, suggested_name), arguments,
@@ -223,7 +223,7 @@ BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
                                    absl::Span<const KernelArgument> arguments,
                                    size_t num_inputs,
                                    const LaunchDimensions& launch_dimensions,
-                                   llvm::IRBuilder<>* builder) {
+                                   llvm::IRBuilderBase* builder) {
   // If some arguments have the same buffer, we will pass them only once.
   llvm::SmallVector<int> to_llvm_arg_no(arguments.size());
   llvm::SmallVector<int> to_arg_no;
