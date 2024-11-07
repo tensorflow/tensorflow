@@ -212,13 +212,11 @@ Status EvaluateGraph(ClientSession* session, const OutputList& xs,
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
-Status ComputeNumericJacobianTranspose(const Scope& scope, const OutputList& xs,
-                                       const std::vector<TensorShape>& x_shapes,
-                                       const OutputList& ys,
-                                       const std::vector<TensorShape>& y_shapes,
-                                       const JAC_T delta,
-                                       std::vector<Tensor>* x_datas,
-                                       std::vector<Tensor>* jacobian_ts) {
+absl::Status ComputeNumericJacobianTranspose(
+    const Scope& scope, const OutputList& xs,
+    const std::vector<TensorShape>& x_shapes, const OutputList& ys,
+    const std::vector<TensorShape>& y_shapes, const JAC_T delta,
+    std::vector<Tensor>* x_datas, std::vector<Tensor>* jacobian_ts) {
   size_t y_num = y_shapes.size();
   size_t x_num = x_shapes.size();
   // x_stride and y_stride are used to calculate the correct jacobian row and
