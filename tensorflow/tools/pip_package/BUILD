@@ -9,7 +9,14 @@ load(
 )
 load("@local_xla//xla/tsl:tsl.bzl", "if_cuda_libs")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
-load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "VERSION",
+    "WHEEL_VERSION",
+    "if_wheel_dependency",
+    "if_with_tpu_support",
+    "transitive_hdrs",
+)
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 load("//tensorflow/tools/pip_package/utils:data_deps.bzl", "collect_data_files")
 load("//tensorflow/tools/pip_package/utils:py_deps.bzl", "transitive_py_deps")
@@ -246,6 +253,21 @@ py_binary(
         "@pypi_setuptools//:pkg",
         "@pypi_wheel//:pkg",
     ],
+)
+
+py_binary(
+    name = "rename_tensorflow_wheel",
+    srcs = [
+        "rename_wheel.py",
+    ],
+    data = [
+        ":wheel",
+    ],
+    env = {
+        "OLD_WHEEL_VERSION": VERSION,
+        "NEW_WHEEL_VERSION": WHEEL_VERSION,
+    },
+    main = "rename_wheel.py",
 )
 
 collect_data_files(

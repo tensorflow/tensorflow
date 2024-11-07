@@ -35,10 +35,8 @@ fi
 
 # TODO(ybaturina): add --@local_tsl//third_party/py:wheel_compliance=true when
 # hermetic CC toolchain is ready.
-tfrun bazel build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_ARGS
-tfrun find ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} $TFCI_OUTPUT_DIR \;
-tfrun mkdir ./dist
-tfrun cp $TFCI_OUTPUT_DIR/*.whl ./dist
+tfrun bazel run $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:rename_tensorflow_wheel $TFCI_BUILD_PIP_PACKAGE_ARGS -- --output-path=$TFCI_OUTPUT_DIR
+tfrun bazel run $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:rename_tensorflow_wheel $TFCI_BUILD_PIP_PACKAGE_ARGS -- --output-path=dist
 tfrun ./ci/official/utilities/rename_and_verify_wheels.sh
 
 if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
