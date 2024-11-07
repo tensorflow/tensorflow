@@ -14,15 +14,27 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <functional>
+#include <memory>
+#include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/optional.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
