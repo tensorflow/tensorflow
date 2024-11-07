@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/core/tools/verifier_internal.h"
 
-#include <memory>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
