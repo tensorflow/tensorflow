@@ -93,6 +93,11 @@ class PrimitiveType(enum.IntEnum):
 
 # === BEGIN xla_compiler.cc
 
+class ArrayCopySemantics(enum.IntEnum):
+  ALWAYS_COPY: ArrayCopySemantics
+  REUSE_INPUT: ArrayCopySemantics
+  DONATE_INPUT: ArrayCopySemantics
+
 class Layout:
   @overload
   def __init__(self, minor_to_major: Tuple[int, ...]): ...
@@ -652,6 +657,7 @@ def batched_copy_array_to_devices_with_sharding(
     arrays: Sequence[ArrayImpl],
     devices: Sequence[List[Device]],
     sharding: Sequence[Any],
+    array_copy_semantics: Sequence[ArrayCopySemantics],
 ) -> Sequence[ArrayImpl]: ...
 
 def batched_block_until_ready(x: Sequence[ArrayImpl]) -> None: ...

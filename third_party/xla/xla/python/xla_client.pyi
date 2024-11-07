@@ -45,6 +45,7 @@ from .xla_extension import OpSharding as OpSharding
 from .xla_extension import PjRtLayout as PjRtLayout
 from .xla_extension import PmapSharding as PmapSharding
 from .xla_extension import PrimitiveType as PrimitiveType
+from .xla_extension import ArrayCopySemantics as ArrayCopySemantics
 from .xla_extension import profiler as profiler
 from .xla_extension import Shape as Shape
 from .xla_extension import Sharding as Sharding
@@ -245,6 +246,7 @@ def batched_copy_array_to_devices_with_sharding(
     arrays: Sequence[ArrayImpl],
     devices: Sequence[list[Device]],
     sharding: Sequence[Any],
+    array_copy_semantics: Sequence[ArrayCopySemantics],
 ) -> Sequence[ArrayImpl]: ...
 
 def batched_device_put(
