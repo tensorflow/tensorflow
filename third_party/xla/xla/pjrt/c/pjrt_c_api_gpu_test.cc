@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_gpu.h"
 
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -28,6 +29,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/client/client_library.h"
@@ -619,6 +621,40 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallTyped) {
       xla::ffi::FindHandler(function_name, stream_executor::GpuPlatformName())
           .value();
   EXPECT_EQ(reinterpret_cast<void*>(registration.bundle.execute), kNoop);
+}
+
+TEST_F(PjrtCApiGpuTest, DeviceDescriptionAndMemorySpaces) {
+  PJRT_Device_GetDescription_Args get_description =
+      PJRT_Device_GetDescription_Args{
+          .struct_size = PJRT_Device_GetDescription_Args_STRUCT_SIZE,
+          .extension_start = nullptr,
+          .device = GetClientDevices()[0],
+      };
+  PJRT_Error* error;
+  error = api_->PJRT_Device_GetDescription(&get_description);
+  ASSERT_EQ(error, nullptr);
+
+  PJRT_DeviceDescription_MemorySpaces_Args memory_spaces =
+      PJRT_DeviceDescription_MemorySpaces_Args{
+          .struct_size = PJRT_DeviceDescription_MemorySpaces_Args_STRUCT_SIZE,
+          .extension_start = nullptr,
+          .device_description = get_description.device_description,
+      };
+  error = api_->PJRT_DeviceDescription_MemorySpaces(&memory_spaces);
+  ASSERT_EQ(error, nullptr);
+
+  for (int i = 0; i < memory_spaces.num_memory_spaces; i++) {
+    PJRT_MemorySpaceDescription_Kind_Args space_description =
+        PJRT_MemorySpaceDescription_Kind_Args{
+            .struct_size = PJRT_DeviceDescription_MemorySpaces_Args_STRUCT_SIZE,
+            .extension_start = nullptr,
+            .memory_space_description = memory_spaces.memory_spaces[i],
+        };
+    error = api_->PJRT_MemorySpaceDescription_Kind(&space_description);
+    ASSERT_EQ(error, nullptr);
+    std::string s(space_description.kind, space_description.kind_size);
+    EXPECT_EQ(space_description.kind_size, strlen(s.c_str()));
+  }
 }
 
 }  // namespace

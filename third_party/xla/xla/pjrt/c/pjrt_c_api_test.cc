@@ -549,6 +549,27 @@ TEST_F(PjrtCApiTest, DeviceLocalHardwareId) {
   CHECK_EQ(args.local_hardware_id, 0);
 }
 
+TEST_F(PjrtCApiTest, DeviceDescriptionAndMemorySpaces) {
+  PJRT_Device_GetDescription_Args get_description =
+      PJRT_Device_GetDescription_Args{
+          .struct_size = PJRT_Device_GetDescription_Args_STRUCT_SIZE,
+          .extension_start = nullptr,
+          .device = GetClientDevices()[0],
+      };
+  PJRT_Error* error;
+  error = api_->PJRT_Device_GetDescription(&get_description);
+  EXPECT_EQ(error, nullptr);
+
+  PJRT_DeviceDescription_MemorySpaces_Args memory_spaces =
+      PJRT_DeviceDescription_MemorySpaces_Args{
+          .struct_size = PJRT_DeviceDescription_MemorySpaces_Args_STRUCT_SIZE,
+          .extension_start = nullptr,
+          .device_description = get_description.device_description,
+      };
+  error = api_->PJRT_DeviceDescription_MemorySpaces(&memory_spaces);
+  EXPECT_EQ(error, nullptr);
+}
+
 // ---------------------------------- Buffers ----------------------------------
 
 class PjrtCApiBufferTest : public PjrtCApiTest {

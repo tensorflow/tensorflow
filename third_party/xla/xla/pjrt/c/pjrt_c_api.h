@@ -79,7 +79,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 55
+#define PJRT_API_MINOR 56
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -307,6 +307,7 @@ typedef PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
 typedef struct PJRT_Client PJRT_Client;
 typedef struct PJRT_Device PJRT_Device;
 typedef struct PJRT_Memory PJRT_Memory;
+typedef struct PJRT_MemorySpaceDescription PJRT_MemorySpaceDescription;
 typedef struct PJRT_DeviceDescription PJRT_DeviceDescription;
 typedef struct PJRT_TopologyDescription PJRT_TopologyDescription;
 typedef struct PJRT_Executable PJRT_Executable;
@@ -898,6 +899,34 @@ struct PJRT_DeviceDescription_DebugString_Args {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceDescription_DebugString_Args,
                           debug_string_size);
+
+// The memory spaces are in no particular order.
+struct PJRT_DeviceDescription_MemorySpaces_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_DeviceDescription* device_description;
+  const PJRT_MemorySpaceDescription* const* memory_spaces;  // out
+  size_t num_memory_spaces;                                 // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_DeviceDescription_MemorySpaces_Args,
+                          num_memory_spaces);
+
+// Returns all memory spaces attached to this device.
+typedef PJRT_Error* PJRT_DeviceDescription_MemorySpaces(
+    PJRT_DeviceDescription_MemorySpaces_Args* args);
+
+struct PJRT_MemorySpaceDescription_Kind_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_MemorySpaceDescription* memory_space_description;
+  const char* kind;  // out
+  size_t kind_size;  // out
+  int kind_id;       // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_MemorySpaceDescription_Kind_Args, kind);
+
+typedef PJRT_Error* PJRT_MemorySpaceDescription_Kind(
+    PJRT_MemorySpaceDescription_Kind_Args* args);
 
 // Debug string suitable for logging when errors occur. Should be verbose
 // enough to describe the current device unambiguously.
@@ -2250,6 +2279,9 @@ typedef struct PJRT_Api {
 
   _PJRT_API_STRUCT_FIELD(PJRT_ExecuteContext_Create);
   _PJRT_API_STRUCT_FIELD(PJRT_ExecuteContext_Destroy);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_DeviceDescription_MemorySpaces);
+  _PJRT_API_STRUCT_FIELD(PJRT_MemorySpaceDescription_Kind);
 } PJRT_Api;
 
 enum {

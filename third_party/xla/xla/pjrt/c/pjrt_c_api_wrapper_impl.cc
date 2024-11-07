@@ -833,6 +833,25 @@ PJRT_Error* PJRT_DeviceDescription_DebugString(
   return nullptr;
 }
 
+PJRT_Error* PJRT_DeviceDescription_MemorySpaces(
+    PJRT_DeviceDescription_MemorySpaces_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_DeviceDescription_MemorySpaces_Args",
+      PJRT_DeviceDescription_MemorySpaces_Args_STRUCT_SIZE, args->struct_size));
+
+  absl::Span<const xla::PjRtMemorySpaceDescription* const> memory_spaces =
+      args->device_description->device_description->memory_spaces();
+
+  // We pass each xla::PjRtMemorySpaceDescriptions to the caller through an
+  // opaque pointer.
+  args->memory_spaces =
+      reinterpret_cast<const PJRT_MemorySpaceDescription* const*>(
+          memory_spaces.data());
+
+  args->num_memory_spaces = memory_spaces.size();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_DeviceDescription_ToString(
     PJRT_DeviceDescription_ToString_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -842,6 +861,18 @@ PJRT_Error* PJRT_DeviceDescription_ToString(
       args->device_description->device_description->ToString().data();
   args->to_string_size =
       args->device_description->device_description->ToString().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_MemorySpaceDescription_Kind(
+    PJRT_MemorySpaceDescription_Kind_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_MemorySpaceDescription_Kind_Args",
+      PJRT_MemorySpaceDescription_Kind_Args_STRUCT_SIZE, args->struct_size));
+  auto kind = args->memory_space_description->kind();
+  args->kind = kind.data();
+  args->kind_size = kind.size();
+  args->kind_id = args->memory_space_description->kind_id();
   return nullptr;
 }
 
@@ -2519,6 +2550,11 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
 
       /*PJRT_ExecuteContext_Create=*/execute_context_create_fn,
       /*PJRT_ExecuteContext_Destroy=*/pjrt::PJRT_ExecuteContext_Destroy,
+
+      /*PJRT_DeviceDescription_MemorySpaces=*/
+      pjrt::PJRT_DeviceDescription_MemorySpaces,
+      /*PJRT_MemorySpaceDescription_Kind=*/
+      pjrt::PJRT_MemorySpaceDescription_Kind,
   };
 }
 

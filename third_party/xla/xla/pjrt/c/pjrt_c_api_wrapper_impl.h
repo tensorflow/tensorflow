@@ -86,6 +86,8 @@ struct PJRT_Client {
   explicit PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client);
 };
 
+struct PJRT_MemorySpaceDescription : public xla::PjRtMemorySpaceDescription {};
+
 // PJRT_DeviceDescriptions are owned by their corresponding PJRT_Device.
 struct PJRT_DeviceDescription {
   // The xla::PjRtDeviceDescription* is owned transitively by the
