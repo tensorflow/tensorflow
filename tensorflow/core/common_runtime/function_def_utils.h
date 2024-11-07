@@ -51,7 +51,7 @@ Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
 // Instantiates FunctionDef into a graph. Set *fbody to point to the
 // FunctionBody that holds the instantiated FunctionDef. Use custom function
 // signature lookup, in case instantiated function is not in the 'lib_def'.
-Status FunctionDefToBodyHelper(
+absl::Status FunctionDefToBodyHelper(
     core::RefCountPtr<FunctionRecord>&& record, const AttrSlice& attrs,
     const FunctionLibraryDefinition* lib_def,
     const std::function<Status(const string&, const OpDef**)>& get_func_sig,

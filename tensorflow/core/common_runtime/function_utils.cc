@@ -66,7 +66,7 @@ static Node* AddIdentity(StringPiece name, Graph* g, Endpoint input) {
   ndef.set_op("Identity");
   ndef.add_input(input.name());
   AddNodeAttr("T", BaseType(input.dtype()), &ndef);
-  Status s;
+  absl::Status s;
   Node* ret = g->AddNode(ndef, &s);
   TF_CHECK_OK(s);
   g->AddEdge(input.node, input.index, ret, 0);

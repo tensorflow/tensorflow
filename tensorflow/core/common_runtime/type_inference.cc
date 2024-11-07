@@ -331,7 +331,7 @@ Status TypeInferencePass::Run(
   return absl::OkStatus();
 }
 
-Status WeakTypeInferencePass::Run(
+absl::Status WeakTypeInferencePass::Run(
     const GraphOptimizationPassOptions& options) {
   TypeInferencePass pass;
   const auto& pass_status = pass.Run(options);
