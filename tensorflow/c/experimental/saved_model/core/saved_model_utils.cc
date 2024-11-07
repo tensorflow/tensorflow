@@ -309,7 +309,7 @@ Status FlattenSignature(const StructuredValue& signature,
       for (const StructuredValue& value : list.values()) {
         TF_RETURN_IF_ERROR(FlattenSignature(value, flattened_specs));
       }
-      return Status();
+      return absl::Status();
     }
     case StructuredValue::kTensorSpecValue: {
       flattened_specs->push_back(&signature.tensor_spec_value());
