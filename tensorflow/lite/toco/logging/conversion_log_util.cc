@@ -14,7 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/logging/conversion_log_util.h"
 
+#include <cstddef>
+#include <map>
+#include <memory>
 #include <string>
+
+#include "absl/log/log.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
+#include "tensorflow/lite/toco/logging/toco_conversion_log.pb.h"
 
 #ifdef __linux__
 #include <sys/utsname.h>
