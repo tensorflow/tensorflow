@@ -227,7 +227,7 @@ Status TFSavedModelAPI::GetSignatureDefFunction(
   }
 
   *function = function_iter->second.get();
-  return Status();
+  return absl::Status();
 }
 
 Status TFSavedModelAPI::GetVariable(const std::string& variable_path,
