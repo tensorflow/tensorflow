@@ -837,6 +837,9 @@ TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32_X6) {
 }
 
 TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "Triton currently disabled on ROCM.";
+  }
   const std::string kHloText = R"(
     HloModule Algorithm_TF32_TF32_F32
 
