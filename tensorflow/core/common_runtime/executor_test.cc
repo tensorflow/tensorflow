@@ -96,7 +96,7 @@ class ExecutorTest : public ::testing::Test {
     runner_ = [this](std::function<void()> fn) { thread_pool_->Schedule(fn); };
   }
 
-  Status Run(Rendezvous* rendez) {
+  absl::Status Run(Rendezvous* rendez) {
     Executor::Args args;
     args.rendezvous = rendez;
     args.stats_collector = &step_stats_collector_;
