@@ -1121,6 +1121,19 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
   b.create<mt::ReturnOp>(loc);
 
+  auto dump_triton_ir = [&]() {
+    std::string triton_ir;
+    llvm::raw_string_ostream os(triton_ir);
+    triton_module->print(os,
+                         mlir::OpPrintingFlags().enableDebugInfo(true, true));
+    return triton_ir;
+  };
+
+  if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
+    DumpToFileInDirOrStdout(*hlo_computation->parent(), "triton_ir",
+                            "before_validation.ttir", dump_triton_ir());
+  }
+
   if (mlir::failed(mlir::verify(*triton_module))) {
     return CreateInternalError(
         "Failed to verify Triton module for fusion:", fusion, *triton_module);
@@ -1134,14 +1147,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
         "Failed to create Triton module for fusion:", fusion, *triton_module);
   }
 
-  auto dump_triton_ir = [&]() {
-    std::string triton_ir;
-    llvm::raw_string_ostream os(triton_ir);
-    triton_module->print(os,
-                         mlir::OpPrintingFlags().enableDebugInfo(true, true));
-    return triton_ir;
-  };
   VLOG(6) << dump_triton_ir();
+  // TODO(loislo): Remove this dump once we have the Triton IR dump in
+  // CompileTritonToLLVM after the Triton optimization passes.
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
     DumpToFileInDirOrStdout(*hlo_computation->parent(), "triton_ir", "ttir",
                             dump_triton_ir());
