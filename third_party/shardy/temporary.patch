@@ -1,104 +1,15 @@
-diff --git a/README.md b/README.md
-index cc2ac20..9ae24f7 100644
---- a/README.md
-+++ b/README.md
-@@ -5,7 +5,7 @@ agnostic and provide extensive user control and debuggability features. It
- includes an axis-based sharding representation, a set of compiler APIs,
- functionality for sharding propagation, and plans for an SPMD partitioner.
- 
--For more information see the docs directory.
-+For more information see the rfcs directory.
- 
- ## Status
- 
-diff --git a/rfcs/2024-03-14-shardy-partitioner-rfc.md b/rfcs/2024-03-14-shardy-partitioner-rfc.md
-index ff31d09..e56b52e 100644
---- a/rfcs/2024-03-14-shardy-partitioner-rfc.md
-+++ b/rfcs/2024-03-14-shardy-partitioner-rfc.md
-@@ -49,7 +49,8 @@ Sharding representation can either be:
- 
- Design a new **axis-based** sharding representation that is general enough to handle all existing use cases of both GSPMD and PartIR.
- 
--See for more information on the requirements.
-+See  for more information on the requirements.
-+
- 
- ### Overview
- 
-diff --git a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-index 3025a40..7c21781 100644
---- a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-+++ b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-@@ -14,7 +14,6 @@ limitations under the License.
- ==============================================================================*/
- 
- #include <cassert>
--#include <cstdint>
- #include <optional>
- 
- #include "llvm/ADT/STLExtras.h"
-@@ -152,11 +151,6 @@ void insertExplicitReshards(Operation* op, const ShardingProjection& projection,
-   }
- }
- 
--AxesPerFactor findCommonAxes(const ShardingProjection& projection,
--                             int64_t numFactors) {
--  return projection.getGreatestCommonPrefixAxes(numFactors);
--}
--
- struct InsertExplicitReshardsPass
-     : public impl::InsertExplicitReshardsPassBase<InsertExplicitReshardsPass> {
-   using InsertExplicitReshardsPassBase::InsertExplicitReshardsPassBase;
-@@ -212,8 +206,9 @@ struct InsertExplicitReshardsPass
- 
-       UpdateTensorShardings updateTensorShardings(shardingRule.getNumOperands(),
-                                                   shardingRule.getNumResults());
--      for (const auto& [index, factorAxes] : llvm::enumerate(findCommonAxes(
--               shardingProjection, shardingRule.getNumFactors()))) {
-+      for (const auto& [index, factorAxes] :
-+           llvm::enumerate(shardingProjection.getGreatestCommonPrefixAxes(
-+               shardingRule.getNumFactors()))) {
-         // TODO(enver): Add unit tests to test overflow axes are cleared after
-         // handling the case that some factors have overflow axes.
-         updateTensorShardings |= shardingProjection.updateSharding(
-diff --git a/shardy/dialect/sdy/transforms/propagation/sharding_projection.cc b/shardy/dialect/sdy/transforms/propagation/sharding_projection.cc
-index 8737456..a22b055 100644
---- a/shardy/dialect/sdy/transforms/propagation/sharding_projection.cc
-+++ b/shardy/dialect/sdy/transforms/propagation/sharding_projection.cc
-@@ -441,7 +441,7 @@ inline SmallVector<AxisRefAttr> getGreatestCommonPrefix(
- }  // namespace
- 
- AxesPerFactor ShardingProjection::getGreatestCommonPrefixAxes(
--    int64_t numFactors) const {
-+    int64_t numFactors) {
-   AxesPerFactor factorAxisRefs(numFactors);
-   BitVector factorIsSeen(numFactors);
-   for (const TensorFactorShardings& tensorFactorSharding :
-diff --git a/shardy/dialect/sdy/transforms/propagation/sharding_projection.h b/shardy/dialect/sdy/transforms/propagation/sharding_projection.h
-index 1cf26b7..299f57b 100644
---- a/shardy/dialect/sdy/transforms/propagation/sharding_projection.h
-+++ b/shardy/dialect/sdy/transforms/propagation/sharding_projection.h
-@@ -241,7 +241,7 @@ class ShardingProjection {
-   // Returns an array of axis-ref arrays where each axis-ref array defines a
-   // factor sharding, for the corresponding factor, as the greatest common
-   // prefix of factor shardings across all operands and results.
--  AxesPerFactor getGreatestCommonPrefixAxes(int64_t numFactors) const;
-+  AxesPerFactor getGreatestCommonPrefixAxes(int64_t numFactors);
- 
-  private:
-   SmallVector<TensorFactorShardings> operands;
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index d078ea3..d0f05d2 100644
+index d0f05d2..cf8280b 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "69d0bab82689d470e3fd68f50ca8b8d28f3e2294"
--    LLVM_SHA256 = "dbd36ab8a511bb35022957cdfadfa99de045ac5c84c3347949614534c0dcd150"
-+    LLVM_COMMIT = "c6f3b7bcd0596d30f8dabecdfb9e44f9a07b6e4c"
-+    LLVM_SHA256 = "13a1b39cfe51421fb1fd15828b76766d7680d854fc1039254b37f3f824ab47b7"
+-    LLVM_COMMIT = "c6f3b7bcd0596d30f8dabecdfb9e44f9a07b6e4c"
+-    LLVM_SHA256 = "13a1b39cfe51421fb1fd15828b76766d7680d854fc1039254b37f3f824ab47b7"
++    LLVM_COMMIT = "246b57cb2086b22ad8b41051c77e86ef478053a1"
++    LLVM_SHA256 = "2d46c080deb2cb6dbb9420a334be231040487bbfe87b5ed0b90bb69cac423500"
  
      tf_http_archive(
          name = name,
