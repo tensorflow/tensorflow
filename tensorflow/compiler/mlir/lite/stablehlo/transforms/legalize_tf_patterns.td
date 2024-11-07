@@ -62,6 +62,9 @@ def CastElementsToI64Elements : NativeCodeCall<
 
 def EmptyDotAlgorithmAttr : NativeCodeCall<"mlir::mhlo::DotAlgorithmAttr{}">;
 
+def ConstDefaultResultAccuracyAttr :
+  ConstantAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">;
+
 //===----------------------------------------------------------------------===//
 // ApproximateEqual op pattern.
 //===----------------------------------------------------------------------===//
@@ -425,7 +428,7 @@ def : Pat<(TF_EluOp AnyTensor:$features),
               (MHLO_ConstantLike<"0">:$zero $features),
               MHLO_ComparisonDirectionValue<"GT">, (MHLO_DEFAULT_COMPARISON_TYPE)),
            $features,
-           (MHLO_Expm1Op $features))>;
+           (MHLO_Expm1Op $features, ConstDefaultResultAccuracyAttr))>;
 
 def : Pat<(TF_EluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$features),
            (MHLO_SelectOp
@@ -570,33 +573,32 @@ foreach Mapping = [
                    [TF_AbsOp, MHLO_AbsOp],
                    [TF_CeilOp, MHLO_CeilOp],
                    [TF_ComplexAbsOp, MHLO_AbsOp],
-                   [TF_CosOp, MHLO_CosineOp],
-                   [TF_Expm1Op, MHLO_Expm1Op],
                    [TF_ErfOp, MHLO_ErfOp],
                    [TF_FloorOp, MHLO_FloorOp],
                    [TF_ImagOp, MHLO_ImagOp],
                    [TF_InvertOp, MHLO_NotOp],
                    [TF_IsFiniteOp, MHLO_IsFiniteOp],
-                   [TF_LogOp, MHLO_LogOp],
-                   [TF_Log1pOp, MHLO_Log1pOp],
                    [TF_LogicalNotOp, MHLO_NotOp],
                    [TF_NegOp, MHLO_NegOp],
                    [TF_RealOp, MHLO_RealOp],
-                   [TF_RsqrtOp, MHLO_RsqrtOp],
-                   [TF_SigmoidOp, MHLO_LogisticOp],
-                   [TF_SinOp, MHLO_SineOp],
-                   [TF_SqrtOp, MHLO_SqrtOp],
-                   [TF_TanhOp, MHLO_TanhOp],
-                   [TF_TanOp, MHLO_TanOp]
                   ] in {
  def : Pat<(Mapping[0] MHLO_Tensor:$input),
            (Mapping[1] $input)>;
 }
 
-def ConstDefaultResultAccuracyAttr :
-  ConstantAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">;
-
-foreach Mapping = [[TF_ExpOp, MHLO_ExpOp]] in {
+foreach Mapping = [
+                  [TF_CosOp, MHLO_CosineOp],
+                  [TF_ExpOp, MHLO_ExpOp],
+                  [TF_Expm1Op, MHLO_Expm1Op],
+                  [TF_LogOp, MHLO_LogOp],
+                  [TF_Log1pOp, MHLO_Log1pOp],
+                  [TF_RsqrtOp, MHLO_RsqrtOp],
+                  [TF_SigmoidOp, MHLO_LogisticOp],
+                  [TF_SinOp, MHLO_SineOp],
+                  [TF_SqrtOp, MHLO_SqrtOp],
+                  [TF_TanhOp, MHLO_TanhOp],
+                  [TF_TanOp, MHLO_TanOp],
+                  ] in {
  def : Pat<(Mapping[0] MHLO_Tensor:$input),
            (Mapping[1] $input, ConstDefaultResultAccuracyAttr)>;
 }
@@ -703,7 +705,7 @@ def : Pattern<(TF_SoftplusOp AnyTensor:$features),
               [
                 (MHLO_ExpOp:$features_exp $features, ConstDefaultResultAccuracyAttr),
                 (CHLO_BroadcastAddOp:$threshold
-                 (MHLO_LogOp (MHLO_ConstantOp (EpsilonValue $features))),
+                 (MHLO_LogOp (MHLO_ConstantOp (EpsilonValue $features)), ConstDefaultResultAccuracyAttr),
                  (MHLO_ConstantOp (GetScalarOfType<2> $features)),
                  (NullDenseI64ArrayAttr)
                 ),
@@ -725,7 +727,7 @@ def : Pattern<(TF_SoftplusOp AnyTensor:$features),
                    (CHLO_DEFAULT_COMPARISON_TYPE)
                   ),
                   $features_exp,
-                  (MHLO_Log1pOp $features_exp)
+                  (MHLO_Log1pOp $features_exp, ConstDefaultResultAccuracyAttr)
                  )
                 ),
                 (replaceWithValue $output)

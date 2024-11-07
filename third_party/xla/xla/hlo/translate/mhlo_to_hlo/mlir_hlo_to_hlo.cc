@@ -647,9 +647,9 @@ static xla::ResultAccuracy Convert_result_accuracy(
   if (optional_result_accuracy_attr.value().getMode().getValue() ==
       mlir::mhlo::ResultAccuracyMode::TOLERANCE) {
     result_accuracy.mutable_tolerance()->set_atol(
-        optional_result_accuracy_attr.value().getAtol().convertToFloat());
+        optional_result_accuracy_attr.value().getAtol().convertToDouble());
     result_accuracy.mutable_tolerance()->set_rtol(
-        optional_result_accuracy_attr.value().getRtol().convertToFloat());
+        optional_result_accuracy_attr.value().getRtol().convertToDouble());
     result_accuracy.mutable_tolerance()->set_ulps(
         optional_result_accuracy_attr.value().getUlps());
   } else {
