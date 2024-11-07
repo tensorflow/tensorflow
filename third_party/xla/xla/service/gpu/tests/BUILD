@@ -74,7 +74,6 @@ xla_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = [
         "notsan",   # TODO(b/345034145): Fix tsan error.
-        "no_rocm",  # TODO(rocm): sync 24-08-20
     ],  
     deps = if_gpu_is_configured(
         #keep sorted
@@ -322,7 +321,7 @@ xla_test(
         "gpu_a100",
         "gpu_v100",
     ],
-    tags = ["no_rocm"], # TODO(rocm) 240729 Test checks only for cuda capability
+    tags = ["cuda-only"], # TODO(rocm) 240729 Test checks only for cuda capability
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",

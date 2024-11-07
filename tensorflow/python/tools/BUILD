@@ -499,7 +499,7 @@ genrule(
     cmd = (
         "$(location :make_aot_compile_models) --out_dir $(@D)"
     ),
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     tools = [":make_aot_compile_models"],
 )
 
@@ -514,7 +514,7 @@ saved_model_compile_aot(
     directory = "//tensorflow/python/tools:x_matmul_y_large",
     filegroups = [":aot_saved_models"],
     force_without_xla_support_flag = False,
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
 )
 
 saved_model_compile_aot(
@@ -524,7 +524,7 @@ saved_model_compile_aot(
     filegroups = [":aot_saved_models"],
     force_without_xla_support_flag = False,
     multithreading = True,
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
 )
 
 saved_model_compile_aot(
@@ -533,7 +533,7 @@ saved_model_compile_aot(
     directory = "//tensorflow/python/tools:x_matmul_y_small",
     filegroups = [":aot_saved_models"],
     force_without_xla_support_flag = False,
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
 )
 
 saved_model_compile_aot(

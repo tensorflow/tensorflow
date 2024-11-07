@@ -1379,7 +1379,7 @@ xla_test(
     name = "convolution_cudnn_test",
     timeout = "long",
     srcs = ["convolution_cudnn_test.cc"],
-    tags = ["no_rocm"],  # No int8
+    tags = ["cuda-only"],  # No int8
     backends = [
         "gpu_v100",
         "gpu_a100",
@@ -2495,9 +2495,7 @@ xla_test(
         "cpu",
         "gpu",
     ],
-    tags = [
-        "no_rocm", # doesn't work in CI with reduced resources
-        "test_xla_cpu_thunks"],
+    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":hlo_test_base",
         ":xla_internal_test_main",
@@ -3111,7 +3109,6 @@ xla_test(
     shard_count = 3,
     tags = [
         "optonly",
-        "no_rocm", #TODO(rocm): TEMP, sync 24-06-24
         "test_xla_cpu_thunks",
     ],
     deps = [

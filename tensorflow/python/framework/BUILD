@@ -1462,7 +1462,7 @@ cuda_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # test_ops are not available in pip
-        "no_rocm",
+        "cuda-only",
     ],
     deps = [
         ":config",

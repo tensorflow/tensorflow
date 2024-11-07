@@ -437,9 +437,7 @@ tf_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_gpu",
-        "no_rocm",
         "no_windows",
-        "no_rocm",
     ],
     deps = [
         ":session",

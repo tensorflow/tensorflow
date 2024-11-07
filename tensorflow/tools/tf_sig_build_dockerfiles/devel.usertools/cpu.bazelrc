@@ -37,7 +37,7 @@ build:build_event_export --build_event_json_file=/tf/pkg/bep.json
 build:rbe --config=rbe_linux_cpu
 
 # For continuous builds
-test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-no_rocm,-benchmark-test,-v1only
+test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-cuda-only,-benchmark-test,-v1only
 test:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
 test:pycpp_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
