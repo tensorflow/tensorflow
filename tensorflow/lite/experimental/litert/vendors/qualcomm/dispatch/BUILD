@@ -54,7 +54,6 @@ litert_dynamic_lib(
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
-        "//tensorflow/lite/experimental/litert/c:litert_support",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",

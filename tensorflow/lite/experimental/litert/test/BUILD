@@ -50,8 +50,9 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
-        "//tensorflow/lite/experimental/litert/cc:litert_support",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/core/model:model_load",
         "@com_google_absl//absl/log:absl_check",

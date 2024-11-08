@@ -27,8 +27,8 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/core/graph_tools.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_load.h"
@@ -48,15 +48,13 @@ Model LoadModelThroughRoundTrip(std::string_view path) {
   OwningBufferRef buf;
   auto [data, size, offset] = buf.GetWeak();
 
-  LITERT_CHECK_STATUS_OK_MSG(
-      LiteRtSerializeModel(model.Release(), &data, &size, &offset),
-      "Failed to serialize model");
+  LITERT_CHECK_STATUS_OK(
+      LiteRtSerializeModel(model.Release(), &data, &size, &offset));
 
   // Reload model.
   LiteRtModel result = nullptr;
-  LITERT_CHECK_STATUS_OK_MSG(
-      LiteRtLoadModelFromMemory(buf.Data(), buf.Size(), &result),
-      "Failed to re load model");
+  LITERT_CHECK_STATUS_OK(
+      LiteRtLoadModelFromMemory(buf.Data(), buf.Size(), &result));
 
   return Model::CreateFromOwnedHandle(result);
 }

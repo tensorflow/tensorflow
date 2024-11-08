@@ -18,19 +18,6 @@ package(
 )
 
 cc_library(
-    name = "litert_support",
-    hdrs = ["litert_support.h"],
-    deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_common",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/c:litert_support",
-        "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "litert_any",
     hdrs = ["litert_any.h"],
     deps = ["//tensorflow/lite/experimental/litert/c:litert_common"],
@@ -53,10 +40,10 @@ cc_library(
     srcs = ["litert_model.cc"],
     hdrs = ["litert_model.h"],
     deps = [
+        ":litert_expected",
         ":litert_handle",
-        ":litert_support",
+        ":litert_macros",
         "//tensorflow/lite/experimental/litert/c:litert_model",
-        "//tensorflow/lite/experimental/litert/c:litert_support",
         "//tensorflow/lite/experimental/litert/core:graph_tools",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -97,8 +84,8 @@ cc_library(
     ],
     deps = [
         ":litert_handle",
+        ":litert_macros",
         ":litert_model",
-        ":litert_support",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
@@ -136,7 +123,7 @@ cc_library(
     ],
     deps = [
         ":litert_handle",
-        ":litert_support",
+        ":litert_macros",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
@@ -169,6 +156,27 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "litert_macros",
+    hdrs = ["litert_macros.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "litert_expected",
+    hdrs = ["litert_expected.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "@com_google_absl//absl/log:absl_check",
     ],
 )
 

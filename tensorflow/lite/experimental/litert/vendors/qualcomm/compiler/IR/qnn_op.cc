@@ -18,7 +18,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
-#include "tensorflow/lite/experimental/litert/c/litert_support.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
 // A macro dance to create a unique literal string given a prefix.

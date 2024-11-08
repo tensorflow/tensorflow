@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_SUPPORT_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_SUPPORT_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MACROS_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MACROS_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -25,30 +25,7 @@
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
-#include "tensorflow/lite/experimental/litert/c/litert_support.h"  // IWYU pragma: export
 
-// Flatbuffer's raw char type.
-typedef uint8_t FbCharT;
-
-// Const view of flatbuffer's raw buffer type.
-typedef absl::Span<const FbCharT> FbConstBufferT;
-
-// Mutable view of flatbuffer's raw buffer type.
-typedef absl::Span<FbCharT> FbBufferT;
-
-// Convenience method to get raw string view from native flatbuffer buffer.
-inline absl::string_view FbBufToStr(FbConstBufferT fb_buf) {
-  auto fb_buf_raw = reinterpret_cast<const char*>(fb_buf.data());
-  const size_t fb_buf_size = fb_buf.size();
-  return absl::string_view(fb_buf_raw, fb_buf_size);
-}
-
-// Mutable version of above.
-inline absl::string_view FbBufToStr(FbBufferT fb_buf) {
-  auto fb_buf_raw = reinterpret_cast<char*>(fb_buf.data());
-  const size_t fb_buf_size = fb_buf.size();
-  return absl::string_view(fb_buf_raw, fb_buf_size);
-}
 
 #define _CONCAT_NAME_IMPL(x, y) x##y
 
@@ -56,82 +33,10 @@ inline absl::string_view FbBufToStr(FbBufferT fb_buf) {
 
 #define _RETURN_VAL(val) return val
 
-// `StatusOr` analog for litert. Very basic currently.
-// TODO: b/365295276 - Figure out how to better infer template param
-// and not require passing typing to macros.
-template <typename T>
-class LiteRtResult {
- public:
-  // TODO: b/365295276 - Implement emplace for LiteRtResult.
-
-  static LiteRtResult<T> FromValue(const T& value) {
-    LiteRtResult<T> result;
-    result.data_ = value;
-    return result;
-  }
-
-  static LiteRtResult<T> TakeValue(T&& value) {
-    LiteRtResult<T> result;
-    result.data_ = std::move(value);
-    return result;
-  }
-
-  static LiteRtResult<T> FromStatus(LiteRtStatus status) {
-    LiteRtResult<T> result;
-    result.data_ = status;
-    return result;
-  }
-
-  T& Value() {
-    if (!HasValue()) {
-      LITERT_FATAL("Result does not contain a value.");
-    }
-    return std::get<T>(data_);
-  }
-
-  LiteRtStatus Status() {
-    if (std::holds_alternative<T>(data_)) {
-      return kLiteRtStatusOk;
-    }
-    return std::get<LiteRtStatus>(data_);
-  }
-
-  bool HasValue() { return std::holds_alternative<T>(data_); }
-
- private:
-  std::variant<LiteRtStatus, T> data_;
-};
-
-#ifdef NDEBUG
-#define _LITERT_D_MSG(msg)
-#else
-#define _LITERT_D_MSG(msg) LITERT_LOG(LITERT_INFO, "%s", msg)
-#endif
-
-#ifdef LITERT_RETURN_STATUS_IF_NOT_OK_MSG
-#undef LITERT_RETURN_STATUS_IF_NOT_OK_MSG
-#define LITERT_RETURN_STATUS_IF_NOT_OK_MSG(expr, d_msg)        \
-  if (LiteRtStatus status = expr; status != kLiteRtStatusOk) { \
-    _LITERT_D_MSG(d_msg);                                      \
-    return status;                                             \
-  }
-#endif
-
-// TODO: b/365295276 Make c friendly `CHECK` macro(s) and move to c api.
-#define LITERT_CHECK_STATUS_HAS_CODE_MSG(expr, code, d_msg) \
-  if (LiteRtStatus status = expr; status != code) {         \
-    _LITERT_D_MSG(d_msg);                                   \
-    ABSL_CHECK(false);                                      \
-  }
-
-#define LITERT_CHECK_STATUS_HAS_CODE(expr, code) \
-  LITERT_CHECK_STATUS_HAS_CODE_MSG(expr, code, "");
+#define LITERT_CHECK_STATUS_HAS_CODE(expr, code) ABSL_CHECK(expr == code);
 
 #define LITERT_CHECK_STATUS_OK(expr) \
   LITERT_CHECK_STATUS_HAS_CODE(expr, kLiteRtStatusOk);
-
-#define LITERT_CHECK_STATUS_OK_MSG(expr, d_msg) \
-  LITERT_CHECK_STATUS_HAS_CODE_MSG(expr, kLiteRtStatusOk, d_msg);
 
 // If expr doesn't retur ok status, wrap as result and return.
 #define LITERT_RETURN_RESULT_IF_NOT_OK(expr, ty)             \
@@ -207,6 +112,23 @@ class LiteRtResult {
     return fail_stat;                       \
   }
 
+#define LITERT_RETURN_STATUS_IF_NOT_OK(expr) \
+  if (LiteRtStatus status = expr; status != kLiteRtStatusOk) return status;
+
+#define LITERT_RETURN_STATUS_IF_NOT_OK_OR_NOT_MATCHED(expr)                  \
+  if (LiteRtStatus status = expr;                                            \
+      (status != kLiteRtStatusOk && status != kLiteRtStatusLegalizeNoMatch)) \
+    return status;
+
+#define LITERT_RETURN_VAL_IF_NOT_OK(expr, ret_val) \
+  if (LiteRtStatus status = expr; status != kLiteRtStatusOk) return ret_val;
+
+#define LITERT_STACK_ARRAY(ty, var, size, init) \
+  ty* var = (ty*)alloca(sizeof(ty) * size);     \
+  for (ty* e = var; e < var + size; ++e) {      \
+    *e = init;                                  \
+  }
+
 namespace litert {
 namespace internal {
 
@@ -219,4 +141,4 @@ void AssertGet(LiteRtStatus (*get)(Args...), Args... args) {
 }  // namespace internal
 }  // namespace litert
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_SUPPORT_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MACROS_H_

@@ -21,7 +21,6 @@
 #include "absl/status/statusor.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/c/litert_support.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
