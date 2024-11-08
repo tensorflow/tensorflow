@@ -669,11 +669,9 @@ absl::StatusOr<bool> ProcessComputation(
   }
   // After processing all the operations, if nothing set the flag
   // collective_in_computation[computation] to true, then there must be no
-  // collective in this computation.
-  if (collective_in_computation.find(computation) ==
-      collective_in_computation.end()) {
-    collective_in_computation[computation] = false;
-  }
+  // collective in this computation. `insert` is a no-op if the key already
+  // exists in the `flat_hash_map`.
+  collective_in_computation.insert({computation, false});
   return changed;
 }
 }  // namespace
