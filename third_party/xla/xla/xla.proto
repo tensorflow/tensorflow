@@ -817,6 +817,8 @@ message DebugOptions {
   // Whether to use multiple compute streams to run windowed einsum.
   bool xla_gpu_multi_streamed_windowed_einsum = 280;
 
+  bool xla_gpu_experimental_stream_annotation = 342;
+
   // If enabled, uses bf16_6way gemm to compute F32 gemm.
   bool xla_gpu_enable_bf16_6way_gemm = 271;
 
@@ -1034,7 +1036,7 @@ message DebugOptions {
   }
   PGLEStrictnessLevel xla_gpu_pgle_accuracy_checker = 341;
 
-  // Next id: 342
+  // Next id: 343
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
