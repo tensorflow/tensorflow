@@ -38,6 +38,18 @@ exports_files(
     ],
 )
 
+cc_library(
+    name = "tflite_types",
+    hdrs = [
+        "tflite_types.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    visibility = [
+        "//tensorflow/lite/ios:__subpackages__",
+    ],
+)
+
 # LINT.IfChange(common)
 cc_library(
     name = "tflite_common",
