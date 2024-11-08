@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/pjrt/gpu/gpu_helpers.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 
 namespace xla {
 
