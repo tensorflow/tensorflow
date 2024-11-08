@@ -56,7 +56,7 @@ litert_dynamic_lib(
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_support",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
-        "//tensorflow/lite/experimental/litert/core:utils",
+        "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:context_binary_info",
