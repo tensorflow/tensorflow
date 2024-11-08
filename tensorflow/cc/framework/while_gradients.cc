@@ -56,8 +56,8 @@ string BackPropFrameName(const string& forward_frame_name) {
 // Creates a loop that counts the number of iterations performed by the
 // while loop associated with `while_ctx`. The returned output yields the
 // iteration count.
-Status AddForwardLoopCounter(WhileContext* while_ctx, const Scope& scope,
-                             Output* count) {
+absl::Status AddForwardLoopCounter(WhileContext* while_ctx, const Scope& scope,
+                                   Output* count) {
   // Create while loop:
   //   i = 0
   //   while forward loop predicate is true:
@@ -95,9 +95,10 @@ Status AddForwardLoopCounter(WhileContext* while_ctx, const Scope& scope,
 // boolean predicate indicating if the loop is still executing. This is used to
 // drive the gradient computation for the while loop associated with
 // `while_ctx`.
-Status AddBackPropLoopCounter(WhileContext* while_ctx, const Output& loop_count,
-                              const Scope& scope,
-                              Output* backprop_execution_pred) {
+absl::Status AddBackPropLoopCounter(WhileContext* while_ctx,
+                                    const Output& loop_count,
+                                    const Scope& scope,
+                                    Output* backprop_execution_pred) {
   // Create while loop:
   //   n = loop_count
   //   while n > 0:
@@ -135,11 +136,11 @@ Status AddBackPropLoopCounter(WhileContext* while_ctx, const Output& loop_count,
 // the predicate to use for the backprop loop (see AddBackPropLoopCounter()).
 // The partial derivatives w.r.t. the loop inputs, i.e. the input loop vars, are
 // returned in `grad_outputs`.
-Status AddWhileGradientLoop(WhileContext* while_ctx,
-                            const std::vector<Output>& grad_inputs,
-                            const Output& backprop_execution_pred,
-                            const Scope& parent_scope,
-                            std::vector<Output>* grad_outputs) {
+absl::Status AddWhileGradientLoop(WhileContext* while_ctx,
+                                  const std::vector<Output>& grad_inputs,
+                                  const Output& backprop_execution_pred,
+                                  const Scope& parent_scope,
+                                  std::vector<Output>* grad_outputs) {
   DCHECK_EQ(grad_inputs.size(), while_ctx->body_outputs().size());
   DCHECK_EQ(while_ctx->body_inputs().size(), while_ctx->body_outputs().size());
 
@@ -178,9 +179,9 @@ Status AddWhileGradientLoop(WhileContext* while_ctx,
 
 }  // namespace
 
-Status AddWhileLoopGradient(WhileContext* while_ctx, const Scope& scope,
-                            const std::vector<Output>& grad_inputs,
-                            std::vector<Output>* grad_outputs) {
+absl::Status AddWhileLoopGradient(WhileContext* while_ctx, const Scope& scope,
+                                  const std::vector<Output>& grad_inputs,
+                                  std::vector<Output>* grad_outputs) {
   Output forward_loop_count;
   TF_RETURN_IF_ERROR(AddForwardLoopCounter(
       while_ctx, scope.NewSubScope("ForwardLoopCounter"), &forward_loop_count));
