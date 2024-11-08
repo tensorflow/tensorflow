@@ -23,6 +23,7 @@ import numpy
 
 from . import xla_extension as _xla
 from .xla_extension import ArrayImpl as ArrayImpl
+from .xla_extension import AutotuneCacheMode as AutotuneCacheMode
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
