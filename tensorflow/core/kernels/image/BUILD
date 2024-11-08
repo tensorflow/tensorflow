@@ -272,7 +272,6 @@ tf_kernel_library(
     prefix = "non_max_suppression_op",
     deps = IMAGE_DEPS + ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/stream_executor",
     ]),
 )
 

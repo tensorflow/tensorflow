@@ -74,7 +74,6 @@ transitive_hdrs(
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python/client:tf_session_helper",
-        "@local_xla//xla/stream_executor",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
     ]),

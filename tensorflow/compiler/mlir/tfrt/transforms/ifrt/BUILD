@@ -167,7 +167,7 @@ cc_library(
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/service:computation_placer_hdr",
         "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/tsl/concurrency:ref_count",
     ],
 )

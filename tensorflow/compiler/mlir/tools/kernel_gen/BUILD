@@ -198,7 +198,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@llvm-project//mlir:mlir_runner_utils",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream",
     ],
 )
 
@@ -244,7 +244,7 @@ cc_library(
         "@llvm-project//mlir:mlir_runner_utils",
         "@local_tsl//tsl/platform:hash",
         "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_xla//xla/stream_executor/cuda:stream_executor_cuda",

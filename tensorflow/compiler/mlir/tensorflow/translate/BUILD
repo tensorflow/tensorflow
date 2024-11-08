@@ -191,7 +191,6 @@ cc_library(
         "@local_xla//xla/client:compile_only_client",
         "@local_xla//xla/service/cpu:cpu_compiler",
         "@local_xla//xla/service/cpu:cpu_transfer_manager",
-        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor/host:host_platform",
         "@local_xla//xla/stream_executor/host:host_platform_id",
     ],
