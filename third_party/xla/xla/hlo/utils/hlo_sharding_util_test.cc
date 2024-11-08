@@ -112,6 +112,34 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible8) {
             HloSharding::Tile(TileAssignment({2, 4}, {2, 2, 2}, {0, 2, 1})));
 }
 
+TEST(HloShardingUtilTest, MoveAndMergeShardingTilesPartialTile) {
+  HloSharding sharding =
+      HloSharding::PartialTile(TileAssignment({2, 3, 5, 7, 11}));
+  EXPECT_EQ(MoveAndMergeShardingTiles(sharding, 1, 3),
+            HloSharding::PartialTile(TileAssignment(
+                {2, 1, 5, 7 * 3, 11}, {2, 3, 5, 7, 11}, {0, 2, 3, 1, 4})));
+
+  EXPECT_EQ(MoveAndMergeShardingTiles(sharding, 3, 1),
+            HloSharding::PartialTile(TileAssignment(
+                {2, 3 * 7, 5, 1, 11}, {2, 3, 5, 7, 11}, {0, 1, 3, 2, 4})));
+}
+
+TEST(HloShardingUtilTest, MoveAndMergeShardingTilesSubGroup) {
+  HloSharding sharding =
+      HloSharding::Subgroup(TileAssignment({2, 3, 5, 7, 11}),
+                            {OpSharding::MANUAL, OpSharding::REPLICATED});
+  EXPECT_EQ(
+      MoveAndMergeShardingTiles(sharding, 0, 2),
+      HloSharding::Subgroup(TileAssignment({1, 3, 5 * 2, 7, 11},
+                                           {2, 3, 5, 7, 11}, {1, 2, 0, 3, 4}),
+                            {OpSharding::MANUAL, OpSharding::REPLICATED}));
+  EXPECT_EQ(
+      MoveAndMergeShardingTiles(sharding, 2, 0),
+      HloSharding::Subgroup(TileAssignment({2 * 5, 3, 1, 7, 11},
+                                           {2, 3, 5, 7, 11}, {0, 2, 1, 3, 4}),
+                            {OpSharding::MANUAL, OpSharding::REPLICATED}));
+}
+
 TEST(HloShardingUtilTest, TransposeShardingReplicated) {
   EXPECT_EQ(TransposeSharding(HloSharding::Replicate(), {0, 1, 2}),
             HloSharding::Replicate());

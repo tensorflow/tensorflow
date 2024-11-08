@@ -108,6 +108,13 @@ std::optional<int64_t> GetMostOccurringDevice(
 std::optional<int64_t> GetDominantDevice(
     absl::Span<HloComputation* const> computations, double dominant_factor);
 
+// Given a tiled sharding, move the tiles from source_dim and merge it into
+// target_dim. For example, given a sharding with tile assignment [a, b, c, d,
+// e], source_dim = 1, target_dim = 3, the function will return a sharding with
+// tile assignment [a, 1, c, db, e].
+HloSharding MoveAndMergeShardingTiles(const HloSharding& sharding,
+                                      int64_t source_dim, int64_t target_dim);
+
 // Returns the HloSharding with the tile dimensions and tile assignment
 // transposed based on the specified dimension numbers. In case of a tile
 // maximal sharding returns the original sharding.
