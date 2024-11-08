@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTILS_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTILS_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTIL_TENSOR_TYPE_UTIL_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTIL_TENSOR_TYPE_UTIL_H_
 
 #include <string>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 
 namespace litert::internal {
@@ -43,4 +42,4 @@ absl::StatusOr<size_t> GetNumPackedBytes(
 
 }  // namespace litert::internal
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTILS_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTIL_TENSOR_TYPE_UTIL_H_

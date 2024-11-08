@@ -39,8 +39,6 @@ std::unique_ptr<LibjpegHandle> LibjpegHandle::Create(Status &status) {
   return handle;
 }
 
-LibjpegHandle::~LibjpegHandle() = default;
-
 }  // namespace decode_jpeg_kernel
 }  // namespace acceleration
 }  // namespace tflite

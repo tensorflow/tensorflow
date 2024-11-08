@@ -33,7 +33,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
-#include "tensorflow/lite/experimental/litert/core/utils.h"
+#include "tensorflow/lite/experimental/litert/core/util/tensor_type_util.h"
 #include "tensorflow/lite/experimental/litert/runtime/dispatch/dispatch_delegate_options.h"
 #include "tensorflow/lite/experimental/litert/runtime/tfl_utils.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
