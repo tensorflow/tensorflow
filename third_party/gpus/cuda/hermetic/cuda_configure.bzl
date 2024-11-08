@@ -42,9 +42,6 @@ def _find_cc(repository_ctx):
     ) or get_host_environ(repository_ctx, _CC)
     if cc_name_from_env:
         cc_name = cc_name_from_env
-    if cc_name.startswith("/"):
-        # Return the absolute path.
-        return cc_name
     cc = which(repository_ctx, cc_name, allow_failure = True)
     if not cc:
         print(("Cannot find {}, either correct your path," +
