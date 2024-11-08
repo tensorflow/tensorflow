@@ -210,14 +210,13 @@ absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateRunner(
 // The trailing argument is the scratch buffer which should be discarded.
 HloInstruction* UnpackResultPair(HloSortInstruction* sort_op,
                                  HloInstruction* custom_call, bool swap) {
-  HloComputation* parent = sort_op->parent();
   HloInstruction* gte0 =
-      parent->AddInstruction(HloInstruction::CreateGetTupleElement(
+      sort_op->AddInstruction(HloInstruction::CreateGetTupleElement(
           sort_op->operand(0)->shape(), custom_call, swap ? 1 : 0));
   HloInstruction* gte1 =
-      parent->AddInstruction(HloInstruction::CreateGetTupleElement(
+      sort_op->AddInstruction(HloInstruction::CreateGetTupleElement(
           sort_op->operand(1)->shape(), custom_call, swap ? 0 : 1));
-  return parent->AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
+  return sort_op->AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
 }
 
 }  // namespace
@@ -264,7 +263,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
 
   // Build the custom call instruction.
   HloInstruction* custom_call =
-      sort_op->parent()->AddInstruction(HloInstruction::CreateCustomCall(
+      sort_op->AddInstruction(HloInstruction::CreateCustomCall(
           call_shape, absl::MakeSpan(operands), kCubDeviceRadixSortTarget));
 
   xla::SortOptions backend_config;
@@ -274,7 +273,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   // Build the replacement instruction.
   HloInstruction* replacement;
   if (sort_op->operand_count() == 1 || values == nullptr) {
-    replacement = sort_op->parent()->AddInstruction(
+    replacement = sort_op->AddInstruction(
         HloInstruction::CreateGetTupleElement(keys->shape(), custom_call, 0));
   } else {
     replacement = UnpackResultPair(sort_op, custom_call,
