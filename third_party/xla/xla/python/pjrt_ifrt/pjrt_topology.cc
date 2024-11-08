@@ -51,6 +51,10 @@ PjRtPlatformId PjRtTopology::platform_id() const {
   return description_->platform_id();
 }
 
+bool PjRtTopology::is_subslice_topology() const {
+  return description_->is_subslice_topology();
+}
+
 std::vector<std::unique_ptr<const PjRtDeviceDescription>>
 PjRtTopology::DeviceDescriptions() const {
   return description_->DeviceDescriptions();

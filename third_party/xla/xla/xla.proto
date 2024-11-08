@@ -43,6 +43,14 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // go/keep-sorted start
 
+  // The execution time optimization effort to expend during compilation.
+  // See `exec_time_optimization_effort` for accepted ranges. This flag will
+  // override any changes set in `ExecutionOptions`. Most likely this is just a
+  // temporary measure before https://github.com/jax-ml/jax/issues/24715 is in.
+  //
+  // TODO(b/377871215): Check whether we still need this.
+  float xla_experimental_exec_time_optimization_effort = 346;
+
   // go/keep-sorted end
 
   //--------------------------------------------------------------------------//
@@ -1051,7 +1059,7 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 346
+  // Next id: 347
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

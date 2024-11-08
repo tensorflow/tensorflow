@@ -46,6 +46,7 @@ class PjRtTopology final : public llvm::RTTIExtends<PjRtTopology, Topology> {
   absl::string_view platform_name() const override;
   absl::string_view platform_version() const override;
   PjRtPlatformId platform_id() const override;
+  bool is_subslice_topology() const override;
 
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
       const override;
