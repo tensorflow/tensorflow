@@ -199,5 +199,13 @@ TEST(PjRtClientTest, CompileUsesStableHloVersion) {
   const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile = PJRT_Client_Compile_Orig;
 }
 
+TEST(PjRtCApiClientTest, WrapClientAroundCApi) {
+  const PJRT_Api* c_api = ::pjrt::cpu_plugin::GetCpuPjrtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          WrapClientAroundCApi(c_api));
+  EXPECT_EQ(client->platform_name(), xla::CpuName());
+  EXPECT_EQ(client->platform_id(), xla::CpuId());
+}
+
 }  // namespace
 }  // namespace xla

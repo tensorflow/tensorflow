@@ -817,6 +817,11 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {},
     std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
 
+absl::StatusOr<std::unique_ptr<PjRtClient>> WrapClientAroundCApi(
+    const PJRT_Api* c_api,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {},
+    std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
+
 absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
     const PJRT_Api* c_api, absl::string_view topology_name,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options);
