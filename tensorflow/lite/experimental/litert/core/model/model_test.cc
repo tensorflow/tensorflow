@@ -34,9 +34,9 @@ TEST(ModelTest, GetMetadata) {
   static constexpr absl::string_view kMetadata = "VALUE";
   static constexpr absl::string_view kKey = "KEY";
 
-  ASSERT_STATUS_OK(
+  LITERT_ASSERT_STATUS_OK(
       model.PushMetadata(kKey, OwningBufferRef<uint8_t>(kMetadata)));
-  ASSERT_RESULT_OK_ASSIGN(auto found_metadata, model.FindMetadata(kKey));
+  LITERT_ASSERT_RESULT_OK_ASSIGN(auto found_metadata, model.FindMetadata(kKey));
 
   EXPECT_EQ(found_metadata.StrView(), kMetadata);
 }

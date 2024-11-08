@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_TFLITE_TYPES_H_
 #define TENSORFLOW_LITE_TOCO_TFLITE_TYPES_H_
 
+#include <cstdint>
+
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
