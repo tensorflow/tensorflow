@@ -14,10 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <atomic>
+#include <cstdint>
 #include <numeric>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 #define EIGEN_USE_THREADS
 
