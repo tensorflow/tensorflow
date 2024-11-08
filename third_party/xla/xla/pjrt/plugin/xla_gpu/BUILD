@@ -26,8 +26,16 @@ cc_library(
     srcs = [],
     hdrs = ["xla_gpu_client_options.h"],
     deps = [
+        ":xla_gpu_allocator_config",
         "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/pjrt/gpu:gpu_helpers",
+    ],
+)
+
+cc_library(
+    name = "xla_gpu_allocator_config",
+    srcs = [],
+    hdrs = ["xla_gpu_allocator_config.h"],
+    deps = [
     ],
 )
 

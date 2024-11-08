@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <stack>
 #include <utility>
 #include <vector>
 
@@ -28,9 +27,10 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/numeric/bits.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -78,47 +79,6 @@ int ComputeMaxUnrollFactor(int64_t num_elements) {
 }
 
 }  // namespace
-
-bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
-  CHECK_NE(instr.opcode(), HloOpcode::kFusion) << "`instr` has to be unfused.";
-  // Avoid fusing gather or broadcast if output is larger than the input
-  // which means that inputs are used multiple times.
-  if (instr.opcode() == HloOpcode::kGather ||
-      instr.opcode() == HloOpcode::kBroadcast) {
-    return ShapeUtil::ElementsIn(instr.shape()) >
-           ShapeUtil::ElementsIn(instr.operand(0)->shape());
-  }
-  // Avoid fusing reduce-window when stride is less than window size to minimize
-  // the number of reads of the same elements.
-  if (instr.opcode() == HloOpcode::kReduceWindow) {
-    for (const auto& dim : instr.window().dimensions()) {
-      if (dim.size() > dim.stride()) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-bool IsExpensiveToRepeat(const HloInstruction& instr) {
-  CHECK_NE(instr.opcode(), HloOpcode::kFusion) << "`instr` has to be unfused.";
-  // Reductions which use many input elements to calculate one output element
-  // are both memory and computationally heavy.
-  constexpr int kMaxInputsPerOutput = 10;
-  if (instr.opcode() == HloOpcode::kReduce &&
-      !IsReductionFromOrToContiguousDimensions(instr)) {
-    int64_t reduction_ratio = ShapeUtil::ElementsIn(instr.operand(0)->shape()) /
-                              ShapeUtil::ElementsIn(instr.shape());
-    if (reduction_ratio > kMaxInputsPerOutput) return true;
-  }
-  if (instr.opcode() == HloOpcode::kReduceWindow) {
-    int64_t reduction_ratio = 1;
-    for (const auto& dim : instr.window().dimensions())
-      reduction_ratio *= dim.size();
-    if (reduction_ratio > kMaxInputsPerOutput) return true;
-  }
-  return false;
-}
 
 bool IsPhysicallyTransposing(const HloInstruction& instr) {
   if (instr.opcode() == HloOpcode::kFusion) {
@@ -503,77 +463,6 @@ FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
   return FusionDecision::Allow();
 }
 
-FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
-                                         const HloInstruction& consumer) {
-  if (!IsLoopFusibleAsProducer(producer) &&
-      !IsInputFusibleTranspose(producer)) {
-    return FusionDecision::Forbid("the producer is not loop-fusible");
-  }
-
-  if (IsInputFusibleReduction(producer)) {
-    if (!producer.GetModule()
-             ->config()
-             .debug_options()
-             .xla_gpu_enable_reduction_epilogue_fusion()) {
-      return FusionDecision::Forbid(
-          "Reduction epilogue fusion is not enabled.");
-    }
-    const HloInstruction& reduce_hero =
-        producer.opcode() == HloOpcode::kFusion
-            ? FindNonTrivialHero(*producer.fused_expression_root())
-            : producer;
-    if (!ReductionIsRaceFree(
-            reduce_hero.GetModule()->config(),
-            GetReductionKindAndContiguousComponents(reduce_hero))) {
-      return FusionDecision::Forbid(
-          "Reduction output fusion only works for race free reductions");
-    }
-    if (!AllSatisfy(consumer, [](const HloInstruction* hlo) {
-          return IsIntermediate(hlo, /*allowed_operand_count=*/1);
-        })) {
-      return FusionDecision::Forbid(
-          "Reductions from/to continuous dims epilogue not fusible");
-    }
-
-    if (producer.user_count() > 1) {
-      return FusionDecision::Forbid(
-          "reduction output fusion only works for single user");
-    }
-  }
-
-  if (auto can_fuse = CanEmitInputFusedScatter(producer, consumer); !can_fuse) {
-    return can_fuse;
-  }
-
-  if (!IsInputFusible(consumer) && !IsLoopFusibleAsConsumer(consumer)) {
-    return FusionDecision::Forbid(
-        "the consumer is not input-fusible and not loop-fusible");
-  }
-
-  // Skip multiple output fusion. It's not yet supported.
-  if (producer.IsMultiOutputFusion()) {
-    return FusionDecision::Forbid(
-        "the producer is not fusible as it is a multi-output fusion");
-  }
-
-  // Fuse scalar constants into loop fusion nodes. This reduces the number of
-  // parameters and makes matching scalar broadcasts easier.
-  //
-  // Don't fuse other constants: Unfused constants in GPU land can be
-  // represented as an external constant (i.e. not emitted in LLVM IR / PTX),
-  // but fused constants are handled by shared CPU/GPU code and always emitted
-  // in the IR/PTX.  The external constant representation makes for faster
-  // compiles and significantly smaller assembly code.
-  if (producer.opcode() == HloOpcode::kConstant &&
-      (!ShapeUtil::IsEffectiveScalar(producer.shape()) ||
-       consumer.opcode() != HloOpcode::kFusion)) {
-    return FusionDecision::Forbid("not fusing constant");
-  }
-
-  // Make sure the new fusion obeys the in-place semantics.
-  return InstructionFusion::ShouldFuseInPlaceOp(&producer, &consumer);
-}
-
 FusionDecision IsProducerMultiOutputFusible(const HloInstruction& producer) {
   // Skip multiple output fusion. It's not yet supported.
   if (producer.IsMultiOutputFusion()) {
@@ -844,70 +733,6 @@ FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
         "per fusion");
   }
   return FusionDecision::Allow();
-}
-
-bool CreatesHeavyComputation(const HloInstruction& producer,
-                             const HloInstruction& consumer) {
-  // If producer's computation is not expensive to repeat even in the consumer
-  // requests the same element multiple times there is nothing to do.
-  auto producer_is_heavy = [&](const HloInstruction& instr) {
-    if (producer.opcode() != HloOpcode::kFusion) {
-      return IsExpensiveToRepeat(producer);
-    }
-    for (const auto& instr : producer.fused_instructions()) {
-      if (IsExpensiveToRepeat(*instr)) {
-        return true;
-      }
-    }
-    return false;
-  };
-  if (!producer_is_heavy(producer)) {
-    return false;
-  }
-
-  // If consumer is a non-fusion instruction then we have to check if it
-  // reads input multiple times.
-  if (consumer.opcode() != HloOpcode::kFusion) {
-    return IfFusedReadsElementsMultipleTimes(consumer);
-  }
-
-  // If consumer is a fusion then we have to check if the output of producer is
-  // used directly or indirectly as an input to an HLO instruction that
-  // accesses input multiple times, i.e. there is a path in the graph
-  // from an operand corresponding to the producer to an HLO instruction
-  // generating multiple accesses in the consumer.
-  for (const HloInstruction* operand : consumer.operands()) {
-    if (operand != &producer) {
-      continue;
-    }
-
-    const HloInstruction* root =
-        consumer.fused_instructions_computation()->parameter_instruction(
-            consumer.operand_index(operand));
-
-    std::stack<const HloInstruction*> dfs;
-    dfs.push(root);
-    absl::flat_hash_set<const HloInstruction*> visited;
-    while (!dfs.empty()) {
-      const HloInstruction* cur = dfs.top();
-      dfs.pop();
-
-      if (!visited.insert(cur).second) {
-        continue;
-      }
-
-      if (IfFusedReadsElementsMultipleTimes(*cur)) {
-        return true;
-      }
-      for (const auto& user : cur->users()) {
-        if (visited.contains(user)) {
-          continue;
-        }
-        dfs.push(user);
-      }
-    }
-  }
-  return false;
 }
 
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
