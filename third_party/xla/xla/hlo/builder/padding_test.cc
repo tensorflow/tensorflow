@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/builder/padding.h"
 
+#include <cstdint>
 #include <utility>
 
 #include "tsl/platform/test.h"

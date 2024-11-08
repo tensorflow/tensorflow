@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/hlo/builder/padding.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
