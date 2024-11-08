@@ -19,7 +19,7 @@
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 

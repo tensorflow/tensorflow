@@ -32,9 +32,9 @@ LiteRtStatus LiteRtLoadModelFromMemory(const uint8_t* buf, size_t buf_size,
 #ifdef __cplusplus
 }
 
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
-#include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
 
 namespace litert::internal {
 

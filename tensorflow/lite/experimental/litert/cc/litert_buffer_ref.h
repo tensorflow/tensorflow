@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTIL_BUFFER_REF_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTIL_BUFFER_REF_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_BUFFER_REF_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_BUFFER_REF_H_
 
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-#include <new>
 #include <ostream>
 #include <tuple>
 #include <vector>
@@ -348,4 +347,4 @@ OwningBufferRef(const char*) -> OwningBufferRef<ByteT, Allocator>;
 
 }  // namespace litert
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTIL_BUFFER_REF_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_BUFFER_REF_H_

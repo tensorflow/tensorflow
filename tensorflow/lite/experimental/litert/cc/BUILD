@@ -159,3 +159,27 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "litert_buffer_ref",
+    hdrs = [
+        "litert_buffer_ref.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "litert_buffer_ref_test",
+    srcs = ["litert_buffer_ref_test.cc"],
+    deps = [
+        ":litert_buffer_ref",
+        "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

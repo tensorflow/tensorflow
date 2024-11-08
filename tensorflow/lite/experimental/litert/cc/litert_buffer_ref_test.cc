@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 
 #include <cstddef>
 #include <cstdint>
