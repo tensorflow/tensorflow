@@ -2,6 +2,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/pjrt/gpu:package_groups.bzl", "xla_gpu_internal_packages")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm", "if_gpu_is_configured")
@@ -248,6 +249,12 @@ tf_proto_library(
     name = "gpu_topology_proto",
     srcs = ["gpu_topology.proto"],
     visibility = ["//visibility:public"],
+)
+
+py_proto_library(
+    name = "gpu_topology_proto_py_pb2",
+    visibility = ["//visibility:public"],
+    deps = [":gpu_topology_proto"],
 )
 
 cc_library(
