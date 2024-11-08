@@ -1,104 +1,97 @@
-diff --git a/README.md b/README.md
-index cc2ac20..9ae24f7 100644
---- a/README.md
-+++ b/README.md
-@@ -5,7 +5,7 @@ agnostic and provide extensive user control and debuggability features. It
- includes an axis-based sharding representation, a set of compiler APIs,
- functionality for sharding propagation, and plans for an SPMD partitioner.
+diff --git a/docs/_toc.yaml b/docs/_toc.yaml
+deleted file mode 100644
+index 2757147..0000000
+--- a/docs/_toc.yaml
++++ /dev/null
+@@ -1,18 +0,0 @@
+-toc:
+-- heading: Shardy documentation
+-- title: Getting started
+-  section:
+-  - title: Introduction
+-    path: /shardy
+-- title: Reference documentation
+-  section:
+-  - title: SDY dialect
+-    path: /shardy/sdy_dialect
+-  - title: SDY export passes
+-    path: /shardy/sdy_export_passes
+-  - title: SDY import passes
+-    path: /shardy/sdy_import_passes
+-  - title: SDY op interfaces
+-    path: /shardy/sdy_op_interfaces
+-  - title: SDY propagation passes
+-    path: /shardy/sdy_propagation_passes
+diff --git a/docs/sdy_export_passes.md b/docs/sdy_export_passes.md
+index abfc31b..ce5d931 100755
+--- a/docs/sdy_export_passes.md
++++ b/docs/sdy_export_passes.md
+@@ -8,13 +8,13 @@ sharded operands and produce a sharded result without requiring any reshard
+ communications (note that the operation might still require communication
+ such as all-reduce or halo-swaps).
  
--For more information see the docs directory.
-+For more information see the rfcs directory.
+-After propagation, some operations may still have incompatible shardings.
++After propagation, some opeartions may still have incompatible shardings.
  
- ## Status
+ Please note, when an axis (or sub-axis) is used to shard non-corresponding
+ dimensions (e.g. non-contracting dimensions in matmul) across multiple
+ tensors, or when an axis shards a dimension in one tensor but not the
+ corresponding dimension in the other tensor, it is said that the operation
+-has a sharding conflict. Hence, after this pass, the operations become
++has a sharding conflict. Hence, after this pass, the opeartions become
+ conflict-free.
  
-diff --git a/rfcs/2024-03-14-shardy-partitioner-rfc.md b/rfcs/2024-03-14-shardy-partitioner-rfc.md
-index ff31d09..e56b52e 100644
---- a/rfcs/2024-03-14-shardy-partitioner-rfc.md
-+++ b/rfcs/2024-03-14-shardy-partitioner-rfc.md
-@@ -49,7 +49,8 @@ Sharding representation can either be:
+ This pass injects reshard operations explicitly so that, for each operation,
+@@ -47,7 +47,7 @@ In the example above, there is a conflict since `lhs` and `rhs` tensors
+ are both sharded on axis "x" on their non-contracting dimensions. Here,
+ `rhs` tensor is resharded, before the dot operation, explicitly to be
+ sharded only on its first dimension and on axis "x". This way, the dot
+-operation becomes compatible.
++opearation becomes compatible.
+ ### `-sdy-remove-sharding-groups`
  
- Design a new **axis-based** sharding representation that is general enough to handle all existing use cases of both GSPMD and PartIR.
+ _Removes ShardingGroupOps after propagation._
+diff --git a/shardy/dialect/sdy/transforms/export/passes.td b/shardy/dialect/sdy/transforms/export/passes.td
+index 8c741b4..3c00db3 100644
+--- a/shardy/dialect/sdy/transforms/export/passes.td
++++ b/shardy/dialect/sdy/transforms/export/passes.td
+@@ -52,13 +52,13 @@ def InsertExplicitReshardsPass : Pass<"sdy-insert-explicit-reshards", "func::Fun
+     communications (note that the operation might still require communication
+     such as all-reduce or halo-swaps).
  
--See for more information on the requirements.
-+See  for more information on the requirements.
-+
+-    After propagation, some operations may still have incompatible shardings.
++    After propagation, some opeartions may still have incompatible shardings.
  
- ### Overview
+     Please note, when an axis (or sub-axis) is used to shard non-corresponding
+     dimensions (e.g. non-contracting dimensions in matmul) across multiple
+     tensors, or when an axis shards a dimension in one tensor but not the
+     corresponding dimension in the other tensor, it is said that the operation
+-    has a sharding conflict. Hence, after this pass, the operations become
++    has a sharding conflict. Hence, after this pass, the opeartions become
+     conflict-free.
  
-diff --git a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-index 3025a40..7c21781 100644
---- a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-+++ b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-@@ -14,7 +14,6 @@ limitations under the License.
- ==============================================================================*/
- 
- #include <cassert>
--#include <cstdint>
- #include <optional>
- 
- #include "llvm/ADT/STLExtras.h"
-@@ -152,11 +151,6 @@ void insertExplicitReshards(Operation* op, const ShardingProjection& projection,
-   }
+     This pass injects reshard operations explicitly so that, for each operation,
+@@ -91,7 +91,7 @@ def InsertExplicitReshardsPass : Pass<"sdy-insert-explicit-reshards", "func::Fun
+     are both sharded on axis "x" on their non-contracting dimensions. Here,
+     `rhs` tensor is resharded, before the dot operation, explicitly to be
+     sharded only on its first dimension and on axis "x". This way, the dot
+-    operation becomes compatible.
++    opearation becomes compatible.
+   }];
+   let dependentDialects = ["mlir::sdy::SdyDialect"];
  }
- 
--AxesPerFactor findCommonAxes(const ShardingProjection& projection,
--                             int64_t numFactors) {
--  return projection.getGreatestCommonPrefixAxes(numFactors);
--}
--
- struct InsertExplicitReshardsPass
-     : public impl::InsertExplicitReshardsPassBase<InsertExplicitReshardsPass> {
-   using InsertExplicitReshardsPassBase::InsertExplicitReshardsPassBase;
-@@ -212,8 +206,9 @@ struct InsertExplicitReshardsPass
- 
-       UpdateTensorShardings updateTensorShardings(shardingRule.getNumOperands(),
-                                                   shardingRule.getNumResults());
--      for (const auto& [index, factorAxes] : llvm::enumerate(findCommonAxes(
--               shardingProjection, shardingRule.getNumFactors()))) {
-+      for (const auto& [index, factorAxes] :
-+           llvm::enumerate(shardingProjection.getGreatestCommonPrefixAxes(
-+               shardingRule.getNumFactors()))) {
-         // TODO(enver): Add unit tests to test overflow axes are cleared after
-         // handling the case that some factors have overflow axes.
-         updateTensorShardings |= shardingProjection.updateSharding(
-diff --git a/shardy/dialect/sdy/transforms/propagation/sharding_projection.cc b/shardy/dialect/sdy/transforms/propagation/sharding_projection.cc
-index 8737456..a22b055 100644
---- a/shardy/dialect/sdy/transforms/propagation/sharding_projection.cc
-+++ b/shardy/dialect/sdy/transforms/propagation/sharding_projection.cc
-@@ -441,7 +441,7 @@ inline SmallVector<AxisRefAttr> getGreatestCommonPrefix(
- }  // namespace
- 
- AxesPerFactor ShardingProjection::getGreatestCommonPrefixAxes(
--    int64_t numFactors) const {
-+    int64_t numFactors) {
-   AxesPerFactor factorAxisRefs(numFactors);
-   BitVector factorIsSeen(numFactors);
-   for (const TensorFactorShardings& tensorFactorSharding :
-diff --git a/shardy/dialect/sdy/transforms/propagation/sharding_projection.h b/shardy/dialect/sdy/transforms/propagation/sharding_projection.h
-index 1cf26b7..299f57b 100644
---- a/shardy/dialect/sdy/transforms/propagation/sharding_projection.h
-+++ b/shardy/dialect/sdy/transforms/propagation/sharding_projection.h
-@@ -241,7 +241,7 @@ class ShardingProjection {
-   // Returns an array of axis-ref arrays where each axis-ref array defines a
-   // factor sharding, for the corresponding factor, as the greatest common
-   // prefix of factor shardings across all operands and results.
--  AxesPerFactor getGreatestCommonPrefixAxes(int64_t numFactors) const;
-+  AxesPerFactor getGreatestCommonPrefixAxes(int64_t numFactors);
- 
-  private:
-   SmallVector<TensorFactorShardings> operands;
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index d078ea3..d0f05d2 100644
+index d0f05d2..cf8280b 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "69d0bab82689d470e3fd68f50ca8b8d28f3e2294"
--    LLVM_SHA256 = "dbd36ab8a511bb35022957cdfadfa99de045ac5c84c3347949614534c0dcd150"
-+    LLVM_COMMIT = "c6f3b7bcd0596d30f8dabecdfb9e44f9a07b6e4c"
-+    LLVM_SHA256 = "13a1b39cfe51421fb1fd15828b76766d7680d854fc1039254b37f3f824ab47b7"
+-    LLVM_COMMIT = "c6f3b7bcd0596d30f8dabecdfb9e44f9a07b6e4c"
+-    LLVM_SHA256 = "13a1b39cfe51421fb1fd15828b76766d7680d854fc1039254b37f3f824ab47b7"
++    LLVM_COMMIT = "246b57cb2086b22ad8b41051c77e86ef478053a1"
++    LLVM_SHA256 = "2d46c080deb2cb6dbb9420a334be231040487bbfe87b5ed0b90bb69cac423500"
  
      tf_http_archive(
          name = name,
