@@ -738,7 +738,8 @@ cc_library(
         "@local_xla//xla/service:computation_placer_hdr",
         "@local_xla//xla/service/gpu:gpu_executable_run_options",
         "@local_xla//xla/service/gpu/runtime:nccl_clique_key",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream",
+        "@local_xla//xla/stream_executor:stream_executor_h",
     ],
     alwayslink = 1,
 )
