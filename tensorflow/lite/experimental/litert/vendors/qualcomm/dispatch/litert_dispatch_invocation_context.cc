@@ -33,7 +33,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_support.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
-#include "tensorflow/lite/experimental/litert/core/utils.h"
+#include "tensorflow/lite/experimental/litert/core/util/tensor_type_util.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/context_binary_info.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/litert_dispatch_device_context.h"
