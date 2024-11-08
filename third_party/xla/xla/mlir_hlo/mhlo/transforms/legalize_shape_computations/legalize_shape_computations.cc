@@ -231,7 +231,7 @@ void populateShapeComputationPatterns(MLIRContext *context,
       context);
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>>
+static std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeShapeComputationsPass() {
   return std::make_unique<HloLegalizeShapeComputationsPass>();
 }
