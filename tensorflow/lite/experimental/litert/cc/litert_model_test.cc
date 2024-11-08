@@ -155,9 +155,10 @@ TEST(CcLayoutTest, NotEqual) {
 
 TEST(CcOpTest, SimpleSupportedOp) {
   auto litert_model = testing::LoadTestFileModel("one_mul.tflite");
-  ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
-                          GetSubgraph(litert_model.Get()));
-  ASSERT_RESULT_OK_ASSIGN(auto litert_ops, GetSubgraphOps(litert_subgraph));
+  LITERT_ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
+                                 GetSubgraph(litert_model.Get()));
+  LITERT_ASSERT_RESULT_OK_ASSIGN(auto litert_ops,
+                                 GetSubgraphOps(litert_subgraph));
 
   Op op(litert_ops[0]);
   EXPECT_EQ(op.Code(), kLiteRtOpCodeTflMul);
@@ -183,8 +184,8 @@ TEST(RankedTensorType, Accessors) {
 TEST(Tensor, SimpleModel) {
   auto litert_model = testing::LoadTestFileModel("one_mul.tflite");
 
-  ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
-                          GetSubgraph(litert_model.Get()));
+  LITERT_ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
+                                 GetSubgraph(litert_model.Get()));
 
   Subgraph subgraph(litert_subgraph);
 
@@ -233,8 +234,8 @@ TEST(Tensor, SimpleModel) {
 TEST(CcSubgraphTest, SimpleModel) {
   auto litert_model = litert::testing::LoadTestFileModel("one_mul.tflite");
 
-  ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
-                          GetSubgraph(litert_model.Get()));
+  LITERT_ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
+                                 GetSubgraph(litert_model.Get()));
 
   litert::Subgraph subgraph(litert_subgraph);
   ASSERT_EQ(subgraph.Inputs().size(), 2);
