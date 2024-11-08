@@ -9484,6 +9484,21 @@ TEST_F(AlgebraicSimplifierTest,
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       DotToMultiplyRewriteWith_F32_F32_F32_Algorithm) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test
+    ENTRY dot {
+      a = f32[128]{0} parameter(0)
+      b = f32[128]{0} parameter(1)
+      ROOT dot = f32[128,128]{1,0} dot(a, b),
+        algorithm=dot_f32_f32_f32
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, RemainderOfIota) {
   const char* kModuleStr = R"(
     HloModule m
@@ -10443,6 +10458,23 @@ TEST_F(AlgebraicSimplifierTest,
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       DotStrengthReductionWith_F32_F32_F32_Algorithm) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test
+    ENTRY dot {
+      a = f32[128,2]{1,0} parameter(0)
+      b = f32[2]{0} parameter(1)
+      ROOT dot = f32[128]{0} dot(a, b),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0},
+        algorithm=dot_f32_f32_f32
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduce) {
