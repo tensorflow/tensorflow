@@ -406,6 +406,7 @@ xla_cc_test(
         ":hlo_module_config",
         ":hlo_verifier",
         ":host_memory_offload_annotations_hdr",
+        "//xla:literal_util",
         "//xla:test_helpers",
         "//xla:util",
         "//xla/hlo/ir:hlo",
@@ -414,6 +415,7 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
@@ -421,6 +423,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

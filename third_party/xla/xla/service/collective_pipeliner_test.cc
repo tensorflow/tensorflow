@@ -39,27 +39,31 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
 using ::testing::_;
+using ::tsl::testing::IsOkAndHolds;
 namespace op = xla::testing::opcode_matchers;
 
 class CollectivePipelinerTest : public HloTestBase {
  public:
   CollectivePipelinerTest() {
     const int64_t kNumReplicas = 4;
-    const int64_t kNumComputations = 2;
+    const int64_t kNumPartitions = 2;
     config_ = GetModuleConfigForTest(/*replica_count=*/kNumReplicas,
-                                     /*num_partitions=*/kNumComputations);
+                                     /*num_partitions=*/kNumPartitions);
   }
 
  protected:
@@ -185,6 +189,120 @@ ENTRY entry {
   EXPECT_EQ(get_tuple_index->opcode(), HloOpcode::kGetTupleElement);
   EXPECT_EQ(get_tuple_value->tuple_index(), 1);
   EXPECT_EQ(get_tuple_index->tuple_index(), 3);
+}
+
+TEST_F(CollectivePipelinerTest, MinimalCase) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    while_cond {
+      param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      c3 = s32[] constant(3)
+      ROOT cmp = pred[] compare(i, c3), direction=LT
+    }
+
+    while_body {
+      param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      dst_data = bf16[3,8,128] get-tuple-element(param), index=1
+      src_data = bf16[3,8,128] get-tuple-element(param), index=2
+      c0 = s32[] constant(0)
+      c1 = s32[] constant(1)
+      i_plus_one = s32[] add(i, c1)
+      src_data_slice = bf16[1,8,128] dynamic-slice(src_data, i, c0, c0),
+          dynamic_slice_sizes={1,8,128}
+      ar = bf16[1,8,128] all-reduce(src_data_slice), replica_groups={},
+          to_apply=add, channel_id=1
+      updated_buffer = bf16[3,8,128] dynamic-update-slice(dst_data, ar, i, c0,
+          c0)
+      ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(i_plus_one,
+          updated_buffer, src_data)
+    }
+
+    ENTRY entry {
+      c0 = s32[] constant(0)
+      p0 = bf16[3,8,128] parameter(0)
+      tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+      while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple),
+          condition=while_cond, body=while_body
+      ROOT dst_data = bf16[3,8,128] get-tuple-element(while), index=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string, config_));
+  EXPECT_THAT(RunOptimizer(module.get(), /*last_run=*/true),
+              IsOkAndHolds(true));
+
+  XLA_VLOG_LINES(1, module->ToString());
+
+  // Match root.
+  const HloComputation* entry = module->entry_computation();
+  const HloInstruction* root = entry->root_instruction();
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  EXPECT_THAT(
+      root, op::DynamicUpdateSlice(
+                op::GetTupleElement(while_instr, /*tuple_index=*/1),
+                op::AllReduce(op::DynamicSlice(
+                    op::GetTupleElement(while_instr, /*tuple_index=*/1),
+                    op::GetTupleElement(while_instr, /*tuple_index=*/3), _, _)),
+                op::GetTupleElement(while_instr, /*tuple_index=*/3), _, _));
+
+  // Match while instruction.
+  auto match_c0 = op::Constant(LiteralUtil::CreateR0<int32_t>(0));
+  auto match_c1 = op::Constant(LiteralUtil::CreateR0<int32_t>(1));
+  EXPECT_THAT(
+      while_instr,
+      op::While(op::Tuple(
+          op::Add(op::GetTupleElement(op::Tuple(match_c0, _, _),
+                                      /*tuple_index=*/0),
+                  match_c1),
+          op::DynamicUpdateSlice(
+              op::GetTupleElement(op::Tuple(_, op::Parameter(0), _),
+                                  /*tuple_index=*/1),
+              op::DynamicSlice(
+                  op::GetTupleElement(op::Tuple(_, _, op::Parameter(0)),
+                                      /*tuple_index=*/2),
+                  op::GetTupleElement(op::Tuple(match_c0, _, _),
+                                      /*tuple_index=*/0),
+                  _, _),
+              op::GetTupleElement(op::Tuple(match_c0, _, _),
+                                  /*tuple_index=*/0),
+              _, _),
+          op::GetTupleElement(op::Tuple(_, _, op::Parameter(0)),
+                              /*tuple_index=*/2),
+          op::GetTupleElement(op::Tuple(match_c0, _, _), /*tuple_index=*/0))));
+
+  // Match while body.
+  const HloInstruction* while_body_root =
+      while_instr->while_body()->root_instruction();
+  EXPECT_THAT(
+      while_body_root,
+      op::Tuple(
+          op::Add(op::GetTupleElement(op::Parameter(0), /*tuple_index=*/0),
+                  match_c1),
+          op::DynamicUpdateSlice(
+              op::DynamicUpdateSlice(
+                  op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1),
+                  op::AllReduce(op::DynamicSlice(
+                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1),
+                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/3),
+                      _, _)),
+                  op::GetTupleElement(op::Parameter(0), /*tuple_index=*/3), _,
+                  _),
+              op::DynamicSlice(
+                  op::GetTupleElement(op::Parameter(0), /*tuple_index=*/2),
+                  op::GetTupleElement(op::Parameter(0), /*tuple_index=*/0), _,
+                  _),
+              op::GetTupleElement(op::Parameter(0), /*tuple_index=*/0), _, _),
+          _, _));
 }
 
 TEST_F(CollectivePipelinerTest, TransformIncrementIndexByOneCollectivePermute) {
