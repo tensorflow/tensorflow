@@ -858,6 +858,13 @@ NB_MODULE(xla_extension, m_nb) {
       .def_prop_ro(
           "platform_version",
           [](ifrt::Topology& topology) { return topology.platform_version(); })
+      .def_prop_ro(
+          "platform_id",
+          [](ifrt::Topology& topology) { return topology.platform_id(); })
+      .def_prop_ro("is_subslice_topology",
+                   [](ifrt::Topology& topology) {
+                     return topology.is_subslice_topology();
+                   })
       .def("serialize",
            [](ifrt::Topology& topology) -> nb::bytes {
              std::string serialized = ValueOrThrow(topology.Serialize());
