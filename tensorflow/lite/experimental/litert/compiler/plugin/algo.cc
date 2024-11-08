@@ -23,9 +23,9 @@
 #include <vector>
 
 #include "llvm/ADT/MapVector.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -158,7 +158,7 @@ inline void EraseUse(LiteRtTensor tensor, LiteRtParamIndex use_ind) {
 inline void EraseUse(LiteRtTensor tensor, LiteRtOp user) {
   auto use_ind = FindUseInd(tensor, user);
   if (!use_ind.has_value()) {
-    _LITERT_D_MSG("Trying to erase from tensor that doesn't use.")
+    LITERT_LOG(LITERT_WARNING, "Trying to erase from tensor that doesn't use.");
     return;
   }
   EraseUse(tensor, use_ind.value());

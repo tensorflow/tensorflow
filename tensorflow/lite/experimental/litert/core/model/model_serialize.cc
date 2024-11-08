@@ -28,8 +28,9 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_util.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
@@ -123,9 +124,8 @@ LiteRtStatus ModelRepacker::SerializeOp(
   }
 
   // TODO: b/365299994 - Support options in serialize.
-  LITERT_RETURN_STATUS_IF_NOT_OK_MSG(
-      SetDefaultOptions(target.builtin_options, op->op_code),
-      "Failed serializing options");
+  LITERT_RETURN_STATUS_IF_NOT_OK(
+      SetDefaultOptions(target.builtin_options, op->op_code));
 
   if (op->custom_options.Size() != 0) {
     target.custom_options = op->custom_options.ToVec();
