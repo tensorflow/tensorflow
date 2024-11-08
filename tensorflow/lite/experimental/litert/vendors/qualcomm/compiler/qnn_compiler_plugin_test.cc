@@ -58,7 +58,7 @@ TEST(TestQnnPlugin, GetConfigInfo) {
   auto plugin = GetQnnPlugin();
 
   LiteRtParamIndex num_supported_soc_models;
-  ASSERT_STATUS_OK(LiteRtGetNumCompilerPluginSupportedSocModels(
+  LITERT_ASSERT_STATUS_OK(LiteRtGetNumCompilerPluginSupportedSocModels(
       plugin.get(), &num_supported_soc_models));
   ASSERT_EQ(num_supported_soc_models, 4);
 
@@ -73,8 +73,8 @@ TEST(TestQnnPlugin, PartitionMulOps) {
   auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
 
   LiteRtOpListT selected_op_list;
-  ASSERT_STATUS_OK(LiteRtCompilerPluginPartitionModel(plugin.get(), model.Get(),
-                                                      &selected_op_list));
+  LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginPartitionModel(
+      plugin.get(), model.Get(), &selected_op_list));
   const auto selected_ops = selected_op_list.Vec();
 
   ASSERT_EQ(selected_ops.size(), 1);
@@ -85,17 +85,17 @@ TEST(TestQnnPlugin, CompileMulSubgraph) {
   auto plugin = GetQnnPlugin();
   auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
 
-  ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                          ::litert::internal::GetSubgraph(model.Get()));
+  LITERT_ASSERT_RESULT_OK_ASSIGN(auto subgraph,
+                                 ::litert::internal::GetSubgraph(model.Get()));
 
   LiteRtCompiledResult compiled;
-  ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75", &subgraph,
-                                               1, &compiled));
+  LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75",
+                                                      &subgraph, 1, &compiled));
 
   const void* byte_code;
   size_t byte_code_size;
 
-  ASSERT_STATUS_OK(
+  LITERT_ASSERT_STATUS_OK(
       LiteRtGetCompiledResultByteCode(compiled, &byte_code, &byte_code_size));
 
   std::string byte_code_string(reinterpret_cast<const char*>(byte_code),
@@ -105,7 +105,7 @@ TEST(TestQnnPlugin, CompileMulSubgraph) {
   const void* op_data;
   size_t op_data_size;
 
-  ASSERT_STATUS_OK(
+  LITERT_ASSERT_STATUS_OK(
       LiteRtGetCompiledResultCallInfo(compiled, 0, &op_data, &op_data_size));
 
   std::string op_data_string(reinterpret_cast<const char*>(op_data),
@@ -122,17 +122,17 @@ TEST_P(QnnPluginOpCompatibilityTest, SupportedOpsTest) {
   auto plugin = GetQnnPlugin();
   auto model = litert::testing::LoadTestFileModel(GetParam());
 
-  ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                          ::litert::internal::GetSubgraph(model.Get()));
+  LITERT_ASSERT_RESULT_OK_ASSIGN(auto subgraph,
+                                 ::litert::internal::GetSubgraph(model.Get()));
 
   LiteRtCompiledResult compiled;
-  ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75", &subgraph,
-                                               1, &compiled));
+  LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75",
+                                                      &subgraph, 1, &compiled));
 
   const void* byte_code;
   size_t byte_code_size;
 
-  ASSERT_STATUS_OK(
+  LITERT_ASSERT_STATUS_OK(
       LiteRtGetCompiledResultByteCode(compiled, &byte_code, &byte_code_size));
 
   std::string byte_code_string(reinterpret_cast<const char*>(byte_code),
@@ -142,7 +142,7 @@ TEST_P(QnnPluginOpCompatibilityTest, SupportedOpsTest) {
   const void* op_data;
   size_t op_data_size;
 
-  ASSERT_STATUS_OK(
+  LITERT_ASSERT_STATUS_OK(
       LiteRtGetCompiledResultCallInfo(compiled, 0, &op_data, &op_data_size));
 
   std::string op_data_string(reinterpret_cast<const char*>(op_data),
