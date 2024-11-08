@@ -47,9 +47,6 @@ constexpr const int VERSION_MAJOR = 0;
 constexpr const int VERSION_MINOR = 1;
 constexpr const int VERSION_PATCH = 0;
 
-constexpr char kDynamicInteropKey[] = "dynamic_interop_mode";
-constexpr char kEnableEarlyWakeup[] = "2";
-
 // We store THR names in a global set as a workaround to b/369144429.
 std::set<std::string> ThrNames;
 
@@ -336,12 +333,6 @@ LiteRtStatus InvocationContextCreate(
     int num_outputs, LiteRtDispatchInvocationContext* invocation_context) {
   LiteRtDispatchGraph graph = nullptr;
   if (auto status = GraphCreate(device_context, &graph);
-      status != kLiteRtStatusOk) {
-    return status;
-  }
-
-  if (auto status =
-          AnnotateGraph(graph, kDynamicInteropKey, kEnableEarlyWakeup);
       status != kLiteRtStatusOk) {
     return status;
   }
