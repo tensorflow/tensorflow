@@ -571,8 +571,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "optonly",
-        "cuda-only" #TODO(rocm): weekly sync 24-11-05
+        "optonly"
     ],
     deps = [
         ":xla_test",
