@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/core/framework/full_type_util.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"

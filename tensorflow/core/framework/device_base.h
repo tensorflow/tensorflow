@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_DEVICE_BASE_H_
 #define TENSORFLOW_CORE_FRAMEWORK_DEVICE_BASE_H_
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/macros.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.h"
