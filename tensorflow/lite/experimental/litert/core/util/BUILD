@@ -31,3 +31,20 @@ cc_library(
         "@flatbuffers//:runtime_cc",
     ],
 )
+
+cc_library(
+    name = "tensor_type_util",
+    srcs = [
+        "tensor_type_util.cc",
+    ],
+    hdrs = [
+        "tensor_type_util.h",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
