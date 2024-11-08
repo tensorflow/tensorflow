@@ -14,5 +14,6 @@ those to this list.
 """
 
 temporary_patch_list = [
+    "//third_party/triton:temporary/replace_unreachable_by_abort.patch",
     # Add new patches just above this line
 ]
