@@ -263,6 +263,7 @@ enum StatType {
   kModelFlops,
   kBytesAccessed,
   kMemoryAccessBreakdown,
+  kShapeWithLayout,
   kSourceInfo,
   kModelName,
   kModelVersion,
