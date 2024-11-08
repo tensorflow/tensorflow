@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_EXAMPLES_SPEECH_COMMANDS_RECOGNIZE_COMMANDS_H_
 #define TENSORFLOW_EXAMPLES_SPEECH_COMMANDS_RECOGNIZE_COMMANDS_H_
 
+#include <cstdint>
 #include <deque>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"

@@ -187,8 +187,8 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
   ASSERT_EQ(hal_cal_op, edited_subgraph_ops[1]);
 
   {
-    ASSERT_RESULT_OK_ASSIGN(auto hal_cal_op_ins,
-                            litert::internal::GetOpIns(hal_cal_op));
+    LITERT_ASSERT_RESULT_OK_ASSIGN(auto hal_cal_op_ins,
+                                   litert::internal::GetOpIns(hal_cal_op));
 
     ASSERT_EQ(hal_cal_op_ins.size(), 1);
 
@@ -208,8 +208,8 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
   }
 
   {
-    ASSERT_RESULT_OK_ASSIGN(auto hal_cal_op_out,
-                            litert::internal::GetOnlyOpOut(hal_cal_op));
+    LITERT_ASSERT_RESULT_OK_ASSIGN(auto hal_cal_op_out,
+                                   litert::internal::GetOnlyOpOut(hal_cal_op));
 
     ASSERT_TRUE(litert::internal::MatchTensorHasUses(
         hal_cal_op_out,

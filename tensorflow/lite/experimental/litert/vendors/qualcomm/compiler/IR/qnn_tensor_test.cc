@@ -91,7 +91,8 @@ TEST(TestLegalizeTensor, SimpleSupportedTensorSubgraphInput) {
 
   auto qnn_tensor = litert::qnn::BuildDefaultTensor();
   auto output_tensor = litert::Tensor(outputs[0]);
-  ASSERT_STATUS_OK(litert::qnn::LegalizeTensor(output_tensor, qnn_tensor));
+  LITERT_ASSERT_STATUS_OK(
+      litert::qnn::LegalizeTensor(output_tensor, qnn_tensor));
 
   ASSERT_EQ(qnn_tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(qnn_tensor.v2.dataType, QNN_DATATYPE_FLOAT_32);
@@ -115,7 +116,7 @@ TEST(TestLegalizeTensor, SimpleSupportedTensor) {
 
   auto qnn_tensor = litert::qnn::BuildDefaultTensor();
   auto op_out = litert::Tensor(op_outs[0]);
-  ASSERT_STATUS_OK(litert::qnn::LegalizeTensor(op_out, qnn_tensor));
+  LITERT_ASSERT_STATUS_OK(litert::qnn::LegalizeTensor(op_out, qnn_tensor));
 
   ASSERT_EQ(qnn_tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(qnn_tensor.v2.dataType, QNN_DATATYPE_FLOAT_32);
