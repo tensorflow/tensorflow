@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -723,12 +724,14 @@ struct CpuClientOptions {
   std::function<void(HloModuleConfig&)> customize_hlo_module_config;
 };
 
-absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
-    CpuClientOptions options);
+absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
+    "Use public XLA:CPU GetXlaPjrtCpuClient instead")
+    GetTfrtCpuClient(CpuClientOptions options);
 
 // Deprecated. Use the overload that takes 'options' instead.
-inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
-    bool asynchronous) {
+inline absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
+    "Use public XLA:CPU GetXlaPjrtCpuClient instead")
+    GetTfrtCpuClient(bool asynchronous) {
   CpuClientOptions options;
   options.asynchronous = asynchronous;
   return GetTfrtCpuClient(std::move(options));
