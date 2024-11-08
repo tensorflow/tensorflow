@@ -63,7 +63,7 @@ TEST_P(OpCompatibilityTest, SupportedOpsTest) {
   auto ops = subgraph->Ops();
 
   Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();
-  LITERT_ASSERT_STATUS_OK(litert::qnn::LegalizeOp(ops[0], qnn_op));
+  LITERT_ASSERT_STATUS_OK(litert::qnn::LegalizeOp(ops.front().Get(), qnn_op));
 
   EXPECT_TRUE(absl::StrContains(qnn_op.v1.name, test_params.op_name));
   EXPECT_STREQ(qnn_op.v1.packageName, "qti.aisw");

@@ -89,10 +89,7 @@ cc_test(
     ],
     deps = [
         ":algo",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
-        "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core:graph_tools",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/test:common",

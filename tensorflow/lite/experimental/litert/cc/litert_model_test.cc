@@ -163,6 +163,8 @@ TEST(CcOpTest, SimpleSupportedOp) {
   Op op(litert_ops[0]);
   EXPECT_EQ(op.Code(), kLiteRtOpCodeTflMul);
   EXPECT_EQ(op.Get(), litert_ops[0]);
+  EXPECT_EQ(op.Inputs().size(), 2);
+  EXPECT_EQ(op.Outputs().size(), 1);
 }
 
 //===----------------------------------------------------------------------===//
@@ -192,39 +194,39 @@ TEST(Tensor, SimpleModel) {
   auto inputs = subgraph.Inputs();
   ASSERT_EQ(inputs.size(), 2);
 
-  Tensor input_tensor(inputs[0]);
-  ASSERT_EQ(input_tensor.TypeId(), kLiteRtRankedTensorType);
+  {
+    const Tensor& input_tensor = inputs.front();
+    ASSERT_EQ(input_tensor.TypeId(), kLiteRtRankedTensorType);
 
-  auto input_ranked_tensor_type = input_tensor.RankedTensorType();
-  ASSERT_EQ(input_ranked_tensor_type.ElementType(), ElementType::Float32);
+    auto input_ranked_tensor_type = input_tensor.RankedTensorType();
+    ASSERT_EQ(input_ranked_tensor_type.ElementType(), ElementType::Float32);
 
-  EXPECT_FALSE(input_tensor.HasWeights());
+    EXPECT_FALSE(input_tensor.HasWeights());
 
-  auto input_weights = input_tensor.Weights();
-  ASSERT_EQ(input_weights.Bytes().size(), 0);
+    auto input_weights = input_tensor.Weights();
+    ASSERT_EQ(input_weights.Bytes().size(), 0);
 
-  ASSERT_EQ(input_tensor.DefiningOp(), std::nullopt);
+    ASSERT_EQ(input_tensor.DefiningOp(), std::nullopt);
 
-  absl::Span<LiteRtOp> input_uses;
-  absl::Span<LiteRtParamIndex> input_user_arg_indices;
-  input_tensor.Uses(input_uses, input_user_arg_indices);
-  ASSERT_EQ(input_uses.size(), 1);
-  ASSERT_EQ(input_user_arg_indices.size(), 1);
+    const Tensor::UsesT uses = input_tensor.Uses();
+    ASSERT_EQ(uses.user_arg_inds.size(), 1);
+    ASSERT_EQ(uses.users.size(), 1);
+  }
 
   auto outputs = subgraph.Outputs();
   ASSERT_EQ(outputs.size(), 1);
 
-  Tensor output_tensor(outputs[0]);
-  ASSERT_EQ(output_tensor.TypeId(), kLiteRtRankedTensorType);
+  {
+    const Tensor& output_tensor = outputs.front();
+    ASSERT_EQ(output_tensor.TypeId(), kLiteRtRankedTensorType);
 
-  auto output_defining_op = output_tensor.DefiningOp();
-  EXPECT_TRUE(output_defining_op.has_value());
+    auto output_defining_op = output_tensor.DefiningOp();
+    EXPECT_TRUE(output_defining_op.has_value());
 
-  absl::Span<LiteRtOp> output_uses;
-  absl::Span<LiteRtParamIndex> output_user_arg_indices;
-  output_tensor.Uses(output_uses, output_user_arg_indices);
-  ASSERT_EQ(output_uses.size(), 0);
-  ASSERT_EQ(output_user_arg_indices.size(), 0);
+    const Tensor::UsesT uses = output_tensor.Uses();
+    ASSERT_TRUE(uses.user_arg_inds.empty());
+    ASSERT_TRUE(uses.users.empty());
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -232,12 +234,12 @@ TEST(Tensor, SimpleModel) {
 //===----------------------------------------------------------------------===//
 
 TEST(CcSubgraphTest, SimpleModel) {
-  auto litert_model = litert::testing::LoadTestFileModel("one_mul.tflite");
+  auto model = testing::LoadTestFileModel("one_mul.tflite");
 
   LITERT_ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
-                                 GetSubgraph(litert_model.Get()));
+                                 GetSubgraph(model.Get()));
 
-  litert::Subgraph subgraph(litert_subgraph);
+  Subgraph subgraph(litert_subgraph);
   ASSERT_EQ(subgraph.Inputs().size(), 2);
   ASSERT_EQ(subgraph.Outputs().size(), 1);
   ASSERT_EQ(subgraph.Ops().size(), 1);

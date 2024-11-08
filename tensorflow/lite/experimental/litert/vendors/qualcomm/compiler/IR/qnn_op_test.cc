@@ -35,7 +35,7 @@ TEST(TestLegalizeOp, SimpleSupportedOp) {
   auto ops = subgraph->Ops();
 
   Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();
-  LITERT_ASSERT_STATUS_OK(litert::qnn::LegalizeOp(ops[0], qnn_op));
+  LITERT_ASSERT_STATUS_OK(litert::qnn::LegalizeOp(ops.front().Get(), qnn_op));
 
   EXPECT_TRUE(absl::StrContains(qnn_op.v1.name, "mul"));
   EXPECT_STREQ(qnn_op.v1.packageName, "qti.aisw");
@@ -55,8 +55,9 @@ TEST(TestLegalizeOp, UnsupportedOp) {
   auto ops = subgraph->Ops();
 
   Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();
-  LITERT_ASSERT_STATUS_HAS_CODE(litert::qnn::LegalizeOp(ops[0], qnn_op),
-                                kLiteRtStatusErrorUnsupported);
+  LITERT_ASSERT_STATUS_HAS_CODE(
+      litert::qnn::LegalizeOp(ops.front().Get(), qnn_op),
+      kLiteRtStatusErrorUnsupported);
 
   litert::qnn::ResetOp(qnn_op);
 }

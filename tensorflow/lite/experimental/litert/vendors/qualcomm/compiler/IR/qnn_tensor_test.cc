@@ -90,7 +90,7 @@ TEST(TestLegalizeTensor, SimpleSupportedTensorSubgraphInput) {
   auto outputs = subgraph->Outputs();
 
   auto qnn_tensor = litert::qnn::BuildDefaultTensor();
-  auto output_tensor = litert::Tensor(outputs[0]);
+  const auto& output_tensor = outputs.front();
   LITERT_ASSERT_STATUS_OK(
       litert::qnn::LegalizeTensor(output_tensor, qnn_tensor));
 
@@ -112,10 +112,10 @@ TEST(TestLegalizeTensor, SimpleSupportedTensor) {
   auto subgraph = model.MainSubgraph();
   EXPECT_TRUE(subgraph.ok());
   auto ops = subgraph->Ops();
-  auto op_outs = litert::Op(ops[1]).Outputs();
+  auto op_outs = ops.at(1).Outputs();
 
   auto qnn_tensor = litert::qnn::BuildDefaultTensor();
-  auto op_out = litert::Tensor(op_outs[0]);
+  const auto& op_out = op_outs.front();
   LITERT_ASSERT_STATUS_OK(litert::qnn::LegalizeTensor(op_out, qnn_tensor));
 
   ASSERT_EQ(qnn_tensor.version, QNN_TENSOR_VERSION_2);
