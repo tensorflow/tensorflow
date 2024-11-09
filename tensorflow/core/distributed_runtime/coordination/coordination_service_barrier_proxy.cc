@@ -14,9 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_barrier_proxy.h"
 
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
