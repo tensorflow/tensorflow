@@ -1975,7 +1975,8 @@ PjRtStreamExecutorBuffer::CopyToDevice(PjRtDevice* dst_device) {
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorBuffer::CopyToDeviceMemorySpace(
     PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space) {
-  if (dst_device == device_ && dst_memory_space == memory_space()) {
+  if (dst_device == device_ && dst_memory_space == memory_space() &&
+      dst_memory_space->kind_id() != PinnedHostMemorySpace::kKindId) {
     return InvalidArgument(
         "CopyToDeviceMemorySpace cannot accept the same source and destination "
         "devices/memory");
