@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/cc/gradients/grad_testutil.h"
 
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 
 namespace tensorflow {
