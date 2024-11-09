@@ -246,8 +246,8 @@ class CoordinationServiceAgent {
   //       for the same barrier, (2) one of the participating tasks is not in
   //       the cluster, or (3) task making the request is not included in the
   //       list of participating tasks.
-  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state. Or the
-  //       same barrier_id was already used previously.
+  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state, or the
+  //       same barrier id is still being invoked.
   virtual absl::Status WaitAtBarrier(
       std::string_view barrier_id, absl::Duration timeout,
       const std::vector<tensorflow::CoordinatedTask>& tasks) = 0;
@@ -262,7 +262,7 @@ class CoordinationServiceAgent {
   // CANCELLED error status.
   // Possible service errors:
   //   - Internal: Coordination service has shut down.
-  //   - FailedPrecondition: Barrier has already been passed.
+  //   - FailedPrecondition: Barrier is non-existent or not ongoing.
   virtual absl::Status CancelBarrier(std::string_view barrier_id) = 0;
   virtual void CancelBarrierAsync(std::string_view barrier_id,
                                   StatusCallback done) = 0;

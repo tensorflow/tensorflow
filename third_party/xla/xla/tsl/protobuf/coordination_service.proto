@@ -39,6 +39,12 @@ message CoordinationServiceError {
   CoordinatedTask source_task = 4;
 }
 
+// Status payload for coordination barrier errors.
+message BarrierError {
+  string barrier_id = 1;
+  int64 counter = 2;
+}
+
 message CoordinatedTaskStateInfo {
   CoordinatedTask task = 1;
   CoordinatedTaskState state = 2;

@@ -28,6 +28,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
@@ -162,13 +164,13 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   StatusCallback error_fn_;
 
   mutable absl::Mutex state_mu_;
-  CoordinatedTaskState state_ TF_GUARDED_BY(state_mu_) =
+  CoordinatedTaskState state_ ABSL_GUARDED_BY(state_mu_) =
       CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
-  absl::Status status_ TF_GUARDED_BY(state_mu_) = absl::OkStatus();
-  // Note: this set grows without bounds. For now, this is okay as most users
-  // require < 100 barriers. If there is a use case that requires many barriers,
-  // consider using a monotonic sequence number to track instead.
-  absl::flat_hash_set<std::string> used_barrier_ids_ TF_GUARDED_BY(state_mu_);
+  absl::Status status_ ABSL_GUARDED_BY(state_mu_) = absl::OkStatus();
+  // Tracks the number of times a barrier has been used, keyed by id.
+  absl::flat_hash_map<std::string, int64_t> barrier_counter_
+      ABSL_GUARDED_BY(state_mu_);
+  absl::flat_hash_set<std::string> ongoing_barriers_ ABSL_GUARDED_BY(state_mu_);
 
   uint64_t leader_incarnation_ = 0;
   DeviceInfo cluster_devices_;
@@ -910,24 +912,37 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
     done(agent_running_status);
     return;
   }
-  {
-    absl::MutexLock l(&state_mu_);
-    auto [it, inserted] = used_barrier_ids_.insert(std::string(barrier_id));
-    if (!inserted) {
-      done(absl::FailedPreconditionError(absl::StrCat(
-          "WaitAtBarrier() should not be called with the same id more than "
-          "once. Barrier id: ",
-          barrier_id)));
-      return;
-    }
-  }
   auto request = std::make_shared<BarrierRequest>();
   auto response = std::make_shared<BarrierResponse>();
-  request->set_barrier_id(std::string(barrier_id));
-  request->set_barrier_timeout_in_ms(timeout / absl::Milliseconds(1));
-  *request->mutable_source_task() = task_;
-  *request->mutable_tasks() = {tasks.begin(), tasks.end()};
-  VLOG(3) << "WaitAtBarrierRequest: " << request->DebugString();
+  {
+    absl::MutexLock l(&state_mu_);
+
+    // Prevent multiple concurrent invocations with the same id.
+    // This usually indicates a bug in the user code. They should wait till the
+    // previous call completes before starting a new one.
+    if (ongoing_barriers_.contains(barrier_id)) {
+      done(MakeCoordinationError(absl::FailedPreconditionError(
+          absl::StrCat("Barrier ", barrier_id, " is already ongoing."))));
+      return;
+    }
+    ongoing_barriers_.insert(std::string(barrier_id));
+
+    request->set_barrier_id(std::string(barrier_id));
+    request->set_barrier_timeout_in_ms(timeout / absl::Milliseconds(1));
+    *request->mutable_source_task() = task_;
+    *request->mutable_tasks() = {tasks.begin(), tasks.end()};
+
+    // Counter is incremented for each unique id's WaitAtBarrier() call.
+    // Design note: we need agent-side state to fail attempts by restarted tasks
+    // using the same barrier id (but not the same barrier).
+    // Consider adding the counter to the barrier response.
+    if (!barrier_counter_.contains(barrier_id)) {
+      barrier_counter_[barrier_id] = -1;
+    }
+    request->set_counter(barrier_counter_[barrier_id] + 1);
+    VLOG(3) << "WaitAtBarrierRequest: " << request->DebugString();
+  }
+
   auto call_opts = std::make_shared<CallOptions>();
 
   const CancellationToken token =
@@ -941,8 +956,21 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
 
   leader_client_->BarrierAsync(
       call_opts.get(), request.get(), response.get(),
-      [call_opts, request, response, done = std::move(done),
-       &cm = cancellation_manager_, token](const absl::Status& s) {
+      [call_opts, request, response, done = std::move(done), barrier_id, this,
+       &cm = cancellation_manager_, token](const absl::Status& s) mutable {
+        absl::MutexLock l(&state_mu_);
+        // Allow the same barrier id to be invoked after this counter's
+        // completion.
+        ongoing_barriers_.erase(barrier_id);
+        // Track completed/errored barrier counters.
+        if (s.ok()) {
+          // This would correspond to the request counter.
+          barrier_counter_[barrier_id] = response->counter();
+        } else if (s.GetPayload(BarrierErrorPayloadKey()) != std::nullopt) {
+          // Note that response is discarded if an error is returned, so we need
+          // to parse from the error message.
+          barrier_counter_[barrier_id] = GetBarrierCounterFromError(s);
+        }
         // RPC call has completed (no longer needs to be cancelled if agent is
         // destroyed).
         cm.TryDeregisterCallback(token);
@@ -972,6 +1000,18 @@ void CoordinationServiceAgentImpl::CancelBarrierAsync(
     done(agent_running_status);
     return;
   }
+  absl::MutexLock l(&state_mu_);
+  if (!barrier_counter_.contains(barrier_id)) {
+    done(MakeCoordinationError(absl::FailedPreconditionError(absl::StrCat(
+        "Tried to cancel non-existent barrier ", barrier_id, "."))));
+    return;
+  }
+  if (!ongoing_barriers_.contains(barrier_id)) {
+    done(MakeCoordinationError(absl::FailedPreconditionError(absl::StrCat(
+        "Tried to cancel barrier ", barrier_id, " that is not ongoing."))));
+    return;
+  }
+
   auto request = std::make_shared<CancelBarrierRequest>();
   auto response = std::make_shared<CancelBarrierResponse>();
   request->set_barrier_id(std::string(barrier_id));
@@ -980,6 +1020,7 @@ void CoordinationServiceAgentImpl::CancelBarrierAsync(
   leader_client_->CancelBarrierAsync(
       request.get(), response.get(),
       [request, response, done = std::move(done)](const absl::Status& s) {
+        // Note: barrier state will be cleaned up the original barrier RPC.
         done(s);
         VLOG(3) << "CancelBarrierResponse: " << s;
       });

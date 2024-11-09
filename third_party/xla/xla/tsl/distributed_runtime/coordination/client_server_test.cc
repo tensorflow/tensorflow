@@ -54,6 +54,7 @@ limitations under the License.
 namespace tsl {
 namespace {
 using ::tensorflow::CoordinationServiceConfig;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
 using tsl::testing::StatusIs;
@@ -77,7 +78,8 @@ class ClientServerTest : public ::testing::Test {
   CoordinationServiceConfig GetConfig(
       absl::Duration init_and_shutdown_timeout,
       bool shutdown_on_destruction = true,
-      bool cluster_register_with_barrier = true) {
+      bool cluster_register_with_barrier = true,
+      bool cluster_shutdown_with_barrier = true) {
     // Set config.
     tensorflow::CoordinationServiceConfig config;
     config.set_service_type("standalone");
@@ -86,9 +88,10 @@ class ClientServerTest : public ::testing::Test {
         absl::ToInt64Milliseconds(init_and_shutdown_timeout));
     config.set_heartbeat_timeout_in_ms(
         absl::ToInt64Milliseconds(absl::Seconds(3)));
-
-    config.set_shutdown_barrier_timeout_in_ms(
-        absl::ToInt64Milliseconds(init_and_shutdown_timeout));
+    if (cluster_shutdown_with_barrier) {
+      config.set_shutdown_barrier_timeout_in_ms(
+          absl::ToInt64Milliseconds(init_and_shutdown_timeout));
+    }
     config.set_agent_destruction_without_shutdown(!shutdown_on_destruction);
     // TODO(b/369222279): Add more test cases that exercise TF behaviour (no
     // barrier).
@@ -99,10 +102,11 @@ class ClientServerTest : public ::testing::Test {
 
   CoordinationServiceConfig GetServiceConfig(
       int num_nodes, absl::Duration init_and_shutdown_timeout,
-      bool cluster_register_with_barrier) {
-    auto config = GetConfig(init_and_shutdown_timeout,
-                            /*shutdown_on_destruction=*/true,
-                            cluster_register_with_barrier);
+      bool cluster_register_with_barrier, bool cluster_shutdown_with_barrier) {
+    auto config =
+        GetConfig(init_and_shutdown_timeout,
+                  /*shutdown_on_destruction=*/true,
+                  cluster_register_with_barrier, cluster_shutdown_with_barrier);
     tensorflow::CoordinatedJob* job =
         config.mutable_coordinated_job_list()->Add();
     job->set_name("agent");
@@ -139,9 +143,11 @@ class ClientServerTest : public ::testing::Test {
 
   void StartService(int num_nodes,
                     absl::Duration init_and_shutdown_timeout = absl::Seconds(2),
-                    bool cluster_register_with_barrier = true) {
+                    bool cluster_register_with_barrier = true,
+                    bool cluster_shutdown_with_barrier = true) {
     auto config = GetServiceConfig(num_nodes, init_and_shutdown_timeout,
-                                   cluster_register_with_barrier);
+                                   cluster_register_with_barrier,
+                                   cluster_shutdown_with_barrier);
 
     int port = tsl::testing::PickUnusedPortOrDie();
     grpc::ServerBuilder builder;
@@ -685,7 +691,7 @@ TEST_F(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
   }
 }
 
-TEST_F(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
+TEST_F(ClientServerTest, WaitAtBarrier_ReuseSameId_Succeeds) {
   int num_nodes = 2;
   StartService(num_nodes);
 
@@ -694,7 +700,9 @@ TEST_F(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
     TF_RETURN_IF_ERROR(client->Connect());
 
     TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_2", kBarrierTimeout, {}));
     TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_2", kBarrierTimeout, {}));
 
     TF_RETURN_IF_ERROR(client->Shutdown());
     return absl::OkStatus();
@@ -709,9 +717,126 @@ TEST_F(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    EXPECT_EQ(statuses[i].code(), tsl::error::FAILED_PRECONDITION)
-        << " node id: " << i;
+    TF_EXPECT_OK(statuses[i]);
   }
+}
+
+TEST_F(ClientServerTest, WaitAtBarrier_RestartAndBarrierAgain_Fails) {
+  int num_nodes = 2;
+  // Allow clients to connect by themselves so restarted client can connect and
+  // try barrier again.
+  StartService(num_nodes, /*init_and_shutdown_timeout=*/absl::Seconds(2),
+               /*cluster_register_with_barrier=*/false,
+               /*cluster_shutdown_with_barrier=*/false);
+  absl::Status barrier_status;
+  absl::Notification n;
+
+  auto thread_fn = [&](int node_id) {
+    auto client = GetClient(node_id);
+    TF_ASSERT_OK(client->Connect());
+
+    // Complete barrier 3 times (simulate job progress).
+    for (int i = 0; i < 3; ++i) {
+      TF_ASSERT_OK(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
+    }
+    if (node_id == 1) {
+      client = nullptr;  // Simulate client restart.
+      auto restarted_client = GetClient(1);
+      TF_ASSERT_OK(restarted_client->Connect());
+      // This should fail! This variable is checked after the thread pool is
+      // destroyed.
+      barrier_status =
+          restarted_client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
+      n.Notify();
+    }
+    // Client 0 should only be destroyed after we get the barrier result.
+    n.WaitForNotification();
+  };
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { thread_fn(i); });
+    }
+  }
+  EXPECT_THAT(barrier_status,
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("restarted")));
+}
+
+TEST_F(ClientServerTest,
+       WaitAtBarrier_TimeoutThenOkay_StragglingTaskGetsSameError) {
+  int num_nodes = 2;
+  StartService(num_nodes);
+  absl::Notification n, n_2;
+  absl::Status status_0, status_0_new, status_1, status_1_new;
+  auto thread_fn = [&](int node_id) {
+    auto client = GetClient(node_id);
+    TF_ASSERT_OK(client->Connect());
+    if (node_id == 0) {
+      status_0 = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
+      n.Notify();
+      n_2.WaitForNotification();
+      status_0_new = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
+    } else {
+      n.WaitForNotification();  // Block until node 0's barrier times out.
+      status_1 = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
+      n_2.Notify();
+      status_1_new = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
+    }
+  };
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { thread_fn(i); });
+    }
+  }
+  // Both nodes should get the same error.
+  EXPECT_THAT(status_0, StatusIs(absl::StatusCode::kDeadlineExceeded));
+  EXPECT_THAT(status_1, StatusIs(absl::StatusCode::kDeadlineExceeded));
+  // Next barrier call is okay.
+  TF_EXPECT_OK(status_0_new);
+  TF_EXPECT_OK(status_1_new);
+}
+
+TEST_F(ClientServerTest,
+       WaitAtBarrier_QuickTaskStartBarrierTwice_LateTaskGetsSlowError) {
+  int num_nodes = 2;
+  StartService(num_nodes);
+  absl::Notification n;
+  absl::Status status_0, status_0_new, status_1;
+  auto thread_fn = [&](int node_id) {
+    auto client = GetClient(node_id);
+    TF_ASSERT_OK(client->Connect());
+    TF_ASSERT_OK(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
+    TF_ASSERT_OK(client->WaitAtBarrier("barrier_1", kBarrierTimeout, {}));
+    if (node_id == 0) {
+      // Let each barrier time out.
+      status_0 = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
+      status_0_new = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
+      n.Notify();
+    } else {
+      // Block until node 0's barriers times out.
+      n.WaitForNotification();
+      status_1 = client->WaitAtBarrier("barrier_1", kBarrierTimeout, {});
+    }
+  };
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { thread_fn(i); });
+    }
+  }
+  // Both barriers from node 0 should time out.
+  EXPECT_THAT(status_0, StatusIs(absl::StatusCode::kDeadlineExceeded));
+  EXPECT_THAT(status_0_new, StatusIs(absl::StatusCode::kDeadlineExceeded));
+  // Next barrier call from node 1 gets barrier counter mismatch error.
+  EXPECT_THAT(status_1, StatusIs(absl::StatusCode::kInternal,
+                                 HasSubstr("too quick / slow")));
 }
 
 TEST_F(ClientServerTest, WaitAtBarrierSubset_Succeeds) {
@@ -743,6 +868,51 @@ TEST_F(ClientServerTest, WaitAtBarrierSubset_Succeeds) {
       TF_EXPECT_OK(statuses[i]);
     }
   }
+}
+
+TEST_F(ClientServerTest, WaitAtBarrier_DifferentSubset_Fails) {
+  int num_nodes = 2;
+  StartService(num_nodes);
+  absl::Notification n;
+  absl::Status status_0, status_1 = absl::UnknownError("Uninitialized error.");
+
+  auto thread_fn = [&](int node_id) {
+    auto client = GetClient(node_id);
+    TF_ASSERT_OK(client->Connect());
+    if (node_id == 0) {
+      status_0 =
+          client->WaitAtBarrier("barrier_1", kBarrierTimeout, {GetTask(0)});
+      n.Notify();
+    } else {
+      n.WaitForNotification();
+      // Same barrier id, but specifies different tasks.
+      status_1 =
+          client->WaitAtBarrier("barrier_1", kBarrierTimeout, {GetTask(1)});
+    }
+  };
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { thread_fn(i); });
+    }
+  }
+  // First barrier call succeeds.
+  TF_EXPECT_OK(status_0);
+  // Second barrier call with different task args fails.
+  EXPECT_THAT(status_1, StatusIs(absl::StatusCode::kInvalidArgument,
+                                 HasSubstr("Conflicting tasks specified")));
+}
+
+TEST_F(ClientServerTest, CancelNonExistentBarrier_Fails) {
+  int num_nodes = 1;
+  StartService(num_nodes);
+  auto client = GetClient(0);
+  TF_ASSERT_OK(client->Connect());
+
+  EXPECT_THAT(client->CancelBarrier("non_existent_barrier"),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST_F(ClientServerTest,
@@ -903,6 +1073,9 @@ TEST_F(ClientServerTest, Dtor_CancelsOngoingGetKeyValueAndBarrier) {
   // Pending RPCs should be cancelled.
   EXPECT_EQ(barrier_status.code(), tsl::error::CANCELLED);
   EXPECT_EQ(get_key_value_status.code(), tsl::error::CANCELLED);
+  // Unsure why, but this avoids tsan races surrounding RPC handler's mutex
+  // during dtor.
+  absl::SleepFor(absl::Seconds(1));
 }
 
 }  // namespace

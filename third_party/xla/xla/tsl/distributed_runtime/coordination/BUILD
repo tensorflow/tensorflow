@@ -149,6 +149,8 @@ tsl_gpu_library(
         "//xla/tsl/lib/monitoring:gauge",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/log",
@@ -171,6 +173,7 @@ tsl_cc_test(
     deps = [
         ":coordination_client",
         ":coordination_service_agent",
+        ":coordination_service_error_util",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",

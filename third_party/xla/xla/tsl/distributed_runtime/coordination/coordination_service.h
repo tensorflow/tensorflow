@@ -221,8 +221,9 @@ class CoordinationServiceInterface {
   //       first WaitAtBarrier() + timeout duration.
   //   - Cancelled: One of the tasks called CancelBarrier().
   //   - Aborted: Service is shutting down.
-  //   - Internal: Any participating task is in ERROR state, or coordination
-  //   -   service has shut down.
+  //   - Internal: (1) Any participating task is in ERROR state, (2)
+  //       coordination service has shut down, or (3) the barrier request has a
+  //       mismatched counter, indicating that somebody unexpectedly restarted.
   //   - InvalidArgument: (1) Conflicting tasks specified by different agents
   //       for the same barrier, (2) one of the participating tasks is not in
   //       the cluster, or (3) task making the request is not included in the
