@@ -985,12 +985,6 @@ message DebugOptions {
     AUTOTUNE_CACHE_MODE_READ = 2;
   }
 
-  // Enables strict PGLE checking. If an FDO profile is specified and latency
-  // hiding scheduler encounters missing instructions in the profile
-  // compilation will halt.
-  // TODO: remove this field - it is replaced by xla_gpu_pgle_accuracy_checker.
-  bool xla_gpu_enable_pgle_accuracy_checker = 326;
-
   // Timeouts for RendezvousSingle stuck warning and termination.
   int32 xla_gpu_executable_warn_stuck_timeout_seconds = 327;
   int32 xla_gpu_executable_terminate_timeout_seconds = 328;
@@ -1054,7 +1048,9 @@ message DebugOptions {
   // xla_gpu_enable_persistent_temp_buffers
   // xla_gpu_enable_triton_gemm_int4
   // xla_gpu_enable_priority_fusion
-  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320;
+  // xla_gpu_pgle_accuracy_checker
+  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
+      326;
 }
 
 // Contains flags which affects the GPU compilation result.
