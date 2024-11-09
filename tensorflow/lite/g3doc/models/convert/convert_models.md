@@ -159,7 +159,7 @@ The following are common conversion errors and their solutions:
     request for the missing TFLite op in
     [Github issue #21526](https://github.com/tensorflow/tensorflow/issues/21526)
     (leave a comment if your request hasn’t already been mentioned) or
-    [create the TFLite op](../../guide/ops_custom#create_and_register_the_operator)
+    [create the TFLite op](../../guide/ops_custom.md#create_and_register_the_operator)
     yourself.
 
 *   Error: `.. is neither a custom op nor a flex op`
