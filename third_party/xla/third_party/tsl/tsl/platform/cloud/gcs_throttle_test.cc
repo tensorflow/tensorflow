@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tsl/platform/cloud/gcs_throttle.h"
 
+#include <cstdint>
+
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/test.h"

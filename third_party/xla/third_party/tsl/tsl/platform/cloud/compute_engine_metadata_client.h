@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_CLOUD_COMPUTE_ENGINE_METADATA_CLIENT_H_
 #define TENSORFLOW_TSL_PLATFORM_CLOUD_COMPUTE_ENGINE_METADATA_CLIENT_H_
 
+#include <memory>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tsl/platform/cloud/http_request.h"
 #include "tsl/platform/retrying_utils.h"
 #include "tsl/platform/status.h"

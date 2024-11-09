@@ -18,10 +18,14 @@ limitations under the License.
 
 #include <curl/curl.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tsl/platform/cloud/http_request.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"

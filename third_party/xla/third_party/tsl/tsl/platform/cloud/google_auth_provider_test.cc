@@ -17,6 +17,11 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <memory>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/cloud/http_request_fake.h"
 #include "tsl/platform/path.h"

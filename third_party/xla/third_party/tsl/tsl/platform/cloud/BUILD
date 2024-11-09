@@ -71,6 +71,9 @@ cc_library(
         "//tsl/platform:thread_annotations",
         "//tsl/platform:types",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -216,6 +219,11 @@ cc_library(
         "//tsl/platform:str_util",
         "//tsl/platform:stringpiece",
         "//tsl/platform:types",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@curl",
         "@local_xla//xla/tsl/lib/gtl:map_util",
         "@local_xla//xla/tsl/util:env_var",
@@ -262,6 +270,7 @@ cc_library(
         "//tsl/platform:retrying_utils",
         "//tsl/platform:status",
         "//tsl/platform:thread_annotations",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@jsoncpp_git//:jsoncpp",
     ],
@@ -282,6 +291,7 @@ cc_library(
         "//tsl/platform:env",
         "//tsl/platform:retrying_utils",
         "//tsl/platform:status",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -301,6 +311,9 @@ cc_library(
         "//tsl/platform:errors",
         "//tsl/platform:status",
         "//tsl/platform:str_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -333,6 +346,8 @@ cc_library(
         "//tsl/platform:errors",
         "//tsl/platform:status",
         "@boringssl//:crypto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@jsoncpp_git//:jsoncpp",
     ],
 )
@@ -349,6 +364,7 @@ cc_library(
     deps = [
         "//tsl/platform:errors",
         "//tsl/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -362,6 +378,7 @@ tsl_cc_test(
         "//tsl/platform:env_impl",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@com_google_absl//absl/status",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
@@ -379,6 +396,7 @@ tsl_cc_test(
         "//tsl/platform:notification",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@com_google_absl//absl/status",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
@@ -413,6 +431,8 @@ tsl_cc_test(
         "//tsl/platform:str_util",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -443,6 +463,7 @@ tsl_cc_test(
         "//tsl/platform:platform_port",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/lib/core:status_test_util",
@@ -469,6 +490,7 @@ tsl_cc_test(
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "@boringssl//:crypto",
+        "@com_google_absl//absl/strings:string_view",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
@@ -490,6 +512,8 @@ tsl_cc_test(
         "//tsl/platform:path",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )

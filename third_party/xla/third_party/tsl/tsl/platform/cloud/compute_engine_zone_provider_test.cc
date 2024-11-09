@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tsl/platform/cloud/compute_engine_zone_provider.h"
 
+#include <memory>
+#include <vector>
+
 #include "tsl/platform/cloud/http_request_fake.h"
 #include "tsl/platform/test.h"
 

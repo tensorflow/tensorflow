@@ -15,10 +15,19 @@ limitations under the License.
 
 #include "tsl/platform/cloud/ram_file_block_cache.h"
 
+#include <chrono>
+#include <cstdint>
 #include <cstring>
+#include <iterator>
+#include <limits>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tsl/platform/env.h"
 
 namespace tsl {

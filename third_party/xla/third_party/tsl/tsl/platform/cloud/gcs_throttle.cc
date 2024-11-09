@@ -16,6 +16,8 @@ limitations under the License.
 #include "tsl/platform/cloud/gcs_throttle.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 
 namespace tsl {
 

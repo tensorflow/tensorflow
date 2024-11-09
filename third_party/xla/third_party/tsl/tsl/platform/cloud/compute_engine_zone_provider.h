@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_CLOUD_COMPUTE_ENGINE_ZONE_PROVIDER_H_
 #define TENSORFLOW_TSL_PLATFORM_CLOUD_COMPUTE_ENGINE_ZONE_PROVIDER_H_
 
+#include <memory>
+
+#include "absl/status/status.h"
 #include "tsl/platform/cloud/compute_engine_metadata_client.h"
 #include "tsl/platform/cloud/zone_provider.h"
 

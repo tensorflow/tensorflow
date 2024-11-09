@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_CLOUD_GCS_DNS_CACHE_H_
 #define TENSORFLOW_TSL_PLATFORM_CLOUD_GCS_DNS_CACHE_H_
 
+#include <cstdint>
+#include <memory>
 #include <random>
+#include <vector>
 
 #include "tsl/platform/cloud/http_request.h"
 #include "tsl/platform/env.h"

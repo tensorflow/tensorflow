@@ -15,8 +15,16 @@ limitations under the License.
 
 #include "tsl/platform/cloud/ram_file_block_cache.h"
 
+#include <algorithm>
+#include <cctype>
+#include <chrono>
 #include <cstring>
+#include <list>
+#include <memory>
+#include <set>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/cloud/now_seconds_env.h"

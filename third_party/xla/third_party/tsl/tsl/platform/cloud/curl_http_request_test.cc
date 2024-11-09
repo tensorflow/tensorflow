@@ -15,11 +15,20 @@ limitations under the License.
 
 #include "tsl/platform/cloud/curl_http_request.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/path.h"

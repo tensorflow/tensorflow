@@ -16,8 +16,11 @@ limitations under the License.
 #include "tsl/platform/cloud/compute_engine_metadata_client.h"
 
 #include <cstdlib>
+#include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tsl/platform/cloud/curl_http_request.h"
 

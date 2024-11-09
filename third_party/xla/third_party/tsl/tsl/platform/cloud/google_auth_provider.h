@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "tsl/platform/cloud/auth_provider.h"
 #include "tsl/platform/cloud/compute_engine_metadata_client.h"
 #include "tsl/platform/cloud/oauth_client.h"

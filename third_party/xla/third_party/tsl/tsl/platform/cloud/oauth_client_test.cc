@@ -16,7 +16,11 @@ limitations under the License.
 #include "tsl/platform/cloud/oauth_client.h"
 
 #include <fstream>
+#include <iterator>
+#include <memory>
+#include <vector>
 
+#include "absl/strings/string_view.h"
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>

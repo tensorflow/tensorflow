@@ -15,6 +15,13 @@ limitations under the License.
 
 #include "tsl/platform/cloud/gcs_dns_cache.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <map>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/test.h"
 

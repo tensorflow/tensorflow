@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/cloud/now_seconds_env.h"
 #include "tsl/platform/test.h"

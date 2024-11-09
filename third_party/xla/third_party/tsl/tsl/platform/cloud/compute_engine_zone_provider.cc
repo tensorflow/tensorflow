@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tsl/platform/cloud/compute_engine_zone_provider.h"
 
+#include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/str_util.h"
 namespace tsl {
 

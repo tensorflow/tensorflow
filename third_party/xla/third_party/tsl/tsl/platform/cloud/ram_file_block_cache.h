@@ -16,13 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_CLOUD_RAM_FILE_BLOCK_CACHE_H_
 #define TENSORFLOW_TSL_PLATFORM_CLOUD_RAM_FILE_BLOCK_CACHE_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <list>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tsl/platform/cloud/file_block_cache.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/mutex.h"
