@@ -163,6 +163,113 @@ TEST_P(Conv3dTransposeOpTest, SimpleFloat32Test) {
       {TensorType_FLOAT32, {1, 2, 2, 4, 2}}, {TensorType_FLOAT32, {}},
       Conv3dTransposeOpTest::GetParam());
 
+TEST_P(Conv3dTransposeOpTest, PaddingDepthDimensionTest) {
+  Conv3dTransposeOpModel m(
+      {1, 4, 4, 4, 2}, {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
+      {TensorType_FLOAT32, {1, 2, 2, 2, 2}}, {TensorType_FLOAT32, {}},
+      Conv3dTransposeOpTest::GetParam(), Padding_VALID,
+      /*stride_depth=*/2,
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  m.SetInput(CreateRangeVector<float>(16));
+  m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1,
+               1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 4, 4, 4, 2));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(
+          {-1, 1, 1, -1, -2, 4, 2, 0, -1, -5, 1, 5, -1, 1, 1, -1,
+           -2, 4, 2, 0, -1, -5, 1, 5, -1, 9, 1, -1, -2, 4, 2, 8,
+           -1, -13, 1, 13, -1, 9, 1, -1, -2, 4, 2, 8, -1, -13, 1, 13,
+           -1, 17, 1, -1, -2, 4, 2, 16, -1, -21, 1, 21, -1, 17, 1, -1,
+           -2, 4, 2, 16, -1, -21, 1, 21, -1, 25, 1, -1, -2, 4, 2, 24,
+           -1, -29, 1, 29, -1, 25, 1, -1, -2, 4, 2, 24, -1, -29, 1, 29}));
+}
+
+TEST_P(Conv3dTransposeOpTest, PaddingDepthDimensionWithBiasTest) {
+  Conv3dTransposeOpModel m(
+      {1, 4, 4, 4, 2}, {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
+      {TensorType_FLOAT32, {1, 2, 2, 2, 2}}, {TensorType_FLOAT32, {2}},
+      Conv3dTransposeOpTest::GetParam(), Padding_VALID,
+      /*stride_depth=*/2,
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  m.SetInput(CreateRangeVector<float>(16));
+  m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1,
+               1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1});
+  m.SetBias({1, 2});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 4, 4, 4, 2));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(
+          {0, 3, 2, 1, -1, 6, 3, 2, 0, -3, 2, 7, -1, 12, 3, 0,
+           -3, 10, 5, 10, -1, -16, 3, 20, -1, 28, 3, 0, -3, 10, 5, 26,
+           -1, -32, 3, 36, 0, 19, 2, 1, -1, 6, 3, 18, 0, -19, 2, 23,
+           0, 27, 2, 1, -1, 6, 3, 26, 0, -27, 2, 31, -1, 60, 3, 0,
+           -3, 10, 5, 58, -1, -64, 3, 68, -1, 76, 3, 0, -3, 10, 5, 74,
+           -1, -80, 3, 84, 0, 43, 2, 1, -1, 6, 3, 42, 0, -43, 2, 47}));
+}
+
+TEST_P(Conv3dTransposeOpTest, PaddingDepthDimensionSameTest) {
+  Conv3dTransposeOpModel m(
+      {1, 3, 3, 3, 2}, {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
+      {TensorType_FLOAT32, {1, 2, 2, 2, 2}}, {TensorType_FLOAT32, {}},
+      Conv3dTransposeOpTest::GetParam(), Padding_SAME,
+      /*stride_depth=*/2,
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  m.SetInput(CreateRangeVector<float>(16));
+  m.SetFilter({1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1,
+               1, -1, 1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, 1, 1, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 3, 3, 3, 2));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(
+          {-1, 1, 1, -1, -2, 4, 2, 0, -1, -5, 1, 5, -1, 1, 1, -1,
+           -2, 4, 2, 0, -1, -5, 1, 5, -1, 9, 1, -1, -2, 4, 2, 8,
+           -1, -13, 1, 13, -1, 9, 1, -1, -2, 4, 2, 8, -1, -13, 1, 13,
+           -1, 17, 1, -1, -2, 4, 2, 16, -1, -21, 1, 21, -1, 17, 1, -1,
+           -2, 4, 2, 16, -1, -21, 1, 21, -1, 25, 1, -1, -2, 4, 2, 24,
+           -1, -29, 1, 29, -1, 25, 1, -1, -2, 4, 2, 24, -1, -29, 1, 29}));
+}
+
+INSTANTIATE_TEST_SUITE_P(Conv3dTransposeOpTest, Conv3dTransposeOpTest,
+                         ::testing::Values(TestType::kConst,
+                                           TestType::kDynamic));
+
+TEST_P(Conv3dTransposeOpTest, PaddingValueDepthTestWithBias) {
+  Conv3dTransposeOpModel m(
+      {1, 3, 3, 5, 2}, {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
+      {TensorType_FLOAT32, {1, 2, 2, 4, 2}}, {TensorType_FLOAT32, {2}}, 
+      Conv3dTransposeOpTest::GetParam(), Padding_VALID,
+      /*stride_depth=*/2,
+      /*stride_width=*/1, /*stride_height=*/1);
+
+  m.SetInput(CreateRangeVector<float>(32));
+  m.SetFilter({-1, -1, -1, -1, -1, 1, -1, 1, -1, 1,  1,  1, 1, 1,  -1, -1,
+               1,  -1, 1,  1,  1,  1, -1, 1, -1, -1, -1, 1, 1, -1, 1,  -1});
+  m.SetBias({1, 2});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 3, 3, 5, 2));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(
+          {0,  1,  -3,  -2,  -7,  -6,  -11, -10, 2,   3,   -15, -14, -17,
+           -14, -17, -18, -17, -22, 15,  -10, 2,   19,  20,  6,   24,  6,
+           28,  6,   31,  -27, -32, -30, -34, -28, -34, -28, -34, -28, 16,
+           4,   -48, 4,   -6,  -24, -6,  -24, -6,  -24, 76,  -42, -14, 52,
+           30,  6,   30,  6,   30,  6,   62,  -60, 1,   35,  34,  40,  38,
+           44,  42,  48,  47,  3,   -32, 52,  12,  56,  12,  60,  12,  64,
+           62,  2,   -47, 3,   -52, 2,   -56, 2,   -60, 2,   1,   1}));
+}
+
   m.SetInput(CreateRangeVector<float>(32));
   m.SetFilter({-1, -1, -1, -1, -1, 1, -1, 1, -1, 1,  1,  1, 1, 1,  -1, -1,
                1,  -1, 1,  1,  1,  1, -1, 1, -1, -1, -1, 1, 1, -1, 1,  -1});
