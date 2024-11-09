@@ -16,8 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_SHAPE_H_
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_SHAPE_H_
 
+#include <cstdint>
+#include <cstring>
+#include <initializer_list>
+#include <limits>
+#include <ostream>
 #include <string>
+#include <type_traits>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"

@@ -16,8 +16,12 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 
 #include <string>
+#include <unordered_set>
+#include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/errors.h"

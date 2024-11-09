@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_slice.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <initializer_list>
 #include <limits>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/tensor_slice.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
