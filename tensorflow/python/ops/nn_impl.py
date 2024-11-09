@@ -536,9 +536,6 @@ def normalize(tensor, ord="euclidean", axis=None, name=None):
     normalized = tensor / norm
     return normalized, norm
 
-# 
-# 
-
 @tf_export("math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize",
            v1=["math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize"])
 @dispatch.add_dispatch_support
