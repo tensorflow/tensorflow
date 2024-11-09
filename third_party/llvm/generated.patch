@@ -2,7 +2,7 @@ Auto generated patch. Do not edit or delete it, even if empty.
 diff -ruN --strip-trailing-cr a/clang/docs/ReleaseNotes.rst b/clang/docs/ReleaseNotes.rst
 --- a/clang/docs/ReleaseNotes.rst
 +++ b/clang/docs/ReleaseNotes.rst
-@@ -723,7 +723,6 @@
+@@ -739,7 +739,6 @@
    * Supported intrinsics of ``_mm(256|512)_(mask(z))_loadrs_epi(8|16|32|64)``.
  - Support ISA of ``AMX-FP8``.
  - Support ISA of ``AMX-TRANSPOSE``.
@@ -1902,20 +1902,10 @@ diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.baze
 diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
 --- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-@@ -9969,6 +9969,8 @@
-         ":OpenMPToLLVMIRTranslation",
-         ":ToLLVMIRTranslation",
-         "//llvm:AsmParser",
-+        "//llvm:Core",
-+        "//llvm:Linker",
-         "//llvm:Support",
-         "//llvm:X86AsmParser",
-     ],
-@@ -10092,34 +10094,6 @@
-         "//llvm:Support",
+@@ -10095,34 +10095,6 @@
      ],
  )
--
+ 
 -cc_binary(
 -    name = "mlir-spirv-cpu-runner",
 -    srcs = ["tools/mlir-spirv-cpu-runner/mlir-spirv-cpu-runner.cpp"],
@@ -1943,6 +1933,7 @@ diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.baze
 -        "//llvm:Support",
 -    ],
 -)
- 
+-
  cc_library(
      name = "TableGen",
+     srcs = glob(["lib/TableGen/*.cpp"]),
