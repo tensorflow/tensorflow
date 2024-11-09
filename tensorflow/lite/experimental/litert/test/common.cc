@@ -28,6 +28,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_load.h"
 #include "tsl/platform/platform.h"
 
@@ -79,6 +80,28 @@ void TouchTestFile(absl::string_view filename, absl::string_view dir) {
   std::filesystem::path path(dir.data());
   path.append(filename.data());
   std::ofstream f(path);
+}
+
+bool ValidateTopology(const std::vector<Op>& ops) {
+  for (const auto& op : ops) {
+    const auto inputs = op.Inputs();
+    for (int i = 0; i < inputs.size(); ++i) {
+      if (!MatchUse(inputs.at(i), UseInfo(op.Code(), i))) {
+        return false;
+      }
+    }
+    const auto outputs = op.Outputs();
+    for (int i = 0; i < outputs.size(); ++i) {
+      const auto defining_op = outputs.at(i).DefiningOp();
+      if (!defining_op.has_value()) {
+        return false;
+      }
+      if (defining_op->op != op.Get() || defining_op->op_output_index != i) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 }  // namespace testing

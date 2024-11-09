@@ -26,7 +26,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
@@ -39,33 +41,10 @@ static constexpr size_t kTensorVecSize = 8;
 template <typename T>
 using SmallVec = absl::InlinedVector<T, kTensorVecSize>;
 
-// Data type of tensor elements. C++ equivalent to LiteRtElementType.
-enum class ElementType {
-  None = kLiteRtElementTypeNone,
-  Bool = kLiteRtElementTypeBool,
-  Int4 = kLiteRtElementTypeInt4,
-  Int8 = kLiteRtElementTypeInt8,
-  Int16 = kLiteRtElementTypeInt16,
-  Int32 = kLiteRtElementTypeInt32,
-  Int64 = kLiteRtElementTypeInt64,
-  UInt8 = kLiteRtElementTypeUInt8,
-  UInt16 = kLiteRtElementTypeUInt16,
-  UInt32 = kLiteRtElementTypeUInt32,
-  UInt64 = kLiteRtElementTypeUInt64,
-  Float16 = kLiteRtElementTypeFloat16,
-  BFloat16 = kLiteRtElementTypeBFloat16,
-  Float32 = kLiteRtElementTypeFloat32,
-  Float64 = kLiteRtElementTypeFloat64,
-  Complex64 = kLiteRtElementTypeComplex64,
-  Complex128 = kLiteRtElementTypeComplex128,
-  TfResource = kLiteRtElementTypeTfResource,
-  TfString = kLiteRtElementTypeTfString,
-  TfVariant = kLiteRtElementTypeTfVariant,
-};
-
 // Tensor layout. C++ equivalent to LiteRtLayout.
 class Layout {
  public:
+  // TODO Use SmallVec here.
   explicit Layout(std::vector<int32_t>&& dimensions,
                   std::vector<uint32_t>&& strides = std::vector<uint32_t>())
       : dimensions_(std::move(dimensions)), strides_(std::move(strides)) {}
@@ -103,6 +82,22 @@ class Layout {
     const uint32_t* data = HasStrides() ? strides_.data() : nullptr;
     auto size = HasStrides() ? Rank() : 0;
     return absl::MakeSpan(data, size);
+  }
+
+  // Get the number of scalar elements in this tensor type. std::nullopt if
+  // not fully static.
+  std::optional<size_t> NumElements() const {
+    if (Rank() == 0) {
+      return 1;
+    }
+    size_t res = 1;
+    for (auto d : dimensions_) {
+      if (d < 0) {
+        return {};
+      }
+      res *= d;
+    }
+    return res;
   }
 
  private:
@@ -193,8 +188,40 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
     return litert::Weights(weights);
   }
 
-  struct UsesT;
-  UsesT Uses() const;
+  struct TensorUse;
+  SmallVec<TensorUse> Uses() const;
+
+  template <typename T>
+  LiteRtResult<absl::Span<const T>> WeightsData() const {
+    auto failed = LiteRtResult<absl::Span<const T>>::FromStatus(
+        kLiteRtStatusErrorInvalidArgument);
+
+    const ElementType ty = RankedTensorType().ElementType();
+    if (ty != GetElementType<T>()) {
+      return failed;
+    }
+
+    if (!HasWeights()) {
+      return failed;
+    }
+    const absl::Span<const uint8_t> weights = Weights().Bytes();
+
+    auto num_elements = RankedTensorType().Layout().NumElements();
+    if (!num_elements.has_value()) {
+      return failed;
+    }
+    auto byte_width = GetByteWidth(ty);
+    if (!byte_width.has_value()) {
+      return failed;
+    }
+
+    if (byte_width.value() * num_elements.value() != weights.size()) {
+      return failed;
+    }
+
+    return LiteRtResult<absl::Span<const T>>::FromValue(absl::MakeConstSpan(
+        reinterpret_cast<const T*>(weights.data()), num_elements.value()));
+  }
 
   std::optional<LiteRtTensorDefiningOp> DefiningOp() const {
     bool has_defining_op;
@@ -241,9 +268,9 @@ class Op : public internal::NonOwnedHandle<LiteRtOp> {
   }
 };
 
-struct Tensor::UsesT {
-  absl::InlinedVector<Op, 4> users;
-  absl::Span<LiteRtParamIndex> user_arg_inds;
+struct Tensor::TensorUse {
+  Op user;
+  LiteRtParamIndex user_arg_ind;
 };
 
 // Model subgraph. C++ equivalent of LiteRtSubgraph.

@@ -59,7 +59,7 @@ cc_library(
 #         "@com_google_googletest//:gtest_main",
 #         "//testing/base/public:unique-test-directory",
 #         "@com_google_absl//absl/strings:string_view",
-#         "//tensorflow/lite/experimental/litert/core:graph_tools",
+#         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
 #         "//tensorflow/lite/experimental/litert/test:common",
 #         "//tensorflow/lite/experimental/litert/tools:dump",
 #     ],
@@ -90,7 +90,8 @@ cc_test(
     deps = [
         ":algo",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
-        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/cc:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_googletest//:gtest_main",

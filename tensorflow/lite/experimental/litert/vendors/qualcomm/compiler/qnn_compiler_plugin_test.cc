@@ -21,7 +21,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
@@ -85,12 +85,12 @@ TEST(TestQnnPlugin, CompileMulSubgraph) {
   auto plugin = GetQnnPlugin();
   auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
 
-  LITERT_ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                                 ::litert::internal::GetSubgraph(model.Get()));
+  const auto subgraph = model.MainSubgraph();
+  LiteRtSubgraph litert_subgraph = subgraph->Get();
 
   LiteRtCompiledResult compiled;
-  LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75",
-                                                      &subgraph, 1, &compiled));
+  LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(
+      plugin.get(), "V75", &litert_subgraph, 1, &compiled));
 
   const void* byte_code;
   size_t byte_code_size;
@@ -122,12 +122,12 @@ TEST_P(QnnPluginOpCompatibilityTest, SupportedOpsTest) {
   auto plugin = GetQnnPlugin();
   auto model = litert::testing::LoadTestFileModel(GetParam());
 
-  LITERT_ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                                 ::litert::internal::GetSubgraph(model.Get()));
+  const auto subgraph = model.MainSubgraph();
+  LiteRtSubgraph litert_subgraph = subgraph->Get();
 
   LiteRtCompiledResult compiled;
-  LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(plugin.get(), "V75",
-                                                      &subgraph, 1, &compiled));
+  LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(
+      plugin.get(), "V75", &litert_subgraph, 1, &compiled));
 
   const void* byte_code;
   size_t byte_code_size;

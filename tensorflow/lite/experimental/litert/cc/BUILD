@@ -40,11 +40,12 @@ cc_library(
     srcs = ["litert_model.cc"],
     hdrs = ["litert_model.h"],
     deps = [
+        ":litert_element_type",
         ":litert_expected",
         ":litert_handle",
         ":litert_macros",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
-        "//tensorflow/lite/experimental/litert/core:graph_tools",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -61,11 +62,11 @@ cc_test(
         "//tensorflow/lite/experimental/litert/test:tflite_test_data",
     ],
     deps = [
+        ":litert_element_type",
         ":litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
-        "//tensorflow/lite/experimental/litert/core:graph_tools",
         "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -188,6 +189,55 @@ cc_test(
         ":litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "litert_element_type",
+    hdrs = ["litert_element_type.h"],
+    deps = ["//tensorflow/lite/experimental/litert/c:litert_model"],
+)
+
+cc_test(
+    name = "litert_element_type_test",
+    srcs = ["litert_element_type_test.cc"],
+    deps = [
+        ":litert_element_type",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "litert_model_predicates",
+    srcs = ["litert_model_predicates.cc"],
+    hdrs = ["litert_model_predicates.h"],
+    deps = [
+        ":litert_macros",
+        ":litert_model",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "litert_model_predicates_test",
+    srcs = ["litert_model_predicates_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/litert/test:tflite_test_data",
+    ],
+    deps = [
+        ":litert_element_type",
+        ":litert_model",
+        ":litert_model_predicates",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/test:common",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],

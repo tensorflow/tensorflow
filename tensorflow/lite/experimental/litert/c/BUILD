@@ -112,7 +112,7 @@ cc_test(
     deps = [
         ":litert_model",
         ":litert_options",
-        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_googletest//:gtest_main",
     ],

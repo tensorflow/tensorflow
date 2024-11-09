@@ -14,38 +14,32 @@
 
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
-#include "absl/types/span.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
 
 namespace litert {
 
-bool Tensor::IsSubgraphOutput() const {
-  return internal::MatchTensorNoUses(Get());
-}
+bool Tensor::IsSubgraphOutput() const { return Uses().empty(); }
 
 bool Tensor::IsSubgraphInput() const {
-  return internal::MatchTensorNoDefiningOp(Get()) &&
-         internal::MatchNoWeights(Get());
+  return !HasWeights() && !DefiningOp().has_value();
 }
 
 bool Tensor::IsConstant() const {
-  return internal::MatchTensorNoDefiningOp(Get()) &&
-         !internal::MatchNoWeights(Get());
+  return HasWeights() && !DefiningOp().has_value();
 }
 
-Tensor::UsesT Tensor::Uses() const {
+SmallVec<Tensor::TensorUse> Tensor::Uses() const {
   LiteRtParamIndex num_uses;
   LiteRtOpArray users;
   LiteRtParamIndex* user_arg_inds;
   litert::internal::AssertGet(LiteRtGetTensorUses, Get(), &num_uses, &users,
                               &user_arg_inds);
-  UsesT res;
-  for (auto op = users; op < users + num_uses; ++op) {
-    res.users.push_back(Op(*op));
+  SmallVec<Tensor::TensorUse> res;
+  for (int i = 0; i < num_uses; ++i) {
+    res.emplace_back(Op(users[i]), user_arg_inds[i]);  // NOLINT
   }
-  res.user_arg_inds = absl::MakeSpan(user_arg_inds, num_uses);
   return res;
 }
 

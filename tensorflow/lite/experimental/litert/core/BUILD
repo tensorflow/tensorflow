@@ -52,27 +52,6 @@ cc_test(
 )
 
 cc_library(
-    name = "graph_tools",
-    hdrs = [
-        "graph_tools.h",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/experimental/litert/c:litert_common",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/c:litert_model",
-        "//tensorflow/lite/experimental/litert/c:litert_op_code",
-        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
-        "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/cc:litert_macros",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_library(
     name = "dynamic_loading",
     srcs = ["dynamic_loading.cc"],
     hdrs = ["dynamic_loading.h"],

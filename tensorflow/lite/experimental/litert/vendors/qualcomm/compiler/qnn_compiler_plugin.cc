@@ -27,7 +27,8 @@
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/qnn_compose_graph.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
@@ -161,17 +162,17 @@ void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin) {
 
 namespace {
 
-bool IsOpSupported(LiteRtOp op) {
-  using TyInfo = litert::internal::RankedTypeInfo;
-
+// TODO update this function to match the new legalizations.
+bool IsOpSupported(const litert::Op& op) {
   // NOTE: Currently we are demoing by just mapping simple f32 mul ops.
   // In the limit this function withh want to leverage QNN SDK's getSuportedOps
   // feature (along with our op/type mappings).
 
-  static const TyInfo supported_op_type = {kLiteRtElementTypeFloat32, {2, 2}};
-  return litert::internal::MatchOpType(
-      op, {supported_op_type, supported_op_type}, {supported_op_type},
-      kLiteRtOpCodeTflMul);
+  static const litert::TensorTypeInfo supported_op_type(
+      litert::ElementType::Float32, {2, 2});
+  return litert::MatchOpType(op, {supported_op_type, supported_op_type},
+                             {supported_op_type}) &&
+         op.Code() == kLiteRtOpCodeTflMul;
 }
 
 }  // namespace
@@ -179,17 +180,18 @@ bool IsOpSupported(LiteRtOp op) {
 LiteRtStatus LiteRtCompilerPluginPartitionModel(
     LiteRtCompilerPlugin compiler_plugin, LiteRtModel model,
     LiteRtOpList selected_ops) {
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto subgraph,
-                                 litert::internal::GetSubgraph(model));
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto ops,
-                                 litert::internal::GetSubgraphOps(subgraph));
+  auto m = litert::Model::CreateFromNonOwnedHandle(model);
+  auto subgraph = m.MainSubgraph();
+  if (!subgraph.ok()) {
+    return kLiteRtStatusErrorNotFound;
+  }
 
-  for (auto op : ops) {
+  for (const auto& op : subgraph->Ops()) {
     if (!IsOpSupported(op)) {
       continue;
     }
 
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op));
+    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op.Get()));
   }
 
   return kLiteRtStatusOk;

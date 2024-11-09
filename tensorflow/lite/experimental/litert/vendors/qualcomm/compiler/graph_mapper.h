@@ -24,6 +24,7 @@
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
 namespace litert::qnn {
@@ -34,7 +35,9 @@ class GraphMapper {
  public:
   GraphMapper(LiteRtSubgraph subgraph, QnnManager& qnn,
               Qnn_ContextHandle_t context_handle)
-      : subgraph_(subgraph), qnn_(qnn), context_handle_(context_handle) {}
+      : subgraph_(Subgraph(subgraph)),
+        qnn_(qnn),
+        context_handle_(context_handle) {}
 
   // Legalize given LiteRtTensors attributes into QNN Tensor registered with
   // QNN context. Result QNN Tensor is empty except for the canonical id
@@ -62,9 +65,7 @@ class GraphMapper {
   Qnn_GraphHandle_t& QnnGraph();
 
   // CC Convienence Accessors
-  absl::Span<LiteRtOp> LiteRtSubgraphOps();
-  absl::Span<LiteRtTensor> LiteRtSubgraphInputs();
-  absl::Span<LiteRtTensor> LiteRtSubgraphOutputs();
+  const Subgraph& Graph() const { return subgraph_; }
 
   // Accessor for current scope.
   // Since each QNN Tensor needs to have a unique name globally within each QNN
@@ -76,10 +77,6 @@ class GraphMapper {
   // bottom of file).
   LiteRtStatus IsLiteRtSubgraphSupported();
 
-  // Parse LiteRtSubgraph entities into usable types. Call this before
-  // doing anything else.
-  LiteRtStatus ParseLiteRtSubgraph();
-
   // Initialize QNN Graph with given name. Call this after parsing
   // LiteRtSubgraph.
   LiteRtStatus InitQnnGraph(absl::string_view qnn_graph_name);
@@ -88,14 +85,7 @@ class GraphMapper {
   LiteRtStatus Finalize();
 
  private:
-  absl::Span<LiteRtTensor> litert_subgraph_inputs_;
-
-  absl::Span<LiteRtTensor> litert_subgraph_outputs_;
-
-  absl::Span<LiteRtOp> litert_subgraph_ops_;
-
-  LiteRtSubgraph Subgraph();
-  LiteRtSubgraph subgraph_;
+  const Subgraph subgraph_;
 
   // Maps evaluated tensors to their resolved QNN Tensor ID.
   absl::flat_hash_map<LiteRtTensor, uint32_t> current_scope_;

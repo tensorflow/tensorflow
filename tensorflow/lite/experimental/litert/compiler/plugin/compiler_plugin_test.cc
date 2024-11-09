@@ -23,7 +23,6 @@
 #include <gtest/gtest.h>
 #include "testing/base/public/unique-test-directory.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
 
@@ -117,10 +116,9 @@ TEST(CompilerPluginTest, PartitionModel) {
   EXPECT_EQ(plugins.front().SocManufacturer(), kTestManufacturer);
 
   auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
+  auto subgraph = model.MainSubgraph();
 
-  LITERT_ASSERT_RESULT_OK_ASSIGN(auto ops,
-                                 plugins.front().PartitionModel(model));
-  EXPECT_EQ(ops.size(), 2);
+  EXPECT_EQ(subgraph->Ops().size(), 2);
 }
 
 TEST(CompilerPluginTest, CompileModel) {
@@ -131,13 +129,12 @@ TEST(CompilerPluginTest, CompileModel) {
   EXPECT_EQ(plugins.front().SocManufacturer(), kTestManufacturer);
 
   auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
-  LITERT_ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                                 litert::internal::GetSubgraph(model.Get()));
+  auto subgraph = model.MainSubgraph();
 
   std::ostringstream byte_code_out;
   std::vector<std::string> call_info_out;
   LITERT_ASSERT_STATUS_OK(plugins.front().Compile(
-      kTestModels, {subgraph}, byte_code_out, call_info_out));
+      kTestModels, {subgraph->Get()}, byte_code_out, call_info_out));
 
   EXPECT_GT(byte_code_out.str().size(), 0);
   EXPECT_EQ(call_info_out.size(), 1);

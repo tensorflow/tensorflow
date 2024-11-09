@@ -22,7 +22,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
@@ -71,12 +71,12 @@ TEST(TestCallDummyPlugin, CompileMulSubgraph) {
   auto plugin = GetDummyPlugin();
   auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
 
-  LITERT_ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                                 litert::internal::GetSubgraph(model.Get()));
+  auto main_subgraph = model.MainSubgraph();
+  LiteRtSubgraph litert_subgraph = main_subgraph->Get();
 
   LiteRtCompiledResult compiled;
   LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(
-      plugin.get(), /*soc_model=*/nullptr, &subgraph, 1, &compiled));
+      plugin.get(), /*soc_model=*/nullptr, &litert_subgraph, 1, &compiled));
 
   const void* byte_code;
   size_t byte_code_size;

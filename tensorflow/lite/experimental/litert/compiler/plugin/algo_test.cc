@@ -21,18 +21,17 @@
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
+namespace litert::internal {
 namespace {
-
-using ::litert::internal::GroupPartitions;
-using ::litert::internal::OutlinePartition;
 
 // NOLINTBEGIN
 bool HasValidGeneralTopology(LiteRtSubgraph subgraph) {
-  if (!litert::internal::ValidateTopology(subgraph->ops)) {
+  if (!testing::ValidateTopology(Subgraph(subgraph).Ops())) {
     return false;
   }
 
@@ -185,45 +184,45 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
   ASSERT_EQ(sliced_subgraph_ops[1].Code(), kLiteRtOpCodeTflMul);
 
   ASSERT_EQ(hal_cal_op, edited_subgraph_ops.at(1).Get());
+  const Op hal_call(hal_cal_op);
 
   {
-    LITERT_ASSERT_RESULT_OK_ASSIGN(auto hal_cal_op_ins,
-                                   litert::internal::GetOpIns(hal_cal_op));
+    const auto hal_cal_op_ins = hal_call.Inputs();
 
     ASSERT_EQ(hal_cal_op_ins.size(), 1);
 
-    ASSERT_TRUE(litert::internal::MatchTensorDefiningOp(
-        hal_cal_op_ins[0], 0, edited_subgraph_ops.at(0).Get()));
+    auto hal_input_defining_op = hal_cal_op_ins.front().DefiningOp();
+    ASSERT_EQ(hal_input_defining_op->op, edited_subgraph_ops.at(0).Get());
+    ASSERT_EQ(hal_input_defining_op->op_output_index, 0);
 
-    auto sliced_subgraph_inputs = sliced_graph.Inputs();
+    const auto sliced_subgraph_inputs = sliced_graph.Inputs();
 
     ASSERT_EQ(sliced_subgraph_inputs.size(), 1);
 
-    ASSERT_TRUE(litert::internal::MatchTensorHasUses(
-        sliced_subgraph_inputs.front().Get(),
-        {{sliced_subgraph_ops.front().Get(), 0},
-         {sliced_subgraph_ops.front().Get(), 1}}));
-
-    ASSERT_TRUE(litert::internal::MatchTensorNoDefiningOp(
-        sliced_subgraph_inputs.front().Get()));
+    ASSERT_TRUE(MatchUses(sliced_subgraph_inputs.front(),
+                          {UseInfo(sliced_subgraph_ops.front().Code(), 0),
+                           UseInfo(sliced_subgraph_ops.front().Code(), 0)}));
+    ASSERT_TRUE(sliced_subgraph_inputs.front().IsSubgraphInput());
   }
 
   {
-    LITERT_ASSERT_RESULT_OK_ASSIGN(auto hal_cal_op_out,
-                                   litert::internal::GetOnlyOpOut(hal_cal_op));
+    const auto hal_call_outs = hal_call.Outputs();
+    ASSERT_EQ(hal_call_outs.size(), 1);
+    const auto& hal_call_out = hal_call_outs.front();
 
-    ASSERT_TRUE(litert::internal::MatchTensorHasUses(
-        hal_cal_op_out, {{edited_subgraph_ops.back().Get(), 0},
-                         {edited_subgraph_ops.back().Get(), 1}}));
+    ASSERT_TRUE(MatchUses(hal_call_out,
+                          {UseInfo(edited_subgraph_ops.back().Code(), 0),
+                           UseInfo(edited_subgraph_ops.back().Code(), 1)}));
 
     auto sliced_subgraph_outputs = sliced_graph.Outputs();
 
     ASSERT_EQ(sliced_subgraph_outputs.size(), 1);
-    ASSERT_TRUE(litert::internal::MatchTensorDefiningOp(
-        sliced_subgraph_outputs.front().Get(), 0,
-        sliced_subgraph_ops.back().Get()));
-    ASSERT_TRUE(litert::internal::MatchTensorNoUses(
-        sliced_subgraph_outputs.front().Get()));
+
+    const auto defining_op = sliced_subgraph_outputs.front().DefiningOp();
+    ASSERT_EQ(defining_op->op, sliced_subgraph_ops.back().Get());
+    ASSERT_EQ(defining_op->op_output_index, 0);
+
+    ASSERT_TRUE(sliced_subgraph_outputs.front().Uses().empty());
   }
 }
 
@@ -286,3 +285,4 @@ TEST(TestSliceSubgraphSimpleMultiOp, TwoPartitions) {
 }
 
 }  // namespace
+}  // namespace litert::internal

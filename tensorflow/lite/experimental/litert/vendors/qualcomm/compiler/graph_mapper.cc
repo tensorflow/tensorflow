@@ -32,7 +32,8 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_tensor.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
@@ -52,20 +53,6 @@ LiteRtStatus GraphMapper::AssignTensorName(Qnn_Tensor_t& qnn_tensor) {
                 "Failed to make tensor name");
   qnn_tensor.v2.name = name;
   return kLiteRtStatusOk;
-}
-
-LiteRtSubgraph GraphMapper::Subgraph() { return subgraph_; }
-
-absl::Span<LiteRtTensor> GraphMapper::LiteRtSubgraphInputs() {
-  return litert_subgraph_inputs_;
-}
-
-absl::Span<LiteRtTensor> GraphMapper::LiteRtSubgraphOutputs() {
-  return litert_subgraph_outputs_;
-}
-
-absl::Span<LiteRtOp> GraphMapper::LiteRtSubgraphOps() {
-  return litert_subgraph_ops_;
 }
 
 absl::flat_hash_map<LiteRtTensor, uint32_t>& GraphMapper::CurrentScope() {
@@ -119,28 +106,10 @@ LiteRtStatus GraphMapper::LegalizeAndRegister(LiteRtTensor litert_tensor,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus GraphMapper::ParseLiteRtSubgraph() {
-  LITERT_ASSIGN_OR_RETURN_STATUS(
-      auto inputs, litert::internal::GetSubgraphInputs(Subgraph()));
-  litert_subgraph_inputs_ =
-      absl::MakeSpan(const_cast<LiteRtTensor*>(inputs.data()), inputs.size());
-
-  LITERT_ASSIGN_OR_RETURN_STATUS(
-      auto outputs, litert::internal::GetSubgraphOutputs(Subgraph()));
-  litert_subgraph_outputs_ =
-      absl::MakeSpan(const_cast<LiteRtTensor*>(outputs.data()), outputs.size());
-
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto ops,
-                                 litert::internal::GetSubgraphOps(Subgraph()));
-  litert_subgraph_ops_ =
-      absl::MakeSpan(const_cast<LiteRtOp*>(ops.data()), ops.size());
-
-  return kLiteRtStatusOk;
-}
 
 LiteRtStatus GraphMapper::IsLiteRtSubgraphSupported() {
   LITERT_ENSURE_SUPPORTED(
-      LiteRtSubgraphInputs().size() < 4,
+      Graph().Inputs().size() < 4,
       "Only subgraphs with less than 4 inputs currently supported.");
 
   return kLiteRtStatusOk;

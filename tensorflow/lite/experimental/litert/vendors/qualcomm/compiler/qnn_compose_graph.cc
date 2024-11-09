@@ -76,7 +76,6 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
   LITERT_RETURN_STATUS_IF_NOT_OK(RegisterAllLegalizations(legalizations));
 
   GraphMapper graph_mapper(subgraph, qnn, context_handle);
-  LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.ParseLiteRtSubgraph());
   LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.IsLiteRtSubgraphSupported());
   LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.InitQnnGraph(qnn_graph_name));
 
@@ -84,24 +83,23 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
   // Legalize subgraph inputs and update tensors in scope
   //
 
-  for (auto subgraph_input : graph_mapper.LiteRtSubgraphInputs()) {
+  for (const auto& subgraph_input : graph_mapper.Graph().Inputs()) {
     Qnn_Tensor_t qnn_subgraph_input = BuildInputTensor();
 
-    LITERT_RETURN_STATUS_IF_NOT_OK(
-        graph_mapper.LegalizeAndRegister(subgraph_input, qnn_subgraph_input));
+    LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.LegalizeAndRegister(
+        subgraph_input.Get(), qnn_subgraph_input));
 
     LITERT_RETURN_STATUS_IF_NOT_OK(
-        graph_mapper.PushToScope(subgraph_input, qnn_subgraph_input));
+        graph_mapper.PushToScope(subgraph_input.Get(), qnn_subgraph_input));
   }
+
   //
   // Topologically traverse graph, legalizing and updating tensors in scope
   //
 
-  // Use simple traversal for now.
-  // TODO: Drive traversal here.
-  for (auto litert_op : graph_mapper.LiteRtSubgraphOps()) {
+  for (const auto& op : graph_mapper.Graph().Ops()) {
     Qnn_OpConfig_t qnn_op = BuildDefaultOp();
-    Op op(litert_op);
+    ;
     for (auto it = legalizations.begin(); it != legalizations.end(); ++it) {
       LITERT_RETURN_STATUS_IF_NOT_OK_OR_NOT_MATCHED(
           (*it)->LegalizeOp(op, qnn_op, graph_mapper));
@@ -124,16 +122,8 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
 //
 // APPROACH:
 //
-// Currently demoing by just handling a simple case where there is one
-// partitions and the partitions is as follows:
-//
-// func(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>)
-//   %0 = tfl.mul(%arg0, %arg1)
-//   return %0
-//
 // To support the general case we will need a driver loop that either
 // traverses input recursively through edges or just iterates topologically.
-// Currently we just have only implemented n=1.
 //
 // The algorithm is pretty straightforward:
 // * Store mapping between already evaluated LiteRtTensors and their

@@ -59,6 +59,8 @@ Model LoadTestFileModel(absl::string_view filename);
 
 void TouchTestFile(absl::string_view filename, absl::string_view dir);
 
+bool ValidateTopology(const std::vector<Op>& ops);
+
 }  // namespace testing
 }  // namespace litert
 
