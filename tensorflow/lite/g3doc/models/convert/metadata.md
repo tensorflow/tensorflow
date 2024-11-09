@@ -58,7 +58,7 @@ TensorFlow Lite metadata tooling supports Python 3.
 ## Adding metadata using Flatbuffers Python API
 
 Note: to create metadata for the popular ML tasks supported in
-[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/overview),
+[TensorFlow Lite Task Library](https://ai.google.dev/edge/litert/libraries/task_library/overview),
 use the high-level API in the
 [TensorFlow Lite Metadata Writer Library](metadata_writer_tutorial.ipynb).
 
