@@ -1983,6 +1983,36 @@ func.func @testFoldStridedSliceShapeWithEmptySlice(%arg0: tensor<?x1x2x3xf32>) -
   // CHECK: return %[[CST]]
 }
 
+// CHECK-LABEL: @testFoldIdentitySlice
+func.func @testFoldIdentitySlice(%arg0: tensor<1920xf32>) -> tensor<1920xf32> {
+  %cst_90 = "tf.Const"() <{value = dense<1920> : tensor<1xi64>}> : () -> tensor<1xi64> loc(unknown)
+  %cst_91 = "tf.Const"() <{value = dense<1> : tensor<1xi64>}> : () -> tensor<1xi64> loc(unknown)
+  %cst_92 = "tf.Const"() <{value = dense<0> : tensor<1xi64>}> : () -> tensor<1xi64> loc(unknown)
+  %131 = "tf.StridedSlice"(%arg0, %cst_92, %cst_90, %cst_91) <{begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64}> : (tensor<1920xf32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<1920xf32>
+  func.return %131 : tensor<1920xf32>
+}
+
+// CHECK-LABEL: @testFoldIdentitySliceMultiDims
+func.func @testFoldIdentitySliceMultiDims(%arg0 : tensor<10x10x10xf32>) -> tensor<10x10x10xf32> {
+  %0 = "tf.Const"() {value = dense<[10, 10, 10]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<0> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
+  %3 = "tf.StridedSlice"(%arg0, %1, %0, %2) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<10x10x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<10x10x10xf32>
+  return %3 : tensor<10x10x10xf32>
+  // CHECK:  return %arg0
+}
+
+// CHECK-LABEL: @testDoNotFoldSlice
+func.func @testDoNotFoldSlice(%arg0 : tensor<10x10x10xf32>) -> tensor<9x9x9xf32> {
+  %0 = "tf.Const"() {value = dense<[9, 9, 9]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<0> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
+  %3 = "tf.StridedSlice"(%arg0, %1, %0, %2) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<10x10x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<9x9x9xf32>
+  return %3 : tensor<9x9x9xf32>
+  // CHECK: %[[STRIDED_SLICE:.*]] = "tf.StridedSlice"
+  // CHECK:  return %[[STRIDED_SLICE]]
+}
+
 // CHECK-LABEL: testFoldEnsureShapeOp
 func.func @testFoldEnsureShapeOp(%arg0: tensor<10x20xf32>) -> (tensor<10x20xf32>, tensor<10x20xf32>, tensor<20x10xf32>) {
   %0 = "tf.EnsureShape"(%arg0) {shape = #tf_type.shape<10x20>} : (tensor<10x20xf32>) -> tensor<10x20xf32>
