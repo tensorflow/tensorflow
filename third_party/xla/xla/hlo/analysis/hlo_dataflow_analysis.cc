@@ -1396,7 +1396,9 @@ void HloDataflowAnalysis::Propagate() {
           add_to_worklist(
               callsite.instruction()->while_condition()->parameter_instruction(
                   0));
-        } else if (call_graph_node.context() == CallContext::kControlFlow) {
+        } else if (callsite.instruction()->opcode() ==
+                       HloOpcode::kConditional ||
+                   call_graph_node.context() == CallContext::kControlFlow) {
           add_to_worklist(callsite.instruction());
         }
       }
