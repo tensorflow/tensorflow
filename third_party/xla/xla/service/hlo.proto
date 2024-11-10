@@ -113,7 +113,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 91
+// Next ID: 92
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -392,6 +392,9 @@ message HloInstructionProto {
 
   // Specifies if a call instruction is a composite.
   bool is_composite = 89;
+
+  // Accuracy for unary functions with multiple implementations.
+  xla.ResultAccuracy result_accuracy = 91;
 }
 
 // Serialization of HloComputation.

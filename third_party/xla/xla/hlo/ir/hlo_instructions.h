@@ -2804,6 +2804,32 @@ class HloRngBitGeneratorInstruction : public HloInstruction {
   RandomAlgorithm algorithm_;
 };
 
+std::string ResultAccuracyToleranceToString(
+    const ResultAccuracy::Tolerance& tolerance);
+
+// HloInstruction subclass for unary instructions with result accuracy.
+class HloUnaryInstruction : public HloInstruction {
+ public:
+  explicit HloUnaryInstruction(const Shape& shape, HloOpcode opcode,
+                               HloInstruction* operand,
+                               ResultAccuracy result_accuracy);
+  // Sets the result accuracy for this instruction. Supported for unary ops
+  // with multiple implementations.
+  void set_result_accuracy(ResultAccuracy result_accuracy) {
+    result_accuracy_ = result_accuracy;
+  }
+  const ResultAccuracy& result_accuracy() const { return result_accuracy_; }
+  static bool ClassOf(const HloInstruction* hlo) {
+    return IsUnaryOpWithResultAccuracy(hlo->opcode());
+  }
+
+ private:
+  ResultAccuracy result_accuracy_;
+  void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                const HloPrintOptions& options) const override;
+  // bool IsValidResultAccuracy(const ResultAccuracy& accuracy) const;
+};
+
 }  // namespace xla
 
 #endif  // XLA_HLO_IR_HLO_INSTRUCTIONS_H_

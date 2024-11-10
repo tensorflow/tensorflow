@@ -793,9 +793,9 @@ class HloInstruction {
 
   // Creates a unary instruction (one operand).
   // Precondition: opcode must be a legitimate unary operation.
-  static std::unique_ptr<HloInstruction> CreateUnary(const Shape& shape,
-                                                     HloOpcode opcode,
-                                                     HloInstruction* operand);
+  static std::unique_ptr<HloInstruction> CreateUnary(
+      const Shape& shape, HloOpcode opcode, HloInstruction* operand,
+      std::optional<ResultAccuracy> result_accuracy = std::nullopt);
 
   // Creates a binary instruction (two operands).
   // Precondition: opcode must be a legitimate binary operation.
@@ -1535,6 +1535,9 @@ class HloInstruction {
   static bool IsThreadIncluded(
       absl::string_view execution_thread,
       const absl::flat_hash_set<absl::string_view>& execution_threads_set);
+
+  // Returns true if the opcode is a unary op supports tunable accuracy.
+  static bool IsUnaryOpWithResultAccuracy(HloOpcode opcode);
 
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
@@ -2983,9 +2986,12 @@ std::string PaddingConfigToString(const PaddingConfig& padding);
 std::string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes);
 std::string StatisticsVizToString(const StatisticsViz& statistics_viz);
+std::string ResultAccuracyToleranceToString(
+    const ResultAccuracy::Tolerance& tolerance);
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);
 std::string PrecisionToString(const PrecisionConfig::Precision& precision);
+std::string ResultAccuracyToString(ResultAccuracy::Mode accuracy_mode);
 std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm);
 std::string DotDimensionNumbersToString(const DotDimensionNumbers& dnums);
 std::string RaggedDotDimensionNumbersToString(
@@ -3001,6 +3007,8 @@ absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
     const std::string& name);
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
     const std::string& name);
+absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
+    absl::string_view name);
 absl::StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
     absl::string_view name);
 absl::StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(

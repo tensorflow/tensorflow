@@ -1229,6 +1229,31 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             output_to_operand_aliasing());
       }
       break;
+      case HloOpcode::kCos:
+      case HloOpcode::kErf:
+      case HloOpcode::kExp:
+      case HloOpcode::kExpm1:
+      case HloOpcode::kLog:
+      case HloOpcode::kLog1p:
+      case HloOpcode::kRsqrt:
+      case HloOpcode::kLogistic:
+      case HloOpcode::kSin:
+      case HloOpcode::kSqrt:
+      case HloOpcode::kCbrt:
+      case HloOpcode::kTanh:
+      case HloOpcode::kTan:
+        ResultAccuracy result_accuracy = proto.result_accuracy();
+
+        TF_RET_CHECK(ResultAccuracy::Mode_IsValid(result_accuracy.mode()))
+            << "Unknown accuracy mode: " << result_accuracy.mode();
+
+        TF_RET_CHECK(result_accuracy.tolerance().rtol() >= 0 &&
+                     result_accuracy.tolerance().atol() >= 0 &&
+                     result_accuracy.tolerance().ulps() >= 0)
+            << "Negative tolerance: "
+            << ResultAccuracyToleranceToString(result_accuracy.tolerance());
+        instruction = CreateUnary(shape, opcode, operands(0), result_accuracy);
+        break;
     }
     default: {
       instruction = absl::WrapUnique(new HloInstruction(opcode, shape));
@@ -1374,7 +1399,8 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateUnary(
-    const Shape& shape, HloOpcode opcode, HloInstruction* operand) {
+    const Shape& shape, HloOpcode opcode, HloInstruction* operand,
+    std::optional<ResultAccuracy> result_accuracy) {
   // Only certain opcodes are supported with CreateUnary: opcodes of unary
   // instructions with no auxiliary fields.
   switch (opcode) {
@@ -1388,34 +1414,38 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopy:
     case HloOpcode::kCopyDone:
-    case HloOpcode::kCos:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kClz:
-    case HloOpcode::kErf:
-    case HloOpcode::kExp:
-    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
-    case HloOpcode::kLog:
-    case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
+    case HloOpcode::kSign:
+      return CreateNary(shape, opcode, {operand});
+    case HloOpcode::kCos:
+    case HloOpcode::kErf:
+    case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
+    case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
     case HloOpcode::kRsqrt:
     case HloOpcode::kLogistic:
-    case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
     case HloOpcode::kTan:
-      break;
+      if (result_accuracy.has_value()) {
+        return std::make_unique<HloUnaryInstruction>(shape, opcode, operand,
+                                                     *result_accuracy);
+      }
+      return CreateNary(shape, opcode, {operand});
     default:
       LOG(FATAL) << "Invalid unary instruction opcode " << opcode;
   }
-  return CreateNary(shape, opcode, {operand});
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateBinary(
@@ -2467,6 +2497,17 @@ HloInstruction::CreateCompositeCall(const Shape& shape,
     const absl::flat_hash_set<absl::string_view>& execution_threads_set) {
   return execution_threads_set.empty() ||
          execution_threads_set.contains(execution_thread);
+}
+
+/* static */ bool HloInstruction::IsUnaryOpWithResultAccuracy(
+    HloOpcode opcode) {
+  return opcode == HloOpcode::kExp || opcode == HloOpcode::kExpm1 ||
+         opcode == HloOpcode::kLog || opcode == HloOpcode::kLog1p ||
+         opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kSqrt ||
+         opcode == HloOpcode::kCbrt || opcode == HloOpcode::kTanh ||
+         opcode == HloOpcode::kCos || opcode == HloOpcode::kSin ||
+         opcode == HloOpcode::kTan || opcode == HloOpcode::kErf ||
+         opcode == HloOpcode::kLogistic;
 }
 
 void HloInstruction::AddSuffixToInstructionName(
@@ -4990,6 +5031,27 @@ std::string PrecisionToString(const PrecisionConfig::Precision& precision) {
   return absl::AsciiStrToLower(PrecisionConfig::Precision_Name(precision));
 }
 
+template <typename Sink>
+void AbslStringify(Sink& sink, const ResultAccuracy::Tolerance& tolerance) {
+  absl::Format(&sink, "tolerance={atol=%v,rtol=%v,ulps=%v}", tolerance.atol(),
+               tolerance.rtol(), tolerance.ulps());
+}
+
+template <typename Sink>
+void AbslStringify(Sink& sink, ResultAccuracy::Mode accuracy_mode) {
+  absl::Format(&sink, "%v",
+               absl::AsciiStrToLower(ResultAccuracy::Mode_Name(accuracy_mode)));
+}
+
+std::string ResultAccuracyToleranceToString(
+    const ResultAccuracy::Tolerance& tolerance) {
+  return absl::StrFormat("%v", tolerance);
+}
+
+std::string ResultAccuracyToString(ResultAccuracy::Mode accuracy_mode) {
+  return absl::StrFormat("%v", accuracy_mode);
+}
+
 std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm) {
   constexpr absl::string_view kPrefix = "ALG_";
   const std::string& name = PrecisionConfig::Algorithm_Name(algorithm);
@@ -5143,6 +5205,26 @@ absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
   auto found = map->find(absl::AsciiStrToLower(name));
   if (found == map->end()) {
     return InvalidArgument("Unknown precision");
+  }
+  return found->second;
+}
+
+absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
+    absl::string_view name) {
+  static const absl::flat_hash_map<std::string, ResultAccuracy::Mode>* map =
+      [] {
+        auto* map = new absl::flat_hash_map<std::string, ResultAccuracy::Mode>;
+        for (int i = 0; i < ResultAccuracy::Mode_ARRAYSIZE; i++) {
+          if (ResultAccuracy::Mode_IsValid(i)) {
+            auto value = static_cast<ResultAccuracy::Mode>(i);
+            (*map)[ResultAccuracyToString(value)] = value;
+          }
+        }
+        return map;
+      }();
+  auto found = map->find(absl::AsciiStrToLower(name));
+  if (found == map->end()) {
+    return InvalidArgument("Unknown accuracy mode");
   }
   return found->second;
 }

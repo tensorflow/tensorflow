@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
@@ -52,9 +53,11 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
+
 namespace {
 
 namespace m = ::xla::match;
@@ -3199,5 +3202,175 @@ TEST_F(HloInstructionTest, RaggedDotHasPrecisionConfig) {
                                      PrecisionConfig::DEFAULT));
 }
 
+TEST_F(HloInstructionTest, ValidResultAccuracy) {
+  ResultAccuracy result_accuracy_proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        tolerance { rtol: 0.4 atol: 0.0 ulps: 1 }
+      )pb",
+      &result_accuracy_proto));
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+  auto exp = builder.AddInstruction(HloInstruction::CreateUnary(
+      r0f32_, HloOpcode::kExp, foo, result_accuracy_proto));
+  // exp->set_result_accuracy(result_accuracy_proto);
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      result_accuracy_proto,
+      Cast<HloUnaryInstruction>(exp)->result_accuracy()));
+
+  // mode: HIGHEST
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        mode: HIGHEST
+      )pb",
+      &result_accuracy_proto));
+  exp = builder.AddInstruction(HloInstruction::CreateUnary(
+      r0f32_, HloOpcode::kExp, foo, result_accuracy_proto));
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      result_accuracy_proto,
+      Cast<HloUnaryInstruction>(exp)->result_accuracy()));
+}
+
+TEST_F(HloInstructionTest, InvalidResultAccuracy) {
+  ResultAccuracy result_accuracy_proto;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        tolerance { rtol: -0.4 }
+      )pb",
+      &result_accuracy_proto));
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+  ASSERT_DEATH(builder.AddInstruction(HloInstruction::CreateUnary(
+                   r0f32_, HloOpcode::kExp, foo, result_accuracy_proto)),
+               "Invalid result accuracy");
+}
+
+TEST_F(HloInstructionTest, CreateFromProtoExp) {
+  HloInstructionProto proto_valid;
+  proto_valid.set_opcode("exponential");
+  proto_valid.set_name("exp");
+  proto_valid.mutable_shape()->set_element_type(PrimitiveType::F32);
+  proto_valid.mutable_result_accuracy()->mutable_tolerance()->set_rtol(0.4);
+  proto_valid.mutable_result_accuracy()->mutable_tolerance()->set_atol(
+      0.0);  // NOLINT
+  proto_valid.mutable_result_accuracy()->mutable_tolerance()->set_ulps(1);
+  proto_valid.add_operand_ids(0);
+  ResultAccuracy r;
+  r.mutable_tolerance()->set_rtol(0.4);
+  r.mutable_tolerance()->set_atol(0.0);  // NOLINT
+  r.mutable_tolerance()->set_ulps(1);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloInstruction> hlo,
+      HloInstruction::CreateFromProto(
+          proto_valid,
+          {{0, HloInstruction::CreateParameter(0, r0f32_, "foo").get()}}));
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      Cast<HloUnaryInstruction>(hlo.get())->result_accuracy(), r));
+  HloInstructionProto proto_invalid;
+  proto_invalid.set_opcode("exponential");
+  proto_invalid.set_name("exp");
+  proto_invalid.mutable_shape()->set_element_type(PrimitiveType::F32);
+  proto_invalid.mutable_result_accuracy()->mutable_tolerance()->set_rtol(0.4);
+  proto_invalid.mutable_result_accuracy()->mutable_tolerance()->set_atol(
+      0.0);  // NOLINT
+  proto_invalid.mutable_result_accuracy()->mutable_tolerance()->set_ulps(-1);
+  proto_invalid.add_operand_ids(0);
+  auto hlo_invalid = HloInstruction::CreateFromProto(
+      proto_invalid,
+      {{0, HloInstruction::CreateParameter(0, r0f32_, "foo").get()}});
+  EXPECT_THAT(hlo_invalid.status().message(),
+              ::testing::HasSubstr("Negative tolerance"));
+}
+
+TEST_F(HloInstructionTest, HloUnaryInstruction) {
+  std::unique_ptr<HloInstruction> parameter =
+      HloInstruction::CreateParameter(0, r0f32_, "foo");
+  ResultAccuracy default_result_accuracy;
+  default_result_accuracy.set_mode(ResultAccuracy::DEFAULT);
+  auto exp_instruction = std::make_unique<HloUnaryInstruction>(
+      r0f32_, HloOpcode::kExp, parameter.get(), default_result_accuracy);
+  // don't print the attribute if the result accuracy is set to default.
+  EXPECT_EQ(exp_instruction->ToString(),
+            "%exponential = f32[] exponential(f32[] %foo)");
+  ResultAccuracy numeric_accuracy;
+  numeric_accuracy.mutable_tolerance()->set_rtol(0.4);
+  exp_instruction->set_result_accuracy(numeric_accuracy);
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      numeric_accuracy, exp_instruction->result_accuracy()));
+  EXPECT_EQ(exp_instruction->ToString(),
+            "%exponential = f32[] exponential(f32[] %foo), "
+            "result_accuracy={tolerance={atol=0,rtol=0.4,ulps=0}}");
+
+  ResultAccuracy mode_accuracy;
+  mode_accuracy.set_mode(ResultAccuracy::HIGHEST);
+  exp_instruction->set_result_accuracy(mode_accuracy);
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      mode_accuracy, exp_instruction->result_accuracy()));
+  EXPECT_EQ(exp_instruction->ToString(),
+            "%exponential = f32[] exponential(f32[] %foo), "
+            "result_accuracy={mode=highest}");
+}
+
+TEST_F(HloInstructionTest, ExpInvalidResultAccuracy) {
+  const char* const hlo_string = R"(
+  HloModule exponential_hw
+
+  ENTRY exponential_hw {
+    %exponent = f32[] parameter(0)
+    ROOT %exponential = f32[] exponential(f32[] %exponent), result_accuracy={mode=foo}
+  }
+  )";
+  EXPECT_THAT(ParseAndReturnVerifiedModule(hlo_string).status().message(),
+              ::testing::HasSubstr("Unknown accuracy mode"));
+}
+
+TEST_F(HloInstructionTest, NegativeResultAccuracy) {
+  const char* const hlo_string = R"(
+  HloModule negate
+
+  ENTRY negate {
+    %operand = f32[] parameter(0)
+    ROOT %negate = f32[] negate(f32[] %operand), result_accuracy={tolerance={rtol=0.5, atol=1.0, ulps=2}}
+  }
+  )";
+  // Negate is not a valid op for result accuracy.
+  EXPECT_THAT(ParseAndReturnVerifiedModule(hlo_string).status().message(),
+              ::testing::HasSubstr("unexpected attribute \"result_accuracy\""));
+}
+
+TEST_F(HloInstructionTest, ResultAccuracyString) {
+  ResultAccuracy numeric_accuracy;
+  numeric_accuracy.mutable_tolerance()->set_rtol(0.4);
+  EXPECT_EQ(ResultAccuracyToleranceToString(numeric_accuracy.tolerance()),
+            "tolerance={atol=0,rtol=0.4,ulps=0}");
+  ResultAccuracy mode_accuracy;
+  mode_accuracy.set_mode(ResultAccuracy::HIGHEST);
+  EXPECT_EQ(ResultAccuracyToString(mode_accuracy.mode()), "highest");
+}
+
+TEST_F(HloInstructionTest, CreateUnaryWithResultAccuracy) {
+  ResultAccuracy result_accuracy;
+  result_accuracy.mutable_tolerance()->set_rtol(0.4);
+  std::unique_ptr<HloInstruction> unary_inst = HloInstruction::CreateUnary(
+      r0f32_, HloOpcode::kExp,
+      HloInstruction::CreateParameter(0, r0f32_, "foo").get(), result_accuracy);
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      result_accuracy,
+      Cast<HloUnaryInstruction>(unary_inst.get())->result_accuracy()));
+}
+
+TEST_F(HloInstructionTest, CreateUnaryWithResultAccuracyInvalid) {
+  ResultAccuracy result_accuracy;
+  result_accuracy.mutable_tolerance()->set_rtol(-0.4);
+  ASSERT_DEATH(HloInstruction::CreateUnary(
+                   r0f32_, HloOpcode::kExp,
+                   HloInstruction::CreateParameter(0, r0f32_, "foo").get(),
+                   result_accuracy),
+               "Invalid result accuracy");
+}
 }  // namespace
 }  // namespace xla
