@@ -112,6 +112,26 @@ struct PjitCacheEntry {
   std::thread::id thread_id = std::this_thread::get_id();
 
   bool fall_back_to_python = false;
+
+  int tp_traverse(visitproc visit, void* arg) const {
+    // TODO(b/376878591) - Visit executable once migrated away from shared_ptr.
+    for (const auto& sharding : in_shardings) {
+      Py_VISIT(sharding.ptr());
+    }
+    for (const auto& aval : out_avals) {
+      Py_VISIT(aval.ptr());
+    }
+    for (const auto& dtype : out_dtypes) {
+      Py_VISIT(dtype.ptr());
+    }
+    for (const auto& sharding : out_shardings) {
+      Py_VISIT(sharding.ptr());
+    }
+    for (const auto& layout : in_device_local_layouts) {
+      Py_VISIT(layout.ptr());
+    }
+    return 0;
+  }
 };
 
 // A PjitFunctionCache represents a cache of compiled functions that can be
@@ -142,6 +162,8 @@ class PjitFunctionCache {
     functions_.clear();
   }
 
+  static PyType_Slot slots_[];
+
  private:
   struct Key {
     nb::handle function;  // Does not hold a reference.
@@ -161,6 +183,11 @@ class PjitFunctionCache {
                          e.what(), "\n"));
       }
       return function.ptr() == other.function.ptr() && global_cache_eq;
+    }
+
+    int tp_traverse(visitproc visit, void* arg) const {
+      Py_VISIT(global_cache_key.ptr());
+      return 0;
     }
   };
 
@@ -190,13 +217,38 @@ class PjitFunctionCache {
     // calls to `pjit(f)` if `f` remains alive, but we do not want the cache
     // to keep `f` alive if all other references are dropped.
     std::optional<nb::weakref> weakref;
+
+    int tp_traverse(visitproc visit, void* arg) {
+      if (weakref.has_value()) {
+        Py_VISIT(weakref->ptr());
+      }
+      for (const auto& [key, value] : *cache) {
+        int rval = key.tp_traverse(visit, arg);
+        if (rval != 0) {
+          return rval;
+        }
+        rval = value.value->get()->tp_traverse(visit, arg);
+        if (rval != 0) {
+          return rval;
+        }
+      }
+      return 0;
+    }
   };
 
   Cache::LRUList lru_list_;
   absl::Mutex mu_;  // Non-trivial hashes need to be mutex locked.
   // ABSL containers are not exception safe:
   std::unordered_map<Key, std::unique_ptr<Value>, absl::Hash<Key>> functions_;
+
+  static int tp_traverse(PyObject* self, visitproc visit, void* arg);
+  static int tp_clear(PyObject* self);
 };
+
+/* static */ PyType_Slot PjitFunctionCache::slots_[] = {
+    {Py_tp_traverse, (void*)PjitFunctionCache::tp_traverse},
+    {Py_tp_clear, (void*)PjitFunctionCache::tp_clear},
+    {0, nullptr}};
 
 PjitFunctionCache::PjitFunctionCache(int capacity) : lru_list_(capacity) {}
 
@@ -244,6 +296,29 @@ std::shared_ptr<PjitFunctionCache::Cache> PjitFunctionCache::Lookup(
     functions_.erase(insert.first);
   }
   return cache;
+}
+
+/* static */ int PjitFunctionCache::tp_traverse(PyObject* self, visitproc visit,
+                                                void* arg) {
+  PjitFunctionCache* cache = nb::inst_ptr<PjitFunctionCache>(self);
+  Py_VISIT(Py_TYPE(self));
+  for (const auto& [key, value] : cache->functions_) {
+    int rval = key.tp_traverse(visit, arg);
+    if (rval != 0) {
+      return rval;
+    }
+    rval = value->tp_traverse(visit, arg);
+    if (rval != 0) {
+      return rval;
+    }
+  }
+  return 0;
+}
+
+/* static */ int PjitFunctionCache::tp_clear(PyObject* self) {
+  PjitFunctionCache* cache = nb::inst_ptr<PjitFunctionCache>(self);
+  cache->Clear();
+  return 0;
 }
 
 class PjitFunction {
@@ -1148,14 +1223,15 @@ PyType_Slot PjitFunction_slots[] = {
 }  // namespace
 
 void BuildPjitSubmodule(nb::module_& m) {
-  nb::class_<PjitFunctionCache> cache(m, "PjitFunctionCache");
+  nb::class_<PjitFunctionCache> cache(
+      m, "PjitFunctionCache", nb::type_slots(PjitFunctionCache::slots_));
   cache.def(nb::init<int>(),
             nb::arg("capacity") = PjitFunctionCache::kDefaultCapacity);
   cache.def("size", &PjitFunctionCache::Size);
   cache.def("capacity", &PjitFunctionCache::Capacity);
   cache.def("clear", &PjitFunctionCache::Clear);
-  cache.def_static("clear_all",
-                   []() { GetGlobalPjitFunctionStore().ClearFunctionCache(); });
+  cache.def("clear_all",
+            []() { GetGlobalPjitFunctionStore().ClearFunctionCache(); });
   cache.def("__getstate__",
             // Pickles as an empty cache; the client can repopulate as needed.
             [](const PjitFunctionCache& cache) {
