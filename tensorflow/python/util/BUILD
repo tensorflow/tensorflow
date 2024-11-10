@@ -234,7 +234,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/platform:status",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
-    ],
+    ] + if_pywrap(["//tensorflow/tools/graph_transforms:transform_graph_lib"]),
 )
 
 tf_python_pybind_extension(

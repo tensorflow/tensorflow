@@ -461,7 +461,8 @@ def tf_proto_library_cc(
         create_service = False,
         create_java_proto = False,
         create_kotlin_proto = False,
-        make_default_target_header_only = False):
+        make_default_target_header_only = False,
+        local_defines = None):
     js_codegen = js_codegen  # unused argument
     native.filegroup(
         name = name + "_proto_srcs",
@@ -548,6 +549,7 @@ def tf_proto_library_cc(
         visibility = visibility,
         deps = cc_deps,
         protolib_deps = protolib_deps,
+        local_defines = local_defines,
     )
 
 def tf_proto_library_py(
@@ -612,7 +614,8 @@ def tf_proto_library(
         create_grpc_library = False,
         make_default_target_header_only = False,
         exports = [],
-        tags = []):
+        tags = [],
+        local_defines = None):
     """Make a proto library, possibly depending on other proto libraries."""
 
     # TODO(b/145545130): Add docstring explaining what rules this creates and how
@@ -651,6 +654,7 @@ def tf_proto_library(
         make_default_target_header_only = make_default_target_header_only,
         protodeps = protodeps,
         visibility = visibility,
+        local_defines = local_defines,
     )
 
     if create_grpc_library:

@@ -108,7 +108,7 @@ def pywrap_library(
         testonly,
         compatible_with,
         py_cc_win_def_file,
-        ["PROTOBUF_USE_DLLS"],
+        None,
     )
 
     common_deps = extra_deps + [
@@ -158,7 +158,6 @@ def pywrap_library(
             win_def_file = ":%s" % win_def_name,
             testonly = testonly,
             compatible_with = compatible_with,
-            local_defines = ["PROTOBUF_USE_DLLS"],
         )
         shared_objects.append(":%s" % shared_object_name)
 
@@ -465,7 +464,7 @@ def pybind_extension(
         visibility = visibility,
         testonly = testonly,
         compatible_with = compatible_with,
-        local_defines = ["PROTOBUF_USE_DLLS"],
+        local_defines = ["PROTOBUF_USE_DLLS", "ABSL_CONSUME_DLL"],
         **kwargs
     )
 
