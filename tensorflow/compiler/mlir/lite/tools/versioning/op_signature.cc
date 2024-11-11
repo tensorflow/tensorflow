@@ -65,7 +65,8 @@ std::vector<OpSignatureTensorSpec> GetOpSignatureTensorSpecs(
 
     OpSignatureTensorSpec tensor_spec = {kTfLiteNoType};
     if (tensor_no >= 0) {
-      if (subgraph->tensors() && tensor_no < subgraph->tensors()->size()) {
+      if (subgraph->tensors() &&
+          static_cast<size_t>(tensor_no) < subgraph->tensors()->size()) {
         auto* fb_tensor = subgraph->tensors()->Get(tensor_no);
         ConvertTensorType(fb_tensor->type(), &tensor_spec.type).IgnoreError();
         auto buffer_idx = fb_tensor->buffer();
