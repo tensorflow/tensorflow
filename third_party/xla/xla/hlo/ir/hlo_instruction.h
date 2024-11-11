@@ -1067,10 +1067,10 @@ class HloInstruction {
   // The ragged all-to-all HLO has the following arguments:
   // input: ragged input data tensor.
   // input_offsets: ragged input offsets tensor.
-  // input_sizes: ragged input sizes tensor.
+  // send_sizes: ragged send sizes tensor.
   // output: ragged output data tensor.
   // output_offsets: ragged output offsets tensor.
-  // output_sizes: ragged output sizes tensor.
+  // recv_sizes: ragged recv sizes tensor.
   //
   // The '*_offsets' and '*_sizes' tensors must have the same shape.
   // The output buffer is passed in as an input (and aliased in the output),
