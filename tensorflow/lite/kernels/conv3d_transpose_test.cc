@@ -239,10 +239,6 @@ TEST_P(Conv3dTransposeOpTest, PaddingDepthDimensionSameTest) {
            -1, -29, 1, 29, -1, 25, 1, -1, -2, 4, 2, 24, -1, -29, 1, 29}));
 }
 
-INSTANTIATE_TEST_SUITE_P(Conv3dTransposeOpTest, Conv3dTransposeOpTest,
-                         ::testing::Values(TestType::kConst,
-                                           TestType::kDynamic));
-
 TEST_P(Conv3dTransposeOpTest, PaddingValueDepthTestWithBias) {
   Conv3dTransposeOpModel m(
       {1, 3, 3, 5, 2}, {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
