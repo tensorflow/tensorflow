@@ -1610,19 +1610,15 @@ absl::Status PyHostValue::CopyToHostAsync(
   TF_ASSIGN_OR_RETURN(nb_dtype dtype,
                       PrimitiveTypeToNbDtype(host_shape.element_type()));
   value_ = nb_numpy_ndarray(dtype, host_shape.dimensions(), strides);
-  auto* value_buffer = value_.mutable_data();
-  {
-    nb::gil_scoped_release gil_release;
-    // TODO(hyeontaek): Several PjRt runtimes assume that the host buffer uses
-    // the same transposition as the device buffer. This is different from
-    // PjRtBuffer::ToLiteral()'s semantics that the runtime respects the layout
-    // of the host buffer literal. On the other hand, the runtime often knows
-    // better about an efficient layout for the host buffer. It will be useful
-    // to revisit the semantics of PjRtBuffer::ToLiteral() to see if it is
-    // desirable for the runtime to choose the layout.
-    ready_ = ifrt_array->CopyToHostBuffer(
-        value_buffer, strides, ifrt::ArrayCopySemantics::kReuseInput);
-  }
+  // TODO(hyeontaek): Several PjRt runtimes assume that the host buffer uses
+  // the same transposition as the device buffer. This is different from
+  // PjRtBuffer::ToLiteral()'s semantics that the runtime respects the layout
+  // of the host buffer literal. On the other hand, the runtime often knows
+  // better about an efficient layout for the host buffer. It will be useful
+  // to revisit the semantics of PjRtBuffer::ToLiteral() to see if it is
+  // desirable for the runtime to choose the layout.
+  ready_ = ifrt_array->CopyToHostBuffer(value_.mutable_data(), strides,
+                                        ifrt::ArrayCopySemantics::kReuseInput);
   // Make sure the destination of the copy remains alive until the copy is done.
   value_.inc_ref();
   ready_.OnReady([array{value_.ptr()}](absl::Status status) {
