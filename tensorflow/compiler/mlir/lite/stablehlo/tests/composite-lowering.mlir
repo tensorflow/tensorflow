@@ -191,7 +191,7 @@ func.func private @XlaCallModule_aten.avg_pool2d.default.impl_6(%arg0: tensor<1x
 // CHECK: %4 = "tfl.transpose"(%3, %cst_2) : (tensor<1x1x5x1xf32>, tensor<4xi32>) -> tensor<1x1x1x5xf32>
 
 func.func @upsample_bilinear2d(%arg0: tensor<1x64x16x16xf32>) -> (tensor<1x64x32x32xf32>) {
-  %0 = mhlo.composite "odml.upsample_bilinear2d" %arg0 {composite_attributes = {is_nchw_op = true, align_corners = false, output = dense<32> : tensor<2xi64>}, decomposition = @XlaCallModule_odml.upsample_bilinear2d.impl_21_0} : (tensor<1x64x16x16xf32>) -> tensor<1x64x32x32xf32>
+  %0 = mhlo.composite "odml.upsample_bilinear2d" %arg0 {composite_attributes = {is_nchw_op = true, align_corners = false, size = dense<32> : tensor<2xi64>}, decomposition = @XlaCallModule_odml.upsample_bilinear2d.impl_21_0} : (tensor<1x64x16x16xf32>) -> tensor<1x64x32x32xf32>
   return %0 : tensor<1x64x32x32xf32>
 }
 func.func private @XlaCallModule_odml.upsample_bilinear2d.impl_21_0(%arg0: tensor<1x64x16x16xf32>) -> tensor<1x64x32x32xf32> {
