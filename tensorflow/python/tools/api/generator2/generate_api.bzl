@@ -317,7 +317,7 @@ def generate_apis(
         proxy_module_root = None,
         packages_to_ignore = [],
         root_file_name = None,
-        visibility = ["//visibility:private"]),
+        visibility = ["//visibility:private"],
         file_prefixes_to_strip = []):
     """Generate TensorFlow APIs for a set of libraries.
 
