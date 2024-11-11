@@ -62,6 +62,10 @@ absl::StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
     absl::Span<const int64_t> operand_batching_dims,
     HloInstruction* index_vector, HloInstruction* induction_var);
 
+// Returns true if the given dimension is a collapsed or batching dimension.
+bool IsCollapsedOrBatchingDim(absl::Span<const int64_t> collapsed_dims,
+                              absl::Span<const int64_t> batching_dims,
+                              int64_t dim);
 }  // namespace xla
 
 #endif  // XLA_SERVICE_GATHER_SCATTER_UTILS_H_

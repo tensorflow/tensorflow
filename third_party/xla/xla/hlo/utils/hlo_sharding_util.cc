@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dot_as_convolution_util.h"
+#include "xla/service/gather_scatter_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -1513,8 +1514,8 @@ absl::InlinedVector<int64_t, 1> GetGatherScatterOperandPassthroughOperandDims(
   absl::InlinedVector<int64_t, 1> passthrough_dims;
   int64_t collapsed_or_batching = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
-        absl::c_linear_search(operand_batching_dims, i)) {
+    if (IsCollapsedOrBatchingDim(collapsed_or_inserted_dims,
+                                 operand_batching_dims, i)) {
       collapsed_or_batching++;
       continue;
     }
@@ -1546,8 +1547,8 @@ GetGatherScatterOperandPassthroughOutputOrUpdateDims(
   absl::InlinedVector<int64_t, 1> passthrough_dims;
   int64_t collapsed_or_batching = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
-        absl::c_linear_search(operand_batching_dims, i)) {
+    if (IsCollapsedOrBatchingDim(collapsed_or_inserted_dims,
+                                 operand_batching_dims, i)) {
       collapsed_or_batching++;
       continue;
     }
@@ -1581,8 +1582,8 @@ std::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
   DimensionVector passthrough_tile(output_or_update_rank, 1);
   int64_t collapsed_or_batching = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
-        absl::c_linear_search(operand_batching_dims, i)) {
+    if (IsCollapsedOrBatchingDim(collapsed_or_inserted_dims,
+                                 operand_batching_dims, i)) {
       collapsed_or_batching++;
       continue;
     }
@@ -1636,8 +1637,8 @@ std::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
   // Relevant dims have shardings passed to the operand.
   DimensionVector relevant_output_or_update_dims;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
-        absl::c_linear_search(operand_batching_dims, i)) {
+    if (IsCollapsedOrBatchingDim(collapsed_or_inserted_dims,
+                                 operand_batching_dims, i)) {
       collapsed_or_batching++;
       continue;
     }
@@ -1770,8 +1771,8 @@ std::vector<int64_t> GetScatterSliceSize(const Shape& operand_shape,
   std::vector<int64_t> slice_size(operand_shape.rank(), 1);
   int64_t num_update_window_dims = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(dnums.inserted_window_dims(), i) ||
-        absl::c_linear_search(dnums.input_batching_dims(), i)) {
+    if (IsCollapsedOrBatchingDim(dnums.inserted_window_dims(),
+                                 dnums.input_batching_dims(), i)) {
       continue;
     }
     slice_size[i] = update_shape.dimensions(
