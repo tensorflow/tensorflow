@@ -123,7 +123,7 @@ absl::string_view CollectiveOpGroupModeToString(
 // HloAllToAllInstruction, HloCollectiveBroadcastInstruction or
 // HloCollectivePermuteInstruction.
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
-    HloInstruction* instr);
+    const HloInstruction* instr);
 
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
