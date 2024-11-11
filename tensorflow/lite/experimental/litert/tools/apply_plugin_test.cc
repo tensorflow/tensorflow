@@ -105,11 +105,9 @@ TEST(TestApplyPluginTool, TestNoop) {
   run->outs.push_back(out);
   LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  LITERT_ASSERT_RESULT_OK_MOVE(
-      auto model, LoadModelFromMemory(BufferRef<uint8_t>(out.view().data(),
-                                                         out.view().size())));
-
-  EXPECT_EQ(model.Get()->subgraphs.size(), 1);
+  auto model = LoadModelFromMemory(
+      BufferRef<uint8_t>(out.view().data(), out.view().size()));
+  EXPECT_EQ(model->Get()->subgraphs.size(), 1);
 }
 
 TEST(TestApplyPluginTool, TestPartitionBadConfig) {
@@ -156,31 +154,28 @@ TEST(TestApplyPluginTool, TestApply) {
   run->outs.push_back(out);
   LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  LITERT_ASSERT_RESULT_OK_MOVE(
-      auto model, LoadModelFromMemory(
-                      BufferRef<uint8_t>(out.str().data(), out.str().size())));
-  EXPECT_EQ(model.Get()->subgraphs.size(), 1);
+  auto model = LoadModelFromMemory(
+      BufferRef<uint8_t>(out.str().data(), out.str().size()));
+  EXPECT_EQ(model->Get()->subgraphs.size(), 1);
 
   {
-    LITERT_ASSERT_RESULT_OK_ASSIGN(
-        auto stamp_buffer, model.Get()->FindMetadata(kLiteRtBuildStampKey));
-    LITERT_ASSERT_RESULT_OK_ASSIGN(auto stamp, ParseBuildStamp(stamp_buffer));
-    auto [man, soc_model, serial] = stamp;
+    auto stamp_buffer = model->Get()->FindMetadata(kLiteRtBuildStampKey);
+    auto stamp = ParseBuildStamp(*stamp_buffer);
+    auto [man, soc_model, serial] = *stamp;
     EXPECT_EQ(man, kSocManufacturer);
     EXPECT_EQ(soc_model, kSocModel);
     EXPECT_EQ(serial, Serialization::kMetadata);
   }
 
   {
-    auto custom_op = model.Get()->subgraphs.front().ops.front();
+    auto custom_op = model->Get()->subgraphs.front().ops.front();
     ASSERT_EQ(custom_op->op_code, kLiteRtOpCodeTflCustom);
     EXPECT_EQ(custom_op->custom_options.StrView(), "Partition_0");
   }
 
   {
-    LITERT_ASSERT_RESULT_OK_ASSIGN(
-        auto byte_code_buffer, model.Get()->FindMetadata(kByteCodeMetadataKey));
-    EXPECT_THAT(byte_code_buffer.StrView(),
+    auto byte_code_buffer = model->Get()->FindMetadata(kByteCodeMetadataKey);
+    EXPECT_THAT(byte_code_buffer->StrView(),
                 HasSubstr("Partition_0_with_1_muls"));
   }
 }
@@ -200,33 +195,29 @@ TEST(TestApplyPluginTool, TestApplyWithAppendSerialization) {
 
   BufferRef<uint8_t> serialized(out.str().data(), out.str().size());
 
-  LITERT_ASSERT_RESULT_OK_MOVE(auto model, LoadModelFromMemory(serialized));
-  EXPECT_EQ(model.Get()->subgraphs.size(), 1);
+  auto model = LoadModelFromMemory(serialized);
+  EXPECT_EQ(model->Get()->subgraphs.size(), 1);
 
   {
-    LITERT_ASSERT_RESULT_OK_ASSIGN(
-        auto stamp_buffer, model.Get()->FindMetadata(kLiteRtBuildStampKey));
-    LITERT_ASSERT_RESULT_OK_ASSIGN(auto stamp, ParseBuildStamp(stamp_buffer));
-    auto [man, model, serial] = stamp;
+    auto stamp_buffer = model->Get()->FindMetadata(kLiteRtBuildStampKey);
+    auto stamp = ParseBuildStamp(*stamp_buffer);
+    auto [man, model, serial] = *stamp;
     EXPECT_EQ(man, kSocManufacturer);
     EXPECT_EQ(model, kSocModel);
     EXPECT_EQ(serial, Serialization::kAppend);
   }
 
   {
-    auto custom_op = model.Get()->subgraphs.front().ops.front();
+    auto custom_op = model->Get()->subgraphs.front().ops.front();
     ASSERT_EQ(custom_op->op_code, kLiteRtOpCodeTflCustom);
 
-    LITERT_ASSERT_RESULT_OK_ASSIGN(auto options,
-                                   ParseExecInfo(custom_op->custom_options));
-    auto [entry_point, metadata_key] = options;
+    auto options = ParseExecInfo(custom_op->custom_options);
+    auto [entry_point, metadata_key] = *options;
     EXPECT_EQ(entry_point, "Partition_0");
 
-    LITERT_ASSERT_RESULT_OK_ASSIGN(auto metadata,
-                                   model.Get()->FindMetadata(metadata_key));
-    LITERT_ASSERT_RESULT_OK_ASSIGN(auto byte_code_info,
-                                   ParseByteCodePlaceholder(metadata));
-    auto [offset, size] = byte_code_info;
+    auto metadata = model->Get()->FindMetadata(metadata_key);
+    auto byte_code_info = ParseByteCodePlaceholder(*metadata);
+    auto [offset, size] = *byte_code_info;
 
     EXPECT_EQ(serialized.StrView().substr(offset, size),
               "Partition_0_with_1_muls:");

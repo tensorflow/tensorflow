@@ -15,51 +15,207 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_EXPECTED_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_EXPECTED_H_
 
-#include <variant>
+#include <initializer_list>
+#include <memory>
+#include <string>
+#include <type_traits>
+#include <utility>
 
 #include "absl/log/absl_check.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 
-// TODO rename this class and update it so it has the same interface
-// as std::expected.
-template <typename T>
-class LiteRtResult {
+namespace litert {
+
+// An "Expected" incapsulates the result of some routine which may have an
+// unexpected result. Unexpected results in this context are a standard
+// LiteRtStatus plus extra usability data such as error messages. This is
+// similar to an absl::StatusOr or std::expected (C++23) but better integrated
+// with LiteRtStatus as the canonical status code.
+
+// C++ wrapper around LiteRtStatus code. Provides a status as well
+// as an error message.
+class Unexpected {
  public:
-  // TODO: b/365295276 - Implement emplace for LiteRtResult.
-
-  static LiteRtResult<T> FromValue(const T& value) {
-    LiteRtResult<T> result;
-    result.data_ = value;
-    return result;
+  // Construct Unexpected from status and optional error message. NOTE:
+  // kLiteRtStatusOk should not be passed to Unexpected.
+  explicit Unexpected(LiteRtStatus status, absl::string_view message = "")
+      : status_(status), message_(message.begin(), message.end()) {
+    ABSL_DCHECK(status != kLiteRtStatusOk);
   }
 
-  static LiteRtResult<T> TakeValue(T&& value) {
-    LiteRtResult<T> result;
-    result.data_ = std::move(value);
-    return result;
-  }
+  Unexpected(Unexpected&& other) = default;
+  Unexpected(const Unexpected& other) = default;
+  Unexpected& operator=(Unexpected&& other) = default;
+  Unexpected& operator=(const Unexpected& other) = default;
 
-  static LiteRtResult<T> FromStatus(LiteRtStatus status) {
-    LiteRtResult<T> result;
-    result.data_ = status;
-    return result;
-  }
+  // Get the status.
+  LiteRtStatus Status() const { return status_; }
 
-  T& Value() {
-    ABSL_CHECK(HasValue());
-    return std::get<T>(data_);
-  }
-
-  LiteRtStatus Status() {
-    if (std::holds_alternative<T>(data_)) {
-      return kLiteRtStatusOk;
-    }
-    return std::get<LiteRtStatus>(data_);
-  }
-
-  bool HasValue() { return std::holds_alternative<T>(data_); }
+  // Get the error message, empty string if none was attached.
+  absl::string_view Message() const { return message_; }
 
  private:
-  std::variant<LiteRtStatus, T> data_;
+  LiteRtStatus status_;
+  std::string message_;
 };
+
+// Utility for generic return values that may be a statused failure.
+// Expecteds store and own the lifetime of either an Unexpected, or a T.
+// T may be any type, primitive or non-primitive.
+//
+// No dynamic allocations occur during initialization,
+// so the underlying T is only movable (as opposed to something like "release").
+// Arguments should be constructed inplace at the time of initilizing
+// the expcted if possible.
+//
+// Unexpected&& and T&& may be implicitly casted
+// to an Expected. For example,
+//
+// Expected<Foo> Bar() {
+//   if (Baz()) { return Unexpected(kLiteRtStatus("Bad Baz"); }
+//   return Foo();
+// }
+//
+template <class T>
+class Expected {
+ public:
+  // Observers for T value, program exits if it doesn't have one.
+  const T& Value() const& {
+    CheckVal();
+    return value_;
+  }
+  T& Value() & {
+    CheckVal();
+    return value_;
+  }
+  const T&& Value() const&& {
+    CheckVal();
+    return value_;
+  }
+  T&& Value() && {
+    CheckVal();
+    return value_;
+  }
+  const T* operator->() const {
+    CheckVal();
+    return &value_;
+  }
+  T* operator->() {
+    CheckVal();
+    return &value_;
+  }
+  const T& operator*() const& { return Value(); }
+  T& operator*() & { return Value(); }
+  const T&& operator*() const&& { return Value(); }
+  T&& operator*() && { return Value(); }
+
+  // Observer for Unexpected, program exits if it doesn't have one.
+  const Unexpected& Unex() const& {
+    CheckNoVal();
+    return unexpected_;
+  }
+
+  // Shortcut for getting status from the underlying Unexpected, program exits
+  // if it doesn't have one.
+  LiteRtStatus Status() const {
+    CheckNoVal();
+    return Unex().Status();
+  }
+
+  // Does this expected contain a T Value. It contains an unexpected if not.
+  bool HasValue() const { return has_value_; }
+
+  // Convert to bool for HasValue.
+  explicit operator bool() const { return HasValue(); }
+
+  // Construct Expected with T inplace.
+
+  // Construct T from initializer list inplace.
+  template <class U>
+  Expected(std::initializer_list<U> il) : has_value_(true), value_(il) {}
+
+  // Construct T from forwarded args inplace.
+  template <class... Args>
+  explicit Expected(Args&&... args)
+      : has_value_(true), value_(std::forward<Args>(args)...) {}
+
+  // Allow for implicit conversion from convertible T values inplace.
+  template <class U = T>
+  explicit(!std::convertible_to<U, T>) Expected(U&& v)
+      : has_value_(true), value_(static_cast<T>(std::forward<U>(v))) {}
+
+  // Construct from Unexpected inplace.
+
+  // Allow for implicit conversion from Error.
+  // NOLINTNEXTLINE
+  Expected(Unexpected&& err)
+      : has_value_(false), unexpected_(std::forward<Unexpected>(err)) {}
+  // NOLINTNEXTLINE
+  Expected(const Unexpected& err) : has_value_(false), unexpected_(err) {}
+
+  // Copy/move
+
+  Expected(Expected&& other) : has_value_(other.HasValue()) {
+    if (HasValue()) {
+      ConstructAt(std::addressof(value_), std::move(other.value_));
+    } else {
+      ConstructAt(std::addressof(unexpected_), std::move(other.unexpected_));
+    }
+  }
+
+  Expected(const Expected& other) : has_value_(other.has_value_) {
+    if (HasValue()) {
+      ConstructAt(std::addressof(value_), other.value_);
+      value_ = other.value_;
+    } else {
+      ConstructAt(std::addressof(unexpected_), other.unexpected_);
+    }
+  }
+
+  Expected& operator=(Expected&& other) {
+    if (this != &other) {
+      ~Expected();
+      has_value_ = other.has_value_;
+      if (HasValue()) {
+        value_ = std::move(other.Value());
+      } else {
+        unexpected_ = std::move(other.unexpected_);
+      }
+    }
+    return *this;
+  }
+
+  Expected& operator=(const Expected& other) {
+    ~Expected();
+    has_value_ = other.has_value_;
+    if (HasValue()) {
+      value_ = other.Value();
+    } else {
+      unexpected_ = other.Unex();
+    }
+    return *this;
+  }
+
+  ~Expected() {
+    if (has_value_ && std::is_destructible<T>()) {
+      value_.~T();
+    } else {
+      unexpected_.~Unexpected();
+    }
+  }
+
+ private:
+  bool has_value_;
+  union {
+    T value_;
+    Unexpected unexpected_;
+  };
+  void CheckNoVal() const { ABSL_CHECK(!HasValue()); }
+  void CheckVal() const { ABSL_CHECK(HasValue()); }
+};
+
+}  // namespace litert
+
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_EXPECTED_H_

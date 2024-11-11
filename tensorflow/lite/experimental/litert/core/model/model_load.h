@@ -39,9 +39,9 @@ LiteRtStatus LiteRtLoadModelFromMemory(const uint8_t* buf, size_t buf_size,
 
 namespace litert::internal {
 
-LiteRtResult<Model> LoadModelFromFile(absl::string_view path);
+Expected<Model> LoadModelFromFile(absl::string_view path);
 
-LiteRtResult<Model> LoadModelFromMemory(litert::BufferRef<uint8_t> serialized);
+Expected<Model> LoadModelFromMemory(BufferRef<uint8_t> serialized);
 
 }  // namespace litert::internal
 

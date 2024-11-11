@@ -27,9 +27,10 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
-using litert::BufferRef;
-using litert::MutableBufferRef;
-
+using ::litert::BufferRef;
+using ::litert::Expected;
+using ::litert::MutableBufferRef;
+using ::litert::Unexpected;
 
 LiteRtStatus LiteRtModelT::FindMetadataInd(absl::string_view key,
                                            uint32_t& ind) const {
@@ -48,20 +49,17 @@ LiteRtStatus LiteRtModelT::FindMetadataInd(absl::string_view key,
   return kLiteRtStatusOk;
 }
 
-LiteRtResult<MutableBufferRef<uint8_t>> LiteRtModelT::FindMetadata(
+Expected<MutableBufferRef<uint8_t>> LiteRtModelT::FindMetadata(
     const absl::string_view key) const {
-  using ResT = MutableBufferRef<uint8_t>;
-
   uint32_t m_buffer_idx;
-  LITERT_RETURN_RESULT_IF_NOT_OK(FindMetadataInd(key, m_buffer_idx), ResT);
+  LITERT_EXPECT_OK(FindMetadataInd(key, m_buffer_idx));
 
   if (m_buffer_idx >= flatbuffer_model->buffers.size()) {
-    return LiteRtResult<ResT>::FromStatus(kLiteRtStatusErrorIndexOOB);
+    return Unexpected(kLiteRtStatusErrorIndexOOB);
   }
   tflite::BufferT* m_buffer = flatbuffer_model->buffers.at(m_buffer_idx).get();
 
-  return LiteRtResult<ResT>::FromValue(
-      MutableBufferRef(m_buffer->data.data(), m_buffer->data.size()));
+  return MutableBufferRef(m_buffer->data.data(), m_buffer->data.size());
 }
 
 LiteRtStatus LiteRtModelT::PushMetadata(absl::string_view key,
@@ -87,4 +85,3 @@ LiteRtStatus LiteRtModelT::PushMetadata(absl::string_view key,
   return kLiteRtStatusOk;
 }
 
-// TODO model delete, register custom code

@@ -52,12 +52,12 @@ enum Serialization : uint8_t {
 static constexpr absl::string_view kLiteRtBuildStampKey = "LiteRtStamp";
 
 // Make a serialized build stamp that can go directly in the flatbuffer.
-LiteRtResult<OwningBufferRef<uint8_t>> MakeBuildStamp(
+Expected<OwningBufferRef<uint8_t>> MakeBuildStamp(
     absl::string_view soc_manufacturer, absl::string_view soc_model,
     Serialization serialization);
 
 // Parse a serialized build stamp from the given buf.
-LiteRtResult<std::tuple<absl::string_view, absl::string_view, Serialization>>
+Expected<std::tuple<absl::string_view, absl::string_view, Serialization>>
 ParseBuildStamp(BufferRef<uint8_t> buf);
 
 //
@@ -84,7 +84,7 @@ static constexpr absl::string_view kByteCodePrefix = "<npu_byte_code>";
 OwningBufferRef<uint8_t> MakeByteCodePlaceholder();
 
 // Parse byte code offset and size serialized as a ByteCodePlaceholder in buf.
-LiteRtResult<std::pair<size_t, size_t>> ParseByteCodePlaceholder(
+Expected<std::pair<size_t, size_t>> ParseByteCodePlaceholder(
     BufferRef<uint8_t> buf);
 
 // Replace all byte code placeholders with actual values. This happens directly
@@ -103,11 +103,11 @@ static constexpr size_t kEntryPointNameMaxLen = 124;
 static constexpr size_t kMetadataKeyMaxLen = 124;
 
 // Make a serialized exec info from the given values.
-LiteRtResult<OwningBufferRef<uint8_t>> MakeExecInfo(
+Expected<OwningBufferRef<uint8_t>> MakeExecInfo(
     absl::string_view entrypoint_name, absl::string_view metadata_key);
 
 // Parse serialized exec info from buffer.
-LiteRtResult<std::pair<absl::string_view, absl::string_view>> ParseExecInfo(
+Expected<std::pair<absl::string_view, absl::string_view>> ParseExecInfo(
     BufferRef<uint8_t> buf);
 
 }  // namespace litert::internal

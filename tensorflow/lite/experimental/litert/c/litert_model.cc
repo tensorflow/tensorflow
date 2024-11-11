@@ -55,9 +55,12 @@ LiteRtStatus LiteRtGetMainModelSubgraphIndex(
 LiteRtStatus LiteRtGetModelMetadata(LiteRtModel model, const char* metadata_key,
                                     const void** metadata_buffer,
                                     size_t* metadata_buffer_size) {
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto m_buf, model->FindMetadata(metadata_key));
-  *metadata_buffer = m_buf.Data();
-  *metadata_buffer_size = m_buf.Size();
+  auto m_buf = model->FindMetadata(metadata_key);
+  if (!m_buf) {
+    return m_buf.Status();
+  }
+  *metadata_buffer = m_buf->Data();
+  *metadata_buffer_size = m_buf->Size();
   return kLiteRtStatusOk;
 }
 

@@ -69,10 +69,7 @@ absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename) {
 }
 
 Model LoadTestFileModel(absl::string_view filename) {
-  auto model_result = internal::LoadModelFromFile(filename);
-
   auto model = internal::LoadModelFromFile(GetTestFilePath(filename).data());
-  ABSL_CHECK_EQ(model.Status(), kLiteRtStatusOk);
   return std::move(model.Value());
 }
 

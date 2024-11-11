@@ -128,7 +128,7 @@ struct LiteRtModelT {
 
   // Look up metadata by key, getting a view of its buffer as a string
   // if it exists.
-  LiteRtResult<litert::MutableBufferRef<uint8_t>> FindMetadata(
+  litert::Expected<litert::MutableBufferRef<uint8_t>> FindMetadata(
       absl::string_view key) const;
 
   // Adds a new metadata buffer to the model. Fails if it already exists.

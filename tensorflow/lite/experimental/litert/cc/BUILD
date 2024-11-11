@@ -170,8 +170,6 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -179,8 +177,22 @@ cc_library(
     name = "litert_expected",
     hdrs = ["litert_expected.h"],
     deps = [
+        ":litert_detail",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_test(
+    name = "litert_expected_test",
+    srcs = ["litert_expected_test.cc"],
+    deps = [
+        ":litert_buffer_ref",
+        ":litert_expected",
+        ":litert_macros",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

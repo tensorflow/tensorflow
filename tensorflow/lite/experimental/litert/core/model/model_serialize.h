@@ -37,7 +37,7 @@ LiteRtStatus LiteRtSerializeModel(LiteRtModel model, uint8_t** buf,
 
 namespace litert::internal {
 
-LiteRtResult<litert::OwningBufferRef<uint8_t>> SerializeModel(Model&& model);
+Expected<OwningBufferRef<uint8_t>> SerializeModel(Model&& model);
 
 }  // namespace litert::internal
 

@@ -21,7 +21,6 @@
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
 // Predicates used for matching patterns in the graph. NOTE: All optionals in
@@ -59,8 +58,8 @@ bool MatchOpType(
 template <typename T>
 inline bool MatchWeights(const Tensor& tensor,
                          absl::Span<const T> expected_data) {
-  LITERT_ASSIGN_OR_RETURN_VAL(auto data, tensor.WeightsData<T>(), false);
-  return data == expected_data;
+  auto weights = tensor.WeightsData<T>();
+  return weights.HasValue() && *weights == expected_data;
 }
 
 // Does this tensor have a user with the given information.
