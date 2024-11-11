@@ -27,6 +27,7 @@ limitations under the License.
 #include "nvidia/include/NVGPUToLLVM/NVGPUToLLVMPass.h"
 #include "nvidia/include/TritonNVIDIAGPUToLLVM/PTXAsmFormat.h"
 #include "nvidia/lib/TritonNVIDIAGPUToLLVM/TargetInfo.h"
+#include "absl/log/check.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
@@ -446,7 +447,8 @@ class SparseLocalLoadToLLVM
     auto shape = cast<MemDescType>(tensor.getType()).getShape();
     int rep_m = shape[0] / shape_per_cta_tile[0];
     int rep_k = shape[1] / shape_per_cta_tile[1];
-    assert(rep_m > 0 && rep_k > 0);
+    CHECK_GT(rep_m, 0) << shape[0] << "/" << shape_per_cta_tile[0];
+    CHECK_GT(rep_k, 0) << shape[1] << "/" << shape_per_cta_tile[1];
 
     // Load sparse metadata from shared memory.
     auto elem_ty = getTypeConverter()->convertType(

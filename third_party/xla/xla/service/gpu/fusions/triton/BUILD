@@ -296,6 +296,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         ":xla_triton",
+        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:GPUCommonTransforms",
