@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -76,6 +77,11 @@ struct ReconfigBatchOpPassOptions {
   int64_t min_num_batch_threads = 1;
   int64_t min_max_enqueued_batches = 1;
   std::string batch_padding_policy = "";
+  int64_t num_batch_threads = 0;
+  int64_t max_batch_size = 0;
+  int64_t batch_timeout_micros = 0;
+  llvm::ArrayRef<int64_t> allowed_batch_sizes = {};
+  int64_t max_enqueued_batches = 0;
 };
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateReconfigBatchOpPass(
     ReconfigBatchOpPassOptions options);
