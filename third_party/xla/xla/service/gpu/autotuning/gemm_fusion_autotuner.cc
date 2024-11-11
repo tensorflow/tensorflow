@@ -838,6 +838,9 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
   // Retrieve the minimum bit-width participating in the dot. This is needed
   // to avoid autotuning configurations that are not supported by Triton. This
   // is used to restrict the values for tile_k.
+  // TODO(b/378449587): This assumes a convert exists which doesn't cover all
+  // cases. For example, a bf16 dot(fp8, fp8) will not be handled as the minimum
+  // bit-width will be 8 but that will not be captured here.
   std::vector<const HloInstruction*> converts =
       HloBfsFindAll({&dot}, [&](const HloInstruction* node) {
         return node->opcode() == HloOpcode::kConvert;
