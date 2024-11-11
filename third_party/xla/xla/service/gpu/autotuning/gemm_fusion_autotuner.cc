@@ -887,8 +887,6 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
 
   // Triton configurations are adjusted and deduplicated.
   absl::flat_hash_set<TritonGemmConfig> added;
-  bool is_hopper =
-      !config_.IsDeviceless() && GetComputeCapability().IsAtLeastHopper();
   for (TritonGemmConfig& config : triton_configs) {
     config.block_m = std::min(config.block_m, limits.block_m);
     config.block_n = std::min(config.block_n, limits.block_n);
@@ -911,10 +909,8 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
     // Sparse meta should have at least one element per thread.
     // Note: only 2:4 structured sparsity is currently supported.
     if (dot.sparse_operands()) {
-      if (is_hopper) {
-        config.block_m = std::max(config.block_m, 64);
-        config.num_warps = std::max(config.num_warps, 4);
-      }
+      config.block_m = std::max(config.block_m, 64);
+      config.num_warps = std::max(config.num_warps, 4);
       config.block_k = std::max(
           config.block_k,
           2 * std::max(kMinTileSize, kLdmatrixGranularity / minBitWidth));
