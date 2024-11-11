@@ -255,3 +255,12 @@ tf_proto_library(
     srcs = ["dcn_collective_info.proto"],
     visibility = [":friends"],
 )
+
+tf_proto_library(
+    name = "inference_stats_proto",
+    srcs = ["inference_stats.proto"],
+    visibility = [
+        ":friends",
+        "//learning/serving/tools/servo_model_profiler:__subpackages__",
+    ],
+)
