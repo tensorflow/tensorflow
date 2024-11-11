@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/service/buffer_assignment.h"
@@ -696,32 +697,6 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   // Cached result of comparing HloCostAnalysis FLOP estimate for execute
   // critical path.
   bool cheap_computation_;
-};
-
-struct CpuClientOptions {
-  // Used to control whether asynchronous computation dispatch is available for
-  // this client. Only applies to non-parallel computations, because collectives
-  // may exist when there are multiple cpu devices and we need to do async
-  // dispatch in that case. If it is set to be `false`, we will always run
-  // computations inline.
-  bool asynchronous = true;
-
-  // Number of CPU devices. If not provided, the value of
-  // --xla_force_host_platform_device_count is used.
-  std::optional<int> cpu_device_count = std::nullopt;
-
-  int max_inflight_computations_per_device = 32;
-
-  // My process ID.
-  int process_id = 0;
-
-  // Distributed collectives implementation. Optional. If not provided, an
-  // in-process collectives implementation will be used.
-  std::shared_ptr<cpu::CollectivesInterface> collectives;
-
-  // If defined this function will be called on the HloModuleConfig before
-  // compilation, and allows users to set custom flags.
-  std::function<void(HloModuleConfig&)> customize_hlo_module_config;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
