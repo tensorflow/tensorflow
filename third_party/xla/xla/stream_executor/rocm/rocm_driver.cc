@@ -54,17 +54,6 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-int GpuDriver::GetDeviceCount() {
-  int device_count = 0;
-  hipError_t res = wrap::hipGetDeviceCount(&device_count);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "could not retrieve ROCM device count: " << ToString(res);
-    return 0;
-  }
-
-  return device_count;
-}
-
 absl::StatusOr<int32_t> GpuDriver::GetDriverVersion() {
   int32_t version;
   TF_RETURN_IF_ERROR(ToStatus(wrap::hipDriverGetVersion(&version),

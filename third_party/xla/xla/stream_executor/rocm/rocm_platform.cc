@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -76,7 +75,14 @@ int ROCmPlatform::VisibleDeviceCount() const {
     return -1;
   }
 
-  return GpuDriver::GetDeviceCount();
+  int device_count = 0;
+  hipError_t res = wrap::hipGetDeviceCount(&device_count);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "could not retrieve ROCM device count: " << ToString(res);
+    return 0;
+  }
+
+  return device_count;
 }
 
 const std::string& ROCmPlatform::Name() const { return name_; }
