@@ -14,9 +14,8 @@
 
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
-#include "absl/container/inlined_vector.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 
 namespace litert {
 
@@ -34,8 +33,8 @@ SmallVec<Tensor::TensorUse> Tensor::Uses() const {
   LiteRtParamIndex num_uses;
   LiteRtOpArray users;
   LiteRtParamIndex* user_arg_inds;
-  litert::internal::AssertGet(LiteRtGetTensorUses, Get(), &num_uses, &users,
-                              &user_arg_inds);
+  litert::internal::AssertOk(LiteRtGetTensorUses, Get(), &num_uses, &users,
+                             &user_arg_inds);
   SmallVec<Tensor::TensorUse> res;
   for (int i = 0; i < num_uses; ++i) {
     res.emplace_back(Op(users[i]), user_arg_inds[i]);  // NOLINT

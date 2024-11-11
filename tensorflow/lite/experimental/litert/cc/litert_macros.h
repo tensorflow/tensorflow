@@ -129,16 +129,5 @@
     *e = init;                                  \
   }
 
-namespace litert {
-namespace internal {
-
-template <typename... Args>
-void AssertGet(LiteRtStatus (*get)(Args...), Args... args) {
-  auto status = get(args...);
-  ABSL_CHECK_EQ(status, kLiteRtStatusOk);
-}
-
-}  // namespace internal
-}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MACROS_H_

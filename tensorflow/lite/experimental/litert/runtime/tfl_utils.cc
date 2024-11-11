@@ -23,6 +23,7 @@
 #include "absl/status/statusor.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
 namespace litert {
@@ -84,7 +85,7 @@ absl::StatusOr<RankedTensorType> ConvertTensorType(
   }
 
   size_t rank = TfLiteOpaqueTensorNumDims(tfl_opaque_tensor);
-  std::vector<int32_t> dimensions(rank);
+  SmallVec<int32_t> dimensions(rank);
   for (size_t i = 0; i < rank; ++i) {
     dimensions[i] = TfLiteOpaqueTensorDim(tfl_opaque_tensor, i);
   }

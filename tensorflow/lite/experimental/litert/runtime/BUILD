@@ -65,10 +65,9 @@ cc_library(
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/litert/cc:litert_detail",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
     ],
 )

@@ -40,6 +40,7 @@ cc_library(
     srcs = ["litert_model.cc"],
     hdrs = ["litert_model.h"],
     deps = [
+        ":litert_detail",
         ":litert_element_type",
         ":litert_expected",
         ":litert_handle",
@@ -85,8 +86,8 @@ cc_library(
         "litert_tensor_buffer_requirements.h",
     ],
     deps = [
+        ":litert_detail",
         ":litert_handle",
-        ":litert_macros",
         ":litert_model",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/litert/c:litert_common",
@@ -124,6 +125,7 @@ cc_library(
         "litert_tensor_buffer_requirements.h",
     ],
     deps = [
+        ":litert_detail",
         ":litert_handle",
         ":litert_macros",
         "//tensorflow/lite/c:c_api_types",
@@ -178,6 +180,16 @@ cc_library(
     hdrs = ["litert_expected.h"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "@com_google_absl//absl/log:absl_check",
+    ],
+)
+
+cc_library(
+    name = "litert_detail",
+    hdrs = ["litert_detail.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:absl_check",
     ],
 )

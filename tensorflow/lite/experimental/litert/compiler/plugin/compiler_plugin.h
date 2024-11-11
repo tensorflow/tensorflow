@@ -35,16 +35,9 @@ namespace litert::internal {
 
 class CompiledResult {
   friend class CompilerPlugin;
-  struct BytesT {
-    const char* data;
-    size_t size;
-
-    std::string String() const;
-  };
-
   // Get the single module of compiled byte code. This contains the
   // compilation result for all entry points.
-  LiteRtResult<BytesT> ByteCode() const;
+  LiteRtResult<BufferRef<uint8_t>> ByteCode() const;
 
   // Get information regarding the "ith" entry points in the compiled module.
   // There will be oe entry point for each subgraph compiled for.

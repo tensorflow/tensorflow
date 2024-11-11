@@ -14,6 +14,8 @@
 
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -26,6 +28,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
@@ -40,18 +43,15 @@ namespace litert::internal {
 // CompiledResult
 //
 
-std::string CompiledResult::BytesT::String() const {
-  return std::string(data, size);
-}
-
-LiteRtResult<CompiledResult::BytesT> CompiledResult::ByteCode() const {
-  BytesT byte_code;
+LiteRtResult<BufferRef<uint8_t>> CompiledResult::ByteCode() const {
+  const void* data;
+  size_t size;
   LITERT_RETURN_RESULT_IF_NOT_OK(
       allocating_plugin_api_.get_compiled_result_byte_code(
-          compiled_result_handle_,
-          reinterpret_cast<const void**>(&byte_code.data), &byte_code.size),
-      BytesT);
-  return LiteRtResult<BytesT>::FromValue(byte_code);
+          compiled_result_handle_, &data, &size),
+      BufferRef<uint8_t>);
+  return LiteRtResult<BufferRef<uint8_t>>::FromValue(
+      BufferRef<uint8_t>(data, size));
 }
 
 LiteRtResult<LiteRtParamIndex> CompiledResult::NumCalls() const {
@@ -65,13 +65,14 @@ LiteRtResult<LiteRtParamIndex> CompiledResult::NumCalls() const {
 
 LiteRtResult<std::string> CompiledResult::CallInfo(
     LiteRtParamIndex call_idx) const {
-  BytesT call_info;
+  const void* data;
+  size_t size;
   LITERT_RETURN_RESULT_IF_NOT_OK(
       allocating_plugin_api_.get_compiled_result_call_info(
-          compiled_result_handle_, call_idx,
-          reinterpret_cast<const void**>(&call_info.data), &call_info.size),
+          compiled_result_handle_, call_idx, &data, &size),
       std::string);
-  return LiteRtResult<std::string>::FromValue(call_info.String());
+  return LiteRtResult<std::string>::FromValue(
+      std::string(reinterpret_cast<const char*>(data), size));
 }
 
 CompiledResult::~CompiledResult() {
@@ -304,11 +305,11 @@ LiteRtStatus CompilerPlugin::Compile(
 
   // Parse byte code from result.
   {
-    LITERT_ASSIGN_OR_RETURN_STATUS(const CompiledResult::BytesT byte_code,
+    LITERT_ASSIGN_OR_RETURN_STATUS(BufferRef<uint8_t> byte_code,
                                    result.ByteCode());
     LITERT_LOG(LITERT_INFO, "Compiled %d partitions in %lu bytes",
-               partitions.size(), byte_code.size);
-    byte_code_out.write(byte_code.data, byte_code.size);
+               partitions.size(), byte_code.Size());
+    byte_code.WriteStr(byte_code_out);
   }
 
   return kLiteRtStatusOk;

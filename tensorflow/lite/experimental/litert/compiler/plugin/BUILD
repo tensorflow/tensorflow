@@ -24,6 +24,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
@@ -31,10 +32,8 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin_api",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
