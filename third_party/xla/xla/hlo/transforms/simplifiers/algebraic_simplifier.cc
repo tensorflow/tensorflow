@@ -3965,6 +3965,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   const bool can_rewrite_dot_with_precision_config_algorithm =
       dot->precision_config().algorithm() == PrecisionConfig::ALG_UNSET ||
       dot->precision_config().algorithm() ==
+          PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
+      dot->precision_config().algorithm() ==
+          PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
+      dot->precision_config().algorithm() ==
           PrecisionConfig::ALG_DOT_F32_F32_F32;
   // If there are no contracting dimensions, a dot can be rewritten as
   // mul(broadcast(transpose(x)),broadcast(transpose(y)))
