@@ -81,7 +81,6 @@ static constexpr absl::string_view kArt = R"(
 class Context {
  public:
   using Ptr = std::unique_ptr<Context>;
-  using ResultT = LiteRtResult<Context>;
 
   explicit Context(ApplyPluginRun::Ptr run)
       : run_(std::move(run)),
@@ -108,7 +107,7 @@ class Context {
     return run_->outs.front();
   }
 
-  ApplyPluginRun::OutStreamT SwapOut(ApplyPluginRun::OutStreamT out) {
+  OutStream SwapOut(OutStream out) {
     ABSL_CHECK_EQ(run_->outs.size(), 1);
     auto res = run_->outs.front();
     run_->outs.at(0) = out;
@@ -151,7 +150,7 @@ void Context::DumpPrelude() {
   // TODO pretty print run struct.
 }
 
-CompilerPlugin::ResultVecT LoadAllPlugins(Context* ctx) {
+Expected<SmallVec<CompilerPlugin>> LoadAllPlugins(Context* ctx) {
   ctx->Dump().Start("Load Plugins");
   ctx->Dump().Labeled() << "Loading plugins from: ";
   const auto paths = ctx->LibSearchPaths();
@@ -176,25 +175,28 @@ CompilerPlugin::ResultVecT LoadAllPlugins(Context* ctx) {
   return plugins;
 }
 
-CompilerPlugin::ResultT LoadPlugin(Context* ctx) {
-  LITERT_MOVE_OR_RETURN_RESULT(auto plugins, LoadAllPlugins(ctx),
-                               CompilerPlugin);
+Expected<CompilerPlugin> LoadPlugin(Context* ctx) {
+  auto plugins = LoadAllPlugins(ctx);
+  if (!plugins) {
+    return plugins.Unex();
+  }
+
   ctx->Dump().Start("Select Plugin");
 
-  for (auto& plugin : plugins) {
+  for (auto& plugin : *plugins) {
     if (plugin.SocManufacturer() == ctx->Run().soc_manufacturer) {
       ctx->Dump().Labeled() << absl::StreamFormat("Selected plugin for: %s\n",
                                                   plugin.SocManufacturer());
       ctx->Dump().Done();
-      return CompilerPlugin::ResultT::TakeValue(std::move(plugin));
+      return std::move(plugin);
     }
   }
 
   ctx->Dump().Fail();
-  return CompilerPlugin::ResultT::FromStatus(kLiteRtStatusErrorNotFound);
+  return Unexpected(kLiteRtStatusErrorNotFound);
 }
 
-LiteRtResult<Model> LoadModel(Context* ctx) {
+Expected<Model> LoadModel(Context* ctx) {
   ctx->Dump().Start("Load Model");
   ctx->Dump().Labeled() << absl::StreamFormat("Loading model from: %s\n",
                                               ctx->Run().model.value());
@@ -260,16 +262,16 @@ std::vector<LiteRtOp> ApplyPartition(Context* ctx, const Model& model,
   return res;
 }
 
-LiteRtResult<Model> PartitionModel(Context* ctx, Model&& model,
-                                   CompilerPlugin& plugin) {
+Expected<Model> PartitionModel(Context* ctx, Model&& model,
+                               CompilerPlugin& plugin) {
   auto custom_ops = ApplyPartition(ctx, model, plugin);
   if (custom_ops.empty()) {
-    return LiteRtResult<Model>::FromStatus(kLiteRtStatusErrorGraphModification);
+    return Unexpected(kLiteRtStatusErrorGraphModification);
   }
-  return LiteRtResult<Model>::TakeValue(std::move(model));
+  return std::move(model);
 }
 
-LiteRtResult<std::vector<std::string>> CompilePartitions(
+Expected<std::vector<std::string>> CompilePartitions(
     Context* ctx, std::vector<LiteRtSubgraph>& partitions,
     CompilerPlugin& plugin) {
   ctx->Dump().Start("Compile Model");
@@ -281,8 +283,7 @@ LiteRtResult<std::vector<std::string>> CompilePartitions(
   if (plugin.Compile(ctx->SocModelTarget(), partitions, ctx->Out(),
                      call_info_out) != kLiteRtStatusOk) {
     ctx->Dump().Fail();
-    return LiteRtResult<std::vector<std::string>>::FromStatus(
-        kLiteRtStatusErrorCompilationr);
+    return Unexpected(kLiteRtStatusErrorCompilationr);
   }
 
   ctx->Dump().Labeled() << "Entry point info: ";
@@ -295,8 +296,7 @@ LiteRtResult<std::vector<std::string>> CompilePartitions(
   ctx->Dump().Display() << "\n";
 
   ctx->Dump().Done();
-  return LiteRtResult<std::vector<std::string>>::TakeValue(
-      std::move(call_info_out));
+  return std::move(call_info_out);
 }
 
 //
@@ -310,8 +310,12 @@ LiteRtStatus ValidateInfoRun(const ApplyPluginRun& run) {
 }
 
 LiteRtStatus Info(Context* ctx) {
-  LITERT_MOVE_OR_RETURN_STATUS(auto plugins, LoadAllPlugins(ctx));
-  for (auto& plugin : plugins) {
+  auto plugins = LoadAllPlugins(ctx);
+  if (!plugins) {
+    return plugins.Status();
+  }
+
+  for (auto& plugin : *plugins) {
     ctx->Out() << absl::StreamFormat("< LiteRtCompilerPlugin > \"%s\" | ",
                                      plugin.SocManufacturer());
     const auto& models = plugin.SocModels();
@@ -337,13 +341,19 @@ LiteRtStatus ValidateNoopRun(const ApplyPluginRun& run) {
 }
 
 LiteRtStatus Noop(Context* ctx) {
-  LITERT_MOVE_OR_RETURN_STATUS(auto model, LoadModel(ctx));
-  LITERT_MOVE_OR_RETURN_STATUS(auto serialized,
-                               SerializeModel(std::move(model)));
-  LITERT_ENSURE(VerifyFlatbuffer(serialized.Span()),
+  auto model = LoadModel(ctx);
+  if (!model) {
+    return model.Status();
+  }
+
+  auto serialized = SerializeModel(std::move(*model));
+  if (!serialized) {
+    return serialized.Status();
+  }
+  LITERT_ENSURE(VerifyFlatbuffer(serialized->Span()),
                 kLiteRtStatusErrorInvalidFlatbuffer,
                 "Failed to invalidate flatbuffer");
-  serialized.WriteStr(ctx->Out());
+  serialized->WriteStr(ctx->Out());
   return kLiteRtStatusOk;
 }
 
@@ -360,17 +370,28 @@ LiteRtStatus ValidatePartitionRun(const ApplyPluginRun& run) {
 }
 
 LiteRtStatus Partition(Context* ctx) {
-  LITERT_MOVE_OR_RETURN_STATUS(auto plugin, LoadPlugin(ctx));
-  LITERT_MOVE_OR_RETURN_STATUS(auto model, LoadModel(ctx));
+  auto plugin = LoadPlugin(ctx);
+  if (!plugin) {
+    return plugin.Status();
+  }
 
-  LITERT_MOVE_OR_RETURN_STATUS(auto new_model,
-                               PartitionModel(ctx, std::move(model), plugin));
-  LITERT_MOVE_OR_RETURN_STATUS(auto serialized,
-                               SerializeModel(std::move(new_model)));
-  LITERT_ENSURE(VerifyFlatbuffer(serialized.Span()),
+  auto model = LoadModel(ctx);
+  if (!model) {
+    return model.Status();
+  }
+
+  auto partitioned_model = PartitionModel(ctx, std::move(*model), *plugin);
+  if (!partitioned_model) {
+    return partitioned_model.Status();
+  }
+
+  auto serialized = SerializeModel(std::move(*partitioned_model));
+
+  LITERT_ENSURE(VerifyFlatbuffer(serialized->Span()),
                 kLiteRtStatusErrorInvalidFlatbuffer,
                 "Failed to invalidate flatbuffer");
-  serialized.WriteStr(ctx->Out());
+
+  serialized->WriteStr(ctx->Out());
   return kLiteRtStatusOk;
 }
 
@@ -390,16 +411,26 @@ LiteRtStatus ValidateCompileRun(const ApplyPluginRun& run) {
 }
 
 LiteRtStatus Compile(Context* ctx) {
-  LITERT_MOVE_OR_RETURN_STATUS(auto model, LoadModel(ctx));
-  LITERT_MOVE_OR_RETURN_STATUS(auto plugin, LoadPlugin(ctx));
+  auto model = LoadModel(ctx);
+  if (!model) {
+    return model.Status();
+  }
+
+  auto plugin = LoadPlugin(ctx);
+  if (!plugin) {
+    return plugin.Status();
+  }
 
   std::vector<LiteRtSubgraph> compilation_input;
-  compilation_input.reserve(model.Get()->subgraphs.size());
-  for (auto& subgraph : model.Get()->subgraphs) {
+  compilation_input.reserve(model->Get()->subgraphs.size());
+  for (auto& subgraph : model->Get()->subgraphs) {
     compilation_input.push_back(&subgraph);
   }
-  LITERT_MOVE_OR_RETURN_STATUS(
-      auto entry_point_info, CompilePartitions(ctx, compilation_input, plugin));
+
+  auto entry_points = CompilePartitions(ctx, compilation_input, *plugin);
+  if (!entry_points) {
+    return entry_points.Status();
+  }
 
   return kLiteRtStatusOk;
 }
@@ -409,20 +440,20 @@ LiteRtStatus Compile(Context* ctx) {
 //
 
 LiteRtStatus StampModel(Context* ctx, LiteRtModel model) {
-  LITERT_ASSIGN_OR_RETURN_STATUS(
-      auto stamp, MakeBuildStamp(ctx->SocManufacturer(), ctx->SocModelTarget(),
-                                 ctx->Serialization()));
+  auto stamp = MakeBuildStamp(ctx->SocManufacturer(), ctx->SocModelTarget(),
+                              ctx->Serialization());
+  if (!stamp) {
+    return stamp.Status();
+  }
   ctx->Dump().Labeled() << absl::StreamFormat("Stamping model: %s\n",
-                                              stamp.StrView());
-  return model->PushMetadata(kLiteRtBuildStampKey, stamp);
+                                              stamp->StrView());
+  return model->PushMetadata(kLiteRtBuildStampKey, *stamp);
 }
 
-LiteRtResult<OwningBufferRef<uint8_t>> DoMetadataSerialization(
+Expected<OwningBufferRef<uint8_t>> DoMetadataSerialization(
     Context* ctx, std::vector<LiteRtOp>& custom_ops,
     std::vector<std::string>& call_info, BufferRef<uint8_t> compilation_out,
     Model&& model) {
-  using ResT = OwningBufferRef<uint8_t>;
-
   ctx->Dump().Start("Serializing with bytecode in METADATA");
 
   {
@@ -441,72 +472,75 @@ LiteRtResult<OwningBufferRef<uint8_t>> DoMetadataSerialization(
         "Adding metadata byte code of size: %lu bytes\n",
         compilation_out.Size());
 
-    LITERT_RETURN_RESULT_IF_NOT_OK(
-        model.Get()->PushMetadata(kByteCodeMetadataKey, compilation_out), ResT);
+    LITERT_EXPECT_OK(
+        model.Get()->PushMetadata(kByteCodeMetadataKey, compilation_out));
   }
 
-  LITERT_ASSIGN_OR_RETURN_RESULT(auto serialized,
-                                 SerializeModel(std::move(model)),
-                                 OwningBufferRef<uint8_t>);
+  auto serialized = SerializeModel(std::move(model));
+  if (!serialized) {
+    return serialized.Unex();
+  }
+
   ctx->Dump().Labeled() << absl::StreamFormat(
-      "Serialized model of size: %lu bytes\n", serialized.Size());
-  if (!VerifyFlatbuffer(serialized.Span())) {
+      "Serialized model of size: %lu bytes\n", serialized->Size());
+  if (!VerifyFlatbuffer(serialized->Span())) {
     ctx->Dump().Fail();
-    return LiteRtResult<ResT>::FromStatus(kLiteRtStatusErrorInvalidFlatbuffer);
+    return Unexpected(kLiteRtStatusErrorInvalidFlatbuffer);
   }
   ctx->Dump().Done();
 
-  return LiteRtResult<ResT>::TakeValue(std::move(serialized));
+  return serialized;
 }
 
-LiteRtResult<OwningBufferRef<uint8_t>> DoAppendSerialization(
+Expected<OwningBufferRef<uint8_t>> DoAppendSerialization(
     Context* ctx, std::vector<LiteRtOp>& custom_ops,
     std::vector<std::string>& call_info, BufferRef<uint8_t> compilation_out,
     Model&& model) {
-  using ResT = OwningBufferRef<uint8_t>;
   ctx->Dump().Start("Serializing with bytecode APPEND");
 
   // This need not be the same for all custom ops.
   static constexpr absl::string_view kSharedByteCodePlaceholderName =
       kByteCodeMetadataKey;
-  LITERT_RETURN_RESULT_IF_NOT_OK(
-      model.Get()->PushMetadata(kSharedByteCodePlaceholderName,
-                                std::move(MakeByteCodePlaceholder())),
-      ResT);
+  LITERT_EXPECT_OK(model.Get()->PushMetadata(kSharedByteCodePlaceholderName,
+                                             MakeByteCodePlaceholder()));
 
   {
     auto call_it = call_info.begin();
     auto custom_op_it = custom_ops.begin();
     for (; call_it < call_info.end() && custom_op_it < custom_ops.end();) {
-      LITERT_ASSIGN_OR_RETURN_RESULT(
-          auto exec_info,
-          MakeExecInfo(*call_it, kSharedByteCodePlaceholderName), ResT);
-      (*custom_op_it)->custom_options = std::move(exec_info);
+      auto exec_info = MakeExecInfo(*call_it, kSharedByteCodePlaceholderName);
+      if (!exec_info) {
+        return exec_info;
+      }
+      (*custom_op_it)->custom_options = std::move(*exec_info);
       ++call_it;
       ++custom_op_it;
     }
   }
 
-  LITERT_ASSIGN_OR_RETURN_RESULT(auto serialized,
-                                 SerializeModel(std::move(model)), ResT);
-  ctx->Dump().Labeled() << absl::StreamFormat(
-      "Serialized model of size: %lu bytes\n", serialized.Size());
-  LITERT_RETURN_RESULT_IF_NOT_OK(
-      FinishByteCodePlaceholders(serialized, compilation_out.Size()), ResT);
+  auto serialized = SerializeModel(std::move(model));
+  if (!serialized) {
+    return serialized;
+  }
 
-  OwningBufferRef<uint8_t> with_append(serialized.Size() +
+  ctx->Dump().Labeled() << absl::StreamFormat(
+      "Serialized model of size: %lu bytes\n", serialized->Size());
+  LITERT_EXPECT_OK(
+      FinishByteCodePlaceholders(*serialized, compilation_out.Size()));
+
+  OwningBufferRef<uint8_t> with_append(serialized->Size() +
                                        compilation_out.Size());
 
   uint8_t* write = with_append.Data();
-  std::memcpy(write, serialized.Data(), serialized.Size());
-  write += serialized.Size();
+  std::memcpy(write, serialized->Data(), serialized->Size());
+  write += serialized->Size();
   std::memcpy(write, compilation_out.Data(), compilation_out.Size());
 
   ctx->Dump().Labeled() << absl::StreamFormat(
       "Appended byte code of size %lu\n", compilation_out.Size());
 
   ctx->Dump().Done();
-  return LiteRtResult<ResT>::TakeValue(std::move(with_append));
+  return with_append;
 }
 
 LiteRtStatus ValidateApplyRun(const ApplyPluginRun& run) {
@@ -523,56 +557,66 @@ LiteRtStatus ValidateApplyRun(const ApplyPluginRun& run) {
 }
 
 LiteRtStatus Apply(Context* ctx) {
-  LITERT_MOVE_OR_RETURN_STATUS(auto model, LoadModel(ctx));
-  LITERT_MOVE_OR_RETURN_STATUS(auto plugin, LoadPlugin(ctx));
+  auto model = LoadModel(ctx);
+  if (!model) {
+    return model.Status();
+  }
+
+  auto plugin = LoadPlugin(ctx);
+  if (!plugin) {
+    return plugin.Status();
+  }
+
   static constexpr size_t kNumInputSubgraphs = 1;
-  LITERT_ENSURE_SUPPORTED(model.Get()->subgraphs.size() == kNumInputSubgraphs,
+  LITERT_ENSURE_SUPPORTED(model->Get()->subgraphs.size() == kNumInputSubgraphs,
                           "Only single subgraph models currently supported.");
 
   // Query plugin for compilable ops and slice partitions out of the graph,
   // replacing use with single custom op..
-  auto custom_ops = ApplyPartition(ctx, model, plugin);
+  auto custom_ops = ApplyPartition(ctx, *model, *plugin);
   LITERT_ENSURE(!custom_ops.empty(), kLiteRtStatusErrorGraphModification,
                 "Failed to partiion graph.");
   // All new subgraphs to be compiled are appended to the model's subgraphs.
   std::vector<LiteRtSubgraph> compilation_input;
-  for (auto it = model.Get()->subgraphs.begin() + kNumInputSubgraphs;
-       it < model.Get()->subgraphs.end(); ++it) {
+  for (auto it = model->Get()->subgraphs.begin() + kNumInputSubgraphs;
+       it < model->Get()->subgraphs.end(); ++it) {
     compilation_input.push_back(&*it);
   }
 
   // Call compilation method on the plugin.
   std::stringstream compilation_out;
-  ApplyPluginRun::OutStreamT out = ctx->SwapOut(compilation_out);
+  OutStream out = ctx->SwapOut(compilation_out);
 
-  LITERT_MOVE_OR_RETURN_STATUS(
-      auto call_info, CompilePartitions(ctx, compilation_input, plugin));
+  auto call_info = CompilePartitions(ctx, compilation_input, *plugin);
 
   // Update custom op info the it's respective entry point info from the plugin.
-  LITERT_ENSURE(call_info.size() == custom_ops.size(),
+  LITERT_ENSURE(call_info->size() == custom_ops.size(),
                 kLiteRtStatusErrorCompilationr,
                 "Failed to verify entry point information.");
 
-  model.Get()->subgraphs.resize(kNumInputSubgraphs);
-  LITERT_RETURN_STATUS_IF_NOT_OK(StampModel(ctx, model.Get()));
+  model->Get()->subgraphs.resize(kNumInputSubgraphs);
+  LITERT_RETURN_STATUS_IF_NOT_OK(StampModel(ctx, model->Get()));
 
   BufferRef<uint8_t> compiled_buffer(compilation_out.view().data(),
                                      compilation_out.view().size());
 
   ctx->SwapOut(out);
   if (ctx->Serialization() == Serialization::kMetadata) {
-    LITERT_ASSIGN_OR_RETURN_STATUS(
-        auto serialized,
-        DoMetadataSerialization(ctx, custom_ops, call_info, compiled_buffer,
-                                std::move(model)));
-    serialized.WriteStr(ctx->Out());
+    auto serialized = DoMetadataSerialization(
+        ctx, custom_ops, *call_info, compiled_buffer, std::move(*model));
+    if (!serialized) {
+      return serialized.Status();
+    }
+    serialized->WriteStr(ctx->Out());
 
   } else if (ctx->Serialization() == Serialization::kAppend) {
-    LITERT_ASSIGN_OR_RETURN_STATUS(
-        auto serialized,
-        DoAppendSerialization(ctx, custom_ops, call_info, compiled_buffer,
-                              std::move(model)));
-    serialized.WriteStr(ctx->Out());
+    auto serialized = DoAppendSerialization(ctx, custom_ops, *call_info,
+                                            compiled_buffer, std::move(*model));
+    if (!serialized) {
+      return serialized.Status();
+    }
+    serialized->WriteStr(ctx->Out());
+
   } else {
     return kLiteRtStatusErrorUnsupported;
   }

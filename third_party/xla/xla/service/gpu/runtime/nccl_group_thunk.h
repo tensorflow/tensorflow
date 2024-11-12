@@ -17,11 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_GPU_RUNTIME_NCCL_GROUP_THUNK_H_
 
 #include <cstdint>
+#include <memory>
+#include <utility>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
-#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 
 namespace xla {
 namespace gpu {
@@ -30,21 +32,17 @@ namespace gpu {
 // NCCL group call in order for them to be dispatched to NCCL as a NCCL group.
 // NCCL may or may not execute them in parallel.
 
-class NcclGroupThunk : public NcclCollectiveThunk {
+class NcclGroupThunk : public Thunk {
  public:
-  NcclGroupThunk(Thunk::Kind kind, ThunkInfo thunk_info, NcclApi* nccl_api,
-                 const HloInstruction* instruction, int64_t replica_count,
-                 int64_t partition_count);
-
- protected:
-  const NcclCollectiveConfig& config() const override { return config_; }
-  absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream,
-                                 NcclCommHandleWrapper comm_wrapper) override;
-  AsyncStreamKind GetAsyncStreamKind() const override;
+  NcclGroupThunk(const HloInstruction* instruction, Thunk::Kind kind,
+                 std::vector<std::unique_ptr<Thunk>> thunks);
+  absl::Status Prepare(const PrepareParams& params,
+                       ResourceRequests& resource_requests) override;
+  absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
+  absl::Status Initialize(const InitializeParams& params) override;
 
  private:
-  const NcclCollectiveConfig config_;
+  ThunkSequence thunks_;
   NcclApi* nccl_api_;
 };
 

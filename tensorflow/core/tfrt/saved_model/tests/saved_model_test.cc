@@ -1186,7 +1186,7 @@ TEST(SavedModelTest, CustomCompiler) {
 
 // TODO(b/374165187): Add a test case for positive identification of JAX models.
 // Currently we don't have those in our testdata.
-TEST(SavedModelTest, InferModelType) {
+TEST(SavedModelTest, EmitModelTypeMetric) {
   // SavedModel toy contains a graph of a single 'tf.AddV2' op. It is generated
   // using the following python code:
   //  x = tf.placeholder(tf.int32, shape=(3))
@@ -1200,7 +1200,7 @@ TEST(SavedModelTest, InferModelType) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.infer_model_type = true;
+  options.emit_model_type_metric = true;
 
   auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
                                                     /*tags=*/{"serve"});

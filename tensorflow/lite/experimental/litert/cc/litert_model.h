@@ -184,35 +184,34 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
   SmallVec<TensorUse> Uses() const;
 
   template <typename T>
-  LiteRtResult<absl::Span<const T>> WeightsData() const {
-    auto failed = LiteRtResult<absl::Span<const T>>::FromStatus(
-        kLiteRtStatusErrorInvalidArgument);
+  Expected<absl::Span<const T>> WeightsData() const {
+    static constexpr LiteRtStatus kStatus = kLiteRtStatusErrorInvalidArgument;
 
     const ElementType ty = RankedTensorType().ElementType();
     if (ty != GetElementType<T>()) {
-      return failed;
+      return Unexpected(kStatus);
     }
 
     if (!HasWeights()) {
-      return failed;
+      return Unexpected(kStatus);
     }
     const absl::Span<const uint8_t> weights = Weights().Bytes();
 
     auto num_elements = RankedTensorType().Layout().NumElements();
     if (!num_elements.has_value()) {
-      return failed;
+      return Unexpected(kStatus);
     }
     auto byte_width = GetByteWidth(ty);
     if (!byte_width.has_value()) {
-      return failed;
+      return Unexpected(kStatus);
     }
 
     if (byte_width.value() * num_elements.value() != weights.size()) {
-      return failed;
+      return Unexpected(kStatus);
     }
 
-    return LiteRtResult<absl::Span<const T>>::FromValue(absl::MakeConstSpan(
-        reinterpret_cast<const T*>(weights.data()), num_elements.value()));
+    return absl::MakeConstSpan(reinterpret_cast<const T*>(weights.data()),
+                               num_elements.value());
   }
 
   std::optional<LiteRtTensorDefiningOp> DefiningOp() const {

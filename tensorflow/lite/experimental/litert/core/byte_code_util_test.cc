@@ -46,10 +46,9 @@ TEST(TestBuildStamp, MakeBuildStampInputsTooLarge) {
 }
 
 TEST(TestBuildStamp, MakeBuildStamp) {
-  LITERT_ASSERT_RESULT_OK_ASSIGN(
-      auto stamp, MakeBuildStamp(kSocMan, kSocModel, kSerialization));
-  LITERT_ASSERT_RESULT_OK_ASSIGN(auto pstamp, ParseBuildStamp(stamp));
-  auto [man, model, serial] = pstamp;
+  auto stamp = MakeBuildStamp(kSocMan, kSocModel, kSerialization);
+  auto pstamp = ParseBuildStamp(*stamp);
+  auto [man, model, serial] = *pstamp;
   EXPECT_EQ(man, kSocMan);
   EXPECT_EQ(model, kSocModel);
   EXPECT_EQ(serial, kSerialization);
@@ -75,9 +74,8 @@ TEST(TestByteCodePlaceholder, BuildAndFinishByteCodePlaceholder) {
   LITERT_ASSERT_STATUS_OK(
       FinishByteCodePlaceholders(placeholder, kByteCodeSize));
 
-  LITERT_ASSERT_RESULT_OK_ASSIGN(auto p_placeholder,
-                                 ParseByteCodePlaceholder(placeholder));
-  auto [offset, size] = p_placeholder;
+  auto p_placeholder = ParseByteCodePlaceholder(placeholder);
+  auto [offset, size] = *p_placeholder;
   EXPECT_EQ(offset, placeholder.Size());
   EXPECT_EQ(size, kByteCodeSize);
 }
@@ -92,10 +90,9 @@ TEST(TestByteCodePlaceholder, BuildAndFinishByteCodePlaceholderTooLarge) {
 }
 
 TEST(TestExecInfo, ExecInfo) {
-  LITERT_ASSERT_RESULT_OK_ASSIGN(auto exec_info,
-                                 MakeExecInfo("entry_point", "key"));
-  LITERT_ASSERT_RESULT_OK_ASSIGN(auto p_exec_info, ParseExecInfo(exec_info));
-  auto [entry_point, key] = p_exec_info;
+  auto exec_info = MakeExecInfo("entry_point", "key");
+  auto p_exec_info = ParseExecInfo(*exec_info);
+  auto [entry_point, key] = *p_exec_info;
   EXPECT_EQ(entry_point, "entry_point");
   EXPECT_EQ(key, "key");
 }

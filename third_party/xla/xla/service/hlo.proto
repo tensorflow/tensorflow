@@ -596,7 +596,8 @@ message HloModuleProto {
     xla.ProfileSource profile_source = 3;
     // The compilation event that triggered the use of the profile.
     xla.CompilationEvent compilation_event = 4;
-    // The fingerprint of the unoptimized module this profile was applied to.
+    // The fingerprint of this profile. `fingerprint` should match a key
+    // in the profile table.
     string fingerprint = 5;
   }
 

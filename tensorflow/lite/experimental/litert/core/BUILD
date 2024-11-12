@@ -44,7 +44,6 @@ cc_test(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",

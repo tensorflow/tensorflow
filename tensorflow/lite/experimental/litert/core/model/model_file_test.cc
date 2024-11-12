@@ -113,13 +113,12 @@ TEST(TestSerializeModel, TestMetadata) {
   LITERT_ASSERT_STATUS_OK(model.Get()->PushMetadata(
       kMetadataName, OwningBufferRef<uint8_t>(kMetadataData)));
 
-  LITERT_ASSERT_RESULT_OK_ASSIGN(auto serialized,
-                                 SerializeModel(std::move(model)));
-  EXPECT_TRUE(VerifyFlatbuffer(serialized.Span()));
-  LITERT_ASSERT_RESULT_OK_MOVE(auto re_loaded, LoadModelFromMemory(serialized));
-  LITERT_ASSERT_RESULT_OK_ASSIGN(auto metadata,
-                                 re_loaded.Get()->FindMetadata(kMetadataName));
-  EXPECT_EQ(metadata.StrView(), kMetadataData);
+  auto serialized = SerializeModel(std::move(model));
+  EXPECT_TRUE(VerifyFlatbuffer(serialized->Span()));
+
+  auto re_loaded = LoadModelFromMemory(*serialized);
+  auto metadata = re_loaded->Get()->FindMetadata(kMetadataName);
+  EXPECT_EQ(metadata->StrView(), kMetadataData);
 }
 
 using AddSimpleTest = TopologyTest;

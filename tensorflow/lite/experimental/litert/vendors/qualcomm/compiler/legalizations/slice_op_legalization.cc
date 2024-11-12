@@ -82,13 +82,18 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
 
   // Prepare qnn strided slice parameters.
 
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto src_begin_indices,
-                                 op_ins.at(1).WeightsData<int32_t>());
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto src_size_indices,
-                                 op_ins.at(2).WeightsData<int32_t>());
+  auto src_begin_indices = op_ins.at(1).WeightsData<int32_t>();
+  if (!src_begin_indices) {
+    return src_begin_indices.Status();
+  }
+
+  auto src_size_indices = op_ins.at(2).WeightsData<int32_t>();
+  if (!src_size_indices) {
+    return src_size_indices.Status();
+  }
 
   // Check if src_begin_indices and src_size_indices are weights tensors.
-  if (src_begin_indices.empty() || src_size_indices.empty()) {
+  if (src_begin_indices->empty() || src_size_indices->empty()) {
     return kLiteRtStatusErrorInvalidLegalization;
   }
 
@@ -98,8 +103,8 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
   for (int i = 0; i < src_input_tensor_rank; ++i) {
     // Copy begin, end, and stride values from src_begin_indices and
     // src_size_indices to range_tensor_data. Stride is always 1.
-    range_tensor_data[i * kRangesParamArgSize] = src_begin_indices[i];
-    range_tensor_data[i * kRangesParamArgSize + 1] = src_size_indices[i];
+    range_tensor_data[i * kRangesParamArgSize] = src_begin_indices->at(i);
+    range_tensor_data[i * kRangesParamArgSize + 1] = src_size_indices->at(i);
     range_tensor_data[i * kRangesParamArgSize + 2] = 1;
   }
 

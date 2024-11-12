@@ -15,7 +15,6 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_COMPILER_PLUGIN_COMPILER_PLUGIN_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_COMPILER_PLUGIN_COMPILER_PLUGIN_H_
 
-#include <cstddef>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -24,10 +23,10 @@
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
 
@@ -37,15 +36,15 @@ class CompiledResult {
   friend class CompilerPlugin;
   // Get the single module of compiled byte code. This contains the
   // compilation result for all entry points.
-  LiteRtResult<BufferRef<uint8_t>> ByteCode() const;
+  Expected<BufferRef<uint8_t>> ByteCode() const;
 
   // Get information regarding the "ith" entry points in the compiled module.
   // There will be oe entry point for each subgraph compiled for.
-  LiteRtResult<std::string> CallInfo(LiteRtParamIndex call_idx) const;
+  Expected<std::string> CallInfo(LiteRtParamIndex call_idx) const;
 
   // Get the number of entry points in the compiled module. This will be equal
   // to the number of subgraphs passed to the compilation step.
-  LiteRtResult<LiteRtParamIndex> NumCalls() const;
+  Expected<LiteRtParamIndex> NumCalls() const;
 
   explicit CompiledResult(const LiteRtCompilerPluginApi& allocating_plugin_api)
       : allocating_plugin_api_(allocating_plugin_api) {}
@@ -65,12 +64,8 @@ class CompiledResult {
 // TODO turn this into a general C++ wraper for the whole compiler plugin api.
 class CompilerPlugin {
  public:
-  using VecT = std::vector<CompilerPlugin>;
-  using ResultT = LiteRtResult<CompilerPlugin>;
-  using ResultVecT = LiteRtResult<VecT>;
-
   // Get the compiler plugin's API version.
-  LiteRtResult<LiteRtApiVersion> ApiVersion() const;
+  Expected<LiteRtApiVersion> ApiVersion() const;
 
   // Get the manufacturer associated with this plugin. NOTE: SocManufacturer
   // string returned by the underlying plugin are expected to have static
@@ -80,10 +75,10 @@ class CompilerPlugin {
   }
 
   // Get list of unique soc models targetable by this plugin.
-  const std::vector<std::string>& SocModels() const { return soc_models_; }
+  const SmallVec<std::string>& SocModels() const { return soc_models_; }
 
   // Selects ops for the plugin to compile.
-  LiteRtResult<std::vector<LiteRtOp>> PartitionModel(const Model& model);
+  Expected<std::vector<LiteRtOp>> PartitionModel(const Model& model);
 
   // Compile given LiteRtSubgraphs for target "soc_model". Write compiled byte
   // code to the given stream. For each given subgraph, write opaque data about
@@ -98,7 +93,7 @@ class CompilerPlugin {
   // with resolved plugin apis for each found library that can be succesfully
   // loaded. Additionally initializes the compiler plugin instances
   // and stores handle.
-  static ResultVecT LoadPlugins(
+  static Expected<SmallVec<CompilerPlugin>> LoadPlugins(
       absl::Span<const absl::string_view> lib_search_paths);
 
   CompilerPlugin(CompilerPlugin&& other);
@@ -111,10 +106,10 @@ class CompilerPlugin {
   ~CompilerPlugin();
 
  private:
-  static ResultT LoadPlugin(absl::string_view lib_path);
+  static Expected<CompilerPlugin> LoadPlugin(absl::string_view lib_path);
   CompilerPlugin() = default;
 
-  std::vector<std::string> soc_models_;
+  SmallVec<std::string> soc_models_;
   void* lib_handle_ = nullptr;
   LiteRtCompilerPluginApi plugin_api_ = {};
   LiteRtCompilerPlugin plugin_handle_ = nullptr;

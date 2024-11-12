@@ -198,26 +198,6 @@ cc_library(
 )
 
 cc_library(
-    name = "split_into_island_per_op_pass",
-    srcs = ["split_into_island_per_op_pass.cc"],
-    hdrs = [
-        "split_into_island_per_op_pass.h",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_executor_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_pass_inc_gen",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Dialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:InferTypeOpInterface",
-        "@llvm-project//mlir:Pass",
-    ],
-)
-
-cc_library(
     name = "upgrade_graph",
     srcs = ["upgrade_graph.cc"],
     hdrs = ["upgrade_graph.h"],

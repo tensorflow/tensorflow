@@ -138,7 +138,7 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
 // HloAllToAllInstruction, HloCollectiveBroadcastInstruction or
 // HloCollectivePermuteInstruction.
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
-    HloInstruction* instr) {
+    const HloInstruction* instr) {
   if (auto collective = DynCast<HloAllGatherInstruction>(instr)) {
     return GetCollectiveOpGroupMode(collective->channel_id().has_value(),
                                     collective->use_global_device_ids());

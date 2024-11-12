@@ -25,7 +25,8 @@
 
 ### Major Features and Improvements
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*  `tf.lite`
+    * `tfl.Cast` op is now supporting `bfloat16` in runtime kernel.
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
 ### Bug Fixes and Other Changes

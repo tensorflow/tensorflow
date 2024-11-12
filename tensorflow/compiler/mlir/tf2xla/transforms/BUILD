@@ -505,3 +505,37 @@ tf_cc_test(
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
+
+cc_library(
+    name = "split_into_island_per_op_pass",
+    srcs = ["split_into_island_per_op_pass.cc"],
+    hdrs = [
+        "split_into_island_per_op_pass.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_executor_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_pass_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+tf_cc_test(
+    name = "split_into_island_per_op_pass_test",
+    srcs = ["split_into_island_per_op_pass_test.cc"],
+    deps = [
+        ":split_into_island_per_op_pass",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)

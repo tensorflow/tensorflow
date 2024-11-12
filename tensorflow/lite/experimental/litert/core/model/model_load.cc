@@ -197,19 +197,17 @@ LiteRtStatus LoadModelFromFlatbuffer(std::unique_ptr<tflite::ModelT> flatbuffer,
 
 }  // namespace
 
-LiteRtResult<Model> LoadModelFromMemory(BufferRef<uint8_t> serialized) {
+Expected<Model> LoadModelFromMemory(BufferRef<uint8_t> serialized) {
   LiteRtModel model;
-  LITERT_RETURN_RESULT_IF_NOT_OK(
-      LiteRtLoadModelFromMemory(serialized.Data(), serialized.Size(), &model),
-      Model);
-  return LiteRtResult<Model>::TakeValue(Model::CreateFromOwnedHandle(model));
+  LITERT_EXPECT_OK(
+      LiteRtLoadModelFromMemory(serialized.Data(), serialized.Size(), &model));
+  return Model::CreateFromOwnedHandle(model);
 }
 
-LiteRtResult<Model> LoadModelFromFile(absl::string_view path) {
+Expected<Model> LoadModelFromFile(absl::string_view path) {
   LiteRtModel model;
-  LITERT_RETURN_RESULT_IF_NOT_OK(LiteRtLoadModelFromFile(path.data(), &model),
-                                 Model);
-  return LiteRtResult<Model>::TakeValue(Model::CreateFromOwnedHandle(model));
+  LITERT_EXPECT_OK(LiteRtLoadModelFromFile(path.data(), &model));
+  return Model::CreateFromOwnedHandle(model);
 }
 
 }  // namespace litert::internal

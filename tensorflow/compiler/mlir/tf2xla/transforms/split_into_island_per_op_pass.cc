@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tensorflow/translate/split_into_island_per_op_pass.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/split_into_island_per_op_pass.h"
 
 #include <cstdint>
 #include <memory>

@@ -101,7 +101,7 @@ class BufferRef {
   using TupleT = std::tuple<const ByteT* const, const size_t, const size_t>;
 
   // Null buffer.
-  explicit BufferRef() : size_(0), offset_(0), data_(nullptr) {}
+  BufferRef() : size_(0), offset_(0), data_(nullptr) {}
 
   // Construct from already allocated buffer. Methods will only expose
   // data[offset, offset + size].
@@ -178,7 +178,7 @@ class MutableBufferRef : public BufferRef<ByteT> {
   using TupleT = std::tuple<ByteT* const, const size_t, const size_t>;
 
   // Null buffer.
-  explicit MutableBufferRef()
+  MutableBufferRef()
       : BufferRef<ByteT>((ByteT*)nullptr, /*size*/ 0, /*offset*/ 0) {}
 
   // Create a mutable view from pre-allocated non-const buffer.
@@ -233,8 +233,9 @@ class OwningBufferRef : public MutableBufferRef<ByteT> {
   using WeakTupleT = std::tuple<ByteT*&, size_t&, size_t&>;
 
   // Null buffer.
-  explicit OwningBufferRef()
-      : MutableBufferRef<ByteT>(/*data*/ (ByteT*)nullptr, /*size*/ 0) {}
+  OwningBufferRef()
+      : MutableBufferRef<ByteT>(/*data*/ (ByteT*)nullptr, /*size*/ 0,
+                                /*offset*/ 0) {}
 
   // Initialize a new buffer reference and allocate internally.
   explicit OwningBufferRef(size_t size)
@@ -322,6 +323,7 @@ class OwningBufferRef : public MutableBufferRef<ByteT> {
     this->data_ = (ByteT*)Allocator()(this->size_);
     std::memcpy(this->data_, other.data_, this->size_);
     this->offset_ = other.offset_;
+    return *this;
   }
 
   ~OwningBufferRef() override {

@@ -36,9 +36,9 @@ TEST(ModelTest, GetMetadata) {
 
   LITERT_ASSERT_STATUS_OK(
       model.PushMetadata(kKey, OwningBufferRef<uint8_t>(kMetadata)));
-  LITERT_ASSERT_RESULT_OK_ASSIGN(auto found_metadata, model.FindMetadata(kKey));
+  auto found_metadata = model.FindMetadata(kKey);
 
-  EXPECT_EQ(found_metadata.StrView(), kMetadata);
+  EXPECT_EQ(found_metadata->StrView(), kMetadata);
 }
 
 TEST(ModelTest, MetadataDNE) {

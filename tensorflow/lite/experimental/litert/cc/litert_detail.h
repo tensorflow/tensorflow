@@ -29,6 +29,12 @@ static constexpr size_t kTensorVecSize = 8;
 template <typename T>
 using SmallVec = absl::InlinedVector<T, kTensorVecSize>;
 
+// See "std::construct_at" from C++20.
+template <class T, class... Args>
+inline T* ConstructAt(T* p, Args&&... args) {
+  return ::new (static_cast<void*>(p)) T(std::forward<Args>(args)...);
+}
+
 namespace internal {
 
 // Call function "get" and assert it returns an OK LiteRtStatus.
