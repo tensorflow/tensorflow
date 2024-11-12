@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/serdes.h"
 
 namespace xla {
 namespace ifrt {
@@ -53,6 +54,23 @@ struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
  private:
   std::unique_ptr<mlir::MLIRContext> mlir_context;
   mlir::OwningOpRef<mlir::ModuleOp> owning_mlir_module;
+};
+
+// Options for serializing IFRT IR programs.
+struct SerializeIfrtIRProgramOptions
+    : llvm::RTTIExtends<SerializeIfrtIRProgramOptions, SerializeOptions> {
+  explicit SerializeIfrtIRProgramOptions(std::string ifrt_version,
+                                         std::string atom_program_version)
+      : ifrt_version(std::move(ifrt_version)),
+        atom_program_version(std::move(atom_program_version)) {}
+
+  static char ID;  // NOLINT
+
+  // String of the form "major.minor.patch", representing the IFRT IR version.
+  std::string ifrt_version;
+  // String of the form "major.minor.patch", representing the atom program
+  // version (currently VHLO version).
+  std::string atom_program_version;
 };
 
 // CompileOptions for an IFRT IR program.
