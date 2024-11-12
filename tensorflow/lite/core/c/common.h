@@ -320,7 +320,7 @@ typedef struct TfLiteBFloat16 {
 const char* TfLiteTypeGetName(TfLiteType type);
 
 /// SupportedQuantizationTypes.
-typedef enum TfLiteQuantizationType {
+typedef enum TfLiteQuantizationType : int {
   /// No quantization.
   kTfLiteNoQuantization = 0,
   /// Affine quantization (with support for per-channel quantization).
