@@ -3402,3 +3402,26 @@ bzl_library(
         "@local_tsl//tsl/platform:build_config_root_bzl",
     ] + tests_build_defs_bzl_deps(),
 )
+
+xla_test(
+    name = "atan2_test",
+    srcs = ["atan2_test.cc"],
+    deps = [
+        ":client_library_test_base",
+        "//xla:error_spec",
+        "//xla/hlo/builder:xla_builder",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "remainder_test",
+    srcs = ["remainder_test.cc"],
+    deps = [
+        ":client_library_test_base",
+        "//xla:error_spec",
+        "//xla:literal_util",
+        "//xla/hlo/builder:xla_builder",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
