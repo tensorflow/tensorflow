@@ -2777,8 +2777,8 @@ void OptimizePass::runOnOperation() {
            RemoveReshapeBeforeFullyConnected,
            FuseOutputReshape_BatchMatMulWithFlattenedContractingDims,
            FuseSqueezingLhsReshapeIntoFC_Output,
-           FuseReshapesAroundBatchMatMulLHS, FuseReshapesAroundBatchMatMulLHS1>(
-          ctx);
+           FuseReshapesAroundBatchMatMulLHS, FuseReshapesAroundBatchMatMulLHS1,
+           FuseInputReshape_BatchMatMulWithFlattenedRhsDims>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus
