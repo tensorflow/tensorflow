@@ -15,39 +15,51 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/nccl_group_thunk.h"
 
-#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
-#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
-#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/stream_executor/stream.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
 
-NcclGroupThunk::NcclGroupThunk(Thunk::Kind kind, ThunkInfo thunk_info,
-                               NcclApi* nccl_api,
-                               const HloInstruction* instruction,
-                               int64_t replica_count, int64_t partition_count)
-    : NcclCollectiveThunk(kind, thunk_info, nccl_api,
-                          /*is_sync=*/false),
-      config_() {
+NcclGroupThunk::NcclGroupThunk(const HloInstruction* instruction,
+                               Thunk::Kind kind,
+                               std::vector<std::unique_ptr<Thunk>> thunks)
+    : Thunk(kind, ThunkInfo::WithProfileAnnotation(instruction)) {
   nccl_api_ = NcclApi::Default();
+  for (auto& thunk : thunks) {
+    thunks_.emplace_back(std::move(thunk));
+  }
+}
+absl::Status NcclGroupThunk::Prepare(const PrepareParams& params,
+                                     ResourceRequests& resource_requests) {
+  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+    TF_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
+  }
+  return absl::OkStatus();
+}
+absl::Status NcclGroupThunk::Initialize(const InitializeParams& params) {
+  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+    TF_RETURN_IF_ERROR(thunk->Initialize(params));
+  }
+  return absl::OkStatus();
 }
 
-absl::Status NcclGroupThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream,
-    NcclCommHandleWrapper comm_wrapper) {
-  return absl::UnimplementedError(
-      "RunNcclCollective not implemented for NcclGroupThunk");
+absl::Status NcclGroupThunk::ExecuteOnStream(
+    const Thunk::ExecuteParams& params) {
+  TF_RETURN_IF_ERROR(nccl_api_->GroupStart());
+  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
+  }
+  TF_RETURN_IF_ERROR(nccl_api_->GroupEnd());
+  return absl::OkStatus();
 }
 
-AsyncStreamKind NcclGroupThunk::GetAsyncStreamKind() const {
-  return AsyncStreamKind::kCollective;
-}
 }  // namespace gpu
 }  // namespace xla

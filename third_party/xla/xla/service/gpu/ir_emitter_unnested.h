@@ -184,9 +184,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   absl::Status EmitHloInstruction(const HloInstruction* instr);
 
-  absl::Status EmitNcclGroupStartThunk(const HloInstruction* instr);
-
-  absl::Status EmitNcclGroupDoneThunk(const HloInstruction* instr);
+  absl::Status EmitNcclGroupThunk(const HloInstruction* instr,
+                                  Thunk::Kind kind);
 
   absl::Status EmitTargetElementLoop(
       const HloInstruction& hlo,
@@ -194,6 +193,10 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Add a owning Thunk object to the thunk sequence.
   void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
+    if (emit_group_thunks_) {
+      scoped_thunk_sequence_.emplace_back(std::move(thunk));
+      return;
+    }
     thunk_sequence_.emplace_back(std::move(thunk));
   }
 
@@ -340,6 +343,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
+  ThunkSequence scoped_thunk_sequence_;
+  bool emit_group_thunks_ = false;
 
   // Container for async send/recv events shared by send/recv thunks.
   std::shared_ptr<SendRecvAsyncEvents> send_recv_events_;
