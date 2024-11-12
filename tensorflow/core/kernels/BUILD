@@ -1496,7 +1496,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -3001,7 +3001,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@eigen_archive//:eigen3",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream",
     ],
 )
 
@@ -3104,7 +3104,6 @@ tf_kernel_library(
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/stream_executor",
     ],
 )
 
@@ -3632,7 +3631,6 @@ cc_library(
     ]) + if_cuda([
         "@local_xla//xla/stream_executor/cuda:cublas_lt_header",
     ]) + if_rocm([
-        "@local_xla//xla/stream_executor/platform:dso_loader",
         "@local_xla//xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
@@ -4170,7 +4168,6 @@ tf_kernel_library(
         "@local_xla//xla/stream_executor/cuda:cudnn_plugin",
         "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
         "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
-        "@local_xla//xla/stream_executor",
         "//tensorflow/core/platform:stream_executor",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",

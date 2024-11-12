@@ -3,12 +3,17 @@
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
+load(
+    "@local_tsl//third_party/py:python_wheel_library.bzl",
+    "wheel_library",
+)
+load("@local_xla//xla/tsl:tsl.bzl", "if_cuda_libs")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 load("//tensorflow/tools/pip_package/utils:data_deps.bzl", "collect_data_files")
 load("//tensorflow/tools/pip_package/utils:py_deps.bzl", "transitive_py_deps")
-load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "tf_wheel")
+load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "tf_wheel", "tf_wheel_dep")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -69,7 +74,6 @@ transitive_hdrs(
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python/client:tf_session_helper",
-        "@local_xla//xla/stream_executor",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
     ]),
@@ -144,7 +148,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/dtensor/python/tests:multi_client_test_util",
     "//tensorflow/dtensor/python/tests:test_util",
     "//tensorflow/lite/python:tflite_convert",
-    "//tensorflow/lite/toco/python:toco_from_protos",
     "//tensorflow/lite/tools:visualize",
     "//tensorflow/python/autograph/core:test_lib",
     "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
@@ -270,6 +273,17 @@ tf_wheel(
         ":licenses",
         "//tensorflow/core:protos_all_proto_srcs",
     ],
+    platform_name = select({
+        "@platforms//os:osx": "macosx",
+        "@platforms//os:macos": "macosx",
+        "@platforms//os:windows": "win",
+        "@platforms//os:linux": "linux",
+    }),
+    platform_tag = select({
+        "@platforms//cpu:aarch64": "arm64",
+        "@platforms//cpu:arm64": "arm64",
+        "@platforms//cpu:x86_64": "x86_64",
+    }),
     source_files = [
         "MANIFEST.in",
         "//tensorflow/tools/pip_package:THIRD_PARTY_NOTICES.txt",
@@ -300,7 +314,7 @@ genrule(
 )
 
 py_test(
-    name = "import_api_packages_test_cpu",
+    name = "prebuilt_wheel_import_api_packages_test",
     srcs = if_wheel_dependency(
         ["import_api_packages_test.py"],
         [":empty_test"],
@@ -308,19 +322,56 @@ py_test(
     main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
     tags = [
         "cpu",
+        "gpu",
+        "windows_excluded",
     ],
-    deps = if_wheel_dependency(["@pypi_tensorflow//:pkg"]),
+    deps = if_wheel_dependency(tf_wheel_dep()),
 )
 
 py_test(
-    name = "import_api_packages_test_gpu",
-    srcs = if_wheel_dependency(
-        ["import_api_packages_test.py"],
-        [":empty_test"],
-    ),
-    main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
+    name = "import_api_packages_test",
+    srcs = ["import_api_packages_test.py"],
+    main = "import_api_packages_test.py",
     tags = [
+        "cpu",
         "gpu",
+        "windows_excluded",
     ],
-    deps = if_wheel_dependency(["@pypi_tensorflow//:pkg"]),
+    deps = [
+        ":tf_wheel_library",
+    ],
+)
+
+wheel_library(
+    name = "tf_wheel_library",
+    wheel = ":wheel",
+    wheel_deps = if_cuda_libs([
+        "@cuda_cublas//:cublas",
+        "@cuda_cublas//:cublasLt",
+        "@cuda_cudart//:cudart",
+        "@cuda_cudnn//:cudnn",
+        "@cuda_cufft//:cufft",
+        "@cuda_cupti//:cupti",
+        "@cuda_curand//:curand",
+        "@cuda_cusolver//:cusolver",
+        "@cuda_cusparse//:cusparse",
+        "@cuda_nccl//:nccl",
+        "@cuda_nvjitlink//:nvjitlink",
+        "@cuda_nvrtc//:nvrtc",
+    ]),
+    deps = [
+        "@pypi_absl_py//:pkg",
+        "@pypi_astunparse//:pkg",
+        "@pypi_flatbuffers//:pkg",
+        "@pypi_gast//:pkg",
+        "@pypi_ml_dtypes//:pkg",
+        "@pypi_numpy//:pkg",
+        "@pypi_opt_einsum//:pkg",
+        "@pypi_packaging//:pkg",
+        "@pypi_protobuf//:pkg",
+        "@pypi_requests//:pkg",
+        "@pypi_termcolor//:pkg",
+        "@pypi_typing_extensions//:pkg",
+        "@pypi_wrapt//:pkg",
+    ],
 )

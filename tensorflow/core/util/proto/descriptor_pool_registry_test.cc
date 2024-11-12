@@ -21,7 +21,7 @@ namespace tensorflow {
 namespace {
 
 struct Value {
-  static Status Function(
+  static absl::Status Function(
       tensorflow::protobuf::DescriptorPool const** desc_pool,
       std::unique_ptr<tensorflow::protobuf::DescriptorPool>* owned_desc_pool) {
     return absl::OkStatus();

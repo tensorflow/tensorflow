@@ -41,8 +41,7 @@ inline absl::string_view ToAbslStringView(tfrt::string_view sv) {
 
 // Parses the string representation of the DataType in `dtype` into `data_type`.
 // Aborts the program for unsupported dtypes.
-tensorflow::Status ParseTfDataType(absl::string_view dtype,
-                                   DataType* data_type);
+absl::Status ParseTfDataType(absl::string_view dtype, DataType* data_type);
 
 // The following 2 functions convert between Tensorflow DataTypes and
 // OpAttrTypes. The mapping between OpAttrType and DataType is defined in

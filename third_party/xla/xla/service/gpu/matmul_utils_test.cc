@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -32,15 +32,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::testing::ElementsAre;
 using ::tsl::testing::IsOkAndHolds;
-
-TEST(GetNonContractingDimsTest, Valid) {
-  Shape shape = ParseShape("f32[1,2,3,4,5,6]").value();
-  EXPECT_THAT(GetNonContractingDims(shape, /*batch_dims=*/{4},
-                                    /*contracting_dims=*/{1, 5}),
-              IsOkAndHolds(ElementsAre(0, 2, 3)));
-}
 
 using CanFoldTransposeOperandIntoDotTest = HloTestBase;
 

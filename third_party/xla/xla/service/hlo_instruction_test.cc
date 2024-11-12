@@ -2898,6 +2898,30 @@ TEST_F(HloInstructionTest, BackendConfigNotCopiedToDerivedWithDiffOpcode) {
   EXPECT_FALSE(add2->has_backend_config());
 }
 
+TEST_F(HloInstructionTest, BackendConfigNotCopiedToDerivedWithConfig) {
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto p0 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto p1 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p1"));
+  auto add = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p1));
+
+  gpu::GpuBackendConfig gpu_config0;
+  gpu::GpuBackendConfig gpu_config1;
+  gpu_config0.set_operation_queue_id(2);
+  gpu_config1.set_operation_queue_id(3);
+
+  TF_ASSERT_OK(add->set_backend_config(gpu_config0));
+  auto add2 = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p0));
+  TF_ASSERT_OK(add2->set_backend_config(gpu_config1));
+
+  add->SetupDerivedInstruction(add2);
+  auto backend_config = add2->backend_config<gpu::GpuBackendConfig>();
+  EXPECT_TRUE(backend_config.ok());
+  EXPECT_EQ(backend_config->operation_queue_id(), 3);
+}
+
 TEST_F(HloInstructionTest,
        MergeMultiOutputProducerFusionIntoMultiOutputFusion) {
   const std::string& hlo_string = R"(

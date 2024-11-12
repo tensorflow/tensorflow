@@ -59,20 +59,6 @@ bool FusionUsesParameterElementwiseFromRoot(
              fusion->fused_expression_root()) == 1.f;
 }
 
-int GetCoalescingWasteFactor(PrimitiveType element_type,
-                             const se::DeviceDescription& gpu_device_info) {
-  int64_t element_size_bytes =
-      element_type == PrimitiveType::TUPLE ||
-              element_type == PrimitiveType::TOKEN
-          ? 4 /* Dummy value. TODO(jreiffers): Model this case. */
-          : ShapeUtil::ByteSizeOfPrimitiveType(element_type);
-  // Assume we use one element from the cache line and waste the remaining
-  // bandwidth. For example, if we're reading f32s, we use 1/16nd of the cache
-  // line.
-  return gpu_device_info.dram_to_l2_transaction_size_bytes() /
-         element_size_bytes;
-}
-
 // Limit the bandwidth for low occupancy cases. Each SM can issue at most
 // one 32B memory transaction per clock. H100 needs at least 56.8 active SMs
 // (1830 MHz) to saturate the memory bandwidth (3.35 TB/s).
@@ -301,33 +287,14 @@ int64_t GpuPerformanceModelBase::GetSharedOperandBytesAccessed(
 }
 
 /*static*/
-absl::Duration GpuPerformanceModelBase::ReadTime(
-    const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
-    int64_t n_bytes_net, int64_t n_bytes_total) {
-  float bandwidth = gpu_device_info.memory_bandwidth();
-  if (n_bytes_net < gpu_device_info.l2_cache_size()) {
-    bandwidth *= kL2CacheSpeedup;
-    if (n_bytes_net <
-        gpu_device_info.l1_cache_size_per_SM() * gpu_device_info.core_count()) {
-      bandwidth *= kL1CacheSpeedup;
-    }
-  }
-
-  bandwidth = AdjustBandwidth(gpu_device_info, bandwidth, num_blocks);
-  return absl::Seconds(n_bytes_total / bandwidth);
-}
-
-/*static*/
 absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
     const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
     int64_t n_bytes_net, int64_t n_bytes_total, PrimitiveType element_type,
-    bool coalesced) {
-  int waste_factor =
-      coalesced ? 1 : GetCoalescingWasteFactor(element_type, gpu_device_info);
-
+    double hbm_bandwidth_utilization_rate) {
   // The first read of the input buffer always happens from DRAM. If reads are
   // no coaleced, bandwidth is reduced by the waste factor.
-  float dram_bandwidth = gpu_device_info.memory_bandwidth() / waste_factor;
+  float dram_bandwidth =
+      gpu_device_info.memory_bandwidth() * hbm_bandwidth_utilization_rate;
 
   // Two things can happed on re-reading the buffer:
   //   - If the buffer fits into cache, the L1/L2 cache speedup is applied.
@@ -341,7 +308,7 @@ absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
       rest_bandwidth *= kL1CacheSpeedup;
     }
   } else {
-    rest_bandwidth /= waste_factor;
+    rest_bandwidth *= hbm_bandwidth_utilization_rate;
   }
 
   dram_bandwidth = AdjustBandwidth(gpu_device_info, dram_bandwidth, num_blocks);
@@ -356,47 +323,6 @@ absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
 
   return absl::Seconds(n_bytes_read_dram / dram_bandwidth) +
          absl::Seconds(n_bytes_read_cache / rest_bandwidth);
-}
-
-/*static*/ absl::Duration GpuPerformanceModelBase::ProducerInputAccessTime(
-    const GpuHloCostAnalysis* cost_analysis,
-    const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
-    const HloInstruction* producer, const HloFusionAnalysis& fusion_analysis,
-    const GpuPerformanceModelOptions& config,
-    const HloInstruction* fused_consumer) {
-  absl::Duration ret = absl::ZeroDuration();
-  float producer_output_utilization =
-      fused_consumer
-          ? GetOperandUtilization(cost_analysis, fused_consumer, producer)
-          : 1.f;
-
-  for (int i = 0; i < producer->operand_count(); ++i) {
-    // Information about data read taking into account utilization.
-    // If `operand_utilization` is 0, `operand_bytes_accessed` should be also 0.
-    int64_t operand_bytes_accessed =
-        cost_analysis->operand_bytes_accessed(*producer, i);
-    float operand_utilization =
-        cost_analysis->operand_utilization(*producer, i);
-
-    // An estimate how much data would need to fit into L1/L2 cache to speed up
-    // the operand access.
-    // If `operand_utilization` < 1, only a part of the full operand size should
-    // be read. Otherwise, `operand_bytes_accessed / operand_utilization` is the
-    // size of the operand without reuse.
-    int64_t n_bytes_net = std::llround(operand_bytes_accessed /
-                                       std::max(operand_utilization, 1.0f));
-
-    // Look if common operand of producer and consumer will be accessed more
-    // efficiently on merge.
-    float common_utilization = GetCommonUtilization(
-        cost_analysis, producer, /*producer_idx_of_operand=*/i, fused_consumer);
-
-    CHECK_LE(common_utilization, producer_output_utilization);
-    float n_bytes_total = operand_bytes_accessed *
-                          (producer_output_utilization - common_utilization);
-    ret += ReadTime(gpu_device_info, num_blocks, n_bytes_net, n_bytes_total);
-  }
-  return ret;
 }
 
 /*static*/
@@ -439,6 +365,22 @@ void GpuPerformanceModelBase::VLogOperandRead(const HloInstruction* operand,
   VLOG(8) << "operand " << operand->name()
           << ", n_bytes_total: " << n_bytes_total
           << ", n_bytes_net: " << n_bytes_net << ", coalesced: " << coalesced;
+}
+
+double GetCoalescingUtilizationRate(
+    PrimitiveType element_type, const se::DeviceDescription& gpu_device_info,
+    bool coalesced) {
+  int64_t element_size_bytes =
+      element_type == PrimitiveType::TUPLE ||
+              element_type == PrimitiveType::TOKEN
+          ? 4 /* Dummy value. TODO(jreiffers): Model this case. */
+          : ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+  // Assume we use one element from the cache line and waste the remaining
+  // bandwidth. For example, if we're reading f32s, we use 1/16nd of the cache
+  // line.
+  return coalesced ? 1.0
+                   : 1.0 * element_size_bytes /
+                         gpu_device_info.dram_to_l2_transaction_size_bytes();
 }
 
 }  // namespace gpu

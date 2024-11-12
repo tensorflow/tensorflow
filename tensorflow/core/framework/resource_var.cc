@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status Var::AsGraphDef(GraphDefBuilder* builder, Node** out) const {
+absl::Status Var::AsGraphDef(GraphDefBuilder* builder, Node** out) const {
   // Set a shared_name so that the created resource can outlive the graph that
   // created it.
   Node* var = ops::SourceOp(

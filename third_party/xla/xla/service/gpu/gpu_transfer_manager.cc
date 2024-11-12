@@ -239,7 +239,8 @@ static absl::Status ForEachChunk(
   for (int64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
     TF_RETURN_IF_ERROR(callback(
         /*chunk_offset=*/chunk_index * chunk_size,
-        /*chunk_size=*/std::min(chunk_size, size - chunk_index * chunk_size)));
+        /*chunk_size=*/std::min(
+            chunk_size, static_cast<size_t>(size - chunk_index * chunk_size))));
   }
   return absl::OkStatus();
 }

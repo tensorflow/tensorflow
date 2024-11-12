@@ -16,31 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SIMPLIFY_FP_CONVERSIONS_H_
 #define XLA_SERVICE_SIMPLIFY_FP_CONVERSIONS_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// Simplifies chains of floating-point conversions.
-//
-// The algebraic simplifier will remove convert pairs of the form `X -> Y -> X`,
-// only when they are a no-op, e.g. `bf16 -> f32 -> bf16` or
-// `f32 -> bf16 -> f32`. Note that the latter optimization might lead to
-// increased precision.
-class SimplifyFPConversions : public HloModulePass {
- public:
-  explicit SimplifyFPConversions() = default;
-
-  absl::string_view name() const override { return "simplify-fp-conversions"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/simplify_fp_conversions.h"
 
 #endif  // XLA_SERVICE_SIMPLIFY_FP_CONVERSIONS_H_

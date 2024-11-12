@@ -46,6 +46,7 @@ limitations under the License.
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/config.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -299,7 +300,7 @@ class PmapFunction {
   PmapFunction(nb::callable fun, nb::callable cache_miss,
                std::vector<int> static_argnums,
                nb::callable python_shard_arg_fallback,
-               std::shared_ptr<xla::PyTreeRegistry> pytree_registry)
+               xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry)
       : fun_(std::move(fun)),
         cache_miss_(std::move(cache_miss)),
         static_argnums_(std::move(static_argnums)),
@@ -335,7 +336,7 @@ class PmapFunction {
   const nb::callable& fun() const { return fun_; }
   const nb::callable& cache_miss() const { return cache_miss_; }
   const std::string& function_name() const { return function_name_; }
-  const std::shared_ptr<xla::PyTreeRegistry>& pytree_registry() const {
+  const xla::nb_class_ptr<xla::PyTreeRegistry>& pytree_registry() const {
     return pytree_registry_;
   }
   const nb::callable& python_shard_arg_fallback() const {
@@ -398,6 +399,7 @@ class PmapFunction {
     }
     signature.thread_local_extra_jit_context = tls.extra_jit_context;
     signature.global_extra_jit_context = global_state.extra_jit_context;
+    signature.configs = JitConfigs();
     return absl::Status();
   }
 
@@ -430,7 +432,7 @@ class PmapFunction {
   // We need to know the static arguments to remove them from the arguments
   // passed to the underlying PyLoadedExecutable. In sorted order.
   std::vector<int> static_argnums_;
-  std::shared_ptr<xla::PyTreeRegistry> pytree_registry_;
+  xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry_;
   // We need a `unique_ptr` here to ensure value pointer stability.
   absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>
       executables_;
@@ -861,7 +863,7 @@ static PyGetSetDef JaxPmapFunction_tp_getset[] = {
 nb::object MakePmapFunction(
     nb::callable fun, nb::callable cache_miss, std::vector<int> static_argnums,
     nb::callable python_shard_arg_fallback,
-    std::shared_ptr<xla::PyTreeRegistry> pytree_registry) {
+    xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry) {
   nb::object obj = nb::steal<nb::object>(JaxPmapFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(JaxPmapFunction_Type), nullptr, nullptr));
   JaxPmapFunctionObject* buf =
@@ -1087,8 +1089,8 @@ void BuildPmapSubmodule(nb::module_& m) {
             nb::cast<std::vector<int>>(pickle["static_argnums"]);
         nb::callable python_shard_arg_fallback =
             nb::cast<nb::callable>(pickle["python_shard_arg_fallback"]);
-        std::shared_ptr<xla::PyTreeRegistry> pytree_registry =
-            nb::cast<std::shared_ptr<xla::PyTreeRegistry>>(
+        xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry =
+            nb::cast<xla::nb_class_ptr<xla::PyTreeRegistry>>(
                 nb::handle(pickle["pytree_registry"].ptr()));
         new (&(reinterpret_cast<JaxPmapFunctionObject*>(self.ptr())->fun))
             PmapFunction(std::move(fun), std::move(cache_miss),
@@ -1124,8 +1126,8 @@ void BuildPmapSubmodule(nb::module_& m) {
       [](nb::callable fun, nb::callable cache_miss,
          std::vector<int> static_argnums, nb::callable shard_arg_fallback,
          nb::object pytree_registry) -> nb::object {
-        std::shared_ptr<xla::PyTreeRegistry> registry =
-            nb::cast<std::shared_ptr<xla::PyTreeRegistry>>(
+        xla::nb_class_ptr<xla::PyTreeRegistry> registry =
+            nb::cast<xla::nb_class_ptr<xla::PyTreeRegistry>>(
                 nb::handle(pytree_registry.ptr()));
         return MakePmapFunction(
             std::move(fun), std::move(cache_miss), std::move(static_argnums),

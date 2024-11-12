@@ -308,4 +308,160 @@ func.func @main(%arg0: !array0, %arg1: !array1) -> (!array1, !array2)
   let constructor = "CreateIfrtReshardToCopyArraysPass()";
 }
 
+def IfrtLowerAtomProgramMetadataToXlaPass :
+    Pass<"ifrt-lower-atom-program-metadata-to-xla", "mlir::ModuleOp"> {
+  let summary = "Converts IFRT metadata to XLA-compatible attributes";
+  let description = [{
+Replaces `ifrt.sharding` attr by `mhlo.sharding` attr, and `ifrt.memory_kind`
+by `mhlo.memory_kind`.
+
+For example, the following code
+
+```mlir
+module attributes {
+  func.func @main(
+    %arg0: tensor<2x2xi32> {
+      ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>})
+    -> (tensor<2x2xi32> {
+      ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>}) {}
+}
+```
+
+will be replaced by
+
+```mlir
+module attributes {
+  func.func @main(
+    %arg0: tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"})
+    -> (tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}) {}
+}
+```
+  }];
+
+  let constructor = "CreateIfrtLowerAtomProgramMetadataToXlaPass()";
+}
+
+def IfrtRemoveIfrtAttrsPass :
+    Pass<"ifrt-remove-ifrt-attrs", "mlir::ModuleOp"> {
+  let summary = "Remove IFRT attrs from modules and functions of atom programs";
+  let description = [{
+Remove IFRT-related attributes from module and functions' arguments and
+results.
+
+This is necessary for the compilation of TfSpmd program.
+
+For example, the following code
+
+```mlir
+module {
+  func.func @main(
+      %arg0: tensor<2x2xi32> {
+          ifrt.sharding = #ifrt.sharding_param<1x1 to [0] on 1>})
+      -> (tensor<2x2xi32> {
+          ifrt.sharding = #ifrt.sharding_param<1x1 to [0] on 1>}) {...}
+}
+```
+
+will be replaced by
+
+```mlir
+module {
+  func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {...}
+}
+```
+  }];
+
+  let constructor = "CreateIfrtRemoveIfrtAttrsPass()";
+}
+
+def IfrtLowerMpmdReshardToCallPass :
+    Pass<"ifrt-lower-mpmd-reshard-to-call", "mlir::ModuleOp"> {
+  let summary = "Lowers MPMD `ifrt.Reshard` to `ifrt.Call`";
+  let description = [{
+Replaces each MPMD `ifrt.Reshard` with an `ifrt.Call` to a newly created
+module. The module has a main function with a `ifrt.reshard_function` attribute,
+and that comprises of the `ifrt.Reshard` ops part of the MPMD reshard.
+
+For example, the following code
+```mlir
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+func.func @main(%arg0: !array0) -> (!array1) {
+  %0, %ctrl = ifrt.Reshard(%arg0) : (!array0) -> !array1
+  return %0: !array1
+}
+```
+
+will be replaced by
+
+```mlir
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [2]>
+func.func @main(%arg0: !array0) -> (!array1) {
+  %0, %ctrl = ifrt.Call(%arg) {ifrt.module_type = "mpmd_reshard"}
+      : (!array0) -> !array1
+  return %0: !array1
+}
+
+module @reshard attributes {
+    ifrt.num_devices = 3,
+    sym_visibility = "private"} {
+  func.func @main(%arg0: !array0) -> !array1
+      attributes {ifrt.reshard_function} {
+    %0, %ctrl = ifrt.Reshard(%arg0) : (!array0) -> !array1
+    return %0 : !array1
+  }
+}
+```
+  }];
+
+  let constructor = "CreateIfrtLowerMpmdReshardToCallPass()";
+}
+
+def IfrtPrecompileAtomProgramPreprocessingPass :
+    Pass<"ifrt-precompile-atom-program-preprocessing", "mlir::ModuleOp"> {
+  let summary = "Prepares atom modules for compilation depending on their type";
+  let description = [{
+This passes visits each CallOp and does the following:
+1. it sets `ifrt.module_type` attribute based on the platform name of the
+ devices used by the atom program at compilation time.
+2. depending on the module type it invokes a different preprocessing pipeline on
+ the atom program module to prepare it for compilation (e.g., set MHLO shardings
+ for XLA compilation).
+```
+  }];
+
+  let constructor = "CreateIfrtPrecompileAtomProgramPreprocessingPass()";
+  let options = [
+    ListOption<"platform_names", "platform_names", "std::string",
+               "The mapping from logical device ID to platform name (e.g., tpu, cuda) corresponding to the logical device ID.">
+  ];
+}
+
+def IfrtVerifyDeviceTypeConsistencyPass :
+    Pass<"ifrt-verify-device-type-consistency", "mlir::ModuleOp"> {
+  let summary = "Verify the device types in `ifrt.CallOp` to ensure consistency.";
+  let description = [{
+Verify that each `ifrt.CallOp` uses devices of a single platform type and the
+platform type is consistent with the dialects the callee is using.
+
+
+This pass fails if
+1. any `ifrt.CallOp` uses more than one platform type.
+2. any callee of `ifrt.CallOp` has a mixture of MHLO and TF dialects.
+3. the platform type and dialect in `ifrt.CallOp` callee is inconsistent with
+ each other.
+  }];
+
+  let constructor = "CreateIfrtVerifyDeviceTypeConsistencyPass()";
+  let options = [
+    ListOption<"platform_names", "platform_names", "std::string",
+               "The mapping from logical device ID to platform name (e.g., tpu, cuda) corresponding to the logical device ID.">
+  ];
+}
+
 #endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_

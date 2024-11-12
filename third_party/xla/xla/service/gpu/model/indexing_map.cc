@@ -29,7 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/optimization.h"
+#include "absl/log/check.h"
 #include "absl/numeric/int128.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -45,10 +45,6 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -106,9 +102,13 @@ void VisitSummands(mlir::AffineExpr expr, const Fn& visit) {
 
 class AffineExprSimplifier {
  public:
-  explicit AffineExprSimplifier(RangeEvaluator* range_evaluator)
+  explicit AffineExprSimplifier(
+      RangeEvaluator* range_evaluator,
+      IndexingMap::SimplifyPointDimensions simplify_point_dimensions =
+          IndexingMap::SimplifyPointDimensions::kReplace)
       : range_evaluator_(range_evaluator),
-        zero_(getAffineConstantExpr(0, range_evaluator_->GetMLIRContext())) {}
+        zero_(getAffineConstantExpr(0, range_evaluator_->GetMLIRContext())),
+        simplify_point_dimensions_(simplify_point_dimensions) {}
 
   // Simplifies the map as much as possible.
   mlir::AffineMap Simplify(mlir::AffineMap affine_map);
@@ -177,6 +177,7 @@ class AffineExprSimplifier {
 
   RangeEvaluator* range_evaluator_;
   AffineExpr zero_;
+  IndexingMap::SimplifyPointDimensions simplify_point_dimensions_;
 };
 
 AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
@@ -569,10 +570,13 @@ AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
     return expr;
   }
 
-  auto bounds = range_evaluator_->ComputeExpressionRange(expr);
-  if (bounds.IsPoint()) {
-    return getAffineConstantExpr(bounds.lower,
-                                 range_evaluator_->GetMLIRContext());
+  if (simplify_point_dimensions_ ==
+      IndexingMap::SimplifyPointDimensions::kReplace) {
+    auto bounds = range_evaluator_->ComputeExpressionRange(expr);
+    if (bounds.IsPoint()) {
+      return getAffineConstantExpr(bounds.lower,
+                                   range_evaluator_->GetMLIRContext());
+    }
   }
 
   switch (expr.getKind()) {
@@ -783,15 +787,17 @@ SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
 }  // namespace
 
 static constexpr std::string_view kVarKindDefault = "default";
-static constexpr std::string_view kVarKindThreadX = "thread_x";
-static constexpr std::string_view kVarKindThreadY = "thread_y";
-static constexpr std::string_view kVarKindThreadZ = "thread_z";
-static constexpr std::string_view kVarKindBlockX = "block_x";
-static constexpr std::string_view kVarKindBlockY = "block_y";
-static constexpr std::string_view kVarKindBlockZ = "block_z";
+static constexpr std::string_view kVarKindThreadX = "th_x";
+static constexpr std::string_view kVarKindThreadY = "th_y";
+static constexpr std::string_view kVarKindThreadZ = "th_z";
+static constexpr std::string_view kVarKindBlockX = "bl_x";
+static constexpr std::string_view kVarKindBlockY = "bl_y";
+static constexpr std::string_view kVarKindBlockZ = "bl_z";
+static constexpr std::string_view kVarKindWarp = "warp";
+static constexpr std::string_view kVarKindWarpThread = "th_w";
 
-std::string_view ToString(VariableKind type) {
-  switch (type) {
+std::string_view ToVariableName(VariableKind var_kind) {
+  switch (var_kind) {
     case VariableKind::kDefault:
       return kVarKindDefault;
     case VariableKind::kThreadX:
@@ -806,30 +812,30 @@ std::string_view ToString(VariableKind type) {
       return kVarKindBlockY;
     case VariableKind::kBlockZ:
       return kVarKindBlockZ;
+    case VariableKind::kWarp:
+      return kVarKindWarp;
+    case VariableKind::kWarpThread:
+      return kVarKindWarpThread;
   }
   llvm_unreachable("Unknown VariableType");
 }
 
-VariableKind ToVariableType(std::string_view type_name) {
-  if (type_name == kVarKindDefault) return VariableKind::kDefault;
-  if (type_name == kVarKindThreadX) return VariableKind::kThreadX;
-  if (type_name == kVarKindThreadY) return VariableKind::kThreadY;
-  if (type_name == kVarKindThreadZ) return VariableKind::kThreadZ;
-  if (type_name == kVarKindBlockX) return VariableKind::kBlockX;
-  if (type_name == kVarKindBlockY) return VariableKind::kBlockY;
-  if (type_name == kVarKindBlockZ) return VariableKind::kBlockZ;
-  llvm_unreachable("Unknown VariableType name");
+VariableKind ToVariableType(std::string_view var_name) {
+  if (var_name == kVarKindThreadX) return VariableKind::kThreadX;
+  if (var_name == kVarKindThreadY) return VariableKind::kThreadY;
+  if (var_name == kVarKindThreadZ) return VariableKind::kThreadZ;
+  if (var_name == kVarKindBlockX) return VariableKind::kBlockX;
+  if (var_name == kVarKindBlockY) return VariableKind::kBlockY;
+  if (var_name == kVarKindBlockZ) return VariableKind::kBlockZ;
+  if (var_name == kVarKindWarp) return VariableKind::kWarp;
+  if (var_name == kVarKindWarpThread) return VariableKind::kWarpThread;
+  return VariableKind::kDefault;
 }
 
 std::ostream& operator<<(std::ostream& out, VariableKind var_type) {
-  out << ToString(var_type);
+  out << ToVariableName(var_type);
   return out;
 }
-
-// Returns the output-to-input indexing map of the first output of `instr`
-IndexingMap GetIndexingMapForInstruction(const HloInstruction* instr,
-                                         int64_t operand_idx,
-                                         mlir::MLIRContext* mlir_context);
 
 std::ostream& operator<<(std::ostream& out, const Interval& interval) {
   out << absl::StrFormat("[%d, %d]", interval.lower, interval.upper);
@@ -965,42 +971,44 @@ Interval Interval::FloorDiv(int64_t rhs) const {
   return {std::min(a, b), std::max(a, b)};
 }
 
-bool operator==(const DimVar& lhs, const DimVar& rhs) {
+bool operator==(const IndexingMap::Variable& lhs,
+                const IndexingMap::Variable& rhs) {
   return lhs.bounds == rhs.bounds;
 }
 
-bool operator==(const RangeVar& lhs, const RangeVar& rhs) {
-  return lhs.range == rhs.range;
-}
-
-bool operator==(const RTVar& lhs, const RTVar& rhs) {
-  return lhs.feasible_values == rhs.feasible_values && lhs.hlo == rhs.hlo &&
-         lhs.map == rhs.map;
-}
-
-std::vector<DimVar> DimVarsFromTensorSizes(
+std::vector<IndexingMap::Variable> DimVarsFromTensorSizes(
     absl::Span<const int64_t> tensor_sizes) {
-  std::vector<DimVar> ranges;
+  std::vector<IndexingMap::Variable> ranges;
   ranges.reserve(tensor_sizes.size());
   for (int64_t size : tensor_sizes) {
-    ranges.push_back({Interval{0, size - 1}});
+    ranges.emplace_back(0, size - 1);
   }
   return ranges;
 }
 
-std::vector<RangeVar> RangeVarsFromTensorSizes(
+std::vector<IndexingMap::Variable> DimVarsFromGPUGrid(
+    absl::Span<const int64_t> grid_sizes) {
+  CHECK_EQ(grid_sizes.size(), 6)
+      << "Grid must be 6-dimensional (th_x, th_y, th_z, bl_x, bl_y, bl_z)";
+  return {
+      IndexingMap::Variable{0, grid_sizes[0] - 1, kVarKindThreadX},
+      IndexingMap::Variable{0, grid_sizes[1] - 1, kVarKindThreadY},
+      IndexingMap::Variable{0, grid_sizes[2] - 1, kVarKindThreadZ},
+      IndexingMap::Variable{0, grid_sizes[3] - 1, kVarKindBlockX},
+      IndexingMap::Variable{0, grid_sizes[4] - 1, kVarKindBlockY},
+      IndexingMap::Variable{0, grid_sizes[5] - 1, kVarKindBlockZ},
+  };
+}
+
+std::vector<IndexingMap::Variable> RangeVarsFromTensorSizes(
     absl::Span<const int64_t> tensor_sizes) {
-  std::vector<RangeVar> ranges;
-  ranges.reserve(tensor_sizes.size());
-  for (int64_t size : tensor_sizes) {
-    ranges.push_back({Interval{0, size - 1}});
-  }
-  return ranges;
+  return DimVarsFromTensorSizes(tensor_sizes);
 }
 
 IndexingMap::IndexingMap(
-    AffineMap affine_map, std::vector<DimVar> dimensions,
-    std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
+    AffineMap affine_map, std::vector<IndexingMap::Variable> dimensions,
+    std::vector<IndexingMap::Variable> range_vars,
+    std::vector<IndexingMap::Variable> rt_vars,
     absl::Span<std::pair<AffineExpr, Interval> const> constraints)
     : affine_map_(affine_map),
       dim_vars_(std::move(dimensions)),
@@ -1016,8 +1024,9 @@ IndexingMap::IndexingMap(
 }
 
 IndexingMap::IndexingMap(
-    AffineMap affine_map, std::vector<DimVar> dimensions,
-    std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
+    AffineMap affine_map, std::vector<IndexingMap::Variable> dimensions,
+    std::vector<IndexingMap::Variable> range_vars,
+    std::vector<IndexingMap::Variable> rt_vars,
     const llvm::DenseMap<AffineExpr, Interval>& constraints)
     : affine_map_(affine_map),
       dim_vars_(std::move(dimensions)),
@@ -1064,8 +1073,8 @@ const Interval& IndexingMap::GetSymbolBound(int64_t symbol_id) const {
   // we have to pick the correct bounds.
   int64_t range_var_count = GetRangeVarsCount();
   return symbol_id < range_var_count
-             ? range_vars_[symbol_id].range
-             : rt_vars_[symbol_id - range_var_count].feasible_values;
+             ? range_vars_[symbol_id].bounds
+             : rt_vars_[symbol_id - range_var_count].bounds;
 }
 
 Interval& IndexingMap::GetMutableSymbolBound(int64_t symbol_id) {
@@ -1073,18 +1082,18 @@ Interval& IndexingMap::GetMutableSymbolBound(int64_t symbol_id) {
   // we have to pick the correct bounds.
   int64_t range_var_count = GetRangeVarsCount();
   return symbol_id < range_var_count
-             ? range_vars_[symbol_id].range
-             : rt_vars_[symbol_id - range_var_count].feasible_values;
+             ? range_vars_[symbol_id].bounds
+             : rt_vars_[symbol_id - range_var_count].bounds;
 }
 
 std::vector<Interval> IndexingMap::GetSymbolBounds() const {
   std::vector<Interval> bounds;
   bounds.reserve(affine_map_.getNumSymbols());
   for (const auto& range_var : range_vars_) {
-    bounds.push_back(range_var.range);
+    bounds.push_back(range_var.bounds);
   }
   for (const auto& rt_var : rt_vars_) {
-    bounds.push_back(rt_var.feasible_values);
+    bounds.push_back(rt_var.bounds);
   }
   return bounds;
 }
@@ -1296,10 +1305,8 @@ bool IndexingMap::Verify(std::ostream& out) const {
 // RangeEvaluator for every constraint. Note that we start with "expr"
 // simplification, because the ranges of constraints were already optimized once
 // when IndexingMap was constructed.
-bool IndexingMap::Simplify() {
+bool IndexingMap::Simplify(SimplifyPointDimensions simplify_point_dimensions) {
   if (IsUndefined() || IsKnownEmpty()) return false;
-
-  bool rtvars_were_eliminated = ReplaceConstantRTVars();
 
   // Simplify constraints to shrink the lower/upper bounds of dims and symbols.
   bool constraints_were_simplified = false;
@@ -1323,13 +1330,13 @@ bool IndexingMap::Simplify() {
   RangeEvaluator range_evaluator(*this, GetMLIRContext(),
                                  /*use_constraints=*/true);
   AffineMap simplified_affine_map =
-      AffineExprSimplifier(&range_evaluator).Simplify(affine_map_);
+      AffineExprSimplifier(&range_evaluator, simplify_point_dimensions)
+          .Simplify(affine_map_);
   bool affine_map_was_simplified = simplified_affine_map != affine_map_;
   if (affine_map_was_simplified) {
     affine_map_ = simplified_affine_map;
   }
-  return affine_map_was_simplified || constraints_were_simplified ||
-         rtvars_were_eliminated;
+  return affine_map_was_simplified || constraints_were_simplified;
 }
 
 bool AffineExprSimplifier::SimplifyConstraintExprs(IndexingMap& map) {
@@ -1543,7 +1550,7 @@ bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
   SmallVector<AffineExpr, 2> dim_replacements;
   if (num_dims_changed) {
     affine_map_ = mlir::compressDims(affine_map_, unused_dims);
-    std::vector<DimVar> compressed_dim_vars;
+    std::vector<IndexingMap::Variable> compressed_dim_vars;
     dim_replacements = SmallVector<AffineExpr, 2>(
         num_dims_before, getAffineConstantExpr(0, mlir_context));
     int64_t used_dims_count = 0;
@@ -1562,8 +1569,8 @@ bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
     affine_map_ = mlir::compressSymbols(affine_map_, unused_symbols);
     symbol_replacements = SmallVector<AffineExpr, 2>(
         num_symbols_before, getAffineConstantExpr(0, mlir_context));
-    std::vector<RangeVar> compressed_range_vars;
-    std::vector<RTVar> compressed_rt_vars;
+    std::vector<IndexingMap::Variable> compressed_range_vars;
+    std::vector<IndexingMap::Variable> compressed_rt_vars;
     MLIRContext* mlir_context = GetMLIRContext();
     int64_t used_symbols_count = 0;
     auto range_vars_count = range_vars_.size();
@@ -1626,23 +1633,24 @@ void IndexingMap::ResetToKnownEmpty() {
     dim_var.bounds = Interval{0, -1};
   }
   for (auto& range_var : range_vars_) {
-    range_var.range = Interval{0, -1};
+    range_var.bounds = Interval{0, -1};
   }
   constraints_.clear();
   is_known_empty_ = true;
 }
 
 bool IndexingMap::VerifyVariableIntervals() {
+  // TODO: Check if the variable names are unique.
   return llvm::all_of(dim_vars_,
-                      [](const DimVar& dim_var) {
+                      [](const IndexingMap::Variable& dim_var) {
                         return dim_var.bounds.IsFeasible();
                       }) &&
          llvm::all_of(range_vars_,
-                      [](const RangeVar& range_var) {
-                        return range_var.range.IsFeasible();
+                      [](const IndexingMap::Variable& range_var) {
+                        return range_var.bounds.IsFeasible();
                       }) &&
-         llvm::all_of(rt_vars_, [](const RTVar& rt_var) {
-           return rt_var.feasible_values.IsFeasible();
+         llvm::all_of(rt_vars_, [](const IndexingMap::Variable& rt_var) {
+           return rt_var.bounds.IsFeasible();
          });
 }
 
@@ -1755,17 +1763,19 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
   // The symbols in the composed map, i.e. combined
   // producer_map.compose(consumer_map) are packed as
   // [range_vars(second)|rt_vars(second)|range_vars(first)|rt_vars(first)].
-  std::vector<RangeVar> combined_range_vars;
+  std::vector<IndexingMap::Variable> combined_range_vars;
   combined_range_vars.reserve(second.GetRangeVarsCount() +
                               first.GetRangeVarsCount());
-  for (const RangeVar& range_var : llvm::concat<const RangeVar>(
-           second.GetRangeVars(), first.GetRangeVars())) {
+  for (const IndexingMap::Variable& range_var :
+       llvm::concat<const IndexingMap::Variable>(second.GetRangeVars(),
+                                                 first.GetRangeVars())) {
     combined_range_vars.push_back(range_var);
   }
-  std::vector<RTVar> combined_rt_vars;
+  std::vector<IndexingMap::Variable> combined_rt_vars;
   combined_rt_vars.reserve(second.GetRTVarsCount() + first.GetRTVarsCount());
-  for (const RTVar& rt_var :
-       llvm::concat<const RTVar>(second.GetRTVars(), first.GetRTVars())) {
+  for (const IndexingMap::Variable& rt_var :
+       llvm::concat<const IndexingMap::Variable>(second.GetRTVars(),
+                                                 first.GetRTVars())) {
     combined_rt_vars.push_back(rt_var);
   }
   // The symbols in the composed map have to be permuted to keep the invariant
@@ -1863,7 +1873,7 @@ bool IndexingMap::RescaleSymbols() {
         symbol_expr, constant_expr * symbol_expr + shift_value,
         affine_map_.getNumDims(), affine_map_.getNumSymbols());
 
-    auto& symbol_range = range_vars_[symbol_expr.getPosition()].range;
+    auto& symbol_range = range_vars_[symbol_expr.getPosition()].bounds;
     symbol_range.lower = (symbol_range.lower - shift_value) / scaling_factor;
     symbol_range.upper = (symbol_range.upper - shift_value) / scaling_factor;
   }
@@ -1877,191 +1887,6 @@ bool IndexingMap::RescaleSymbols() {
   constraints_ = std::move(new_constraints);
 
   return !to_delete.empty();
-}
-
-// The return type of `OptimizeRTVar` below
-struct RTVarOptimizationResult {
-  // An affine expr which maps the old RTVar to the new, optimized RTVar:
-  // `()[sk] -> s'k` (with k being `symbol_index` in the `OptimizeRTVar` call).
-  // If `expr` doesn't depend on `sk` it means the RTVar could be optimized
-  // away completely and the value of `rt_var` can be ignored.
-  AffineExpr remapped_symbol;
-
-  // The new, optimized RTVar
-  RTVar rt_var;
-};
-
-namespace {
-// Tries to optimize the given RTVar by removing some parts (or entirety) of
-// the dependent HLO graph:
-//
-// 1. If no optimization is possible it returns `{sk, rt_var}` - the
-// identity expr and the unchanged rt_var.
-//
-// 2. If full optimization is possible, it returns
-// `{const, rt_var}` - an affine expr that does not anymore depend
-// on `sk` and an arbitrary rt_var.
-//
-// 3. if partial optimization is possible, it returns
-// `{()[sk] -> f(sk), rt_var_new }` - an affine expression that maps from the
-// old RTVar to the new RTVar, and the new RTVar itself. The new RTVar now
-// references some HLO subgraph of the old RTVar's HLO.
-RTVarOptimizationResult OptimizeRTVar(RTVar rt_var, int64_t symbol_index,
-                                      MLIRContext* mlir_context) {
-  const auto symbol = getAffineSymbolExpr(symbol_index, mlir_context);
-  auto result_expr = symbol;
-
-  while (true) {
-    if (auto constant_expr = DynCast<HloConstantInstruction>(rt_var.hlo)) {
-      if (rt_var.map.isConstant()) {
-        const auto idx = rt_var.map.getConstantResults();
-        result_expr = result_expr.replace(
-            symbol, getAffineConstantExpr(
-                        constant_expr->literal().GetIntegralAsS64(idx).value(),
-                        mlir_context));
-      }
-      return {result_expr, rt_var};
-    }
-
-    if (auto iota_expr = DynCast<HloIotaInstruction>(rt_var.hlo)) {
-      auto iota_dimension = iota_expr->iota_dimension();
-      CHECK(iota_dimension < rt_var.map.getNumResults());
-      return {
-          result_expr.replace(symbol, rt_var.map.getResults()[iota_dimension]),
-          rt_var};
-    }
-
-    auto is_indexing_transformation = [](const HloInstruction* instr) {
-      return instr->opcode() == HloOpcode::kBitcast ||
-             instr->opcode() == HloOpcode::kBroadcast ||
-             instr->opcode() == HloOpcode::kReshape ||
-             instr->opcode() == HloOpcode::kReverse ||
-             instr->opcode() == HloOpcode::kSlice ||
-             instr->opcode() == HloOpcode::kTranspose;
-    };
-
-    if (is_indexing_transformation(rt_var.hlo)) {
-      auto instr_indexing_map =
-          GetIndexingMapForInstruction(rt_var.hlo, 0, mlir_context);
-
-      rt_var.hlo = rt_var.hlo->operand(0);
-      rt_var.map = instr_indexing_map.GetAffineMap().compose(rt_var.map);
-      continue;
-    }
-
-    if (rt_var.hlo->opcode() == HloOpcode::kNegate) {
-      rt_var.hlo = rt_var.hlo->operand(0);
-      result_expr = result_expr.replace(symbol, -symbol);
-      continue;
-    }
-
-    if (rt_var.hlo->opcode() == HloOpcode::kAdd ||
-        rt_var.hlo->opcode() == HloOpcode::kSubtract ||
-        rt_var.hlo->opcode() == HloOpcode::kMultiply ||
-        rt_var.hlo->opcode() == HloOpcode::kDivide) {
-      const auto apply_op = [&](const AffineExpr& lhs,
-                                const AffineExpr& rhs) -> AffineExpr {
-        switch (rt_var.hlo->opcode()) {
-          case HloOpcode::kAdd:
-            return lhs + rhs;
-          case HloOpcode::kSubtract:
-            return lhs - rhs;
-          case HloOpcode::kMultiply:
-            return lhs * rhs;
-          case HloOpcode::kDivide:
-            return lhs.floorDiv(rhs);
-          default:
-            ABSL_UNREACHABLE();
-        }
-      };
-
-      auto lhs = OptimizeRTVar(
-          RTVar{rt_var.feasible_values, rt_var.hlo->operand(0), rt_var.map},
-          symbol_index, mlir_context);
-
-      if (!lhs.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
-        // This means that lhs is constant-like and we can eliminate the
-        // operand.
-        result_expr =
-            result_expr.replace(symbol, apply_op(lhs.remapped_symbol, symbol));
-
-        // We continue optimizing the `rhs` operand
-        rt_var.hlo = rt_var.hlo->operand(1);
-        continue;
-      }
-
-      auto rhs = OptimizeRTVar(
-          RTVar{rt_var.feasible_values, rt_var.hlo->operand(1), rt_var.map},
-          symbol_index, mlir_context);
-
-      if (!rhs.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
-        // This means that rhs is constant-like and we can eliminate the
-        // operand.
-        result_expr =
-            result_expr.replace(symbol, apply_op(symbol, rhs.remapped_symbol));
-
-        // We can also take advantage of the optimization already done for lhs:
-        result_expr = result_expr.replace(symbol, lhs.remapped_symbol);
-        rt_var = lhs.rt_var;
-        continue;
-      }
-    }
-
-    return {result_expr, rt_var};
-  }
-}
-}  // namespace
-
-bool IndexingMap::ReplaceConstantRTVars() {
-  if (rt_vars_.empty()) return false;
-
-  bool did_simplify = false;
-
-  for (auto index = 0; index < rt_vars_.size(); ++index) {
-    auto& rt_var = rt_vars_[index];
-
-    // range_vars and rt_vars share the symbol space, with the rt_vars coming
-    // after the range_vars.
-    auto symbol_index = range_vars_.size() + index;
-    auto rt_var_symbol = getAffineSymbolExpr(symbol_index, GetMLIRContext());
-
-    RTVarOptimizationResult result =
-        OptimizeRTVar(rt_var, symbol_index, GetMLIRContext());
-
-    if (result.remapped_symbol != rt_var_symbol) {
-      did_simplify = true;
-      affine_map_ = affine_map_.replace(
-          {{rt_var_symbol, result.remapped_symbol}}, affine_map_.getNumDims(),
-          affine_map_.getNumSymbols());
-
-      llvm::DenseMap<AffineExpr, AffineExpr> replacements;
-
-      for (const auto& [constraint, interval] : constraints_) {
-        auto modified_constraint =
-            constraint.replace(rt_var_symbol, result.remapped_symbol);
-
-        if (constraint == modified_constraint) continue;
-        replacements[constraint] = modified_constraint;
-      }
-
-      for (const auto& [old_expr, new_expr] : replacements) {
-        auto interval = constraints_.at(old_expr);
-        constraints_.erase(old_expr);
-        constraints_[new_expr] = interval;
-      }
-    }
-
-    if (result.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
-      // If we still depend on the rt_var, then we update it.
-      if (rt_var != result.rt_var) {
-        rt_var = std::move(result.rt_var);
-        did_simplify = true;
-      }
-    } else {
-      did_simplify = true;
-    }
-  }
-  return did_simplify;
 }
 
 bool IndexingMap::IsRangeVarSymbol(mlir::AffineSymbolExpr symbol) const {
@@ -2086,7 +1911,7 @@ IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
   MLIRContext* mlir_context = GetMLIRContext();
   int64_t num_vars = num_dims + num_symbols;
 
-  std::vector<DimVar> new_dim_vars;
+  std::vector<IndexingMap::Variable> new_dim_vars;
   new_dim_vars.reserve(num_vars);
 
   // // Populate the existing dims.
@@ -2095,13 +1920,10 @@ IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
   // Capture the existing symbols as dims.
   SmallVector<AffineExpr> syms_replacements;
   int64_t symbol_id = num_dims;
-  for (const auto& range_var : range_vars_) {
+  for (const IndexingMap::Variable& var :
+       llvm::concat<const IndexingMap::Variable>(range_vars_, rt_vars_)) {
     syms_replacements.push_back(getAffineDimExpr(symbol_id++, mlir_context));
-    new_dim_vars.push_back(DimVar{range_var.range});
-  }
-  for (const auto& rt_var : rt_vars_) {
-    syms_replacements.push_back(getAffineDimExpr(symbol_id++, mlir_context));
-    new_dim_vars.push_back(DimVar{rt_var.feasible_values});
+    new_dim_vars.push_back(IndexingMap::Variable{var.bounds});
   }
 
   // Update constraints.

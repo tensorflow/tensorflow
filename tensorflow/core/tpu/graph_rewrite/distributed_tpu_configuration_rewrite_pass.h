@@ -33,7 +33,7 @@ namespace tensorflow {
 // device of each host in the same job as the given TPU_SYSTEM device.
 class DistributedTPUConfigurationRewritePass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 // Replaces dummy ShutdownDistributedTPU Ops assigned to TPU_SYSTEM
@@ -42,7 +42,7 @@ class DistributedTPUConfigurationRewritePass : public GraphOptimizationPass {
 // host in the same job as the given TPU_SYSTEM device.
 class DistributedTPUShutdownRewritePass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 }  // namespace tensorflow

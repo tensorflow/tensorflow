@@ -20,20 +20,20 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/lib/matrix.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/matrix.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/reference_util.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
@@ -314,6 +314,7 @@ class ParametricDotTest : public DotOperationTest,
       std::string_view name(
           ::testing::UnitTest::GetInstance()->current_test_info()->name());
       if (name.find("TestF16/270x270x520_MajorToMinor") != std::string::npos) {
+        GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
         execution_options_.mutable_debug_options()->set_xla_gpu_autotune_level(
             0);
         DotTestParam param = GetParam();

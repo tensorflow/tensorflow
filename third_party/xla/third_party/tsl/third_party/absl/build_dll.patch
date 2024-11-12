@@ -1,0 +1,14 @@
+Index: absl/copts/GENERATED_copts.bzl
+<+>UTF-8
+===================================================================
+diff --git a/absl/copts/GENERATED_copts.bzl b/absl/copts/GENERATED_copts.bzl
+--- a/absl/copts/GENERATED_copts.bzl	(revision fb3621f4f897824c0dbe0615fa94543df6192f30)
++++ b/absl/copts/GENERATED_copts.bzl	(date 1729733688013)
+@@ -11,6 +11,7 @@
+     "/D_CRT_SECURE_NO_WARNINGS",
+     "/D_SCL_SECURE_NO_WARNINGS",
+     "/D_ENABLE_EXTENDED_ALIGNED_STORAGE",
++    "/DABSL_BUILD_DLL",
+ ]
+ 
+ ABSL_CLANG_CL_TEST_FLAGS = [

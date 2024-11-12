@@ -27,15 +27,16 @@ namespace tensorflow {
 
 // Adds a new TensorFlow graph node, with the output convention matching most TF
 // code rather than the order used by Graph::AddNode().
-Status AddNode(const NodeDef& n_def, Node** n, Graph* graph) {
-  Status add_node_status;
+absl::Status AddNode(const NodeDef& n_def, Node** n, Graph* graph) {
+  absl::Status add_node_status;
   *n = graph->AddNode(n_def, &add_node_status);
   return add_node_status;
 }
 
 // Replaces one TensorFlow graph node with another (specified by a NodeDef),
 // moving all the edges.
-Status ReplaceNode(const NodeDef& to_def, Node* from, Node** to, Graph* graph) {
+absl::Status ReplaceNode(const NodeDef& to_def, Node* from, Node** to,
+                         Graph* graph) {
   std::vector<const Edge*> edges;
   VLOG(1) << "Node: " << from->DebugString() << " in_edges";
   for (const Edge* edge : from->in_edges()) {

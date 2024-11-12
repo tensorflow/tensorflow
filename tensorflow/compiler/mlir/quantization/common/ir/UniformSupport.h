@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/APSInt.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -176,7 +176,7 @@ class UniformQuantizedValueConverter {
     } else {
       signless_result = static_cast<uint8_t>(clamped);
     }
-    return APInt(storage_bit_width_, signless_result);
+    return APInt(storage_bit_width_, signless_result, /*isSigned=*/is_signed_);
   }
 
   // Keep both APFloat and double versions of the quantization parameters

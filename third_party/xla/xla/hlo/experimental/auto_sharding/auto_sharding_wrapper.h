@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
@@ -39,9 +40,23 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
+// The high-level "recipe" for solving an Auto Sharding problem.
+absl::StatusOr<AutoShardingSolverOutput> Solve(
+    const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
+    const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
+    const CostGraph& cost_graph, const AliasSet& alias_set,
+    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& node_intervals,
+    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& edge_intervals,
+    const std::vector<absl::btree_set<int64_t>>& node_groups,
+    const std::vector<absl::btree_set<int64_t>>& edge_groups,
+    const AutoShardingOption& option, absl::string_view request_prefix,
+    const absl::flat_hash_map<std::string, HloSharding>&
+        sharding_propagation_solution = {});
+
 // A wrapper around the solver that converts the given objects into a
 // combinatorial optimization problem & solves it.
-AutoShardingSolverResult CreateAutoShardingSolverRequestAndCallSolver(
+absl::StatusOr<AutoShardingSolverOutput>
+CreateAutoShardingSolverRequestAndCallSolver(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
     const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
     const CostGraph& cost_graph, const AliasSet& alias_set,

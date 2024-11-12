@@ -6,6 +6,7 @@ load(
 )
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:plugin.bzl", "plugins")
+load("//xla/tsl:tsl.bzl", "if_oss")
 
 # Possible backend values for the GPU family.
 NVIDIA_GPU_BACKENDS = [
@@ -14,7 +15,7 @@ NVIDIA_GPU_BACKENDS = [
     "gpu_v100",
     "gpu_a100",
     "gpu_h100",
-]
+] + if_oss(["gpu_b100"])
 
 # The generic "gpu" backend includes the actual backends in this list.
 NVIDIA_GPU_DEFAULT_BACKENDS = [
@@ -47,7 +48,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         new_disabled_backends.extend(NVIDIA_GPU_BACKENDS)
 
     new_backend_tags = {key: value for key, value in backend_tags.items() if key != "gpu"}
-    gpu_backend_tags = backend_tags.get("gpu", [])
+    gpu_backend_tags = backend_tags.get("gpu", tf_gpu_tests_tags())
     for key in NVIDIA_GPU_BACKENDS:
         new_backend_tags.setdefault(key, gpu_backend_tags[:])
 
@@ -63,6 +64,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         "gpu_v100": (7, 0),
         "gpu_a100": (8, 0),
         "gpu_h100": (9, 0),
+        "gpu_b100": if_oss((10, 0)),
     }
     for gpu_backend in NVIDIA_GPU_BACKENDS:
         all_tags = new_backend_tags[gpu_backend]

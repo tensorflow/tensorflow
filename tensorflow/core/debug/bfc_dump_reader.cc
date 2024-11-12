@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 MemoryDump ReadDumpFile(const string& fname) {
-  Status status;
+  absl::Status status;
   uint64 file_size = 0;
   status = Env::Default()->GetFileSize(fname, &file_size);
   if (!status.ok()) {

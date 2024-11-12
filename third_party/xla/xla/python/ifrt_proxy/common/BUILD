@@ -72,6 +72,7 @@ tf_proto_library(
         "//xla/pjrt:execute_options_proto",
         "//xla/python/ifrt:attribute_map_proto",
         "//xla/python/ifrt:dtype_proto",
+        "//xla/python/ifrt:execute_options_proto",
         "//xla/python/ifrt:remap_plan_proto",
         "//xla/python/ifrt:serdes_proto",
         "//xla/python/ifrt:shape_proto",
@@ -105,6 +106,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -119,9 +121,6 @@ ifrt_proxy_cc_test(
         ":types",
         ":types_proto_cc",
         "//xla/pjrt:pjrt_common",
-        "//xla/python/ifrt",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
@@ -129,16 +128,23 @@ ifrt_proxy_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "array_util_proto",
+    srcs = ["array_util.proto"],
+)
+
 cc_library(
     name = "array_util",
     srcs = ["array_util.cc"],
     hdrs = ["array_util.h"],
     deps = [
+        ":array_util_proto_cc",
         "//xla/python/ifrt",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -150,6 +156,7 @@ ifrt_proxy_cc_test(
     deps = [
         ":array_util",
         "//xla/python/ifrt",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
@@ -163,6 +170,7 @@ cc_library(
     deps = [
         "//xla/python/ifrt:plugin_program_serdes",
         "//xla/python/ifrt/hlo:hlo_program_serdes",
+        "//xla/python/ifrt/ir:ifrt_ir_program_serdes",
     ],
     alwayslink = True,
 )

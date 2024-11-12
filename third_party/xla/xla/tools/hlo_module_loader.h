@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TOOLS_HLO_MODULE_LOADER_H_
 #define XLA_TOOLS_HLO_MODULE_LOADER_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/tools/run_hlo_module.pb.h"
 
 namespace xla {

@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -36,9 +36,9 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
-#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
+#include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
 
 namespace xla {
 namespace sdy {
@@ -51,18 +51,15 @@ using ::mlir::SmallVector;
 using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::SymbolTable;
-using ::mlir::func::FuncOp;
 using ::mlir::sdy::AxisRefAttr;
 using ::mlir::sdy::DimensionShardingAttr;
 using ::mlir::sdy::getMeshAttr;
-using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::ManualComputationOp;
 using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::MeshAxisAttr;
 using ::mlir::sdy::MeshOp;
 using ::mlir::sdy::TensorShardingAttr;
-using ::mlir::sdy::TensorShardingPerValueAttr;
 
 bool hasSizeOneAxes(MeshOp meshOp) {
   return llvm::any_of(meshOp.getMesh().getAxes(),
@@ -73,12 +70,12 @@ MeshAttr removeSizeOneAxes(MeshAttr mesh) {
   SmallVector<MeshAxisAttr> axes;
   llvm::copy_if(mesh.getAxes(), std::back_inserter(axes),
                 [](MeshAxisAttr axis) { return axis.getSize() != 1; });
-  return MeshAttr::get(mesh.getContext(), axes);
+  return MeshAttr::get(mesh.getContext(), axes, mesh.getDeviceIds());
 }
 
 TensorShardingAttr removeSizeOneAxes(TensorShardingAttr sharding,
                                      const SymbolTable& symbolTable) {
-  MeshAttr mesh = getMeshAttr(symbolTable, sharding.getMeshName());
+  MeshAttr mesh = sharding.getMesh(symbolTable);
   CHECK(mesh) << "unknown mesh: " << std::string_view(sharding.getMeshName());
 
   auto isNotSizeOne = [&](AxisRefAttr axis) { return axis.getSize(mesh) != 1; };
@@ -108,77 +105,29 @@ TensorShardingAttr removeSizeOneAxes(TensorShardingAttr sharding,
   llvm::copy_if(sharding.getReplicatedAxes(),
                 std::back_inserter(replicatedAxes), isNotSizeOne);
 
-  return TensorShardingAttr::get(sharding.getContext(), sharding.getMeshName(),
-                                 dimShardings, replicatedAxes);
-}
-
-TensorShardingPerValueAttr removeSizeOneAxes(
-    TensorShardingPerValueAttr shardings, const SymbolTable& symbolTable) {
-  SmallVector<TensorShardingAttr> newShardings;
-  newShardings.reserve(shardings.size());
-  for (TensorShardingAttr sharding : shardings.getShardings()) {
-    newShardings.push_back(removeSizeOneAxes(sharding, symbolTable));
+  // Remove for inlined mesh.
+  mlir::Attribute meshOrRef = sharding.getMeshOrRef();
+  if (auto mesh = mlir::dyn_cast<MeshAttr>(meshOrRef)) {
+    meshOrRef = removeSizeOneAxes(mesh);
   }
-  return TensorShardingPerValueAttr::get(shardings.getContext(), newShardings);
+
+  return TensorShardingAttr::get(sharding.getContext(), meshOrRef, dimShardings,
+                                 replicatedAxes);
 }
 
-ManualAxesAttr removeSizeOneAxes(ManualAxesAttr manualAxes, MeshAttr mesh) {
-  SmallVector<StringAttr> newAxes;
-  llvm::copy_if(
-      manualAxes.getValue(), std::back_inserter(newAxes),
-      [&](StringAttr axisName) { return mesh.getAxisSize(axisName) != 1; });
-  return ManualAxesAttr::get(manualAxes.getContext(), newAxes);
-}
-
-void removeSizeOneAxes(ManualComputationOp manualComputationOp,
-                       const SymbolTable& symbolTable) {
-  CHECK(!manualComputationOp->getOperands().empty() &&
-        !manualComputationOp->getResults().empty())
-      << "ManualComputationOp must have at least one operand or one result";
-  std::optional<StringRef> meshName = mlir::sdy::getCommonMeshName(
+void removeSizeOneManualAxes(ManualComputationOp manualComputationOp,
+                             const SymbolTable& symbolTable) {
+  MeshAttr mesh = mlir::sdy::getCommonMesh(
       manualComputationOp.getInShardings().getShardings(),
-      manualComputationOp.getOutShardings().getShardings());
-  CHECK(meshName) << "all in/out shardings must have the same mesh";
-  MeshAttr mesh = getMeshAttr(symbolTable, *meshName);
-  CHECK(mesh) << "unknown mesh: " << std::string_view(*meshName);
+      manualComputationOp.getOutShardings().getShardings(), symbolTable);
+  CHECK(mesh) << "no common mesh found for ManualComputationOp";
 
-  manualComputationOp.setInShardingsAttr(
-      removeSizeOneAxes(manualComputationOp.getInShardingsAttr(), symbolTable));
-  manualComputationOp.setOutShardingsAttr(removeSizeOneAxes(
-      manualComputationOp.getOutShardingsAttr(), symbolTable));
+  SmallVector<StringAttr> newManualAxes;
+  llvm::copy_if(
+      manualComputationOp.getManualAxes(), std::back_inserter(newManualAxes),
+      [&](StringAttr axisName) { return mesh.getAxisSize(axisName) != 1; });
   manualComputationOp.setManualAxesAttr(
-      removeSizeOneAxes(manualComputationOp.getManualAxesAttr(), mesh));
-}
-
-void removeSizeOneAxes(FuncOp funcOp, const SymbolTable& symbolTable) {
-  for (mlir::BlockArgument arg : funcOp.getArguments()) {
-    if (auto sharding = mlir::sdy::getSharding(arg)) {
-      mlir::sdy::setSharding(arg, removeSizeOneAxes(sharding, symbolTable));
-    }
-  }
-
-  for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
-    if (auto sharding = funcOp.getResultAttrOfType<TensorShardingAttr>(
-            resNum, kShardingAttr)) {
-      funcOp.setResultAttr(resNum, kShardingAttr,
-                           removeSizeOneAxes(sharding, symbolTable));
-    }
-  }
-
-  funcOp.front().walk([&](Operation* op) {
-    return mlir::TypeSwitch<Operation*, void>(op)
-        .Case<ManualComputationOp>(
-            [&](ManualComputationOp manualComputationOp) {
-              removeSizeOneAxes(manualComputationOp, symbolTable);
-            })
-        .Default([&](Operation* op) {
-          if (auto sharding = op->getAttrOfType<TensorShardingPerValueAttr>(
-                  kShardingAttr)) {
-            op->setAttr(kShardingAttr,
-                        removeSizeOneAxes(sharding, symbolTable));
-          }
-        });
-  });
+      ManualAxesAttr::get(manualComputationOp.getContext(), newManualAxes));
 }
 
 class SdyRoundTripRemoveSizeOneAxesPass
@@ -190,8 +139,7 @@ class SdyRoundTripRemoveSizeOneAxesPass
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
-    mlir::SymbolTableCollection symbolTableCollection;
-    SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(moduleOp);
+    SymbolTable symbolTable(moduleOp);
 
     if (llvm::none_of(moduleOp.getOps<MeshOp>(), hasSizeOneAxes)) {
       // Nothing to do.
@@ -200,9 +148,17 @@ class SdyRoundTripRemoveSizeOneAxesPass
 
     LOG(INFO) << "[Shardy] removing axes of size one.";
 
-    for (auto funcOp : moduleOp.getOps<FuncOp>()) {
-      removeSizeOneAxes(funcOp, symbolTable);
-    }
+    mlir::sdy::transformShardings(
+        moduleOp,
+        [&](TensorShardingAttr sharding) {
+          return removeSizeOneAxes(sharding, symbolTable);
+        },
+        [&](Operation* op) {
+          if (auto manualComputationOp =
+                  mlir::dyn_cast<ManualComputationOp>(op)) {
+            removeSizeOneManualAxes(manualComputationOp, symbolTable);
+          }
+        });
 
     for (auto meshOp : moduleOp.getOps<MeshOp>()) {
       meshOp.setMeshAttr(removeSizeOneAxes(meshOp.getMesh()));

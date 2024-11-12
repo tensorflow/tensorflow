@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -650,6 +651,161 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   commands.Emplace<GemmCmd>(s0, config.value(), slice_lhs, slice_rhs, slice_out,
                             slice_workspace,
                             /*deterministic=*/true);
+
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
+
+  ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
+  BufferAllocations allocations({lhs, rhs, out, workspace}, 0, &allocator);
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+
+  Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+  TF_ASSERT_OK(thunk.Initialize(
+      {executor, source, &allocations, stream.get(), stream.get()}));
+
+  // Execute command buffer thunk and verify that it executed a GEMM.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Copy `out` data back to host.
+  std::vector<float> dst(6, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
+
+  ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
+
+  // Prepare buffer allocation for updating command buffer.
+  se::DeviceMemory<float> updated_out = executor->AllocateArray<float>(2 * 3);
+  TF_ASSERT_OK(stream->MemZero(&updated_out, out_length));
+
+  // Update buffer allocation to updated `out` buffer.
+  allocations =
+      BufferAllocations({lhs, rhs, updated_out, workspace}, 0, &allocator);
+
+  // Thunk execution should automatically update underlying command buffer.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Copy `updated_out` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), updated_out, out_length));
+
+  ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
+
+  // Try to update the command buffer with the same buffers.
+  TF_ASSERT_OK(stream->MemZero(&updated_out, out_length));
+
+  // Thunk execution should automatically update underlying command buffer.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Copy `updated_out` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), updated_out, out_length));
+
+  ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
+}
+
+TEST(CommandBufferThunkTest, DynamicSliceFusionCmd) {
+  if (!IsAtLeastCuda12300()) {
+    GTEST_SKIP() << "CUDA graph tracing is not supported";
+  }
+
+  se::StreamExecutor* executor = GpuExecutor();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  int64_t lhs_length = sizeof(float) * 4 * 4;
+  int64_t fake_lhs_length = sizeof(float) * 2 * 4;
+  int64_t rhs_length = sizeof(float) * 4 * 3;
+  int64_t out_length = sizeof(float) * 2 * 3;
+
+  // Prepare arguments:
+  // lhs = [1.0, 2.0, 3.0, 4.0
+  //        5.0, 6.0, 7.0, 8.0]
+  // rhs = [1.0, 1.0, 1.0
+  //        1.0, 1.0, 1.0
+  //        1.0, 1.0, 1.0
+  //        1.0, 1.0, 1.0]
+  se::DeviceMemory<float> lhs = executor->AllocateArray<float>(4 * 4);
+  std::vector<float> lhs_arr{0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+  TF_ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
+
+  se::DeviceMemory<float> rhs = executor->AllocateArray<float>(4 * 3);
+  std::vector<float> rhs_arr(12, 1);
+  TF_ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
+
+  se::DeviceMemory<float> out = executor->AllocateArray<float>(2 * 3);
+  TF_ASSERT_OK(stream->MemZero(&out, out_length));
+
+  se::DeviceMemory<float> workspace =
+      executor->AllocateArray<float>(1024 * 1024);
+  TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
+
+  // Prepare buffer allocations for recording command buffer.
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
+  fake_allocations[0] = std::make_unique<BufferAllocation>(
+      /*index=*/0, fake_lhs_length, /*color=*/0);
+  fake_allocations[1] =
+      std::make_unique<BufferAllocation>(/*index=*/1, rhs_length, /*color=*/0);
+  fake_allocations[2] =
+      std::make_unique<BufferAllocation>(/*index=*/2, out_length,
+                                         /*color=*/0);
+
+  fake_allocations[3] =
+      std::make_unique<BufferAllocation>(/*index=*/3, 1024 * 1024,
+                                         /*color=*/0);
+  BufferAllocation::Slice fake_slice_lhs(fake_allocations[0].get(), 0,
+                                         fake_lhs_length);
+  BufferAllocation::Slice slice_rhs(fake_allocations[1].get(), 0, rhs_length);
+  BufferAllocation::Slice slice_out(fake_allocations[2].get(), 0, out_length);
+  BufferAllocation::Slice slice_workspace(fake_allocations[3].get(), 0,
+                                          1024 * 1024);
+  auto config =
+      GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
+                      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
+                      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0,
+                      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
+                      se::blas::kDefaultComputePrecision, false, false);
+  ASSERT_TRUE(config.ok());
+
+  // Prepare commands sequence for constructing command buffer.
+  std::unique_ptr<CommandBufferCmdSequence> embed_commands =
+      std::make_unique<CommandBufferCmdSequence>();
+  embed_commands->Emplace<GemmCmd>(s0, config.value(), fake_slice_lhs,
+                                   slice_rhs, slice_out, slice_workspace,
+                                   /*deterministic=*/true);
+
+  BufferAllocation alloc_lhs(/*index=*/0, lhs_length, /*color=*/0);
+  BufferAllocation::Slice slice_lhs(&alloc_lhs, 0, lhs_length);
+
+  std::vector<DynamicSliceThunk::Offset> lhs_offsets = {
+      DynamicSliceThunk::Offset(2UL), DynamicSliceThunk::Offset(0UL)};
+
+  std::vector<std::optional<BufferAllocation::Slice>> arguments = {
+      std::optional<BufferAllocation::Slice>(slice_lhs),
+      std::optional<BufferAllocation::Slice>(slice_rhs),
+      std::optional<BufferAllocation::Slice>(slice_out),
+      std::optional<BufferAllocation::Slice>(slice_workspace)};
+
+  std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets = {
+      lhs_offsets, std::nullopt, std::nullopt, std::nullopt};
+
+  std::vector<std::optional<Shape>> orig_shapes = {
+      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 4}), std::nullopt,
+      std::nullopt, std::nullopt};
+  std::vector<std::optional<Shape>> sliced_shapes = {
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
+      std::nullopt, std::nullopt};
+  std::vector<std::optional<uint64_t>> offset_byte_sizes = {
+      sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt};
+
+  CommandBufferCmdSequence commands;
+  commands.Emplace<DynamicSliceFusionCmd>(
+      s0, std::move(embed_commands), arguments, std::move(fake_allocations),
+      offsets, orig_shapes, sliced_shapes, offset_byte_sizes);
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo());
@@ -1311,6 +1467,98 @@ TEST(CommandBufferThunkTest, WhileCmd) {
   // TODO(ezhulenev): Find a way to test WhileCmd: add a test only TraceCmd that
   // could allow us trace custom kernels to update while loop iterations. Or
   // maybe add a CustomLaunchCmd and wrap loop update into custom kernel.
+}
+
+class CmdBufferTest : public HloTestBase {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
+    debug_options.set_xla_gpu_graph_min_graph_size(1);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
+    debug_options.add_xla_gpu_enable_command_buffer(
+        DebugOptions::DYNAMIC_SLICE);
+    return debug_options;
+  }
+};
+
+TEST_F(CmdBufferTest, DynamicSliceFusionCmd) {
+  // Hlo generated by below jax code
+  // def scan_body(carry, x):
+  //     sliced_x = lax.slice(x, (0, 0), (128, 128))
+  //     result = jnp.dot(carry, sliced_x)
+  //     new_carry = result
+  //     return new_carry, result
+  // @jax.jit
+  // def run_scan(initial_carry, xs):
+  //     final_carry, outputs = lax.scan(scan_body, initial_carry, xs, length=2)
+  //     return final_carry, outputs
+
+  const char* module_str = R"(
+HloModule jit_run_scan
+
+None.7 {
+  Arg_0.8 = f32[128,128]{1,0} parameter(0)
+  Arg_1.9 = f32[128,128]{1,0} parameter(1)
+  dot.10 = f32[128,128]{1,0} dot(Arg_0.8, Arg_1.9), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT tuple.11 = (f32[128,128]{1,0}, f32[128,128]{1,0}) tuple(dot.10, dot.10)
+}
+
+region_0.12 {
+  arg_tuple.13 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) parameter(0)
+  get-tuple-element.14 = s32[] get-tuple-element(arg_tuple.13), index=0
+  constant.18 = s32[] constant(1)
+  add.34 = s32[] add(get-tuple-element.14, constant.18)
+  get-tuple-element.15 = f32[128,128]{1,0} get-tuple-element(arg_tuple.13), index=1
+  get-tuple-element.17 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.13), index=3
+  constant.20 = s32[] constant(0)
+  compare.21 = pred[] compare(get-tuple-element.14, constant.20), direction=LT
+  constant.19 = s32[] constant(2)
+  add.22 = s32[] add(get-tuple-element.14, constant.19)
+  select.23 = s32[] select(compare.21, add.22, get-tuple-element.14)
+  dynamic-slice.24 = f32[1,128,128]{2,1,0} dynamic-slice(get-tuple-element.17, select.23, constant.20, constant.20), dynamic_slice_sizes={1,128,128}
+  reshape.25 = f32[128,128]{1,0} reshape(dynamic-slice.24)
+  call.26 = (f32[128,128]{1,0}, f32[128,128]{1,0}) call(get-tuple-element.15, reshape.25), to_apply=None.7
+  get-tuple-element.27 = f32[128,128]{1,0} get-tuple-element(call.26), index=0
+  get-tuple-element.16 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.13), index=2
+  get-tuple-element.28 = f32[128,128]{1,0} get-tuple-element(call.26), index=1
+  reshape.29 = f32[1,128,128]{2,1,0} reshape(get-tuple-element.28)
+  compare.30 = pred[] compare(get-tuple-element.14, constant.20), direction=LT
+  add.31 = s32[] add(get-tuple-element.14, constant.19)
+  select.32 = s32[] select(compare.30, add.31, get-tuple-element.14)
+  dynamic-update-slice.33 = f32[2,128,128]{2,1,0} dynamic-update-slice(get-tuple-element.16, reshape.29, select.32, constant.20, constant.20)
+  ROOT tuple.35 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) tuple(add.34, get-tuple-element.27, dynamic-update-slice.33, get-tuple-element.17)
+} // region_0.12
+
+region_1.36 {
+  arg_tuple.37 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) parameter(0)
+  get-tuple-element.39 = f32[128,128]{1,0} get-tuple-element(arg_tuple.37), index=1
+  get-tuple-element.40 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.37), index=2
+  get-tuple-element.41 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.37), index=3
+  get-tuple-element.38 = s32[] get-tuple-element(arg_tuple.37), index=0
+  constant.42 = s32[] constant(2)
+  ROOT compare.43 = pred[] compare(get-tuple-element.38, constant.42), direction=LT
+} // region_1.36
+
+ENTRY main.49 {
+  constant.3 = s32[] constant(0)
+  Arg_0.1 = f32[128,128]{1,0} parameter(0)
+  constant.4 = f32[] constant(0)
+  broadcast.5 = f32[2,128,128]{2,1,0} broadcast(constant.4), dimensions={}
+  Arg_1.2 = f32[2,128,128]{2,1,0} parameter(1)
+  tuple.6 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) tuple(constant.3, Arg_0.1, broadcast.5, Arg_1.2)
+  while.44 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) while(tuple.6), condition=region_1.36, body=region_0.12
+  get-tuple-element.45 = s32[] get-tuple-element(while.44), index=0
+  get-tuple-element.46 = f32[128,128]{1,0} get-tuple-element(while.44), index=1
+  get-tuple-element.47 = f32[2,128,128]{2,1,0} get-tuple-element(while.44), index=2
+  ROOT tuple.48 = (f32[128,128]{1,0}, f32[2,128,128]{2,1,0}) tuple(get-tuple-element.46, get-tuple-element.47)
+}
+)";
+  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{1e-3, 1e-3}));
 }
 
 }  // namespace xla::gpu

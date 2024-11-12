@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package tensorflow.ifrt_serving;
+
+import "tensorflow/compiler/tf2xla/host_compute_metadata.proto";
+import "xla/service/hlo.proto";
+import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/protobuf/tpu/compile_metadata.proto";
+
+message Tf2HLOResultProto {
+  xla.HloModuleProto hlo_module_proto = 1;
+  tensorflow.tpu.TPUCompileMetadataProto compile_metadata = 2;
+  tensorflow.tf2xla.HostComputeMetadata host_compute_metadata = 3;
+}

@@ -117,6 +117,11 @@ struct SpmdPartitionerOptions {
   // Partitioning method to prioritize for scatter operations.
   PartitioningMethod scatter_partition_method =
       PartitioningMethod::kIndexParallel;
+
+  // The minimum size to enable windowed einsum in total bytes.
+  // This combines sizes in bytes of both operands.
+  // When it's set, it will override threshold_for_windowed_einsum_mib.
+  std::optional<int64_t> total_bytes_windowed_einsum_threshold = std::nullopt;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
@@ -154,6 +159,18 @@ class SpmdBuilder : public HloComputation::Builder {
   }
 
  private:
+  // Sets the broadcast dims for the newly added/created hlo.
+  void SetBroadcastDimsForAddedHlo(const HloInstruction& hlo);
+
+  void SetBroadcastDimsForReshape(const HloInstruction& hlo);
+
+  void SetBroadcastDimsForTranspose(const HloInstruction& hlo);
+
+  void SetBroadcastDimsForPad(const HloInstruction& hlo);
+
+  void SetBroadcastDimsForSlice(const HloInstruction& hlo);
+
+  void SetBroadcastDimsForElementwise(const HloInstruction& hlo);
   // Currently visiting instruction.
   HloInstruction* visiting_hlo_;
 

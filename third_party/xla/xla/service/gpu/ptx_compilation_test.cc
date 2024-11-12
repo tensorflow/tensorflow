@@ -217,7 +217,7 @@ class NVPTXCompilationTests
     debug_options->set_xla_llvm_force_inline_before_split(false);
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;

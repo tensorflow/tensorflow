@@ -20,7 +20,6 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
@@ -30,14 +29,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/compiler.h"
-#include "xla/service/executable.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -82,19 +76,6 @@ static ProviderMap& GetProviderMap() {
   return it->second.get();
 }
 
-absl::StatusOr<se::StreamExecutor*> OptProvider::GetExecutor() {
-  DebugOptions debug_opts = GetDebugOptionsFromFlags();
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      PlatformUtil::GetPlatform(GetPlatformName()));
-  if (debug_opts.xla_gpu_target_config_filename().empty()) {
-    TF_ASSIGN_OR_RETURN(std::vector<se::StreamExecutor*> stream_executors,
-                        PlatformUtil::GetStreamExecutors(
-                            platform, /*allowed_devices=*/std::nullopt));
-    return stream_executors[0];
-  }
-  return nullptr;
-}
-
 absl::StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
     std::unique_ptr<HloModule> module, absl::string_view stage) {
   if (stage == "hlo") {
@@ -107,60 +88,17 @@ absl::StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
     TF_ASSIGN_OR_RETURN(std::string cmps,
                         RenderAllComputationsToHtml(*optimized_module));
     return cmps;
-  } else if (stage == "hlo-backend") {
-    TF_ASSIGN_OR_RETURN(auto executable, GetExecutable(std::move(module)));
-    return executable->module().ToString();
   }
 
   return std::nullopt;
 }
 
-absl::StatusOr<Compiler*> OptProvider::GetCompiler() {
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      PlatformUtil::GetPlatform(GetPlatformName()));
-
-  TF_ASSIGN_OR_RETURN(Compiler * compiler, Compiler::GetForPlatform(platform));
-  return compiler;
-}
+std::set<std::string> OptProvider::SupportedStages() { return {"hlo", "html"}; }
 
 absl::StatusOr<std::unique_ptr<HloModule>> OptProvider::GetOptimizedHlo(
     std::unique_ptr<HloModule> input_module) {
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
-
-  DebugOptions debug_opts = GetDebugOptionsFromFlags();
-  Compiler::CompileOptions opts;
-  TF_ASSIGN_OR_RETURN(Compiler * compiler, GetCompiler());
-  DebugOptions d = input_module->config().debug_options();
-  d.set_xla_embed_ir_in_executable(true);
-  input_module->mutable_config().set_debug_options(d);
-
-  if (input_module->has_schedule()) {
-    return input_module;
-  }
-
-  // But run-hlo-passes does not actually run the scheduling.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> optimized_module,
-      compiler->RunHloPasses(std::move(input_module), executor, opts));
-
-  return optimized_module;
-}
-
-absl::StatusOr<std::unique_ptr<Executable>> OptProvider::GetExecutable(
-    std::unique_ptr<HloModule> input_module) {
-  Compiler::CompileOptions opts;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
-                      GetOptimizedHlo(std::move(input_module)));
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
-  TF_ASSIGN_OR_RETURN(Compiler * compiler, GetCompiler());
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      compiler->RunBackend(std::move(optimized_module), executor, opts));
-  return executable;
-}
-
-std::set<std::string> OptProvider::SupportedStages() {
-  return {"hlo", "html", "hlo-backend"};
+  return absl::UnimplementedError(
+      "Not supported in platform independent opt tool");
 }
 
 }  // namespace xla

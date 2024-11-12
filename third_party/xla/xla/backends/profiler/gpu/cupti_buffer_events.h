@@ -31,10 +31,10 @@ limitations under the License.
 #include "absl/container/node_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/buffer_pool.h"
+#include "xla/tsl/profiler/utils/lock_free_queue.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/profiler/utils/buffer_pool.h"
-#include "tsl/profiler/utils/lock_free_queue.h"
 
 namespace xla {
 namespace profiler {

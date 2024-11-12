@@ -41,6 +41,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -131,6 +132,11 @@ inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
 template <>
 constexpr TfLiteType typeToTfLiteType<Eigen::half>() {
   return kTfLiteFloat16;
+}
+
+template <>
+constexpr TfLiteType typeToTfLiteType<Eigen::bfloat16>() {
+  return kTfLiteBFloat16;
 }
 
 // A test model that contains a single operator. All operator inputs and
@@ -560,17 +566,15 @@ class SingleOpModel {
 
   void SignedSymmetricQuantizeAndPopulate(int index,
                                           const std::vector<float>& data) {
-    std::vector<int8_t> q = QuantizeTensor(index, data);
-    PopulateTensor(index, /*offset=*/0, q.data(), q.data() + q.size());
-  }
-
-  void SignedSymmetricQuantizeAndPopulate4Bit(int index,
-                                              const std::vector<float>& data) {
     TfLiteTensor* t = interpreter_->tensor(index);
-    t->type = kTfLiteInt4;
-    std::vector<int8_t> q =
-        Quantize<int8_t>(data, t->params.scale, t->params.zero_point, t->type);
-    PopulateTensor4bit(index, /*offset=*/0, q.data(), q.data() + q.size());
+    if (t->type == kTfLiteInt4) {
+      std::vector<int8_t> q = Quantize<int8_t>(data, t->params.scale,
+                                               t->params.zero_point, t->type);
+      PopulateTensor4bit(index, /*offset=*/0, q.data(), q.data() + q.size());
+    } else {
+      std::vector<int8_t> q = QuantizeTensor(index, data);
+      PopulateTensor(index, /*offset=*/0, q.data(), q.data() + q.size());
+    }
   }
 
   // Quantize and populate data for filter with per channel quantization.
@@ -1188,6 +1192,8 @@ TFLITE_TENSOR_TYPE_ASSOC(uint32_t, TensorType_UINT32);
 TFLITE_TENSOR_TYPE_ASSOC(uint64_t, TensorType_UINT64);
 TFLITE_TENSOR_TYPE_ASSOC(TfLiteFloat16, TensorType_FLOAT16);
 TFLITE_TENSOR_TYPE_ASSOC(Eigen::half, TensorType_FLOAT16);
+TFLITE_TENSOR_TYPE_ASSOC(TfLiteBFloat16, TensorType_BFLOAT16);
+TFLITE_TENSOR_TYPE_ASSOC(Eigen::bfloat16, TensorType_BFLOAT16);
 TFLITE_TENSOR_TYPE_ASSOC(float, TensorType_FLOAT32);
 TFLITE_TENSOR_TYPE_ASSOC(double, TensorType_FLOAT64);
 TFLITE_TENSOR_TYPE_ASSOC(std::string, TensorType_STRING);
@@ -1281,6 +1287,26 @@ struct TypeUnion<uint8_t> {
   // NOLINTNEXTLINE
   static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteUInt8;
   typedef uint8_t ScalarType;
+};
+
+template <>
+struct TypeUnion<Eigen::half> {
+ public:
+  // NOLINTNEXTLINE
+  static constexpr TensorType tensor_type = TensorType::TensorType_FLOAT16;
+  // NOLINTNEXTLINE
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteFloat16;
+  typedef Eigen::half ScalarType;
+};
+
+template <>
+struct TypeUnion<Eigen::bfloat16> {
+ public:
+  // NOLINTNEXTLINE
+  static constexpr TensorType tensor_type = TensorType::TensorType_BFLOAT16;
+  // NOLINTNEXTLINE
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteBFloat16;
+  typedef Eigen::bfloat16 ScalarType;
 };
 
 class MultiOpModel : public SingleOpModel {

@@ -62,8 +62,8 @@ cc_library(
     hdrs = ["custom_kernel.h"],
     visibility = [":friends"],
     deps = [
-        "//xla/stream_executor",
         "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:launch_dim",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -149,13 +149,12 @@ cc_library(
         ":topk_kernel_gpu",
         "//xla:shape_util",
         "//xla:types",
-        "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/stream_executor",  # build_cleaner: keep
-        "//xla/stream_executor:platform",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:typed_kernel_factory",
-        "//xla/stream_executor/gpu:gpu_stream_header",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -178,7 +177,11 @@ gpu_kernel_library(
     deps = [
         "//xla:types",
         "//xla/tsl/lib/math:math_util",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 xla_test(
@@ -189,9 +192,10 @@ xla_test(
         ":topk_kernel",
         "//xla:types",
         "//xla:xla_data_proto_cc",
-        "//xla/stream_executor",  # build_cleaner: keep
         "//xla/stream_executor:device_memory_handle",
+        "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/host:host_platform",
@@ -218,8 +222,10 @@ cc_library(
         ":custom_kernel",
         "//xla:types",
         "//xla:xla_data_proto_cc",
-        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:launch_dim",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -239,10 +245,11 @@ xla_test(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/service:platform_util",
-        "//xla/stream_executor",
+        "//xla/stream_executor:kernel",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor/cuda:cuda_platform",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
@@ -271,8 +278,10 @@ cc_library(
         ":cutlass_gemm",
         ":cutlass_gemm_kernels",  # build_cleaner: keep
         "//xla:xla_data_proto_cc",
-        "//xla/stream_executor",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:launch_dim",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -291,9 +300,12 @@ xla_test(
     deps = [
         ":cutlass_gemm_custom_kernel",
         "//xla:xla_data_proto_cc",
-        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_platform",
         "//xla/tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:path",
@@ -315,9 +327,13 @@ xla_cc_binary(
         ":cutlass_gemm_custom_kernel",
         "//xla:xla_data_proto_cc",
         "//xla/service:gpu_plugin",
-        "//xla/stream_executor",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_platform",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
@@ -486,4 +502,47 @@ cc_binary(
         "gpu",
     ],
     deps = [":cutlass_gemm"],
+)
+
+#===--------------------------------------------------------------------------------------------===#
+# PTX Custom Kernels
+#===--------------------------------------------------------------------------------------------===#
+
+cc_library(
+    name = "ptx_custom_kernel",
+    srcs = ["ptx_custom_kernel.cc"],
+    hdrs = ["ptx_custom_kernel.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":custom_kernel",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:launch_dim",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_test(
+    name = "ptx_custom_kernel_test",
+    srcs = ["ptx_custom_kernel_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":custom_kernel",
+        ":ptx_custom_kernel",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_platform",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
 )

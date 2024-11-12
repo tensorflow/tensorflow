@@ -2,8 +2,8 @@
 
 This document describes how to build XLA components.
 
-If you did not clone the XLA repository or install Bazel, please check out the
-"Get started" section of the README document.
+If you did not clone the XLA repository or install Bazel, check out the initial
+sections of the [XLA Developer Guide](developer_guide.md).
 
 ## Linux
 
@@ -66,7 +66,7 @@ docker exec xla_gpu bazel build --test_output=all --spawn_strategy=sandboxed //x
 ```
 
 For more details regarding
-[TensorFlow's GPU docker images you can check out this document.](https://www.tensorflow.org/install/source#gpu_support_3)
+[TensorFlow's GPU docker images you can check out this document.](https://www.tensorflow.org/install/source#gpu_support_2)
 
 You can build XLA targets with GPU support without Docker as well. Configure and
 build targets using the following commands:
@@ -78,4 +78,4 @@ bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
 ```
 
 For more details regarding
-[hermetic CUDA you can check out this document.](docs/hermetic_cuda.md)
+[hermetic CUDA you can check out this document.](hermetic_cuda.md)

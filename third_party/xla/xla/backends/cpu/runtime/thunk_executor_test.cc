@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -32,6 +34,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/resource_use.h"
+#include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -60,6 +63,48 @@ using ::testing::ElementsAre;
 // with a thread sanitizer and checking that there are no data races.
 static int64_t shared_resource;
 
+// An adaptor from a lambda that runs tasks and a TaskRunner API.
+template <typename Runner, typename WorkerId>
+class TaskRunnerAdaptor : public Thunk::TaskRunner {
+ public:
+  TaskRunnerAdaptor(Runner runner, WorkerId worker_id)
+      : runner_(std::move(runner)), worker_id_(std::move(worker_id)) {}
+
+  void operator()(Thunk::Task task) final { runner_(std::move(task)); }
+
+  std::optional<int64_t> current_worker_id() const final {
+    return worker_id_();
+  }
+
+ private:
+  Runner runner_;
+  WorkerId worker_id_;
+};
+
+template <typename Runner>
+auto MakeTaskRunnerFrom(Runner&& runner) {
+  auto no_id = []() { return std::nullopt; };
+  return TaskRunnerAdaptor<Runner, decltype(no_id)>(
+      std::forward<Runner>(runner), no_id);
+}
+
+template <typename Runner, typename WorkerId>
+auto MakeTaskRunnerFrom(Runner&& runner, WorkerId&& worker_id) {
+  return TaskRunnerAdaptor<Runner, WorkerId>(std::forward<Runner>(runner),
+                                             std::forward<WorkerId>(worker_id));
+}
+
+template <typename T>
+std::vector<MaybeOwningDeviceMemory> AsDeviceMemory(
+    absl::Span<std::vector<T>* const> data) {
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  for (auto& vec : data) {
+    buffers.emplace_back(
+        se::DeviceMemoryBase(vec->data(), vec->size() * sizeof(T)));
+  }
+  return buffers;
+}
+
 // A test-only thunk for verifying thunk executor implementation:
 //
 //   dst += src (for all srcs and dsts slices)
@@ -79,9 +124,6 @@ class AddI32Thunk final : public Thunk {
       std::vector<BufferAllocation::Slice> dsts,
       std::vector<std::string>* trace = nullptr,
       bool use_shared_resource = false, bool inject_error = false);
-
-  static std::vector<MaybeOwningDeviceMemory> AsDeviceMemory(
-      absl::Span<std::vector<int32_t>* const> data);
 
   // Executes `dst += src` for a single src/dst pair.
   static absl::Status Execute(const BufferAllocations* allocations,
@@ -108,16 +150,6 @@ std::unique_ptr<Thunk> AddI32Thunk::Create(
   return std::make_unique<AddI32Thunk>(std::move(name), std::move(srcs),
                                        std::move(dsts), trace,
                                        use_shared_resource, inject_error);
-}
-
-std::vector<MaybeOwningDeviceMemory> AddI32Thunk::AsDeviceMemory(
-    absl::Span<std::vector<int32_t>* const> data) {
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  for (auto& vec : data) {
-    buffers.emplace_back(
-        se::DeviceMemoryBase(vec->data(), vec->size() * sizeof(int32_t)));
-  }
-  return buffers;
 }
 
 AddI32Thunk::AddI32Thunk(std::string name,
@@ -453,13 +485,16 @@ TEST(ThunkExecutorTest, Execute) {
 
   std::vector<int32_t> data(20, 1);  // shared src and dst allocation
 
-  auto buffers = AddI32Thunk::AsDeviceMemory({&data});
+  auto buffers = AsDeviceMemory<int32_t>({&data});
   BufferAllocations allocations(buffers);
 
-  Thunk::TaskRunner task_runner = [&](Thunk::Task task) {
-    trace.push_back("<TaskRunner>");
-    task();
-  };
+  auto task_runner = MakeTaskRunnerFrom(
+      [&](Thunk::Task task) {
+        trace.push_back("<TaskRunner>");
+        task();
+      },
+      // Always return current worker id as 0.
+      [] { return 0; });
 
   Thunk::ExecuteParams params = {nullptr, &allocations};
   params.task_runner = &task_runner;
@@ -475,6 +510,95 @@ TEST(ThunkExecutorTest, Execute) {
   EXPECT_THAT(data, ElementsAre(2, 2, 2, 2, 2,                 // slice0
                                 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,  // slice2
                                 2, 2, 2, 2, 2));               // slice1
+}
+
+//===----------------------------------------------------------------------===//
+// ThunkExecutor resource isolation testing
+//===----------------------------------------------------------------------===//
+
+// No-op thunk that completes execution on a separate thread pool. We use this
+// thunk to test that ThunkExecutor can jump out of a separate thread pool to
+// continue execution in the intra-op thread pool. This is important for
+// resource isolation as we don't want to accidentally continue with expensive
+// execution on a non blocking IO callbacks thread pool.
+class NoOpAsyncThunk : public Thunk {
+ public:
+  NoOpAsyncThunk(std::string name, BufferAllocation::Slice slice)
+      : Thunk(Kind::kKernel, Info{std::move(name)}), slice_(slice) {}
+
+  static std::unique_ptr<NoOpAsyncThunk> Create(std::string name,
+                                                BufferAllocation::Slice slice) {
+    return std::make_unique<NoOpAsyncThunk>(std::move(name), slice);
+  }
+
+  tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams&) final {
+    auto ret = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
+    ThreadPool()->Schedule([ret] {
+      tsl::Env::Default()->SleepForMicroseconds(10 * 1000);
+      ret.SetStateConcrete();
+    });
+    return ret;
+  }
+
+  BufferUses buffer_uses() const override {
+    return BufferUses{BufferUse::Write(slice_)};
+  }
+
+ private:
+  static tsl::thread::ThreadPool* ThreadPool() {
+    static auto* thread_pool =
+        new tsl::thread::ThreadPool(tsl::Env::Default(), "no-op-thunk", 8);
+    return thread_pool;
+  }
+
+  BufferAllocation::Slice slice_;
+};
+
+TEST(ThunkExecutorTest, ExecuteOnCorrectThreadPool) {
+  BufferAllocation alloc(/*index=*/0, /*size=*/60, /*color=*/0);
+
+  BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/20);
+  BufferAllocation::Slice slice1(&alloc, /*offset=*/20, /*size=*/20);
+  BufferAllocation::Slice slice2(&alloc, /*offset=*/40, /*size=*/20);
+
+  std::array<BufferAllocation::Slice, 3> slices = {slice0, slice1, slice2};
+
+  ThunkSequence sequence;
+  for (int i = 0; i < 100; ++i) {
+    sequence.push_back(NoOpAsyncThunk::Create(absl::StrCat(i), slices[i % 3]));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ThunkExecutor executor,
+      ThunkExecutor::Create(std::move(sequence), OptionsForTest()));
+
+  std::vector<char> data(60, 1);  // shared src and dst allocation
+
+  auto buffers = AsDeviceMemory<char>({&data});
+  BufferAllocations allocations(buffers);
+
+  // Task runner must be used only when ThunkExecutor detects that it runs on a
+  // wrong thread and has to jump into the task runner.
+  std::atomic<int32_t> num_tasks = 0;
+  auto task_runner = MakeTaskRunnerFrom([&](Thunk::Task task) {
+    ++num_tasks;
+    task();
+  });
+
+  Thunk::ExecuteParams params = {nullptr, &allocations};
+  params.task_runner = &task_runner;
+  params.session =
+      Thunk::ExecuteSession(/*max_workers=*/1, /*split_threshold=*/1000);
+
+  auto execute_event = executor.Execute(params);
+
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_TRUE(execute_event.IsConcrete());
+
+  // We compare using GE because thread scheduling introduces small
+  // non-determinism and ThunkExecutor might resume after NoOpAsyncThunk already
+  // completes its execution event.
+  EXPECT_GE(num_tasks, 90);
 }
 
 //===----------------------------------------------------------------------===//
@@ -514,8 +638,8 @@ GenerateThunkSequence(size_t num_elements, size_t num_thunks,
   });
 
   g->sequence.reserve(num_thunks);
-  g->expected_buffers = AddI32Thunk::AsDeviceMemory({&g->src, &g->expected});
-  g->buffers = AddI32Thunk::AsDeviceMemory({&g->src, &g->dst});
+  g->expected_buffers = AsDeviceMemory<int32_t>({&g->src, &g->expected});
+  g->buffers = AsDeviceMemory<int32_t>({&g->src, &g->dst});
 
   std::minstd_rand0 engine;
 
@@ -583,9 +707,7 @@ class ThunkExecutorStressTest
       thread_pool_.emplace(tsl::Env::Default(), "thunk-executor", 8);
       device_.emplace(thread_pool_->AsEigenThreadPool(),
                       thread_pool_->NumThreads());
-      task_runner_.emplace([this](Thunk::Task task) {
-        thread_pool_->Schedule(std::move(task));
-      });
+      task_runner_.emplace(thread_pool_->AsEigenThreadPool());
     }
   }
 
@@ -604,7 +726,7 @@ class ThunkExecutorStressTest
   bool use_device_;
   std::optional<tsl::thread::ThreadPool> thread_pool_;
   std::optional<Eigen::ThreadPoolDevice> device_;
-  std::optional<Thunk::TaskRunner> task_runner_;
+  std::optional<ThreadPoolTaskRunner> task_runner_;
 };
 
 TEST_P(ThunkExecutorStressTest, Execute) {
@@ -809,10 +931,7 @@ static void BM_AsyncThunkExecutor(benchmark::State& state) {
       ThunkExecutor::Create(std::move(g->sequence), OptionsForTest()).value();
 
   BufferAllocations allocations(g->buffers);
-
-  Thunk::TaskRunner task_runner = [&](Thunk::Task task) {
-    thread_pool.Schedule(std::move(task));
-  };
+  ThreadPoolTaskRunner task_runner(thread_pool.AsEigenThreadPool());
 
   Thunk::ExecuteParams params = {nullptr, &allocations, nullptr, &device,
                                  &task_runner};

@@ -47,7 +47,7 @@ namespace v1 {
 ABSL_DEPRECATED(
     "Use v2/tf_dialect_to_executor.h::ExportFromTensorflowDialectToExecutor "
     "instead.")
-tensorflow::Status ExportFromTensorflowDialectToExecutor(
+absl::Status ExportFromTensorflowDialectToExecutor(
     mlir::ModuleOp module, llvm::StringRef module_name = llvm::StringRef());
 
 }  // namespace v1

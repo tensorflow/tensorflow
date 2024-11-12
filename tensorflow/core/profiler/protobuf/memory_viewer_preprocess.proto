@@ -56,6 +56,9 @@ message PreprocessResult {
   // and dimensionality) at each HLO program point (the HLO sequential order).
   repeated double unpadded_heap_sizes = 2;
 
+  // The HloInstruction that was being processed at this HLO program point.
+  repeated string hlo_instruction_names = 20;
+
   // Heap objects at the peak memory usage point ordered by HLO program "birth"
   // time.
   repeated HeapObject max_heap = 3;

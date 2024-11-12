@@ -290,6 +290,9 @@ PyObject* InterpreterWrapper::AllocateTensors(int subgraph_index) {
   if (subgraph_index == kUndeterminedSubgraphIndex) {
     TFLITE_PY_CHECK(interpreter_->AllocateTensors());
   } else {
+    // We don't check the return of this call. Failing is a real possiblity as
+    // the default XNNPack delegate may fail to apply on certain graphs.
+    interpreter_->ApplyLazyDelegateProviders();
     TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
     TFLITE_PY_CHECK(interpreter_->subgraph(subgraph_index)->AllocateTensors());
   }

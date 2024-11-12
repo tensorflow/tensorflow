@@ -34,13 +34,13 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "re2/re2.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
@@ -68,14 +68,9 @@ namespace {
 
 using ::testing::ContainerEq;
 using ::testing::HasSubstr;
-constexpr int64_t kPointerSize = 8;
-
-int64_t ShapeSize(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-}
 
 int64_t SizeFunction(const BufferValue& value) {
-  return ShapeSize(value.shape());
+  return HloCostAnalysis::DefaultShapeSize(value.shape());
 }
 
 int64_t ReservedScopedMemoryFn(
@@ -97,7 +92,7 @@ class LoopOptimizerBestFitHeapTest : public ::testing::Test {
                                                  int64_t size) {
     EvenOddChunkPair chunks = heap_.AllocateSameEvenAndOddBetween(
         begin_idx_in_loop, end_idx_in_loop, size);
-    return chunks.first.has_value() && chunks.second.has_value();
+    return chunks.HasValues();
   }
 
   bool CanFindSameEvenAndOddAllocationBetween(int64_t begin_idx_in_loop,
@@ -105,7 +100,7 @@ class LoopOptimizerBestFitHeapTest : public ::testing::Test {
                                               int64_t size) {
     EvenOddChunkPair chunks = heap_.FindSameEvenAndOddAllocationBetween(
         begin_idx_in_loop, end_idx_in_loop, size);
-    return chunks.first.has_value() && chunks.second.has_value();
+    return chunks.HasValues();
   }
 
   bool IsAllocateEvenAndOddBetweenSuccessful(int64_t begin_idx_in_loop,
@@ -113,7 +108,7 @@ class LoopOptimizerBestFitHeapTest : public ::testing::Test {
                                              int64_t size) {
     EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
         begin_idx_in_loop, end_idx_in_loop, size);
-    return chunks.first.has_value() && chunks.second.has_value();
+    return chunks.HasValues();
   }
 
   bool CanFindEvenAndOddAllocationBetween(int64_t begin_idx_in_loop,
@@ -121,7 +116,7 @@ class LoopOptimizerBestFitHeapTest : public ::testing::Test {
                                           int64_t size) {
     EvenOddChunkPair chunks = heap_.FindEvenAndOddAllocationBetween(
         begin_idx_in_loop, end_idx_in_loop, size);
-    return chunks.first.has_value() && chunks.second.has_value();
+    return chunks.HasValues();
   }
 
   std::string GetMemoryUsageAsciiArt() { return heap_.MemoryUsageToAsciiArt(); }
@@ -193,10 +188,9 @@ TEST_F(LoopOptimizerBestFitHeapTest, TestAllocateEvenAndOddBetween) {
 
 TEST_F(LoopOptimizerBestFitHeapTest, TestRemoveChunk) {
   EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(3, 11, 16);
-  EXPECT_TRUE(chunks.first.has_value() && chunks.second.has_value());
+  EXPECT_TRUE(chunks.HasValues());
   EvenOddChunkPair second_chunks = heap_.AllocateEvenAndOddBetween(-3, 8, 16);
-  EXPECT_TRUE(second_chunks.first.has_value() &&
-              second_chunks.second.has_value());
+  EXPECT_TRUE(second_chunks.HasValues());
   EXPECT_THAT(heap_.RemainingMemoryByTime(),
               ContainerEq(std::vector<int64_t>{16, 16, 16, 0, 0, 0}));
   EXPECT_EQ(heap_.LastMemoryOffsetOccupied(), 64);
@@ -285,7 +279,6 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
     cost_analysis_options_.alternate_mem_bandwidth_bytes_per_second = 128;
     cost_analysis_options_.async_copy_bandwidth_bytes_per_second = 32;
     cost_analysis_options_.pipeline_overhead_window_size_mib = 1;
-    options.shape_size = ShapeSize;
     options.set_flops_per_second(16);
     options.set_bytes_per_second(32);
     options.set_transcendentals_per_second(16);
@@ -314,12 +307,17 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
     optimizer_options.set_enabled(true);
     optimizer_options.set_desired_copy_ratio(0.7);
     optimizer_options.set_allow_unsatisfied_fully_pipelined_prefetch(false);
-    TF_ASSIGN_OR_RETURN(
-        optimizer_,
-        MemoryBoundLoopOptimizer::Create(
-            loop_start, loop_end, alternate_memory_size, optimizer_options,
-            *live_range_, *alias_analysis_, *cost_analysis_, SizeFunction,
-            reserved_scoped_memory_fn));
+    Options options;
+    options.max_size_in_bytes = alternate_memory_size;
+    options.alignment_in_bytes = 8;
+    options.alternate_memory_space = kAlternateMemorySpace;
+    options.cost_analysis = cost_analysis_.get();
+    options.size_fn = SizeFunction;
+    options.reserved_scoped_memory_fn = reserved_scoped_memory_fn;
+    options.memory_bound_loop_optimizer_options = optimizer_options;
+    TF_ASSIGN_OR_RETURN(optimizer_, MemoryBoundLoopOptimizer::Create(
+                                        loop_start, loop_end, *live_range_,
+                                        *alias_analysis_, options));
     return optimizer_.get();
   }
 
@@ -702,7 +700,10 @@ TEST_F(MemoryBoundLoopOptimizerTest, SimplePrefetch) {
   )";
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  int64_t alternate_memory_size = 64;
+  // Although alternate_memory_size=64 is minimum memory needed to fit the copy
+  // of param0 with desired copy ratio. alternate_memory_size=80 memory will
+  // ensure complete copy of param0 to alternate memory.
+  int64_t alternate_memory_size = 80;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
@@ -733,6 +734,55 @@ TEST_F(MemoryBoundLoopOptimizerTest, SimplePrefetch) {
     EXPECT_TRUE(seen_uses.contains(HloUse{inst, 1})) << inst_name;
   }
   EXPECT_EQ(optimizer->CalculateExecutionTime(), 1.875);
+  EXPECT_EQ(optimizer->MaxAlternateMemoryUsed(), alternate_memory_size);
+}
+
+TEST_F(MemoryBoundLoopOptimizerTest, SimplePrefetch2) {
+  absl::string_view hlo_loop_str = R"(
+    $op0 = f32[1,4] add(f32[1,4] $prev_op3, f32[1,4] $prev_op4)
+    $op1 = f32[1,4] add(f32[1,4] $prev_op4, f32[1,4] $op0)
+    $op2 = f32[1,4] add(f32[1,4] $op0, f32[1,4] $op1)
+    $op3 = f32[1,4] add(f32[1,4] $op1, f32[1,4] $op2)
+    $op4 = f32[1,4] add(f32[1,4] $param0, f32[1,4] $op3)
+    ROOT $root = tuple($op4, $param0)
+  )";
+  int loop_start_idx;
+  MemoryBoundLoopOptimizer* optimizer;
+  // alternate_memory_size=64 is minimum memory needed to fit the copy of param0
+  // with desired copy ratio.
+  int64_t alternate_memory_size = 64;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
+                                           loop_start_idx, &optimizer));
+
+  optimizer->Optimize();
+  absl::flat_hash_set<HloUse> seen_uses;
+  for (const MemoryBoundLoopOptimizer::LoopValue& loop_value :
+       optimizer->loop_values()) {
+    LOG(INFO) << loop_value.ToString();
+    if (loop_value.hlo_values.front()
+            ->defining_position()
+            .instruction->name() == "param0") {
+      EXPECT_TRUE(loop_value.allocations.back()->is_copy_allocation());
+    }
+    for (const auto& allocation : loop_value.allocations) {
+      for (const HloUse& use : allocation->uses()) {
+        EXPECT_FALSE(seen_uses.contains(use)) << use.ToString();
+        seen_uses.insert(use);
+      }
+    }
+  }
+
+  // Ensure all of the uses in the loop have an associated use.
+  for (absl::string_view inst_name : {"op0", "op1", "op2", "op3", "op4"}) {
+    HloInstruction* inst =
+        module->entry_computation()->GetInstructionWithName(inst_name);
+    EXPECT_TRUE(seen_uses.contains(HloUse{inst, 0})) << inst_name;
+    EXPECT_TRUE(seen_uses.contains(HloUse{inst, 1})) << inst_name;
+  }
+  // Check that execution time has increased to 2 since we will wait on copy
+  // done for param0.
+  EXPECT_EQ(optimizer->CalculateExecutionTime(), 2);
   EXPECT_EQ(optimizer->MaxAlternateMemoryUsed(), alternate_memory_size);
 }
 
@@ -773,10 +823,10 @@ TEST_F(MemoryBoundLoopOptimizerTest, ReservedScopedMemory) {
 
 // Check that a spurious GetTupleElement instruction in a later iteration of a
 // loop does not cause MSA to CHECK fail, when identifying loops. Prior to the
-// change instroduced with this test, IdentifyAndOptimizeMemoryBoundLoops()
+// change introduced with this test, IdentifyAndOptimizeMemoryBoundLoops()
 // would recognize 4 iterations to the loop thinking that gte is a repeat of
 // op2. Doing so triggers the CHECKs introduced by the change that added this
-// test to fail. So, the point of this test is to verfiy that we do not check
+// test to fail. So, the point of this test is to verify that we do not check
 // fail.
 TEST_F(MemoryBoundLoopOptimizerTest, GetTupleElement) {
   absl::string_view hlo_string = R"(
@@ -909,7 +959,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap) {
 
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  int64_t alternate_memory_size = 432;
+  int64_t alternate_memory_size = 464;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
@@ -985,7 +1035,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap) {
   EXPECT_EQ(optimizer->CalculateExecutionTime(), 12.5);
 
   // Check the memory used at each point of the loop.
-  const std::vector<int64_t>& remaining_memory = optimizer->remaining_memory();
+  std::vector<int64_t> remaining_memory = optimizer->RemainingMemory();
   // Time 0: 3 temporaries (16 B) + param0 (128 B) + param1 (128 B)
   EXPECT_EQ(remaining_memory.at(0),
             alternate_memory_size - (3 * 16 + 128 + 128));
@@ -1049,7 +1099,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithoutOverlap) {
 
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  int64_t alternate_memory_size = 192;
+  int64_t alternate_memory_size = 208;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
@@ -1133,7 +1183,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap2) {
 
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  int64_t alternate_memory_size = 432;
+  int64_t alternate_memory_size = 464;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
@@ -1188,6 +1238,80 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap2) {
   //  400 B / 32 B/s = 12.5 s.
   EXPECT_EQ(optimizer->CalculateExecutionTime(), 12.5);
   EXPECT_EQ(optimizer->MaxAlternateMemoryUsed(), alternate_memory_size);
+}
+
+TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithoutOverlap2) {
+  // Same as PrefetchFifoOrderWithoutOverlap, except that, we reduce the size of
+  // alternate memory, such that only one of param0 and param1 can be
+  // prefetched. Additionally, we add many more small prefetches, such that,
+  // during the prefetch of param0 or param1, a valid copy start time is found
+  // with desired copy ratio, but not with complete copy ratio, early forcing
+  // param2. After finding a copy start time with the desired copy ratio, when
+  // trying to find a better copy start time with complete copy ratio, more
+  // prefetches are temporarily early forced, but restored to their original
+  // state later.
+  absl::string_view hlo_loop_str = R"(
+    $op0 = f32[1,4] add(f32[1,4] $prev_op13, f32[1,4] $prev_op14)
+    $op1 = f32[8,4] add(f32[8,4] $param0, f32[8,4] $param1)
+    $op2 = f32[1,4] add(f32[1,4] $op0, f32[1,4] $param9)
+    $op3 = f32[1,4] add(f32[1,4] $param7, f32[1,4] $param8)
+    $op4 = f32[1,4] add(f32[1,4] $param5, f32[1,4] $param6)
+    $op5 = f32[1,4] add(f32[1,4] $param4, f32[1,4] $op3)
+    $op6 = f32[1,4] add(f32[1,4] $op4, f32[1,4] $param3)
+    $op7 = f32[1,4] add(f32[1,4] $op5, f32[1,4] $op2)
+    $op8 = f32[1,4] add(f32[1,4] $op6, f32[1,4] $op7)
+    $op9 = f32[1,4] add(f32[1,4] $op7, f32[1,4] $op8)
+    $op10 = f32[1,4] add(f32[1,4] $op8, f32[1,4] $op9)
+    $op11 = f32[1,4] add(f32[1,4] $op9, f32[1,4] $op10)
+    $op12 = f32[1,4] add(f32[1,4] $op10, f32[1,4] $op11)
+    $op13 = f32[1,4] add(f32[1,4] $op11, f32[1,4] $op12)
+    $op14 = f32[1,4] add(f32[1,4] $param2, f32[1,4] $op13)
+  )";
+
+  int loop_start_idx;
+  MemoryBoundLoopOptimizer* optimizer;
+  int64_t alternate_memory_size = 384;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
+                                           loop_start_idx, &optimizer));
+
+  optimizer->Optimize();
+  std::vector<const CopyAllocation*> prefetches;
+  for (const MemoryBoundLoopOptimizer::LoopValue& loop_value :
+       optimizer->loop_values()) {
+    if (!loop_value.allocations.empty() &&
+        loop_value.allocations.back()->is_copy_allocation()) {
+      prefetches.push_back(static_cast<const CopyAllocation*>(
+          loop_value.allocations.back().get()));
+    }
+  }
+  EXPECT_EQ(prefetches.size(), 9);
+  for (const CopyAllocation* prefetch : prefetches) {
+    const HloUse& use = *prefetch->uses().begin();
+    if (use.instruction->name() == "op14") {
+      EXPECT_EQ(prefetch->copy_done_schedule_before(), 14);
+      EXPECT_EQ(prefetch->copy_start_schedule_after(), 6);
+    } else if (use.instruction->name() == "op1") {
+      EXPECT_EQ(prefetch->copy_start_schedule_after(), 6);
+      EXPECT_EQ(prefetch->copy_done_schedule_before(), 1);
+    }
+  }
+
+  EXPECT_NEAR(optimizer->CalculateExecutionTime(), 16.7083, 1e-3);
+  const std::vector<int64_t>& remaining_memory = optimizer->RemainingMemory();
+  EXPECT_EQ(alternate_memory_size - remaining_memory.at(0), 176);
+  EXPECT_EQ(alternate_memory_size - remaining_memory.at(1), 208);
+  EXPECT_EQ(alternate_memory_size - remaining_memory.at(2), 112);
+  EXPECT_EQ(alternate_memory_size - remaining_memory.at(3), 112);
+  EXPECT_EQ(alternate_memory_size - remaining_memory.at(4), 112);
+  EXPECT_EQ(alternate_memory_size - remaining_memory.at(5), 96);
+  EXPECT_EQ(alternate_memory_size - remaining_memory.at(6), 80);
+  EXPECT_EQ(alternate_memory_size - remaining_memory.at(7), 208);
+  for (int i = 8; i < 14; ++i) {
+    EXPECT_EQ(alternate_memory_size - remaining_memory.at(i), 192);
+  }
+  EXPECT_EQ(alternate_memory_size - remaining_memory.at(14), 176);
+  EXPECT_EQ(optimizer->MaxAlternateMemoryUsed(), alternate_memory_size - 128);
 }
 
 TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEnd) {
@@ -1302,13 +1426,13 @@ TEST_F(MemoryBoundLoopOptimizerTest, TempAndPinnedAllocations) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
-  int64_t alternate_memory_size = 64;
+  int64_t alternate_memory_size = 80;
   TF_ASSERT_OK_AND_ASSIGN(
       auto optimizer,
       CreateOptimizer(19, 24, module.get(), alternate_memory_size));
   optimizer->Optimize();
 
-  const std::vector<int64_t>& remaining_memory = optimizer->remaining_memory();
+  std::vector<int64_t> remaining_memory = optimizer->RemainingMemory();
   // Time 0: 3 temporaries (16 B) + 1 pinned (16 B)
   EXPECT_EQ(remaining_memory.at(0), alternate_memory_size - (3 * 16 + 16));
   // Time 1: 3 temporaries (16 B) + 1 pinned (16 B)
@@ -1373,12 +1497,12 @@ TEST_F(MemoryBoundLoopOptimizerTest, NegativeSavingNotPinned) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
-  int64_t alternate_memory_size = 52;
+  int64_t alternate_memory_size = 72;
   TF_ASSERT_OK_AND_ASSIGN(
       auto optimizer,
       CreateOptimizer(21, 27, module.get(), alternate_memory_size));
   optimizer->Optimize();
-  const std::vector<int64_t>& remaining_memory = optimizer->remaining_memory();
+  std::vector<int64_t> remaining_memory = optimizer->RemainingMemory();
   // We expect that pinned_prev_param0 would not get pinned due to negative
   // savings: 32(uses) -  28 * 16(size) = -416 Time 0: 3 temporaries (16 B) + 1
   // pinned (4 B)

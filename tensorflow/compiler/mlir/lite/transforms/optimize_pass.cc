@@ -2774,7 +2774,7 @@ void OptimizePass::runOnOperation() {
   RewritePatternSet phase_0_patterns(&getContext());
   phase_0_patterns
       .add<SqueezeReshapesAroundBroadcastOp, RemoveReshapeAfterFullyConnected,
-           RemoveReshapeBeforeFullyConnected, ConvertTFLBroadcastToMulOp,
+           RemoveReshapeBeforeFullyConnected,
            FuseOutputReshape_BatchMatMulWithFlattenedContractingDims,
            FuseSqueezingLhsReshapeIntoFC_Output,
            FuseReshapesAroundBatchMatMulLHS, FuseReshapesAroundBatchMatMulLHS1>(
@@ -2816,7 +2816,8 @@ void OptimizePass::runOnOperation() {
       OptimizeTopK, FuseAddAndStridedSlice,
       FuseReshapeAndTransposeAroundBatchMatmul,
       FuseTransposeReshapeIntoBatchMatmul, MoveReshapeAfterFullyConnected,
-      EnableFullyConnectedKeepNumDimsBeforeReshape>(ctx);
+      EnableFullyConnectedKeepNumDimsBeforeReshape, ConvertTFLBroadcastToMulOp>(
+      ctx);
   if (!GetOptions().disable_fuse_mul_and_fc) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }

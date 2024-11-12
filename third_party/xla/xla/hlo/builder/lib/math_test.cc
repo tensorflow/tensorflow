@@ -83,8 +83,8 @@ class MathTypedTest : public MathTest {
     auto x =
         ConstantR1<T>(&b, {
                               T{0},
-                              T{100},
-                              T{-1000},
+                              T{8},
+                              T{-8},
                               T{std::numeric_limits<T>::max()},
                               T{std::numeric_limits<T>::lowest()},
                               T{std::numeric_limits<float>::infinity()},
@@ -94,17 +94,18 @@ class MathTypedTest : public MathTest {
                           });
     Tuple(&b, {IsFinite(x), IsInf(x), IsPosInf(x), IsNegInf(x), IsNan(x)});
 
+    bool has_inf = std::numeric_limits<T>::has_infinity;
     auto expected = LiteralUtil::MakeTupleOwned(
         LiteralUtil::CreateR1<bool>(
             {true, true, true, true, true, false, false, false, false}),
+        LiteralUtil::CreateR1<bool>({false, false, false, false, false, has_inf,
+                                     has_inf, false, false}),
         LiteralUtil::CreateR1<bool>(
-            {false, false, false, false, false, true, true, false, false}),
+            {false, false, false, false, false, has_inf, false, false, false}),
         LiteralUtil::CreateR1<bool>(
-            {false, false, false, false, false, true, false, false, false}),
-        LiteralUtil::CreateR1<bool>(
-            {false, false, false, false, false, false, true, false, false}),
-        LiteralUtil::CreateR1<bool>(
-            {false, false, false, false, false, false, false, true, true}));
+            {false, false, false, false, false, false, has_inf, false, false}),
+        LiteralUtil::CreateR1<bool>({false, false, false, false, false,
+                                     !has_inf, !has_inf, true, true}));
     ComputeAndCompareLiteral(&b, expected, {});
   }
 
@@ -120,7 +121,7 @@ class MathTypedTest : public MathTest {
     ComputeAndCompareLiteral(
         &b,
         LiteralUtil::CreateR1<bool>(
-            {true, false, false, false, false, false, false}),
+            {has_negative_zero_v<T>, false, false, false, false, false, false}),
         {}, error_spec_);
   }
 
@@ -171,6 +172,7 @@ class MathTypedTest : public MathTest {
     SetFastMathDisabled(true);
     const T kErfInvOneMinusHalfULP = T(3.832506856900711);
     const T inf(std::numeric_limits<float>::infinity());
+    const T nan(std::numeric_limits<float>::quiet_NaN());
 
     XlaBuilder b(TestName());
     auto x = AddParam(LiteralUtil::CreateR1<T>({T{-inf}, T{inf}, T{-0}, T{0},
@@ -179,23 +181,29 @@ class MathTypedTest : public MathTest {
                       &b);
     Erf(x);
 
-    std::vector<T> expected = {T(-1), T(1), T(-0), T(0), T(-1), T(1)};
+    bool has_inf = std::numeric_limits<T>::has_infinity;
+    std::vector<T> expected = {
+        has_inf ? T(-1) : nan, has_inf ? T(1) : nan, T(-0), T(0), T(-1), T(1)};
 
     ComputeAndCompareR1<T>(&b, expected, {}, error_spec_);
   }
 };
 
 // TODO(b/123355973): Add bfloat16 to TestTypes once it's working.
-using TestTypes = ::testing::Types<float
+using TestTypes =
+    ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3, tsl::float8_e4m3fnuz,
+                     tsl::float8_e4m3b11fnuz, tsl::float8_e5m2,
+                     tsl::float8_e5m2fnuz,
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-                                   ,
-                                   Eigen::half
+                     Eigen::half,
+#endif
+#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
+                     Eigen::bfloat16,
 #endif
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
-                                   ,
-                                   double
+                     double,
 #endif
-                                   >;
+                     float>;
 
 TYPED_TEST_CASE(MathTypedTest, TestTypes);
 

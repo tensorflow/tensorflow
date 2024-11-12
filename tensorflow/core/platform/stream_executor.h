@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -30,5 +29,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/dso_loader.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_STREAM_EXECUTOR_H_

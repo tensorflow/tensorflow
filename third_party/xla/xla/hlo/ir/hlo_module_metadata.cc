@@ -16,12 +16,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_metadata.h"
 
 #include <algorithm>
+#include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/metrics.pb.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -97,6 +103,27 @@ absl::Status HloModuleMetadata::set_custom_metadata(
                  << pass_metadata->pass_id();
     return Internal("failed to pack custom metadata");
   };
+  return absl::OkStatus();
+}
+
+absl::Status HloModuleMetadata::set_key_value_metric(const std::string& key,
+                                                     int64_t value) {
+  TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+                      GetCurrentHloPassMetadata());
+  auto* kv_metrics = pass_metadata->mutable_kv_metrics();
+  // Iterating here since we expect only a few kv_metrics per pass ..
+  for (auto& kv_metric : *kv_metrics) {
+    if (kv_metric.key() == key) {
+      kv_metric.set_value(value);
+
+      return absl::OkStatus();
+    }
+  }
+
+  // If none exists, add new one.
+  KeyValueMetric* kv_metric = pass_metadata->add_kv_metrics();
+  kv_metric->set_key(key);
+  kv_metric->set_value(value);
   return absl::OkStatus();
 }
 

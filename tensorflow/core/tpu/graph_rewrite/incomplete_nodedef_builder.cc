@@ -51,8 +51,8 @@ IncompleteNodeDefBuilder& IncompleteNodeDefBuilder::Device(
   return *this;
 }
 
-Status IncompleteNodeDefBuilder::Build(Graph* graph, Node** n) {
-  Status status;
+absl::Status IncompleteNodeDefBuilder::Build(Graph* graph, Node** n) {
+  absl::Status status;
   *n = graph->AddNode(nodedef_, &status);
   return status;
 }

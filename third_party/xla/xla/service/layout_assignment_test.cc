@@ -28,13 +28,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/algebraic_simplifier.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -1953,6 +1953,47 @@ ENTRY %main {
   LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
                                      nullptr);
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest, WorksWithWhileLoopWithoutLayout) {
+  const char* module_str = R"(
+HloModule t
+
+while_condition {
+  tuple = (f32[5,16], u32[]) parameter(0)
+  i = u32[] get-tuple-element(tuple), index=1
+  n = u32[] constant(8)
+  ROOT predicate = pred[] compare(i, n), direction=LT
+}
+
+while_body {
+  tuple = (f32[5,16], u32[]) parameter(0)
+  input = f32[5,16] get-tuple-element(tuple), index=0
+  i = u32[] get-tuple-element(tuple), index=1
+  c1 = u32[] constant(1)
+  i_ = add(i, c1)
+  output = add(input, input)
+  ROOT tuple1 = (f32[5,16], u32[]) tuple(output, i_)
+}
+
+ENTRY main {
+  input = f32[5,16] parameter(0)
+  c0 = u32[] constant(0)
+  tuple = (f32[5,16], u32[]) tuple(input, c0)
+  tuple_ = (f32[5,16], u32[]) while(tuple), condition=while_condition, body=while_body
+  ROOT output_ = f32[5,16] get-tuple-element(tuple_), index=0
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(
+          module_str, {}, HloParserOptions().set_fill_missing_layouts(false)));
+  TF_CHECK_OK(backend()
+                  .compiler()
+                  ->RunHloPasses(m->Clone(),
+                                 backend().default_stream_executor(),
+                                 /*device_allocator=*/nullptr)
+                  .status());
 }
 
 }  // namespace

@@ -96,6 +96,7 @@ class HloPrintOptions {
         indent_amount_(0),
         print_large_constants_(false),
         print_only_essential_constants_(false),
+        print_original_value_(true),
         print_metadata_(true),
         print_metadata_only_op_name_(false),
         print_backend_config_(true),
@@ -115,7 +116,8 @@ class HloPrintOptions {
         canonicalize_computations_(false),
         print_extra_attributes_(true),
         syntax_sugar_async_ops_(true),
-        print_name_after_closing_brace_(false) {}
+        print_name_after_closing_brace_(false),
+        print_full_replica_group_list_(false) {}
   // Static reference to a default construction HloPrintOptions, to avoid
   // constructing a new one each time default is needed.
   static const HloPrintOptions& Default() {
@@ -162,16 +164,23 @@ class HloPrintOptions {
     return Canonical()
         // Exclude because they do not affect HLO optimizations.
         .set_print_infeed_outfeed_config(false)
-        // Exclude floating point constant literals that are not all zeros, all
-        // ones, or integers because they may be randomly initialized weights,
-        // which may be changed across different runs.
+        // Exclude floating point constant literals that are not all
+        // zeros, all ones, or integers because they may be randomly
+        // initialized weights, which may be changed across different
+        // runs.
         .set_print_only_essential_constants(true)
         // Remove "id" in "name.id" (after period) because it can be
-        // non-deterministic. This mainly affects computations' names because
-        // canonicalized instructions' names are in "tmp_id" format.
+        // non-deterministic. This mainly affects computations' names
+        // because canonicalized instructions' names are in "tmp_id"
+        // format.
         .set_print_ids(false)
         // Sort computations.
-        .set_canonicalize_computations(true);
+        .set_canonicalize_computations(true)
+        // Force to print full replica group list to avoid non-determinism.
+        // With this flag set to false, the replica group list may be printed
+        // in a compact form when iota_replica_group_list is present, which may
+        // be different across different runs.
+        .set_print_full_replica_group_list(true);
   }
 
   // Options to produce a fingerprint of an HLO module and computation.
@@ -201,6 +210,11 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, origin will be printed.
+  HloPrintOptions& set_print_original_value(bool value) {
+    print_original_value_ = value;
+    return *this;
+  }
   // If true, metadata will be printed.
   HloPrintOptions& set_print_metadata(bool value) {
     print_metadata_ = value;
@@ -285,6 +299,11 @@ class HloPrintOptions {
   // If true, control dependencies will be printed.
   HloPrintOptions& set_print_control_dependencies(bool value) {
     print_control_dependencies_ = value;
+    return *this;
+  }
+
+  HloPrintOptions& set_print_full_replica_group_list(bool value) {
+    print_full_replica_group_list_ = value;
     return *this;
   }
 
@@ -387,6 +406,7 @@ class HloPrintOptions {
   PrintSubcomputationMode print_subcomputation_mode() const {
     return print_subcomputation_mode_;
   }
+  bool print_original_value() const { return print_original_value_; }
   bool print_metadata() const { return print_metadata_; }
   bool print_metadata_only_op_name() const {
     return print_metadata_only_op_name_;
@@ -421,6 +441,9 @@ class HloPrintOptions {
   int print_name_after_closing_brace() const {
     return print_name_after_closing_brace_;
   }
+  bool print_full_replica_group_list() const {
+    return print_full_replica_group_list_;
+  }
 
  private:
   // The interval between the /*index=*/ annotated operands. 0 means never print
@@ -430,6 +453,7 @@ class HloPrintOptions {
   int indent_amount_;
   bool print_large_constants_;
   bool print_only_essential_constants_;
+  bool print_original_value_;
   bool print_metadata_;
   bool print_metadata_only_op_name_;
   bool print_backend_config_;
@@ -450,6 +474,7 @@ class HloPrintOptions {
   bool print_extra_attributes_;
   bool syntax_sugar_async_ops_;
   bool print_name_after_closing_brace_;
+  bool print_full_replica_group_list_;
 };
 
 // For canonical string output, we need to have a canonical way to rename
@@ -1008,6 +1033,59 @@ class HloInstruction {
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const std::optional<int64_t>& channel_id,
       const std::optional<int64_t>& split_dimension = std::nullopt);
+
+  // The RaggedAllToAll instruction performs a collective all-to-all operation,
+  // where the input and output are ragged tensors.
+  //
+  // Ragged tensors are defined by a set of three tensors:
+  // *) ‘data’: the ‘data’ tensor is “ragged” along its outermost dimension,
+  //   along which each indexed element has variable size.
+  // *) ‘offsets’: the ‘offsets’ tensor indexes the outermost dimension of the
+  //  ‘data’ tensor, and represents the starting offset of each ragged element
+  //  of the ‘data’ tensor.
+  // *) ‘sizes’: the ‘sizes’ tensor represents the size of each ragged element
+  //  of the ‘data’ tensor, where the size is specified in units of
+  //  sub-elements. A sub-element is defined as the suffix of the ‘data’ tensor
+  //  shape obtained by removing the outermost “ragged” dimension.
+  // *) The ‘offsets’ and ‘sizes’ tensors must have the same size.
+  //
+  // An example ragged tensor
+  // data: [8,3] =
+  //  {{a,b,c},{d,e,f},{g,h,i},{j,k,l},{m,n,o},{p,q,r},{s,t,u},{v,w,x}}
+  // offsets: [3] = {0, 1, 4}
+  // sizes: [3] = {1, 3, 4}
+  //
+  // Index 'data' at 'offsets'[0], 'sizes'[0]'
+  // {a,b,c}
+  //
+  // Index 'data' at 'offsets'[1], 'sizes'[1]'
+  // {d,e,f},{g,h,i},{j,k,l}
+  //
+  // Index 'data' at 'offsets'[2], 'sizes'[2]'
+  // {m,n,o},{p,q,r},{s,t,u},{v,w,x}
+  //
+  // The ragged all-to-all HLO has the following arguments:
+  // input: ragged input data tensor.
+  // input_offsets: ragged input offsets tensor.
+  // send_sizes: ragged send sizes tensor.
+  // output: ragged output data tensor.
+  // output_offsets: ragged output offsets tensor.
+  // recv_sizes: ragged recv sizes tensor.
+  //
+  // The '*_offsets' and '*_sizes' tensors must have the same shape.
+  // The output buffer is passed in as an input (and aliased in the output),
+  // to support incremental updates to the same buffer.
+  //
+  static std::unique_ptr<HloInstruction> CreateRaggedAllToAll(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      const CollectiveDeviceList& device_list,
+      const std::optional<int64_t>& channel_id);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
+  static std::unique_ptr<HloInstruction> CreateRaggedAllToAll(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      absl::Span<const ReplicaGroup> replica_groups,
+      const std::optional<int64_t>& channel_id);
 
   // Creates a communication instruction that broadcasts data cross replicas.
   // Data is sent from to the first replica id in each group to the other ids in

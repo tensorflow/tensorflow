@@ -58,7 +58,6 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -4006,12 +4005,16 @@ LogicalResult SelectOp::reifyReturnTypeShapes(
 
 OpFoldResult SetDimensionSizeOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
-  DenseElementsAttr input = dyn_cast_or_null<DenseElementsAttr>(operands[0]);
-  if (input) return input;
 
+  // Even if all operands are constants, we can't fold SetDimensionSize to a
+  // constant, since mhlo.constant doesn't support dynamic dimensions. We can,
+  // however, replace the op with its operand, in the case where the (constant)
+  // bound of a dimension is the same as the full extent of said dimension.
   DenseElementsAttr size = dyn_cast_or_null<DenseElementsAttr>(operands[1]);
   if (!size || !size.isSplat()) return {};
 
+  // TODO(b/377537099): This is the result type, which is always dynamic in the
+  // dimension we're looking at. So the code below doesn't do anything.
   auto ty = dyn_cast<RankedTensorType>(getType());
   if (!ty) return {};
 

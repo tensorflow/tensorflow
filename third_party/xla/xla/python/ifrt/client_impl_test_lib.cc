@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/test_util.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -52,6 +53,18 @@ TEST(ClientImplTest, Devices) {
   }
 
   EXPECT_GE(client->process_index(), 0);
+}
+
+TEST(ClientImplTest, GetAllDevices) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  EXPECT_GE(client->GetAllDevices().size(), client->device_count());
+
+  for (Device* device : client->GetAllDevices()) {
+    TF_ASSERT_OK_AND_ASSIGN(auto* looked_up_device,
+                            client->LookupDevice(device->Id()));
+    EXPECT_EQ(device, looked_up_device);
+  }
 }
 
 TEST(ClientImplTest, DefaultCompiler) {

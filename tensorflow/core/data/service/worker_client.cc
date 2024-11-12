@@ -74,13 +74,13 @@ CreateDataServiceWorkerClient(
   return client;
 }
 
-Status DataServiceWorkerClient::GetElement(const GetElementRequest& req,
-                                           GetElementResult& result) {
+absl::Status DataServiceWorkerClient::GetElement(const GetElementRequest& req,
+                                                 GetElementResult& result) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   return client_->GetElement(req, result);
 }
 
-Status DataServiceWorkerClient::EnsureInitialized() {
+absl::Status DataServiceWorkerClient::EnsureInitialized() {
   mutex_lock l(mu_);
   if (client_) {
     return absl::OkStatus();
@@ -112,8 +112,8 @@ class GrpcDataTransferClient : public DataTransferClient {
     stub_ = WorkerService::NewStub(channel);
   }
 
-  Status GetElement(const GetElementRequest& req,
-                    GetElementResult& result) override {
+  absl::Status GetElement(const GetElementRequest& req,
+                          GetElementResult& result) override {
     VLOG(3) << "GetElement for task " << req.task_id() << " from gRPC worker "
             << "server.";
     {
@@ -215,14 +215,14 @@ class LocalDataTransferClient : public DataTransferClient {
             << ".";
   }
 
-  Status GetElement(const GetElementRequest& req,
-                    GetElementResult& result) override {
+  absl::Status GetElement(const GetElementRequest& req,
+                          GetElementResult& result) override {
     VLOG(3) << "GetElement for task " << req.task_id() << " from local worker.";
     TF_RETURN_IF_ERROR(VerifyClientIsNotCancelled());
     TF_ASSIGN_OR_RETURN(std::shared_ptr<DataServiceWorkerImpl> worker,
                         GetWorker(req));
     int64_t start_time_us = env_->NowMicros();
-    Status s = worker->GetElementResult(&req, &result);
+    absl::Status s = worker->GetElementResult(&req, &result);
     int64_t end_time_us = env_->NowMicros();
     TF_RETURN_IF_ERROR(s);
     metrics::RecordTFDataServiceGetElementDuration(kLocalTransferProtocol,
@@ -241,7 +241,7 @@ class LocalDataTransferClient : public DataTransferClient {
   }
 
  private:
-  Status VerifyClientIsNotCancelled() TF_LOCKS_EXCLUDED(mu_) {
+  absl::Status VerifyClientIsNotCancelled() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     if (cancelled_) {
       return errors::Cancelled(absl::Substitute(

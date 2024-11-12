@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 
-#include <algorithm>
+#include <cstddef>
 #include <functional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "llvm/IR/BasicBlock.h"
@@ -67,7 +68,7 @@ absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::DefaultAction(
         // LLVM's CSE or GVN should be able to easily merge common
         // subexpressions that would be regenerated without caching. But this
         // might increase the JIT compilation time.
-        llvm::IRBuilder<>* b = elemental_emitter_.b();
+        llvm::IRBuilderBase* b = elemental_emitter_.b();
 
         if (bb == b->GetInsertBlock()) {
           VLOG(3) << "The cached generated value is reused.";
@@ -91,7 +92,7 @@ absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::DefaultAction(
 FusedIrEmitter::IndexedGenerator FusedIrEmitter::HandleConstant(
     const HloInstruction& constant) {
   llvm::Module* module = elemental_emitter_.module();
-  llvm::IRBuilder<>* b = elemental_emitter_.b();
+  llvm::IRBuilderBase* b = elemental_emitter_.b();
 
   // Explicitly set global addrspace for SPIR backend.
   int addrspace = llvm::Triple(module->getTargetTriple()).isSPIR() ? 1 : 0;
@@ -125,7 +126,7 @@ absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
         operand->shape().element_type(), elemental_emitter_.module()));
   }
 
-  llvm::IRBuilder<>* b = elemental_emitter_.b();
+  llvm::IRBuilderBase* b = elemental_emitter_.b();
   llvm::Type* type = llvm::StructType::get(b->getContext(), element_ir_types);
 
   return absl::StatusOr<IndexedGenerator>([&, b,

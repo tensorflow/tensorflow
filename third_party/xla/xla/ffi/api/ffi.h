@@ -73,10 +73,12 @@ enum class DataType : uint8_t {
   C128 = XLA_FFI_DataType_C128,
   TOKEN = XLA_FFI_DataType_TOKEN,
   F8E5M2 = XLA_FFI_DataType_F8E5M2,
+  F8E4M3 = XLA_FFI_DataType_F8E4M3,
   F8E4M3FN = XLA_FFI_DataType_F8E4M3FN,
   F8E4M3B11FNUZ = XLA_FFI_DataType_F8E4M3B11FNUZ,
   F8E5M2FNUZ = XLA_FFI_DataType_F8E5M2FNUZ,
   F8E4M3FNUZ = XLA_FFI_DataType_F8E4M3FNUZ,
+  F8E3M4 = XLA_FFI_DataType_F8E3M4,
 };
 
 // Create aliases in ::xla::ffi namespace for all DataTypes, for consistency
@@ -98,10 +100,12 @@ inline constexpr DataType C64 = DataType::C64;
 inline constexpr DataType C128 = DataType::C128;
 inline constexpr DataType TOKEN = DataType::TOKEN;
 inline constexpr DataType F8E5M2 = DataType::F8E5M2;
+inline constexpr DataType F8E4M3 = DataType::F8E4M3;
 inline constexpr DataType F8E4M3FN = DataType::F8E4M3FN;
 inline constexpr DataType F8E4M3B11FNUZ = DataType::F8E4M3B11FNUZ;
 inline constexpr DataType F8E5M2FNUZ = DataType::F8E5M2FNUZ;
 inline constexpr DataType F8E4M3FNUZ = DataType::F8E4M3FNUZ;
+inline constexpr DataType F8E3M4 = DataType::F8E3M4;
 
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
   return os << static_cast<XLA_FFI_DataType>(dtype);
@@ -117,10 +121,12 @@ constexpr size_t ByteWidth(DataType dtype) {
     case DataType::S8:
     case DataType::U8:
     case DataType::F8E5M2:
+    case DataType::F8E4M3:
     case DataType::F8E4M3FN:
     case DataType::F8E4M3B11FNUZ:
     case DataType::F8E5M2FNUZ:
     case DataType::F8E4M3FNUZ:
+    case DataType::F8E3M4:
       return 1;
     case DataType::S16:
     case DataType::U16:
@@ -470,6 +476,22 @@ class AnyBuffer {
   }
 
   void* untyped_data() const { return buf_->data; }
+
+  template <typename T>
+  T* typed_data() const {
+    assert(internal::NativeTypeToCApiDataType<T>() == buf_->dtype &&
+           "Template type must match the underlying buffer dtype");
+    return reinterpret_cast<T*>(buf_->data);
+  }
+
+  template <typename T>
+  T* reinterpret_data() const {
+    assert(sizeof(T) == ByteWidth(element_type()) &&
+           !(reinterpret_cast<std::uintptr_t>(buf_->data) % alignof(T)) &&
+           "Requested type must have the same byte width and alignment as the "
+           "underlying buffer type");
+    return reinterpret_cast<T*>(buf_->data);
+  }
 
  private:
   const XLA_FFI_Buffer* buf_;

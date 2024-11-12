@@ -14,20 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string>
 
 #include "xla/service/gpu/fusions/triton/kernel_name_tracer.h"
 
 namespace xla::gpu {
 
-class KernelNameTracerNoop : public KernelNameTracer {
- public:
-  void start() override {};
-  std::string stop() override { return "kernel_name_tracer_not_implemented"; };
-};
-
-std::unique_ptr<KernelNameTracer> KernelNameTracer::Create() {
-  return std::make_unique<KernelNameTracerNoop>();
-}
+std::unique_ptr<KernelNameTracer> KernelNameTracer::Create() { return nullptr; }
 
 }  // namespace xla::gpu

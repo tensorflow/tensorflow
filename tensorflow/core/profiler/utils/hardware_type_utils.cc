@@ -19,11 +19,11 @@ limitations under the License.
 
 #include "absl/container/btree_map.h"
 #include "absl/strings/match.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -49,8 +49,8 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -87,10 +87,10 @@ xla_test(
         "//xla/service:hlo_proto_cc",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -141,7 +141,7 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -232,10 +232,6 @@ xla_test(
     name = "math_test",
     timeout = "long",
     srcs = ["math_test.cc"],
-    backend_tags = {
-        # Times out.
-        "ghostfish_iss": ["noasan"],
-    },
     deps = [
         ":constants",
         ":math",
@@ -251,9 +247,9 @@ xla_test(
         "//xla/service",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -300,10 +296,10 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -340,9 +336,9 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -376,9 +372,9 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -418,8 +414,8 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -497,8 +493,8 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -535,8 +531,8 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -570,8 +566,8 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/platform:bfloat16",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -614,10 +610,10 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -665,8 +661,8 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -708,9 +704,9 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -749,7 +745,7 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -781,7 +777,7 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/service",
         "//xla/tests:client_library_test_base",
-        "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )

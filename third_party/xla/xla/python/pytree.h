@@ -19,6 +19,8 @@ limitations under the License.
 // See https://jax.readthedocs.io/en/latest/pytrees.html for the documentation
 // about pytree.
 
+#include <Python.h>
+
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -49,7 +51,7 @@ enum class PyTreeKind {
 };
 
 // Registry of custom node types.
-class PyTreeRegistry : public std::enable_shared_from_this<PyTreeRegistry> {
+class PyTreeRegistry {
  public:
   PyTreeRegistry(bool enable_none, bool enable_tuple, bool enable_namedtuple,
                  bool enable_list, bool enable_dict);
@@ -78,6 +80,8 @@ class PyTreeRegistry : public std::enable_shared_from_this<PyTreeRegistry> {
     // For dataclasses.
     std::vector<nanobind::str> data_fields;
     std::vector<nanobind::str> meta_fields;
+
+    int tp_traverse(visitproc visit, void* arg);
   };
 
   // Registers a new custom type. Objects of `type` will be treated as container
@@ -99,6 +103,8 @@ class PyTreeRegistry : public std::enable_shared_from_this<PyTreeRegistry> {
   // Flattens a pytree one level, returning either a tuple of the leaves and
   // the node data, or None, if the entry is a leaf.
   nanobind::object FlattenOneLevel(nanobind::handle x) const;
+
+  static PyType_Slot slots_[];
 
  private:
   struct TypeHash {
@@ -125,10 +131,10 @@ class PyTreeRegistry : public std::enable_shared_from_this<PyTreeRegistry> {
                       TypeEq>
       registrations_;
   bool enable_namedtuple_;
-};
 
-// Returns the default pytree registry.
-std::shared_ptr<PyTreeRegistry> DefaultPyTreeRegistry();
+  static int tp_traverse(PyObject* self, visitproc visit, void* arg);
+  static int tp_clear(PyObject* self);
+};
 
 // A PyTreeDef describes the tree structure of a PyTree. A PyTree is a tree of
 // Python values, where the interior nodes are tuples, lists, dictionaries, or
@@ -139,16 +145,15 @@ class PyTreeDef {
   // PyTreeDef. It is the caller's responsibility to enforce this.
   explicit PyTreeDef(PyTreeRegistry* registry) : registry_(registry) {}
 
-  explicit PyTreeDef(std::shared_ptr<PyTreeRegistry> registry)
+  explicit PyTreeDef(nb_class_ptr<PyTreeRegistry> registry)
       : registry_(registry.get()), registry_ref_(std::move(registry)) {}
 
   // Flattens a Pytree into a list of leaves and a PyTreeDef.
   // Returns references to the flattened objects, which might be temporary
   // objects in the case of custom pytype handlers.
   static std::pair<std::vector<nanobind::object>, nb_class_ptr<PyTreeDef>>
-  Flatten(nanobind::handle x,
-          std::optional<nanobind::callable> leaf_predicate = std::nullopt,
-          std::shared_ptr<PyTreeRegistry> registry = nullptr);
+  Flatten(nanobind::handle x, nb_class_ptr<PyTreeRegistry> registry,
+          std::optional<nanobind::callable> leaf_predicate = std::nullopt);
 
   // Flattens a Pytree into a list of `leaves` and a PyTreeDef (this).
   // `leaves` owns references to the flattened objects, which might be
@@ -179,7 +184,7 @@ class PyTreeDef {
   nb_class_ptr<PyTreeDef> Compose(const PyTreeDef& inner) const;
 
   // Makes a Tuple PyTreeDef out of a vector of PyTreeDefs.
-  static nb_class_ptr<PyTreeDef> Tuple(std::shared_ptr<PyTreeRegistry> registry,
+  static nb_class_ptr<PyTreeDef> Tuple(nb_class_ptr<PyTreeRegistry> registry,
                                        nanobind::list defs);
 
   // The returned PyTreeDefs hold a reference to the registry.
@@ -225,16 +230,17 @@ class PyTreeDef {
   void SerializeTo(jax::PyTreeDefProto& result) const;
 
   static nb_class_ptr<PyTreeDef> DeserializeFrom(
-      std::shared_ptr<PyTreeRegistry> registry,
-      const jax::PyTreeDefProto& input);
+      nb_class_ptr<PyTreeRegistry> registry, const jax::PyTreeDefProto& input);
 
   std::optional<std::pair<nanobind::object, nanobind::object>> GetNodeData()
       const;
 
   static nb_class_ptr<PyTreeDef> MakeFromNodeDataAndChildren(
-      std::shared_ptr<PyTreeRegistry> registry,
+      nb_class_ptr<PyTreeRegistry> registry,
       std::optional<std::pair<nanobind::object, nanobind::object>> node_data,
       nanobind::iterable children);
+
+  static PyType_Slot slots_[];
 
  private:
   void SetNumLeavesAndNumNodes();
@@ -265,6 +271,8 @@ class PyTreeDef {
 
     // Number of leaf and interior nodes in the subtree rooted at this node.
     int num_nodes = 0;
+
+    int tp_traverse(visitproc visit, void* arg) const;
   };
   template <typename H>
   friend H AbslHashValue(H h, const Node& n);
@@ -289,11 +297,14 @@ class PyTreeDef {
   template <typename T>
   nanobind::object UnflattenImpl(T leaves) const;
 
+  static int tp_traverse(PyObject* self, visitproc visit, void* arg);
+  static int tp_clear(PyObject* self);
+
   // Pytree registry. Not owned.
   PyTreeRegistry* registry_;
   // If this class holds a reference to `registry`, it is held by
   // `registry_ref_`.
-  std::shared_ptr<PyTreeRegistry> registry_ref_;
+  nb_class_ptr<PyTreeRegistry> registry_ref_;
 
   // Nodes, in a post-order traversal. We use an ordered traversal to minimize
   // allocations, and post-order corresponds to the order we need to rebuild the

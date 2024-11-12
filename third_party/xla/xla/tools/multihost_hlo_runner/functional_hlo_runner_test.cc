@@ -279,7 +279,7 @@ TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
     std::string stderr_str;
     int child_status =
         child[node_id].Communicate(nullptr, &stdout_str, &stderr_str);
-    ASSERT_EQ(child_status, 0) << " node " << node_id << "\nstdout:\n"
+    EXPECT_EQ(child_status, 0) << " node " << node_id << "\nstdout:\n"
                                << stdout_str << "\nstderr:\n"
                                << stderr_str;
   }
@@ -294,19 +294,34 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
                          /*enable_mock_nccl=*/false,
                          /*init_timeout=*/absl::Seconds(120)));
   CHECK(env.kv_store != nullptr);
+  // Make HLO module IDs of multiple_gemm_fusions.hlo differ: the autotuner
+  // should not rely on them.
+  if (node_id == 0) {
+    TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadHloModuleAndArguments(
+                           GetHloPath("single_device.hlo"), InputFormat::kText)
+                           .status());
+  }
+  // Use a pair of modules that differ by a value of a constant that is outside
+  // GEMM fusions. Modules should be nevertheless considered equivalent by
+  // the autotuner.
   TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
       *env.client, GetDebugOptionsFromFlags(),
       FunctionalHloRunner::PreprocessingOptions{},
       FunctionalHloRunner::RawCompileOptions{},
-      GetHloPath("multiple_gemm_fusions.hlo"), InputFormat::kText));
+      GetHloPath(absl::StrFormat("multiple_gemm_fusions_%d.hlo", node_id + 1)),
+      InputFormat::kText));
   if (node_id == 0) {
-    TF_ASSIGN_OR_RETURN(std::string results0,
-                        env.kv_store->Get("gemm_fusion_autotuning_results_1_0",
-                                          absl::Seconds(1)));
+    TF_ASSIGN_OR_RETURN(
+        std::string results0,
+        env.kv_store->Get("gemm_fusion_autotuning_results_"
+                          "3rICV5olU4JYmrEsiWSstWM0ew6jr1f60ikmjvPhwUc_0",
+                          absl::Seconds(1)));
     CHECK(absl::StrContains(results0, "run_time"));
-    TF_ASSIGN_OR_RETURN(std::string results1,
-                        env.kv_store->Get("gemm_fusion_autotuning_results_1_1",
-                                          absl::Seconds(1)));
+    TF_ASSIGN_OR_RETURN(
+        std::string results1,
+        env.kv_store->Get("gemm_fusion_autotuning_results_"
+                          "3rICV5olU4JYmrEsiWSstWM0ew6jr1f60ikmjvPhwUc_1",
+                          absl::Seconds(1)));
     CHECK(absl::StrContains(results1, "run_time"));
     // The nodes autotune different fusions.
     CHECK_NE(results0, results1);

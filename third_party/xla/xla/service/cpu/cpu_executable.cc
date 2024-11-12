@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_executable.h"
 
+#include "xla/service/hlo_profile_printer_data.pb.h"
+
 #define EIGEN_USE_THREADS
 
 #include <stdint.h>
@@ -42,6 +44,7 @@ limitations under the License.
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/Error.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
+#include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/executable_run_options.h"
@@ -389,15 +392,15 @@ absl::Status CpuExecutable::ExecuteThunks(
                       Thunk::CustomCallExecuteParams::Create(run_options));
 
   // Use the intra-op thread pool to offload thunk executor tasks.
-  Thunk::TaskRunner task_runner = [run_options](Thunk::Task task) {
-    run_options->intra_op_thread_pool()->getPool()->Schedule(std::move(task));
-  };
+  auto* intra_op_thread_pool = run_options->intra_op_thread_pool();
+  ThreadPoolTaskRunner task_runner(
+      intra_op_thread_pool ? intra_op_thread_pool->getPool() : nullptr);
 
   Thunk::ExecuteParams execute_params = {
       &*function_registry_,
       &allocations,
       runtime::GetXfeedManager(runtime::GetDeviceOrdinal(run_options)),
-      run_options->intra_op_thread_pool(),
+      intra_op_thread_pool,
       &task_runner,
       &collective_execute_params,
       &custom_call_execute_params};

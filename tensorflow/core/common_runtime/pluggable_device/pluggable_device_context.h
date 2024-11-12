@@ -20,7 +20,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace stream_executor {
 class Stream;
@@ -66,8 +69,8 @@ class PluggableDeviceContext : public DeviceContext {
   void MaintainLifetimeOnStream(const Tensor* t,
                                 se::Stream* stream) const override {}
 
-  Status ThenExecute(Device* device, se::Stream* stream,
-                     std::function<void()> func) override;
+  absl::Status ThenExecute(Device* device, se::Stream* stream,
+                           std::function<void()> func) override;
 
   bool IsPluggableDevice() override;
 

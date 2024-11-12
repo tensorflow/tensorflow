@@ -38,7 +38,7 @@ constexpr char kErrorSource[] =
 void OkOrSetErrorCounterPayload(
     const tensorflow::core::platform::ErrorSourceProto::ErrorSource&
         error_source,
-    tensorflow::Status& status);
+    absl::Status& status);
 }  // namespace tsl
 
 namespace tensorflow {

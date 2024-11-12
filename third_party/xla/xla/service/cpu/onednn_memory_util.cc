@@ -71,7 +71,7 @@ MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal) {
   return result;
 }
 
-StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilder<>& builder,
+StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilderBase& builder,
                                        const llvm_ir::IrArray& ir_array) {
   const Shape& shape = ir_array.GetShape();
   int64_t rank = shape.rank();

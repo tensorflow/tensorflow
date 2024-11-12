@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/array2d.h"
 
+#include <cstdint>
 #include <initializer_list>
 #include <string>
 
@@ -162,6 +163,20 @@ TEST(Array2dTest, LinspaceF8E5M2) {
   EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 1)), 3.5);
 }
 
+TEST(Array2dTest, LinspaceF8E4M3) {
+  auto arr = MakeLinspaceArray2D<tsl::float8_e4m3>(1.0, 3.5, 3, 2);
+
+  EXPECT_EQ(arr->n1(), 3);
+  EXPECT_EQ(arr->n2(), 2);
+
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(0, 0)), 1.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(0, 1)), 1.5);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(1, 0)), 2.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(1, 1)), 2.5);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 0)), 3.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 1)), 3.5);
+}
+
 TEST(Array2dTest, LinspaceF8E4M3Fn) {
   auto arr = MakeLinspaceArray2D<tsl::float8_e4m3fn>(1.0, 3.5, 3, 2);
 
@@ -188,6 +203,20 @@ TEST(Array2dTest, LinspaceF8E4M3FnNoNan) {
       EXPECT_EQ((*arr)(n1, n2), (*arr)(n1, n2));
     }
   }
+}
+
+TEST(Array2dTest, LinspaceF8E3M4) {
+  auto arr = MakeLinspaceArray2D<tsl::float8_e3m4>(1.0, 3.5, 3, 2);
+
+  EXPECT_EQ(arr->n1(), 3);
+  EXPECT_EQ(arr->n2(), 2);
+
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(0, 0)), 1.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(0, 1)), 1.5);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(1, 0)), 2.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(1, 1)), 2.5);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 0)), 3.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 1)), 3.5);
 }
 
 TEST(Array2dTest, Stringification) {

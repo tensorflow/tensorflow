@@ -122,7 +122,7 @@ class KernelFusionEmitterBase : public KernelFusionInterface {
                                   const LaunchDimensions& launch_dims,
                                   std::vector<llvm_ir::IrArray> inputs,
                                   std::vector<llvm_ir::IrArray> outputs,
-                                  llvm::IRBuilder<>* builder) const = 0;
+                                  llvm::IRBuilderBase* builder) const = 0;
 };
 
 absl::StatusOr<
@@ -133,7 +133,7 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      absl::Span<const KernelArgument> arguments,
                      size_t num_inputs,
                      const LaunchDimensions& launch_dimensions,
-                     llvm::IRBuilder<>* builder);
+                     llvm::IRBuilderBase* builder);
 absl::StatusOr<
     std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
                std::vector<llvm_ir::IrArray> /*outputs*/>>
@@ -142,7 +142,7 @@ BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
                                    absl::Span<const KernelArgument> arguments,
                                    size_t num_inputs,
                                    const LaunchDimensions& launch_dimensions,
-                                   llvm::IRBuilder<>* builder);
+                                   llvm::IRBuilderBase* builder);
 
 // Compute the kernel name. The opcode string may contain "-" which cannot be
 // in a PTX function name, so sanitize the name before uniquifying it.

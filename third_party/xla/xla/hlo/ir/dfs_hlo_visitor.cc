@@ -17,8 +17,9 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/types.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 

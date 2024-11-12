@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
@@ -37,14 +39,14 @@ FlatTensorFunction::FlatTensorFunction(
     : name_(name), captures_(std::move(captures)), ctx_(ctx) {}
 
 FlatTensorFunction::~FlatTensorFunction() {
-  Status status = ctx_->RemoveFunction(name_);
+  absl::Status status = ctx_->RemoveFunction(name_);
   if (!status.ok()) {
     LOG(ERROR) << "Failed to remove functiondef " << name_ << ". "
                << status.message();
   }
 }
 
-Status FlatTensorFunction::Create(
+absl::Status FlatTensorFunction::Create(
     const FunctionDef* function_def,
     std::vector<ImmediateExecutionTensorHandle*> captures,
     ImmediateExecutionContext* ctx, std::unique_ptr<FlatTensorFunction>* out) {
@@ -58,10 +60,10 @@ Status FlatTensorFunction::Create(
 
   out->reset(new FlatTensorFunction(function_def->signature().name(),
                                     std::move(owned_captures), ctx));
-  return Status();
+  return absl::Status();
 }
 
-Status FlatTensorFunction::MakeCallOp(
+absl::Status FlatTensorFunction::MakeCallOp(
     absl::Span<AbstractTensorHandle* const> inputs, ImmediateOpPtr* out) const {
   out->reset(ctx_->CreateOperation());
   // In eager mode, TF2 python executes functions by constructing an op with
@@ -84,7 +86,7 @@ Status FlatTensorFunction::MakeCallOp(
 
   // Adding the captures of the function.
   TF_RETURN_IF_ERROR((*out)->AddInputList(captures));
-  return Status();
+  return absl::Status();
 }
 
 }  // namespace tensorflow

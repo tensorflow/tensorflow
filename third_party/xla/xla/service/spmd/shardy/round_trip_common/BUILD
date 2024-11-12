@@ -14,15 +14,49 @@ package_group(
 )
 
 cc_library(
-    name = "convert_sharding_custom_calls",
-    srcs = ["convert_sharding_custom_calls.cc"],
-    hdrs = ["convert_sharding_custom_calls.h"],
+    name = "import_sdy_custom_calls",
+    srcs = ["import_sdy_custom_calls.cc"],
+    hdrs = ["import_sdy_custom_calls.h"],
     deps = [
         "//xla:sharding_op_util",
         "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+    ],
+)
+
+cc_library(
+    name = "export_named_computations",
+    srcs = ["export_named_computations.cc"],
+    hdrs = ["export_named_computations.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+    ],
+)
+
+cc_library(
+    name = "import_backend_func_calls",
+    srcs = ["import_backend_func_calls.cc"],
+    hdrs = ["import_backend_func_calls.h"],
+    deps = [
+        "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
@@ -68,8 +102,9 @@ cc_library(
     srcs = ["pipeline_passes.cc"],
     hdrs = ["pipeline_passes.h"],
     deps = [
-        ":convert_sharding_custom_calls",
+        ":import_backend_func_calls",
         ":import_constants",
+        ":import_sdy_custom_calls",
         ":open_while_free_vars_sharding",
         "//xla/mlir_hlo:mhlo_passes",
         "@llvm-project//mlir:FuncDialect",

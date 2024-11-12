@@ -5,6 +5,21 @@
 // These would be needed to work for round-tripping in JAX integration.
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Basic test with no meshes or shardings
+
+// CHECK-NOT: sdy.mesh
+
+// CHECK-LABEL: func @main(
+// CHECK-SAME: %arg0: tensor<8x16xf32>)
+func.func @main(
+  %arg0: tensor<8x16xf32>) -> (tensor<8x16xf32>) {
+  %0 = mhlo.add %arg0, %arg0 : tensor<8x16xf32>
+  %1 = mhlo.add %0, %0 : tensor<8x16xf32>
+  return %1 : tensor<8x16xf32>
+}
+
+// -----
+
 // Basic test with func arg sharding
 
 // Make sure this temp attr doesn't exist anymore.
@@ -200,6 +215,17 @@ func.func @main(
     mhlo.return %5, %4 : tensor<32x96xf32>, tensor<i32>
   }
   return %2#0 : tensor<32x96xf32>
+}
+
+// -----
+
+// Test that sharding group op is preserved under import and export passes.
+
+// CHECK-LABEL: func @main
+func.func @main(%arg0: tensor<8x16xf32>) -> (tensor<8x16xf32>) {
+  // CHECK: sdy.sharding_group %arg0 group_id=13 : tensor<8x16xf32>
+  sdy.sharding_group %arg0 group_id=13 : tensor<8x16xf32>
+  return %arg0 : tensor<8x16xf32>
 }
 
 // TODO(b/335481977): Add more tests for MHLO ops. So far tested all SDY

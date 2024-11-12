@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -109,6 +110,52 @@ static absl::StatusOr<CallFrameBuilder::Attribute> ConvertArrayAttr(
   }
 }
 
+template <typename T>
+static std::vector<T> CopyDenseElementsToVec(
+    mlir::DenseIntOrFPElementsAttr arr) {
+  auto it = arr.getValues<T>();
+  return std::vector<T>(it.begin(), it.end());
+}
+
+static absl::StatusOr<CallFrameBuilder::Attribute> ConvertDenseElementsAttr(
+    std::string_view name, mlir::DenseIntOrFPElementsAttr arr) {
+  auto type = arr.getElementType();
+  if (type.isInteger()) {
+    if (type.isUnsignedInteger()) {
+      switch (type.getIntOrFloatBitWidth()) {
+        case 8:
+          return CopyDenseElementsToVec<uint8_t>(arr);
+        case 16:
+          return CopyDenseElementsToVec<uint16_t>(arr);
+        case 32:
+          return CopyDenseElementsToVec<uint32_t>(arr);
+        case 64:
+          return CopyDenseElementsToVec<uint64_t>(arr);
+      }
+    } else {
+      switch (type.getIntOrFloatBitWidth()) {
+        case 8:
+          return CopyDenseElementsToVec<int8_t>(arr);
+        case 16:
+          return CopyDenseElementsToVec<int16_t>(arr);
+        case 32:
+          return CopyDenseElementsToVec<int32_t>(arr);
+        case 64:
+          return CopyDenseElementsToVec<int64_t>(arr);
+      }
+    }
+  } else if (type.isIntOrFloat()) {
+    switch (type.getIntOrFloatBitWidth()) {
+      case 32:
+        return CopyDenseElementsToVec<float>(arr);
+      case 64:
+        return CopyDenseElementsToVec<double>(arr);
+    }
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unsupported array element type for attribute: ", name));
+}
+
 static absl::StatusOr<CallFrameBuilder::Attribute> ConvertDictionaryAttr(
     std::string_view name, mlir::DictionaryAttr dict) {
   TF_ASSIGN_OR_RETURN(auto attrs, BuildAttributesMap(dict));
@@ -137,6 +184,8 @@ absl::StatusOr<CallFrameBuilder::AttributesMap> BuildAttributesMap(
             .Case<mlir::IntegerAttr>(convert_with(ConvertIntegerAttr))
             .Case<mlir::FloatAttr>(convert_with(ConvertFloatAttr))
             .Case<mlir::DenseArrayAttr>(convert_with(ConvertArrayAttr))
+            .Case<mlir::DenseIntOrFPElementsAttr>(
+                convert_with(ConvertDenseElementsAttr))
             .Case<mlir::StringAttr>(convert_with(ConvertStringAttr))
             .Case<mlir::DictionaryAttr>(convert_with(ConvertDictionaryAttr))
             .Default([&](mlir::Attribute) {

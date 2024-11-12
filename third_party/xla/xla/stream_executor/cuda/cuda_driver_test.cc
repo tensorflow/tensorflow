@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/cuda_driver.h"
-
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -23,14 +20,8 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
-
-using ::tsl::testing::IsOkAndHolds;
 
 namespace stream_executor {
 namespace cuda {
@@ -55,30 +46,6 @@ class CudaDriverTest : public ::testing::Test {
   static void SetUpTestSuite() { CHECK_CUDA(cuInit(0)); }
 };
 
-TEST_F(CudaDriverTest, ScopedActivateContextTest) {
-  CUdevice device;
-  CHECK_CUDA(cuDeviceGet(&device, 0));
-  CUcontext context0, context1;
-  CHECK_CUDA(cuCtxCreate(&context0, 0, device));
-  CHECK_CUDA(cuCtxCreate(&context1, 0, device));
-  gpu::GpuContext se_context1(context1, /*device_ordinal=*/101);
-  {
-    gpu::ScopedActivateContext scope(&se_context1);
-    CUcontext c;
-    CHECK_CUDA(cuCtxGetCurrent(&c));
-    EXPECT_EQ(c, context1);
-  }
-  CHECK_CUDA(cuCtxSetCurrent(context0));
-  // ScopedActivateContext must correctly set the CUDA context even if some
-  // other code changes the context between the two scopes.
-  {
-    gpu::ScopedActivateContext scope(&se_context1);
-    CUcontext c;
-    CHECK_CUDA(cuCtxGetCurrent(&c));
-    EXPECT_EQ(c, context1);
-  }
-}
-
 TEST_F(CudaDriverTest, DriverVersionParsingTest) {
   // Tests that the driver version can be right after 'Kernel Module',
   // or later as well.
@@ -94,20 +61,6 @@ TEST_F(CudaDriverTest, DriverVersionParsingTest) {
   TF_CHECK_OK(driver_version.status());
   EXPECT_EQ("571.0.0", cuda::DriverVersionToString(driver_version.value()));
 }
-
-TEST_F(CudaDriverTest, GraphGetNodeCountTest) {
-  CUdevice device;
-  CHECK_CUDA(cuDeviceGet(&device, 0));
-  CUcontext context;
-  CHECK_CUDA(cuCtxCreate(&context, 0, device));
-  gpu::GpuGraphHandle graph;
-  TF_CHECK_OK(gpu::GpuDriver::CreateGraph(&graph));
-  EXPECT_THAT(gpu::GpuDriver::GraphGetNodeCount(graph), IsOkAndHolds(0));
-  gpu::GpuGraphNodeHandle node;
-  TF_CHECK_OK(gpu::GpuDriver::GraphAddEmptyNode(&node, graph, {}));
-  EXPECT_THAT(gpu::GpuDriver::GraphGetNodeCount(graph), IsOkAndHolds(1));
-}
-
 }  // namespace cuda
 
 }  // namespace stream_executor

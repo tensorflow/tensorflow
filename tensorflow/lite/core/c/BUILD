@@ -44,17 +44,18 @@ bzl_library(
 filegroup(
     name = "headers_filegroup",
     srcs = [
+        "builtin_op_data.h",
         "c_api.h",
         "c_api_types.h",
         "common.h",
         "operator.h",
+        "//tensorflow/compiler/mlir/lite/core/c:lite_headers_filegroup",
     ],
 )
 
 filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
-        "builtin_op_data.h",
         "common.cc",
         "common.h",
     ],
@@ -283,6 +284,9 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__",
         "//tensorflow/lite:__subpackages__",
     ] + c_api_visibility_allowlist(),
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
+    ],
 )
 
 # Test the C extension API code.
@@ -308,6 +312,7 @@ cc_test(
     ],
     data = [
         "//tensorflow/lite:testdata/custom_sinh.bin",
+        "//tensorflow/lite:testdata/with_metadata.bin",
     ],
     deps = [
         ":c_api",
@@ -318,6 +323,7 @@ cc_test(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_opaque_internal",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/kernels:kernel_util",
@@ -337,6 +343,7 @@ tflite_cc_library_with_c_headers_test(
     visibility = ["//tensorflow/lite:__subpackages__"] + common_header_visibility_allowlist(),
     deps = [
         ":c_api_types",
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
         "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
     ] + select({
         "//tensorflow/lite:tensorflow_profiler_config": [
@@ -386,13 +393,8 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:logger",
         "//tensorflow/lite:signature_runner",
-        "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:c_api_opaque_internal",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/profiling/telemetry:profiler",
-        "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
 )
 
@@ -422,17 +424,11 @@ tflite_cc_library_with_c_headers_test(
         ":operator",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:logger",
-        "//tensorflow/lite:string_util",
-        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:c_api_opaque_internal",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/profiling/telemetry:profiler",
-        "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
@@ -478,15 +474,10 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:logger",
-        "//tensorflow/lite:string_util",
-        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/c:c_api_opaque_internal_without_alwayslink",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/profiling/telemetry:profiler",
-        "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
 )
 
@@ -518,11 +509,7 @@ tflite_cc_library_with_c_headers_test(
         ":c_api_types",
         ":common",
         ":operator",
-        "//tensorflow/lite:string_util",
-        "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_opaque_internal",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/kernels:kernel_util",
     ],
 )
 

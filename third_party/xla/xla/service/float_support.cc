@@ -97,6 +97,7 @@ bool FloatSupport::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kPad:
+    case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kSlice:

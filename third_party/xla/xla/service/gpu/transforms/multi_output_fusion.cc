@@ -30,8 +30,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -208,11 +208,9 @@ FusionDecision ProducerCandidateIsFusible(
     return FusionDecision::Forbid("will generate too large IR");
   }
 
-  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      &producer, device_info, cost_analysis,
-      GpuPerformanceModelOptions::Default(),
-      /*fused_consumers=*/{&consumer},
-      /*multi_output=*/true);
+  GpuPerformanceModel::RunTimes t =
+      GpuPerformanceModel::EstimateRunTimesForMultiOutputFusion(
+          &producer, &consumer, device_info, cost_analysis);
   if (t.time_fused > t.time_unfused) {
     return FusionDecision::Forbid("will execute slower if fused");
   }

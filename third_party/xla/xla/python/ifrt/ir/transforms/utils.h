@@ -16,12 +16,23 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_TRANSFORMS_UTILS_H_
 #define XLA_PYTHON_IFRT_IR_TRANSFORMS_UTILS_H_
 
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/Types.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_ops.h"
 
 namespace xla {
 namespace ifrt {
+
+// Used for comparing CallOps without including control dependencies.
+struct IfrtCallOpInfo : llvm::DenseMapInfo<xla::ifrt::CallOp> {
+  static unsigned getHashValue(xla::ifrt::CallOp call_op);
+  static bool isEqual(xla::ifrt::CallOp lhs, xla::ifrt::CallOp rhs);
+};
 
 // Retrieves the function named "main" from the given module, if it exists, and
 // fails otherwise.
@@ -29,6 +40,13 @@ mlir::func::FuncOp GetMainFunction(mlir::ModuleOp module);
 
 // Returns true if transferring between from and to array requires a reshard.
 bool IsReshard(xla::ifrt::IfrtArrayType from, xla::ifrt::IfrtArrayType to);
+
+// Updates the FunctionType of the given `func_op` to match the block arguments
+// types and return operands types in its region.
+void UpdateFunctionType(mlir::func::FuncOp func_op);
+
+// Converts a mlir::Type to a ifrt DType.
+absl::StatusOr<DType> ToIfrtDType(mlir::Type type);
 
 }  // namespace ifrt
 }  // namespace xla

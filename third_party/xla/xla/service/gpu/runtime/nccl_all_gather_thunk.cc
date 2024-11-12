@@ -104,7 +104,7 @@ absl::Status RunAllGather(NcclApi* nccl_api,
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-gather from device ordinal: " << device_ordinal;
   TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
+      MaybeRegisterBuffers(nccl_api, stream.parent(), buffers, comm));
 
   TF_RETURN_IF_ERROR(nccl_api->GroupStart());
 

@@ -43,10 +43,10 @@ absl::InlinedVector<int, 5> ConvertCompileTimeConstArgumentsToConst(
 
 // Find and populate `must_be_const_nodes` and `body` of the function
 // corresponding to the kernel with context `ctx` with name `func_name`.
-Status FindMustBeConstNodes(XlaOpKernelContext* ctx,
-                            const NameAttrList& func_name,
-                            std::vector<bool>* must_be_const_nodes,
-                            const FunctionBody** body);
+absl::Status FindMustBeConstNodes(XlaOpKernelContext* ctx,
+                                  const NameAttrList& func_name,
+                                  std::vector<bool>* must_be_const_nodes,
+                                  const FunctionBody** body);
 
 }  // namespace tensorflow
 

@@ -39,11 +39,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/xla_builder.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -404,9 +403,10 @@ static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
-                           .Arg<ffi::AnyBuffer>()  // src
-                           .Ret<ffi::AnyBuffer>()  // dst
-);
+                           .Arg<ffi::AnyBuffer>()   // src
+                           .Ret<ffi::AnyBuffer>(),  // dst
+                       {ffi::Traits::kCmdBufferCompatible});
+
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
                          kMemcpy);
 
@@ -672,7 +672,6 @@ TEST_F(CustomCallTest, FfiAttributes) {
 
 static absl::Status MemcpyWithCalledComputation(
     se::Stream* stream, int32_t device_ordinal,
-    se::DeviceMemoryAllocator* allocator,
     se::OwningScratchAllocator<> scratch_allocator, ffi::AnyBuffer src,
     ffi::Result<ffi::AnyBuffer> dst, const HloComputation* called_computation) {
   if (called_computation == nullptr)
@@ -696,7 +695,6 @@ XLA_FFI_DEFINE_HANDLER(kMemcpyWithCalledComputation,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
                            .Ctx<ffi::DeviceOrdinal>()     // device_ordinal
-                           .Ctx<ffi::Allocator>()         // allocator
                            .Ctx<ffi::ScratchAllocator>()  // scratch
                            .Arg<ffi::AnyBuffer>()         // src
                            .Ret<ffi::AnyBuffer>()         // dst

@@ -20,6 +20,7 @@ cc_library(
     deps = [
         "//tensorflow/c/experimental/ops/gen/common",
         "//tensorflow/c/experimental/ops/gen/cpp/renderers",
+        "//tensorflow/c/experimental/ops/gen/cpp/views",
         "//tensorflow/c/experimental/ops/gen/model",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -39,11 +40,14 @@ tf_cc_test(
     data = ["//tensorflow/c/experimental/ops/gen/cpp/golden"],
     deps = [
         ":cpp",
+        "//tensorflow/c/experimental/ops/gen/common",
+        "//tensorflow/c/experimental/ops/gen/cpp/renderers",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@local_tsl//tsl/platform:status",
     ],
 )

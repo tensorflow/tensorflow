@@ -19,9 +19,9 @@
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -30,7 +30,8 @@ namespace {
 TEST(PluginProgramSerDesTest, RoundTrip) {
   PluginProgram orig;
   orig.data = "foo";
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(orig));
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                          Serialize(orig, /*options=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PluginProgram> deserialized_program,
       Deserialize<PluginProgram>(serialized, /*options=*/nullptr));
@@ -40,7 +41,8 @@ TEST(PluginProgramSerDesTest, RoundTrip) {
 
 TEST(PluginCompileOptionsSerDesTest, RoundTrip) {
   PluginCompileOptions orig;
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(orig));
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                          Serialize(orig, /*options=*/nullptr));
   TF_EXPECT_OK(
       Deserialize<PluginCompileOptions>(serialized, /*options=*/nullptr)
           .status());

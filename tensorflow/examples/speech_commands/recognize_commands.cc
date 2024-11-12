@@ -18,7 +18,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -38,11 +37,9 @@ RecognizeCommands::RecognizeCommands(const std::vector<string>& labels,
   previous_top_label_time_ = std::numeric_limits<int64_t>::min();
 }
 
-Status RecognizeCommands::ProcessLatestResults(const Tensor& latest_results,
-                                               const int64_t current_time_ms,
-                                               string* found_command,
-                                               float* score,
-                                               bool* is_new_command) {
+absl::Status RecognizeCommands::ProcessLatestResults(
+    const Tensor& latest_results, const int64_t current_time_ms,
+    string* found_command, float* score, bool* is_new_command) {
   if (latest_results.NumElements() != labels_count_) {
     return errors::InvalidArgument(
         "The results for recognition should contain ", labels_count_,

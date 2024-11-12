@@ -41,10 +41,10 @@ namespace {
 // Returns OK if the deletion succeeded, or if the resource was not found. Else
 // return the deletion error.
 template <class ResourceT>
-Status DeleteIfExists(ResourceMgr* resource_manager,
-                      const char* resource_name) {
+absl::Status DeleteIfExists(ResourceMgr* resource_manager,
+                            const char* resource_name) {
   VLOG(1) << "Removing resource " << resource_name << " if it exists";
-  Status status = resource_manager->Delete<ResourceT>(
+  absl::Status status = resource_manager->Delete<ResourceT>(
       resource_manager->default_container(), resource_name);
   if (status.ok()) {
     VLOG(1) << "Removed existing resource " << resource_name;
@@ -77,7 +77,8 @@ ConstructCacheService(ResourceMgr* rmgr, int serving_port,
 }
 }  // namespace
 
-Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
+absl::Status GetServerAddressAndPort(std::string* server_address,
+                                     int* serving_port) {
   char* server_address_output = nullptr;
   auto cleanup = absl::MakeCleanup([&server_address_output]() {
     stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
@@ -126,7 +127,7 @@ string TpuPodState::DebugString() const {
   return "Wrapper for distributed TPU state";
 }
 
-Status GetTPUPodState(const ResourceMgr* rmgr, TpuPodState** pod_state) {
+absl::Status GetTPUPodState(const ResourceMgr* rmgr, TpuPodState** pod_state) {
   if (!rmgr) {
     return errors::Internal("No resource manager.");
   }
@@ -150,7 +151,7 @@ bool HasTPUPodState(const ResourceMgr* rmgr) {
   return true;
 }
 
-Status ConstructTpuPodState(
+absl::Status ConstructTpuPodState(
     ResourceMgr* rmgr, const std::vector<int32_t>& num_devices_per_host,
     tpu::TpuCompilationCacheInterface* compilation_cache,
     std::string* host_config_proto) {

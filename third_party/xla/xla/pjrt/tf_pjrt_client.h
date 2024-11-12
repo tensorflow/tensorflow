@@ -34,7 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -246,9 +246,6 @@ class TfPjRtClient : public PjRtClient {
   }
   absl::string_view platform_version() const override {
     return wrapped_->platform_version();
-  }
-  PjRtRuntimeType runtime_type() const override {
-    return wrapped_->runtime_type();
   }
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {

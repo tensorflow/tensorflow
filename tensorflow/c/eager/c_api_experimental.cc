@@ -917,8 +917,7 @@ void TFE_ReportErrorToCluster(TFE_Context* ctx, int error_code,
         "Coordination service is not enabled.");
     return;
   }
-  tensorflow::Status s(static_cast<absl::StatusCode>(error_code),
-                       error_message);
+  absl::Status s(static_cast<absl::StatusCode>(error_code), error_message);
   status->status = coord_agent->ReportError(s);
 }
 

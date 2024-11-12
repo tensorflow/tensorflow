@@ -687,6 +687,7 @@ class TFLiteConverterBase:
     self.print_ir_after = None
     self.print_ir_module_scope = None
     self.elide_elementsattrs_if_larger = None
+    self.serialize_debug_metadata = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -842,6 +843,7 @@ class TFLiteConverterBase:
         "canonicalizing_inf_as_min_max_float": (
             self.canonicalizing_inf_as_min_max_float
         ),
+        "serialize_debug_metadata": self.serialize_debug_metadata,
     }
 
     if self.saved_model_dir:
@@ -2112,6 +2114,8 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       variables](https://tensorflow.org/guide/migrate/tf1_vs_tf2#resourcevariables_instead_of_referencevariables)
       to be converted by this converter. This is only allowed if the
       from_saved_model interface is used. (default True)
+    serialize_debug_metadata: Enables serializing debug metadata into the TFLite 
+      model. (default False)
 
   Example usage:
 

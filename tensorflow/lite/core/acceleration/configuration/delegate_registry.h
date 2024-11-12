@@ -27,6 +27,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/core/c/common.h"

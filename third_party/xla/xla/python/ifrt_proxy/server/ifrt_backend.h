@@ -162,6 +162,13 @@ class IfrtBackend final : public BackendInterface {
       std::unique_ptr<IfrtRequest> request);
 
   //////////////////////////////////////////////////////////////////////
+  // Auxiliary/Helper methods for the handler methods above
+  //
+
+  Future<BackendInterface::Response> HandleCopyToStringHostBufferRequest(
+      std::unique_ptr<IfrtRequest> request);
+
+  //////////////////////////////////////////////////////////////////////
   // Convenient methods for object lookups
   //
 

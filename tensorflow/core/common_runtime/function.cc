@@ -346,7 +346,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
                      const InstantiateOptions& options,
                      Handle* handle) override;
 
-  Status ReleaseHandle(Handle handle) override;
+  absl::Status ReleaseHandle(Handle handle) override;
 
   const FunctionBody* GetFunctionBody(Handle handle) override;
 

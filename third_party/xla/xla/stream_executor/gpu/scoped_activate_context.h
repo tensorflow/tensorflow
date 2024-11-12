@@ -16,23 +16,20 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_SCOPED_ACTIVATE_CONTEXT_H_
 #define XLA_STREAM_EXECUTOR_GPU_SCOPED_ACTIVATE_CONTEXT_H_
 
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
 
 // Ensures a context is activated within a scope.
-class ScopedActivateContext {
+class ScopedActivateContext : public ActivateContext {
  public:
   // Activates the context via Context::SetActive.
   explicit ScopedActivateContext(Context* gpu_context);
-  explicit ScopedActivateContext(GpuExecutor* gpu_executor);
-  explicit ScopedActivateContext(StreamExecutor* executor);
 
   // Checks that the context has remained activated for the duration of the
   // scope.
-  ~ScopedActivateContext();
+  ~ScopedActivateContext() override;
 
  private:
   Context* to_restore_ = nullptr;

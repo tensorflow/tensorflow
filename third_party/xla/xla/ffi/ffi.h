@@ -68,6 +68,9 @@ struct ScratchAllocator {};   // binds `se::OwningScratchAllocator`
 struct CalledComputation {};  // binds `HloComputation*`
 struct IntraOpThreadPool {};  // binds `const Eigen::ThreadPoolDevice*`
 
+template <typename T>
+struct PlatformStream {};  // binds a platform stream, e.g. `cudaStream_t`
+
 //===----------------------------------------------------------------------===//
 // Arguments
 //===----------------------------------------------------------------------===//
@@ -109,6 +112,23 @@ class AnyBuffer {
   }
 
   void* untyped_data() const { return buf_->data; }
+
+  template <typename T>
+  T* typed_data() const {
+    DCHECK(primitive_util::NativeToPrimitiveType<T>() == element_type())
+        << "Template type must match the underlying buffer dtype";
+    return reinterpret_cast<T*>(buf_->data);
+  }
+
+  template <typename T>
+  T* reinterpret_data() const {
+    DCHECK(primitive_util::IsArrayType(element_type()) &&
+           sizeof(T) == primitive_util::ByteWidth(element_type()) &&
+           !(reinterpret_cast<std::uintptr_t>(buf_->data) % alignof(T)))
+        << "Requested type must have the same byte width and alignment as the "
+           "underlying buffer type";
+    return reinterpret_cast<T*>(buf_->data);
+  }
 
   se::DeviceMemoryBase device_memory() const {
     return se::DeviceMemoryBase(untyped_data(), size_bytes());
@@ -459,8 +479,11 @@ struct CtxDecoding<Stream> {
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
+                                    DiagnosticEngine& diagnostic) {
     void* ptr = api->internal_api->XLA_FFI_INTERNAL_Stream_Get(ctx);
+    if (ABSL_PREDICT_FALSE(ptr == nullptr)) {
+      return diagnostic.Emit("Failed to decode stream");
+    }
     return reinterpret_cast<Type>(ptr);
   }
 };
@@ -529,6 +552,22 @@ struct CtxDecoding<IntraOpThreadPool> {
     void* intra_op_thread_pool =
         api->internal_api->XLA_FFI_INTERNAL_IntraOpThreadPool_Get(ctx);
     return reinterpret_cast<Type>(intra_op_thread_pool);
+  }
+};
+
+template <typename T>
+struct CtxDecoding<PlatformStream<T>> {
+  using Type = T;
+  static_assert(std::is_pointer_v<T>, "platform stream type must be a pointer");
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    if (auto stream = CtxDecoding<Stream>::Decode(api, ctx, diagnostic)) {
+      return reinterpret_cast<Type>(
+          stream.value()->platform_specific_handle().stream);
+    }
+    return std::nullopt;
   }
 };
 

@@ -64,20 +64,22 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"
 #include "stablehlo/dialect/Base.h"
 #include "xla/array.h"
-#include "xla/client/lib/approx_topk.h"
-#include "xla/client/lib/approx_topk_shape.h"
-#include "xla/client/lib/matrix.h"  // IWYU pragma: keep
-#include "xla/client/lib/slicing.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/builder/lib/approx_topk.h"
+#include "xla/hlo/builder/lib/approx_topk_shape.h"
+#include "xla/hlo/builder/lib/matrix.h"  // IWYU pragma: keep
+#include "xla/hlo/builder/lib/slicing.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
+#include "xla/hlo/translate/mhlo_to_hlo/literal_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/module_attributes_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/stack_frame_index_builder.h"
@@ -94,7 +96,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -212,56 +213,6 @@ bool IsBoundedOrStatic(mlir::Type ty) {
       return false;
   }
   return true;
-}
-
-template <typename T>
-xla::Array<T> ArrayFromDenseElementsAttr(mlir::DenseElementsAttr dense_attr) {
-  constexpr xla::PrimitiveType type =
-      xla::primitive_util::NativeToPrimitiveType<T>();
-  xla::Shape shape = xla::TypeToShape(dense_attr.getType());
-  xla::Array<T> array(shape.dimensions());
-  if constexpr (!xla::primitive_util::IsSubByteNonPredType(type)) {
-    array.SetValues(dense_attr.getValues<T>());
-  } else {
-    // The only way to get subbyte integers from getValues() is to get them as
-    // APInts.
-    auto values = dense_attr.getValues<llvm::APInt>();
-    for (int i = 0; i < values.size(); i++) {
-      if constexpr (xla::primitive_util::IsUnsignedIntegralType(type)) {
-        array.data()[i] = T{values[i].getZExtValue()};
-      } else {
-        static_assert(xla::primitive_util::IsSignedIntegralType(type));
-        array.data()[i] = T{values[i].getSExtValue()};
-      }
-    }
-  }
-  return array;
-}
-
-absl::StatusOr<xla::Literal> CreateArrayLiteralFromAttr(mlir::ElementsAttr attr,
-                                                        xla::Layout layout) {
-  auto dense_attr = mlir::dyn_cast<mlir::DenseElementsAttr>(attr);
-  if (!dense_attr)
-    return tsl::errors::Unimplemented("Only dense elements attr are supported");
-
-  xla::Shape shape = xla::TypeToShape(dense_attr.getType());
-
-  return xla::primitive_util::PrimitiveTypeSwitch<absl::StatusOr<xla::Literal>>(
-      [&](auto primitive_type_constant) -> absl::StatusOr<xla::Literal> {
-        if constexpr (xla::primitive_util::IsArrayType(
-                          primitive_type_constant)) {
-          using cpp_type =
-              xla::primitive_util::NativeTypeOf<primitive_type_constant>;
-          xla::Array<cpp_type> source_data =
-              ArrayFromDenseElementsAttr<cpp_type>(dense_attr);
-          return xla::LiteralUtil::CreateFromArrayWithLayout(source_data,
-                                                             layout);
-        }
-        return tsl::errors::Internal(absl::StrCat(  // NOLINT
-            "Unsupported type: ",
-            xla::PrimitiveType_Name(shape.element_type())));
-      },
-      shape.element_type());
 }
 
 // Convert APInt into an int.
@@ -648,13 +599,22 @@ static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
 // Returns a FrontendAttributes proto from the "frontend_attributes" attribute
 // of the op. An empty FrontendAttributes proto is returned if an op does not
 // have frontend attributes.
-void ConstructFrontendAttributesFromAttribute(
-    const mlir::DictionaryAttr& frontend_attributes_dict,
-    xla::FrontendAttributes& frontend_attributes) {
-  for (const auto& attr : frontend_attributes_dict)
+void CreateFrontendAttributes(mlir::ArrayRef<mlir::NamedAttribute> named_attrs,
+                              xla::FrontendAttributes& frontend_attributes) {
+  for (const auto& attr : named_attrs)
     if (auto value_str_attr = mlir::dyn_cast<mlir::StringAttr>(attr.getValue()))
       frontend_attributes.mutable_map()->insert(
           {attr.getName().str(), value_str_attr.getValue().str()});
+}
+
+// Returns a FrontendAttributes proto from the "frontend_attributes" attribute
+// of the op. An empty FrontendAttributes proto is returned if an op does not
+// have frontend attributes.
+void CreateFrontendAttributes(
+    const mlir::DictionaryAttr& frontend_attributes_dict,
+    xla::FrontendAttributes& frontend_attributes) {
+  CreateFrontendAttributes(frontend_attributes_dict.getValue(),
+                           frontend_attributes);
 }
 
 static xla::FrontendAttributes CreateXlaFrontendAttributesFromOp(
@@ -663,8 +623,7 @@ static xla::FrontendAttributes CreateXlaFrontendAttributesFromOp(
   auto frontend_attributes_dict =
       op->getAttrOfType<mlir::DictionaryAttr>(kMhloFrontendAttributes);
   if (!frontend_attributes_dict) return frontend_attributes;
-  ConstructFrontendAttributesFromAttribute(frontend_attributes_dict,
-                                           frontend_attributes);
+  CreateFrontendAttributes(frontend_attributes_dict, frontend_attributes);
   return frontend_attributes;
 }
 
@@ -676,7 +635,7 @@ static void ExtractFrontendAttributesFromFunction(
     if (auto fe_attr = function.getArgAttrOfType<mlir::DictionaryAttr>(
             i, kMhloFrontendAttributes)) {
       xla::FrontendAttributes frontend_attributes;
-      ConstructFrontendAttributesFromAttribute(fe_attr, frontend_attributes);
+      CreateFrontendAttributes(fe_attr, frontend_attributes);
       (*fe_attrs)[i] = frontend_attributes;
     }
 }
@@ -1651,6 +1610,9 @@ LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
     if (!algorithm.ok()) {
       return op.emitError(algorithm.status().ToString());
     }
+    if (precision_config == nullptr) {
+      precision_config = std::make_unique<xla::PrecisionConfig>();
+    }
     precision_config->set_algorithm(algorithm.value());
   }
   auto xlaOp = xla::DotGeneral(
@@ -2257,7 +2219,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   const xla::Literal* literal_ptr = nullptr;
   auto literal_attr = op->getAttrOfType<DenseElementsAttr>(kMhloLiteral);
   if (literal_attr) {
-    literal = CreateArrayLiteralFromAttr(literal_attr, {});
+    literal = mhlo::CreateLiteralFromAttribute(literal_attr, {});
     if (!literal.ok()) return failure();
     literal_ptr = &*literal;
   }
@@ -3301,7 +3263,8 @@ LogicalResult ConvertToHloModule::LowerConstant(
   mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(inst);
   if (failed(shape_or)) return failure();
 
-  auto literal_or = CreateArrayLiteralFromAttr(const_attr, shape_or->layout());
+  auto literal_or =
+      mhlo::CreateLiteralFromAttribute(const_attr, shape_or->layout());
   if (!literal_or.ok()) return inst->emitError(literal_or.status().ToString());
 
   xla::XlaScopedShardingAssignment scoped_sharding(
@@ -3524,6 +3487,8 @@ LogicalResult ConvertToHloModule::Lower(
 LogicalResult ConvertToHloModule::LowerFunctionCall(
     mlir::func::CallOp call_op, xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering) {
+  xla::XlaScopedShardingAssignment scoped_sharding(
+      builder, CreateOpShardingFromAttribute(call_op));
   auto& value_map = *value_lowering;
   mlir::func::FuncOp callee =
       module_.lookupSymbol<mlir::func::FuncOp>(call_op.getCallee());
@@ -3541,10 +3506,23 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
   // callees, but eventually before lowering call graph is "flattened" to
   // make that true. This is done before lowering because buffer assignment
   // needs this invariant.
+
+  // Remove the backend_config from the frontend attributes.
   xla::FrontendAttributes fe_attrs = CreateXlaFrontendAttributesFromOp(call_op);
+  std::string backend_config = "";
+  auto fe_attrs_map = fe_attrs.mutable_map();
+  if (fe_attrs_map->contains(kBackendConfig)) {
+    backend_config = fe_attrs_map->at(kBackendConfig);
+    fe_attrs_map->erase(kBackendConfig);
+  }
   xla::XlaScopedFrontendAttributesAssignment assignment(builder, fe_attrs);
   xla::XlaOp call_result =
       xla::Call(builder, lowered_computation_[callee], operands);
+  xla::HloInstructionProto* call_instruction =
+      xla::internal::XlaBuilderFriend::GetInstruction(call_result);
+  // `call_op` with `backend_config` can appear when round-tripping a program
+  // that has already run some XLA host communication passes.
+  call_instruction->set_backend_config(backend_config);
   // Use GetTupleElement for multiple outputs
   unsigned num_results = call_op.getNumResults();
   if (num_results > 1) {
@@ -3619,10 +3597,9 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     // means no replication. This avoids the need for unrelated tests to handle
     // this field.
     if (!any_arg_replicated) entry_args_same_across_replicas.clear();
-
-    ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings);
     ExtractFrontendAttributesFromFunction(f, &arg_fe_attrs);
   }
+  ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings);
   if (failed(LowerBasicBlockAsFunction(&f.front(), &builder, entry_function,
                                        false, entry_args_same_across_replicas,
                                        arg_shardings, ret_shardings,
@@ -3967,8 +3944,8 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   }
   if (auto frontend_attributes =
           module->getAttrOfType<DictionaryAttr>(kMhloFrontendAttributes)) {
-    ConstructFrontendAttributesFromAttribute(
-        frontend_attributes, *hlo_module.mutable_frontend_attributes());
+    CreateFrontendAttributes(frontend_attributes,
+                             *hlo_module.mutable_frontend_attributes());
   }
   if (auto use_auto_spmd_partitioning =
           module->getAttrOfType<mlir::BoolAttr>(kMhloUseAutoSpmdPartitioning)) {

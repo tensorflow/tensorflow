@@ -8,18 +8,8 @@ load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = ["//xla:friends"],
     licenses = ["notice"],
-)
-
-package_group(
-    name = "friends",
-    includes = [
-        "//xla:friends",
-    ],
-    packages = [
-        "//platforms/testing/tests/...",
-    ],
 )
 
 filegroup(
@@ -67,8 +57,8 @@ cc_library(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/client:executable_build_options",
-        "//xla/client:xla_builder",
-        "//xla/client:xla_computation",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder:xla_computation",
         "//xla/service:shaped_buffer",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform",
@@ -143,13 +133,14 @@ exhaustive_xla_test(
         ":exhaustive_unary_test_textual_hdrs",
         "//xla:literal",
         "//xla:types",
-        "//xla/client:xla_builder",
-        "//xla/client/lib:constants",
-        "//xla/client/lib:math",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder/lib:constants",
+        "//xla/hlo/builder/lib:math",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
     ],
@@ -182,12 +173,13 @@ xla_test(
         ":exhaustive_op_test_utils",
         "//xla:literal",
         "//xla:types",
-        "//xla/client:xla_builder",
+        "//xla/hlo/builder:xla_builder",
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
     ],
@@ -249,12 +241,13 @@ exhaustive_xla_test(
         ":exhaustive_op_test_utils",
         "//xla:literal",
         "//xla:types",
-        "//xla/client:xla_builder",
+        "//xla/hlo/builder:xla_builder",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
     ],

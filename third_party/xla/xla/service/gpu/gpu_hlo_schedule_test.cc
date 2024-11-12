@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_ordering.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -566,7 +566,8 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelFailsWithIncompleteProfile) {
 
   HloModuleConfig config(module->config());
   DebugOptions dboptions(config.debug_options());
-  dboptions.set_xla_gpu_enable_pgle_accuracy_checker(true);
+  dboptions.set_xla_gpu_pgle_accuracy_checker(
+      DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR);
   config.set_debug_options(dboptions);
   module->set_config(config);
 
@@ -1094,7 +1095,7 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined1) {
 
   // The pipelined Send-Recv in the main. A pipelined Recv is scheduled right
   // after its corresponding Send due to kForceEarly.
-  EXPECT_EQ(get_index("recv.2", main) + 1, get_index("send.2", main));
+  EXPECT_EQ(get_index("recv.2", main) + 3, get_index("send.2", main));
   EXPECT_LT(get_index("send.2", main), get_index("recv-done.2", main));
   EXPECT_LT(get_index("recv-done.2", main), get_index("send-done.2", main));
   EXPECT_LT(get_index("send-done.2", main), get_index("while-result", main));
@@ -1288,7 +1289,7 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined2) {
   EXPECT_TRUE(HasValidFingerprint(module.get()));
   // The pipelined Send-Recv in the main. A pipelined Recv is scheduled right
   // after its corresponding Send due to kForceEarly.
-  EXPECT_EQ(get_index("recv.2", main) + 1, get_index("send.2", main));
+  EXPECT_EQ(get_index("recv.2", main) + 3, get_index("send.2", main));
   EXPECT_LT(get_index("send.2", main), get_index("recv.3", main));
   EXPECT_EQ(get_index("recv.3", main) + 1, get_index("send.3", main));
   EXPECT_LT(get_index("send.3", main), get_index("recv-done.2", main));
@@ -1662,6 +1663,38 @@ TEST_F(GpuHloScheduleTest, AsyncOps) {
               ElementsAre(HloOpcode::kParameter, HloOpcode::kAsyncStart,
                           HloOpcode::kAsyncStart, HloOpcode::kAsyncDone,
                           HloOpcode::kAsyncDone, HloOpcode::kAdd));
+}
+
+// This test verifies that the latency hiding scheduler overlaps host memory
+// offloading (copy-start/copy-done) with computation.
+TEST_F(GpuHloScheduleTest, CopyStartDoneScheduled) {
+  constexpr absl::string_view kHloCopyStartDone = R"(
+    HloModule offloading
+      ENTRY main {
+      param.0 = f32[512,1024]{1,0} parameter(0)
+      tanh.14 = f32[512,1024]{1,0} tanh(param.0)
+      copy-start.1 = (f32[512,1024]{1,0:S(5)}, f32[512,1024]{1,0}, u32[]) copy-start(param.0)
+      copy-done.1 = f32[512,1024]{1,0:S(5)} copy-done(copy-start.1)
+      copy-start.3 = (f32[512,1024]{1,0}, f32[512,1024]{1,0:S(5)}, u32[]) copy-start(copy-done.1)
+      copy-done.3 = f32[512,1024]{1,0} copy-done(copy-start.3)
+      ROOT add.0 = f32[512,1024]{1,0} add(copy-done.3, tanh.14)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          kHloCopyStartDone,
+          GetModuleConfig(/*enable_latency_hiding_scheduler=*/true)));
+  TF_CHECK_OK(ScheduleGpuModule(
+                  module.get(), /*pointer_size=*/8,
+                  backend().default_stream_executor()->GetDeviceDescription())
+                  .status());
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+// CHECK: ENTRY
+// CHECK: copy-start.3 = (f32[512,1024]{1,0}, f32[512,1024]{1,0:S(5)}, u32[]) copy-start
+// CHECK: tanh.14 = f32[512,1024]{1,0} tanh
+// CHECK: copy-done.3 = f32[512,1024]{1,0} copy-done
+)"));
 }
 
 }  // namespace gpu

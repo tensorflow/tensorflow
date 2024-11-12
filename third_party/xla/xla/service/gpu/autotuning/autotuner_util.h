@@ -57,6 +57,12 @@ struct DevicelessConfig {
   se::DeviceDescription device_description;
 };
 
+// Status payload key to put errors at when autotune cache hits are required.
+// See absl::Status docs for full details, but methods like
+// {Get,Set,Clear}Payload allow manipulating it. The value of the payload is not
+// specified and individual sources of this error may provide different values.
+extern const absl::string_view kAutotuneCacheRequiredErrorPayloadKey;
+
 class AutotuneCacheKey {
  public:
   AutotuneCacheKey(const se::DeviceDescription& device_description,
@@ -347,8 +353,7 @@ struct AutotunerUtil {
 absl::StatusOr<std::string> AutotuneResultsToString(
     const AutotuneResults& results, bool as_textproto);
 
-// Exposed only for testing. Returns the SHA-256 hash of the input string,
-// encoded in base64.
+// Returns the SHA-256 hash of the input string, encoded in base64.
 //
 // SHA-256 was chosen to follow industry best practices and avoid collisions.
 // Git is also transitioning to SHA-256. This is probably better than

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -43,7 +44,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
@@ -58,10 +58,8 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
@@ -128,6 +126,8 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_to_all_thunk.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_clique.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_broadcast_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_permute_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
@@ -157,7 +157,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
-#include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
@@ -176,16 +175,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
-
-// Construct the key for looking up the AsyncEvents for Send and Recv. Input
-// kind is the thunk kind for the corresponding done thunk.
-inline std::pair<bool, int64_t> GetSendRecvAsyncEventsKey(Thunk::Kind kind,
-                                                          int64_t channel_id) {
-  return std::make_pair(kind == Thunk::Kind::kNcclRecvDone, channel_id);
-}
-
-}  // namespace
 
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
     : IrEmitter(ir_emitter_context, /*is_nested=*/false),
@@ -1220,14 +1209,15 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
   auto ffi_thunk = [&] {
     auto& called_computations = instr->called_computations();
     return CustomCallThunk::Create(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr), registration->bundle,
-        std::move(operands), std::move(results), std::move(attributes),
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), call_target_name,
+        registration->bundle, std::move(operands), std::move(results),
+        std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };
 
   auto legacy_thunk = [&] {
     return CustomCallThunk::Create(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr),
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), call_target_name,
         std::move(custom_call_target), std::move(operands), std::move(results),
         std::move(opaque));
   };
@@ -1515,6 +1505,22 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
   return absl::OkStatus();
 }
 
+absl::Status IrEmitterUnnested::EmitCopy(const HloInstruction* instr) {
+  TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
+      instr->operand(0)->shape(), instr->shape(),
+      Layout::Equal().MinorToMajorOnly()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
+                      GetAllocationSliceForHlo(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
+                      GetAllocationSliceForHlo(instr));
+  AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr),
+      /*source_buffer=*/src_buffer,
+      /*destination_buffer=*/dst_buffer,
+      /*mem_size=*/src_buffer.size()));
+  return absl::OkStatus();
+}
+
 absl::Status IrEmitterUnnested::EmitAsyncCustomCallStart(
     const HloInstruction* instr) {
   const HloInstruction* wrapped = instr->async_wrapped_instruction();
@@ -1567,231 +1573,6 @@ absl::Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
         op_name);
   }
   return absl::OkStatus();
-}
-
-absl::Status IrEmitterUnnested::EmitSelectAndScatter(
-    const HloSelectAndScatterInstruction* instr) {
-  const HloInstruction* operand = instr->operand(0);
-  const HloInstruction* source = instr->operand(1);
-  const Shape source_shape = source->shape();
-  const Shape operand_shape = operand->shape();
-  const int64_t rank = operand_shape.rank();
-
-  Window window = instr->window();
-
-  CHECK_EQ(rank, source_shape.rank());
-  CHECK_EQ(rank, window.dimensions_size());
-
-  std::string name = llvm_ir::IrName(instr);
-
-  TF_RETURN_IF_ERROR(AssertNonDeterminismIsOkay(name));
-
-  const HloInstruction* init_value = instr->operand(2);
-  // IrEmitterUnnested implements kSelectAndScatter as a SequentialThunk
-  // consisting of two thunks, an initializer KernelThunk that initializes
-  // the output and another KernelThunk that accumulates the scattered
-  // elements.
-  TF_RETURN_IF_ERROR(BuildInitializerThunk(instr, init_value));
-
-  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      source_shape, ir_emitter_context_->gpu_device_info());
-
-  // Init value is not needed in IR emission.
-  TF_ASSIGN_OR_RETURN(auto ir_arrays,
-                      BuildKernelThunkForNonFusionOp(instr, {operand, source},
-                                                     launch_dimensions));
-
-  auto& [inputs, outputs] = ir_arrays;
-  CHECK_EQ(inputs.size(), 3);
-  CHECK_EQ(outputs.size(), 0);
-  const llvm_ir::IrArray& operand_array = inputs[0];
-  const llvm_ir::IrArray& source_array = inputs[1];
-  const llvm_ir::IrArray& out_array = inputs[2];
-
-  llvm::Type* index_type =
-      GetIndexTypeForKernel(instr, launch_dimensions.launch_bound(), &b_);
-  auto index_typed_constant = [&](uint64_t c) -> llvm::Constant* {
-    return llvm::ConstantInt::get(index_type, c);
-  };
-
-  // kSelectAndScatter is implemented as two kernel launches: the first launch
-  // initializes the output array to the given initial value,
-  // and the second accumulates the "source" matrix to the
-  // selected elements in the output array. The first launch is already
-  // implemented by the initializer thunk generated earlier, so this function
-  // only needs to take care of the select-and-scatter part.
-  //
-  // Pseudo code for select-and-scatter:
-  //
-  // for (coordinates S in the source):  # This loop is parallel.
-  //   initialized_flag = false
-  //   for (coordinates W in the window):
-  //     I = S * stride + W - pad_low
-  //     if I within bounds of operand:
-  //       if !(initialized_flag and select(selected_value, operand(I))):
-  //         selected_value = operand(I)
-  //         selected_index = I
-  //         initialized_flag = true
-  //   if initialized_flag:
-  //     output(selected_index) = scatter(output(selected_index), source(S))
-  auto loop_body_emitter =
-      [&](const llvm_ir::IrArray::Index& source_index) -> absl::Status {
-    // Allocate space to keep the currently selected value, its index, and a
-    // boolean flag if the value is initialized. The initialized_flag is set
-    // false.
-    llvm::Value* selected_value_address = llvm_ir::EmitAllocaAtFunctionEntry(
-        llvm_ir::PrimitiveTypeToIrType(operand_shape.element_type(), module_),
-        "selected_value_address", &b_);
-
-    llvm::AllocaInst* selected_index_address =
-        llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-            index_type, index_typed_constant(rank), "selected_index_address",
-            &b_);
-
-    llvm::AllocaInst* initialized_flag_address =
-        llvm_ir::EmitAllocaAtFunctionEntry(b_.getInt1Ty(),
-                                           "initialized_flag_address", &b_);
-    Store(b_.getInt1(false), initialized_flag_address);
-
-    // Create the inner loop to iterate over the window.
-    llvm_ir::ForLoopNest window_loops(absl::StrCat(name, "inner"), &b_,
-                                      index_type);
-
-    DimensionVector window_size;
-    for (const WindowDimension& dim : window.dimensions()) {
-      auto size = static_cast<int64_t>(dim.size());
-      window_size.push_back(size);
-      CHECK_GT(size, 0);
-    }
-
-    const llvm_ir::IrArray::Index window_index = window_loops.AddLoopsForShape(
-        ShapeUtil::MakeShape(operand_shape.element_type(), window_size),
-        "window");
-    llvm_ir::SetToFirstInsertPoint(window_loops.GetInnerLoopBodyBasicBlock(),
-                                   &b_);
-
-    // Compute the operand index to visit and evaluate the condition whether the
-    // operand index is within the bounds. The unsigned comparison includes
-    // checking whether the operand index >= 0.
-    std::vector<llvm::Value*> operand_multi_index(source_index.size());
-    llvm::Value* in_bounds_condition = b_.getInt1(true);
-
-    for (const auto [i, value] : llvm::enumerate(window.dimensions())) {
-      auto stride = static_cast<int64_t>(value.stride());
-      auto padding = static_cast<int64_t>(value.padding_low());
-
-      llvm::Value* strided_index =
-          NSWMul(source_index[i], index_typed_constant(stride));
-      operand_multi_index[i] = NSWSub(NSWAdd(strided_index, window_index[i]),
-                                      index_typed_constant(padding));
-      llvm::Value* index_condition = ICmpULT(
-          operand_multi_index[i],
-          index_typed_constant(ShapeUtil::GetDimension(operand_shape, i)));
-      in_bounds_condition = And(in_bounds_condition, index_condition);
-    }
-
-    // Only need to do something if the operand index is within the bounds.
-    // First check if the initialized_flag is set.
-    llvm_ir::LlvmIfData if_in_bounds =
-        llvm_ir::EmitIfThenElse(in_bounds_condition, "in-bounds", &b_);
-    llvm_ir::SetToFirstInsertPoint(if_in_bounds.true_block, &b_);
-    llvm_ir::LlvmIfData if_initialized = llvm_ir::EmitIfThenElse(
-        Load(initialized_flag_address->getAllocatedType(),
-             initialized_flag_address),
-        "initialized", &b_);
-
-    // If the initialized_flag is false, initialize the selected value and index
-    // with the currently visiting operand.
-    llvm_ir::SetToFirstInsertPoint(if_initialized.false_block, &b_);
-    const auto save_operand_index =
-        [&](const llvm_ir::IrArray::Index& operand_index) {
-          for (int64_t i = 0; i < rank; ++i) {
-            llvm::Value* selected_index_address_slot =
-                InBoundsGEP(selected_index_address->getAllocatedType(),
-                            selected_index_address, {b_.getInt32(i)});
-            Store(operand_index[i], selected_index_address_slot);
-          }
-        };
-    llvm_ir::IrArray::Index operand_index(operand_multi_index, operand_shape,
-                                          index_type);
-    llvm::Value* operand_data =
-        operand_array.EmitReadArrayElement(operand_index, &b_);
-    Store(operand_data, selected_value_address);
-    save_operand_index(operand_index);
-    Store(b_.getInt1(true), initialized_flag_address);
-
-    // If the initialized_flag is true, call the `select` function to
-    // potentially update the selected value and index with the currently
-    // visiting operand.
-    llvm_ir::SetToFirstInsertPoint(if_initialized.true_block, &b_);
-    llvm::Value* operand_address =
-        operand_array.EmitArrayElementAddress(operand_index, &b_);
-    llvm::AllocaInst* select_return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
-        llvm_ir::PrimitiveTypeToIrType(PRED, module_), "select_return_buffer",
-        &b_);
-
-    const HloComputation* select_computation = instr->select();
-    TF_RETURN_IF_ERROR(CallNestedComputation(
-        &b_, *ir_emitter_context_, *select_computation,
-        {selected_value_address, operand_address}, select_return_buffer));
-    llvm::Value* result =
-        Load(select_return_buffer->getAllocatedType(), select_return_buffer);
-
-    // If the 'select' function returns false, update the selected value and the
-    // index to the currently visiting operand.
-    llvm::Value* cond =
-        ICmpNE(result,
-               llvm::ConstantInt::get(
-                   llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0),
-               "boolean_predicate");
-    llvm_ir::LlvmIfData if_select_lhs =
-        llvm_ir::EmitIfThenElse(cond, "if-select-lhs", &b_);
-    llvm_ir::SetToFirstInsertPoint(if_select_lhs.false_block, &b_);
-    Store(Load(operand_array.GetElementLlvmType(), operand_address),
-          selected_value_address);
-    save_operand_index(operand_index);
-
-    // If the initialized_flag is true, write to the selected index of the
-    // output; otherwise the window is outside the source (in the padding) and
-    // should be ignored.
-    llvm_ir::SetToFirstInsertPoint(window_loops.GetOuterLoopExitBasicBlock(),
-                                   &b_);
-    llvm_ir::LlvmIfData if_should_store = llvm_ir::EmitIfThenElse(
-        Load(initialized_flag_address->getAllocatedType(),
-             initialized_flag_address),
-        "should-store", &b_, /*emit_else=*/false);
-    llvm_ir::SetToFirstInsertPoint(if_should_store.true_block, &b_);
-
-    // After iterating over the window elements, scatter the source element to
-    // the selected index of the output. The value we store at the output
-    // location is computed by calling the `scatter` function with the source
-    // value and the current output value.
-    std::vector<llvm::Value*> selected_multi_index;
-    for (int64_t i = 0; i < rank; ++i) {
-      llvm::Value* selected_index_address_slot =
-          InBoundsGEP(selected_index_address->getAllocatedType(),
-                      selected_index_address, {b_.getInt32(i)});
-      selected_multi_index.push_back(
-          Load(selected_index_address->getAllocatedType(),
-               selected_index_address_slot));
-    }
-    const Shape& output_shape = instr->shape();
-    llvm::Value* source_value_address =
-        source_array.EmitArrayElementAddress(source_index, &b_);
-    llvm_ir::IrArray::Index selected_index(selected_multi_index, output_shape,
-                                           operand_index.GetType());
-    llvm::Value* output_value_address =
-        out_array.EmitArrayElementAddress(selected_index, &b_);
-
-    const HloComputation* scatter_computation = instr->scatter();
-    return EmitAtomicOperationForNestedComputation(
-        &b_, *ir_emitter_context_, *scatter_computation, output_value_address,
-        source_value_address, source_array.GetElementLlvmType());
-  };
-
-  return ParallelLoopEmitter(loop_body_emitter, source_shape, launch_dimensions,
-                             &b_)
-      .EmitLoop(name, index_type);
 }
 
 absl::Status IrEmitterUnnested::EmitWhile(const HloInstruction* instr) {
@@ -2176,40 +1957,133 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   return absl::OkStatus();
 }
 
-absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
-                                                  const HloInstruction* inst) {
-  CollectivesAsyncEvents& collectives_async_events =
-      GetCollectivesAsyncEvents();
-  if (kind == Thunk::Kind::kNcclRecvDone ||
-      kind == Thunk::Kind::kNcclSendDone) {
-    const HloChannelInstruction* done = DynCast<HloChannelInstruction>(inst);
-    int64_t channel_id = done->channel_id().value();
-    // We only pipeline Send/Recv when channel_id > 0, and allows multiple
-    // and potentially interleaving Send/Recv chains using channel_id = 0.
-    if (MayPipelineSendRecvChannel(channel_id)) {
-      auto it = collectives_async_events.find(
-          GetSendRecvAsyncEventsKey(kind, channel_id));
-      TF_RET_CHECK(it != collectives_async_events.end())
-          << "couldn't find async events for channel_id " << channel_id;
-      AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
-          kind, Thunk::ThunkInfo::WithProfileAnnotation(inst), it->second,
-          GetStreamKindForSendRecv(DynCast<HloSendRecvInstruction>(inst))));
-      return absl::OkStatus();
+// Find the canonical send/recv start op for one of send, recv, send-done, or
+// recv-done. For trivial cases send/recv and send-done/recv-done come in pairs
+// and the canonical start op is the send/recv op of the pair. If send/recv is
+// partially pipelined, we will use the send/recv leading into the while loop as
+// the canonical start op, which will serve as a key for the async events.
+//
+// Example:
+// ```
+// send_ctx = send(src, ...)  <-- canonical start op
+// send_ctx_final = while(send_ctx) {
+//   send_ctx_in = parameter(0)
+//   send-done(send_ctx_in)
+//   ...
+//   ROOT send_ctx_out = send(next_src, ...)
+// }
+// send-done(send_ctx_final)
+// ```
+static const HloInstruction* FindCanonicalSendRecvStartOp(
+    const HloInstruction* inst) {
+  CHECK(inst->opcode() == HloOpcode::kSend ||
+        inst->opcode() == HloOpcode::kRecv ||
+        inst->opcode() == HloOpcode::kSendDone ||
+        inst->opcode() == HloOpcode::kRecvDone);
+
+  // Find container while loop and index for the send/recv case or return
+  // canonical start op directly.
+  const HloInstruction* while_op = nullptr;
+  int64_t i = -1;
+  if (inst->opcode() == HloOpcode::kSend ||
+      inst->opcode() == HloOpcode::kRecv) {
+    CHECK_EQ(inst->users().size(), 1);
+    const HloInstruction* unique_user = inst->users().front();
+
+    // Return send/recv inst directly if this is a simple send/recv pair.
+    if (unique_user->opcode() == HloOpcode::kSendDone ||
+        unique_user->opcode() == HloOpcode::kRecvDone) {
+      return inst;
+    }
+
+    // Find while loop and index, otherwise.
+    CHECK(unique_user->opcode() == HloOpcode::kTuple ||
+          unique_user->opcode() == HloOpcode::kWhile);
+    if (unique_user->IsRoot()) {
+      // send/recv op in the loop body.
+      CHECK(unique_user->parent()->IsWhileBodyComputation());
+      while_op = unique_user->parent()->WhileCallInstruction();
+      i = unique_user->operand_index(inst);
+    } else {
+      // send/recv leading into the loop.
+      CHECK_EQ(unique_user->users().size(), 1);
+      CHECK(unique_user->users().front()->opcode() == HloOpcode::kWhile);
+      while_op = unique_user->users().front();
+      i = unique_user->operand_index(inst);
     }
   }
 
-  const HloInstruction* start = inst->operand(0);
-  auto async_events = collectives_async_events.extract(start);
-  TF_RET_CHECK(async_events)
+  // Find container while loop and index for the send-done/recv-done case or
+  // return canonical start op directly.
+  if (inst->opcode() == HloOpcode::kSendDone ||
+      inst->opcode() == HloOpcode::kRecvDone) {
+    const HloInstruction* operand = inst->operand(0);
+
+    // Return send/recv inst directly if this is a simple send/recv pair.
+    if (operand->opcode() == HloOpcode::kSend ||
+        operand->opcode() == HloOpcode::kRecv) {
+      return operand;
+    }
+
+    // Find while loop and index, otherwise.
+    CHECK(operand->opcode() == HloOpcode::kGetTupleElement);
+    const auto* gte = Cast<HloGetTupleElementInstruction>(operand);
+    const HloInstruction* iter_tuple = operand->operand(0);
+    if (iter_tuple->opcode() == HloOpcode::kParameter) {
+      // send-done/recv-done in the loop body.
+      CHECK(Cast<HloParameterInstruction>(iter_tuple)->parameter_number() == 0);
+      CHECK(operand->parent()->IsWhileBodyComputation());
+      while_op = iter_tuple->parent()->WhileCallInstruction();
+      i = gte->tuple_index();
+    } else {
+      // send-done/recv-done proceeding the loop.
+      CHECK(iter_tuple->opcode() == HloOpcode::kWhile);
+      while_op = iter_tuple;
+      i = gte->tuple_index();
+    }
+  }
+
+  // Extract canonical start op from while loop's init.
+  CHECK(while_op != nullptr);
+  CHECK(0 <= i && i < while_op->shape().tuple_shapes_size());
+  const HloInstruction* init = while_op->operand(0);
+  const HloInstruction* canonical_start_op = init->operand(i);
+  CHECK(canonical_start_op->opcode() == HloOpcode::kSend ||
+        canonical_start_op->opcode() == HloOpcode::kRecv);
+  return canonical_start_op;
+}
+
+absl::Status IrEmitterUnnested::EmitNcclGroupDoneThunk(
+    const HloInstruction* instr) {
+  return absl::UnimplementedError("EmitNcclGroupDoneThunk not implemented");
+}
+
+absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
+                                                  const HloInstruction* inst) {
+  // Partial pipelining is only implemented for send/recv.
+  bool is_send_recv =
+      kind == Thunk::Kind::kNcclRecvDone || kind == Thunk::Kind::kNcclSendDone;
+  const HloInstruction* start =
+      is_send_recv ? FindCanonicalSendRecvStartOp(inst) : inst->operand(0);
+
+  // Find canonical async event.
+  CollectivesAsyncEvents& collectives_async_events =
+      GetCollectivesAsyncEvents();
+  auto async_events_it = collectives_async_events.find(start);
+  TF_RET_CHECK(async_events_it != collectives_async_events.end())
       << "couldn't find async events for start operation";
 
   // Can be null if no start thunk was created (e.g. if the start op is
   // degenerate), in which case there's nothing to do here.
-  if (async_events.mapped()) {
-    AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
-        kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
-        std::move(async_events.mapped()), AsyncStreamKind::kCollective));
+  if (!async_events_it->second) return absl::OkStatus();
+
+  AsyncStreamKind stream_kind = AsyncStreamKind::kCollective;
+  if (is_send_recv) {
+    stream_kind = GetStreamKindForSendRecv(Cast<HloSendRecvInstruction>(start));
   }
+  AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
+      kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
+      async_events_it->second, stream_kind));
   return absl::OkStatus();
 }
 
@@ -2464,8 +2338,10 @@ absl::Status IrEmitterUnnested::EmitCopyDoneThunk(const HloInstruction* instr) {
 }
 
 absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
-  if (!instr->channel_id().has_value())
+  // TODO(b/372306903): Do not require channel id for send.
+  if (!instr->channel_id().has_value()) {
     return absl::InternalError("Unknown send instruction channel id");
+  }
 
   const HloInstruction* src = instr->operand(0);
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
@@ -2489,20 +2365,12 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
         instr, replica_count, partition_count, nccl_buffer);
     CollectivesAsyncEvents& collectives_async_events =
         GetCollectivesAsyncEvents();
-    int64_t channel_id = instr->channel_id().value();
-    if (MayPipelineSendRecvChannel(channel_id)) {
-      std::pair<bool, int64_t> async_events_key =
-          GetSendRecvAsyncEventsKey(Thunk::Kind::kNcclSendDone, channel_id);
-      auto it = collectives_async_events.find(async_events_key);
-      if (it != collectives_async_events.end()) {
-        VLOG(0) << "Found async events " << it->second.get();
-        thunk->set_async_events(it->second);
-      } else {
-        VLOG(0) << "Used Async events create for thunk "
-                << thunk->async_events().get();
-        collectives_async_events.emplace(async_events_key,
-                                         thunk->async_events());
-      }
+
+    // Wire up async events.
+    const HloInstruction* canonical_send_instr =
+        FindCanonicalSendRecvStartOp(instr);
+    if (collectives_async_events.contains(canonical_send_instr)) {
+      thunk->set_async_events(collectives_async_events[canonical_send_instr]);
     } else {
       collectives_async_events.try_emplace(instr, thunk->async_events());
     }
@@ -2522,8 +2390,10 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
 
 absl::Status IrEmitterUnnested::EmitSendDoneThunk(
     const HloSendDoneInstruction* instr) {
-  if (!instr->channel_id().has_value())
+  // TODO(b/372306903): Do not require channel id for send-done.
+  if (!instr->channel_id().has_value()) {
     return absl::InternalError("Unknown send done instruction channel id");
+  }
 
   if (!instr->is_host_transfer()) {
     return EmitNcclAsyncDone(Thunk::kNcclSendDone, instr);
@@ -2537,8 +2407,11 @@ absl::Status IrEmitterUnnested::EmitSendDoneThunk(
 }
 
 absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
-  if (!instr->channel_id().has_value())
+  // TODO(b/372306903): Do not require channel id for recv.
+  if (!instr->channel_id().has_value()) {
     return absl::InternalError("Unknown recv instruction channel id");
+  }
+
   TF_RET_CHECK(instr->shape().IsTuple());
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
                       GetAllocationSliceForHlo(instr, {0}));
@@ -2564,18 +2437,12 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
         instr, replica_count, partition_count, nccl_buffer);
     CollectivesAsyncEvents& collectives_async_events =
         GetCollectivesAsyncEvents();
-    int64_t channel_id = instr->channel_id().value();
-    if (MayPipelineSendRecvChannel(channel_id)) {
-      std::pair<bool, int64_t> async_events_key =
-          GetSendRecvAsyncEventsKey(Thunk::Kind::kNcclRecvDone, channel_id);
-      auto it = collectives_async_events.find(async_events_key);
 
-      if (it != GetCollectivesAsyncEvents().end()) {
-        thunk->set_async_events(it->second);
-      } else {
-        collectives_async_events.emplace(async_events_key,
-                                         thunk->async_events());
-      }
+    // Wire up async events.
+    const HloInstruction* canonical_recv_instr =
+        FindCanonicalSendRecvStartOp(instr);
+    if (collectives_async_events.contains(canonical_recv_instr)) {
+      thunk->set_async_events(collectives_async_events[canonical_recv_instr]);
     } else {
       collectives_async_events.try_emplace(instr, thunk->async_events());
     }
@@ -2596,8 +2463,10 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
 
 absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
     const HloRecvDoneInstruction* instr) {
-  if (!instr->channel_id().has_value())
+  // TODO(b/372306903): Do not require channel id for send-done.
+  if (!instr->channel_id().has_value()) {
     return absl::InternalError("Unknown recv done instruction channel id");
+  }
 
   if (!instr->is_host_transfer()) {
     return EmitNcclAsyncDone(Thunk::kNcclRecvDone, instr);
@@ -2608,6 +2477,11 @@ absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
       send_recv_events_, DeviceConstraint(instr)));
 
   return absl::OkStatus();
+}
+
+absl::Status IrEmitterUnnested::EmitNcclGroupStartThunk(
+    const HloInstruction* instruction) {
+  return absl::UnimplementedError("EmittNcclGroupStartThunk not implemented");
 }
 
 absl::Status IrEmitterUnnested::EmitHloInstruction(
@@ -2631,6 +2505,10 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           all_reduce->use_global_device_ids());
     }
     case HloOpcode::kAsyncDone: {
+      if (!instr->async_wrapped_computation()
+               ->CanExpandIntoSingleInstruction()) {
+        return EmitNcclGroupDoneThunk(instr);
+      }
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
         case HloOpcode::kReduceScatter:
@@ -2659,6 +2537,11 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       }
     }
     case HloOpcode::kAsyncStart: {
+      // Multi-op async start will emit a NCCL group thunk.
+      if (!instr->async_wrapped_computation()
+               ->CanExpandIntoSingleInstruction()) {
+        return EmitNcclGroupStartThunk(instr);
+      }
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
         case HloOpcode::kReduceScatter: {
@@ -2773,9 +2656,10 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       }
       return EmitCustomCallThunk(custom_call);
     }
-    case HloOpcode::kFusion: {
+    case HloOpcode::kFusion:
       return EmitFusion(Cast<HloFusionInstruction>(instr));
-    }
+    case HloOpcode::kCopy:
+      return EmitCopy(instr);
     case HloOpcode::kInfeed:
       return EmitInfeed(Cast<HloInfeedInstruction>(instr));
     case HloOpcode::kOutfeed:
@@ -2795,8 +2679,6 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     case HloOpcode::kRngGetAndUpdateState:
       return EmitRngGetAndUpdateState(
           Cast<HloRngGetAndUpdateStateInstruction>(instr));
-    case HloOpcode::kSelectAndScatter:
-      return EmitSelectAndScatter(Cast<HloSelectAndScatterInstruction>(instr));
 
     case HloOpcode::kSend:
       return EmitSendThunk(Cast<HloSendInstruction>(instr));

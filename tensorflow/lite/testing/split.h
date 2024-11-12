@@ -209,6 +209,17 @@ inline std::vector<Eigen::half> Split(const string& s,
   return fields;
 }
 
+template <>
+inline std::vector<Eigen::bfloat16> Split(const string& s,
+                                          const string& delimiter) {
+  std::vector<Eigen::bfloat16> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    fields.push_back(Eigen::bfloat16_impl::float_to_bfloat16_rtne<false>(
+        strtof(s.data() + p.first, nullptr)));
+  }
+  return fields;
+}
+
 }  // namespace testing
 }  // namespace tflite
 

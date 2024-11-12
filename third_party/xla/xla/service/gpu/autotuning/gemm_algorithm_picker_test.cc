@@ -50,25 +50,21 @@ class GemmAlgorithmPickerTest : public HloTestBase,
  public:
   GemmAlgorithmPickerTest() { AutotunerUtil::ClearAutotuneResults(); }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(GetParam());
     debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
   }
 
-  const se::DeviceDescription& device_desc() {
-    return backend().default_stream_executor()->GetDeviceDescription();
-  }
-
   se::StreamExecutor* stream_exec() {
     return backend().default_stream_executor();
   }
-  const se::DeviceDescription& gpu_device_desc() {
+  const se::DeviceDescription& device_desc() {
     return stream_exec()->GetDeviceDescription();
   }
   const se::GpuComputeCapability& gpu_comp() {
-    return gpu_device_desc().gpu_compute_capability();
+    return device_desc().gpu_compute_capability();
   }
 
   void SetUp() override {
@@ -103,7 +99,7 @@ class GemmAlgorithmPickerTest : public HloTestBase,
 };
 
 TEST_P(GemmAlgorithmPickerTest, BlasGetVersion) {
-  auto* blas = backend().default_stream_executor()->AsBlas();
+  auto* blas = stream_exec()->AsBlas();
   ASSERT_TRUE(blas != nullptr);
   std::string version;
   ASSERT_TRUE(blas->GetVersion(&version).ok());
@@ -147,6 +143,15 @@ ENTRY main {
     num_left1 = gpicker.num_algorithms_left();
     if (num_left1 < 2) {
       GTEST_SKIP() << "Too few algorithms left after the first step";
+    }
+
+    // Test that the function to get current stream value works fine:
+    auto* blas = stream_exec()->AsBlas();
+    ASSERT_TRUE(blas != nullptr);
+    TF_ASSERT_OK_AND_ASSIGN(bool is_main_stream, blas->IsMainStreamSet());
+    // ROCM only: CUDA blas API does not reset stream after each blas call.
+    if (std::holds_alternative<se::RocmComputeCapability>(gpu_comp())) {
+      ASSERT_TRUE(is_main_stream);
     }
   }
 
@@ -291,7 +296,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kHlo, module_cfg));
   changed = false;
 
-  DevicelessConfig deviceless_config{gpu_device_desc()};
+  DevicelessConfig deviceless_config{device_desc()};
   AutotuneConfig deviceless_cfg{deviceless_config, opts};
   TF_ASSERT_OK_AND_ASSIGN(
       changed,

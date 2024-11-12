@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
@@ -64,7 +64,7 @@ namespace tensorflow {
 // custom_legalization_passes: passes to run before the default TF legalization
 //   passes for backend-specific ops.
 ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
-Status ConvertMLIRToXlaComputation(
+absl::Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
     bool enable_op_fallback, bool return_tuple,
@@ -113,26 +113,26 @@ struct TensorOrResourceShape {
 
 // Refine MLIR types based on new shape information.
 ABSL_DEPRECATED("Not meant to be used directly and should be a util.")
-Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
-                    mlir::ModuleOp module);
+absl::Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
+                          mlir::ModuleOp module);
 
 // Lower TF to MHLO and insert HLO into the XlaBuilder. xla_params are HLO-level
 // inputs to module_op that have already been added to the XlaBuilder. returns
 // are the returned XlaOps.
 ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
-Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
-                      llvm::ArrayRef<xla::XlaOp> xla_params,
-                      std::vector<xla::XlaOp>& returns,
-                      llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
-                      llvm::StringRef device_type,
-                      llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-                          custom_legalization_passes);
+absl::Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
+                            llvm::ArrayRef<xla::XlaOp> xla_params,
+                            std::vector<xla::XlaOp>& returns,
+                            llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
+                            llvm::StringRef device_type,
+                            llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
+                                custom_legalization_passes);
 
 // Apply shape, description, and resource information to inputs and outputs
 // in the XlaCompilationResult. This should be called after
 // compilation_result->computation was set.
 ABSL_DEPRECATED("Not meant to be used directly and should be a util.")
-Status PopulateResultIOInfo(
+absl::Status PopulateResultIOInfo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     bool use_tuple_args, bool use_resource_updates_for_aliases,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
@@ -178,7 +178,7 @@ absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
 // and run the TensorFlow standard pipeline prior to invoking
 // `CompileMlirToXlaHlo`.
 ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
-Status CompileGraphToXlaHlo(
+absl::Status CompileGraphToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     bool use_return_tuple,
@@ -195,14 +195,14 @@ Status CompileGraphToXlaHlo(
 // attribute _output_shapes is always used to set the output shapes of the ops.
 ABSL_DEPRECATED(
     "Use v1/compile_tf_graph.h::CompileTensorflowGraphToHlo instead.")
-Status BuildHloFromGraph(
+absl::Status BuildHloFromGraph(
     const Graph& graph, xla::XlaBuilder& builder,
     mlir::MLIRContext& mlir_context, llvm::ArrayRef<xla::XlaOp> xla_params,
     std::vector<xla::XlaOp>& returns, bool unconditionally_use_output_shapes,
     llvm::ArrayRef<XlaArgument> args, llvm::ArrayRef<std::string> control_rets,
     llvm::StringRef device_type, const FunctionLibraryDefinition& flib_def);
 
-static inline Status CompileToHloGraphAnalysisFailedError() {
+static inline absl::Status CompileToHloGraphAnalysisFailedError() {
   return errors::Internal("disabled after graph analysis");
 }
 

@@ -16,10 +16,8 @@ limitations under the License.
 // This file implements logic for lowering HLO/LHLO dialect to scalar shape
 // operations.
 
-#include <algorithm>
 #include <memory>
-#include <numeric>
-#include <string>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -103,7 +101,8 @@ class MhloElementwiseConverter : public OpRewritePattern<OpTy> {
       }
 
       Value scalarOp = mhlo::MhloOpToStdScalarOp::mapOp(
-          op, resultTy.getElementType(), extracts, &rewriter);
+          op, resultTy.getElementType(), extracts, /*attributes=*/std::nullopt,
+          &rewriter);
       operands.push_back(scalarOp);
     }
 

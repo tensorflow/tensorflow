@@ -5,34 +5,34 @@
 
 // CHECK-LABEL: HloModule main
 
-// CHECK:      %region_0.7 (arg_tuple.8: (s32[], f32[4], s32[], s32[], f32[4])) -> (s32[], f32[4], s32[], s32[], f32[4]) {
-// CHECK-NEXT:   %arg_tuple.8 = (s32[], f32[4], s32[], s32[], f32[4]) parameter(0)
+// CHECK:      %[[BODY:region_0.*]] ([[ARG_TUPLE:arg_tuple.*]]: (s32[], f32[4], s32[], s32[], f32[4])) -> (s32[], f32[4], s32[], s32[], f32[4]) {
+// CHECK-NEXT:   %[[ARG_TUPLE]] = (s32[], f32[4], s32[], s32[], f32[4]) parameter(0)
 // CHECK-SAME:     sharding={{\{}}{replicated}, {devices=[2,2]<=[4] last_tile_dim_replicate}, {replicated}, {replicated}, {devices=[4]<=[4]}}
-// CHECK-DAG:    %get-tuple-element.12 = s32[] get-tuple-element((s32[], f32[4], s32[], s32[], f32[4]) %arg_tuple.8), index=3
-// CHECK-DAG:    %get-tuple-element.13 = f32[4] get-tuple-element((s32[], f32[4], s32[], s32[], f32[4]) %arg_tuple.8), index=4, sharding={devices=[4]<=[4]}
-// CHECK-DAG:    %add.14 = s32[] add(s32[] %get-tuple-element.9, s32[] %get-tuple-element.12)
-// CHECK-DAG:    %add.15 = f32[4] add(f32[4] %get-tuple-element.10, f32[4] %get-tuple-element.13)
-// CHECK:        ROOT %tuple.16 = (s32[], f32[4], s32[], s32[], f32[4]) tuple(s32[] %add.14, f32[4] %add.15, s32[] %get-tuple-element.11, s32[] %get-tuple-element.12, f32[4] %get-tuple-element.13)
+// CHECK-DAG:    %[[GTE12:get-tuple-element.*]] = s32[] get-tuple-element((s32[], f32[4], s32[], s32[], f32[4]) %[[ARG_TUPLE]]), index=3
+// CHECK-DAG:    %[[GTE13:get-tuple-element.*]] = f32[4] get-tuple-element((s32[], f32[4], s32[], s32[], f32[4]) %[[ARG_TUPLE]]), index=4, sharding={devices=[4]<=[4]}
+// CHECK-DAG:    %[[ADD14:add.*]] = s32[] add(s32[] %get-tuple-element.{{.*}}, s32[] %[[GTE12]])
+// CHECK-DAG:    %[[ADD15:add.*]] = f32[4] add(f32[4] %get-tuple-element.{{.*}}, f32[4] %[[GTE13]])
+// CHECK:        ROOT %tuple.{{.*}} = (s32[], f32[4], s32[], s32[], f32[4]) tuple(s32[] %[[ADD14]], f32[4] %[[ADD15]], s32[] %get-tuple-element.{{.*}}, s32[] %[[GTE12]], f32[4] %[[GTE13]])
 // CHECK-SAME:     sharding={{\{}}{replicated}, {devices=[2,2]<=[4] last_tile_dim_replicate}, {replicated}, {replicated}, {devices=[4]<=[4]}}
 
-// CHECK:      %region_1.17 (arg_tuple.18: (s32[], f32[4], s32[], s32[], f32[4])) -> pred[] {
-// CHECK-NEXT:   %arg_tuple.18 = (s32[], f32[4], s32[], s32[], f32[4]) parameter(0)
+// CHECK:      %[[COND:region_1.*]] ([[ARG_TUPLE:arg_tuple.*]]: (s32[], f32[4], s32[], s32[], f32[4])) -> pred[] {
+// CHECK-NEXT:   %[[ARG_TUPLE]] = (s32[], f32[4], s32[], s32[], f32[4]) parameter(0)
 // CHECK-SAME:     sharding={{\{}}{replicated}, {devices=[2,2]<=[4] last_tile_dim_replicate}, {replicated}, {replicated}, {devices=[4]<=[4]}}
-// CHECK:        %get-tuple-element.21 = s32[] get-tuple-element((s32[], f32[4], s32[], s32[], f32[4]) %arg_tuple.18), index=2
-// CHECK-NEXT:   ROOT %compare.24 = pred[] compare(s32[] %get-tuple-element.19, s32[] %get-tuple-element.21), direction=LT
+// CHECK:        %[[GTE21:get-tuple-element.*]] = s32[] get-tuple-element((s32[], f32[4], s32[], s32[], f32[4]) %[[ARG_TUPLE]]), index=2
+// CHECK-NEXT:   ROOT %compare.{{.*}} = pred[] compare(s32[] %get-tuple-element.{{.*}}, s32[] %[[GTE21]]), direction=LT
 
-// CHECK:      ENTRY %main.28 (Arg_0.1: s32[], Arg_1.2: f32[4], Arg_2.3: f32[4]) -> f32[4] {
-// CHECK-NEXT:   %Arg_0.1 = s32[] parameter(0)
-// CHECK-NEXT:   %Arg_1.2 = f32[4] parameter(1)
-// CHECK-NEXT:   %constant.4 = s32[] constant(0)
-// CHECK-NEXT:   %constant.5 = s32[] constant(1)
-// CHECK-NEXT:   %Arg_2.3 = f32[4] parameter(2)
-// CHECK-NEXT:   %tuple.6 = (s32[], f32[4], s32[], s32[], f32[4]) tuple(s32[] %Arg_0.1, f32[4] %Arg_1.2, s32[] %constant.4, s32[] %constant.5, f32[4] %Arg_2.3)
+// CHECK:      ENTRY %main.{{.*}} ([[ARG0:Arg_0.*]]: s32[], [[ARG1:Arg_1.*]]: f32[4], [[ARG2:Arg_2.*]]: f32[4]) -> f32[4] {
+// CHECK-NEXT:   %[[ARG0]] = s32[] parameter(0)
+// CHECK-NEXT:   %[[ARG1]] = f32[4] parameter(1)
+// CHECK-NEXT:   %[[CONSTANT4:constant.*]] = s32[] constant(0)
+// CHECK-NEXT:   %[[CONSTANT5:constant.*]] = s32[] constant(1)
+// CHECK-NEXT:   %[[ARG2]] = f32[4] parameter(2)
+// CHECK-NEXT:   %[[TUPLE:tuple.*]] = (s32[], f32[4], s32[], s32[], f32[4]) tuple(s32[] %[[ARG0]], f32[4] %[[ARG1]], s32[] %[[CONSTANT4]], s32[] %[[CONSTANT5]], f32[4] %[[ARG2]])
 // CHECK-SAME:     sharding={{\{}}{replicated}, {devices=[2,2]<=[4] last_tile_dim_replicate}, {replicated}, {replicated}, {devices=[4]<=[4]}}
-// CHECK-NEXT:   %while.25 = (s32[], f32[4], s32[], s32[], f32[4]) while((s32[], f32[4], s32[], s32[], f32[4]) %tuple.6), condition=%region_1.17, body=%region_0.7
+// CHECK-NEXT:   %[[WHILE:while.25]] = (s32[], f32[4], s32[], s32[], f32[4]) while((s32[], f32[4], s32[], s32[], f32[4]) %[[TUPLE]]), condition=%[[COND]], body=%[[BODY]]
 // CHECK-SAME:     sharding={{\{}}{replicated}, {devices=[2,2]<=[4] last_tile_dim_replicate}, {replicated}, {replicated}, {devices=[4]<=[4]}}
-// CHECK-NEXT:   %get-tuple-element.26 = s32[] get-tuple-element((s32[], f32[4], s32[], s32[], f32[4]) %while.25), index=0, sharding={replicated}
-// CHECK-NEXT:   ROOT %get-tuple-element.27 = f32[4] get-tuple-element((s32[], f32[4], s32[], s32[], f32[4]) %while.25), index=1, sharding={devices=[2,2]<=[4] last_tile_dim_replicate}
+// CHECK-NEXT:   %[[GTE26:get-tuple-element.*]] = s32[] get-tuple-element((s32[], f32[4], s32[], s32[], f32[4]) %[[WHILE]]), index=0, sharding={replicated}
+// CHECK-NEXT:   ROOT %[[GTE27:get-tuple-element.*]] = f32[4] get-tuple-element((s32[], f32[4], s32[], s32[], f32[4]) %[[WHILE]]), index=1, sharding={devices=[2,2]<=[4] last_tile_dim_replicate}
 
 func.func @main(%arg0: tensor<i32>, %arg1: tensor<4xf32>, %arg2: tensor<4xf32> {mhlo.sharding = "{devices=[4]<=[4]}"}) -> tensor<4xf32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
@@ -58,23 +58,23 @@ func.func @main(%arg0: tensor<i32>, %arg1: tensor<4xf32>, %arg2: tensor<4xf32> {
 
 // CHECK-LABEL: HloModule main
 
-// CHECK:      %region_0.5 (arg_tuple.6: (s32[], f32[4], s32[])) -> (s32[], f32[4], s32[]) {
-// CHECK-NEXT:   %arg_tuple.6 = (s32[], f32[4], s32[]) parameter(0)
-// CHECK:        %get-tuple-element.9 = s32[] get-tuple-element((s32[], f32[4], s32[]) %arg_tuple.6), index=2
-// CHECK:        %add.10 = s32[] add(s32[] %get-tuple-element.7, s32[] %get-tuple-element.9)
-// CHECK:        ROOT %tuple.11 = (s32[], f32[4], s32[]) tuple(s32[] %add.10, f32[4] %get-tuple-element.8, s32[] %get-tuple-element.9)
+// CHECK:      %[[BODY:region_0.*]] ([[ARG_TUPLE:arg_tuple.*]]: (s32[], f32[4], s32[])) -> (s32[], f32[4], s32[]) {
+// CHECK-NEXT:   %[[ARG_TUPLE]] = (s32[], f32[4], s32[]) parameter(0)
+// CHECK:        %[[GTE:get-tuple-element.*]] = s32[] get-tuple-element((s32[], f32[4], s32[]) %[[ARG_TUPLE]]), index=2
+// CHECK:        %[[ADD:add.*]] = s32[] add(s32[] %get-tuple-element.{{.*}}, s32[] %[[GTE]])
+// CHECK:        ROOT %tuple.{{.*}} = (s32[], f32[4], s32[]) tuple(s32[] %[[ADD]], f32[4] %get-tuple-element.{{.*}}, s32[] %[[GTE]])
 
-// CHECK:      %region_1.12 (arg_tuple.13: (s32[], f32[4], s32[])) -> pred[] {
-// CHECK-NEXT:   %arg_tuple.13 = (s32[], f32[4], s32[]) parameter(0)
-// CHECK:        %get-tuple-element.16 = s32[] get-tuple-element((s32[], f32[4], s32[]) %arg_tuple.13), index=2
-// CHECK:        ROOT %compare.17 = pred[] compare(s32[] %get-tuple-element.14, s32[] %get-tuple-element.16), direction=LT
+// CHECK:      %[[COND:region_1.*]] ([[ARG_TUPLE:arg_tuple.*]]: (s32[], f32[4], s32[])) -> pred[] {
+// CHECK-NEXT:   %[[ARG_TUPLE]] = (s32[], f32[4], s32[]) parameter(0)
+// CHECK:        %[[GTE:get-tuple-element..*]] = s32[] get-tuple-element((s32[], f32[4], s32[]) %[[ARG_TUPLE]]), index=2
+// CHECK:        ROOT %compare.{{.*}} = pred[] compare(s32[] %get-tuple-element.{{.*}}, s32[] %[[GTE]]), direction=LT
 
-// CHECK:      ENTRY %main.21 (Arg_0.1: s32[], Arg_1.2: f32[4], Arg_2.3: s32[]) -> f32[4] {
-// CHECK-NEXT:   %Arg_0.1 = s32[] parameter(0)
-// CHECK-NEXT:   %Arg_1.2 = f32[4] parameter(1)
-// CHECK-NEXT:   %Arg_2.3 = s32[] parameter(2)
-// CHECK-NEXT:   %tuple.4 = (s32[], f32[4], s32[]) tuple(s32[] %Arg_0.1, f32[4] %Arg_1.2, s32[] %Arg_2.3)
-// CHECK-NEXT:   %while.18 = (s32[], f32[4], s32[]) while((s32[], f32[4], s32[]) %tuple.4), condition=%region_1.12, body=%region_0.5
+// CHECK:      ENTRY %main.{{.*}} ([[ARG0:Arg_0.*]]: s32[], [[ARG1:Arg_1.*]]: f32[4], [[ARG2:Arg_2.*]]: s32[]) -> f32[4] {
+// CHECK-NEXT:   %[[ARG0]] = s32[] parameter(0)
+// CHECK-NEXT:   %[[ARG1]] = f32[4] parameter(1)
+// CHECK-NEXT:   %[[ARG2]] = s32[] parameter(2)
+// CHECK-NEXT:   %[[TUPLE:tuple.*]] = (s32[], f32[4], s32[]) tuple(s32[] %[[ARG0]], f32[4] %[[ARG1]], s32[] %[[ARG2]])
+// CHECK-NEXT:   %while.{{.*}} = (s32[], f32[4], s32[]) while((s32[], f32[4], s32[]) %[[TUPLE]]), condition=%[[COND]], body=%[[BODY]]
 
 func.func @main(%arg0: tensor<i32>, %arg1: tensor<4xf32>, %arg2: tensor<i32>) -> tensor<4xf32> {
   %2:2 = mhlo.while(%iterArg = %arg0, %iterArg_0 = %arg1) : tensor<i32>, tensor<4xf32>

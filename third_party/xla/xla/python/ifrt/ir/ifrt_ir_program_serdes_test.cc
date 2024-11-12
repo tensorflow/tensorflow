@@ -74,7 +74,8 @@ module {
       support::ParseMlirModuleString(kMlirModuleStr, *context));
   auto initial_program =
       std::make_unique<IfrtIRProgram>(std::move(context), std::move(module));
-  TF_ASSERT_OK_AND_ASSIGN(serialized, Serialize(*initial_program));
+  TF_ASSERT_OK_AND_ASSIGN(serialized,
+                          Serialize(*initial_program, /*options=*/nullptr));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<IfrtIRProgram> deserialized_program,
@@ -111,14 +112,15 @@ module {
         support::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<IfrtIRProgram>(std::move(context), std::move(module));
-    TF_ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program));
+    TF_ASSERT_OK_AND_ASSIGN(serialized,
+                            Serialize(*program, /*options=*/nullptr));
   }
 
   serialized.set_data("invalid data");
 
   EXPECT_THAT(Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr),
               StatusIs(Not(absl::StatusCode::kOk),
-                       HasSubstr("Failed to parse IFRT IR module string")));
+                       HasSubstr("Failed to parse IfrtIrProgramProto")));
 }
 
 }  // namespace

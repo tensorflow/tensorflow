@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <sstream>
-#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -28,17 +27,15 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -72,20 +69,24 @@ std::vector<bool> ConvertToSTL(const llvm::SmallBitVector& bit_vector) {
 
 TEST_F(IndexingMapTest, VariableKind) {
   EXPECT_EQ(ToVariableType("default"), VariableKind::kDefault);
-  EXPECT_EQ(ToVariableType("thread_x"), VariableKind::kThreadX);
-  EXPECT_EQ(ToVariableType("thread_y"), VariableKind::kThreadY);
-  EXPECT_EQ(ToVariableType("thread_z"), VariableKind::kThreadZ);
-  EXPECT_EQ(ToVariableType("block_x"), VariableKind::kBlockX);
-  EXPECT_EQ(ToVariableType("block_y"), VariableKind::kBlockY);
-  EXPECT_EQ(ToVariableType("block_z"), VariableKind::kBlockZ);
+  EXPECT_EQ(ToVariableType("th_x"), VariableKind::kThreadX);
+  EXPECT_EQ(ToVariableType("th_y"), VariableKind::kThreadY);
+  EXPECT_EQ(ToVariableType("th_z"), VariableKind::kThreadZ);
+  EXPECT_EQ(ToVariableType("bl_x"), VariableKind::kBlockX);
+  EXPECT_EQ(ToVariableType("bl_y"), VariableKind::kBlockY);
+  EXPECT_EQ(ToVariableType("bl_z"), VariableKind::kBlockZ);
+  EXPECT_EQ(ToVariableType("warp"), VariableKind::kWarp);
+  EXPECT_EQ(ToVariableType("th_w"), VariableKind::kWarpThread);
 
-  EXPECT_EQ(ToString(VariableKind::kDefault), "default");
-  EXPECT_EQ(ToString(VariableKind::kThreadX), "thread_x");
-  EXPECT_EQ(ToString(VariableKind::kThreadY), "thread_y");
-  EXPECT_EQ(ToString(VariableKind::kThreadZ), "thread_z");
-  EXPECT_EQ(ToString(VariableKind::kBlockX), "block_x");
-  EXPECT_EQ(ToString(VariableKind::kBlockY), "block_y");
-  EXPECT_EQ(ToString(VariableKind::kBlockZ), "block_z");
+  EXPECT_EQ(ToVariableName(VariableKind::kDefault), "default");
+  EXPECT_EQ(ToVariableName(VariableKind::kThreadX), "th_x");
+  EXPECT_EQ(ToVariableName(VariableKind::kThreadY), "th_y");
+  EXPECT_EQ(ToVariableName(VariableKind::kThreadZ), "th_z");
+  EXPECT_EQ(ToVariableName(VariableKind::kBlockX), "bl_x");
+  EXPECT_EQ(ToVariableName(VariableKind::kBlockY), "bl_y");
+  EXPECT_EQ(ToVariableName(VariableKind::kBlockZ), "bl_z");
+  EXPECT_EQ(ToVariableName(VariableKind::kWarp), "warp");
+  EXPECT_EQ(ToVariableName(VariableKind::kWarpThread), "th_w");
 }
 
 TEST_F(IndexingMapTest, VerifyDimensions) {
@@ -112,31 +113,21 @@ TEST_F(IndexingMapTest, VerifySymbols) {
 }
 
 TEST_F(IndexingMapTest, RTVar) {
-  auto zero_dim_map =
-      AffineMap::get(/*dimCount=*/2, /*symbolCount=*/0, &mlir_context_);
-  std::vector<RTVar> rt_vars{RTVar{Interval{0, 2},
-                                   /*instr=*/nullptr, zero_dim_map},
-                             RTVar({Interval{0, 7},
-                                    /*instr=*/nullptr, zero_dim_map})};
-
   IndexingMap indexing_map(
-      ParseAffineMap("(d0, d1)[s0, s1, s2] -> (d1, d0, s0 + s1, s1)",
+      ParseAffineMap("(d0, d1)[range, rt0, rt1] -> (d1, d0, range + rt0, rt1)",
                      &mlir_context_),
-      {DimVar{{0, 99}}, DimVar{{0, 43}}}, {RangeVar{{-99, 99}}},
-      std::move(rt_vars));
-  EXPECT_THAT(ToString(indexing_map, {"d0", "d1"}, {"range", "rt_0", "rt_1"}),
-              MatchIndexingString(R"(
-                (d0, d1)[range, rt_0, rt_1] -> (d1, d0, range + rt_0, rt_0),
+      {IndexingMap::Variable{0, 99, "d0"}, IndexingMap::Variable{0, 43, "d1"}},
+      {IndexingMap::Variable{-99, 99, "range"}},
+      {IndexingMap::Variable{Interval{0, 2}},
+       IndexingMap::Variable({Interval{0, 7}})});
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+                (d0, d1)[range]{rt0, rt1} -> (d1, d0, range + rt0, rt1),
                 domain:
                 d0 in [0, 99],
                 d1 in [0, 43],
                 range in [-99, 99],
-                rt_0 in [0, 2],
-                  hlo: NULL,
-                  (d0, d1) -> (),
-                rt_1 in [0, 7],
-                  hlo: NULL,
-                  (d0, d1) -> ()
+                rt0 in [0, 2],
+                rt1 in [0, 7]
               )"));
 }
 
@@ -177,14 +168,12 @@ TEST_F(IndexingMapTest, Composition_Permutation) {
      s0 in [0, 1],
      s1 in [0, 1]
   )");
-
   IndexingMap consumer = Parse(R"(
      (d0)[s0] -> (d0, s0),
      domain:
      d0 in [0, 3],
      s0 in [0, 3]
   )");
-
   auto composed = ComposeIndexingMaps(consumer, producer);
   EXPECT_THAT(composed, MatchIndexingMap(R"(
                           (d0)[s0, s1, s2] -> (s2, d0, s1, s0),
@@ -273,84 +262,64 @@ TEST_F(IndexingMapTest, Composition_ProducerAndConsumerHaveConstraints) {
 }
 
 TEST_F(IndexingMapTest, Composition_RTVar) {
-  auto zero_dim_map =
-      AffineMap::get(/*dimCount=*/2, /*symbolCount=*/0, &mlir_context_);
-  std::vector<RTVar> rt_vars{
-      RTVar{Interval{0, 0},
-            /*instr=*/nullptr, zero_dim_map},
-      RTVar({Interval{0, 1}, /*instr=*/nullptr, zero_dim_map}),
-      RTVar({Interval{0, 226}, /*instr=*/nullptr, zero_dim_map})};
+  std::vector<IndexingMap::Variable> rt_vars{
+      IndexingMap::Variable{Interval{0, 0}},
+      IndexingMap::Variable({Interval{0, 1}}),
+      IndexingMap::Variable({Interval{0, 226}})};
 
   IndexingMap producer(
-      ParseAffineMap("(d0, d1, d2)[s0, s1, s2] -> (d0 + s0, d1 + s1, d2 + s2)",
-                     &mlir_context_),
-      {DimVar{{0, 0}}, DimVar{{0, 1}}, DimVar{{0, 226}}}, {},
-      std::move(rt_vars));
+      ParseAffineMap(
+          "(d0, d1, d2)[rt0, rt1, rt2] -> (d0 + rt0, d1 + rt1, d2 + rt2)",
+          &mlir_context_),
+      {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
+       IndexingMap::Variable{{0, 226}}},
+      {}, std::move(rt_vars));
 
   IndexingMap consumer(
-      ParseAffineMap("(d0, d1)[s0] -> (0, d1, s0)", &mlir_context_),
-      {DimVar{{0, 0}}, DimVar{{0, 1}}}, {RangeVar{0, 31}}, {});
+      ParseAffineMap("(d0, d1)[s] -> (0, d1, s)", &mlir_context_),
+      {IndexingMap::Variable{0, 0}, IndexingMap::Variable{0, 1}},
+      {IndexingMap::Variable{0, 31, "s"}}, {});
 
   auto composed = ComposeIndexingMaps(consumer, producer);
-  EXPECT_THAT(ToString(composed, {"d0", "d1"}, {"s", "rt_0", "rt_1", "rt_2"}),
-              MatchIndexingString(R"(
-    (d0, d1)[s, rt_0, rt_1, rt_2] -> (rt_0, d1 + rt_1, s + rt_2),
+  EXPECT_THAT(ToString(composed), MatchIndexingString(R"(
+    (d0, d1)[s]{rt0, rt1, rt2} -> (rt0, d1 + rt1, s + rt2),
     domain:
     d0 in [0, 0],
     d1 in [0, 1],
     s in [0, 31],
-    rt_0 in [0, 0],
-      hlo: NULL,
-      (d0, d1) -> (),
-    rt_1 in [0, 1],
-      hlo: NULL,
-      (d0, d1) -> (),
-    rt_2 in [0, 226],
-      hlo: NULL,
-      (d0, d1) -> ()
+    rt0 in [0, 0],
+    rt1 in [0, 1],
+    rt2 in [0, 226]
   )"));
 }
 
 TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
-  auto zero_dim_map =
-      AffineMap::get(/*dimCount=*/2, /*symbolCount=*/0, &mlir_context_);
-
   IndexingMap producer(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + s0, d1 + 4 * s1)",
                      &mlir_context_),
-      {DimVar{{0, 24}}, DimVar{{0, 15}}}, {},
-      {RTVar({Interval{0, 2}, /*instr=*/nullptr, zero_dim_map}),
-       RTVar({Interval{0, 1}, /*instr=*/nullptr, zero_dim_map})});
+      {IndexingMap::Variable{0, 24}, IndexingMap::Variable{0, 15}}, {},
+      {IndexingMap::Variable{Interval{0, 2}, "ps_0"},
+       IndexingMap::Variable{Interval{0, 1}, "ps_1"}});
 
-  std::vector<RTVar> consumer_rt_vars;
+  std::vector<IndexingMap::Variable> consumer_rt_vars;
   IndexingMap consumer(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + 2 * s0, d1 + 3 * s1)",
                      &mlir_context_),
-      {DimVar{{0, 24}}, DimVar{{0, 15}}}, {},
-      {RTVar({Interval{0, 25}, /*instr=*/nullptr, zero_dim_map}),
-       RTVar({Interval{0, 16}, /*instr=*/nullptr, zero_dim_map})});
+      {IndexingMap::Variable{0, 24}, IndexingMap::Variable{0, 15}}, {},
+      {IndexingMap::Variable{Interval{0, 25}, "cs_0"},
+       IndexingMap::Variable{Interval{0, 16}, "cs_1"}});
 
   auto composed = ComposeIndexingMaps(consumer, producer);
-  EXPECT_THAT(
-      ToString(composed, {"d0", "d1"}, {"ps_0", "ps_1", "cs_0", "cs_1"}),
-      MatchIndexingString(R"(
-    (d0, d1)[ps_0, ps_1, cs_0, cs_1] ->
+  EXPECT_THAT(ToString(composed), MatchIndexingString(R"(
+    (d0, d1){ps_0, ps_1, cs_0, cs_1} ->
       (d0 + cs_0 * 2 + ps_0, d1 + cs_1 * 3 + ps_1 * 4),
     domain:
     d0 in [0, 24],
     d1 in [0, 15],
     ps_0 in [0, 2],
-      hlo: NULL,
-      (d0, d1) -> (),
     ps_1 in [0, 1],
-      hlo: NULL,
-      (d0, d1) -> (),
     cs_0 in [0, 25],
-      hlo: NULL,
-      (d0, d1) -> (),
     cs_1 in [0, 16],
-      hlo: NULL,
-      (d0, d1) -> (),
     d0 + cs_0 * 2 in [0, 24],
     d1 + cs_1 * 3 in [0, 15]
   )"));
@@ -585,41 +554,37 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithManySymbols) {
 }
 
 TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
-  auto zero_dim_map =
-      AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, &mlir_context_);
   IndexingMap indexing_map(
       ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
                      &mlir_context_),
-      {DimVar{{0, 31}}}, {RangeVar{{0, 0}}, RangeVar{{0, 1}}, RangeVar{{0, 2}}},
-      {RTVar{Interval{0, 3},
-             /*instr=*/nullptr, zero_dim_map},
-       RTVar{Interval{0, 4},
-             /*instr=*/nullptr, zero_dim_map}});
+      {IndexingMap::Variable{{0, 31}}},
+      {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
+       IndexingMap::Variable{{0, 2}}},
+      {IndexingMap::Variable{Interval{0, 3}},
+       IndexingMap::Variable{Interval{0, 4}}});
   indexing_map.AddConstraint(
       ParseAffineExpr("d0 * 4 + s1 + s3", &mlir_context_), Interval{24, 459});
   indexing_map.RemoveUnusedSymbols();
   // Symbols s0, s2, s4 will be removed and s1 and s3 will become s0 and s1.
   EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
-                              (d0)[s0, s1] -> (d0 * 4 + s0 + s1 - 42),
+                              (d0)[s0]{rt0} -> (d0 * 4 + s0 + rt0 - 42),
                               domain:
                               d0 in [0, 31],
                               s0 in [0, 1],
-                              s1 in [0, 3],
-                                hlo: NULL,
-                                (d0) -> (),
-                              d0 * 4 + s0 + s1 in [24, 459]
+                              rt0 in [0, 3],
+                              d0 * 4 + s0 + rt0 in [24, 459]
                             )"));
 };
 
 TEST_F(IndexingMapTest, ConvertSymbolsToDimensions) {
-  auto zero_dim_map = AffineMap::get(&mlir_context_);
   IndexingMap indexing_map(
       ParseAffineMap(
           "(d0)[s0, s1, s2, s3] -> (d0 * 4 + s0 + s1 + 2 * s2 + 3 * s3 - 42)",
           &mlir_context_),
-      {DimVar{{0, 31}}}, {RangeVar{{0, 0}}, RangeVar{{0, 1}}},
-      {RTVar{Interval{0, 3}, /*instr=*/nullptr, zero_dim_map},
-       RTVar{Interval{0, 4}, /*instr=*/nullptr, zero_dim_map}});
+      {IndexingMap::Variable{{0, 31}}},
+      {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}}},
+      {IndexingMap::Variable{Interval{0, 3}},
+       IndexingMap::Variable{Interval{0, 4}}});
   indexing_map.AddConstraint(
       ParseAffineExpr("d0 * 4 + s0 + 2 * s2", &mlir_context_),
       Interval{24, 459});
@@ -836,6 +801,8 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ConstantDims) {
     domain:
     d0 in [5, 5]
   )");
+  EXPECT_FALSE(
+      indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve));
   EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                                                   (d0) -> (5),
@@ -1562,399 +1529,6 @@ TEST(IntervalMathTest, MultiplicationSaturating) {
   EXPECT_THAT(any * neg_one, IntervalIs(any));
 }
 
-TEST_F(IndexingMapTest, ReplaceConstantRTVars_ScalarConstant) {
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> hlo_module =
-      ParseAndReturnVerifiedModule(R"hlo(
-      HloModule m
-
-      ENTRY e {
-        ROOT %constant = s64[] constant(42)
-      }
-    )hlo");
-
-  ASSERT_TRUE(hlo_module.ok());
-
-  IndexingMap indexing_map(
-      ParseAffineMap("()[s0] -> (s0)", &mlir_context_),
-      /*dimensions=*/{},
-      /*range_vars=*/{},
-      {RTVar{Interval{42, 42},
-             hlo_module.value()->entry_computation()->root_instruction(),
-             AffineMap::get(0, 0, {}, &mlir_context_)}});
-
-  EXPECT_TRUE(indexing_map.Simplify());
-  indexing_map.RemoveUnusedSymbols();
-
-  EXPECT_THAT(ToString(indexing_map), MatchIndexingString("() -> (42)"));
-}
-
-TEST_F(IndexingMapTest, ReplaceConstantRTVars_StaticIndexIntoTensorConstant) {
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> hlo_module =
-      ParseAndReturnVerifiedModule(R"hlo(
-      HloModule m
-
-      ENTRY e {
-        ROOT %constant = s64[2, 4]{1,0} constant({{1, 2, 3, 4}, {11, 12, 13, 14}})
-      }
-    )hlo");
-
-  ASSERT_TRUE(hlo_module.ok());
-
-  IndexingMap indexing_map(
-      ParseAffineMap("()[s0] -> (s0)", &mlir_context_),
-      /*dimensions=*/{},
-      /*range_vars=*/{},
-      {RTVar{Interval{1, 14},
-             hlo_module.value()->entry_computation()->root_instruction(),
-             ParseAffineMap("() -> (1,2)", &mlir_context_)}});
-
-  EXPECT_TRUE(indexing_map.Simplify());
-  indexing_map.RemoveUnusedSymbols();
-
-  EXPECT_THAT(ToString(indexing_map), MatchIndexingString("() -> (13)"));
-}
-
-TEST_F(IndexingMapTest, ReplaceConstantRTVars_NonFoldableTensor) {
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> hlo_module =
-      ParseAndReturnVerifiedModule(R"hlo(
-      HloModule m
-
-      ENTRY e {
-        ROOT %constant = s64[2, 4]{1,0} constant({{1, 2, 3, 4}, {11, 12, 13, 14}})
-      }
-    )hlo");
-
-  ASSERT_TRUE(hlo_module.ok());
-
-  IndexingMap indexing_map(
-      ParseAffineMap("(d0)[s0] -> (s0)", &mlir_context_),
-      /*dimensions=*/{},
-      /*range_vars=*/{},
-      {RTVar{Interval{1, 14},
-             hlo_module.value()->entry_computation()->root_instruction(),
-             ParseAffineMap("(d0) -> (1, d0)", &mlir_context_)}});
-
-  EXPECT_FALSE(indexing_map.Simplify());
-}
-
-TEST_F(IndexingMapTest, ReplaceConstantRTVars_Iota) {
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> hlo_module =
-      ParseAndReturnVerifiedModule(R"hlo(
-      HloModule m
-
-      ENTRY e {
-        ROOT %iota = s64[10, 10]{1,0} iota(), iota_dimension=0
-      }
-    )hlo");
-
-  ASSERT_TRUE(hlo_module.ok());
-
-  IndexingMap indexing_map(
-      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
-      /*dimensions=*/{{0, 255}},
-      /*range_vars=*/{},
-      {RTVar{Interval{0, 9},
-             hlo_module.value()->entry_computation()->root_instruction(),
-             ParseAffineMap("(d0) -> (d0, 7)", &mlir_context_)}});
-
-  EXPECT_TRUE(indexing_map.Simplify());
-  indexing_map.RemoveUnusedSymbols();
-
-  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-              (d0) -> (d0, d0),
-              domain:
-              d0 in [0, 255]
-            )"));
-}
-
-TEST_F(IndexingMapTest, ReplaceConstantRTVars_IotaAsConstant) {
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> hlo_module =
-      ParseAndReturnVerifiedModule(R"hlo(
-      HloModule m
-
-      ENTRY e {
-        ROOT %iota = s64[10, 10]{1,0} iota(), iota_dimension=1
-      }
-    )hlo");
-
-  ASSERT_TRUE(hlo_module.ok());
-
-  IndexingMap indexing_map(
-      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
-      /*dimensions=*/{{0, 255}},
-      /*range_vars=*/{},
-      {RTVar{Interval{0, 9},
-             hlo_module.value()->entry_computation()->root_instruction(),
-             ParseAffineMap("(d0) -> (d0, 7)", &mlir_context_)}});
-
-  EXPECT_TRUE(indexing_map.Simplify());
-  indexing_map.RemoveUnusedSymbols();
-
-  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-              (d0) -> (d0, 7),
-              domain:
-              d0 in [0, 255]
-            )"));
-}
-
-TEST_F(IndexingMapTest, ReplaceConstantRTVars_ConstraintsGetUpdated) {
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> hlo_module =
-      ParseAndReturnVerifiedModule(R"hlo(
-      HloModule m
-
-      ENTRY e {
-        ROOT %iota = s64[10, 10]{1,0} iota(), iota_dimension=0
-      }
-    )hlo");
-
-  ASSERT_TRUE(hlo_module.ok());
-
-  IndexingMap indexing_map(
-      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
-      /*dimensions=*/{{0, 255}},
-      /*range_vars=*/{},
-      {RTVar{Interval{0, 9},
-             hlo_module.value()->entry_computation()->root_instruction(),
-             ParseAffineMap("(d0) -> (d0, 7)", &mlir_context_)}});
-  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 2", &mlir_context_),
-                             Interval{0, 0});
-
-  EXPECT_TRUE(indexing_map.Simplify());
-  indexing_map.RemoveUnusedSymbols();
-
-  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-              (d0) -> (d0, d0),
-              domain:
-              d0 in [0, 254],
-              d0 mod 2 in [0, 0]
-            )"));
-}
-
-TEST_F(IndexingMapTest, ReplaceConstantRTVars_Broadcast) {
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> hlo_module =
-      ParseAndReturnVerifiedModule(R"hlo(
-      HloModule m
-
-      ENTRY e {
-        %iota = s64[12]{0} iota(), iota_dimension=0
-        ROOT %broadcast = s64[32, 12]{1,0} broadcast(s64[12]{0} %iota), dimensions={1}
-      }
-    )hlo");
-
-  ASSERT_TRUE(hlo_module.ok());
-
-  // (d0, 11): d0 maps into the broadcasted dimension, so it doesn't matter
-  // and 11 maps to 11 in iota.
-  IndexingMap indexing_map(
-      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
-      /*dimensions=*/{{0, 31}},
-      /*range_vars=*/{},
-      {RTVar{Interval{0, 11},
-             hlo_module.value()->entry_computation()->root_instruction(),
-             ParseAffineMap("(d0) -> (d0, 11)", &mlir_context_)}});
-
-  EXPECT_TRUE(indexing_map.Simplify());
-  indexing_map.RemoveUnusedSymbols();
-
-  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-              (d0) -> (d0, 11),
-              domain:
-              d0 in [0, 31]
-            )"));
-}
-
-TEST_F(IndexingMapTest, ReplaceConstantRTVars_ChainedNoncomputeOps) {
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> hlo_module =
-      ParseAndReturnVerifiedModule(R"hlo(
-      HloModule m
-
-      ENTRY e {
-        %iota = s64[12]{0} iota(), iota_dimension=0
-        %reverse = s64[12]{0} reverse(s64[12]{0} %iota), dimensions={0}
-        %reshape = s64[3,4]{1,0} reshape(s64[12]{0} %reverse)
-        ROOT %broadcast = s64[36,3,4]{2,1,0} broadcast(s64[3,4]{1,0} %reshape), dimensions={1,2}
-      }
-    )hlo");
-
-  ASSERT_TRUE(hlo_module.ok());
-
-  // - Iota: [0, 1, ,,,, 11]
-  // - Reverse: [11, 10, ..., 0]
-  // - Reshape: [[11, 10, 9, 8], [7, 6, 5, 4], [3, 2, 1, 0]]
-  // - Coordinates: (d0 floordiv 12, 3)
-  // - y-coordinate=3 means we index into [8, 4, 0]
-  // - x-coordinate=(d0 floordiv 12) means our constant looks like this:
-  //   [8, ..., 8, 4, ..., 4, 0, ..., 0]
-  // - Hence our final expression: (d0 floordiv 12) * -4 + 8
-  IndexingMap indexing_map(
-      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
-      /*dimensions=*/{{0, 35}},
-      /*range_vars=*/{},
-      {RTVar{
-          Interval{0, 11},
-          hlo_module.value()->entry_computation()->root_instruction(),
-          ParseAffineMap("(d0) -> (d0, d0 floordiv 12, 3)", &mlir_context_)}});
-
-  EXPECT_TRUE(indexing_map.Simplify());
-  indexing_map.RemoveUnusedSymbols();
-
-  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-              (d0) -> (d0, (d0 floordiv 12) * -4 + 8),
-              domain:
-              d0 in [0, 35]
-            )"));
-}
-
-TEST_F(IndexingMapTest, ReplaceConstantRTVars_PartialRTVarRemoval) {
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> hlo_module =
-      ParseAndReturnVerifiedModule(R"hlo(
-      HloModule m
-
-      ENTRY e {
-        %constant = s64[12]{0} constant({...})
-        ROOT %broadcast = s64[24,12]{1,0} broadcast(s64[12]{0} %constant), dimensions={1}
-      }
-    )hlo");
-
-  ASSERT_TRUE(hlo_module.ok());
-
-  // (d0, d0 floordiv 2): d0 maps into the broadcasted dimension, so it can't be
-  // removed, but d0 floordiv 2 doesn't yield an affine expression so we need to
-  // keep the RTVar, but can optimize it by removing the broadcast.
-  IndexingMap indexing_map(
-      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
-      /*dimensions=*/{{0, 23}},
-      /*range_vars=*/{},
-      {RTVar{Interval{0, 512},
-             hlo_module.value()->entry_computation()->root_instruction(),
-             ParseAffineMap("(d0) -> (d0, d0 floordiv 2)", &mlir_context_)}});
-
-  EXPECT_TRUE(indexing_map.Simplify());
-
-  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-              (d0)[s0] -> (d0, s0),
-              domain:
-              d0 in [0, 23],
-              s0 in [0, 512],
-                hlo: %constant = s64[12]{0} constant({...}),
-                (d0) -> (d0 floordiv 2)
-              )"));
-}
-
-TEST_F(IndexingMapTest, ReplaceConstantRTVars_Add) {
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> hlo_module =
-      ParseAndReturnVerifiedModule(R"hlo(
-      HloModule m
-
-      ENTRY e {
-        %constant = s64[] constant(42)
-        %broadcast = s64[12,13,24]{2,1,0} broadcast(s64[] %constant), dimensions={}
-        %iota = s64[12,13,24]{2,1,0} iota(), iota_dimension=2
-        ROOT %add = s64[12,13,24]{2,1,0} add(s64[12,13,24]{2,1,0} %broadcast, s64[12,13,24]{2,1,0} %iota)
-      }
-    )hlo");
-
-  ASSERT_TRUE(hlo_module.ok());
-
-  // The iota dimension is the last dimension in (d0, 7, 2 * d0), hence this
-  // composes to 42 + 2 * d0
-  IndexingMap indexing_map(
-      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
-      /*dimensions=*/{{0, 11}},
-      /*range_vars=*/{},
-      {RTVar{Interval{0, 11},
-             hlo_module.value()->entry_computation()->root_instruction(),
-             ParseAffineMap("(d0) -> (d0, 7, 2 * d0)", &mlir_context_)}});
-
-  EXPECT_TRUE(indexing_map.Simplify());
-  indexing_map.RemoveUnusedSymbols();
-
-  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-              (d0) -> (d0, d0 * 2 + 42),
-              domain:
-              d0 in [0, 11]
-            )"));
-}
-
-TEST_F(IndexingMapTest, ReplaceConstantRTVars_Multiply) {
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> hlo_module =
-      ParseAndReturnVerifiedModule(R"hlo(
-      HloModule m
-
-      ENTRY e {
-        %iota0 = s64[12,12]{1,0} iota(), iota_dimension=0
-        %iota1 = s64[12]{0} iota(), iota_dimension=0
-        %broadcast = s64[12,12]{1,0} broadcast(s64[12]{0} %iota1), dimensions={1}
-        %multiply = s64[12,12]{1,0} multiply(s64[12,12]{1,0} %iota0, s64[12,12]{1,0} %broadcast)
-        ROOT %reverse = s64[12,12]{1,0} reverse(s64[12,12]{1,0} %multiply), dimensions={0}
-      }
-    )hlo");
-
-  ASSERT_TRUE(hlo_module.ok());
-
-  // Iota0: [[0, ..., 0], [1, ..., 1], ..., [11, ..., 11]]
-  // Iota1: [0, ..., 11]
-  // Broadcast1: [[0, 1, ..., 11], [0, 1, ..., 11], ..., [0, 1, ..., 11]]
-  // Mul: [[0, .., 0], [0, 1, ..., 11], [0, 2, ..., 22], ..., [0, 11, ..., 121]]
-  // Reverse: [[0, 11, ..., 121], [0, 10, ..., 110], ..., [0, ..., 0]]
-  // Therefore (d0, d0) evaluates to: (11 - d0) * d0.
-  IndexingMap indexing_map(
-      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
-      /*dimensions=*/{{0, 11}},
-      /*range_vars=*/{},
-      {RTVar{Interval{0, 11},
-             hlo_module.value()->entry_computation()->root_instruction(),
-             ParseAffineMap("(d0) -> (d0, d0)", &mlir_context_)}});
-
-  EXPECT_TRUE(indexing_map.Simplify());
-  indexing_map.RemoveUnusedSymbols();
-
-  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-              (d0) -> (d0, (-d0 + 11) * d0),
-              domain:
-              d0 in [0, 11]
-            )"));
-}
-
-TEST_F(IndexingMapTest, ReplaceConstantRTVars_PartiallyOptimizableAdd) {
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> hlo_module =
-      ParseAndReturnVerifiedModule(R"hlo(
-      HloModule m
-
-      ENTRY e {
-        %constant = s64[12]{0} constant({...})
-        %broadcast = s64[12,13,24]{2,1,0} broadcast(s64[12]{0} %constant), dimensions={0}
-        %iota = s64[12,13,24]{2,1,0} iota(), iota_dimension=2
-        ROOT %add = s64[12,13,24]{2,1,0} add(s64[12,13,24]{2,1,0} %broadcast, s64[12,13,24]{2,1,0} %iota)
-      }
-    )hlo");
-
-  ASSERT_TRUE(hlo_module.ok());
-
-  // The iota dimension is the last dimension in (d0, 7, 2 * d0), the constant
-  // only depends on the first dimension. The constant consists of some
-  // arbitrary values that cannot be represent as an affine expression, hence
-  // the RTVar remains in-place.
-  IndexingMap indexing_map(
-      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
-      /*dimensions=*/{{0, 11}},
-      /*range_vars=*/{},
-      {RTVar{Interval{0, 11},
-             hlo_module.value()->entry_computation()->root_instruction(),
-             ParseAffineMap("(d0) -> (d0, 7, 2 * d0)", &mlir_context_)}});
-
-  EXPECT_TRUE(indexing_map.Simplify());
-
-  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-              (d0)[s0] -> (d0, d0 * 2 + s0),
-              domain:
-              d0 in [0, 11],
-              s0 in [0, 11],
-                hlo: %constant = s64[12]{0} constant({...}),
-                (d0) -> (d0)
-            )"));
-}
-
 template <typename T>
 void ExpectSupportsAbslHashAndEqAndNe(absl::Span<const T> values) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(values));
@@ -1996,46 +1570,35 @@ TEST_F(IndexingMapTest, IntervalSupportsLlvmStyleHashingAndEqAndNe) {
 }
 
 TEST_F(IndexingMapTest, DimVarSupportsAbslHashAndEqAndNe) {
-  ExpectSupportsAbslHashAndEqAndNe<DimVar>(
-      {DimVar{1, 1}, DimVar{0, 1}, DimVar{1, 2}});
+  ExpectSupportsAbslHashAndEqAndNe<IndexingMap::Variable>(
+      {IndexingMap::Variable{1, 1}, IndexingMap::Variable{0, 1},
+       IndexingMap::Variable{1, 2}});
 }
 
 TEST_F(IndexingMapTest, RangeVarSupportsAbslHashAndEqAndNe) {
-  ExpectSupportsAbslHashAndEqAndNe<RangeVar>(
-      {RangeVar{1, 1}, RangeVar{0, 1}, RangeVar{1, 2}});
+  ExpectSupportsAbslHashAndEqAndNe<IndexingMap::Variable>(
+      {IndexingMap::Variable{1, 1}, IndexingMap::Variable{0, 1},
+       IndexingMap::Variable{1, 2}});
 }
 
 TEST_F(IndexingMapTest, RTVarSupportsAbslHashAndEqAndNe) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-ENTRY e {
-  ROOT %constant = s64[] constant(42)
-})"));
+                            HloModule m
+                            ENTRY e {
+                              ROOT %constant = s64[] constant(42)
+                            }
+                          )"));
   ASSERT_NE(hlo_module, nullptr);
-  const HloInstruction* constant_instr =
-      hlo_module->entry_computation()->root_instruction();
 
-  ExpectSupportsAbslHashAndEqAndNe<RTVar>(
-      {RTVar{Interval{1, 1}, nullptr,
-             ParseAffineMap("(d0) -> (d0)", &mlir_context_)},
-       RTVar{Interval{1, 2}, nullptr,
-             ParseAffineMap("(d0) -> (d0)", &mlir_context_)},
-       RTVar{
-           Interval{1, 2},
-           nullptr,
-           ParseAffineMap("(d0) -> (d0 * 2)", &mlir_context_),
-       },
-       RTVar{
-           Interval{1, 2},
-           constant_instr,
-           ParseAffineMap("(d0) -> (d0 * 2)", &mlir_context_),
-       }});
+  ExpectSupportsAbslHashAndEqAndNe<IndexingMap::Variable>(
+      {IndexingMap::Variable{Interval{1, 1}},
+       IndexingMap::Variable{Interval{1, 2}},
+       IndexingMap::Variable{Interval{1, 2}},
+       IndexingMap::Variable{Interval{1, 2}}});
 }
 
 TEST_F(IndexingMapTest, IndexingMapSupportsAbslHashAndEqAndNe) {
-  auto zero_dim_map = AffineMap::get(&mlir_context_);
   ExpectSupportsAbslHashAndEqAndNe<IndexingMap>(
       {Parse(R"(
         (d0, d1)[s0, s1] -> (d1, d0, s1, s0),
@@ -2092,21 +1655,19 @@ TEST_F(IndexingMapTest, IndexingMapSupportsAbslHashAndEqAndNe) {
        IndexingMap(
            ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
                           &mlir_context_),
-           {DimVar{{0, 31}}},
-           {RangeVar{{0, 0}}, RangeVar{{0, 1}}, RangeVar{{0, 2}}},
-           {RTVar{Interval{0, 3},
-                  /*instr=*/nullptr, zero_dim_map},
-            RTVar{Interval{0, 4},
-                  /*instr=*/nullptr, zero_dim_map}}),
+           {IndexingMap::Variable{{0, 31}}},
+           {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
+            IndexingMap::Variable{{0, 2}}},
+           {IndexingMap::Variable{Interval{0, 3}},
+            IndexingMap::Variable{Interval{0, 4}}}),
        IndexingMap(
            ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
                           &mlir_context_),
-           {DimVar{{0, 31}}},
-           {RangeVar{{0, 0}}, RangeVar{{0, 1}}, RangeVar{{0, 2}}},
-           {RTVar{Interval{0, 3},
-                  /*instr=*/nullptr, zero_dim_map},
-            RTVar{Interval{0, 5},
-                  /*instr=*/nullptr, zero_dim_map}})});
+           {IndexingMap::Variable{{0, 31}}},
+           {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
+            IndexingMap::Variable{{0, 2}}},
+           {IndexingMap::Variable{Interval{0, 3}},
+            IndexingMap::Variable{Interval{0, 5}}})});
 }
 
 }  // namespace

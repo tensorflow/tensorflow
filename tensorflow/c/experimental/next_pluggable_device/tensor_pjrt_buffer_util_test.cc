@@ -31,12 +31,13 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/status_matchers.h"
-#include "tsl/protobuf/error_codes.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -79,9 +80,11 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorNoBuffer) {
 TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorIncoorectType) {
   auto allocator = std::make_unique<AsyncValueAllocator>();
   tensorflow::Tensor tensor(allocator.get(), DT_FLOAT, {1});
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto pjrt_client,
-      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1));
+  xla::CpuClientOptions options;
+  options.asynchronous = true;
+  options.cpu_device_count = 1;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetTfrtCpuClient(options));
   std::vector<int32_t> data(1, 0);
   xla::Shape shape = xla::ShapeUtil::MakeShape(xla::S32, {1});
   TF_ASSERT_OK_AND_ASSIGN(
@@ -157,9 +160,10 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientNotFound) {
 }
 
 TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientIncorrectType) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto pjrt_client,
-      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1));
+  xla::CpuClientOptions options;
+  options.asynchronous = true;
+  options.cpu_device_count = 1;
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetTfrtCpuClient(options));
   TF_ASSERT_OK(SetPjRtClientInTFGlobalResourceManager(DEVICE_CPU,
                                                       std::move(pjrt_client)));
 

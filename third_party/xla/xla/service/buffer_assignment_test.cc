@@ -15,40 +15,49 @@ limitations under the License.
 
 #include "xla/service/buffer_assignment.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/comparison_util.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
+#include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/copy_insertion.h"
-#include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_memory_scheduler.h"
-#include "xla/service/hlo_ordering.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/service/hlo_proto_util.h"
+#include "xla/service/hlo_buffer.h"
+#include "xla/service/hlo_value.h"
+#include "xla/service/logical_buffer.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -1620,6 +1629,67 @@ TEST_F(BufferAssignmentTest, CustomCallEmbeddedComputationBuffers) {
   EXPECT_FALSE(map_root_alloc.is_entry_computation_parameter());
   EXPECT_FALSE(map_root_alloc.maybe_live_out());
   EXPECT_TRUE(map_root_alloc.is_thread_local());
+}
+
+TEST_F(BufferAssignmentTest, CustomCallSubcomputationBuffers) {
+  // Verify that buffers for subcomputations in a custom call are properly
+  // marked as thread-local.
+  auto module = CreateNewVerifiedModule();
+  auto scalar_shape = ShapeUtil::MakeShape(F32, {});
+
+  auto subcomputation_builder =
+      HloComputation::Builder(TestName() + "_subcomputation");
+  auto subcomputation_param = subcomputation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "subcomputation_param"));
+  auto subcomputation_root =
+      subcomputation_builder.AddInstruction(HloInstruction::CreateUnary(
+          scalar_shape, HloOpcode::kNegate, subcomputation_param));
+  auto subcomputation =
+      module->AddEmbeddedComputation(subcomputation_builder.Build());
+
+  // Create a scalar computation to use in a map.
+  auto map_builder = HloComputation::Builder(TestName() + "_map");
+  auto map_param = map_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "map_param"));
+  auto map_root = map_builder.AddInstruction(
+      HloInstruction::CreateCall(scalar_shape, {map_param}, subcomputation));
+  auto map_computation = module->AddEmbeddedComputation(map_builder.Build());
+
+  // Create entry computation with a custom call on map_computation.
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "param"));
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      scalar_shape, {param}, map_computation, "call_name"));
+  module->AddEntryComputation(builder.Build());
+
+  auto assignment = RunBufferAssignment(module.get());
+
+  // Allocations for the map computation should be thread-local and not
+  // live-out.
+  auto& map_param_alloc = GetTopLevelAllocation(*assignment, map_param);
+  EXPECT_FALSE(map_param_alloc.is_entry_computation_parameter());
+  EXPECT_FALSE(map_param_alloc.maybe_live_out());
+  EXPECT_TRUE(map_param_alloc.is_thread_local());
+
+  auto& map_root_alloc = GetTopLevelAllocation(*assignment, map_root);
+  EXPECT_FALSE(map_root_alloc.is_entry_computation_parameter());
+  EXPECT_FALSE(map_root_alloc.maybe_live_out());
+  EXPECT_TRUE(map_root_alloc.is_thread_local());
+
+  // Allocations for the subcomputation should be thread-local and not
+  // live-out.
+  auto& subcomputation_param_alloc =
+      GetTopLevelAllocation(*assignment, subcomputation_param);
+  EXPECT_FALSE(subcomputation_param_alloc.is_entry_computation_parameter());
+  EXPECT_FALSE(subcomputation_param_alloc.maybe_live_out());
+  EXPECT_TRUE(subcomputation_param_alloc.is_thread_local());
+
+  auto& subcomputation_root_alloc =
+      GetTopLevelAllocation(*assignment, subcomputation_root);
+  EXPECT_FALSE(subcomputation_root_alloc.is_entry_computation_parameter());
+  EXPECT_FALSE(subcomputation_root_alloc.maybe_live_out());
+  EXPECT_TRUE(subcomputation_root_alloc.is_thread_local());
 }
 
 TEST_F(BufferAssignmentTest, TupleParameterAsOutput) {

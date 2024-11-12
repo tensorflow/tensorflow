@@ -1,3 +1,4 @@
+load("@local_tsl//tsl/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load(
     "//tensorflow:tensorflow.default.bzl",
@@ -151,13 +152,18 @@ tf_python_pybind_extension(
     name = "pywrap_quantization",
     srcs = ["pywrap_quantization.cc"],
     pytype_srcs = ["pywrap_quantization.pyi"],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     # Each dependency MUST be either header-only or exclusive.
     deps = [
-        ":pywrap_quantization_lib_header_only",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:type_casters",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:import_status_module",
         "@pybind11_abseil//pybind11_abseil:status_casters",
-    ],
+    ] + if_pywrap(
+        if_false = [":pywrap_quantization_lib_header_only"],
+        if_true = [":pywrap_quantization_lib_impl"],
+    ),
 )

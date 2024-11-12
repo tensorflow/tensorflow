@@ -21,6 +21,7 @@ limitations under the License.
 // device.
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -203,7 +204,7 @@ class CStreamExecutor : public StreamExecutorCommon {
 
   absl::Status Init() override { return absl::OkStatus(); }
 
-  DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) override {
+  DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override {
     SP_DeviceMemoryBase mem = {SP_DEVICE_MEMORY_BASE_STRUCT_SIZE};
     stream_executor_->allocate(&device_, size, memory_space, &mem);
     absl::Status status = ValidateSPDeviceMemoryBase(mem);
@@ -212,7 +213,7 @@ class CStreamExecutor : public StreamExecutorCommon {
     }
     return DeviceMemoryBaseFromC(mem);
   }
-  DeviceMemoryBase Allocate(uint64 size) {
+  DeviceMemoryBase Allocate(uint64_t size) {
     return Allocate(size, /*memory_space=*/0);
   }
 
@@ -222,7 +223,7 @@ class CStreamExecutor : public StreamExecutorCommon {
   }
 
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
-      uint64 size) override {
+      uint64_t size) override {
     auto* buffer = stream_executor_->host_memory_allocate(&device_, size);
     if (buffer == nullptr && size > 0) {
       return absl::InternalError(
@@ -235,7 +236,7 @@ class CStreamExecutor : public StreamExecutorCommon {
     stream_executor_->host_memory_deallocate(&device_, mem);
   }
 
-  void* UnifiedMemoryAllocate(uint64 size) override {
+  void* UnifiedMemoryAllocate(uint64_t size) override {
     CHECK(stream_executor_->unified_memory_allocate);
     return stream_executor_->unified_memory_allocate(&device_, size);
   }
@@ -283,14 +284,14 @@ class CStreamExecutor : public StreamExecutorCommon {
     return true;
   }
   absl::Status SynchronousMemZero(DeviceMemoryBase* location,
-                                  uint64 size) override {
+                                  uint64_t size) override {
     // TODO(annarev): figure out if we should support memzero/memset
     // functionality by allocating on host and then copying to device.
     return tsl::errors::Unimplemented(
         "SynchronousMemZero is not supported by pluggable device.");
   }
   absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
-                                 const void* host_src, uint64 size) override {
+                                 const void* host_src, uint64_t size) override {
     OwnedTFStatus c_status(TF_NewStatus());
     SP_DeviceMemoryBase device_memory_base = DeviceMemoryBaseToC(gpu_dst);
     stream_executor_->sync_memcpy_htod(&device_, &device_memory_base, host_src,
@@ -299,7 +300,7 @@ class CStreamExecutor : public StreamExecutorCommon {
   }
   absl::Status SynchronousMemcpy(void* host_dst,
                                  const DeviceMemoryBase& gpu_src,
-                                 uint64 size) override {
+                                 uint64_t size) override {
     OwnedTFStatus c_status(TF_NewStatus());
     SP_DeviceMemoryBase device_memory_base = DeviceMemoryBaseToC(&gpu_src);
     stream_executor_->sync_memcpy_dtoh(&device_, host_dst, &device_memory_base,
@@ -314,33 +315,6 @@ class CStreamExecutor : public StreamExecutorCommon {
     SP_Event event_handle = static_cast<CEvent*>(event)->Handle();
     stream_executor_->block_host_for_event(&device_, event_handle,
                                            c_status.get());
-    return StatusFromTF_Status(c_status.get());
-  }
-
-  absl::Status BlockHostUntilDone(Stream* stream) override {
-    OwnedTFStatus c_status(TF_NewStatus());
-    SP_Stream stream_handle = static_cast<CStream*>(stream)->Handle();
-
-    // If `block_host_until_done` is set, use it.
-    if (stream_executor_->block_host_until_done != nullptr) {
-      stream_executor_->block_host_until_done(&device_, stream_handle,
-                                              c_status.get());
-      return StatusFromTF_Status(c_status.get());
-    }
-    // Create and record an event and then wait for it.
-    SP_Event event_handle;
-    stream_executor_->create_event(&device_, &event_handle, c_status.get());
-    TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status.get()));
-    stream_executor_->record_event(&device_, stream_handle, event_handle,
-                                   c_status.get());
-    absl::Status s = StatusFromTF_Status(c_status.get());
-    if (!s.ok()) {
-      stream_executor_->destroy_event(&device_, event_handle);
-      return s;
-    }
-    stream_executor_->block_host_for_event(&device_, event_handle,
-                                           c_status.get());
-    stream_executor_->destroy_event(&device_, event_handle);
     return StatusFromTF_Status(c_status.get());
   }
 

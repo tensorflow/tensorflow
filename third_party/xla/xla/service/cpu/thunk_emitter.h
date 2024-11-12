@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/resource_use.h"
+#include "xla/backends/cpu/runtime/sort_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -62,6 +63,9 @@ class ThunkEmitter {
     std::vector<BufferAllocation::Slice> arguments;
     std::vector<BufferAllocation::Slice> results;
   };
+
+  std::optional<SortThunk::SortDirection> MatchSortDirection(
+      const HloComputation* hlo_comparator) const;
 
   // Returns the buffer allocation slice assigned to the given instruction at
   // the given shape index. Instruction must have a unique slice assigned to it!
@@ -166,9 +170,6 @@ class ThunkEmitter {
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitSliceToDynamicThunk(
-      const HloInstruction* instruction);
-
-  absl::StatusOr<ThunkSequence> EmitSelectAndScatterThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitTopKThunk(

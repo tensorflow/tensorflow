@@ -76,7 +76,7 @@ class GraphExecutorForTestingCostAnalysis : public GraphExecutor {
 
 class GraphExecutorTest : public ::testing::TestWithParam<bool> {};
 
-tensorflow::Status GetSimpleGraphDef(GraphDef& graph_def) {
+absl::Status GetSimpleGraphDef(GraphDef& graph_def) {
   auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
 
   auto input = ops::Placeholder(scope.WithOpName("input"), DT_INT32);

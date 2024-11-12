@@ -122,30 +122,27 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromMod(
   //     = n - (n - c)
   //     = c
   CHECK(modulus.getKind() == AffineExprKind::Constant);
-  if (auto tile_size_expr = llvm::dyn_cast<mlir::AffineDimExpr>(lhs)) {
-    AffineExpr size = tile_size_expr -
-                      mlir::getAffineBinaryOpExpr(AffineExprKind::FloorDiv,
-                                                  tile_size_expr - 1, modulus) *
-                          modulus;
-
-    Interval zero_interval{/*lower=*/0, /*upper=*/0};
-    // TODO(b/349487906): the below also becomes more complicated if stride is
-    // not unit.
-    //
-    // tile_size % modulus == 0 || modulus % tile_size == 0
-    ConstraintExpression constraints;
-    constraints.And(
-        /*conjunction=*/{{tile_size_expr % modulus, zero_interval}});
-    constraints.Or(
-        /*conjunction=*/{{modulus % tile_size_expr, zero_interval}});
-
-    // In this case, stride is effectively 1 mod modulus = 1.
-    return SizeAndStrideExpression(
-        size, /*stride=*/getAffineConstantExpr(1, lhs.getContext()),
-        std::move(constraints));
+  if (lhs.getKind() != AffineExprKind::DimId) {
+    return std::nullopt;
   }
 
-  return std::nullopt;
+  AffineExpr size = lhs - mlir::getAffineBinaryOpExpr(AffineExprKind::FloorDiv,
+                                                      lhs - 1, modulus) *
+                              modulus;
+
+  Interval zero_interval{/*lower=*/0, /*upper=*/0};
+  // TODO(b/349487906): the below also becomes more complicated if stride is
+  // not unit.
+  //
+  // tile_size % modulus == 0 || modulus % tile_size == 0
+  ConstraintExpression constraints;
+  constraints.And(/*conjunction=*/{{lhs % modulus, zero_interval}});
+  constraints.Or(/*conjunction=*/{{modulus % lhs, zero_interval}});
+
+  // In this case, stride is effectively 1 mod modulus = 1.
+  return SizeAndStrideExpression(
+      size, /*stride=*/getAffineConstantExpr(1, lhs.getContext()),
+      std::move(constraints));
 }
 
 // Extracts size and stride expressions from the operands to a floordiv
@@ -158,21 +155,20 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromFloorDiv(
   if (den.getKind() != AffineExprKind::Constant) {
     return std::nullopt;
   }
-
-  if (auto dim_expr = llvm::dyn_cast<mlir::AffineDimExpr>(num)) {
-    // Let f(d0) = d0 floordiv c. Then, given an input tile size n,
-    // {f(x) | x in Fin(n)} contains n ceildiv c elements, with stride
-    // (1 ceildiv c) = 1.
-    //
-    // We represent `a ceildiv b` as `(a + b - 1) floordiv b`, since indexing
-    // maps are not compatible with CeilDiv affine expressions.
-    AffineExpr size = mlir::getAffineBinaryOpExpr(AffineExprKind::FloorDiv,
-                                                  dim_expr + (den - 1), den);
-    return SizeAndStrideExpression(
-        size, /*stride=*/getAffineConstantExpr(1, num.getContext()));
+  if (num.getKind() != AffineExprKind::DimId) {
+    return std::nullopt;
   }
 
-  return std::nullopt;
+  // Let f(d0) = d0 floordiv c. Then, given an input tile size n,
+  // {f(x) | x in Fin(n)} contains n ceildiv c elements, with stride
+  // (1 ceildiv c) = 1.
+  //
+  // We represent `a ceildiv b` as `(a + b - 1) floordiv b`, since indexing
+  // maps are not compatible with CeilDiv affine expressions.
+  AffineExpr size = mlir::getAffineBinaryOpExpr(AffineExprKind::FloorDiv,
+                                                num + (den - 1), den);
+  return SizeAndStrideExpression(
+      size, /*stride=*/getAffineConstantExpr(1, num.getContext()));
 }
 
 // See documentation of `DestructureSummation` for an explanation of the
@@ -678,7 +674,7 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
       /*range_vars=*/reference.GetRangeVars(),
       /*rt_vars=*/reference.GetRTVars(),
       /*constraints=*/reference.GetConstraints());
-  tmp_indexing_map.Simplify();
+  tmp_indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
 
   CHECK_EQ(tmp_indexing_map.GetAffineMap().getResults().size(), 1);
   return tmp_indexing_map.GetAffineMap().getResults().back();
@@ -1017,7 +1013,8 @@ void ConstraintExpression::Simplify() {
   // Let's try to simplify the indexing map, because the constraints my be
   // redundant.
   // TODO(bchetioui): Consider doing the simplification in the caller, not here.
-  bool did_simplify = indexing_map.Simplify();
+  bool did_simplify =
+      indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
   VLOG(1) << "did_simplify: " << did_simplify;
   if (indexing_map.GetConstraintsCount() != 0) {
     VLOG(1) << "Deriving symbolic tile from indexing map with pre-existing "
@@ -1104,8 +1101,8 @@ void ConstraintExpression::Simplify() {
   // DimVars in `indexing_map` represent indices, but in `tile_map` they will
   // represent the size of the tile. So we need to add 1 to the bounds.
   // For example: indices: [0, 9] -> sizes: [1, 10].
-  std::vector<DimVar> tile_sizes = indexing_map.GetDimVars();
-  for (DimVar& tile_size : tile_sizes) {
+  std::vector<IndexingMap::Variable> tile_sizes = indexing_map.GetDimVars();
+  for (IndexingMap::Variable& tile_size : tile_sizes) {
     tile_size.bounds.lower += 1;
     tile_size.bounds.upper += 1;
   }
@@ -1147,13 +1144,11 @@ void SymbolicTile::Print(std::ostream& out) const {
   out << "\toffset_map: " << offset_map();
   out << "\n\tsize_map: " << size_map();
   out << "\n\tstride_map: " << stride_map();
-  const std::vector<RTVar>& rt_vars = tile_map_.GetRTVars();
+  const std::vector<IndexingMap::Variable>& rt_vars = tile_map_.GetRTVars();
   if (!rt_vars.empty()) {
     out << "\n\trt_vars: ";
     for (const auto& [index, rt_var] : llvm::enumerate(rt_vars)) {
-      out << 's' << index << " in " << rt_var.feasible_values << ",  hlo: "
-          << (rt_var.hlo == nullptr ? "NULL" : rt_var.hlo->ToString()) << ",  "
-          << rt_var.map << ", ";
+      out << 's' << index << " in " << rt_var.bounds << ", ";
     }
   }
   if (!constraints_.IsAlwaysSatisfied()) {

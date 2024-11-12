@@ -1,5 +1,5 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@local_xla//xla/tsl:tsl.bzl", "if_not_android", "internal_visibility", "nvtx_headers")
+load("@local_xla//xla/tsl:tsl.bzl", "if_not_android", "if_oss", "internal_visibility", "nvtx_headers")
 load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "@local_xla//xla/tsl/profiler/builds:build_config.bzl",
@@ -38,7 +38,7 @@ filegroup(
         "scoped_memory_debug_annotation.h",
         "traceme.h",
         "traceme_encode.h",
-        "//tsl/profiler/utils:mobile_srcs_no_runtime",
+        "@local_xla//xla/tsl/profiler/utils:mobile_srcs_no_runtime",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
@@ -221,7 +221,7 @@ cc_library(
         "//tsl/platform:platform_port",
         "//tsl/platform:status",
         "@local_xla//xla/tsl/profiler/convert:post_process_single_host_xplane",
-        "//tsl/profiler/utils:time_utils",
+        "@local_xla//xla/tsl/profiler/utils:time_utils",
     ]),
     alwayslink = True,
 )
@@ -268,11 +268,11 @@ cc_library(
         "//tsl/platform:logging",
         "//tsl/platform:macros",
         "//tsl/platform:types",
-        "//tsl/profiler/utils:no_init",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/profiler/utils:no_init",
     ] + if_not_android([
         "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder",
-        "//tsl/profiler/utils:time_utils",
+        "@local_xla//xla/tsl/profiler/utils:time_utils",
     ]),
 )
 
@@ -283,6 +283,7 @@ cc_library(
         ["nvtx_utils_stub.cc"],
     ),
     hdrs = ["nvtx_utils.h"],
+    local_defines = if_oss(["NVTX_VERSION_3_1=1"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured(nvtx_headers()),
 )

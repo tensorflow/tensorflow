@@ -225,6 +225,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "//xla/pjrt:host_callback",
+        "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
@@ -278,6 +279,22 @@ cc_library(
 )
 
 cc_library(
+    name = "se_gpu_client_test_lib",
+    testonly = True,
+    srcs = ["se_gpu_client_test_lib.cc"],
+    deps = [
+        ":pjrt_ifrt",
+        "//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:test_util",
+        "//xla/service:gpu_plugin",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "pjrt_attribute_map_util",
     srcs = ["pjrt_attribute_map_util.cc"],
     hdrs = ["pjrt_attribute_map_util.h"],
@@ -320,6 +337,7 @@ cc_library(
     hdrs = ["basic_string_array.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
@@ -331,8 +349,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -356,6 +374,7 @@ xla_cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -386,6 +405,21 @@ xla_cc_test(
     srcs = [],
     deps = [
         ":tfrt_cpu_client_test_lib",
+        "//xla/python/ifrt:client_impl_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_client_impl_test_se_gpu",
+    size = "small",
+    srcs = [],
+    tags = [
+        "no_oss",
+        "requires-gpu-nvidia:2",
+    ],
+    deps = [
+        ":se_gpu_client_test_lib",
         "//xla/python/ifrt:client_impl_test_lib",
         "@com_google_googletest//:gtest_main",
     ],

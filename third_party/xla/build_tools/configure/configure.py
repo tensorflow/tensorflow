@@ -35,6 +35,7 @@ import enum
 import logging
 import os
 import pathlib
+import platform
 import shutil
 import subprocess
 import sys
@@ -187,9 +188,14 @@ class CudaCompiler(ArgparseableEnum):
   NVCC = enum.auto()
 
 
+class RocmCompiler(ArgparseableEnum):
+  HIPCC = enum.auto()
+
+
 class OS(ArgparseableEnum):
+  """Modeled after the values returned by `platform.system()`."""
   LINUX = enum.auto()
-  MACOS = enum.auto()
+  DARWIN = enum.auto()
   WINDOWS = enum.auto()
 
 
@@ -263,6 +269,9 @@ class XLAConfigOptions:
   cuda_compiler: CudaCompiler
   using_nccl: bool
 
+  # ROCM specific
+  rocm_compiler: RocmCompiler
+
   def to_bazelrc_lines(
       self,
       dpav: DiscoverablePathsAndVersions,
@@ -283,6 +292,9 @@ class XLAConfigOptions:
     dpav.get_relevant_paths_and_versions(self)
     rc = []
     build_and_test_tag_filters = list(_DEFAULT_BUILD_AND_TEST_TAG_FILTERS)
+
+    if self.os == OS.DARWIN:
+      build_and_test_tag_filters.append("-no_mac")
 
     # Platform independent options based on host compiler
     if self.host_compiler == HostCompiler.GCC:
@@ -310,7 +322,7 @@ class XLAConfigOptions:
             f"build --action_env CLANG_CUDA_COMPILER_PATH={dpav.clang_path}"
         )
       elif compiler_pair == (CudaCompiler.NVCC, HostCompiler.CLANG):
-        rc.append("build --config nvcc_clang")
+        rc.append("build --config cuda_nvcc")
         # This is demanded by cuda_configure.bzl
         rc.append(
             f"build --action_env CLANG_CUDA_COMPILER_PATH={dpav.clang_path}"
@@ -328,8 +340,8 @@ class XLAConfigOptions:
             f"build:cuda --repo_env HERMETIC_CUDA_VERSION={dpav.cuda_version}"
         )
       rc.append(
-          "build:cuda --repo_env"
-          f" HERMETIC_CUDA_COMPUTE_CAPABILITIES={','.join(dpav.cuda_compute_capabilities)}"
+          "build:cuda --repo_env HERMETIC_CUDA_COMPUTE_CAPABILITIES="
+          f"{','.join(dpav.cuda_compute_capabilities)}"
       )
       if dpav.cudnn_version:
         rc.append(
@@ -352,6 +364,17 @@ class XLAConfigOptions:
     elif self.backend == Backend.ROCM:
       build_and_test_tag_filters.append("-cuda-only")
       build_and_test_tag_filters.append("-sycl-only")
+
+      compiler_pair = self.rocm_compiler, self.host_compiler
+
+      if compiler_pair == (RocmCompiler.HIPCC, HostCompiler.CLANG):
+        rc.append("build --config rocm")
+        # This is demanded by rocm_configure.bzl.
+        rc.append(f"build --action_env CLANG_COMPILER_PATH={dpav.clang_path}")
+      elif compiler_pair == (RocmCompiler.HIPCC, HostCompiler.GCC):
+        rc.append("build --config rocm")
+      else:
+        raise NotImplementedError("ROCm clang with host compiler not supported")
     elif self.backend == Backend.SYCL:
       build_and_test_tag_filters.append("-cuda-only")
       build_and_test_tag_filters.append("-rocm-only")
@@ -397,7 +420,7 @@ def _parse_args():
       required=True,
   )
   parser.add_argument(
-      "--os", type=OS.from_str, choices=list(OS), default="linux"
+      "--os", type=OS.from_str, choices=list(OS), default=platform.system()
   )
   parser.add_argument(
       "--host_compiler",
@@ -410,6 +433,12 @@ def _parse_args():
       type=CudaCompiler.from_str,
       choices=list(CudaCompiler),
       default="nvcc",
+  )
+  parser.add_argument(
+      "--rocm_compiler",
+      type=RocmCompiler.from_str,
+      choices=list(RocmCompiler),
+      default="hipcc",
   )
   parser.add_argument(
       "--cuda_compute_capabilities",
@@ -486,6 +515,7 @@ def main():
       python_bin_path=args.python_bin_path,
       compiler_options=args.compiler_options,
       using_nccl=args.nccl,
+      rocm_compiler=args.rocm_compiler,
   )
 
   bazelrc_lines = config.to_bazelrc_lines(

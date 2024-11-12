@@ -49,8 +49,8 @@ class SparseTensorsMap : public ResourceBase {
     absl::InlinedVector<int64_t, 8UL> shape;
   } PersistentSparseTensor;
 
-  Status AddSparseTensor(OpKernelContext* ctx, const SparseTensor& sp,
-                         int64_t* handle) {
+  absl::Status AddSparseTensor(OpKernelContext* ctx, const SparseTensor& sp,
+                               int64_t* handle) {
     Tensor ix;
     TF_RETURN_IF_ERROR(
         ctx->allocate_temp(sp.indices().dtype(), sp.indices().shape(), &ix));
@@ -72,7 +72,7 @@ class SparseTensorsMap : public ResourceBase {
     return absl::OkStatus();
   }
 
-  Status RetrieveAndClearSparseTensors(
+  absl::Status RetrieveAndClearSparseTensors(
       OpKernelContext* ctx, const TTypes<int64_t>::ConstVec& handles,
       std::vector<SparseTensor>* sparse_tensors) {
     sparse_tensors->clear();
@@ -113,7 +113,7 @@ class SparseTensorsMap : public ResourceBase {
 
 class SparseTensorAccessingOp : public OpKernel {
  public:
-  typedef std::function<Status(SparseTensorsMap**)> CreatorCallback;
+  typedef std::function<absl::Status(SparseTensorsMap**)> CreatorCallback;
 
   explicit SparseTensorAccessingOp(OpKernelConstruction* context)
       : OpKernel(context), sparse_tensors_map_(nullptr) {}
@@ -123,8 +123,8 @@ class SparseTensorAccessingOp : public OpKernel {
     if (sparse_tensors_map_) sparse_tensors_map_->Unref();
   }
 
-  Status GetMap(OpKernelContext* ctx, bool is_writing,
-                SparseTensorsMap** sparse_tensors_map) {
+  absl::Status GetMap(OpKernelContext* ctx, bool is_writing,
+                      SparseTensorsMap** sparse_tensors_map) {
     mutex_lock l(mu_);
 
     if (sparse_tensors_map_) {

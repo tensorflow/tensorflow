@@ -28,12 +28,9 @@ def XLAGPU_AffineMapParameter :
     AttrOrTypeParameter<"::mlir::AffineMap", ""> {
 }
 
-def XLAGPU_DimVarsParameter : ArrayRefParameter<"::xla::gpu::DimVar",
-                                                "DimVarArray"> {
-}
-
-def XLAGPU_RangeVarsParameter : ArrayRefParameter<"::xla::gpu::RangeVar",
-                                                  "RangeVarArray"> {
+def XLAGPU_IndexingMapVariableParameter
+  : ArrayRefParameter<"::xla::gpu::IndexingMap::Variable",
+                      "IndexingMapVariableArray"> {
 }
 
 def XLAGPU_ConstraintsParameter :
@@ -48,8 +45,8 @@ def XLAGPU_IndexingMapAttr : XLAGPU_Attr<"IndexingMap"> {
     https://openxla.org/xla/indexing for more details.
   }];
   let parameters = (ins XLAGPU_AffineMapParameter:$map,
-                        XLAGPU_DimVarsParameter:$dim_vars,
-                        XLAGPU_RangeVarsParameter:$range_vars,
+                        XLAGPU_IndexingMapVariableParameter:$dim_vars,
+                        XLAGPU_IndexingMapVariableParameter:$range_vars,
                         XLAGPU_ConstraintsParameter:$constraints);
   let hasCustomAssemblyFormat = 1;
   let builders =  [

@@ -183,7 +183,7 @@ node {
     }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value { b: true }
   }
 }
@@ -210,7 +210,7 @@ node {
     }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value { b: true }
   }
   attr {
@@ -263,7 +263,7 @@ node {
     }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value { b: true }
   }
   attr {
@@ -316,7 +316,7 @@ node {
     }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value { b: true }
   }
 }
@@ -433,7 +433,7 @@ node {
     }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value {
       b: true
     }
@@ -473,7 +473,7 @@ node {
     }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value {
       b: true
     }
@@ -517,7 +517,7 @@ node {
     }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value {
       b: true
     }
@@ -563,7 +563,7 @@ node {
     }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value {
       b: true
     }
@@ -595,7 +595,7 @@ node {
     }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value {
       b: true
     }
@@ -651,7 +651,7 @@ node {
     value { s: "r0:1" }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value { b: true }
   }
   attr {
@@ -682,7 +682,7 @@ node {
     }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value {
       b: true
     }
@@ -728,7 +728,7 @@ node {
     }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value {
       b: true
     }
@@ -773,7 +773,7 @@ node {
     }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value {
       b: true
     }
@@ -816,7 +816,7 @@ node {
     }
   }
   attr {
-    key: "ici_weight_distribution_mlir_bridge_marker"
+    key: "_ici_weight_distribution_mlir_bridge_marker"
     value {
       b: true
     }

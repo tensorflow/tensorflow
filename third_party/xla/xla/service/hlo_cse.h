@@ -49,6 +49,10 @@ class HloCSE : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
+  // Run CSE on the given computation. Returns whether the computation was
+  // changed.
+  absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
+
  private:
   const bool is_layout_sensitive_;
   const bool only_fusion_computations_;

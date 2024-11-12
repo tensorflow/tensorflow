@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/call_frame.h"
@@ -51,6 +54,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/runtime/annotation.h"
+#include "xla/service/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_to_all_thunk.h"
@@ -59,14 +63,17 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_collective_broadcast_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/gpu/runtime/while_thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/service_executable_run_options.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/lazy_op_runner.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
@@ -87,17 +94,6 @@ limitations under the License.
 #endif
 
 namespace xla::gpu {
-
-namespace {
-std::optional<se::DeviceMemoryBase> AssignBufferIfNotNull(
-    const BufferAllocations& buffer_allocations,
-    BufferAllocation::Slice& slice) {
-  return slice.allocation() != nullptr
-             ? std::optional<se::DeviceMemoryBase>{buffer_allocations
-                                                       .GetDeviceAddress(slice)}
-             : std::nullopt;
-}
-}  // namespace
 
 using ExecutionScopeId = se::CommandBuffer::ExecutionScopeId;
 using MemoryAccess = CommandBufferCmd::MemoryAccess;
@@ -1423,7 +1419,8 @@ absl::Status CustomCallCmd::RecordLegacyCustomCall(
   }
 
   ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
-  VLOG(5) << "CustomCallCmd: execution_scope_id=" << execution_scope_id.value();
+  VLOG(5) << "CustomCallCmd: target_name=" << target_name_
+          << ", execution_scope_id=" << execution_scope_id.value();
   for (int i = 0; i < operands_.size(); ++i) {
     if (operands_[i].has_value()) {
       VLOG(5) << "  Operand " << i << ": " << operands_[i]->slice << " ("
@@ -1478,7 +1475,8 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
   ffi::CallFrameBuilder builder(operands_.size(), results_.size());
 
   ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
-  VLOG(5) << "CustomCallCmd: execution_scope_id=" << execution_scope_id.value();
+  VLOG(5) << "CustomCallCmd: target_name=" << target_name_
+          << ", execution_scope_id=" << execution_scope_id.value();
 
   for (int i = 0; i < operands_.size(); ++i) {
     const std::optional<Slice>& slice = operands_[i];
@@ -1512,7 +1510,7 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
         execute_params.buffer_allocations->GetDeviceAddress(slice->slice);
     VLOG(5) << "  Result " << i << ": " << slice->slice << " ("
             << buffer.opaque() << ")";
-    builder.AddBufferArg(buffer, slice->shape.element_type(),
+    builder.AddBufferRet(buffer, slice->shape.element_type(),
                          slice->shape.dimensions());
   }
 
@@ -1530,7 +1528,7 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
             ffi::CallOptions options = {
                 execute_params.buffer_allocations->device_ordinal(),
                 ffi::CallOptions::GpuOptions{
-                    execute_params.stream,
+                    stream,
                     execute_params.buffer_allocations->memory_allocator()},
                 /*called_computation=*/nullptr,  // TODO(b/342285364)
                 execute_params.ffi_execution_context};
@@ -1986,6 +1984,264 @@ CommandBufferCmd::BufferUsageVector CollectiveBroadcastCmd::buffers() {
     buffer_usage.emplace_back(buffer.destination_buffer, MemoryAccess::kWrite);
   }
   return buffer_usage;
+}
+
+//===----------------------------------------------------------------------===//
+// DynamicSliceFusionCmd
+//===----------------------------------------------------------------------===//
+
+DynamicSliceFusionCmd::DynamicSliceFusionCmd(
+    ExecutionStreamId execution_stream_id,
+    std::unique_ptr<CommandBufferCmdSequence> embedded_commands,
+    std::vector<std::optional<BufferAllocation::Slice>> arguments,
+    std::vector<std::unique_ptr<BufferAllocation>> fake_allocations,
+    std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets,
+    std::vector<std::optional<Shape>> orig_shapes,
+    std::vector<std::optional<Shape>> sliced_shapes,
+    std::vector<std::optional<uint64_t>> offset_byte_sizes)
+    : CommandBufferCmd(CommandBufferCmdType::kDynamicSliceFusionCmd,
+                       execution_stream_id),
+      embedded_commands_(std::move(embedded_commands)),
+      fake_allocations_(std::move(fake_allocations)) {
+  // Zip all arguments together to create a list of SliceDef.
+  for (auto [arg, offset, orig_shape, sliced_shape, offset_byte_size] :
+       llvm::zip_equal(arguments, offsets, orig_shapes, sliced_shapes,
+                       offset_byte_sizes)) {
+    slices_.push_back(DynamicSliceThunk::SliceDef{
+        std::move(arg),
+        std::move(offset),
+        std::move(orig_shape),
+        std::move(sliced_shape),
+        std::move(offset_byte_size),
+    });
+  }
+
+  for (auto [argument_idx, slice] : llvm::enumerate(slices_)) {
+    embeded_to_origin_slice_map_[argument_idx] = slice.embedded_thunk_argument;
+  }
+
+  // Find how many offsets we might have to transfer from device to host and
+  // pre-compute host allocation requirements.
+  for (DynamicSliceThunk::SliceDef& slice : slices_) {
+    offsets_allocs_base_.push_back(offsets_allocs_size_);
+    if (slice.sliced_shape.has_value()) {
+      offsets_allocs_size_ += slice.sliced_shape->rank() * sizeof(int64_t);
+    }
+  }
+}
+
+// Force update the command when there is any non-constant value slice offset,
+// because the memory address might changed if the offset is loop
+// iterator or operator outputs even if the parent command's memory pointers do
+// not change.
+bool DynamicSliceFusionCmd::force_update() {
+  return !absl::c_all_of(slices_, [](const DynamicSliceThunk::SliceDef& slice) {
+    if (!slice.offsets.has_value()) return true;
+    return absl::c_all_of(slice.offsets.value(),
+                          [](DynamicSliceThunk::Offset offset) {
+                            return std::holds_alternative<uint64_t>(offset);
+                          });
+  });
+}
+
+absl::Status DynamicSliceFusionCmd::Initialize(
+    const Thunk::InitializeParams& params, StateManager& state) {
+  TF_RETURN_IF_ERROR(embedded_commands_->Initialize(params, state));
+  absl::MutexLock lock(&mutex_);
+  if (offsets_allocs_.contains(params.executor)) return absl::OkStatus();
+
+  VLOG(2) << "Allocate " << offsets_allocs_size_
+          << " bytes for transferring offsets on executor: " << params.executor;
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<se::MemoryAllocation> allocation,
+      params.executor->HostMemoryAllocate(offsets_allocs_size_));
+  offsets_allocs_.emplace(params.executor, std::move(allocation));
+  return absl::OkStatus();
+}
+
+absl::Status DynamicSliceFusionCmd::Prepare(
+    const Thunk::PrepareParams& params,
+    Thunk::ResourceRequests& resource_requests) {
+  for (DynamicSliceThunk::SliceDef& slice : slices_) {
+    if (slice.offsets.has_value()) {
+      TF_RET_CHECK(slice.embedded_thunk_argument.has_value());
+      TF_RET_CHECK(slice.orig_shape.has_value());
+      TF_RET_CHECK(slice.sliced_shape.has_value());
+      TF_RET_CHECK(slice.offset_byte_size.has_value());
+
+      TF_RET_CHECK(slice.orig_shape->IsArray());
+      TF_RET_CHECK(slice.sliced_shape->IsArray());
+
+      TF_RET_CHECK(slice.offsets->size() == slice.orig_shape->rank());
+      TF_RET_CHECK(slice.sliced_shape->rank() == slice.orig_shape->rank());
+    }
+  }
+  TF_RETURN_IF_ERROR(embedded_commands_->Prepare(params, resource_requests));
+  return absl::OkStatus();
+}
+
+absl::Status DynamicSliceFusionCmd::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, se::CommandBuffer* command_buffer) {
+  se::Stream& stream = *execute_params.stream;
+  ExecutionScopeId execution_scope_id = GetExecutionScope(record_params);
+
+  const BufferAllocations& orig_allocations =
+      *execute_params.buffer_allocations;
+  absl::InlinedVector<se::DeviceMemoryBase, 8> slice_buffers(
+      slices_.size(), se::DeviceMemoryBase());
+
+  // Get memory allocation for copying offsets from device.
+  int64_t* offsets_alloc = [&] {
+    absl::MutexLock lock(&mutex_);
+    return reinterpret_cast<int64_t*>(
+        offsets_allocs_.at(stream.parent())->opaque());
+  }();
+
+  auto offset_value = [&](int64_t arg_idx, int64_t offset_idx) -> int64_t& {
+    return offsets_alloc[offsets_allocs_base_.at(arg_idx) + offset_idx];
+  };
+
+  VLOG(2) << "Execute address computation thunk: slices=" << slices_.size();
+  for (auto [argument_idx, slice] : llvm::enumerate(slices_)) {
+    // Skip arguments that do not have buffer slices (tokens).
+    if (!slice.embedded_thunk_argument.has_value()) {
+      continue;
+    }
+
+    // `argument_buffer` will contain the original offset for slice
+    // `argument_slice` within `orig_allocations`
+    se::DeviceMemoryBase argument_buffer =
+        orig_allocations.GetDeviceAddress(*slice.embedded_thunk_argument);
+
+    // If argument is not sliced, just use the original buffer.
+    if (!slice.offsets.has_value()) {
+      slice_buffers[argument_idx] = argument_buffer;
+      continue;
+    }
+
+    const Shape& src_shape = *slice.orig_shape;
+    const Shape& dst_shape = *slice.sliced_shape;
+
+    absl::InlinedVector<int64_t, 4> slice_starts;
+    slice_starts.reserve(dst_shape.rank());
+
+    // Number of issues d2h transfers to copy offset values from device to
+    // host.
+    int64_t num_transfers = 0;
+
+    // Get offset for `argument_idx`-th argument, which has `dst_shape.rank()`
+    // components.
+    for (auto [offset_idx, values] : llvm::enumerate(llvm::zip(
+             *slice.offsets, src_shape.dimensions(), dst_shape.dimensions()))) {
+      auto [offset, src_dim, dst_dim] = values;
+      if (uint64_t* const_offset = std::get_if<uint64_t>(&offset)) {
+        // Forward slice offsets that are known constant values
+        VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
+                << "]: constant offset = " << *const_offset;
+        offset_value(argument_idx, offset_idx) = *const_offset;
+
+      } else if (std::holds_alternative<DynamicSliceThunk::LoopIter>(offset)) {
+        // Get slice offset from the current loop iteration.
+        TF_ASSIGN_OR_RETURN(int64_t iter, WhileThunk::CurrentLoopIteration());
+        VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
+                << "]: loop iteration offset = " << iter;
+        offset_value(argument_idx, offset_idx) = iter;
+
+      } else if (DynamicSliceThunk::OffsetArray* offset_array =
+                     std::get_if<DynamicSliceThunk::OffsetArray>(&offset)) {
+        TF_ASSIGN_OR_RETURN(int64_t iter, WhileThunk::CurrentLoopIteration());
+        VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
+                << "]: offset array offset = " << offset_array->values[iter];
+        offset_value(argument_idx, offset_idx) = offset_array->values[iter];
+
+      } else {
+        // Transfer slice offset value from device to host.
+        auto alloc_slice = std::get<BufferAllocation::Slice>(offset);
+        VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
+                << "]: transfer offset from device " << alloc_slice.ToString();
+
+        se::DeviceMemoryBase offset_src =
+            orig_allocations.GetDeviceAddress(alloc_slice);
+        int64_t* offset_dst = &offset_value(argument_idx, offset_idx);
+
+        // Copy the `offset_idx`-th component of the offset for the
+        // `argument_idx`-th argument from device to host.
+        TF_RETURN_IF_ERROR(
+            stream.Memcpy(offset_dst, offset_src, *slice.offset_byte_size));
+        ++num_transfers;
+      }
+    }
+
+    // Wait for the completion of all transfers.
+    if (num_transfers > 0) {
+      VLOG(2) << "Wait for completion of " << num_transfers << " transfer";
+      TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+    }
+
+    // Clamp start indices:
+    // start_indices[i] = min(max(start_indices[i], 0),
+    //                        operand.dimension_size[i] - size_indices[i])
+    for (auto [offset_idx, values] : llvm::enumerate(
+             llvm::zip(src_shape.dimensions(), dst_shape.dimensions()))) {
+      auto [src_dim, dst_dim] = values;
+      int64_t start_index =
+          std::min(std::max(offset_value(argument_idx, offset_idx), int64_t{0}),
+                   src_dim - dst_dim);
+      VLOG(2) << "arg idx: " << argument_idx << " offset_idx " << offset_idx
+              << " with offset_value " << offset_value(argument_idx, offset_idx)
+              << " start_idx: " << start_index << " src_dim: " << src_dim
+              << " dst_dim:" << dst_dim;
+      slice_starts.push_back(start_index);
+    }
+
+    // Compute new slice. No need to copy the content to new buffers as we can
+    // reuse the original buffers since slices are contiguous.
+    int64_t new_size = ShapeUtil::ByteSizeOf(dst_shape);
+
+    int64_t new_offset = 0;
+    for (auto [start, stride] :
+         llvm::zip(slice_starts, *ShapeUtil::ByteStrides(src_shape))) {
+      new_offset += start * stride;
+    }
+
+    VLOG(2) << "Create sliced argument " << argument_idx << " of shape "
+            << slice.sliced_shape->ToString()
+            << " by slicing argument of shape " << slice.orig_shape->ToString()
+            << " at offset " << new_offset << " with " << new_size;
+    slice_buffers[argument_idx] =
+        argument_buffer.GetByteSlice(new_offset, new_size);
+  }
+
+  // Safe to create a local BufferAllocations here since buffers are only slices
+  // of bigger ones allocated elsewhere.
+  BufferAllocations slice_allocations(slice_buffers,
+                                      orig_allocations.device_ordinal(),
+                                      orig_allocations.memory_allocator());
+
+  Thunk::ExecuteParams new_params =
+      Thunk::ExecuteParams::CloneWithNewAllocations(execute_params,
+                                                    slice_allocations);
+  auto nested_command_buffer =
+      execute_params.stream->parent()
+          ->CreateCommandBuffer(se::CommandBuffer::Mode::kNested)
+          .value();
+  TF_RETURN_IF_ERROR(embedded_commands_->Record(new_params, record_params,
+                                                nested_command_buffer.get()));
+  return command_buffer->AddNestedCommandBuffer(execution_scope_id,
+                                                *nested_command_buffer);
+}
+
+CommandBufferCmd::BufferUsageVector DynamicSliceFusionCmd::buffers() {
+  CommandBufferCmd::BufferUsageVector buffers;
+  auto embed_buffers = embedded_commands_->buffers();
+  for (auto buffer_usage : embed_buffers) {
+    CHECK(embeded_to_origin_slice_map_[buffer_usage.slice.index()].has_value());
+    buffers.emplace_back(
+        embeded_to_origin_slice_map_[buffer_usage.slice.index()].value(),
+        buffer_usage.access);
+  }
+  return buffers;
 }
 
 }  // namespace xla::gpu

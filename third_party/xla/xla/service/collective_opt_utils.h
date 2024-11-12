@@ -26,7 +26,7 @@ limitations under the License.
 namespace xla {
 
 struct ReduceScatterSpec {
-  int64_t split_dim;
+  int64_t split_dim = -1;
   int64_t sharded_partitions = 1;
   int64_t sharded_replicas = 1;
   int64_t group_size;
@@ -44,7 +44,7 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     bool allow_intervening_bitcast = false);
 
 // Check whether AG(ICI) and its user DS(ICI) can be canceled out.
-bool AllGatherDynamicSliceCancellation(
+std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
     const HloAllGatherInstruction* ag, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims = false,
     bool allow_intervening_reshape = false, int64_t min_rank = 1,

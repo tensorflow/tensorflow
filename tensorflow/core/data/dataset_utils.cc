@@ -257,8 +257,8 @@ std::pair<int64_t, int64_t> MaybeOverrideSeeds(
   return seeds;
 }
 
-Status VerifyTypeMatch(const DataType& expected, const DataType& received,
-                       int index) {
+absl::Status VerifyTypeMatch(const DataType& expected, const DataType& received,
+                             int index) {
   if (expected != received) {
     return errors::InvalidArgument("Data type mismatch at component ", index,
                                    ": expected ", DataTypeString(expected),
@@ -267,8 +267,8 @@ Status VerifyTypeMatch(const DataType& expected, const DataType& received,
   return absl::OkStatus();
 }
 
-Status VerifyTypesMatch(const DataTypeVector& expected,
-                        const DataTypeVector& received) {
+absl::Status VerifyTypesMatch(const DataTypeVector& expected,
+                              const DataTypeVector& received) {
   if (expected.size() != received.size()) {
     return errors::InvalidArgument(
         "Number of components does not match: expected ", expected.size(),
@@ -280,8 +280,8 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
   return absl::OkStatus();
 }
 
-Status VerifyTypesMatch(const DataTypeVector& expected,
-                        const std::vector<Tensor>& received) {
+absl::Status VerifyTypesMatch(const DataTypeVector& expected,
+                              const std::vector<Tensor>& received) {
   if (expected.size() != received.size()) {
     return errors::InvalidArgument(
         "Number of components does not match: expected ", expected.size(),
@@ -293,8 +293,9 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
   return absl::OkStatus();
 }
 
-Status VerifyShapeCompatible(const PartialTensorShape& expected,
-                             const PartialTensorShape& received, int index) {
+absl::Status VerifyShapeCompatible(const PartialTensorShape& expected,
+                                   const PartialTensorShape& received,
+                                   int index) {
   if (!expected.IsCompatibleWith(received)) {
     return errors::InvalidArgument("Incompatible shapes at component ", index,
                                    ": expected ", expected.DebugString(),
@@ -303,8 +304,9 @@ Status VerifyShapeCompatible(const PartialTensorShape& expected,
   return absl::OkStatus();
 }
 
-Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
-                              const std::vector<PartialTensorShape>& received) {
+absl::Status VerifyShapesCompatible(
+    const std::vector<PartialTensorShape>& expected,
+    const std::vector<PartialTensorShape>& received) {
   if (expected.size() != received.size()) {
     return errors::InvalidArgument(
         "Number of components does not match: expected ", expected.size(),
@@ -317,8 +319,9 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
   return absl::OkStatus();
 }
 
-Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
-                              const std::vector<Tensor>& received) {
+absl::Status VerifyShapesCompatible(
+    const std::vector<PartialTensorShape>& expected,
+    const std::vector<Tensor>& received) {
   if (expected.size() != received.size()) {
     return errors::InvalidArgument(
         "Number of components does not match: expected ", expected.size(),
@@ -332,8 +335,8 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
   return absl::OkStatus();
 }
 
-Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
-                            const FunctionLibraryDefinition& to_add) {
+absl::Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
+                                  const FunctionLibraryDefinition& to_add) {
   for (const auto& fn : to_add.ListFunctionNames()) {
     if (auto found = base->Find(fn)) {
       if (!OpDefEqual(found->signature(), to_add.Find(fn)->signature())) {
@@ -347,8 +350,8 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
   return base->AddLibrary(to_add);
 }
 
-Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
-                            const FunctionDefLibrary& to_add) {
+absl::Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
+                                  const FunctionDefLibrary& to_add) {
   for (const auto& fd : to_add.function()) {
     if (auto found = base->Find(fd.signature().name())) {
       if (!OpDefEqual(found->signature(), fd.signature())) {
@@ -363,8 +366,8 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
   return base->AddLibrary(to_add);
 }
 
-Status IsFunctionStateful(const FunctionLibraryDefinition& library,
-                          const FunctionDef& function_def) {
+absl::Status IsFunctionStateful(const FunctionLibraryDefinition& library,
+                                const FunctionDef& function_def) {
   if (!function_def.signature().is_stateful()) {
     return absl::OkStatus();
   }
@@ -375,8 +378,8 @@ Status IsFunctionStateful(const FunctionLibraryDefinition& library,
   return absl::OkStatus();
 }
 
-Status IsNodeStateful(const FunctionLibraryDefinition& library,
-                      const NodeDef& node) {
+absl::Status IsNodeStateful(const FunctionLibraryDefinition& library,
+                            const NodeDef& node) {
   const OpDef* op_def;
 
   // TODO(jsimsa): Fix C++ unit tests so that we do not have to ignore
@@ -436,8 +439,8 @@ std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
       std::move(runner), std::placeholders::_1);
 }
 
-Status DeterminismPolicy::FromString(const std::string& s,
-                                     DeterminismPolicy* out) {
+absl::Status DeterminismPolicy::FromString(const std::string& s,
+                                           DeterminismPolicy* out) {
   DeterminismPolicy::Type type;
   if (s == DeterminismPolicy::kDeterministic) {
     type = DeterminismPolicy::Type::kDeterministic;
@@ -632,8 +635,8 @@ void StripDevicePlacement(FunctionDefLibrary* library) {
   }
 }
 
-Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
-                        Tensor* output) {
+absl::Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
+                              Tensor* output) {
   switch (value.dtype()) {
 #define HANDLE_TYPE(type)                                         \
   case DataTypeToEnum<type>::value: {                             \
@@ -653,9 +656,9 @@ Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
   return absl::OkStatus();
 }
 
-Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
-                 int64_t batch_size, const string& iterator_prefix,
-                 const string& batch_prefix, std::vector<Tensor>* batch) {
+absl::Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
+                       int64_t batch_size, const string& iterator_prefix,
+                       const string& batch_prefix, std::vector<Tensor>* batch) {
   int64_t output_size;
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix,
@@ -686,9 +689,10 @@ Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
   return absl::OkStatus();
 }
 
-Status WriteBatch(int64_t batch_size, int64_t num_elements,
-                  const string& iterator_prefix, const string& batch_prefix,
-                  IteratorStateWriter* writer, std::vector<Tensor>* batch) {
+absl::Status WriteBatch(int64_t batch_size, int64_t num_elements,
+                        const string& iterator_prefix,
+                        const string& batch_prefix, IteratorStateWriter* writer,
+                        std::vector<Tensor>* batch) {
   TF_RETURN_IF_ERROR(writer->WriteScalar(
       FullName(iterator_prefix,
                strings::StrCat(batch_prefix, "_", kOutputSize)),
@@ -711,8 +715,8 @@ Status WriteBatch(int64_t batch_size, int64_t num_elements,
   return absl::OkStatus();
 }
 
-Status ReadStatus(const string& iterator_prefix, const string& prefix,
-                  IteratorStateReader* reader, Status* status) {
+absl::Status ReadStatus(const string& iterator_prefix, const string& prefix,
+                        IteratorStateReader* reader, absl::Status* status) {
   int64_t code_int;
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
@@ -724,15 +728,16 @@ Status ReadStatus(const string& iterator_prefix, const string& prefix,
     TF_RETURN_IF_ERROR(reader->ReadScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
         &error_message));
-    *status = Status(code, error_message);
+    *status = absl::Status(code, error_message);
   } else {
     *status = absl::OkStatus();
   }
   return absl::OkStatus();
 }
 
-Status WriteStatus(const string& iterator_prefix, const string& prefix,
-                   const Status& status, IteratorStateWriter* writer) {
+absl::Status WriteStatus(const string& iterator_prefix, const string& prefix,
+                         const absl::Status& status,
+                         IteratorStateWriter* writer) {
   TF_RETURN_IF_ERROR(writer->WriteScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
       static_cast<int64_t>(status.code())));
@@ -744,10 +749,10 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
   return absl::OkStatus();
 }
 
-Status ProcessBatch(int64_t batch_size, int64_t num_elements,
-                    bool drop_remainder, const Status& status,
-                    IteratorContext* ctx, std::vector<Tensor>* output,
-                    bool* end_of_sequence, std::vector<Tensor>* batch) {
+absl::Status ProcessBatch(int64_t batch_size, int64_t num_elements,
+                          bool drop_remainder, const absl::Status& status,
+                          IteratorContext* ctx, std::vector<Tensor>* output,
+                          bool* end_of_sequence, std::vector<Tensor>* batch) {
   if (num_elements == 0) {
     if (status.ok() || absl::IsOutOfRange(status)) {
       *end_of_sequence = true;
@@ -787,9 +792,9 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
   return absl::OkStatus();
 }
 
-Status CopyBatch(AnyContext ctx,
-                 std::vector<std::vector<Tensor>>&& batch_elements,
-                 bool parallel_copy, std::vector<Tensor>* out_tensors) {
+absl::Status CopyBatch(AnyContext ctx,
+                       std::vector<std::vector<Tensor>>&& batch_elements,
+                       bool parallel_copy, std::vector<Tensor>* out_tensors) {
   const size_t num_tuple_components = batch_elements.at(0).size();
   out_tensors->reserve(num_tuple_components);
   const int64_t num_batch_elements = batch_elements.size();
@@ -835,7 +840,7 @@ Status CopyBatch(AnyContext ctx,
     // Use parallelism for creating the batch as long as the final batch is at
     // least 1MB.
     if (parallel_copy && total_bytes >= (1 << 20)) {
-      Status status;
+      absl::Status status;
       mutex status_mu;
       const auto num_threads = ctx.runner_threadpool_size;
       const auto slice_size = num_batch_elements / num_threads;
@@ -849,7 +854,7 @@ Status CopyBatch(AnyContext ctx,
         if (i < num_batch_elements % num_threads) ++length;
         (*ctx.runner)([offset, length, &status, &status_mu, &counter,
                        &copy_element_fn]() {
-          Status s;
+          absl::Status s;
           for (size_t j = offset; j < offset + length; ++j) {
             s.Update(copy_element_fn(j));
           }

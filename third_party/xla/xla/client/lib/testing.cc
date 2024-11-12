@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/client/lib/testing.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/service/service.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/test_utils.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"

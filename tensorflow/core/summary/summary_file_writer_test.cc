@@ -42,9 +42,9 @@ class FakeClockEnv : public EnvWrapper {
 
 class SummaryFileWriterTest : public ::testing::Test {
  protected:
-  Status SummaryTestHelper(
+  absl::Status SummaryTestHelper(
       const string& test_name,
-      const std::function<Status(SummaryWriterInterface*)>& writer_fn,
+      const std::function<absl::Status(SummaryWriterInterface*)>& writer_fn,
       const std::function<void(const Event&)>& test_fn) {
     static std::set<string>* tests = new std::set<string>();
     CHECK(tests->insert(test_name).second) << ": " << test_name;
@@ -166,7 +166,7 @@ namespace {
 // Create a 1x1 monochrome image consisting of a single pixel oof the given
 // type.
 template <typename T>
-static Status CreateImage(SummaryWriterInterface* writer) {
+static absl::Status CreateImage(SummaryWriterInterface* writer) {
   Tensor bad_color(DT_UINT8, TensorShape({1}));
   bad_color.scalar<uint8>()() = 0;
   Tensor one(DataTypeToEnum<T>::v(), TensorShape({1, 1, 1, 1}));

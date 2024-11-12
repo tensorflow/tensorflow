@@ -65,16 +65,32 @@ Array::MakeArrayFromHostBuffer(
     std::shared_ptr<const Sharding> sharding,
     xla::ifrt::Client::HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer) {
-  TF_ASSIGN_OR_RETURN(const auto array_mem_region,
-                      ArrayMemRegion::FromZerothElementPointer(
-                          /*zeroth_element=*/data, dtype, shape, byte_strides));
-
   const uint64_t host_buffer_handle =
       rpc_helper->host_buffer_store()->NextHandle();
-  TF_RETURN_IF_ERROR(
-      rpc_helper->host_buffer_store()
-          ->Store(host_buffer_handle, array_mem_region.mem_region())
-          .Await());
+
+  if (dtype.kind() == DType::kString) {
+    if (rpc_helper->version().protocol_version() < 9) {
+      return absl::UnimplementedError(
+          "String arrays are not supported in ifrt-proxy version < 9");
+    }
+    TF_ASSIGN_OR_RETURN(
+        const std::string serialized_string_buffer,
+        SerializeStringHostBuffer(absl::MakeConstSpan(
+            static_cast<const absl::Cord*>(data), shape.num_elements())));
+    TF_RETURN_IF_ERROR(rpc_helper->host_buffer_store()
+                           ->Store(host_buffer_handle,
+                                   absl::string_view(serialized_string_buffer))
+                           .Await());
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        const auto array_mem_region,
+        ArrayMemRegion::FromZerothElementPointer(
+            /*zeroth_element=*/data, dtype, shape, byte_strides));
+    TF_RETURN_IF_ERROR(
+        rpc_helper->host_buffer_store()
+            ->Store(host_buffer_handle, array_mem_region.mem_region())
+            .Await());
+  }
 
   auto req = std::make_unique<MakeArrayFromHostBufferRequest>();
   req->set_host_buffer_handle(host_buffer_handle);
@@ -175,12 +191,22 @@ Array::AssembleArrayFromSingleDeviceArrays(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     Shape shape, std::shared_ptr<const Sharding> sharding,
     absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-    ArrayCopySemantics semantics) {
+    ArrayCopySemantics array_copy_semantics,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
+  if (single_device_shard_semantics ==
+          SingleDeviceShardSemantics::kAddressableShards &&
+      rpc_helper->version().protocol_version() < 8) {
+    return absl::UnimplementedError(
+        "SingleDeviceShardSemantics::kAdressableShards is not supported in "
+        "ifrt-proxy version < 8");
+  }
   auto req = std::make_unique<AssembleArrayFromSingleDeviceArraysRequest>();
   TF_RET_CHECK(!arrays.empty());
   *req->mutable_shape() = shape.ToProto();
   TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), sharding->ToProto());
-  req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
+  req->set_copy_semantics(ToArrayCopySemanticsProto(array_copy_semantics));
+  req->set_single_device_shard_semantics(
+      ToSingleDeviceShardSemanticsProto(single_device_shard_semantics));
   for (const tsl::RCReference<xla::ifrt::Array>& rcref : arrays) {
     Array* array = llvm::dyn_cast<Array>(rcref.get());
     if (array == nullptr) {
@@ -244,9 +270,26 @@ Array::RemapArrays(xla::ifrt::Client* client,
 
 absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
 Array::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
+  return DisassembleIntoSingleDeviceArrays(
+      semantics, SingleDeviceShardSemantics::kAllShards);
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+Array::DisassembleIntoSingleDeviceArrays(
+    ArrayCopySemantics array_copy_semantics,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
+  if (single_device_shard_semantics ==
+          SingleDeviceShardSemantics::kAddressableShards &&
+      rpc_helper_->version().protocol_version() < 8) {
+    return absl::UnimplementedError(
+        "SingleDeviceShardSemantics::kAdressableShards is not supported in "
+        "version < 8");
+  }
   auto req = std::make_unique<DisassembleIntoSingleDeviceArraysRequest>();
   req->set_array_handle(handle_.handle);
-  req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
+  req->set_copy_semantics(ToArrayCopySemanticsProto(array_copy_semantics));
+  req->set_single_device_shard_semantics(
+      ToSingleDeviceShardSemanticsProto(single_device_shard_semantics));
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<DisassembleIntoSingleDeviceArraysResponse> response,
@@ -298,9 +341,69 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Array::FullyReplicatedShard(
                           std::move(single_device_sharding), handle));
 }
 
+Future<> Array::CopyToStringHostBuffer(
+    void* data, std::optional<absl::Span<const int64_t>> byte_strides,
+    ArrayCopySemantics semantics) {
+  if (rpc_helper_->version().protocol_version() < 9) {
+    return Future<>(absl::UnimplementedError(
+        "String arrays are not supported in ifrt-proxy version < 9"));
+  }
+  auto req = std::make_unique<CopyToHostBufferRequest>();
+  req->set_array_handle(handle_.handle);
+  if (byte_strides.has_value()) {
+    return Future<>(absl::InvalidArgumentError(
+        "Byte strides are not supported for string arrays."));
+  }
+
+  auto host_buffer_store = rpc_helper_->host_buffer_store();
+  const uint64_t host_buffer_handle = host_buffer_store->NextHandle();
+  req->set_host_buffer_handle(host_buffer_handle);
+  auto promise = Future<>::CreatePromise();
+  auto on_ready = [promise, host_buffer_store = std::move(host_buffer_store),
+                   host_buffer_handle,
+                   dst_buffer = static_cast<absl::Cord*>(data)](
+                      absl::StatusOr<std::shared_ptr<CopyToHostBufferResponse>>
+                          resp) mutable {
+    if (!resp.ok()) {
+      promise.Set(resp.status());
+      return;
+    }
+    host_buffer_store->Lookup(host_buffer_handle)
+        .OnReady([promise, dst_buffer, host_buffer_store, host_buffer_handle](
+                     absl::StatusOr<absl::Cord> array_contents) mutable {
+          absl::Cleanup cleanup = [&]() {
+            host_buffer_store->Delete(host_buffer_handle)
+                .OnReady([buffer_deletion_status =
+                              array_contents.status()](absl::Status status) {
+                  if (!status.ok()) {
+                    LOG(WARNING)
+                        << "Failed to delete host buffer: " << status
+                        << " (buffer status: " << buffer_deletion_status << ")";
+                  }
+                });
+          };
+
+          if (!array_contents.ok()) {
+            promise.Set(array_contents.status());
+            return;
+          }
+          auto deserialization_status =
+              DeserializeFromCordIntoPreallocatedStringHostBuffer(
+                  *array_contents, dst_buffer);
+          promise.Set(deserialization_status);
+        });
+  };
+  rpc_helper_->CopyToHostBuffer(std::move(req)).OnReady(std::move(on_ready));
+  return Future<>(std::move(promise));
+}
+
 Future<> Array::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
+  if (dtype_.kind() == DType::kString) {
+    return CopyToStringHostBuffer(data, byte_strides, semantics);
+  }
+
   const auto mem_region = ArrayMemRegion::FromZerothElementPointer(
       /*zeroth_element=*/data, dtype_, shape_, byte_strides);
   if (!mem_region.ok()) {

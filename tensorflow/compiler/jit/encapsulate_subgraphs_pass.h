@@ -33,7 +33,7 @@ namespace tensorflow {
 // that TF function annotated with kXlaCompiledKernelAttr (_XlaCompiledKernel).
 class EncapsulateSubgraphsPass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 // A rewriting function to apply to each subgraph during encapsulation.
@@ -48,7 +48,7 @@ class EncapsulateSubgraphsPass : public GraphOptimizationPass {
 // construction, provided to allow additional attributes to be set.
 // The rewrite may also change the NodeDef's operator name, and that
 // name will be used as the name of the generated function.
-typedef std::function<Status(
+typedef std::function<absl::Status(
     const std::vector<OutputTensor>& arg_source_tensors,
     std::unique_ptr<Graph>* graph, std::vector<int>* input_permutation,
     std::vector<int>* output_permutation, NodeDef* node_def)>
@@ -72,7 +72,7 @@ typedef std::function<Status(
 // graph, C and D in a subgraph. B and C have control deps from A, D has control
 // dep from B. Originally D must run after C, post-transformation this
 // dependency is lost.
-Status EncapsulateSubgraphsInFunctions(
+absl::Status EncapsulateSubgraphsInFunctions(
     string group_attribute, const Graph& graph_in,
     const RewriteSubgraphFn& rewrite_subgraph_fn, bool reuse_existing_functions,
     std::unique_ptr<Graph>* graph_out, FunctionLibraryDefinition* library);

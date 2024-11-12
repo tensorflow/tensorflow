@@ -17,10 +17,9 @@
 // This file implements the entry point to compile a hlo op to a kernel.
 //
 //===----------------------------------------------------------------------===//
+#include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"

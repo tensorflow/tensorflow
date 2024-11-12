@@ -128,6 +128,7 @@ filegroup(
         ":tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/compiler/mlir/lite:tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/compiler/mlir/lite/core/api:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/compiler/mlir/lite/schema:tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/lite/core:macros.h",
         "//tensorflow/lite/core/acceleration/configuration/c:tflite_internal_cc_3p_api_deps_src",
@@ -153,6 +154,8 @@ filegroup(
         ":minimal_logging_android.cc",
         ":mutable_op_resolver.cc",
         ":mutable_op_resolver.h",
+        ":mutable_op_resolver_utils.cc",
+        ":mutable_op_resolver_utils.h",
         ":op_resolver.h",
         ":portable_type_to_tflitetype.h",
         ":stderr_reporter.cc",
@@ -276,6 +279,9 @@ cc_test(
         "tflite_not_portable_android",
     ],
     deps = [
+        ":cc_api_stable",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -1226,6 +1232,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings() + tflite_copts(),
     deps = [
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
     ],
 )

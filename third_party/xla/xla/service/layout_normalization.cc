@@ -347,7 +347,11 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto s = hlo->shape();
     auto a = hlo->mutable_operand(0);
     auto b = hlo->mutable_operand(1);
-    TF_RET_CHECK(a->shape().layout() == s.layout());
+    auto layout_equal = Layout::Equal();
+    if (hlo->opcode() == HloOpcode::kCompare) {
+      layout_equal.IgnoreElementSize();
+    }
+    TF_RET_CHECK(layout_equal(a->shape().layout(), s.layout()));
     TF_ASSIGN_OR_RETURN(auto a0, GetNormalizedInput(a));
     TF_ASSIGN_OR_RETURN(auto b0, GetNormalizedInput(b));
 

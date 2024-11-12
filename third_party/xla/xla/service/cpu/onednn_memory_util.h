@@ -35,7 +35,7 @@ namespace cpu {
 static const int kOneDnnMaxNDims = DNNL_MAX_NDIMS;
 
 struct StackAlloca {
-  llvm::IRBuilder<>* builder;
+  llvm::IRBuilderBase* builder;
   llvm::Value* value;
   void EmitLifetimeEnd() {
     builder->CreateLifetimeEnd(value, builder->getInt64(-1));
@@ -48,7 +48,7 @@ using MemrefInfoHandler = std::shared_ptr<MemrefInfoPOD>;
 
 MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal);
 
-StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilder<>& builder,
+StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilderBase& builder,
                                        const llvm_ir::IrArray& ir_array);
 
 inline dnnl::memory::data_type ToOneDnnDataType(PrimitiveType ptype) {
@@ -71,7 +71,7 @@ inline dnnl::memory::data_type ToOneDnnDataType(PrimitiveType ptype) {
 
     // TODO(intel-tf): properly handle not supported types:
     // S16, S64, U16, U32, U64, C64, C128, F8E5M2, F8E4M3FN, S4, U4,
-    // F8E4M3B11FNUZ
+    // F8E4M3B11FNUZ, F8E4M3, F8E3M4
     default:
       return dt::undef;
   }

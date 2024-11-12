@@ -922,5 +922,21 @@ ENTRY main.17 {
       });
 }
 
+TEST_F(LayoutNormalizationTest, CompareInt4) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = s4[10]{0:E(4)} parameter(0)
+  b = s4[10]{0:E(4)} parameter(1)
+  ROOT out = compare(a, b), direction=EQ
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: pred[10]{0} compare({{.*}})
+)");
+}
+
 }  // namespace
 }  // namespace xla

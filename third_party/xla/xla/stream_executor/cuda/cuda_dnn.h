@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 
 #if CUDNN_VERSION >= 8100
@@ -43,7 +44,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-class GpuExecutor;
 class CudnnRnnDescriptor;
 class CudnnRnnSequenceTensorDescriptor;
 class CudnnRnnStateTensorDescriptor;
@@ -90,7 +90,7 @@ class CudnnGraph : public dnn::DnnGraph {
 // functions, see dnn.h.
 class CudnnSupport : public dnn::DnnSupport {
  public:
-  explicit CudnnSupport(GpuExecutor* parent);
+  explicit CudnnSupport(StreamExecutor* parent);
 
   absl::Status Init() override;
   absl::StatusOr<stream_executor::dnn::VersionInfo> GetVersion() override;
@@ -564,7 +564,7 @@ class CudnnSupport : public dnn::DnnSupport {
   // Uses cuDNN handle for execution.
   friend class CudnnGraph;
 
-  GpuExecutor* parent_;  // Parent executor object. Not owned.
+  StreamExecutor* parent_;  // Parent executor object. Not owned.
 
   // Provides access to the cuDNN handle.
   std::unique_ptr<class CudnnAccess> cudnn_;
@@ -731,6 +731,16 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     double scale, bool use_dropout, bool use_bias,
     const dnn::FMHAMaskKind mask_type, bool force_deterministic,
     const int sliding_window_length);
+
+absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
+    dnn::DnnSupport& dnn_support, const dnn::MatmulTensorDescriptor& q_desc,
+    const dnn::MatmulTensorDescriptor& k_desc,
+    const dnn::MatmulTensorDescriptor& p_desc,
+    const dnn::MatmulTensorDescriptor& v_desc,
+    const dnn::MatmulTensorDescriptor& do_desc,
+    const dnn::TensorDescriptor& dq_desc, const dnn::TensorDescriptor& dk_desc,
+    const dnn::TensorDescriptor& dv_desc, double scale,
+    dnn::FMHAMaskKind mask_type);
 
 }  // namespace gpu
 }  // namespace stream_executor

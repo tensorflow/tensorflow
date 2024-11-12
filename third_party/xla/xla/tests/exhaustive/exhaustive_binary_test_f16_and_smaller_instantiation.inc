@@ -27,12 +27,8 @@ INSTANTIATE_TEST_SUITE_P(F8E5M2, ExhaustiveF8E5M2BinaryTest,
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ExhaustiveF8E5M2BinaryTest);
 #endif
 
-#if defined(XLA_BACKEND_SUPPORTS_BFLOAT16)
 INSTANTIATE_TEST_SUITE_P(BF16, ExhaustiveBF16BinaryTest,
                          ::testing::ValuesIn(CreateExhaustiveU32Ranges()));
-#else
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ExhaustiveBF16BinaryTest);
-#endif
 
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
 INSTANTIATE_TEST_SUITE_P(F16, ExhaustiveF16BinaryTest,

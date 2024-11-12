@@ -39,6 +39,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     Label("//xla:xla_proto_cc_impl"),
     Label("//xla/service:buffer_assignment_proto_cc_impl"),
     Label("//xla/service:hlo_proto_cc_impl"),
+    Label("//xla/service:metrics_proto_cc_impl"),
     Label("//xla/service/gpu:backend_configs_cc_impl"),
     Label("//xla/service/gpu/model:hlo_op_profile_proto_cc_impl"),
     Label("//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl"),
@@ -53,7 +54,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     "//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
     "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
     "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc_impl",
-    "@local_tsl//tsl/profiler/utils:time_utils_impl",
+    "//xla/tsl/profiler/utils:time_utils_impl",
     "//xla/tsl/protobuf:protos_all_cc_impl",
 ]) + if_cuda_is_configured([
     Label("//xla/stream_executor/cuda:all_runtime"),

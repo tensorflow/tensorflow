@@ -129,8 +129,9 @@ tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@local_tsl//tsl/protobuf:error_codes_proto_impl"],
-    exports = ["@local_tsl//tsl/protobuf:error_codes_proto_impl"],
+    protodeps = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
+    visibility = ["//visibility:public"],
+    exports = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
 )
 
 exports_files(
@@ -194,6 +195,10 @@ tf_proto_library(
         "transport_options.proto",
         "core_platform_payloads.proto",
         "fingerprint.proto",
+    ],
+    local_defines = [
+        "PROTOBUF_USE_DLLS",
+        "LIBPROTOBUF_EXPORTS",
     ],
     make_default_target_header_only = True,
     protodeps = [

@@ -14,16 +14,20 @@ limitations under the License.
 
 #include "xla/hlo/translate/hlo_to_mhlo/translate.h"
 
+#include <string>
+#include <utility>
+
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Pass/PassManager.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "tsl/platform/protobuf.h"
 
@@ -97,10 +101,10 @@ mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
 }
 
 mlir::OwningOpRef<mlir::ModuleOp> HloToStablehloTranslateFunction(
-    llvm::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations, bool flatten_computation_args_result) {
+    llvm::StringRef input, mlir::MLIRContext* context) {
   auto module = xla::HloToMlirHloTranslateFunction(
-      input, context, import_all_computations, flatten_computation_args_result);
+      input, context, /*import_all_computations=*/true,
+      /*flatten_computation_args_result=*/true);
   mlir::PassManager pm(module->getContext());
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
   if (failed(pm.run(*module))) {
@@ -112,18 +116,23 @@ mlir::OwningOpRef<mlir::ModuleOp> HloToStablehloTranslateFunction(
 }
 
 mlir::OwningOpRef<mlir::ModuleOp> HloTextToStablehloTranslateFunction(
-    llvm::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations, bool flatten_computation_args_result) {
-  auto module = xla::HloTextToMlirHloTranslateFunction(
-      input, context, import_all_computations, flatten_computation_args_result);
-  mlir::PassManager pm(module->getContext());
-  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
-  if (failed(pm.run(*module))) {
-    module->emitError("Failed to legalize to StableHLO");
+    llvm::StringRef input, mlir::MLIRContext* context) {
+  std::string content(input.data(), input.size());
+
+  auto hlo_module_error = ParseAndReturnUnverifiedModule(content);
+  if (!hlo_module_error.ok()) {
+    LOG(ERROR) << "HLO Module loading failed: " << hlo_module_error.status();
     return nullptr;
   }
 
-  return module;
+  auto stablehlo_module =
+      ConvertHloToStablehlo(*context, hlo_module_error.value().get());
+  if (!stablehlo_module.ok()) {
+    LOG(ERROR) << "HLO Module import failed: " << stablehlo_module.status();
+    return nullptr;
+  }
+
+  return std::move(stablehlo_module.value());
 }
 
 }  // namespace xla

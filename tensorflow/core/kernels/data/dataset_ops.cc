@@ -92,7 +92,8 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   params.external_state_policy = external_state_policy_;
 
   GraphDef graph_def;
-  Status s = AsGraphDef(dataset, SerializationContext(params), &graph_def);
+  absl::Status s =
+      AsGraphDef(dataset, SerializationContext(params), &graph_def);
   if (!s.ok()) {
     ctx->CtxFailure(errors::FailedPrecondition(
         "Failed to serialize the input pipeline graph: ", s.message()));
@@ -178,7 +179,8 @@ void DatasetFingerprintOp::Compute(OpKernelContext* ctx) {
 
   SerializationContext::Params params(ctx);
   GraphDef graph_def;
-  Status s = AsGraphDef(dataset, SerializationContext(params), &graph_def);
+  absl::Status s =
+      AsGraphDef(dataset, SerializationContext(params), &graph_def);
 
   if (!s.ok()) {
     ctx->CtxFailure(absl::FailedPreconditionError(absl::StrFormat(

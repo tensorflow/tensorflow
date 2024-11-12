@@ -16,8 +16,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_kernel.h"
 
 #include <gtest/gtest.h>
-#include "rocm/include/hip/hip_runtime.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -37,9 +35,8 @@ TEST(RocmKernelTest, GetMaxOccupiedBlocksPerCore) {
                           PlatformManager::PlatformWithName("ROCM"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
-  GpuExecutor* gpu_executor = ExtractGpuExecutor(executor);
 
-  RocmKernel rocm_kernel(gpu_executor);
+  RocmKernel rocm_kernel(executor);
   rocm_kernel.set_arity(3);
 
   TF_ASSERT_OK_AND_ASSIGN(

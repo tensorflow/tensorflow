@@ -82,13 +82,6 @@ bool IsRank1(const Shape& shape, int64_t batch_dimensions_size) {
   return shape.rank() == batch_dimensions_size + 1;
 }
 
-bool IsMlirTransposeEmitterEnabled(const HloInstruction& hlo) {
-  return hlo.GetModule()
-             ->config()
-             .debug_options()
-             .xla_gpu_mlir_emitter_level() >= 3;
-}
-
 }  // namespace
 
 bool IsMatrixMultiplication(const HloInstruction& dot) {
@@ -101,7 +94,8 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
 
   PrimitiveType output_primitive_type = dot.shape().element_type();
   bool type_is_allowed =
-      (output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
+      (output_primitive_type == F8E3M4 || output_primitive_type == F8E4M3 ||
+       output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
        output_primitive_type == F8E4M3FNUZ ||
        output_primitive_type == F8E5M2FNUZ || output_primitive_type == F16 ||
        output_primitive_type == BF16 || output_primitive_type == F32 ||
@@ -215,7 +209,7 @@ bool IsContiguousSlice(const HloInstruction& instr) {
 
 // Helper function to emit call to AMDGPU shfl_down function.
 llvm::Value* EmitAMDGPUShflDown(llvm::Value* value, llvm::Value* offset,
-                                llvm::IRBuilder<>* b) {
+                                llvm::IRBuilderBase* b) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
   CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
   auto* i32_ty = b->getInt32Ty();
@@ -231,7 +225,7 @@ llvm::Value* EmitAMDGPUShflDown(llvm::Value* value, llvm::Value* offset,
 }
 
 llvm::Value* EmitAMDGPUShflDownSwizzle(llvm::Value* value, llvm::Value* offset,
-                                       llvm::IRBuilder<>* b) {
+                                       llvm::IRBuilderBase* b) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
   CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
   auto* i32_ty = b->getInt32Ty();
@@ -261,7 +255,7 @@ llvm::Value* EmitAMDGPUShflDownSwizzle(llvm::Value* value, llvm::Value* offset,
 
 // Helper function to emit call to NVPTX shfl_down intrinsic.
 llvm::Value* EmitNVPTXShflDown(llvm::Value* value, llvm::Value* offset,
-                               llvm::IRBuilder<>* b) {
+                               llvm::IRBuilderBase* b) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
   llvm::Intrinsic::ID llvm_intrinsic_id;
   CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
@@ -271,14 +265,14 @@ llvm::Value* EmitNVPTXShflDown(llvm::Value* value, llvm::Value* offset,
     llvm_intrinsic_id = llvm::Intrinsic::nvvm_shfl_sync_down_i32;
   }
   llvm::Function* intrinsic =
-      llvm::Intrinsic::getDeclaration(module, llvm_intrinsic_id, {});
+      llvm::Intrinsic::getOrInsertDeclaration(module, llvm_intrinsic_id, {});
   return b->CreateCall(
       intrinsic, {b->getInt32(-1), value, offset, b->getInt32(WarpSize() - 1)});
 }
 
 // Helper function to emit call to SPIR shfl_down intrinsic.
 llvm::Value* EmitSPIRShflDown(llvm::Value* value, llvm::Value* offset,
-                              llvm::IRBuilder<>* b) {
+                              llvm::IRBuilderBase* b) {
   CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
   if (value->getType()->isFloatTy()) {
     return EmitDeviceFunctionCall(
@@ -300,7 +294,7 @@ llvm::Value* EmitSPIRShflDown(llvm::Value* value, llvm::Value* offset,
 }
 
 llvm::Value* EmitFullWarpShuffleDown(
-    llvm::Value* value, llvm::Value* offset, llvm::IRBuilder<>* builder,
+    llvm::Value* value, llvm::Value* offset, llvm::IRBuilderBase* builder,
     const se::DeviceDescription& gpu_device_info) {
   int bit_width = value->getType()->getPrimitiveSizeInBits();
   llvm::Module* module = builder->GetInsertBlock()->getModule();
@@ -358,7 +352,7 @@ llvm::Value* EmitFullWarpShuffleDown(
       value->getType());
 }
 
-llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
+llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b) {
   llvm::Value* is_thread0 = b->CreateICmpEQ(
       b->getInt32(0),
       EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b));
@@ -557,42 +551,24 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   absl::InlinedVector<int64_t, 3> dimensions(hero.shape().dimensions().begin(),
                                              hero.shape().dimensions().end());
   int64_t operand_most_minor_dim = hero.operand(0)->shape().dimensions().back();
-  if (IsMlirTransposeEmitterEnabled(hero)) {
-    if (permutation.back() == dimensions.size() - 1) {
-      operand_most_minor_dim =
-          hero.operand(0)->shape().dimensions(dimensions.size() - 2);
-      auto byte_width = primitive_util::ByteWidth(hero.shape().element_type());
-      if (byte_width * dimensions.back() <= kMaxBytesInMostMinorDimension &&
-          byte_width * dimensions.back() *
-                  std::min(operand_most_minor_dim,
-                           dimensions[dimensions.size() - 2]) >=
-              kMinDimensionToTransposeTiled) {
-        return TransposeDescription{&hero, dimensions, permutation};
-      }
-    } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
-                dimensions.back() >= kMinDimensionToTransposeTiled) ||
-               (operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
-                dimensions.back() >= kMinDimensionToTransposeTiled2 &&
-                operand_most_minor_dim * dimensions.back() >=
-                    kMinTotalDimensionsToTransposeTiled)) {
+  if (permutation.back() == dimensions.size() - 1) {
+    operand_most_minor_dim =
+        hero.operand(0)->shape().dimensions(dimensions.size() - 2);
+    auto byte_width = primitive_util::ByteWidth(hero.shape().element_type());
+    if (byte_width * dimensions.back() <= kMaxBytesInMostMinorDimension &&
+        byte_width * dimensions.back() *
+                std::min(operand_most_minor_dim,
+                         dimensions[dimensions.size() - 2]) >=
+            kMinDimensionToTransposeTiled) {
       return TransposeDescription{&hero, dimensions, permutation};
     }
-  } else if (permutation == absl::InlinedVector<int64_t, 3>{1, 0} ||
-             permutation == absl::InlinedVector<int64_t, 3>{0, 2, 1} ||
-             permutation == absl::InlinedVector<int64_t, 3>{2, 1, 0}) {
-    // The old emitter needs a normalization to rank 3.
-    if (permutation.size() == 2) {
-      permutation = {0, 2, 1};
-      dimensions.insert(dimensions.begin(), 1);
-    }
-    if ((dimensions.back() >= kMinDimensionToTransposeTiled &&
-         operand_most_minor_dim >= kMinDimensionToTransposeTiled) ||
-        (dimensions.back() >= kMinDimensionToTransposeTiled2 &&
-         operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
-         dimensions.back() * operand_most_minor_dim >=
-             kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&hero, dimensions, permutation};
-    }
+  } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
+              dimensions.back() >= kMinDimensionToTransposeTiled) ||
+             (operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
+              dimensions.back() >= kMinDimensionToTransposeTiled2 &&
+              operand_most_minor_dim * dimensions.back() >=
+                  kMinTotalDimensionsToTransposeTiled)) {
+    return TransposeDescription{&hero, dimensions, permutation};
   }
   return std::nullopt;
 }
@@ -720,7 +696,7 @@ void VerifyModule(const llvm::Module& module) {
 }
 
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
-                                  int64_t launch_size, llvm::IRBuilder<>* b) {
+                                  int64_t launch_size, llvm::IRBuilderBase* b) {
   // Find the unnested hlo instruction for which the kernel is generated for.
   const HloInstruction* unnested_hlo = hlo;
   const HloComputation* computation = hlo->parent();
@@ -774,10 +750,6 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
 
 bool IsAMDGPU(const llvm::Module* module) {
   return llvm::Triple(module->getTargetTriple()).isAMDGPU();
-}
-
-bool IsSPIR(const llvm::Module* module) {
-  return llvm::Triple(module->getTargetTriple()).isSPIR();
 }
 
 absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(

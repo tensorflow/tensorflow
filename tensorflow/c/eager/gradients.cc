@@ -33,8 +33,8 @@ int64_t ToId(const AbstractTensorHandle* t) {
   return static_cast<int64_t>(reinterpret_cast<uintptr_t>(t));
 }
 
-Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* t,
-                 AbstractTensorHandle** result) {
+absl::Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* t,
+                       AbstractTensorHandle** result) {
   AbstractOperationPtr op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op->Reset("ZerosLike", /*raw_device_name=*/nullptr));
   if (isa<tracing::TracingOperation>(op.get())) {
@@ -51,7 +51,7 @@ Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* t,
 }
 }  // namespace
 
-Status GradientRegistry::Register(
+absl::Status GradientRegistry::Register(
     const string& op_name, GradientFunctionFactory gradient_function_factory) {
   auto iter = registry_.find(op_name);
   if (iter != registry_.end()) {
@@ -61,7 +61,7 @@ Status GradientRegistry::Register(
   registry_.insert({op_name, gradient_function_factory});
   return absl::OkStatus();
 }
-Status GradientRegistry::Lookup(
+absl::Status GradientRegistry::Lookup(
     const ForwardOperation& op,
     std::unique_ptr<GradientFunction>* gradient_function) const {
   auto iter = registry_.find(op.op_name);
@@ -107,15 +107,15 @@ class TapeVSpace
 
   // Calls the passed-in backward function.
   // op_type is the op's name provided in RecordOperation.
-  Status CallBackwardFunction(
+  absl::Status CallBackwardFunction(
       const string& op_type, GradientFunction* gradient_function,
       const std::vector<int64_t>& unneeded_gradients,
       gtl::ArraySlice<AbstractTensorHandle*> output_gradients,
       absl::Span<AbstractTensorHandle*> result) const override;
 
   // Builds a tensor filled with ones with the same shape and dtype as `t`.
-  Status BuildOnesLike(const TapeTensor& t,
-                       AbstractTensorHandle** result) const override;
+  absl::Status BuildOnesLike(const TapeTensor& t,
+                             AbstractTensorHandle** result) const override;
 
   // Looks up the ID of a Gradient.
   int64_t TensorId(AbstractTensorHandle* tensor) const override;
@@ -151,7 +151,7 @@ AbstractTensorHandle* TapeVSpace::AggregateGradients(
   }
 
   AbstractOperationPtr op(ctx_->CreateOperation());
-  Status s = op->Reset("AddN", /*raw_device_name=*/nullptr);
+  absl::Status s = op->Reset("AddN", /*raw_device_name=*/nullptr);
   if (!s.ok()) {
     return nullptr;
   }
@@ -171,7 +171,7 @@ AbstractTensorHandle* TapeVSpace::AggregateGradients(
 
 // Calls the passed-in backward function.
 // op_type is the op's name provided in RecordOperation.
-Status TapeVSpace::CallBackwardFunction(
+absl::Status TapeVSpace::CallBackwardFunction(
     const string& op_type, GradientFunction* gradient_function,
     const std::vector<int64_t>& unneeded_gradients,
     gtl::ArraySlice<AbstractTensorHandle*> output_gradients,
@@ -186,8 +186,8 @@ Status TapeVSpace::CallBackwardFunction(
   return gradient_function->Compute(ctx_, output_gradients, result);
 }
 
-Status TapeVSpace::BuildOnesLike(const TapeTensor& t,
-                                 AbstractTensorHandle** result) const {
+absl::Status TapeVSpace::BuildOnesLike(const TapeTensor& t,
+                                       AbstractTensorHandle** result) const {
   AbstractOperationPtr op(ctx_->CreateOperation());
   TF_RETURN_IF_ERROR(op->Reset("OnesLike", /*raw_device_name=*/nullptr));
   if (isa<tracing::TracingOperation>(op.get())) {
@@ -269,7 +269,7 @@ std::vector<int64_t> MakeTensorIDList(
   return ids;
 }
 
-Status Tape::ComputeGradient(
+absl::Status Tape::ComputeGradient(
     AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> targets,
     absl::Span<AbstractTensorHandle* const> sources,
     absl::Span<AbstractTensorHandle* const> output_gradients,
@@ -299,21 +299,21 @@ Status Tape::ComputeGradient(
 // the state of the ForwardOperation and call the tape as appropriate.
 // These APIs are mainly to facilitate testing and are subject to change.
 namespace internal {
-Status Reset(AbstractOperation* op_, const char* op,
-             const char* raw_device_name, ForwardOperation* forward_op_) {
+absl::Status Reset(AbstractOperation* op_, const char* op,
+                   const char* raw_device_name, ForwardOperation* forward_op_) {
   forward_op_->op_name = op;
   forward_op_->attrs.Reset(op);
   return op_->Reset(op, raw_device_name);
 }
-Status AddInput(AbstractOperation* op_, AbstractTensorHandle* input,
-                ForwardOperation* forward_op_) {
+absl::Status AddInput(AbstractOperation* op_, AbstractTensorHandle* input,
+                      ForwardOperation* forward_op_) {
   TF_RETURN_IF_ERROR(op_->AddInput(input));
   forward_op_->inputs.push_back(input);
   return absl::OkStatus();
 }
-Status AddInputList(AbstractOperation* op_,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    ForwardOperation* forward_op_) {
+absl::Status AddInputList(AbstractOperation* op_,
+                          absl::Span<AbstractTensorHandle* const> inputs,
+                          ForwardOperation* forward_op_) {
   TF_RETURN_IF_ERROR(op_->AddInputList(inputs));
   for (auto input : inputs) {
     forward_op_->inputs.push_back(input);
@@ -321,35 +321,35 @@ Status AddInputList(AbstractOperation* op_,
   return absl::OkStatus();
 }
 
-Status SetAttrString(AbstractOperation* op_, const char* attr_name,
-                     const char* data, size_t length,
-                     ForwardOperation* forward_op_) {
+absl::Status SetAttrString(AbstractOperation* op_, const char* attr_name,
+                           const char* data, size_t length,
+                           ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(attr_name, StringPiece(data, length));
   return op_->SetAttrString(attr_name, data, length);
 }
-Status SetAttrInt(AbstractOperation* op_, const char* attr_name, int64_t value,
-                  ForwardOperation* forward_op_) {
+absl::Status SetAttrInt(AbstractOperation* op_, const char* attr_name,
+                        int64_t value, ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(attr_name, static_cast<int64_t>(value));
   return op_->SetAttrInt(attr_name, value);
 }
-Status SetAttrFloat(AbstractOperation* op_, const char* attr_name, float value,
-                    ForwardOperation* forward_op_) {
+absl::Status SetAttrFloat(AbstractOperation* op_, const char* attr_name,
+                          float value, ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(attr_name, value);
   return op_->SetAttrFloat(attr_name, value);
 }
-Status SetAttrBool(AbstractOperation* op_, const char* attr_name, bool value,
-                   ForwardOperation* forward_op_) {
+absl::Status SetAttrBool(AbstractOperation* op_, const char* attr_name,
+                         bool value, ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(attr_name, value);
   return op_->SetAttrBool(attr_name, value);
 }
-Status SetAttrType(AbstractOperation* op_, const char* attr_name,
-                   DataType value, ForwardOperation* forward_op_) {
+absl::Status SetAttrType(AbstractOperation* op_, const char* attr_name,
+                         DataType value, ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(attr_name, value);
   return op_->SetAttrType(attr_name, value);
 }
-Status SetAttrShape(AbstractOperation* op_, const char* attr_name,
-                    const int64_t* dims, const int num_dims,
-                    ForwardOperation* forward_op_) {
+absl::Status SetAttrShape(AbstractOperation* op_, const char* attr_name,
+                          const int64_t* dims, const int num_dims,
+                          ForwardOperation* forward_op_) {
   if (num_dims > TensorShape::MaxDimensions()) {
     return errors::InvalidArgument("Value specified for `", attr_name, "` has ",
                                    num_dims,
@@ -368,28 +368,28 @@ Status SetAttrShape(AbstractOperation* op_, const char* attr_name,
   forward_op_->attrs.Set(attr_name, proto);
   return op_->SetAttrShape(attr_name, dims, num_dims);
 }
-Status SetAttrFunction(AbstractOperation* op_, const char* attr_name,
-                       const AbstractOperation* value,
-                       ForwardOperation* forward_op_) {
+absl::Status SetAttrFunction(AbstractOperation* op_, const char* attr_name,
+                             const AbstractOperation* value,
+                             ForwardOperation* forward_op_) {
   return tensorflow::errors::Unimplemented(
       "SetAttrFunction has not been implemented yet.");
 }
-Status SetAttrFunctionName(AbstractOperation* op_, const char* attr_name,
-                           const char* value, size_t length,
-                           ForwardOperation* forward_op_) {
+absl::Status SetAttrFunctionName(AbstractOperation* op_, const char* attr_name,
+                                 const char* value, size_t length,
+                                 ForwardOperation* forward_op_) {
   return tensorflow::errors::Unimplemented(
       "SetAttrFunctionName has not been implemented "
       "yet.");
 }
-Status SetAttrTensor(AbstractOperation* op_, const char* attr_name,
-                     AbstractTensorInterface* tensor,
-                     ForwardOperation* forward_op_) {
+absl::Status SetAttrTensor(AbstractOperation* op_, const char* attr_name,
+                           AbstractTensorInterface* tensor,
+                           ForwardOperation* forward_op_) {
   return tensorflow::errors::Unimplemented(
       "SetAttrTensor has not been implemented yet.");
 }
-Status SetAttrStringList(AbstractOperation* op_, const char* attr_name,
-                         const void* const* values, const size_t* lengths,
-                         int num_values, ForwardOperation* forward_op_) {
+absl::Status SetAttrStringList(AbstractOperation* op_, const char* attr_name,
+                               const void* const* values, const size_t* lengths,
+                               int num_values, ForwardOperation* forward_op_) {
   std::vector<StringPiece> v(num_values);
   for (int i = 0; i < num_values; ++i) {
     v[i] = StringPiece(static_cast<const char*>(values[i]), lengths[i]);
@@ -397,31 +397,31 @@ Status SetAttrStringList(AbstractOperation* op_, const char* attr_name,
   forward_op_->attrs.Set(attr_name, v);
   return op_->SetAttrStringList(attr_name, values, lengths, num_values);
 }
-Status SetAttrFloatList(AbstractOperation* op_, const char* attr_name,
-                        const float* values, int num_values,
-                        ForwardOperation* forward_op_) {
+absl::Status SetAttrFloatList(AbstractOperation* op_, const char* attr_name,
+                              const float* values, int num_values,
+                              ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(attr_name,
                          gtl::ArraySlice<const float>(values, num_values));
   return op_->SetAttrFloatList(attr_name, values, num_values);
 }
-Status SetAttrIntList(AbstractOperation* op_, const char* attr_name,
-                      const int64_t* values, int num_values,
-                      ForwardOperation* forward_op_) {
+absl::Status SetAttrIntList(AbstractOperation* op_, const char* attr_name,
+                            const int64_t* values, int num_values,
+                            ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(
       attr_name, gtl::ArraySlice<const int64_t>(
                      reinterpret_cast<const int64_t*>(values), num_values));
   return op_->SetAttrIntList(attr_name, values, num_values);
 }
-Status SetAttrTypeList(AbstractOperation* op_, const char* attr_name,
-                       const DataType* values, int num_values,
-                       ForwardOperation* forward_op_) {
+absl::Status SetAttrTypeList(AbstractOperation* op_, const char* attr_name,
+                             const DataType* values, int num_values,
+                             ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(attr_name,
                          gtl::ArraySlice<const DataType>(values, num_values));
   return op_->SetAttrTypeList(attr_name, values, num_values);
 }
-Status SetAttrBoolList(AbstractOperation* op_, const char* attr_name,
-                       const unsigned char* values, int num_values,
-                       ForwardOperation* forward_op_) {
+absl::Status SetAttrBoolList(AbstractOperation* op_, const char* attr_name,
+                             const unsigned char* values, int num_values,
+                             ForwardOperation* forward_op_) {
   std::unique_ptr<bool[]> b(new bool[num_values]);
   for (int i = 0; i < num_values; ++i) {
     b[i] = values[i];
@@ -430,9 +430,9 @@ Status SetAttrBoolList(AbstractOperation* op_, const char* attr_name,
                          gtl::ArraySlice<const bool>(b.get(), num_values));
   return op_->SetAttrBoolList(attr_name, values, num_values);
 }
-Status SetAttrShapeList(AbstractOperation* op_, const char* attr_name,
-                        const int64_t** dims, const int* num_dims,
-                        int num_values, ForwardOperation* forward_op_) {
+absl::Status SetAttrShapeList(AbstractOperation* op_, const char* attr_name,
+                              const int64_t** dims, const int* num_dims,
+                              int num_values, ForwardOperation* forward_op_) {
   std::unique_ptr<TensorShapeProto[]> proto(new TensorShapeProto[num_values]);
   for (int i = 0; i < num_values; ++i) {
     const auto num_dims_i = num_dims[i];
@@ -457,17 +457,17 @@ Status SetAttrShapeList(AbstractOperation* op_, const char* attr_name,
       attr_name, gtl::ArraySlice<TensorShapeProto>(proto.get(), num_values));
   return op_->SetAttrShapeList(attr_name, dims, num_dims, num_values);
 }
-Status SetAttrFunctionList(AbstractOperation* op_, const char* attr_name,
-                           absl::Span<const AbstractOperation*> values,
-                           ForwardOperation* forward_op_) {
+absl::Status SetAttrFunctionList(AbstractOperation* op_, const char* attr_name,
+                                 absl::Span<const AbstractOperation*> values,
+                                 ForwardOperation* forward_op_) {
   return tensorflow::errors::Unimplemented(
       "SetAttrFunctionList has not been "
       "implemented yet.");
 }
-Status Execute(AbstractOperation* op_, AbstractContext* ctx,
-               absl::Span<AbstractTensorHandle*> retvals, int* num_retvals,
-               ForwardOperation* forward_op_, Tape* tape,
-               const GradientRegistry& registry) {
+absl::Status Execute(AbstractOperation* op_, AbstractContext* ctx,
+                     absl::Span<AbstractTensorHandle*> retvals,
+                     int* num_retvals, ForwardOperation* forward_op_,
+                     Tape* tape, const GradientRegistry& registry) {
   TF_RETURN_IF_ERROR(op_->Execute(retvals, num_retvals));
   for (int i = 0; i < *num_retvals; i++) {
     // TODO(srbs): Manage refcount of ForwardOperation's inputs/outputs.

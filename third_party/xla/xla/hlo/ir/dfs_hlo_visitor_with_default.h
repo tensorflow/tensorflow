@@ -120,6 +120,9 @@ class DfsHloVisitorWithDefaultBase
   absl::Status HandleAllToAll(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
+  absl::Status HandleRaggedAllToAll(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
   absl::Status HandleCollectiveBroadcast(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }

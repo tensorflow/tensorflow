@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "stablehlo/dialect/Version.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -295,6 +297,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F64;
     case xla::PrimitiveType::F8E5M2:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2;
+    case xla::PrimitiveType::F8E4M3:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3;
     case xla::PrimitiveType::F8E4M3FN:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FN;
     case xla::PrimitiveType::F8E4M3B11FNUZ:
@@ -303,6 +307,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2FNUZ;
     case xla::PrimitiveType::F8E4M3FNUZ:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FNUZ;
+    case xla::PrimitiveType::F8E3M4:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E3M4;
     case xla::PrimitiveType::C64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_C64;
     case xla::PrimitiveType::C128:
@@ -358,6 +364,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::C128;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2:
       return xla::PrimitiveType::F8E5M2;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3:
+      return xla::PrimitiveType::F8E4M3;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FN:
       return xla::PrimitiveType::F8E4M3FN;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3B11FNUZ:
@@ -366,6 +374,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::F8E5M2FNUZ;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FNUZ:
       return xla::PrimitiveType::F8E4M3FNUZ;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E3M4:
+      return xla::PrimitiveType::F8E3M4;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID:
       CHECK(false) << "Buffer type is not supported in C API layer.";
   }
@@ -594,19 +604,48 @@ absl::Status ValidateCreateOptions(
   return absl::OkStatus();
 }
 
-const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes() {
-  constexpr absl::string_view kXlaVersion = "xla_version";
+static PJRT_NamedValue XlaVersion(absl::string_view name) {
   PJRT_NamedValue c_value;
   c_value.struct_size = PJRT_NamedValue_STRUCT_SIZE;
   c_value.extension_start = nullptr;
-  c_value.name = kXlaVersion.data();
-  c_value.name_size = kXlaVersion.size();
+  c_value.name = name.data();
+  c_value.name_size = name.size();
   c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64;
   // TODO(b/327203806): figure out where to keep the xla_version.
   c_value.int64_value = 2;
   c_value.value_size = 1;
-  static const std::vector<PJRT_NamedValue>* c_values =
-      new std::vector<PJRT_NamedValue>({c_value});
+  return c_value;
+}
+
+template <int storage_slot>
+static PJRT_NamedValue StableHloVersion(absl::string_view name,
+                                        mlir::vhlo::Version version) {
+  PJRT_NamedValue c_value;
+  c_value.struct_size = PJRT_NamedValue_STRUCT_SIZE;
+  c_value.extension_start = nullptr;
+  c_value.name = name.data();
+  c_value.name_size = name.size();
+  c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List;
+  static int64_t triple[3] = {version.getMajor(), version.getMinor(),
+                              version.getPatch()};
+  c_value.int64_array_value = triple;
+  c_value.value_size = 3;
+  return c_value;
+}
+
+const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes() {
+  static const std::vector<PJRT_NamedValue>* c_values = new std::vector<
+      PJRT_NamedValue>({
+      XlaVersion("xla_version"),
+      // TODO: (b/375454646) Uncomment once frameworks have bugfix:
+      // https://github.com/openxla/xla/commit/2f99455cdf99e844ddad17de9f4714997023d243
+      // StableHloVersion<0>("stablehlo_current_version",
+      //                    mlir::vhlo::Version::getCurrentVersion()),
+      StableHloVersion<0>("stablehlo_current_version",
+                          mlir::vhlo::Version(1, 7, 0)),
+      StableHloVersion<1>("stablehlo_minimum_version",
+                          mlir::vhlo::Version::getMinimumVersion()),
+  });
   return *c_values;
 }
 

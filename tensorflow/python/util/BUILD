@@ -4,7 +4,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap", "if_static")
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -72,10 +72,22 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_tfprof.pyi",
     ],
-    deps = [
-        "//tensorflow/core/profiler/internal:print_model_analysis_hdr",
-        "@pybind11",
-    ],
+    deps = if_pywrap(
+        if_false = [
+            "//tensorflow/core/profiler/internal:print_model_analysis_hdr",
+            "@pybind11",
+        ],
+        if_true = [
+            "//tensorflow/core:framework",
+            "//tensorflow/core/framework:reader_base",
+            "//tensorflow/core:lib_headers_for_pybind",
+            "//tensorflow/core/profiler/internal:print_model_analysis",
+            "//third_party/python_runtime:headers",
+            "@com_google_absl//absl/strings",
+            "@eigen_archive//:eigen3",
+            "@pybind11",
+        ],
+    ),
 )
 
 tf_python_pybind_extension(
@@ -107,7 +119,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
+    ] + if_pywrap([":cpp_nest"]),
 )
 
 cc_library(
@@ -140,7 +152,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
+    ] + if_pywrap([":kernel_registry"]),
 )
 
 tf_python_pybind_extension(
@@ -222,7 +234,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/platform:status",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
-    ],
+    ] + if_pywrap(["//tensorflow/tools/graph_transforms:transform_graph_lib"]),
 )
 
 tf_python_pybind_extension(
@@ -257,7 +269,7 @@ tf_python_pybind_extension(
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
+    ] + if_pywrap(["@com_google_absl//absl/strings"]),
 )
 
 cc_library(
@@ -527,7 +539,7 @@ cc_library(
 
 tf_python_pybind_extension(
     name = "_function_parameter_canonicalizer_binding_for_test",
-    testonly = True,
+    # testonly = True,
     srcs = ["function_parameter_canonicalizer_binding_for_test.cc"],
     hdrs = [
         "function_parameter_canonicalizer.h",
@@ -543,7 +555,12 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/types:span",
         "@pybind11",
-    ],
+    ] + if_pywrap(
+        if_true = [
+            "//tensorflow/compiler/tf2xla:tf2xla_opset",
+            "//tensorflow/python/lib/core:pybind11_lib",
+        ],
+    ),
 )
 
 tf_py_strict_test(

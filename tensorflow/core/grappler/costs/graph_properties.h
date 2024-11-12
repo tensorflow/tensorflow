@@ -96,33 +96,33 @@ class GraphProperties {
   // will included in the input properties.
   // If include_output_tensor_values is true, the values of constant tensors
   // will be included in the output properties.
-  Status InferStatically(bool assume_valid_feeds,
-                         bool aggressive_shape_inference,
-                         bool include_input_tensor_values,
-                         bool include_output_tensor_values);
-  Status InferStatically(bool assume_valid_feeds,
-                         bool aggressive_shape_inference,
-                         bool include_tensor_values) {
+  absl::Status InferStatically(bool assume_valid_feeds,
+                               bool aggressive_shape_inference,
+                               bool include_input_tensor_values,
+                               bool include_output_tensor_values);
+  absl::Status InferStatically(bool assume_valid_feeds,
+                               bool aggressive_shape_inference,
+                               bool include_tensor_values) {
     return InferStatically(
         assume_valid_feeds,
         /*aggressive_shape_inference=*/aggressive_shape_inference,
         /*include_input_tensor_values=*/include_tensor_values,
         /*include_output_tensor_values=*/include_tensor_values);
   }
-  Status InferStatically(bool assume_valid_feeds) {
+  absl::Status InferStatically(bool assume_valid_feeds) {
     return InferStatically(assume_valid_feeds,
                            /*aggressive_shape_inference=*/false,
                            /*include_tensor_values=*/true);
   }
   // Infer the shape by running the graph on the specified cluster and recording
   // the shapes of the processed tensors.
-  Status InferDynamically(Cluster* cluster);
+  absl::Status InferDynamically(Cluster* cluster);
   // Extract the properties from a cost graph. For testing only since there is
   // no way to ensure that the cost graph match the item.
-  Status InferFromCostGraph(const CostGraphDef& cost_graph);
+  absl::Status InferFromCostGraph(const CostGraphDef& cost_graph);
 
   // Stores `item_.graph` with the inferred output shapes to `output_graph_def`.
-  Status AnnotateOutputShapes(GraphDef* output_graph_def) const;
+  absl::Status AnnotateOutputShapes(GraphDef* output_graph_def) const;
 
   // Return the properties of node inputs/outputs, including data types and
   // shapes. Note that the dimensions in the shapes can be negative. We use the
@@ -161,40 +161,41 @@ class GraphProperties {
  private:
   // Relaxes shapes <shapes_and_types>, determined from an EnqueueV2 node, into
   // <*queue_shapes_and_types>.
-  static Status RelaxEnqueueShapesAndMergeTypes(
+  static absl::Status RelaxEnqueueShapesAndMergeTypes(
       SymbolicShapeRefiner* shape_refiner, const NodeDef* qnode,
       const std::vector<shape_inference::ShapeAndType>& shapes_and_types,
       std::vector<shape_inference::ShapeAndType>* queue_shapes_and_types);
 
   // Update the shapes of the enqueue node, port them over to the corresponding
   // queue, and schedule the reprocessing of the queue if needed.
-  static Status UpdateEnqueue(
+  static absl::Status UpdateEnqueue(
       const NodeDef* enqueue_node,
       const absl::flat_hash_map<const NodeDef*, const NodeDef*>&
           resource_handles,
       SymbolicShapeRefiner* shape_refiner, bool* new_shapes);
 
   // Update the shapes and types of the Queue node, if not set by Enqueue node.
-  static Status UpdateQueue(const NodeDef* queue_node,
-                            SymbolicShapeRefiner* shape_refiner,
-                            bool* new_shapes);
+  static absl::Status UpdateQueue(const NodeDef* queue_node,
+                                  SymbolicShapeRefiner* shape_refiner,
+                                  bool* new_shapes);
 
   // Update the output shapes of a Merge node, and enqueue its fanout in
   // new_shapes if needed.
-  Status UpdateMerge(SymbolicShapeRefiner* shape_refiner, const NodeDef* node,
-                     bool* new_shapes) const;
+  absl::Status UpdateMerge(SymbolicShapeRefiner* shape_refiner,
+                           const NodeDef* node, bool* new_shapes) const;
   // Process the Enter node, and enqueue its fanout in new_shapes if needed.
-  static Status UpdateEnter(SymbolicShapeRefiner* shape_refiner,
-                            const NodeDef* node, bool* new_shapes);
+  static absl::Status UpdateEnter(SymbolicShapeRefiner* shape_refiner,
+                                  const NodeDef* node, bool* new_shapes);
   // Update the shapes for node 'n'. If output shapes for n have changed,
   // enqueue its fanout in 'new_shapes'.
-  Status UpdateShapes(SymbolicShapeRefiner* shape_refiner,
-                      const absl::flat_hash_map<const NodeDef*, const NodeDef*>&
-                          resource_handles,
-                      const NodeDef* n, bool* new_shapes) const;
+  absl::Status UpdateShapes(
+      SymbolicShapeRefiner* shape_refiner,
+      const absl::flat_hash_map<const NodeDef*, const NodeDef*>&
+          resource_handles,
+      const NodeDef* n, bool* new_shapes) const;
   // Propagate the shapes for the nodes enqueued in new_shapes and their
   // transitive fanout until a fixed point is reached.
-  Status PropagateShapes(
+  absl::Status PropagateShapes(
       SymbolicShapeRefiner* shape_refiner, TopoQueue* new_shapes,
       const absl::flat_hash_map<const NodeDef*, const NodeDef*>&
           resource_handles,

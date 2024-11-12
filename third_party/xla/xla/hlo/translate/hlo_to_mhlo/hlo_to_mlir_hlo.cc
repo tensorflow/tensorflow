@@ -15,15 +15,21 @@ limitations under the License.
 
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 
+#include <utility>
+
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_module_importer.h"
 #include "xla/mlir/utils/error_util.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/status_macros.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

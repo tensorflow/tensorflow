@@ -97,8 +97,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
@@ -1975,7 +1975,8 @@ PjRtStreamExecutorBuffer::CopyToDevice(PjRtDevice* dst_device) {
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorBuffer::CopyToDeviceMemorySpace(
     PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space) {
-  if (dst_device == device_ && dst_memory_space == memory_space()) {
+  if (dst_device == device_ && dst_memory_space == memory_space() &&
+      dst_memory_space->kind_id() != PinnedHostMemorySpace::kKindId) {
     return InvalidArgument(
         "CopyToDeviceMemorySpace cannot accept the same source and destination "
         "devices/memory");
@@ -2230,7 +2231,7 @@ absl::Status CheckCompatibleShapes(bool strict_shape_checking,
 }
 
 // Makes a tuple from the arguments to an execution.
-absl::StatusOr<TupleHandle> MakeTupleHelper(
+absl::StatusOr<std::unique_ptr<TupleHandle>> MakeTupleHelper(
     PjRtStreamExecutorClient* client, LocalDeviceState* local_device,
     bool strict_shape_checking, const Shape& tupled_parameter_shape,
     absl::Span<PjRtBuffer* const> py_buffers,
@@ -2296,7 +2297,8 @@ absl::StatusOr<TupleHandle> MakeTupleHelper(
   auto transfer_event =
       std::make_shared<BufferSequencingEvent>(client->thread_pool());
   transfer_event->SetSequencingEvent(std::move(event_or).value(), stream);
-  return TupleHandle({std::move(execution_input), std::move(transfer_event)});
+  return std::make_unique<TupleHandle>(
+      TupleHandle({std::move(execution_input), std::move(transfer_event)}));
 }
 
 // Converts a ScopedShapedBuffer returned from an execution into a
@@ -2465,7 +2467,7 @@ PjRtStreamExecutorLoadedExecutable::MakeExecutionInputsAndWaitForEvents(
       client_->client()->backend().transfer_manager();
   // Lift tuple_handle outside the conditional so that the event it returns is
   // not destroyed until after the loop below that waits on events.
-  std::optional<TupleHandle> tuple_handle;
+  std::unique_ptr<TupleHandle> tuple_handle;
   if (parameter_is_tupled_arguments_ && !options.arguments_are_tupled) {
     TF_ASSIGN_OR_RETURN(
         tuple_handle,
@@ -3147,6 +3149,24 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
   return Result({/*future=*/std::move(future), /*buffers=*/std::move(outputs)});
 }
 
+absl::Status PjRtStreamExecutorLoadedExecutable::VerifyCompatibleDevices()
+    const {
+  const int num_addressable_devices = addressable_devices_.size();
+  for (int i = 0; i < num_addressable_devices; ++i) {
+    PjRtDevice* device = addressable_devices_[i];
+    const int device_ordinal =
+        tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+            ->local_device_state()
+            ->local_device_id()
+            .value();
+    const int partition = addressable_device_logical_ids_[i].partition;
+    const int executable_idx = executables_.size() > 1 ? partition : 0;
+    TF_RETURN_IF_ERROR(executables_[executable_idx]->VerifyRunDeviceCompatible(
+        device_ordinal));
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtStreamExecutorLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
@@ -3171,6 +3191,7 @@ PjRtStreamExecutorLoadedExecutable::Execute(
         num_partitions());
   }
 
+  TF_RETURN_IF_ERROR(VerifyCompatibleDevices());
   VLOG(1) << "Executing computation " << name()
           << "; num_replicas=" << num_replicas()
           << " num_partitions=" << num_partitions()

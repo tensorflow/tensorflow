@@ -20,13 +20,13 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Transforms/Passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/export_shardings.h"
+#include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
 #include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/export_shardings.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/import_shardings.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/import_shardy_attrs.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/remove_size_one_axes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_import.h"
@@ -37,23 +37,19 @@ namespace sdy {
 using ::mlir::PassPipelineRegistration;
 
 void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm) {
-  // Run canonicalizer to simplify `ManualComputationOp`s.
-  pm.addPass(mlir::createCanonicalizerPass());
-  // We save `sdy.sharding`s on those custom calls during
-  // `createSdyRoundTripExportShardingsPass` and make use of
-  // `createSdyRoundTripImportShardingsPass` to import them.
+  pm.addPass(createExportNamedComputationsPass());
   pm.addPass(createSdyRoundTripExportOpsPass());
   pm.addPass(createSdyRoundTripShardMapExportPass());
   // Preserve the SDY shardings for `createExportMhloShardingsPass` so that
   // we have both `mhlo.sharding`s and hidden `sdy.sharding`s on the module. We
   // want to have `mhlo.sharding`s for Pathways to read from.
-  pm.addPass(createSdyRoundTripExportShardingsPass());
+  pm.addPass(createSdyRoundTripExportShardyAttrsPass());
   pm.addPass(createExportMhloShardingsPass());
 }
 
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm) {
   addCommonPreImportPasses(pm);
-  pm.addPass(createSdyRoundTripImportShardingsPass());
+  pm.addPass(createSdyRoundTripImportShardyAttrsPass());
   pm.addPass(createSdyRoundTripShardMapImportPass());
   pm.addPass(createSdyRoundTripRemoveSizeOneAxesPass());
   addCommonPostImportPasses(pm);

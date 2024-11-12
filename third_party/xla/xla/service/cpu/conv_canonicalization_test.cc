@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/conv_canonicalization.h"
 
-#include <vector>
+#include <cstdint>
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {

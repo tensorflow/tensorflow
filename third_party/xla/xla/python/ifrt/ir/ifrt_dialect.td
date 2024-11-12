@@ -152,6 +152,10 @@ def Ifrt_ArrayMappingAttrArrayAttr :
   let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
 }
 
+def Ifrt_IoAliasesAttr : TypedArrayAttrBase<
+    ConfinedAttr<DenseI32ArrayAttr, [DenseArrayCount<2>]>,
+    "Array of pairs of aliased input/output indices">;
+
 //===---------------------------------------------------------------------------
 // Types
 //===---------------------------------------------------------------------------

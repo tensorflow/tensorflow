@@ -77,12 +77,37 @@ using ReshardingCache =
     ConstInstructionMap<std::vector<std::pair<HloSharding, HloInstruction*>>>;
 // Resharding costs for each operand
 using ReshardingCosts = std::vector<std::vector<double>>;
-// Optional shardings for each operand
-using InputShardings = std::vector<std::optional<HloSharding>>;
+
+// A named vector of optional shardings for each operand.
+struct InputShardings {
+  std::string name;
+  std::vector<std::optional<HloSharding>> shardings;
+
+  std::string ToString() const {
+    std::string str = absl::StrCat(name, " ");
+    for (const auto& s : shardings) {
+      if (!s.has_value()) {
+        absl::StrAppend(&str, "[*],");
+      } else if (s->IsReplicated()) {
+        absl::StrAppend(&str, "[R],");
+      } else {
+        if (s->ReplicateOnLastTileDim()) {
+          absl::StrAppend(
+              &str, "[", absl::StrJoin(s->tile_assignment().dimensions(), ", "),
+              "]last_tile_dim_replicate,");
+        } else {
+          absl::StrAppend(
+              &str, "[", absl::StrJoin(s->tile_assignment().dimensions(), ", "),
+              "],");
+        }
+      }
+    }
+    return str;
+  }
+};
 
 // One sharding strategy
 struct ShardingStrategy {
-  std::string name;
   HloSharding output_sharding;
   double compute_cost;
   double communication_cost;
@@ -94,9 +119,7 @@ struct ShardingStrategy {
   ReshardingCosts communication_resharding_costs;
   ReshardingCosts memory_resharding_costs;
 
-  std::string ToString() const {
-    return absl::StrCat(name, ", ", output_sharding.ToString());
-  }
+  std::string ToString() const { return output_sharding.ToString(); }
 
   std::string ToStringLong() const {
     std::vector<std::string> communication_resharding_vector_strings;
@@ -119,7 +142,7 @@ struct ShardingStrategy {
         "{", absl::StrJoin(memory_resharding_vector_strings, ", "), "}");
 
     return absl::StrCat(
-        name, ", ", output_sharding.ToString(), ", compute_cost=", compute_cost,
+        output_sharding.ToString(), ", compute_cost=", compute_cost,
         ", communication_cost=", communication_cost,
         ", memory_cost=", memory_cost,
         ", communication_resharding_costs=", communication_resharding_cost_str,
@@ -127,7 +150,7 @@ struct ShardingStrategy {
   }
 
   bool operator==(const ShardingStrategy& other) const {
-    return name == other.name && output_sharding == other.output_sharding &&
+    return output_sharding == other.output_sharding &&
            compute_cost == other.compute_cost &&
            communication_cost == other.communication_cost &&
            memory_cost == other.memory_cost &&
@@ -221,25 +244,8 @@ struct StrategyGroup {
     }
     if (!is_tuple) {
       for (const auto& input_shardings : strategy_input_shardings) {
-        std::string input_sharding_str = "{";
-        for (const auto& s : input_shardings) {
-          if (!s.has_value()) {
-            input_sharding_str += "[*],";
-          } else if (s->IsReplicated()) {
-            input_sharding_str += "[R],";
-          } else {
-            if (s->ReplicateOnLastTileDim()) {
-              input_sharding_str +=
-                  "[" + absl::StrJoin(s->tile_assignment().dimensions(), ", ") +
-                  "]last_tile_dim_replicate,";
-            } else {
-              input_sharding_str +=
-                  "[" + absl::StrJoin(s->tile_assignment().dimensions(), ", ") +
-                  "],";
-            }
-          }
-        }
-        input_sharding_str += "}\n";
+        const std::string input_sharding_str =
+            absl::StrCat("{", input_shardings.ToString(), "}\n");
         absl::StrAppend(&str, indent, "Input Sharding ", input_sharding_str);
       }
     }
@@ -311,6 +317,10 @@ struct StrategyGroup {
         input_sharding_idx_to_strategy_idx[input_sharding_idx];
     CHECK_LT(strategy_idx, strategies.size());
     return strategies[strategy_idx];
+  }
+
+  size_t GetStrategyIdxForInputShardings(size_t input_sharding_idx) const {
+    return input_sharding_idx_to_strategy_idx[input_sharding_idx];
   }
 
   const InputShardings& GetInputShardings(size_t input_sharding_idx) const {

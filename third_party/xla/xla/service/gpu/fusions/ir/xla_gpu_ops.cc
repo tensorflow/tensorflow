@@ -20,6 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
@@ -141,8 +144,8 @@ void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
 
 void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
                             ValueRange operands, AffineMap affine_map,
-                            ArrayRef<DimVar> dim_vars,
-                            ArrayRef<RangeVar> range_vars) {
+                            ArrayRef<IndexingMap::Variable> dim_vars,
+                            ArrayRef<IndexingMap::Variable> range_vars) {
   IndexingMap indexing_map(affine_map, dim_vars, range_vars, {});
   build(builder, result, operands, indexing_map);
 }
@@ -235,20 +238,18 @@ namespace {
 struct IndexingMapWithAdditions {
   IndexingMap indexing_map;
   SmallVector<Value> added_dim_args;
-  SmallVector<Value> added_sym_args;
 };
 
-IndexingMapWithAdditions GetNewIndexingMapAfterFoldingSequence(
+// Returns the new indexing map after replacing ops.
+// Only supports replacing operands that are dimensions.
+absl::StatusOr<IndexingMapWithAdditions> GetNewIndexingMapAfterFoldingSequence(
     IndexingMap indexing_map,
     SmallVector<std::pair<int, ApplyIndexingOp>, 2> apply_indexing_ops,
     mlir::DenseMap<Value, AffineExpr> operand_exprs, MLIRContext* ctx) {
   int num_dims = indexing_map.GetDimensionCount();
-  int num_syms = indexing_map.GetSymbolCount();
 
   SmallVector<Value> added_dim_args;
-  SmallVector<Value> added_sym_args;
   auto new_dim_vars = indexing_map.GetDimVars();
-  auto new_sym_vars = indexing_map.GetRangeVars();
 
   mlir::DenseMap<AffineExpr, AffineExpr> replacements;
   for (auto& [operand_id, producer] : apply_indexing_ops) {
@@ -257,47 +258,41 @@ IndexingMapWithAdditions GetNewIndexingMapAfterFoldingSequence(
     int producer_result_id = producer_result.getResultNumber();
     int num_producer_dims = producer.getAffineMap().getNumDims();
     SmallVector<AffineExpr> producer_dim_replacements;
-    SmallVector<AffineExpr> producer_sym_replacements;
     for (auto& producer_operand : producer->getOpOperands()) {
       int producer_operand_number = producer_operand.getOperandNumber();
-      bool is_dim = producer_operand_number < num_producer_dims;
+      if (producer_operand_number >= num_producer_dims) {
+        // MoveSymbolsToDims will convert symbols to dimensions later.
+        return absl::Status(
+            absl::StatusCode::kInvalidArgument,
+            absl::StrCat("In apply_indexing_op ", operand_id,
+                         " producer has operand number ",
+                         producer_operand_number, " outside of dimensions [0,",
+                         num_producer_dims, ")"));
+      }
       auto& replacement_expr = operand_exprs[producer_operand.get()];
       if (!replacement_expr) {
-        if (is_dim) {
-          int dim_num = producer_operand_number;
-          replacement_expr =
-              getAffineDimExpr(num_dims + added_dim_args.size(), ctx);
-          added_dim_args.push_back(producer_operand.get());
-          new_dim_vars.push_back(producer_map.GetDimVars(dim_num));
-        } else {
-          int sym_num =
-              producer_operand_number - producer.getAffineMap().getNumDims();
-          replacement_expr =
-              getAffineSymbolExpr(num_syms + added_sym_args.size(), ctx);
-          added_sym_args.push_back(producer_operand.get());
-          new_sym_vars.push_back(producer_map.GetRangeVar(sym_num));
-        }
+        int dim_num = producer_operand_number;
+        replacement_expr =
+            getAffineDimExpr(num_dims + added_dim_args.size(), ctx);
+        added_dim_args.push_back(producer_operand.get());
+        new_dim_vars.push_back(producer_map.GetDimVars(dim_num));
       }
-      if (is_dim) {
-        producer_dim_replacements.push_back(replacement_expr);
-      } else {
-        producer_sym_replacements.push_back(replacement_expr);
-      }
+      producer_dim_replacements.push_back(replacement_expr);
     }
     replacements[operand_exprs[producer_result]] =
         producer.getAffineMap()
             .getResult(producer_result_id)
-            .replaceDimsAndSymbols(producer_dim_replacements,
-                                   producer_sym_replacements);
+            .replaceDims(producer_dim_replacements);
   }
 
   auto new_affine_map = indexing_map.GetAffineMap().replace(
       replacements, num_dims + added_dim_args.size(),
-      num_syms + added_sym_args.size());
-  IndexingMap new_indexing_map(new_affine_map, new_dim_vars, new_sym_vars,
-                               /*rt_vars=*/{});
+      indexing_map.GetSymbolCount());
+  IndexingMap new_indexing_map(new_affine_map, new_dim_vars,
+                               indexing_map.GetRangeVars(),
+                               indexing_map.GetRTVars());
 
-  return {new_indexing_map, added_dim_args, added_sym_args};
+  return IndexingMapWithAdditions{new_indexing_map, added_dim_args};
 }
 }  // namespace
 
@@ -404,26 +399,29 @@ struct FoldApplyIndexingSequence
     auto replacement = GetNewIndexingMapAfterFoldingSequence(
         indexing_map, apply_indexing_ops, operand_exprs, ctx);
 
+    if (!replacement.ok()) {
+      return rewriter.notifyMatchFailure(indexing_op,
+                                         replacement.status().message());
+    }
+
     if (!all_apply_indexing_operands_have_one_use &&
-        !replacement.indexing_map.Simplify()) {
+        !replacement->indexing_map.Simplify()) {
       return rewriter.notifyMatchFailure(
           indexing_op, "Folded indexing map was not simplified");
     }
 
-    int new_num_operands = indexing_op->getNumOperands() +
-                           replacement.added_dim_args.size() +
-                           replacement.added_sym_args.size();
+    int new_num_operands =
+        indexing_op->getNumOperands() + replacement->added_dim_args.size();
     SmallVector<Value> new_operands;
     new_operands.reserve(new_num_operands);
 
     auto begin = indexing_op.getOperands().begin();
     new_operands.append(begin, begin + num_dims);
-    new_operands.append(replacement.added_dim_args);
+    new_operands.append(replacement->added_dim_args);
     new_operands.append(begin + num_dims, begin + num_dims + num_syms);
-    new_operands.append(replacement.added_sym_args);
 
     rewriter.replaceOpWithNewOp<ApplyIndexingOp>(indexing_op, new_operands,
-                                                 replacement.indexing_map);
+                                                 replacement->indexing_map);
 
     return success();
   }
@@ -465,42 +463,31 @@ struct FoldApplyIndexingOperands
     unsigned new_num_operands = indexing_op->getNumOperands() - num_constants;
     SmallVector<Value, 4> new_operands;
     new_operands.reserve(new_num_operands);
-    SmallVector<DimVar, 2> new_dim_vars;
+    SmallVector<IndexingMap::Variable, 2> new_dim_vars;
     new_dim_vars.reserve(num_dims);
-    SmallVector<RangeVar, 2> new_range_vars;
-    new_range_vars.reserve(num_symbols);
 
     unsigned new_num_dims = 0;
-    unsigned new_num_symbols = 0;
     for (auto [operand, constant_value] :
          llvm::zip(indexing_op->getOpOperands(), constant_values)) {
       unsigned operand_id = operand.getOperandNumber();
+      if (operand_id >= num_dims) {
+        return rewriter.notifyMatchFailure(
+            indexing_op,
+            absl::StrCat("operand ", operand_id,
+                         " is outside of dimension range [0, ", num_dims, ")"));
+      }
       if (constant_value.has_value()) {
-        if (operand_id < num_dims) {
-          dim_replacements.push_back(
-              getAffineConstantExpr(*constant_value, ctx));
-        } else {
-          symbol_replacements.push_back(
-              getAffineConstantExpr(*constant_value, ctx));
-        }
+        dim_replacements.push_back(getAffineConstantExpr(*constant_value, ctx));
       } else {
         new_operands.push_back(operand.get());
-        if (operand_id < num_dims) {
-          dim_replacements.push_back(getAffineDimExpr(new_num_dims++, ctx));
-          new_dim_vars.push_back(indexing_map.GetDimVars(operand_id));
-        } else {
-          symbol_replacements.push_back(
-              getAffineSymbolExpr(new_num_symbols++, ctx));
-          new_range_vars.push_back(
-              indexing_map.GetRangeVar(operand_id - num_dims));
-        }
+        dim_replacements.push_back(getAffineDimExpr(new_num_dims++, ctx));
+        new_dim_vars.push_back(indexing_map.GetDimVars(operand_id));
       }
     }
     rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
         indexing_op, new_operands,
-        affine_map.replaceDimsAndSymbols(dim_replacements, symbol_replacements,
-                                         new_num_dims, new_num_symbols),
-        new_dim_vars, new_range_vars);
+        affine_map.replaceDimsAndSymbols(dim_replacements, {}, new_num_dims, 0),
+        new_dim_vars, SmallVector<IndexingMap::Variable>());
     return success();
   }
 };
@@ -904,24 +891,29 @@ struct SimplifyLoopOfApplyIndexing : public mlir::OpRewritePattern<LoopOp> {
     auto replacement = GetNewIndexingMapAfterFoldingSequence(
         loop_indexing_map, apply_indexing_ops, operand_exprs, ctx);
 
+    if (!replacement.ok()) {
+      return rewriter.notifyMatchFailure(loop_op,
+                                         replacement.status().message());
+    }
+
     if (!all_apply_indexing_operands_have_one_use &&
-        !replacement.indexing_map.Simplify()) {
+        !replacement->indexing_map.Simplify()) {
       return rewriter.notifyMatchFailure(
           loop_op, "Folded indexing map of the loop op was not simplified");
     }
 
-    int new_num_dims = num_dims + replacement.added_dim_args.size();
+    int new_num_dims = num_dims + replacement->added_dim_args.size();
     SmallVector<Value> aggregate_dims;
     aggregate_dims.reserve(new_num_dims);
 
     auto begin = loop_op.getOperands().begin();
     aggregate_dims.append(begin, begin + num_dims);
-    aggregate_dims.append(replacement.added_dim_args);
+    aggregate_dims.append(replacement->added_dim_args);
 
     // Remove unused dims.
     SmallVector<Value, 4> used_dims;
     used_dims.reserve(aggregate_dims.size());
-    auto used_dim_bit_vector = ~replacement.indexing_map.RemoveUnusedVars();
+    auto used_dim_bit_vector = ~replacement->indexing_map.RemoveUnusedVars();
     for (auto used_dim_idx : used_dim_bit_vector.set_bits()) {
       if (used_dim_idx < new_num_dims) {
         used_dims.push_back(aggregate_dims[used_dim_idx]);
@@ -929,7 +921,7 @@ struct SimplifyLoopOfApplyIndexing : public mlir::OpRewritePattern<LoopOp> {
     }
 
     auto new_loop_op =
-        rewriter.create<LoopOp>(loop_op.getLoc(), replacement.indexing_map,
+        rewriter.create<LoopOp>(loop_op.getLoc(), replacement->indexing_map,
                                 used_dims, loop_op.getInits());
     Block* original_block = &loop_op.getRegion().front();
     Block* new_block = &new_loop_op.getRegion().front();
@@ -980,7 +972,7 @@ LogicalResult MaterializeOp::verify() {
     return emitOpError()
            << "must have thread_id dimension in both indexing maps";
   }
-  if (map_in.GetDimVars(0) != map_out.GetDimVars(0)) {
+  if (map_in.GetDimVars(0).bounds != map_out.GetDimVars(0).bounds) {
     return emitOpError() << "thread_id dimension must have the same bounds in "
                             "both indexing maps";
   }
@@ -1000,7 +992,7 @@ LogicalResult MaterializeOp::verify() {
   }
   for (auto const& [range_in, range_out] :
        llvm::zip(map_in.GetRangeVars(), map_out.GetRangeVars())) {
-    if (range_in.range != range_out.range) {
+    if (range_in.bounds != range_out.bounds) {
       return emitOpError() << "domain of symbols of indexing_maps must match";
     }
   }

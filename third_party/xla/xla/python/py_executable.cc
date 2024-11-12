@@ -93,13 +93,11 @@ PyLoadedExecutable::PyLoadedExecutable(
   if (next_) {
     next_->prev_ = this;
   }
-  options_.untuple_result = true;
   if (fingerprint_) {
     options_.launch_id = tsl::Fingerprint32(*fingerprint_);
     VLOG(1) << "Fingerprint for executable " << ifrt_loaded_executable_->name()
             << ": " << *fingerprint_;
   }
-  options_.use_major_to_minor_data_layout_for_callbacks = true;
 }
 
 PyLoadedExecutable::~PyLoadedExecutable() {
@@ -203,10 +201,9 @@ void PopulateExecuteShardedResults(
 
 template <typename ArgT, typename ArgAdapter = ShardedBufferAdapter<ArgT>>
 absl::StatusOr<PyExecuteResults> ExecuteShardedOnLocalDevicesInternal(
-    const ExecuteOptions& options, const nb_class_ptr<PyClient>& client,
+    const ifrt::ExecuteOptions& options, const nb_class_ptr<PyClient>& client,
     ifrt::LoadedExecutable* ifrt_loaded_executable, absl::Span<const ArgT> args,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures,
-    bool attach_status_to_results) {
+    std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
   std::vector<tsl::RCReference<ifrt::Array>> output_arrays;
   std::unique_ptr<ifrt::Future<>> returned_future;
   int num_computations = ifrt_loaded_executable->addressable_devices().size();
@@ -232,13 +229,13 @@ absl::StatusOr<PyExecuteResults> ExecuteShardedOnLocalDevicesInternal(
                                          absl::MakeSpan(arg_arrays), options,
                                          /*devices=*/std::nullopt));
     output_arrays = std::move(result.outputs);
-    // attach_status_to_results is only supposed to be true when the computation
-    // has tokens.
-    if (attach_status_to_results) {
+    // options.fill_status is only supposed to be true when the computation has
+    // tokens.
+    if (options.fill_status) {
       result_status = result.status;
-    }
-    if (returned_futures.has_value()) {
-      returned_futures->resize(num_computations, std::move(result.status));
+      if (returned_futures.has_value()) {
+        returned_futures->resize(num_computations, std::move(result.status));
+      }
     }
   }
 
@@ -366,39 +363,43 @@ std::vector<nb::object> PyExecuteResults::ConsumeWithHandlers(
 absl::StatusOr<std::vector<std::vector<PyArray>>>
 PyLoadedExecutable::ExecuteShardedOnLocalDevices(
     absl::Span<const ExecuteShardedArg> args) {
+  xla::ifrt::ExecuteOptions options = options_;
+  options.fill_status = false;
   std::optional<std::vector<PjRtFuture<>>> returned_futures;
-  TF_ASSIGN_OR_RETURN(
-      auto outputs_and_tokens,
-      ExecuteShardedOnLocalDevicesInternal(
-          options_, client_, ifrt_loaded_executable_.get(), args,
-          returned_futures, /*attach_status_to_results=*/false));
+  TF_ASSIGN_OR_RETURN(auto outputs_and_tokens,
+                      ExecuteShardedOnLocalDevicesInternal(
+                          options, client_, ifrt_loaded_executable_.get(), args,
+                          returned_futures));
   return outputs_and_tokens.DisassembleIntoSingleDeviceArrays();
 }
 
 absl::StatusOr<std::pair<std::vector<std::vector<PyArray>>, PyShardedToken>>
 PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens(
     absl::Span<const ExecuteShardedArg> args) {
+  xla::ifrt::ExecuteOptions options = options_;
+  options.fill_status = true;
   std::optional<std::vector<PjRtFuture<>>> returned_futures;
   returned_futures.emplace();
-  TF_ASSIGN_OR_RETURN(
-      auto outputs_and_tokens,
-      ExecuteShardedOnLocalDevicesInternal(
-          options_, client_, ifrt_loaded_executable_.get(), args,
-          returned_futures, /*attach_status_to_results=*/true));
+  TF_ASSIGN_OR_RETURN(auto outputs_and_tokens,
+                      ExecuteShardedOnLocalDevicesInternal(
+                          options, client_, ifrt_loaded_executable_.get(), args,
+                          returned_futures));
   return std::make_pair(outputs_and_tokens.DisassembleIntoSingleDeviceArrays(),
                         outputs_and_tokens.ConsumeToken());
 }
 
 absl::StatusOr<PyExecuteResults> PyLoadedExecutable::ExecuteSharded(
     std::vector<ExecuteShardedArg> args, bool with_tokens) {
+  xla::ifrt::ExecuteOptions options = options_;
+  options.fill_status = with_tokens;
   std::optional<std::vector<PjRtFuture<>>> returned_futures;
   if (with_tokens) {
     returned_futures.emplace();
   }
   absl::Span<const ExecuteShardedArg> span_args = args;
-  return ExecuteShardedOnLocalDevicesInternal(
-      options_, client_, ifrt_loaded_executable_.get(), span_args,
-      returned_futures, /*attach_status_to_results=*/with_tokens);
+  return ExecuteShardedOnLocalDevicesInternal(options, client_,
+                                              ifrt_loaded_executable_.get(),
+                                              span_args, returned_futures);
 }
 
 absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>

@@ -36,13 +36,19 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_comparator.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/transforms/fusion_wrapper.h"
+#include "xla/service/gpu/transforms/priority_fusion.h"
+#include "xla/service/gpu/transforms/tree_reduction_rewriter.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -70,16 +76,41 @@ absl::StatusOr<const HloFusionInstruction*> AsTritonFusion(
   return nullptr;
 }
 
-std::unique_ptr<HloModule> NewHloModuleFromFusion(
+// Extracts the fusion, disables Triton, and re-runs the fusion pass in order
+// to make sure that the fusions are suitable for the MLIR emitters and will be
+// reasonably fast. Without this the generated code can be extremely slow (e.g.
+// days instead of milliseconds).
+absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleWithoutTritonFromFusion(
     const HloFusionInstruction& fusion, const DebugOptions& debug_opts,
-    bool clear_backend_config) {
+    const se::DeviceDescription& gpu_device_info) {
+  std::unique_ptr<HloModule> new_module =
+      ExtractComputationIntoNewModule(*fusion.fused_instructions_computation());
+  new_module->mutable_config().set_debug_options(debug_opts);
+  new_module->mutable_config()
+      .mutable_debug_options()
+      .clear_xla_gpu_experimental_enable_triton_softmax_priority_fusion();
+
+  TreeReductionRewriter tree_reduction_rewriter(
+      gpu_device_info.gpu_compute_capability());
+  TF_RETURN_IF_ERROR(tree_reduction_rewriter.Run(new_module.get()).status());
+
+  PriorityFusion fusion_pass(
+      /*thread_pool=*/nullptr, gpu_device_info, HloCostAnalysis::Options{});
+  TF_RETURN_IF_ERROR(fusion_pass.Run(new_module.get()).status());
+
+  // If the priority fusion pass above skipped some instructions, turn them
+  // into fusions.
+  FusionWrapper fusion_wrapper;
+  TF_RETURN_IF_ERROR(fusion_wrapper.Run(new_module.get()).status());
+
+  return new_module;
+}
+
+std::unique_ptr<HloModule> NewHloModuleWithTritonFromFusion(
+    const HloFusionInstruction& fusion, const DebugOptions& debug_opts) {
   std::unique_ptr<HloModule> new_module =
       ExtractInstructionIntoNewModule(fusion);
-  if (clear_backend_config) {
-    new_module->entry_computation()->root_instruction()->clear_backend_config();
-  }
   new_module->mutable_config().set_debug_options(debug_opts);
-
   return new_module;
 }
 
@@ -90,12 +121,16 @@ namespace triton_fusion_numerics_pass_internal {
 absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
     AutotunerCompileUtil& util, const HloFusionInstruction& fusion,
     const AutotuneConfig& config, const DebugOptions& debug_opts,
-    bool clear_backend_config) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      util.Compile([&](const DebugOptions& opts) {
-                        return NewHloModuleFromFusion(fusion, opts,
-                                                      clear_backend_config);
-                      }));
+    bool disable_triton) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Executable> executable,
+      util.Compile([&](const DebugOptions& opts) {
+        return disable_triton
+                   ? NewHloModuleWithoutTritonFromFusion(
+                         fusion, opts,
+                         config.GetExecutor()->GetDeviceDescription())
+                   : NewHloModuleWithTritonFromFusion(fusion, opts);
+      }));
   if (executable == nullptr) {
     return Internal("Failed to compile Triton fusion.");
   }
@@ -157,11 +192,11 @@ absl::Status VerifyTritonFusion(AutotunerCompileUtil& util,
   TF_ASSIGN_OR_RETURN(auto triton_result,
                       triton_fusion_numerics_pass_internal::CompileAndRunFusion(
                           util, fusion, config, debug_opts,
-                          /*clear_backend_config=*/false));
+                          /*disable_triton=*/false));
   TF_ASSIGN_OR_RETURN(auto emitters_result,
                       triton_fusion_numerics_pass_internal::CompileAndRunFusion(
                           util, fusion, config, debug_opts,
-                          /*clear_backend_config=*/true));
+                          /*disable_triton=*/true));
 
   TF_ASSIGN_OR_RETURN(auto stream, config.GetStream());
   auto status = triton_fusion_numerics_pass_internal::CompareBuffers(
@@ -175,6 +210,16 @@ absl::Status VerifyTritonFusion(AutotunerCompileUtil& util,
   }
 
   return status;
+}
+
+TritonFusionNumericsVerifier::FusionCacheKey CacheKeyForFusion(
+    const HloFusionInstruction& fusion) {
+  std::unique_ptr<HloModule> module = ExtractInstructionIntoNewModule(fusion);
+  HloPrintOptions print_options = HloPrintOptions::ModuleFingerprint()
+                                      .set_print_only_essential_constants(false)
+                                      .set_print_backend_config(true)
+                                      .set_sort_backend_config(true);
+  return module->ToString(print_options);
 }
 
 }  // namespace
@@ -200,8 +245,16 @@ absl::StatusOr<bool> TritonFusionNumericsVerifier::Run(
 
   TF_RETURN_IF_ERROR(triton_fusion_numerics_pass_internal::ForAllTritonFusions(
       *module, execution_threads, [&](const HloFusionInstruction& fusion) {
-        return VerifyTritonFusion(*opt_compile_util, fusion, config_,
-                                  debug_options);
+        auto key = CacheKeyForFusion(fusion);
+        if (auto it = fusion_result_cache_.find(key);
+            it != fusion_result_cache_.end()) {
+          ++cache_hits_;
+          return it->second;
+        }
+        auto result = VerifyTritonFusion(*opt_compile_util, fusion, config_,
+                                         debug_options);
+        fusion_result_cache_[key] = result;
+        return result;
       }));
   return false;
 }

@@ -364,6 +364,11 @@ struct MapFnOp : mlrt::KernelFrame {
   using KernelFrame::KernelFrame;
 
   static constexpr char kName[] = "tf_mlrt.map_fn";
+
+  // The order of arguments is [max_iterations, tensor_lists_or_flows,
+  // other_args(invariant)].
+  // The size of tensor_lists_or_flows is num_tensor_list_or_flow_in attribute.
+
   // Tensor list or flow in inputs starts after max_iteration
   static constexpr int kTensorListFlowInStartIndex = 1;
 
@@ -436,6 +441,18 @@ void MapFnOp::Invoke() {
   std::vector<mlrt::Promise> initializer_promises;
   initializer_promises.reserve(num_tensor_list_or_flow_in());
 
+  // Each iteration invoke a map_fn_body that has an input signature of
+  // (in_tensor_list_future, out_tensor_list_promise, loop_counter,
+  // tensor_list_index, other_args). The in_tensor_list_future is the output
+  // of the previous iteration and input of the current iteration. The
+  // out_tensor_list_promise is the output of the current iteration and input
+  // of the next iteration. The loop_counter is the loop index. The
+  // tensor_list_index is the index of the tensor list. The other_args are the
+  // invariant arguments.
+  //
+  // Here last_iter_futures is the in_tensor_list_future for the very first
+  // iteration and the initializer_promises are used to set
+  // last_iter_futures to bootstrap the first iteration.
   std::vector<mlrt::Future> last_iter_futures;
   last_iter_futures.reserve(num_tensor_list_or_flow_in());
   for (int i = 0; i < num_tensor_list_or_flow_in(); ++i) {
@@ -476,6 +493,8 @@ void MapFnOp::Invoke() {
           std::move(promise).Finish(execution_context.status());
         });
 
+    // First populate the in_tensor_list_future and out_tensor_list_promise
+    // arguments.
     auto arg_iter = body_args.begin();
     for (int j = 0; j < last_iter_futures.size(); ++j) {
       *arg_iter = std::move(last_iter_futures[j]);
@@ -497,12 +516,15 @@ void MapFnOp::Invoke() {
         tensorflow::tfrt_stub::FallbackTensor(std::move(loop_counter_tensor));
     ++arg_iter;
 
+    // The current tensor list index is the next argument.
     tensorflow::Tensor element_index_tensor(DT_INT32, {});
     element_index_tensor.scalar<int32_t>()() = i;
     *arg_iter =
         tensorflow::tfrt_stub::FallbackTensor(std::move(element_index_tensor));
     ++arg_iter;
 
+    // The rest of the arguments are the invariant arguments and are already
+    // populated outside the loop.
     thread_execution_context.Call(function, body_arg_last_uses,
                                   absl::MakeSpan(body_args),
                                   absl::Span<mlrt::Value>());

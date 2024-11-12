@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/tests/exhaustive/error_spec.h"
 #include "xla/tests/exhaustive/exhaustive_op_test.h"
@@ -169,14 +169,7 @@ UNARY_TEST_COMPLEX_64(Rsqrt, {
       return ErrorSpec::Builder()
           .abs_err(RsqrtCpuGpuAbsErr<NativeT, ComponentNativeT>(x))
           .rel_err(RsqrtCpuGpuRelErr<NativeT, ComponentNativeT>(x))
-#ifdef __aarch64__
-          // TODO(b/365620546): ARM and x86 handle complex(inf, nan)
-          // differently.
-          .skip_comparison(x.real() == 0.0f ||
-                           (std::isinf(x.real()) && std::isnan(x.imag())))
-#else
           .skip_comparison(x.real() == 0.0f)
-#endif
           .strict_signed_zeros(false)
           .build();
     };

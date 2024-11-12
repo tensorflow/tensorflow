@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_layout_assignment.h"
 
+#include <cstdint>
 #include <initializer_list>
 #include <memory>
-#include <utility>
-#include <vector>
+#include <string>
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -28,7 +30,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/service/algebraic_simplifier.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/cpu/target_machine_features_fake.h"
 #include "xla/shape_layout.h"

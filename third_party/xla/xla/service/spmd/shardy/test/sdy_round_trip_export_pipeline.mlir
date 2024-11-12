@@ -1,4 +1,4 @@
-// RUN: sdy_opt %s -xla-sdy-round-trip-export-pipeline 2>&1 | FileCheck %s
+// RUN: sdy_opt %s --split-input-file -xla-sdy-round-trip-export-pipeline 2>&1 | FileCheck %s
 
 sdy.mesh @mesh_0 = <["axis_0"=2, "axis_1"=4, "axis_2"=4]>
 sdy.mesh @mesh_1 = <["axis_0"=16]>
@@ -65,20 +65,26 @@ func.func @func_result_sharding_returning_func_arg(
   return %arg0 : tensor<8x16xf32>
 }
 
-// CHECK-LABEL: func @func_result_sharding_returning_op_value(
-func.func @func_result_sharding_returning_op_value(
-  // CHECK: %arg0: tensor<8x16xf32>)
-  // CHECK-SAME: -> (tensor<8x16xf32> {mhlo.sharding = "{devices=[8,4]<=[32]}"}, tensor<8x16xf32> {mhlo.sharding = "{devices=[1,4,8]<=[8,4]T(1,0) last_tile_dim_replicate}"}, tensor<8x16xf32> {mhlo.sharding = "{devices=[8,4]<=[32]}"}) {
-  %arg0: tensor<8x16xf32>) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", ?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}, {"y"}p1]>}) {
+// CHECK-LABEL: func @func_result_sharding_returning_op_value(%arg0: tensor<8x16xf32>)
+func.func @func_result_sharding_returning_op_value(%arg0: tensor<8x16xf32>)
+  // CHECK-SAME: -> (tensor<8x16xf32> {mhlo.sharding = "{devices=[8,4]<=[32]}"},
+  // CHECK-SAME:     tensor<8x16xf32> {mhlo.sharding = "{devices=[1,4,8]<=[8,4]T(1,0) last_tile_dim_replicate}"},
+  // CHECK-SAME:     tensor<8x16xf32> {mhlo.sharding = "{devices=[8,4]<=[32]}"},
+  // CHECK-SAME:     tensor<8x16xf32> {mhlo.sharding = "{replicated}"}) {
+  -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", ?}, {"y"}p4]>},
+      tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{?}, {"y"}p4]>},
+      tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}, {"y"}p1]>},
+      tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{}, {}]>}) {
   // CHECK-NEXT: %[[ADD:.*]] = mhlo.add %arg0, %arg0 : tensor<8x16xf32>
   // CHECK-NEXT: %[[TEST_ONLY:.*]]:2 = mhlo.custom_call @sdy_testonly(%arg0) {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh_2, [{\\\22x\\\22, \\\22y\\\22}, {}]>, <@mesh_2, [{\\\22y\\\22, \\\22x\\\22}, {}]>]>"}, mhlo.sharding =
-  // CHECK-NEXT: %[[ADD_RESULT_SHARDING:.*]] = mhlo.custom_call @local_xla.sdy.FuncResultSharding(%[[ADD]]) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh_2, [{\\\22x\\\22, ?}, {\\\22y\\\22}p4]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK-NEXT: %[[ADD_RESULT_SHARDING_0:.*]] = mhlo.custom_call @local_xla.sdy.FuncResultSharding(%[[ADD]]) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh_2, [{\\\22x\\\22, ?}, {\\\22y\\\22}p4]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
   // CHECK-NEXT: %[[TEST_ONLY_RES_SHARDING_0:.*]] = mhlo.custom_call @local_xla.sdy.FuncResultSharding(%[[TEST_ONLY]]#0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh_2, [{?}, {\\\22y\\\22}p4]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
   // CHECK-NEXT: %[[TEST_ONLY_RES_SHARDING_1:.*]] = mhlo.custom_call @local_xla.sdy.FuncResultSharding(%[[TEST_ONLY]]#1) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh_2, [{\\\22x\\\22}, {\\\22y\\\22}p1]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
-  // CHECK-NEXT: return %[[ADD_RESULT_SHARDING]], %[[TEST_ONLY_RES_SHARDING_0]], %[[TEST_ONLY_RES_SHARDING_1]] : tensor<8x16xf32>, tensor<8x16xf32>, tensor<8x16xf32>
+  // CHECK-NEXT: %[[ADD_RESULT_SHARDING_1:.*]] = mhlo.custom_call @local_xla.sdy.FuncResultSharding(%[[ADD]]) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh_2, [{}, {}]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK-NEXT: return %[[ADD_RESULT_SHARDING_0]], %[[TEST_ONLY_RES_SHARDING_0]], %[[TEST_ONLY_RES_SHARDING_1]], %[[ADD_RESULT_SHARDING_1]]
   %0 = mhlo.add %arg0, %arg0 : tensor<8x16xf32>
   %1:2 = mhlo.custom_call @sdy_testonly(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"x","y"}, {}]>, <@mesh_2, [{"y","x"}, {}]>]>} : (tensor<8x16xf32>) -> (tensor<8x16xf32>, tensor<8x16xf32>)
-  return %0, %1#0, %1#1 : tensor<8x16xf32>, tensor<8x16xf32>, tensor<8x16xf32>
+  return %0, %1#0, %1#1, %0 : tensor<8x16xf32>, tensor<8x16xf32>, tensor<8x16xf32>, tensor<8x16xf32>
 }
 
 // CHECK-LABEL: func @sharding_constraint
@@ -89,12 +95,37 @@ func.func @sharding_constraint(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
   return %0 : tensor<8x8xf32>
 }
 
+// CHECK-LABEL: func @export_sharding_group
+// CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+func.func @export_sharding_group(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK: mhlo.custom_call @local_xla.sdy.ShardingGroup(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding_group_id = "12 : i64"}}
+  sdy.sharding_group %arg0 group_id = 12:  tensor<8x8xf32>
+  return %arg0 : tensor<8x8xf32>
+}
+
 // CHECK-LABEL: func @constant
 func.func @constant() -> tensor<i32> {
   // CHECK-NEXT: %[[CONST:.*]] = mhlo.constant dense<0>
   // CHECK-NEXT: return %[[CONST]]
   %0 = sdy.constant dense<0> : tensor<i32>
   return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @inlined_mesh(
+// CHECK-SAME: %arg0: tensor<32xi32>
+// CHECK-SAME:   {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<mesh<[\\\22a\\\22=2, \\\22b\\\22=2]>, [{\\\22a\\\22}]>"},
+// CHECK-SAME:    mhlo.sharding = "{devices=[2,2]<=[4] last_tile_dim_replicate}"})
+// CHECK-SAME: -> (tensor<32xi32> {mhlo.sharding = "{maximal device=5}"}) {
+func.func @inlined_mesh(
+  %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<["a"=2, "b"=2]>, [{"a"}]>}
+) -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<[], device_ids=[5]>, [{}]>}) {
+  // CHECK-NEXT: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0)
+  // CHECK-SAME:   mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<mesh<[\\\22c\\\22=4]>, [{\\\22c\\\22}]>]>"}, mhlo.sharding = "{devices=[4]<=[4]}"}
+  // CHECK-NEXT: %[[RESULT_SHARDING:.*]] = mhlo.custom_call @local_xla.sdy.FuncResultSharding(%[[SHARDING]])
+  // CHECK-SAME:   mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<mesh<[], device_ids=[5]>, [{}]>]>"}
+  // CHECK-NEXT: return %[[RESULT_SHARDING]]
+  %0 = sdy.sharding_constraint %arg0 <mesh<["c"=4]>, [{"c"}]> : tensor<32xi32>
+  return %0 : tensor<32xi32>
 }
 
 // CHECK-LABEL: func @op_sharding_rule
@@ -114,4 +145,25 @@ func.func @sharding_and_op_sharding_rule(%arg0: tensor<8x2xf32>, %arg1: tensor<8
      sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"x"}, {}]>]>}
     : (tensor<8x2xf32>, tensor<8x2xf32>) -> tensor<8x2xf64>
   return %0 : tensor<8x2xf64>
+}
+
+// -----
+
+// CHECK-NOT: xla.sdy.meshes
+
+// CHECK-LABEL: func @non_sdy_module(
+// CHECK-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4,8]<=[8,4]T(1,0)}"},
+// CHECK-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{devices=[1,2,16]<=[32] last_tile_dim_replicate}"},
+// CHECK-SAME:      %arg2: tensor<8x16xf32> {mhlo.sharding = "{devices=[4,4,2]<=[2,16]T(1,0) last_tile_dim_replicate}"})
+// CHECK-SAME:  -> (tensor<8x16xf32> {mhlo.sharding = "{devices=[8,4]<=[32]}"}) {
+func.func @non_sdy_module(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4,8]<=[8,4]T(1,0)}"},
+                          %arg1: tensor<8x8xf32> {mhlo.sharding = "{devices=[1,2,16]<=[32] last_tile_dim_replicate}"},
+                          %arg2: tensor<8x16xf32> {mhlo.sharding = "{devices=[4,4,2]<=[2,16]T(1,0) last_tile_dim_replicate}"})
+    -> (tensor<8x16xf32> {mhlo.sharding = "{devices=[8,4]<=[32]}"}) {
+  // CHECK-NEXT: mhlo.add %arg0, %arg1 {mhlo.sharding = "{devices=[4,8]<=[8,4]T(1,0)}"}
+  // CHECK-NOT: xla.sdy.sharding
+  // CHECK-NOT: xla.sdy.sharding_rule
+  %0 = mhlo.add %arg0, %arg1 {mhlo.sharding = "{devices=[4,8]<=[8,4]T(1,0)}"} : tensor<8x8xf32>
+  %1 = "mhlo.dot" (%0, %arg2) : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %1 : tensor<8x16xf32>
 }

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/drop_savedmodel_semantics.h"
 
-#include <vector>
+#include <memory>
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"

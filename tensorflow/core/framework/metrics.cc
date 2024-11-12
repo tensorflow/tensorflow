@@ -25,9 +25,9 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/counter.h"
 #include "xla/tsl/lib/monitoring/gauge.h"
 #include "xla/tsl/lib/monitoring/sampler.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tsl/platform/types.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace metrics {

@@ -23,9 +23,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -45,31 +47,28 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/framework/device_type.h"
 #include "xla/tsl/lib/monitoring/sampler.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
-#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/tpu_compile.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -119,7 +118,7 @@ struct CompilationTimer {
 };
 
 // Populates input_output_alias field in the HLO Module proto.
-Status PopulateInputOutputAliasing(
+absl::Status PopulateInputOutputAliasing(
     mlir::func::FuncOp main_fn,
     XlaCompiler::CompilationResult* compilation_result, bool use_tuple_args) {
   constexpr char kAliasingAttr[] = "tf.aliasing_output";
@@ -163,8 +162,8 @@ bool failed(const absl::Status& status) { return !status.ok(); }
 
 // Transforms the given module to be suitable for export to TensorFlow GraphDef
 // and then exports all functions to the given library.
-Status PrepareAndExportToLibrary(mlir::ModuleOp module,
-                                 FunctionLibraryDefinition* flib_def) {
+absl::Status PrepareAndExportToLibrary(mlir::ModuleOp module,
+                                       FunctionLibraryDefinition* flib_def) {
   // Pass pipeline is defined here instead of leveraging the phase one export
   // pipeline because only the functional to executor dialect conversion and
   // breakup islands passes are common between the export pipeline and here.
@@ -211,13 +210,14 @@ absl::Status CompileTFFunctionWithoutMlir(
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
         shape_determination_funcs,
     const std::vector<tensorflow::TensorShape>& arg_shapes,
+    const DeviceType& device_type,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client,
     XlaCompiler::CompilationResult* compilation_result) {
-  Status comp_status = CompileTFFunctionToHlo(
+  absl::Status comp_status = CompileTFFunctionToHlo(
       *function_computation.flib_def, function_computation.graph_def_version,
-      shape_determination_funcs, arg_shapes,
+      shape_determination_funcs, arg_shapes, device_type,
       function_computation.guaranteed_constants, *function_computation.function,
       metadata, client, arg_core_mapping, per_core_arg_shapes, use_tuple_args,
       compilation_result);
@@ -238,6 +238,7 @@ absl::Status CompileMLIRTFFunction(
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
         shape_determination_funcs,
     const std::vector<tensorflow::TensorShape>& arg_shapes,
+    const DeviceType& device_type,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client,
@@ -286,8 +287,8 @@ absl::Status CompileMLIRTFFunction(
 
   TF_RETURN_IF_ERROR(CompileTFFunctionToHlo(
       *flib_def, versions.producer(), shape_determination_funcs, arg_shapes,
-      consts, func, metadata, client, arg_core_mapping, per_core_arg_shapes,
-      use_tuple_args, compilation_result));
+      device_type, consts, func, metadata, client, arg_core_mapping,
+      per_core_arg_shapes, use_tuple_args, compilation_result));
 
   return PopulateInputOutputAliasing(main_fn, compilation_result,
                                      use_tuple_args);
@@ -301,6 +302,7 @@ absl::Status CompileTensorflowGraphToHlo(
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
         shape_determination_funcs,
     const std::vector<tensorflow::TensorShape>& arg_shapes,
+    tsl::DeviceType device_type,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client,
@@ -319,14 +321,14 @@ absl::Status CompileTensorflowGraphToHlo(
   if (has_mlir) {
     TF_RETURN_IF_ERROR(CompileMLIRTFFunction(
         std::get<0>(computation), metadata, use_tuple_args,
-        shape_determination_funcs, arg_shapes, arg_core_mapping,
+        shape_determination_funcs, arg_shapes, device_type, arg_core_mapping,
         per_core_arg_shapes, client, compilation_result));
 
   } else {
     FunctionToHloArgs function_computation = std::get<1>(computation);
     TF_RETURN_IF_ERROR(CompileTFFunctionWithoutMlir(
         function_computation, metadata, use_tuple_args,
-        shape_determination_funcs, arg_shapes, arg_core_mapping,
+        shape_determination_funcs, arg_shapes, device_type, arg_core_mapping,
         per_core_arg_shapes, client, compilation_result));
   }
 

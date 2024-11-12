@@ -24,6 +24,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -31,26 +34,26 @@ class PluggableDeviceFactory : public DeviceFactory {
  public:
   PluggableDeviceFactory(const string& device_type,
                          const string& platform_name);
-  Status ListPhysicalDevices(std::vector<string>* devices) override;
-  Status CreateDevices(const SessionOptions& options,
-                       const std::string& name_prefix,
-                       std::vector<std::unique_ptr<Device>>* devices) override;
-  Status GetDeviceDetails(int device_index,
-                          std::unordered_map<string, string>* details) override;
+  absl::Status ListPhysicalDevices(std::vector<string>* devices) override;
+  absl::Status CreateDevices(
+      const SessionOptions& options, const std::string& name_prefix,
+      std::vector<std::unique_ptr<Device>>* devices) override;
+  absl::Status GetDeviceDetails(
+      int device_index, std::unordered_map<string, string>* details) override;
 
  private:
   // Populates *device_localities with the DeviceLocality descriptor for
   // every TfDeviceId.
-  Status GetDeviceLocalities(int num_tf_devices,
-                             std::vector<DeviceLocality>* device_localities);
+  absl::Status GetDeviceLocalities(
+      int num_tf_devices, std::vector<DeviceLocality>* device_localities);
   // Create a PluggableDevice associated with 'tf_device_id', allocates
   // (strictly) 'memory_limit' bytes of PluggableDevice memory to it, and adds
   // it to the 'devices' vector.
-  Status CreatePluggableDevice(const SessionOptions& options,
-                               const std::string& name_prefix,
-                               TfDeviceId tf_device_id, int64_t memory_limit,
-                               const DeviceLocality& dev_locality,
-                               std::vector<std::unique_ptr<Device>>* devices);
+  absl::Status CreatePluggableDevice(
+      const SessionOptions& options, const std::string& name_prefix,
+      TfDeviceId tf_device_id, int64_t memory_limit,
+      const DeviceLocality& dev_locality,
+      std::vector<std::unique_ptr<Device>>* devices);
 
   const string device_type_;
   const string platform_name_;

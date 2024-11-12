@@ -6,6 +6,12 @@ import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
+// Defines generic pass stats.
+message KeyValueMetric {
+  string key = 1;
+  int64 value = 2;
+}
+
 // Defines pass specific metrics.
 message PassMetrics {
   // Unique ID of the module on which the pass was run.
@@ -14,10 +20,16 @@ message PassMetrics {
   string pass_name = 2;
   // Duration of the pass.
   google.protobuf.Duration pass_duration = 3;
-  // Custom pass metrics. This is kept opaque, via `google.protobuf.Any`, in
-  // order to decouple pass agnostic compilation logs from possibly proprietary
-  // compiler passes.
+  // Custom pass metrics. Used for cases where a more complex structure
+  // is needed than a simple key - value pair (via generic metric).
+  // This is kept opaque, via `google.protobuf.Any`, in order to
+  // decouple pass agnostic compilation logs from possibly proprietary compiler
+  // passes.
   google.protobuf.Any custom_metrics = 4;
+  // Used to log any number of generic metrics per pass.
+  // Encapsulates simple metrics regarding a pass via a key - value pair.
+  // For more complex metrics for a pass, see custom_metric above.
+  repeated KeyValueMetric kv_metrics = 5;
 }
 
 // Defines compilation job information.

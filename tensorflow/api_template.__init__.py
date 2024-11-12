@@ -27,7 +27,7 @@ this file with a file generated from [`api_template.__init__.py`](https://www.gi
 """
 # pylint: disable=g-bad-import-order,protected-access,g-import-not-at-top
 
-import distutils as _distutils
+import sysconfig as _sysconfig
 import importlib
 import inspect as _inspect
 import os as _os
@@ -102,8 +102,9 @@ _site_packages_dirs += [p for p in _sys.path if "site-packages" in p]
 if "getsitepackages" in dir(_site):
   _site_packages_dirs += _site.getsitepackages()
 
-if "sysconfig" in dir(_distutils):
-  _site_packages_dirs += [_distutils.sysconfig.get_python_lib()]
+for _scheme in _sysconfig.get_scheme_names():
+  for _name in ["purelib", "platlib"]:
+    _site_packages_dirs += [_sysconfig.get_path(_name, _scheme)]
 
 _site_packages_dirs = list(set(_site_packages_dirs))
 

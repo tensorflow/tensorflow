@@ -41,8 +41,6 @@ class MlirScatterFusion : public MlirFusionEmitterBase {
 
   LaunchDimensions launch_dimensions() const override;
 
-  static bool IsSupported(const HloFusionAnalysis& analysis);
-
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* ctx) const override;
 

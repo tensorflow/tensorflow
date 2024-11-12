@@ -32,9 +32,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/expanders/stable_sort_expander.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/runtime/cub_sort_thunk.h"
-#include "xla/service/stable_sort_expander.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -179,60 +179,44 @@ std::optional<SortComputationAnalysis> AnalyzeSortOp(
   return result;
 }
 
-// Create runner for CUB sort operation.
-absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateRunner(
-    HloSortInstruction* sort_op, const SortComputationAnalysis& sort_config) {
-  int value_index = 1 - sort_config.key_operand;
-  return CubSortRunnerInterface::Create(
-      sort_op->operand(sort_config.key_operand)->shape().element_type(),
-      sort_op->operand_count() == 2
-          ? std::optional(sort_op->operand(value_index)->shape().element_type())
-          : std::nullopt);
+// Whether a specific sort output is used. If `sort_op` is a root, we assume all
+// of the sort outputs are used.
+bool SortOutputIsUsed(const HloSortInstruction* sort_op, int output_index) {
+  if (sort_op->IsRoot()) {
+    return true;
+  }
+  for (const HloInstruction* user : sort_op->users()) {
+    if (user->opcode() != HloOpcode::kGetTupleElement ||
+        user->tuple_index() == output_index) {
+      return true;
+    }
+  }
+  return false;
 }
 
-// Verify that the sort tensor shape is supported by CUB.
-bool IsCubCompatibleSort(HloSortInstruction* sort_op) {
-  VLOG(1) << "Sort instruction: " << sort_op->name();
-  if (sort_op->operand_count() != 1 && sort_op->operand_count() != 2) {
-    VLOG(2) << "Unsupported operand count: " << sort_op->operand_count();
-    return false;
-  }
-
-  const Shape& operand_shape = sort_op->operand(0)->shape();
-  if (sort_op->sort_dimension() != operand_shape.rank() - 1) {
-    VLOG(2) << "Sort dimension should be the minor one";
-    return false;
-  }
-  if (Product(operand_shape.dimensions()) < SortRewriter::SortSizeThreshold()) {
-    VLOG(2) << "Tensor shape size is too small to see an improvement";
-    return false;
-  }
-
-  auto sort_config = AnalyzeSortOp(*sort_op);
-  if (!sort_config.has_value()) {
-    VLOG(2) << "Only simple compare computations are supported";
-    return false;
-  }
-  if (!CreateRunner(sort_op, *sort_config).ok()) {
-    VLOG(2) << "Unsupported operand types (no compiled CUB kernels)";
-    return false;
-  }
-  VLOG(2) << "Sort operation is compatible";
-  return true;
+// Create runner for CUB sort operation.
+absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateRunner(
+    const HloSortInstruction* sort_op,
+    const SortComputationAnalysis& sort_analysis) {
+  int value_index = 1 - sort_analysis.key_operand;
+  return CubSortRunnerInterface::Create(
+      sort_op->operand(sort_analysis.key_operand)->shape().element_type(),
+      sort_op->operand_count() == 2 && SortOutputIsUsed(sort_op, value_index)
+          ? std::optional(sort_op->operand(value_index)->shape().element_type())
+          : std::nullopt);
 }
 
 // Restore the result shape after sorting a pair of tensors.
 // The trailing argument is the scratch buffer which should be discarded.
 HloInstruction* UnpackResultPair(HloSortInstruction* sort_op,
                                  HloInstruction* custom_call, bool swap) {
-  HloComputation* parent = sort_op->parent();
   HloInstruction* gte0 =
-      parent->AddInstruction(HloInstruction::CreateGetTupleElement(
+      sort_op->AddInstruction(HloInstruction::CreateGetTupleElement(
           sort_op->operand(0)->shape(), custom_call, swap ? 1 : 0));
   HloInstruction* gte1 =
-      parent->AddInstruction(HloInstruction::CreateGetTupleElement(
+      sort_op->AddInstruction(HloInstruction::CreateGetTupleElement(
           sort_op->operand(1)->shape(), custom_call, swap ? 0 : 1));
-  return parent->AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
+  return sort_op->AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
 }
 
 }  // namespace
@@ -241,14 +225,14 @@ HloInstruction* UnpackResultPair(HloSortInstruction* sort_op,
 absl::StatusOr<bool> SortRewriter::RunOnInstruction(
     HloSortInstruction* sort_op) {
   // Get the sort tensor index and direction.
-  SortComputationAnalysis sort_config = AnalyzeSortOp(*sort_op).value();
+  SortComputationAnalysis sort_analysis = AnalyzeSortOp(*sort_op).value();
 
   // Get scratch size requirements from CUB.
   const Shape& operand_shape = sort_op->operand(0)->shape();
   int64_t batch_size = Product(operand_shape.dimensions()) /
                        operand_shape.dimensions(sort_op->sort_dimension());
 
-  TF_ASSIGN_OR_RETURN(auto runner, CreateRunner(sort_op, sort_config));
+  TF_ASSIGN_OR_RETURN(auto runner, CreateRunner(sort_op, sort_analysis));
   TF_ASSIGN_OR_RETURN(
       int64_t scratch_size,
       runner->GetScratchSize(Product(operand_shape.dimensions()), batch_size));
@@ -260,13 +244,11 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   }
 
   // Values are only present if sorting a pair of tensors.
-  HloInstruction* keys = sort_op->mutable_operand(0);
+  HloInstruction* keys = sort_op->mutable_operand(sort_analysis.key_operand);
   HloInstruction* values = nullptr;
-  if (sort_op->operand_count() == 2) {
-    values = sort_op->mutable_operand(1);
-    if (sort_config.key_operand == 1) {
-      std::swap(keys, values);
-    }
+  int value_index = 1 - sort_analysis.key_operand;
+  if (sort_op->operand_count() == 2 && SortOutputIsUsed(sort_op, value_index)) {
+    values = sort_op->mutable_operand(value_index);
   }
 
   // Build the resulting shape for the custom call.
@@ -281,27 +263,37 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
 
   // Build the custom call instruction.
   HloInstruction* custom_call =
-      sort_op->parent()->AddInstruction(HloInstruction::CreateCustomCall(
+      sort_op->AddInstruction(HloInstruction::CreateCustomCall(
           call_shape, absl::MakeSpan(operands), kCubDeviceRadixSortTarget));
 
   xla::SortOptions backend_config;
-  backend_config.set_descending(sort_config.descending);
+  backend_config.set_descending(sort_analysis.descending);
   TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
 
   // Build the replacement instruction.
   HloInstruction* replacement;
-  if (sort_op->operand_count() == 1) {
-    replacement =
-        sort_op->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
-            sort_op->shape(), custom_call, 0));
+  if (sort_op->operand_count() == 1 || values == nullptr) {
+    replacement = sort_op->AddInstruction(
+        HloInstruction::CreateGetTupleElement(keys->shape(), custom_call, 0));
   } else {
     replacement = UnpackResultPair(sort_op, custom_call,
-                                   /*swap=*/sort_config.key_operand == 1);
+                                   /*swap=*/sort_analysis.key_operand == 1);
   }
 
-  // Replace sort operation with custom call followed by GTE.
-  TF_RETURN_IF_ERROR(
-      sort_op->parent()->ReplaceInstruction(sort_op, replacement));
+  if (sort_op->operand_count() == 2 && values == nullptr) {
+    // We have already verified in SortOutputIsUsed() that there is no user of
+    // the output corresponding to the `values` operand.
+    for (HloInstruction* user : sort_op->users()) {
+      CHECK_EQ(user->opcode(), HloOpcode::kGetTupleElement);
+      CHECK_EQ(user->tuple_index(), sort_analysis.key_operand);
+      TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(replacement));
+      TF_RETURN_IF_ERROR(
+          user->parent()->RemoveInstructionAndUnusedOperands(user));
+    }
+  } else {
+    TF_RETURN_IF_ERROR(
+        sort_op->parent()->ReplaceInstruction(sort_op, replacement));
+  }
   return true;
 }
 
@@ -336,6 +328,36 @@ absl::StatusOr<bool> SortRewriter::Run(
   }
   XLA_VLOG_LINES(2, "SortRewriter::Run(), after:\n" + module->ToString());
   return changed;
+}
+
+bool IsCubCompatibleSort(const HloSortInstruction* sort_op) {
+  VLOG(1) << "Sort instruction: " << sort_op->name();
+  if (sort_op->operand_count() != 1 && sort_op->operand_count() != 2) {
+    VLOG(2) << "Unsupported operand count: " << sort_op->operand_count();
+    return false;
+  }
+
+  const Shape& operand_shape = sort_op->operand(0)->shape();
+  if (sort_op->sort_dimension() != operand_shape.rank() - 1) {
+    VLOG(2) << "Sort dimension should be the minor one";
+    return false;
+  }
+  if (Product(operand_shape.dimensions()) < SortRewriter::SortSizeThreshold()) {
+    VLOG(2) << "Tensor shape size is too small to see an improvement";
+    return false;
+  }
+
+  auto sort_analysis = AnalyzeSortOp(*sort_op);
+  if (!sort_analysis.has_value()) {
+    VLOG(2) << "Only simple compare computations are supported";
+    return false;
+  }
+  if (!CreateRunner(sort_op, *sort_analysis).ok()) {
+    VLOG(2) << "Unsupported operand types (no compiled CUB kernels)";
+    return false;
+  }
+  VLOG(2) << "Sort operation is compatible";
+  return true;
 }
 
 }  // namespace gpu

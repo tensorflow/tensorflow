@@ -15,12 +15,19 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cfenv>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <list>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #define EIGEN_USE_THREADS
 
 #include <optional>

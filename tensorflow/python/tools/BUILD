@@ -3,6 +3,7 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "tf_cc_test")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
 package(
@@ -97,7 +98,9 @@ py_strict_binary(
     srcs = ["freeze_graph.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    deps = [":freeze_graph_lib"],
+    deps = [":freeze_graph_lib"] + if_pywrap(
+        if_true = ["//tensorflow/python:_pywrap_tensorflow"],
+    ),
 )
 
 py_strict_binary(
@@ -356,7 +359,9 @@ py_strict_binary(
     srcs = ["saved_model_cli.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    deps = [":saved_model_cli_lib"],
+    deps = [":saved_model_cli_lib"] + if_pywrap(
+        if_true = ["//tensorflow/python:_pywrap_tensorflow"],
+    ),
 )
 
 py_strict_library(
@@ -471,7 +476,7 @@ py_strict_binary(
         "//tensorflow/python/trackable:autotrackable",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
-    ],
+    ] + if_pywrap(["//tensorflow/python:_pywrap_tensorflow"]),
 )
 
 # copybara:comment_begin(oss-only)
@@ -497,6 +502,7 @@ genrule(
     name = "create_models_for_aot_compile",
     outs = EMITTED_AOT_SAVE_MODEL_OBJECTS,
     cmd = (
+        "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
         "$(location :make_aot_compile_models) --out_dir $(@D)"
     ),
     tags = ["no_rocm"],

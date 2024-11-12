@@ -155,7 +155,7 @@ cc_library(
     srcs = ["hexagon_plugin.cc"],
     deps = [
         ":configuration_fbs",
-        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/memory",
     ] + select({
         "@platforms//cpu:aarch64": [
@@ -208,7 +208,7 @@ cc_library(
     deps = [
         ":configuration_fbs",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
+        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/memory",
     ] + select({
         "//tensorflow:macos": [

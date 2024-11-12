@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/xla.pb.h"
@@ -126,6 +128,7 @@ class GemmFusionAutotunerImpl {
   struct ExecutableCandidate {
     BackendConfig config;
     std::unique_ptr<Executable> executable;
+    std::optional<AutotuneResult> result;
   };
 
   // Generate all possible configs for a dot operation.
@@ -156,6 +159,30 @@ class GemmFusionAutotunerImpl {
   static std::string ToString(const BackendConfig& config);
 
  private:
+  // Measures the performance of a single executable candidate.
+  //
+  // If required and the candidate is cuBLAS, this will save the output to the
+  // reference buffer.
+  //
+  // If the candidate is not cuBLAS, this will check the redzones and compare
+  // the outputs with the reference buffer.
+  absl::StatusOr<std::optional<AutotuneResult>> MeasurePerformance(
+      AutotunerCompileUtil& compile_util, const HloFusionInstruction& fusion,
+      const ExecutableCandidate& candidate,
+      std::optional<ScopedShapedBuffer>& reference_buffer);
+
+  // Checks that the redzone buffers are correct, updates `res` otherwise.
+  // Returns true if the redzones are correct, false otherwise.
+  absl::StatusOr<bool> CheckRedZones(const RedzoneBuffers& rz_buffers,
+                                     AutotuneResult& res);
+
+  // Compares the outputs of the fusion with the reference buffer.
+  // Updates `res` if the outputs do not match.
+  absl::Status CompareBuffers(const HloFusionInstruction& fusion,
+                              const ScopedShapedBuffer& reference_buffer,
+                              const ScopedShapedBuffer& buffer,
+                              AutotuneResult& res);
+
   se::CudaComputeCapability GetComputeCapability() const {
     return std::get<se::CudaComputeCapability>(
         config_.GetGpuComputeCapability());

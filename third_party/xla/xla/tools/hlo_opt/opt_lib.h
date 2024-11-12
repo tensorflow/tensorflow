@@ -24,14 +24,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/compiler.h"
-#include "xla/service/executable.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/types.h"
 
 namespace xla {
 
-// Platform-specific provider of `hlo-opt` functionality.
+// Platform-independent provider of `hlo-opt` functionality.
 class OptProvider {
  public:
   // Generates textual output for a given stage on a given platform, returns
@@ -53,22 +49,9 @@ class OptProvider {
       std::string platform);
 
  protected:
-  // Returns platform name associated with the provider.
-  virtual std::string GetPlatformName() = 0;
-
-  // Returns a stream executor for the provider (could be nullptr).
-  virtual absl::StatusOr<se::StreamExecutor *> GetExecutor();
-
-  // Generates executable from a given input module.
-  absl::StatusOr<std::unique_ptr<Executable>> GetExecutable(
-      std::unique_ptr<HloModule> input_module);
-
   // Generates optimized HLO.
-  absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedHlo(
+  virtual absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedHlo(
       std::unique_ptr<HloModule> input_module);
-
-  // Gets a compiler associated with the provider.
-  virtual absl::StatusOr<Compiler *> GetCompiler();
 };
 
 }  // namespace xla

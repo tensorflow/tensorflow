@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -46,25 +47,37 @@ std::string ToString(mlir::AffineExpr affine_expr,
 std::ostream& operator<<(std::ostream& out, mlir::AffineExpr affine_expr);
 
 // Prints AffineMap using the default (d0, d1, ..., s0, s1, ...) variable names.
+// Mixes range and runtime variables into a single symbol list.
 std::string ToString(mlir::AffineMap affine_map);
 
 // Prints AffineMap using the provided variable names.
 std::string ToString(mlir::AffineMap affine_map,
                      absl::Span<const std::string> dim_names,
-                     absl::Span<const std::string> symbol_names);
+                     absl::Span<const std::string> range_names,
+                     absl::Span<const std::string> rt_names);
 
 std::ostream& operator<<(std::ostream& out, mlir::AffineMap affine_map);
 
-// Prints IndexingMap using the default (d0, d1, ..., s0, s1, ...) variable
-// names.
+// Prints IndexingMap using the default (d0, d1, ..., s0, s1, ..., r0, r1, ...)
+// variable names.
 std::string ToString(const IndexingMap& indexing_map);
 
 // Prints IndexingMap using the provided variable names.
 std::string ToString(const IndexingMap& indexing_map,
                      absl::Span<const std::string> dim_names,
-                     absl::Span<const std::string> symbol_names);
+                     absl::Span<const std::string> range_names,
+                     absl::Span<const std::string> rt_names);
 
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
+
+// Dimension variable names.
+llvm::SmallVector<std::string> GetDimVarNames(const IndexingMap& map);
+// Range variables names.
+llvm::SmallVector<std::string> GetRangeVarNames(const IndexingMap& map);
+// Runtime variable names.
+llvm::SmallVector<std::string> GetRTVarNames(const IndexingMap& map);
+// Symbol variable names: concatenation of range and runtime variables.
+llvm::SmallVector<std::string> GetSymbolVarNames(const IndexingMap& map);
 
 }  // namespace gpu
 }  // namespace xla

@@ -28,9 +28,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/prng.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/prng.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/util.h"
@@ -138,7 +138,8 @@ int64_t GetMinStateSize(xla::RandomAlgorithm alg) {
   }
 }
 
-Status CheckStateShape(xla::RandomAlgorithm alg, const TensorShape& shape) {
+absl::Status CheckStateShape(xla::RandomAlgorithm alg,
+                             const TensorShape& shape) {
   if (shape.dims() != 1) {
     return errors::InvalidArgument(
         "RNG state must have one and only one dimension, not ", shape.dims());
@@ -203,7 +204,7 @@ xla::XlaOp CounterAndKeyToVariable(xla::RandomAlgorithm alg, xla::XlaOp state,
 
 // A helper function containing the common part of several kernels below.
 // Precondition: 'algorithm' and 'shape' are compile-time constants.
-Status CompileImpl(
+absl::Status CompileImpl(
     XlaOpKernelContext* ctx, int state_input_idx, int alg_input_idx,
     int shape_input_idx,
     std::function<SamplerReturnType(xla::RandomAlgorithm, xla::XlaOp,

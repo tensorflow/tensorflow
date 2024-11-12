@@ -57,25 +57,6 @@ void ExecutionInput::SetUnownedBuffer(const ShapeIndex& index,
   unowned_indices_.insert(index);
 }
 
-absl::StatusOr<ShapedBuffer> ExecutionInput::ToShapedBuffer(
-    se::DeviceMemoryAllocator* allocator, int device_ordinal) const {
-  const Shape& input_shape = shape();
-  ShapedBuffer shaped_buffer(input_shape, device_ordinal);
-  for (const auto& index_buffer : Buffers()) {
-    const tensorflow::se::OwningDeviceMemory* mem =
-        index_buffer.second.AsOwningDeviceMemory();
-    if (mem != nullptr && (mem->allocator() != allocator ||
-                           mem->device_ordinal() != device_ordinal)) {
-      return tsl::errors::InvalidArgument("Device buffer at index ",
-                                          index_buffer.first.ToString(),
-                                          " has mismatching allocator/device");
-    }
-    shaped_buffer.set_buffer(index_buffer.second.AsDeviceMemoryBase(),
-                             index_buffer.first);
-  }
-  return std::move(shaped_buffer);
-}
-
 absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,

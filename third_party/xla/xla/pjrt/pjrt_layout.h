@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout.h"
-#include "xla/service/hlo_parser.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/statusor.h"
 

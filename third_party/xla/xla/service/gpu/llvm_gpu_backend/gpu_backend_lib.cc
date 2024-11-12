@@ -32,9 +32,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
-#include "absl/base/const_init.h"
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -42,7 +39,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "llvm/ADT/Any.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
@@ -77,6 +73,8 @@ limitations under the License.
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "llvm/Transforms/Scalar.h"
+#include "xla/service/gpu/llvm_gpu_backend/load_ir_module.h"
+#include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
 #include "xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
@@ -86,7 +84,6 @@ limitations under the License.
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/cuda_libdevice_path.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -272,14 +269,31 @@ absl::Status LinkWithBitcodeVector(
   return absl::OkStatus();
 }
 
+// Links libdevice into the given module if the module needs libdevice.
+absl::Status LinkLibdeviceIfNecessary(llvm::Module* module,
+                                      const std::string& libdevice_path) {
+  if (!CouldNeedDeviceBitcode(*module)) {
+    return absl::OkStatus();
+  }
+
+  if (!tsl::Env::Default()->FileExists(libdevice_path).ok()) {
+    LOG(WARNING)
+        << "libdevice is required by this HLO module but was not found at "
+        << libdevice_path;
+    return xla::Internal("libdevice not found at %s", libdevice_path);
+  }
+
+  VLOG(1) << "Linking with libdevice from: " << libdevice_path;
+  return LinkWithBitcodeVector(module, {libdevice_path});
+}
+
 absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
                                      se::GpuComputeCapability gpu_version,
                                      const DebugOptions& debug_options,
                                      const std::string& device_bitcode_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
-  TF_RETURN_IF_ERROR(
-      nvptx::LinkLibdeviceIfNecessary(module, device_bitcode_path));
+  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, device_bitcode_path));
 
   // Set the flush-denormals-to-zero flag on the module so the NVVM reflect pass
   // can access it.
@@ -552,76 +566,6 @@ std::string GetSmName(se::CudaComputeCapability compute_capability) {
   std::string_view extension =
       (compute_capability.major == 9 && sm_version == 90) ? "a" : "";
   return absl::StrCat("sm_", sm_version, extension);
-}
-
-std::string CantFindCudaMessage(absl::string_view msg,
-                                absl::string_view xla_gpu_cuda_data_dir) {
-  return absl::StrCat(
-      msg, "\nSearched for CUDA in the following directories:\n  ",
-      absl::StrJoin(tsl::CandidateCudaRoots(std::string{xla_gpu_cuda_data_dir}),
-                    "\n  "),
-      "\nYou can choose the search directory by setting xla_gpu_cuda_data_dir "
-      "in HloModule's DebugOptions.  For most apps, setting the environment "
-      "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.");
-}
-
-static std::string GetLibdeviceDir(absl::string_view xla_gpu_cuda_data_dir) {
-  for (const std::string& cuda_root :
-       tsl::CandidateCudaRoots(std::string{xla_gpu_cuda_data_dir})) {
-    std::string libdevice_dir =
-        tsl::io::JoinPath(cuda_root, "nvvm", "libdevice");
-    VLOG(2) << "Looking for libdevice at " << libdevice_dir;
-    if (tsl::Env::Default()->IsDirectory(libdevice_dir).ok()) {
-      VLOG(2) << "Found libdevice dir " << libdevice_dir;
-      return libdevice_dir;
-    }
-  }
-  LOG(WARNING) << CantFindCudaMessage(
-      "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice. This may "
-      "result in compilation or runtime failures, if the program we try to run "
-      "uses routines from libdevice.",
-      xla_gpu_cuda_data_dir);
-
-  // GetCudaRootCandidates always includes ".", but if everything fails, we
-  // return it anyway.  Better than returning the empty string.
-  return ".";
-}
-
-std::string LibDevicePath(absl::string_view xla_gpu_cuda_data_dir) {
-  static absl::Mutex libdevice_cache_mu(absl::kConstInit);
-  static auto& libdevice_dir_path_cache ABSL_GUARDED_BY(libdevice_cache_mu) =
-      *new absl::flat_hash_map<std::string, std::string>();
-  std::string libdevice_dir_path = [&] {
-    absl::MutexLock l(&libdevice_cache_mu);
-    auto it = libdevice_dir_path_cache.find(xla_gpu_cuda_data_dir);
-    if (it != libdevice_dir_path_cache.end()) {
-      return it->second;
-    }
-    auto [it2, inserted] = libdevice_dir_path_cache.emplace(
-        xla_gpu_cuda_data_dir, GetLibdeviceDir(xla_gpu_cuda_data_dir));
-    return it2->second;
-  }();
-  // CUDA 9+ uses a single libdevice file for all devices, and we don't support
-  // older CUDAs.
-  return tsl::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
-}
-
-// Links libdevice into the given module if the module needs libdevice.
-absl::Status LinkLibdeviceIfNecessary(llvm::Module* module,
-                                      const std::string& libdevice_path) {
-  if (!CouldNeedDeviceBitcode(*module)) {
-    return absl::OkStatus();
-  }
-
-  if (!tsl::Env::Default()->FileExists(libdevice_path).ok()) {
-    LOG(WARNING)
-        << "libdevice is required by this HLO module but was not found at "
-        << libdevice_path;
-    return xla::Internal("libdevice not found at %s", libdevice_path);
-  }
-
-  VLOG(1) << "Linking with libdevice from: " << libdevice_path;
-  return LinkWithBitcodeVector(module, {libdevice_path});
 }
 
 absl::StatusOr<std::string> CompileToPtx(

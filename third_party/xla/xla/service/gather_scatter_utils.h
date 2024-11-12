@@ -53,6 +53,19 @@ absl::StatusOr<HloInstruction*> MoveDimensionToEnd(HloInstruction* operand,
                                                    size_t dimension,
                                                    size_t rank);
 
+// Expands an index vector from the start_indices tensor into a vector that can
+// be used to dynamic-slice out of the gather/scatter operand.
+absl::StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
+    const Shape& start_indices_shape, int64_t operand_rank,
+    int64_t index_vector_dim, absl::Span<const int64_t> start_index_map,
+    absl::Span<const int64_t> start_indices_batching_dims,
+    absl::Span<const int64_t> operand_batching_dims,
+    HloInstruction* index_vector, HloInstruction* induction_var);
+
+// Returns true if the given dimension is a collapsed or batching dimension.
+bool IsCollapsedOrBatchingDim(absl::Span<const int64_t> collapsed_dims,
+                              absl::Span<const int64_t> batching_dims,
+                              int64_t dim);
 }  // namespace xla
 
 #endif  // XLA_SERVICE_GATHER_SCATTER_UTILS_H_

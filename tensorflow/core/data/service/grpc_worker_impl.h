@@ -41,11 +41,12 @@ class GrpcWorkerImpl : public WorkerService::Service {
                           ::grpc::ServerBuilder& server_builder);
   ~GrpcWorkerImpl() override { Stop(); }
 
-  Status Start(const std::string& worker_address,
-               const std::vector<DataTransferServerInfo>& transfer_servers);
+  absl::Status Start(
+      const std::string& worker_address,
+      const std::vector<DataTransferServerInfo>& transfer_servers);
   void Stop();
 
-  std::function<Status(const GetElementRequest*, GetElementResult*)>
+  std::function<absl::Status(const GetElementRequest*, GetElementResult*)>
   get_element_getter() {
     return [this](const GetElementRequest* request, GetElementResult* result) {
       return impl_->GetElementResult(request, result);

@@ -35,9 +35,10 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/nvPTXCompiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
-#include "xla/stream_executor/cuda/ptx_compiler_support.h"
+#include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -147,9 +148,12 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
   RETURN_IF_NVPTXCOMPILER_ERROR(
       nvPTXCompilerGetInfoLogSize(compiler_handle, &info_log_size));
 
-  std::string info_log(info_log_size, '\0');
+  std::vector<char> info_log_buffer(info_log_size + 1);
   RETURN_IF_NVPTXCOMPILER_ERROR(
-      nvPTXCompilerGetInfoLog(compiler_handle, info_log.data()));
+      nvPTXCompilerGetInfoLog(compiler_handle, info_log_buffer.data()));
+  // The buffer may have several trailing null characters, so create a string
+  // from the pointer to the buffer rather than pair of iterators.
+  std::string info_log(info_log_buffer.data());
 
   // Print the verbose output of ptxas.
   if (!info_log.empty()) {

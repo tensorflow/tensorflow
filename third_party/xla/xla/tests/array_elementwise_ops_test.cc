@@ -36,9 +36,9 @@ limitations under the License.
 #include "xla/array4d.h"
 #include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
 #include "xla/comparison_util.h"
 #include "xla/fp_util.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
@@ -1423,7 +1423,8 @@ class TotalOrderTest : public ClientLibraryTestBase {
   }
 };
 
-using Types = ::testing::Types<tsl::float8_e4m3fnuz, tsl::float8_e4m3b11fnuz,
+using Types = ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3,
+                               tsl::float8_e4m3fnuz, tsl::float8_e4m3b11fnuz,
                                tsl::float8_e5m2, tsl::float8_e5m2fnuz,
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
                                Eigen::half,

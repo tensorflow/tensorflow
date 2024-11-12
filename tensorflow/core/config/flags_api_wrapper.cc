@@ -56,5 +56,6 @@ PYBIND11_MODULE(flags_pybind, m) {
   TF_PY_DECLARE_FLAG(enable_tf2min_ici_weight)
   TF_PY_DECLARE_FLAG(enable_function_pruning_before_inlining)
   TF_PY_DECLARE_FLAG(enable_skip_encapsulation_for_non_tpu_graphs)
+  TF_PY_DECLARE_FLAG(enable_graph_debug_info_caching_for_stack_frames)
   // LINT.ThenChange(//tensorflow/core/config/flag_defs.h)
 };

@@ -104,19 +104,19 @@ std::string SanitizeFunctionName(std::string function_name);
 // overloaded type.
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
-    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilderBase* b,
     absl::string_view name = "");
 
 // Emit float max. Emit maxnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b, bool enable_fast_min_max,
+                          llvm::IRBuilderBase* b, bool enable_fast_min_max,
                           absl::string_view name = "");
 
 // Emit float min. Emit minnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
-                          llvm::IRBuilder<>* b, bool enable_fast_min_max,
+                          llvm::IRBuilderBase* b, bool enable_fast_min_max,
                           absl::string_view name = "");
 
 // Convenience methods for emitting a GEP instruction that indexes into a buffer
@@ -124,9 +124,9 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
 // array must be explicitly passed in.  The int64_t index overload
 // wraps the index in a i64 llvm::Value.
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
-                                   llvm::Value* index, llvm::IRBuilder<>* b);
+                                   llvm::Value* index, llvm::IRBuilderBase* b);
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
-                                   int64_t index, llvm::IRBuilder<>* b);
+                                   int64_t index, llvm::IRBuilderBase* b);
 
 // Returns the LLVM type which represents the given XLA primitive type.
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
@@ -142,7 +142,7 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module);
 // Returns a value that represents a pointer to a global string constant that
 // encodes the shape as a serialized protobuf.
 absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
-    const Shape& shape, int32_t* shape_size, llvm::IRBuilder<>* b);
+    const Shape& shape, int32_t* shape_size, llvm::IRBuilderBase* b);
 
 // Converts a given literal to an IR Constant. Literals have known constant
 // values at IR emission time.
@@ -163,12 +163,12 @@ class SharedMemoryTile {
       : base_ptr_(base_ptr), element_type_(element_type) {}
 
   llvm::Value* Address(absl::Span<llvm::Value* const> index,
-                       llvm::IRBuilder<>* b) const;
+                       llvm::IRBuilderBase* b) const;
   llvm::Value* Load(absl::Span<llvm::Value* const> index,
-                    llvm::IRBuilder<>* b) const;
+                    llvm::IRBuilderBase* b) const;
   llvm::StoreInst* Store(llvm::Value* value,
                          absl::Span<llvm::Value* const> index,
-                         llvm::IRBuilder<>* b) const;
+                         llvm::IRBuilderBase* b) const;
   llvm::Type* GetElementType() const { return element_type_; }
 
  private:
@@ -190,7 +190,7 @@ SharedMemoryTile AllocateSharedMemoryTile(
 // through a loop.
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
                                             absl::string_view name,
-                                            llvm::IRBuilder<>* b,
+                                            llvm::IRBuilderBase* b,
                                             int alignment = 0);
 
 // As EmitAllocaAtFunctionEntry, but allocates element_count entries
@@ -198,7 +198,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
 llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
                                                      llvm::Value* element_count,
                                                      absl::string_view name,
-                                                     llvm::IRBuilder<>* b,
+                                                     llvm::IRBuilderBase* b,
                                                      int alignment = 0);
 
 // Creates a basic block with the same context and function as for the
@@ -206,7 +206,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
 // null.
 llvm::BasicBlock* CreateBasicBlock(llvm::BasicBlock* insert_before,
                                    absl::string_view name,
-                                   llvm::IRBuilder<>* b);
+                                   llvm::IRBuilderBase* b);
 
 // Struct with data on a conditional branch in a diamond shape created
 // via EmitIfThenElse.
@@ -238,13 +238,14 @@ struct LlvmIfData {
 // block with a terminator. If you need to use this for a
 // non-terminated block, just make the function able to do that too.
 LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
-                          llvm::IRBuilder<>* b, bool emit_else = true);
+                          llvm::IRBuilderBase* b, bool emit_else = true);
 
 // Emits a compare operation between "lhs" and "rhs" with the given predicate,
 // and then converts the result to i8 so that it is addressable.
 llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
                             llvm::Value* lhs, llvm::Value* rhs,
-                            llvm::IRBuilder<>* b, absl::string_view name = "");
+                            llvm::IRBuilderBase* b,
+                            absl::string_view name = "");
 
 // Emits a call that logs the given value with the given tag as a prefix.
 // The provided tag and value are passed to a runtime logging call that is
@@ -256,7 +257,7 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
 // Precondition: value must be an int64_t.
 // Precondition: tag must be a stable pointer for the lifetime of the generated
 // program (the constant pointer is burned in to the program).
-void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b);
+void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilderBase* b);
 
 // Adds alignment metadata to a load instruction using the given alignment.
 // The alignment refers to the result of the load, not the load itself.
@@ -273,13 +274,13 @@ llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
                                     llvm::Instruction* inst,
                                     llvm::Module* module);
 
-void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);
+void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder);
 
-void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);
+void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder);
 
 // Create a bitwise rotation of `rotand` by `rotor`.
 llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
-                       llvm::IRBuilder<>* builder);
+                       llvm::IRBuilderBase* builder);
 
 // Returns the number of bytes within the shape.
 int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
@@ -313,36 +314,36 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
 
 // Zero-extends two 32-bit values to 64 bits, multiplies them, and returns the
 // result as a pair of (low 32 bits, high 32 bits).
-std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilder<>* b,
+std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilderBase* b,
                                                     llvm::Value* src0,
                                                     llvm::Value* src1);
 // Splits the 64-bit integer value into its high and low 32 bits.
 std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
-    llvm::IRBuilder<>* b, llvm::Value* value_64bits);
+    llvm::IRBuilderBase* b, llvm::Value* value_64bits);
 
 // Checks whether a global variable is already created to represent the state
 // of a random number generator. If not, creates such a variable. Returns the
 // global variable.
 llvm::GlobalVariable* GetOrCreateVariableRngState(llvm::Module* module,
-                                                  llvm::IRBuilder<>* b);
+                                                  llvm::IRBuilderBase* b);
 
 // Adds a delta value to the global state variable and return the old value of
 // the variable.
 llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
-                                  llvm::IRBuilder<>* b);
+                                  llvm::IRBuilderBase* b);
 
 // Gets the LLVM address space that should be used for global variables (e.g.
 // XLA's rng state).
 unsigned GetGlobalMemoryAddressSpace();
 
 // Emits a block which does "return void". Leaves the insert point as is.
-llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilder<>* b);
+llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilderBase* b);
 
 // Emits `if (condition) return`. Assumes that the current function returns
 // void.
 //
 // Can either use a supplied `return_block`, or generate a new one.
-void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilder<>* b,
+void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
                      llvm::BasicBlock* return_block = nullptr);
 
 }  // namespace llvm_ir

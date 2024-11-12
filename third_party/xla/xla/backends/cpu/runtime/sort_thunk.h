@@ -41,6 +41,11 @@ class SortThunk final : public Thunk {
  public:
   using LessThan = absl::AnyInvocable<bool(const void** data)>;
 
+  enum class SortDirection {
+    kAscending,
+    kDescending,
+  };
+
   struct Input {
     BufferAllocation::Slice slice;
     Shape shape;
@@ -48,11 +53,13 @@ class SortThunk final : public Thunk {
 
   static absl::StatusOr<std::unique_ptr<SortThunk>> Create(
       Info info, absl::Span<const Input> inputs, int64_t dimension,
-      bool is_stable, LessThan less_than);
+      bool is_stable, LessThan less_than,
+      std::optional<SortDirection> direction);
 
   static absl::StatusOr<std::unique_ptr<SortThunk>> Create(
       Info info, absl::Span<const Input> inputs, int64_t dimension,
-      bool is_stable, std::string comparator_name);
+      bool is_stable, std::string comparator_name,
+      std::optional<SortDirection> direction);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
@@ -60,14 +67,17 @@ class SortThunk final : public Thunk {
 
  private:
   SortThunk(Info info, absl::Span<const Input> inputs, int64_t dimension,
-            bool is_stable, LessThan less_than);
+            bool is_stable, LessThan less_than,
+            std::optional<SortDirection> direction);
 
   SortThunk(Info info, absl::Span<const Input> inputs, int64_t dimension,
-            bool is_stable, std::string comparator_name);
+            bool is_stable, std::string comparator_name,
+            std::optional<SortDirection> direction);
 
   std::vector<Input> inputs_;
   int64_t dimension_;
   bool is_stable_;
+  std::optional<SortDirection> direction_;
 
   // Name of the comparator function, lazily resolved to a comparator function
   // pointer using Thunk::FunctionRegistry.

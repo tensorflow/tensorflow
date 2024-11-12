@@ -1,4 +1,3 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -17,7 +16,6 @@ cc_library(
     ],
     deps = [
         ":mlir_roundtrip_flags",
-        ":node_order",
         ":upgrade_graph",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:constants",
@@ -42,6 +40,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:mark_initialized_variables_lib",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:graph_to_tf_executor",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -66,20 +65,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:status",
         "@local_xla//xla:status_macros",
-    ],
-)
-
-tf_cc_test(
-    name = "tf_mlir_translate_registration_test",
-    size = "small",
-    srcs = ["tf_mlir_translate_registration_test.cc"],
-    deps = [
-        ":translate_registration",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:TranslateLib",
     ],
 )
 
@@ -206,7 +191,6 @@ cc_library(
         "@local_xla//xla/client:compile_only_client",
         "@local_xla//xla/service/cpu:cpu_compiler",
         "@local_xla//xla/service/cpu:cpu_transfer_manager",
-        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor/host:host_platform",
         "@local_xla//xla/stream_executor/host:host_platform_id",
     ],
@@ -250,46 +234,5 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_library(
-    name = "node_order",
-    srcs = ["node_order.cc"],
-    hdrs = ["node_order.h"],
-    deps = [
-        "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
-)
-
-tf_cc_test(
-    name = "node_order_test",
-    size = "small",
-    srcs = [
-        "node_order_test.cc",
-    ],
-    deps = [
-        ":node_order",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/core",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:direct_session_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:ops",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "@com_google_absl//absl/log:check",
-        "@com_google_googletest//:gtest",
     ],
 )

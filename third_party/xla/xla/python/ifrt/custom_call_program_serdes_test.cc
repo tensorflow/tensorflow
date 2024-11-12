@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -81,7 +82,8 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
                     /*sharding=*/sharding1},
       });
 
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(orig));
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                          Serialize(orig, /*options=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CustomCallProgram> deserialized_program,
       Deserialize<CustomCallProgram>(
@@ -125,7 +127,8 @@ INSTANTIATE_TEST_SUITE_P(NumDevices, CustomCallProgramSerDesTest,
 
 TEST(CustomCallCompileOptionsSerDesTest, RoundTrip) {
   CustomCallCompileOptions orig;
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(orig));
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                          Serialize(orig, /*options=*/nullptr));
   TF_EXPECT_OK(
       Deserialize<CustomCallCompileOptions>(serialized, /*options=*/nullptr)
           .status());
@@ -133,7 +136,8 @@ TEST(CustomCallCompileOptionsSerDesTest, RoundTrip) {
 
 TEST(CustomCallCompileOptionsSerDesTest, InvalidSerialized) {
   CustomCallCompileOptions orig;
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(orig));
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                          Serialize(orig, /*options=*/nullptr));
   serialized.set_data("abc");
   EXPECT_THAT(
       Deserialize<CustomCallCompileOptions>(serialized, /*options=*/nullptr),

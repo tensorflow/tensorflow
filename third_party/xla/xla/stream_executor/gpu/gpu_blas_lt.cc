@@ -46,12 +46,16 @@ absl::StatusOr<DataType> AsBlasDataType(PrimitiveType dtype) {
   switch (dtype) {
     case PrimitiveType::F8E5M2:
       return DataType::kF8E5M2;
+    case PrimitiveType::F8E4M3:
+      return DataType::kF8E4M3;
     case PrimitiveType::F8E4M3FN:
       return DataType::kF8E4M3FN;
     case PrimitiveType::F8E5M2FNUZ:
       return DataType::kF8E5M2FNUZ;
     case PrimitiveType::F8E4M3FNUZ:
       return DataType::kF8E4M3FNUZ;
+    case PrimitiveType::F8E3M4:
+      return DataType::kF8E3M4;
     case PrimitiveType::S8:
       return DataType::kInt8;
     case PrimitiveType::F16:
@@ -79,12 +83,16 @@ absl::StatusOr<PrimitiveType> AsXlaPrimitiveType(DataType dtype) {
   switch (dtype) {
     case DataType::kF8E5M2:
       return PrimitiveType::F8E5M2;
+    case DataType::kF8E4M3:
+      return PrimitiveType::F8E4M3;
     case DataType::kF8E4M3FN:
       return PrimitiveType::F8E4M3FN;
     case DataType::kF8E5M2FNUZ:
       return PrimitiveType::F8E5M2FNUZ;
     case DataType::kF8E4M3FNUZ:
       return PrimitiveType::F8E4M3FNUZ;
+    case DataType::kF8E3M4:
+      return PrimitiveType::F8E3M4;
     case DataType::kInt8:
       return PrimitiveType::S8;
     case DataType::kHalf:
@@ -141,9 +149,11 @@ absl::StatusOr<ComputationType> GetBlasComputationType(
   if (algorithm == xla::PrecisionConfig::ALG_UNSET) {
     switch (output_dtype) {
       case PrimitiveType::F8E5M2:      // fall-through
+      case PrimitiveType::F8E4M3:      // fall-through
       case PrimitiveType::F8E4M3FN:    // fall-through
       case PrimitiveType::F8E5M2FNUZ:  // fall-through
       case PrimitiveType::F8E4M3FNUZ:  // fall-through
+      case PrimitiveType::F8E3M4:      // fall-through
       case PrimitiveType::F16:         // fall-through
       case PrimitiveType::BF16:
         // Accumulate in f32 precision.

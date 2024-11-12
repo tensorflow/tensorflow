@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
 
 namespace tensorflow {
@@ -63,7 +64,14 @@ HloModuleWrapper::HloModuleWrapper(
 HloModuleWrapper::HloModuleWrapper(
     std::unique_ptr<xla::HloModule> module,
     std::function<int64_t(const xla::Shape&)> shape_func)
-    : module_(std::move(module)) {
+    : HloModuleWrapper(module.get(), shape_func) {
+  owned_module_ = std::move(module);
+}
+
+HloModuleWrapper::HloModuleWrapper(
+    const xla::HloModule* module,
+    std::function<int64_t(const xla::Shape&)> shape_func)
+    : module_(module) {
   if (module_ == nullptr) return;
 
   const xla::HloCostAnalysis* cost_analysis = nullptr;
@@ -88,6 +96,7 @@ HloModuleWrapper::HloModuleWrapper(
 
   for (const xla::HloComputation* computation : module_->computations()) {
     for (const xla::HloInstruction* instr : computation->instructions()) {
+      if (instructions_by_name_.contains(instr->name())) continue;
       instructions_by_name_.try_emplace(
           instr->name(), HloInstructionWrapper(instr, cost_analysis));
     }
@@ -120,6 +129,13 @@ void AddHloProto(HloModuleMap& hlo_module_map, uint64_t program_id,
   hlo_module_map.try_emplace(program_id,
                              HloModuleWrapper(std::move(hlo_module).value(),
                                               /*shape_func=*/nullptr));
+}
+
+void ProcessHloModuleMapFromXSpace(HloModuleMap& hlo_module_map,
+                                   const XSpace* space) {
+  for (auto& [program_id, hlo_proto] : ParseHloProtosFromXSpace(*space)) {
+    AddHloProto(hlo_module_map, program_id, *hlo_proto);
+  }
 }
 
 }  // namespace profiler

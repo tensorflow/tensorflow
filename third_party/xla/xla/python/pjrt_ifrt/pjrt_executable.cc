@@ -542,7 +542,11 @@ PjRtLoadedExecutable::Execute(
   const bool returned_future_supported =
       pjrt_loaded_executable_->IsReturnedFutureSupported();
 
-  auto opts = options;
+  xla::ExecuteOptions opts;
+  opts.untuple_result = true;
+  opts.launch_id = options.launch_id;
+  opts.use_major_to_minor_data_layout_for_callbacks = true;
+  opts.non_donatable_input_indices = options.non_donatable_input_indices;
 
   if (!all_loaded_host_callbacks_->empty() && !returned_future_supported) {
     return Internal(
@@ -565,9 +569,7 @@ PjRtLoadedExecutable::Execute(
         contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
             host_send_recv_callback->host_callback(),
             /*host_memory_for_device_manager=*/nullptr, send_callbacks,
-            recv_callbacks,
-            /*use_major_to_minor_data_layout_for_callbacks=*/
-            options.use_major_to_minor_data_layout_for_callbacks));
+            recv_callbacks, opts.use_major_to_minor_data_layout_for_callbacks));
       }
     }
     opts.send_callbacks = host_callback_states->send_callbacks;
@@ -576,7 +578,7 @@ PjRtLoadedExecutable::Execute(
 
   // Execute the computation.
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> pjrt_outputs;
-  ExecuteResult result;
+  xla::ifrt::Future<> status;
   if (portable_execution) {
     std::optional<PjRtFuture<>> returned_pjrt_future;
     TF_RET_CHECK(portable_execution_device->IsAddressable());
@@ -589,9 +591,9 @@ PjRtLoadedExecutable::Execute(
 
     pjrt_outputs.push_back(std::move(single_device_pjrt_results));
     if (returned_future_supported) {
-      result.status = *std::move(returned_pjrt_future);
+      status = *std::move(returned_pjrt_future);
     } else {
-      result.status = Future<>(absl::OkStatus());
+      status = Future<>(absl::OkStatus());
     }
   } else {
     std::optional<std::vector<PjRtFuture<>>> returned_pjrt_futures;
@@ -604,9 +606,9 @@ PjRtLoadedExecutable::Execute(
                                                        returned_pjrt_futures));
 
     if (returned_future_supported) {
-      result.status = JoinFutures(absl::MakeSpan(*returned_pjrt_futures));
+      status = JoinFutures(absl::MakeSpan(*returned_pjrt_futures));
     } else {
-      result.status = Future<>(absl::OkStatus());
+      status = Future<>(absl::OkStatus());
     }
   }
 
@@ -614,10 +616,11 @@ PjRtLoadedExecutable::Execute(
     // For host callbacks to work, returned futures must be supported so that we
     // can use the futures to extend the lifetime of the host callbacks until
     // the execution finishes.
-    result.status.OnReady(
-        [all_loaded_host_callbacks = all_loaded_host_callbacks_,
-         host_callback_states = std::move(host_callback_states)](
-            absl::Status) mutable { all_loaded_host_callbacks.reset(); });
+    status.OnReady([all_loaded_host_callbacks = all_loaded_host_callbacks_,
+                    host_callback_states =
+                        std::move(host_callback_states)](absl::Status) mutable {
+      all_loaded_host_callbacks.reset();
+    });
   }
 
   // Convert 2-level PjRtBuffer vectors into an Array vector.
@@ -682,6 +685,11 @@ PjRtLoadedExecutable::Execute(
     outputs.push_back(*PjRtArray::Create(client_, output_dtypes_[i],
                                          output_shapes_[i], std::move(sharding),
                                          std::move(buffers)));
+  }
+
+  ExecuteResult result;
+  if (options.fill_status) {
+    result.status = status;
   }
   result.outputs = std::move(outputs);
   return result;

@@ -82,19 +82,18 @@ cc_toolchain_config(
         "-fdata-sections",
     ],
     dbg_compile_flags = ["-g"],
-    cxx_flags = ["-std=c++14"],
+    cxx_flags = ["-std=c++17"],
     link_flags = [
         "-fuse-ld=gold",
         "-Wl,-no-as-needed",
         "-Wl,-z,relro,-z,now",
-        "-pass-exit-codes",
+    ],
+    link_libs = [
         "-lstdc++",
         "-lm",
     ],
-    link_libs = [],
     opt_link_flags = [],
     unfiltered_compile_flags = [
-        "-fno-canonical-system-headers",
         "-Wno-builtin-macro-redefined",
         "-D__DATE__=\"redacted\"",
         "-D__TIMESTAMP__=\"redacted\"",

@@ -513,9 +513,6 @@ class ShapeUtil {
   // that floating point numbers are signed.
   static bool ElementIsSigned(const Shape& shape);
 
-  // Returns whether the given primitive type corresponds to an array shape.
-  static bool IsArrayPrimitiveType(PrimitiveType primitive_type);
-
   // Returns whether the shape is a tuple with at least one element which is
   // also a tuple.
   static bool IsNestedTuple(const Shape& shape);

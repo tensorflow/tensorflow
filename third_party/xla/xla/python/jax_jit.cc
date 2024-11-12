@@ -215,7 +215,8 @@ std::string CallSignature::DebugString() const {
       "jax_enable_x64: %d\n"
       "jax_enable_memories: %d\n"
       "global_extra_jit_context: %s\n"
-      "thread_local_extra_jit_context: %s\n",
+      "thread_local_extra_jit_context: %s\n"
+      "configs: %s\n",
       arg_signature.DebugString(),
       absl::StrJoin(dynamic_arg_signatures, ", ", signature_formatter),
       absl::StrJoin(dynamic_arg_shardings, ", ", py_object_formatter),
@@ -223,7 +224,8 @@ std::string CallSignature::DebugString() const {
       device != nullptr ? device->DebugString() : "nullptr",
       OptionalDebugString(default_device), jax_enable_x64, jax_enable_memories,
       OptionalDebugString(global_extra_jit_context),
-      OptionalDebugString(thread_local_extra_jit_context));
+      OptionalDebugString(thread_local_extra_jit_context),
+      absl::StrJoin(configs, ", ", py_object_formatter));
 }
 
 bool CallSignature::operator==(const CallSignature& other) const {
@@ -260,7 +262,11 @@ bool CallSignature::operator==(const CallSignature& other) const {
        other.thread_local_extra_jit_context.has_value()) &&
       (!thread_local_extra_jit_context.has_value() ||
        thread_local_extra_jit_context->equal(
-           *other.thread_local_extra_jit_context));
+           *other.thread_local_extra_jit_context)) &&
+      configs.size() == other.configs.size() &&
+      absl::c_equal(
+          configs, other.configs,
+          [](const nb::object& a, const nb::object& b) { return a.equal(b); });
 }
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.

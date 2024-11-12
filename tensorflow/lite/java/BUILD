@@ -133,6 +133,7 @@ filegroup(
 TFLITE_HEADERS = [
     # TODO(b/175298345): Clean up and if possible remove c:common.h and core/c:common.h here.
     "//tensorflow/lite:builtin_ops.h",
+    "//tensorflow/lite/c:builtin_op_data.h",
     "//tensorflow/lite/c:c_api.h",
     "//tensorflow/lite/c:c_api_experimental.h",
     "//tensorflow/lite/c:c_api_opaque.h",
@@ -142,7 +143,9 @@ TFLITE_HEADERS = [
     "//tensorflow/lite/core/c:c_api.h",
     "//tensorflow/lite/core/c:c_api_opaque.h",
     "//tensorflow/lite/core/c:c_api_types.h",
+    "//tensorflow/compiler/mlir/lite/core/c:tflite_types.h",
     "//tensorflow/lite/core/c:builtin_op_data.h",
+    "//tensorflow/compiler/mlir/lite/core/c:builtin_op_data.h",
     "//tensorflow/lite/core/c:c_api_experimental.h",
     "//tensorflow/lite/core/c:common.h",
     "//tensorflow/lite/core/c:operator.h",
@@ -691,6 +694,7 @@ java_test_with_tflite(
 #         "src/testdata/add.bin",
 #         "src/testdata/add_unknown_dimensions.bin",
 #         "src/testdata/mul_add_signature_def.bin",
+#         "src/testdata/multi_signature_def.bin",
 #         "src/testdata/tile_with_bool_input.bin",
 #         "//tensorflow/lite:testdata/dynamic_shapes.bin",
 #         "//tensorflow/lite:testdata/multi_add.bin",
@@ -901,6 +905,7 @@ filegroup(
         "src/test/java/org/tensorflow/lite/DataTypeTest.java",
         "src/test/java/org/tensorflow/lite/InterpreterApiTest.java",
         "src/test/java/org/tensorflow/lite/NativeInterpreterWrapperTest.java",
+        "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
         "src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java",
         "src/test/java/org/tensorflow/lite/TensorTest.java",
         "src/test/java/org/tensorflow/lite/TestInit.java",

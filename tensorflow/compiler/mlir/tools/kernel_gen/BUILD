@@ -56,6 +56,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:ArithDialect",
@@ -197,7 +198,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@llvm-project//mlir:mlir_runner_utils",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream",
     ],
 )
 
@@ -211,6 +212,7 @@ cc_library(
         "//tensorflow/core/framework:resource_base",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ExecutionEngine",
         "@local_tsl//tsl/platform:thread_annotations",
@@ -242,7 +244,7 @@ cc_library(
         "@llvm-project//mlir:mlir_runner_utils",
         "@local_tsl//tsl/platform:hash",
         "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_xla//xla/stream_executor/cuda:stream_executor_cuda",

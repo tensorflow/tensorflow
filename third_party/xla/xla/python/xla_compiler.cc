@@ -45,17 +45,21 @@ limitations under the License.
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/array.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
 #include "xla/debug_options_flags.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -70,14 +74,10 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/name_uniquer.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
@@ -415,6 +415,32 @@ void DefRepeatedEnumProperty(nb::class_<T>& cls, const char* name,
           elems->Add(nb::cast<int>(e.attr("value")));
         }
       });
+}
+
+template <typename T>
+Array<T> NDArrayToArray(nb::ndarray<T, nb::c_contig> ndarray) {
+  std::vector<int64_t> shapes;
+  shapes.reserve(ndarray.ndim());
+  for (int i = 0; i < ndarray.ndim(); ++i) {
+    shapes.push_back(ndarray.shape(i));
+  }
+  xla::Array<int64_t> array(shapes);
+  array.Each([&](absl::Span<const int64_t> indices, int64_t* val) {
+    int64_t offset = indices.back();
+    int64_t multiplier = 1;
+    for (int i = ndarray.ndim() - 1; i > 0; --i) {
+      multiplier *= ndarray.shape(i);
+      offset += indices[i - 1] * multiplier;
+    }
+    *val = *(ndarray.data() + offset);
+  });
+  return array;
+}
+
+absl::StatusOr<HloSharding> SubgroupWithTileAssignmentHelper(
+    nb::ndarray<int64_t, nb::c_contig> tile_assignment,
+    absl::Span<const OpSharding::Type> subgroup_types) {
+  return HloSharding::Subgroup(NDArrayToArray(tile_assignment), subgroup_types);
 }
 
 }  // namespace
@@ -1067,6 +1093,11 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       },
       nb::arg("platform"));
 
+  nb::enum_<DebugOptions::AutotuneCacheMode>(m, "AutotuneCacheMode")
+      .value("UNSPECIFIED", DebugOptions::AUTOTUNE_CACHE_MODE_UNSPECIFIED)
+      .value("UPDATE", DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE)
+      .value("READ", DebugOptions::AUTOTUNE_CACHE_MODE_READ);
+
   nb::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
       .def_prop_rw("xla_backend_optimization_level",
@@ -1213,7 +1244,10 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                    &DebugOptions::xla_gpu_per_fusion_autotune_cache_dir,
                    [](DebugOptions* self, std::string value) {
                      self->set_xla_gpu_per_fusion_autotune_cache_dir(value);
-                   });
+                   })
+      .def_prop_rw("xla_gpu_experimental_autotune_cache_mode",
+                   &DebugOptions::xla_gpu_experimental_autotune_cache_mode,
+                   &DebugOptions::set_xla_gpu_experimental_autotune_cache_mode);
 
   nb::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(nb::init<>())
@@ -1253,6 +1287,12 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                        : std::nullopt;
           },
           &ExecutableBuildOptions::set_device_assignment)
+      .def_prop_rw("exec_time_optimization_effort",
+                   &ExecutableBuildOptions::exec_time_optimization_effort,
+                   &ExecutableBuildOptions::set_exec_time_optimization_effort)
+      .def_prop_rw("memory_fitting_effort",
+                   &ExecutableBuildOptions::memory_fitting_effort,
+                   &ExecutableBuildOptions::set_memory_fitting_effort)
       .def_prop_rw("use_spmd_partitioning",
                    &ExecutableBuildOptions::use_spmd_partitioning,
                    &ExecutableBuildOptions::set_use_spmd_partitioning)
@@ -1385,6 +1425,11 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def_static("manual", [] { return HloSharding::Manual(); })
       .def_static("replicate", [] { return HloSharding::Replicate(); })
       .def_static("unknown", [] { return HloSharding::Unknown(); })
+      .def_static(
+          "subgroup_with_device_ordering",
+          xla::ValueOrThrowWrapper(SubgroupWithTileAssignmentHelper),
+          nb::arg("tile_assignment"),
+          nb::arg("subgroup_types") = absl::Span<const xla::OpSharding::Type>())
       .def("__eq__", [](const xla::HloSharding& a,
                         const xla::HloSharding& b) { return a == b; })
       .def("__hash__",

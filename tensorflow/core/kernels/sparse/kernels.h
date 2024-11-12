@@ -36,8 +36,9 @@ namespace functor {
 //  nnz_per_batch.dimension(0) == B
 template <typename Device>
 struct CalculateNNZPerBatchMatrixFromIndices {
-  Status operator()(OpKernelContext* c, TTypes<int64_t>::ConstMatrix indices,
-                    TTypes<int32>::Vec nnz_per_batch);
+  absl::Status operator()(OpKernelContext* c,
+                          TTypes<int64_t>::ConstMatrix indices,
+                          TTypes<int32>::Vec nnz_per_batch);
 };
 
 // Split a subset of a SparseTensors' indices into two vectors:
@@ -82,12 +83,12 @@ struct SparseTensorToCOOSparseMatrix {
 //
 template <typename Device>
 struct COOSparseMatrixToSparseTensor {
-  Status operator()(OpKernelContext* c,
-                    TTypes<int64_t>::ConstVec host_dense_shape,
-                    TTypes<int32>::ConstVec host_batch_ptrs,
-                    TTypes<int32>::Vec coo_row_ind,
-                    TTypes<int32>::ConstVec coo_col_ind,
-                    TTypes<int64_t>::Matrix indices);
+  absl::Status operator()(OpKernelContext* c,
+                          TTypes<int64_t>::ConstVec host_dense_shape,
+                          TTypes<int32>::ConstVec host_batch_ptrs,
+                          TTypes<int32>::Vec coo_row_ind,
+                          TTypes<int32>::ConstVec coo_col_ind,
+                          TTypes<int64_t>::Matrix indices);
 };
 
 // Convert a vector of coo row indices to csr row pointers.
@@ -99,9 +100,9 @@ struct COOSparseMatrixToSparseTensor {
 //
 template <typename Device>
 struct COOSparseMatrixToCSRSparseMatrix {
-  Status operator()(OpKernelContext* c, const int rows, const int cols,
-                    TTypes<int32>::UnalignedVec coo_row_ind,
-                    TTypes<int32>::UnalignedVec csr_row_ptr);
+  absl::Status operator()(OpKernelContext* c, const int rows, const int cols,
+                          TTypes<int32>::UnalignedVec coo_row_ind,
+                          TTypes<int32>::UnalignedVec csr_row_ptr);
 };
 
 // Convert a matrix of (batched) coo row and column indices to CSR SparseMatrix
@@ -119,11 +120,11 @@ struct COOSparseMatrixToCSRSparseMatrix {
 //   Also csr_row_ptr should be initially filled with zeros.
 //
 struct SparseTensorToCSRSparseMatrixCPUFunctor {
-  Status operator()(int64_t batch_size, int num_rows, int num_cols,
-                    TTypes<int64_t>::ConstMatrix indices,
-                    TTypes<int32>::Vec batch_ptr,
-                    TTypes<int32>::Vec csr_row_ptr,
-                    TTypes<int32>::Vec csr_col_ind);
+  absl::Status operator()(int64_t batch_size, int num_rows, int num_cols,
+                          TTypes<int64_t>::ConstMatrix indices,
+                          TTypes<int32>::Vec batch_ptr,
+                          TTypes<int32>::Vec csr_row_ptr,
+                          TTypes<int32>::Vec csr_col_ind);
 };
 
 // Convert a vector of csr row pointers to coo row indices.
@@ -135,9 +136,9 @@ struct SparseTensorToCSRSparseMatrixCPUFunctor {
 //
 template <typename Device>
 struct CSRSparseMatrixToCOOSparseMatrix {
-  Status operator()(OpKernelContext* c,
-                    TTypes<int32>::UnalignedConstVec csr_row_ptr,
-                    TTypes<int32>::UnalignedVec coo_row_ind);
+  absl::Status operator()(OpKernelContext* c,
+                          TTypes<int32>::UnalignedConstVec csr_row_ptr,
+                          TTypes<int32>::UnalignedVec coo_row_ind);
 };
 
 // Calculates C = matmul(A, B) or C = matmul(A, B)^T, where A is in CSR format
@@ -145,9 +146,9 @@ struct CSRSparseMatrixToCOOSparseMatrix {
 template <typename Device, typename T>
 struct CSRSparseMatrixMatMul {
   explicit CSRSparseMatrixMatMul(const bool transpose_output);
-  Status Compute(OpKernelContext* ctx, const ConstCSRComponent<T>& a,
-                 typename TTypes<T>::ConstMatrix b,
-                 typename TTypes<T>::Matrix c);
+  absl::Status Compute(OpKernelContext* ctx, const ConstCSRComponent<T>& a,
+                       typename TTypes<T>::ConstMatrix b,
+                       typename TTypes<T>::Matrix c);
 };
 
 // Calculates y = A * x, y = A^T * x, or y = A^H * x, where A is in CSR format
@@ -155,8 +156,8 @@ struct CSRSparseMatrixMatMul {
 template <typename Device, typename T>
 class CSRSparseMatrixMatVec {
   CSRSparseMatrixMatVec(bool transpose_a, bool adjoint_a);
-  Status Compute(OpKernelContext* ctx, const ConstCSRComponent<T>& a,
-                 const T* x, T* y);
+  absl::Status Compute(OpKernelContext* ctx, const ConstCSRComponent<T>& a,
+                       const T* x, T* y);
 };
 
 // Calculates C = functor(A, B) where A and B are CSR and C is CSR
@@ -165,20 +166,20 @@ template <typename Device, typename T>
 struct CSRStructureModifyingFunctor {
   virtual ~CSRStructureModifyingFunctor() {}
 
-  virtual Status Initialize() = 0;
+  virtual absl::Status Initialize() = 0;
 
-  virtual Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
-                                  const ConstCSRComponent<T>& b,
-                                  size_t* bufferSize) = 0;
+  virtual absl::Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
+                                        const ConstCSRComponent<T>& b,
+                                        size_t* bufferSize) = 0;
 
-  virtual Status GetOutputStructure(const ConstCSRComponent<T>& a,
-                                    const ConstCSRComponent<T>& b,
-                                    TTypes<int32>::UnalignedVec c_row_ptr,
-                                    int* output_nnz, void* workspace) = 0;
+  virtual absl::Status GetOutputStructure(const ConstCSRComponent<T>& a,
+                                          const ConstCSRComponent<T>& b,
+                                          TTypes<int32>::UnalignedVec c_row_ptr,
+                                          int* output_nnz, void* workspace) = 0;
 
-  virtual Status Compute(const ConstCSRComponent<T>& a,
-                         const ConstCSRComponent<T>& b, CSRComponent<T>* c,
-                         void* workspace) = 0;
+  virtual absl::Status Compute(const ConstCSRComponent<T>& a,
+                               const ConstCSRComponent<T>& b,
+                               CSRComponent<T>* c, void* workspace) = 0;
 };
 
 // Calculates C = alpha * A + beta * B, where A and B are in CSR
@@ -200,31 +201,31 @@ struct CSRSparseSparseMatrixMatMul
 // Calculates Y = transpose(X) where X and Y are CSR format components.
 template <typename Device, typename T>
 struct CSRSparseMatrixTransposeComponent {
-  Status operator()(OpKernelContext* ctx, const ConstCSRComponent<T>& x,
-                    CSRComponent<T>* y);
+  absl::Status operator()(OpKernelContext* ctx, const ConstCSRComponent<T>& x,
+                          CSRComponent<T>* y);
 };
 
 // Calculates Y = transpose(X) where X and Y are in CSR format.
 template <typename Device, typename T>
 struct CSRSparseMatrixTranspose {
-  Status operator()(OpKernelContext* ctx, bool conjugate,
-                    const CSRSparseMatrix& input_matrix,
-                    CSRSparseMatrix* output_matrix);
+  absl::Status operator()(OpKernelContext* ctx, bool conjugate,
+                          const CSRSparseMatrix& input_matrix,
+                          CSRSparseMatrix* output_matrix);
 };
 
 // Calculates Y = softmax(X) where X and Y are in CSR format;
 // missing coefficients in X are treates as -inf (logits of 0 probability).
 template <typename Device, typename T>
 struct CSRSparseMatrixSoftmax {
-  Status operator()(OpKernelContext* ctx, const CSRSparseMatrix& logits,
-                    typename TTypes<T>::Vec softmax_values);
+  absl::Status operator()(OpKernelContext* ctx, const CSRSparseMatrix& logits,
+                          typename TTypes<T>::Vec softmax_values);
 };
 
 template <typename Device, typename T>
 struct CSRSparseMatrixSoftmaxGrad {
-  Status operator()(OpKernelContext* ctx, const CSRSparseMatrix& softmax,
-                    const CSRSparseMatrix& grad_softmax,
-                    typename TTypes<T>::Vec gradient_values);
+  absl::Status operator()(OpKernelContext* ctx, const CSRSparseMatrix& softmax,
+                          const CSRSparseMatrix& grad_softmax,
+                          typename TTypes<T>::Vec gradient_values);
 };
 
 template <typename Device, typename T>
@@ -232,8 +233,8 @@ class CSRSparseMatrixMulScalar {
  public:
   explicit CSRSparseMatrixMulScalar() {}
 
-  Status Compute(OpKernelContext* ctx, const CSRSparseMatrix& a,
-                 typename TTypes<T>::ConstScalar b, CSRSparseMatrix* c);
+  absl::Status Compute(OpKernelContext* ctx, const CSRSparseMatrix& a,
+                       typename TTypes<T>::ConstScalar b, CSRSparseMatrix* c);
 };
 
 template <typename Device, typename T>
@@ -241,8 +242,8 @@ class CSRSparseMatrixBatchMulVec {
  public:
   explicit CSRSparseMatrixBatchMulVec() {}
 
-  Status Compute(OpKernelContext* ctx, const CSRSparseMatrix& a,
-                 typename TTypes<T>::ConstFlat b, CSRSparseMatrix* c);
+  absl::Status Compute(OpKernelContext* ctx, const CSRSparseMatrix& a,
+                       typename TTypes<T>::ConstFlat b, CSRSparseMatrix* c);
 };
 
 }  // namespace functor

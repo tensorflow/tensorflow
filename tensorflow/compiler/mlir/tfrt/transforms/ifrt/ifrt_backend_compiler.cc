@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -87,6 +88,13 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
         func.setPublic();
       }
     });
+    // Remove the program id attribute from the submodule because they are not
+    // needed and will prevent us generating consistent cache key.
+    // program id is already in ifrt_call op's attribute and that part is not
+    // touched here.
+    submodule->get()->walk([](mlir::func::FuncOp func) {
+      func->removeAttr("tfrt_ifrt_serving.program_id");
+    });
 
     TF_ASSIGN_OR_RETURN(
         auto executable,
@@ -100,7 +108,8 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
             ifrt_model_context.GetDeviceMgr(),
             ifrt_model_context.GetShapeRepresentationFn(),
             ifrt_model_context.GetIfrtServingCoreSelector(),
-            ifrt_model_context.GetCompilationEnvironmentProto()));
+            ifrt_model_context.GetCompilationEnvironmentProto(),
+            ifrt_model_context.GetPersistentCompilationCache()));
 
     // Register the Ifrt program to `ServingExecutableRegistry` so that
     // the client TF program can invoke them via `IfrtCall` op.

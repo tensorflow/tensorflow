@@ -39,7 +39,7 @@ namespace odml {
 namespace {
 
 #define GEN_PASS_DEF_PREPAREHLOPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 class PrepareHloPass : public impl::PrepareHloPassBase<PrepareHloPass> {
  public:

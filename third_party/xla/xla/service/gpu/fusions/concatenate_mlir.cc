@@ -16,11 +16,11 @@ limitations under the License.
 #include "xla/service/gpu/fusions/concatenate_mlir.h"
 
 #include <cstdint>
-#include <iterator>
 #include <numeric>
 #include <optional>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {

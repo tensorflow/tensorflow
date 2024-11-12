@@ -15,6 +15,10 @@ package_group(
 tf_proto_library(
     name = "xplane_proto",
     srcs = ["xplane.proto"],
+    local_defines = [
+        "PROTOBUF_USE_DLLS",
+        "LIBPROTOBUF_EXPORTS",
+    ],
     make_default_target_header_only = True,
     visibility = internal_visibility([":friends"]),
 )
@@ -71,7 +75,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "trace_events_py_pb2",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":trace_events_proto"],
 # )
@@ -111,7 +114,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "xplane_py_pb2",
-#     api_version = 2,
 #     visibility = internal_visibility([":friends"]),
 #     deps = [":xplane_proto"],
 # )

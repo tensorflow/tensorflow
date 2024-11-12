@@ -119,7 +119,7 @@ class IrEmitterContext {
   // element, given symbol name and content.
   void emit_constant(int64_t num_elements, int64_t bytes_per_element,
                      absl::string_view symbol_name, int allocation_idx,
-                     DenseDataIntermediate content, llvm::IRBuilder<>* b);
+                     DenseDataIntermediate content, llvm::IRBuilderBase* b);
 
   const DebugOptions& debug_options() const {
     return hlo_module_->config().debug_options();

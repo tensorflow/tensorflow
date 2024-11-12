@@ -24,22 +24,27 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/algebraic_simplifier.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/hlo_constant_folding.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/while_loop_unroller.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -348,6 +353,45 @@ static int64_t GetAgActivationCacheIndex(const HloInstruction* while_loop) {
   return tuple_shape.tuple_shapes_size() - 1;
 }
 
+bool FindDusSliceForCachedActivation(HloInstruction* inst,
+                                     HloInstruction** dus_boundary_constant,
+                                     HloInstruction** slice_indices,
+                                     bool is_first_slice) {
+  // We are only interested in DUS in the loop body.
+  if (inst->opcode() != HloOpcode::kDynamicUpdateSlice) {
+    return false;
+  }
+  // Check that the first operand of DUS is a:
+  // 1. GTE of loop input param in case of the first slice of data
+  // 2. DUS in case of the second slice of data from unrolled loop.
+  HloInstruction* dus_destination = inst->mutable_operand(0);
+  if (is_first_slice &&
+      !Match(dus_destination, m::GetTupleElement(m::Parameter()))) {
+    return false;
+  }
+  if (!is_first_slice && !Match(dus_destination, m::DynamicUpdateSlice())) {
+    return false;
+  }
+  HloInstruction* dus_constant = nullptr;
+  HloInstruction* dus_slice_index = nullptr;
+  // Now we loop through all the index operands to find boundary and slice
+  // index.
+  for (int64_t i = 2; i < inst->operand_count(); i++) {
+    if (!Match(inst->mutable_operand(i), m::Constant(&dus_constant)) &&
+        !Match(
+            inst->mutable_operand(i),
+            m::Reshape(m::DynamicSlice(&dus_slice_index, m::Op(), m::Op())))) {
+      return false;
+    }
+  }
+  if (!dus_constant || !dus_slice_index) {
+    return false;
+  }
+  *dus_boundary_constant = dus_constant;
+  *slice_indices = dus_slice_index;
+  return true;
+}
+
 absl::Status ProcessWindowedEinsumLoopForActivationCaching(
     WindowedEinsumHandler::WindowedEinsumAgLoops& ag_loop) {
   HloInstruction* loop = ag_loop.loop;
@@ -386,16 +430,14 @@ absl::Status ProcessWindowedEinsumLoopForActivationCaching(
       break;
     }
   }
+
   for (HloInstruction* inst : while_body->MakeInstructionPostOrder()) {
     HloInstruction* slice_indices;
     // If we have a DUS(PARAM,DS) pattern, we need to update the output
     // buffer with the first slice.
-    if (Match(inst,
-              m::DynamicUpdateSlice(
-                  m::GetTupleElement(m::Parameter()), m::Op(),
-                  m::Constant(&dus_boundary_constant),
-                  m::Reshape(m::DynamicSlice(&slice_indices, m::Op(), m::Op())),
-                  m::Op()))) {
+    if (FindDusSliceForCachedActivation(inst, &dus_boundary_constant,
+                                        &slice_indices,
+                                        /*is_first_slice=*/true)) {
       slice_indices = while_body->AddInstruction(HloInstruction::CreateReshape(
           dus_boundary_constant->shape(), slice_indices));
       VLOG(5) << "Created slice op for first slice: "
@@ -410,11 +452,9 @@ absl::Status ProcessWindowedEinsumLoopForActivationCaching(
     // unrolled, we need to update the output buffer again with the
     // second slice. Since the second slice will have different indices,
     // we need to re-capture slice_indices.
-    if (Match(inst,
-              m::DynamicUpdateSlice(
-                  m::DynamicUpdateSlice(), m::Op(), m::Constant(),
-                  m::Reshape(m::DynamicSlice(&slice_indices, m::Op(), m::Op())),
-                  m::Op()))) {
+    if (FindDusSliceForCachedActivation(inst, &dus_boundary_constant,
+                                        &slice_indices,
+                                        /*is_first_slice=*/false)) {
       slice_indices = while_body->AddInstruction(HloInstruction::CreateReshape(
           dus_boundary_constant->shape(), slice_indices));
       VLOG(5) << "Created slice op for second slice: "
@@ -499,6 +539,136 @@ bool ShouldAddToChain(const HloInstruction* inst) {
       return false;
   }
 }
+
+HloComputation* MakeSumComputation(PrimitiveType type, HloModule* module) {
+  HloComputation::Builder sum_b("add");
+  auto x = sum_b.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, ShapeUtil::MakeShape(type, {}), "x"));
+  auto y = sum_b.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, ShapeUtil::MakeShape(type, {}), "y"));
+  sum_b.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(type, {}), HloOpcode::kAdd, x, y));
+  HloComputation* reduction = module->AddEmbeddedComputation(sum_b.Build());
+  return reduction;
+}
+
+// Transform partial accumulations into a reduction on a contiguous buffer.
+// Partial accumulations will impact the overlap between dots because the
+// dot+add pattern will be fused into a single gemm later in gemm rewriter
+// which adds data dependencies between gemms. Instead we write all
+// intermediate results into a larger buffer and perform a one-shot reduction.
+// The high-level transformation is:
+//
+// 'prev_res' is previously partially accumulated result.
+//
+// shape(x,y) prev_res   shape(x,y) dot0
+//          \            /
+//           \         /
+//     shape(x,y) add0    shape(x,y) dot1
+//             \                /
+//              \              /
+//             shape(x,y) add1
+//                     |
+//        shape(x,y) loop output
+//
+// transformed into:
+// shape(x,y) prev_res         shape(x,y) dot0    shape(x,y) dot1
+//    \                        /                   /
+//     \                      /                   /
+//     shape(n,x,y) concatenate on first axis, n is the number of partitions
+//                        |
+//             shape(n,x,y) loop output
+//                        |
+//             shape(x,y) reduction on first axis
+//
+// The final reduction is pulled outside of the loop to overlap with other
+// collectives.
+absl::Status MoveAccumulationOutsideLoop(
+    std::vector<HloInstruction*>& partial_accumulations,
+    HloComputation* while_body, HloInstruction* loop) {
+  // The input of the while loop will be modified and must have no other users.
+  if (!loop || loop->operand(0)->user_count() != 1) {
+    return absl::OkStatus();
+  }
+
+  std::vector<HloInstruction*> partials_to_concat;
+
+  // We reshape it to a N+1 dimensioned tensor with left-most dim being 1.
+  Shape shape = partial_accumulations[0]->shape();
+  shape = ShapeUtil::PrependMajorDimension(1, shape);
+
+  for (auto& inst : partial_accumulations) {
+    HloInstruction* reshaped_partial =
+        while_body->AddInstruction(HloInstruction::CreateReshape(shape, inst));
+    partials_to_concat.push_back(reshaped_partial);
+  }
+  Shape concat_shape = partial_accumulations[0]->shape();
+  concat_shape = ShapeUtil::PrependMajorDimension(partial_accumulations.size(),
+                                                  concat_shape);
+
+  HloInstruction* concat = while_body->AddInstruction(
+      HloInstruction::CreateConcatenate(concat_shape, partials_to_concat, 0));
+
+  HloComputation* comp = loop->parent();
+  HloInstruction* windowed_lhs = loop->mutable_operand(0)->mutable_operand(0);
+  // Add a broadcasted zero of the same type as windowed_lhs. This holds all
+  // the partial accumulations and will be fed to a global reduction after
+  // this windowed einsum loop. We move the reduction outside of the loop so
+  // it can be fused or overlap with other instructions in the main
+  // computation.
+  Literal zero_literal =
+      LiteralUtil::Zero(windowed_lhs->shape().element_type());
+  HloInstruction* zero = comp->AddInstruction(
+      HloInstruction::CreateConstant(std::move(zero_literal)));
+  Shape zero_bcast_shape = ShapeUtil::ChangeElementType(
+      concat_shape, windowed_lhs->shape().element_type());
+  HloInstruction* zero_bcast = MakeBroadcastHlo(zero, {}, zero_bcast_shape);
+  loop->mutable_operand(0)->AppendOperand(zero_bcast);
+  ShapeUtil::AppendShapeToTuple(zero_bcast->shape(),
+                                loop->mutable_operand(0)->mutable_shape());
+
+  // Update the parameter tuples of while's body and condition
+  // computations.
+  for (HloComputation* while_comp : {while_body, loop->while_condition()}) {
+    while_comp->ReplaceParameter(
+        0, HloInstruction::CreateParameter(
+               0, loop->mutable_operand(0)->shape(),
+               while_comp->parameter_instruction(0)->name()));
+  }
+  HloInstruction* root = while_body->root_instruction();
+  std::vector<HloInstruction*> original_operands(root->operands().begin(),
+                                                 root->operands().end());
+  original_operands.push_back(concat);
+  HloInstruction* new_output_tuple = while_body->AddInstruction(
+      HloInstruction::CreateTuple(original_operands));
+  TF_RETURN_IF_ERROR(
+      while_body->ReplaceInstructionWithDifferentShape(root, new_output_tuple));
+
+  // Update the shape of the while loop instruction.
+  *loop->mutable_shape() = loop->operand(0)->shape();
+
+  // The final reduction
+  HloInstruction* concat_result_gte =
+      comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+          loop, (loop->operand(0)->shape().tuple_shapes_size() - 1)));
+  HloInstruction* reduced_result =
+      comp->AddInstruction(HloInstruction::CreateReduce(
+          partial_accumulations[0]->shape(), concat_result_gte, zero, {0},
+          MakeSumComputation(shape.element_type(), loop->GetModule())));
+
+  // Replace the original output if present.
+  HloInstruction* original_output_gte;
+  auto it = absl::c_find_if(loop->users(), [&](HloInstruction* instr) {
+    // Index of the original output. It's fixed to be the third element in the
+    // tuple.
+    return instr->tuple_index() == 2;
+  });
+  if (it != loop->users().end()) {
+    original_output_gte = *it;
+    TF_RETURN_IF_ERROR(original_output_gte->ReplaceAllUsesWith(reduced_result));
+  }
+  return absl::OkStatus();
+}
 absl::Status PostProcessUnrolledLoop(HloInstruction* loop, int64_t stream_id) {
   HloComputation* while_body = loop->while_body();
   // This is to set force delay for the first collective permute so it can
@@ -509,6 +679,7 @@ absl::Status PostProcessUnrolledLoop(HloInstruction* loop, int64_t stream_id) {
           WindowedEinsumHandler::kWindowedEinsumRsLoopName) == 0
           ? 2
           : 0;
+  std::vector<HloInstruction*> partial_accumulations;
   for (HloInstruction* inst : while_body->MakeInstructionPostOrder()) {
     HloInstruction* matched_cp;
     if (Match(inst,
@@ -524,6 +695,20 @@ absl::Status PostProcessUnrolledLoop(HloInstruction* loop, int64_t stream_id) {
       TF_RETURN_IF_ERROR(UpdateDotAndConsumerConfig(inst, stream_id));
       ++stream_id;
     }
+    // If dot's result is accumulated, this means we found a loop with
+    // contracting dim sharded.
+    HloInstruction* partial_dot;
+    if (Match(inst, m::AddAnyOrder(m::Op(),
+                                   m::Dot(&partial_dot, m::Op(), m::Op())))) {
+      partial_accumulations.push_back(partial_dot);
+    }
+  }
+  if (partial_accumulations.size() > 0 &&
+      while_body->name().find(
+          WindowedEinsumHandler::kWindowedEinsumAgLoopName) !=
+          std::string::npos) {
+    TF_RETURN_IF_ERROR(
+        MoveAccumulationOutsideLoop(partial_accumulations, while_body, loop));
   }
   return absl::OkStatus();
 }

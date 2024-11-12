@@ -125,9 +125,10 @@ template <typename T>
 class LiteralUtilFloatTest : public LiteralUtilTest {};
 
 using FloatTypes =
-    ::testing::Types<float, half, bfloat16, tsl::float8_e4m3fn,
-                     tsl::float8_e4m3fnuz, tsl::float8_e4m3b11fnuz,
-                     tsl::float8_e5m2, tsl::float8_e5m2fnuz>;
+    ::testing::Types<float, half, bfloat16, tsl::float8_e3m4, tsl::float8_e4m3,
+                     tsl::float8_e4m3fn, tsl::float8_e4m3fnuz,
+                     tsl::float8_e4m3b11fnuz, tsl::float8_e5m2,
+                     tsl::float8_e5m2fnuz>;
 
 TYPED_TEST_SUITE(LiteralUtilFloatTest, FloatTypes);
 
@@ -184,8 +185,12 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   EXPECT_EQ("f8e5m2[] 3", f8e5m2_lit_truncated.ToString());
 
   auto f8e4m3_lit =
+      LiteralUtil::CreateR0<tsl::float8_e4m3>(tsl::float8_e4m3(0.5));
+  EXPECT_EQ("f8e4m3[] 0.5", f8e4m3_lit.ToString());
+
+  auto f8e4m3fn_lit =
       LiteralUtil::CreateR0<tsl::float8_e4m3fn>(tsl::float8_e4m3fn(0.5));
-  EXPECT_EQ("f8e4m3fn[] 0.5", f8e4m3_lit.ToString());
+  EXPECT_EQ("f8e4m3fn[] 0.5", f8e4m3fn_lit.ToString());
 
   auto f8e4m3b11fnuz_lit = LiteralUtil::CreateR0<tsl::float8_e4m3b11fnuz>(
       tsl::float8_e4m3b11fnuz(0.5));
@@ -198,6 +203,10 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto f8e5m2fnuz_lit =
       LiteralUtil::CreateR0<tsl::float8_e5m2fnuz>(tsl::float8_e5m2fnuz(0.5));
   EXPECT_EQ("f8e5m2fnuz[] 0.5", f8e5m2fnuz_lit.ToString());
+
+  auto f8e3m4_lit =
+      LiteralUtil::CreateR0<tsl::float8_e3m4>(tsl::float8_e3m4(0.5));
+  EXPECT_EQ("f8e3m4[] 0.5", f8e3m4_lit.ToString());
 }
 
 TEST_F(LiteralUtilTest, LiteralVectorToString) {
@@ -650,20 +659,24 @@ TEST_F(LiteralUtilTest, IsAll) {
   bfloat16 b90(9.00f);
   EXPECT_TRUE(LiteralUtil::CreateR2<bfloat16>({{b91}, {b90}}).IsAll(9.0));
 
-  tsl::float8_e5m2 q16(8);
-  EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e5m2>({q16}).IsAll(8));
+  tsl::float8_e5m2 p16(8);
+  EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e5m2>({p16}).IsAll(8));
   // 9 rounds to 8 in E5M2 but is not equal to 8, so this should be false
-  EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e5m2>({q16}).IsAll(9));
+  EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e5m2>({p16}).IsAll(9));
 
-  tsl::float8_e4m3fn r16(9);  // Exactly representable in e4m3
+  tsl::float8_e4m3 q16(9);  // Exactly representable in e4m3
+  EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e4m3>({q16}).IsAll(8));
+  EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e4m3>({q16}).IsAll(9));
+
+  tsl::float8_e4m3fn r16(9);  // Exactly representable in e4m3fn
   EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e4m3fn>({r16}).IsAll(8));
   EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e4m3fn>({r16}).IsAll(9));
 
-  tsl::float8_e4m3b11fnuz s16(9);  // Exactly representable in e4m3
+  tsl::float8_e4m3b11fnuz s16(9);  // Exactly representable in e4m3b11fnuz
   EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e4m3b11fnuz>({s16}).IsAll(8));
   EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e4m3b11fnuz>({s16}).IsAll(9));
 
-  tsl::float8_e4m3fnuz t16(9);  // Exactly representable in e4m3
+  tsl::float8_e4m3fnuz t16(9);  // Exactly representable in e4m3fnuz
   EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e4m3fnuz>({t16}).IsAll(8));
   EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e4m3fnuz>({t16}).IsAll(9));
 
@@ -671,6 +684,10 @@ TEST_F(LiteralUtilTest, IsAll) {
   EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e5m2fnuz>({u16}).IsAll(8));
   // 9 rounds to 8 in E5M2 but is not equal to 8, so this should be false
   EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e5m2fnuz>({u16}).IsAll(9));
+
+  tsl::float8_e3m4 v16(9);  // Exactly representable in e3m4
+  EXPECT_FALSE(LiteralUtil::CreateR1<tsl::float8_e3m4>({v16}).IsAll(8));
+  EXPECT_TRUE(LiteralUtil::CreateR1<tsl::float8_e3m4>({v16}).IsAll(9));
 
   complex64 c8_9 = {8, 9};
   EXPECT_FALSE(LiteralUtil::CreateR2<complex64>({{c8_9}, {c8_9}}).IsAll(8));
@@ -1794,7 +1811,7 @@ TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
 
 // Sets the layout of the given ShapeProto to the default.
 void SetDefaultLayoutOnProto(ShapeProto* shape_proto) {
-  CHECK(ShapeUtil::IsArrayPrimitiveType(shape_proto->element_type()));
+  CHECK(primitive_util::IsArrayType(shape_proto->element_type()));
   auto* minor_to_major =
       shape_proto->mutable_layout()->mutable_minor_to_major();
   minor_to_major->Resize(shape_proto->dimensions_size(), 0);
@@ -2200,9 +2217,12 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   using e5 = tsl::float8_e5m2;
   auto vector_f8e5m2 =
       LiteralUtil::CreateR1<e5>({e5{10.0}, e5{20.0}, e5{-32.0}});
-  using e4 = tsl::float8_e4m3fn;
+  using e4 = tsl::float8_e4m3;
   auto vector_f8e4m3 =
       LiteralUtil::CreateR1<e4>({e4{10.0}, e4{20.0}, e4{-32.0}});
+  using e4fn = tsl::float8_e4m3fn;
+  auto vector_f8e4m3fn =
+      LiteralUtil::CreateR1<e4fn>({e4fn{10.0}, e4fn{20.0}, e4fn{-32.0}});
   using b11 = tsl::float8_e4m3b11fnuz;
   auto vector_f8e4m3b11 =
       LiteralUtil::CreateR1<b11>({b11{10.0}, b11{20.0}, b11{-30.0}});
@@ -2212,6 +2232,8 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   using e4f = tsl::float8_e4m3fnuz;
   auto vector_f8e4m3fnuz =
       LiteralUtil::CreateR1<e4f>({e4f{10.0}, e4f{20.0}, e4f{-30.0}});
+  using e3 = tsl::float8_e3m4;
+  auto vector_f8e3m4 = LiteralUtil::CreateR1<e3>({e3{2.5}, e3{5.0}, e3{-8.0}});
   auto matrix_pred =
       LiteralUtil::CreateR2<bool>({{true, false, true}, {false, false, true}});
   auto vector_s4 = LiteralUtil::CreateR1<s4>({s4{-1}, s4{3}, s4{7}});
@@ -2234,9 +2256,11 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   EXPECT_EQ(vector_bfloat16, to_from_proto(vector_bfloat16));
   EXPECT_EQ(vector_f8e5m2, to_from_proto(vector_f8e5m2));
   EXPECT_EQ(vector_f8e4m3, to_from_proto(vector_f8e4m3));
+  EXPECT_EQ(vector_f8e4m3fn, to_from_proto(vector_f8e4m3fn));
   EXPECT_EQ(vector_f8e4m3b11, to_from_proto(vector_f8e4m3b11));
   EXPECT_EQ(vector_f8e5m2fnuz, to_from_proto(vector_f8e5m2fnuz));
   EXPECT_EQ(vector_f8e4m3fnuz, to_from_proto(vector_f8e4m3fnuz));
+  EXPECT_EQ(vector_f8e3m4, to_from_proto(vector_f8e3m4));
   EXPECT_EQ(matrix_pred, to_from_proto(matrix_pred));
   EXPECT_EQ(vector_s4, to_from_proto(vector_s4));
   EXPECT_EQ(vector_u4, to_from_proto(vector_u4));
@@ -2521,6 +2545,18 @@ TEST_F(LiteralUtilTest, IsEqualAt) {
       tsl::float8_e4m3fnuz{val_double});
   EXPECT_TRUE(c6.IsEqualAt({}, val_double));
   EXPECT_TRUE(c6.IsEqualAt({}, val_integral));
+  Literal c8 =
+      LiteralUtil::CreateR0<tsl::float8_e4m3>(tsl::float8_e4m3{val_double});
+  EXPECT_TRUE(c8.IsEqualAt({}, val_double));
+  EXPECT_TRUE(c8.IsEqualAt({}, val_integral));
+  Literal c9 =
+      LiteralUtil::CreateR0<tsl::float8_e4m3fn>(tsl::float8_e4m3fn{val_double});
+  EXPECT_TRUE(c9.IsEqualAt({}, val_double));
+  EXPECT_TRUE(c9.IsEqualAt({}, val_integral));
+  Literal c10 =
+      LiteralUtil::CreateR0<tsl::float8_e3m4>(tsl::float8_e3m4{val_double});
+  EXPECT_TRUE(c10.IsEqualAt({}, val_double));
+  EXPECT_TRUE(c10.IsEqualAt({}, val_integral));
 }
 
 TEST_F(LiteralUtilTest, CreateFromShapeWithUnknownLeafArrays) {
@@ -2846,10 +2882,10 @@ class LiteralSerializationTest : public ::testing::Test,
   static std::vector<Shape> GenerateSimpleParams() {
     std::vector<Shape> params;
     for (PrimitiveType element_type :
-         {PRED,       S4,         U4,   S8,     U8,       S16,
-          U16,        S32,        U32,  S64,    U64,      F16,
-          F32,        F64,        BF16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ,
-          F8E5M2FNUZ, F8E4M3FNUZ, C64,  C128}) {
+         {PRED,          S4,         U4,         S8,     U8,     S16,
+          U16,           S32,        U32,        S64,    U64,    F16,
+          F32,           F64,        BF16,       F8E5M2, F8E4M3, F8E4M3FN,
+          F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ, F8E3M4, C64,    C128}) {
       for (const DimensionVector& dimensions : {
                DimensionVector{},
                DimensionVector{0},

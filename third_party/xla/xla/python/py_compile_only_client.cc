@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -246,6 +247,16 @@ class CompileOnlyIfRtClient final
         "AssembleArrayFromSingleDeviceArrays not available with compile-only "
         "client.");
   }
+  absl::StatusOr<tsl::RCReference<ifrt::Array>>
+  AssembleArrayFromSingleDeviceArrays(
+      ifrt::Shape shape, std::shared_ptr<const ifrt::Sharding> sharding,
+      absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+      ifrt::ArrayCopySemantics array_copy_semantics,
+      ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override {
+    return Unimplemented(
+        "AssembleArrayFromSingleDeviceArrays not available with compile-only "
+        "client.");
+  }
 
   absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> CopyArrays(
       absl::Span<tsl::RCReference<ifrt::Array>> arrays,
@@ -295,6 +306,9 @@ class CompileOnlyIfRtClient final
     return {};
   }
   int process_index() const override { return 0; }
+  absl::Span<xla::ifrt::Device* const> GetAllDevices() const override {
+    return devices_;
+  }
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
     return Unimplemented(
@@ -368,6 +382,11 @@ class CompileOnlyPyClient : public PyClient {
     mlir::MLIRContext context;
     TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                         ParseMlirModuleString(mlir_module, context));
+    if (options.executable_build_options.use_shardy_partitioner()) {
+      // Since Shardy is located in the middle of the XLA pipeline, we need to
+      // export it before going to HLO while preserving Shardy ops and attrs.
+      TF_RETURN_IF_ERROR(ExportShardyForHloRoundTrip(*module));
+    }
     auto* ifrt_client =
         llvm::dyn_cast_or_null<CompileOnlyIfRtClient>(this->ifrt_client());
     CHECK(ifrt_client) << "CompileOnlyPyClient requires ifrt_client be a "

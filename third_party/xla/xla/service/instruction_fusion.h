@@ -33,10 +33,10 @@ limitations under the License.
 #if defined(PLATFORM_GOOGLE)
 #include "absl/types/source_location.h"
 #endif  // PLATFORM_GOOGLE
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/fusion_queue.h"
 

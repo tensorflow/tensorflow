@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -76,6 +77,11 @@ struct ReconfigBatchOpPassOptions {
   int64_t min_num_batch_threads = 1;
   int64_t min_max_enqueued_batches = 1;
   std::string batch_padding_policy = "";
+  int64_t num_batch_threads = 0;
+  int64_t max_batch_size = 0;
+  int64_t batch_timeout_micros = 0;
+  llvm::ArrayRef<int64_t> allowed_batch_sizes = {};
+  int64_t max_enqueued_batches = 0;
 };
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateReconfigBatchOpPass(
     ReconfigBatchOpPassOptions options);
@@ -141,13 +147,13 @@ void CreateTfToTfrtPipeline(mlir::OpPassManager& pm,
 
 // Creates a pipeline of passes that lowers MLIR TF dialect from tf.function to
 // TFRT dialect. SavedModel related conversions are not included.
-Status CreateTfExecutorToTfrtPipeline(mlir::PassManager& pm,
-                                      const TfrtPipelineOptions& options);
+absl::Status CreateTfExecutorToTfrtPipeline(mlir::PassManager& pm,
+                                            const TfrtPipelineOptions& options);
 
 // Creates a pipeline of passes that lowers MLIR TF Executor dialect to TF
 // dialect for CoreRT purposes.
-Status CreateTFExecutorToTFPipeline(mlir::PassManager& pm,
-                                    const TfrtPipelineOptions& options);
+absl::Status CreateTFExecutorToTFPipeline(mlir::PassManager& pm,
+                                          const TfrtPipelineOptions& options);
 
 // TODO(deqiangc): refactor below helpers once mlrt is OSSed.
 void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
@@ -155,7 +161,7 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
 void CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
     mlir::OpPassManager& pm, const TfrtPipelineOptions& options);
 
-Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
+absl::Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
     mlir::PassManager& pm, const TfrtPipelineOptions& options);
 
 }  // namespace tensorflow

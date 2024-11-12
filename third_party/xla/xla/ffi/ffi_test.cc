@@ -198,8 +198,10 @@ TEST(FfiTest, WrongNumAttrs) {
 
   auto status = Call(*handler, call_frame);
 
-  ASSERT_EQ(status.message(),
-            "Wrong number of attributes: expected 1 but got 2");
+  EXPECT_THAT(
+      status,
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Wrong number of attributes: expected 1 but got 2")));
 }
 
 TEST(FfiTest, BuiltinAttributes) {
@@ -528,6 +530,10 @@ TEST(FfiTest, AnyBufferArgument) {
   auto fn = [&](AnyBuffer buffer) {
     EXPECT_EQ(buffer.element_type(), PrimitiveType::F32);
     EXPECT_EQ(buffer.untyped_data(), storage.data());
+    EXPECT_EQ(buffer.typed_data<float>(),
+              reinterpret_cast<float*>(storage.data()));
+    EXPECT_EQ(buffer.reinterpret_data<int32_t>(),
+              reinterpret_cast<int32_t*>(storage.data()));
     AnyBuffer::Dimensions dimensions = buffer.dimensions();
     EXPECT_EQ(dimensions.size(), 2);
     EXPECT_EQ(dimensions[0], 2);
@@ -1069,6 +1075,21 @@ TEST(FfiTest, MetadataTraits) {
   EXPECT_EQ(metadata.traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
   EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
   EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
+}
+
+// Use opaque struct to define a platform stream type just like platform
+// stream for GPU backend (e.g. `CUstream_st`  and `cudaStream_t`).
+struct TestStreamSt;
+using TestStream = TestStreamSt*;
+
+template <>
+struct CtxBinding<TestStream> {
+  using Ctx = PlatformStream<TestStream>;
+};
+
+TEST(FfiTest, PlatformStream) {
+  // We only check that it compiles.
+  (void)Ffi::BindTo(+[](TestStream stream) { return absl::OkStatus(); });
 }
 
 //===----------------------------------------------------------------------===//

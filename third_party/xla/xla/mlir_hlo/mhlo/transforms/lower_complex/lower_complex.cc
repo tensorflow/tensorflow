@@ -17,11 +17,7 @@ limitations under the License.
 // value operations. This does not include removing complex values from function
 // argument or return types.
 
-#include <cstddef>
-#include <cstdint>
-#include <iterator>
 #include <memory>
-#include <numeric>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"

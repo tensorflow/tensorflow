@@ -58,7 +58,7 @@ bool HasSignatureDef(const Model* model, const std::string& signature_key);
 //
 // If the Metadata entry does not exist, `signature_def_map` is unchanged.
 // If the Metadata entry exists but cannot be parsed, returns an error.
-tensorflow::Status GetSignatureDefMap(
+absl::Status GetSignatureDefMap(
     const Model* model,
     std::map<std::string, tensorflow::SignatureDef>* signature_def_map);
 

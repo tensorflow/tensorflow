@@ -16,61 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_ASYNC_COLLECTIVE_CREATOR_H_
 #define XLA_SERVICE_ASYNC_COLLECTIVE_CREATOR_H_
 
-#include <functional>
-#include <utility>
-#include <vector>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/shape.h"
-#include "xla/util.h"
-
-namespace xla {
-
-// Transforms each all-reduce instruction to a pair of all-reduce-start and
-// all-reduce-done.
-class AsyncCollectiveCreator : public HloModulePass {
- public:
-  // Function to query the shape of the "context" for collectives that use
-  // HLO async-start/async-done.
-  using ContextShapeQuery =
-      std::function<std::vector<Shape>(const HloInstruction *)>;
-  struct CollectiveCreatorConfig {
-    HloPredicate convert_all_reduce = HloPredicateFalse;
-    HloPredicate convert_all_gather = HloPredicateFalse;
-    HloPredicate convert_collective_broadcast = HloPredicateFalse;
-    HloPredicate convert_collective_permute = HloPredicateFalse;
-    HloPredicate convert_all_to_all = HloPredicateFalse;
-    HloPredicate convert_reduce_scatter = HloPredicateFalse;
-    ContextShapeQuery get_context_shapes = [](const HloInstruction *) {
-      return std::vector<Shape>{};
-    };
-    int64_t all_reduce_min_threshold_in_bytes = 0;
-  };
-  explicit AsyncCollectiveCreator(CollectiveCreatorConfig creator_config)
-      : config_(std::move(creator_config)) {}
-  absl::string_view name() const override { return "async-collective-creator"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule *module,
-      const absl::flat_hash_set<absl::string_view> &execution_threads) override;
-
-  std::vector<HloInstruction *> MatchCollectives(HloComputation *computation);
-  absl::StatusOr<bool> ReplaceCollectives(
-      HloComputation *computation,
-      std::vector<HloInstruction *> &supported_collectives);
-  const CollectiveCreatorConfig *config() const { return &config_; }
-
- private:
-  CollectiveCreatorConfig config_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/collectives/async_collective_creator.h"
 
 #endif  // XLA_SERVICE_ASYNC_COLLECTIVE_CREATOR_H_

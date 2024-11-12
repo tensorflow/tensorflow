@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
@@ -30,8 +31,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
+#include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/support/module_parsing.h"
+#include "xla/status_macros.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -39,6 +43,7 @@ namespace ifrt {
 
 namespace {
 
+// Serialization/deserialization for `IfrtIRProgram`.
 class IfrtIRProgramSerDes
     : public llvm::RTTIExtends<IfrtIRProgramSerDes, SerDes> {
  public:
@@ -46,31 +51,67 @@ class IfrtIRProgramSerDes
     return "xla::ifrt::IfrtIRProgram";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable,
+      std::unique_ptr<SerializeOptions> options) override {
+    const auto* serialize_options =
+        llvm::cast_or_null<SerializeIfrtIRProgramOptions>(options.get());
     const auto& program = llvm::cast<IfrtIRProgram>(serializable);
     if (program.mlir_module == nullptr) {
       return absl::InvalidArgumentError("Unable to serialize null MLIR module");
     }
-    std::string serialized;
-    llvm::raw_string_ostream out(serialized);
-    mlir::BytecodeWriterConfig config;
+
+    IfrtIrProgramProto program_proto;
+    llvm::raw_string_ostream ifrt_ir_program_stream(
+        *program_proto.mutable_ifrt_program());
     mlir::BaseScopedDiagnosticHandler diagnostic_handler(
         program.mlir_module->getContext());
-    if (mlir::failed(
-            mlir::writeBytecodeToFile(program.mlir_module, out, config))) {
-      return absl::InvalidArgumentError(
-          absl::StrFormat("Failed to serialize IFRT IR module string: %s",
-                          diagnostic_handler.ConsumeStatus().message()));
+
+    if (serialize_options == nullptr) {
+      // Serialize to bytecode the whole program if no options are provided.
+      // This is a fast path for the case where the user does not care about
+      // stable serialization.
+      mlir::BytecodeWriterConfig writer_config;
+      if (mlir::failed(mlir::writeBytecodeToFile(
+              program.mlir_module, ifrt_ir_program_stream, writer_config))) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Failed to serialize IFRT IR module string: %s",
+                            diagnostic_handler.ConsumeStatus().message()));
+      }
+    } else {
+      auto fail_or_bytecode_version =
+          Version::fromString(serialize_options->ifrt_version)
+              ->getBytecodeVersion();
+      if (mlir::failed(fail_or_bytecode_version)) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Failed to get IFRT IR bytecode version for IR version %s",
+            serialize_options->ifrt_version));
+      }
+      mlir::BytecodeWriterConfig writer_config(
+          absl::StrCat("IFRT_v", serialize_options->ifrt_version));
+      writer_config.setDesiredBytecodeVersion(*fail_or_bytecode_version);
+      if (mlir::failed(mlir::writeBytecodeToFile(
+              program.mlir_module, ifrt_ir_program_stream, writer_config))) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Failed to serialize IFRT IR module string: %s",
+                            diagnostic_handler.ConsumeStatus().message()));
+      }
+      program_proto.set_ifrt_version(serialize_options->ifrt_version);
     }
-    return serialized;
+    return program_proto.SerializeAsString();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions>) override {
+    IfrtIrProgramProto program_proto;
+    if (!program_proto.ParseFromString(serialized)) {
+      return absl::InvalidArgumentError("Failed to parse IfrtIrProgramProto");
+    }
     auto context = std::make_unique<mlir::MLIRContext>();
-    TF_ASSIGN_OR_RETURN(auto module,
-                        support::ParseMlirModuleString(serialized, *context));
+    TF_ASSIGN_OR_RETURN(
+        auto module,
+        support::ParseMlirModuleString(program_proto.ifrt_program(), *context));
     return std::make_unique<IfrtIRProgram>(std::move(context),
                                            std::move(module));
   }
@@ -78,11 +119,45 @@ class IfrtIRProgramSerDes
   static char ID;  // NOLINT
 };
 
-char IfrtIRProgramSerDes::ID = 0;  // NOLINT
+// Serialization/deserialization for `IfrtIRCompileOptions`.
+class IfrtIRCompileOptionsSerDes
+    : public llvm::RTTIExtends<IfrtIRCompileOptionsSerDes, SerDes> {
+ public:
+  absl::string_view type_name() const override {
+    return "xla::ifrt::IfrtIRCompileOptions";
+  }
+
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+    const auto& options = llvm::cast<IfrtIRCompileOptions>(serializable);
+    TF_ASSIGN_OR_RETURN(IfrtIrCompileOptionsProto options_proto,
+                        options.ToProto());
+    return options_proto.SerializeAsString();
+  }
+
+  absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
+      const std::string& serialized,
+      std::unique_ptr<DeserializeOptions>) override {
+    IfrtIrCompileOptionsProto options_proto;
+    TF_RET_CHECK(options_proto.ParseFromString(serialized))
+        << "Failed to parse IfrtIrCompileOptionsProto";
+    return IfrtIRCompileOptions::FromProto(options_proto);
+  }
+
+  static char ID;  // NOLINT
+};
+
+[[maybe_unused]] char IfrtIRCompileOptionsSerDes::ID = 0;  // NOLINT
+[[maybe_unused]] char IfrtIRProgramSerDes::ID = 0;         // NOLINT
 
 // clang-format off
 bool register_ifrt_ir_program_serdes = ([]() {
   RegisterSerDes<IfrtIRProgram>(std::make_unique<IfrtIRProgramSerDes>());
+}(), true);
+
+bool register_ifrt_ir_compile_options_serdes = ([]() {
+  RegisterSerDes<IfrtIRCompileOptions>(
+      std::make_unique<IfrtIRCompileOptionsSerDes>());
 }(), true);
 // clang-format on
 

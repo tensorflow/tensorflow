@@ -65,7 +65,7 @@ class SummaryDbWriterTest : public ::testing::Test {
   int64_t QueryInt(const string& sql) {
     SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
-    Status s = stmt.Step(&is_done);
+    absl::Status s = stmt.Step(&is_done);
     if (!s.ok() || is_done) {
       LOG(ERROR) << s << " due to " << sql;
       return -1;
@@ -76,7 +76,7 @@ class SummaryDbWriterTest : public ::testing::Test {
   double QueryDouble(const string& sql) {
     SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
-    Status s = stmt.Step(&is_done);
+    absl::Status s = stmt.Step(&is_done);
     if (!s.ok() || is_done) {
       LOG(ERROR) << s << " due to " << sql;
       return -1;
@@ -87,7 +87,7 @@ class SummaryDbWriterTest : public ::testing::Test {
   string QueryString(const string& sql) {
     SqliteStatement stmt = db_->PrepareOrDie(sql);
     bool is_done;
-    Status s = stmt.Step(&is_done);
+    absl::Status s = stmt.Step(&is_done);
     if (!s.ok() || is_done) {
       LOG(ERROR) << s << " due to " << sql;
       return "MISSINGNO";

@@ -106,6 +106,25 @@ std::vector<int> ClampStartIndices(int input_dims, const int64_t* indices_data,
 }
 
 template <typename T>
+void update_slice(int current_dim, int max_dim, const int32_t* output_stride,
+                  const int32_t* update_stride, const int32_t* update_shape,
+                  const T* update, const int32_t* indices_data, T* output) {
+  if (current_dim == max_dim) return;
+  if (current_dim == max_dim - 1) {
+    output += indices_data[current_dim] * output_stride[current_dim];
+    memcpy(output, update, update_shape[max_dim - 1] * sizeof(T));
+  } else {
+    output += indices_data[current_dim] * output_stride[current_dim];
+    for (int i = 0; i < update_shape[current_dim]; ++i) {
+      update_slice(current_dim + 1, max_dim, output_stride, update_stride,
+                   update_shape, update, indices_data, output);
+      output += output_stride[current_dim];
+      update += update_stride[current_dim];
+    }
+  }
+}
+
+template <typename T>
 void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
                         const int64_t* indices_data, TfLiteTensor* output) {
   const auto& input_shape = GetTensorShape(input);
@@ -114,6 +133,12 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
   T* output_data = GetTensorData<T>(output);
 
   const int input_dims = input_shape.DimensionsCount();
+  // If the update is the entirety of the output, then simply copy it and
+  // return.
+  if (input_shape.FlatSize() == update_shape.FlatSize()) {
+    memcpy(output_data, update_data, input_shape.FlatSize() * sizeof(T));
+    return;
+  }
   // Computes the effective slice indices.
   // The clamped indices are gauranteed to >= 0 since update is less than or
   // equal to the operand size for each dimension.
@@ -130,18 +155,19 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
     return;
   }
 
-  std::vector<int> current_dim(input_dims, 0);
-  // Overwrites update to output.
-  do {
-    int flat_update_index =
-        TensorIndexToFlat(current_dim.data(), input_dims, update_shape);
-    int flat_input_index =
-        TensorIndexToFlat(current_dim.data(), input_dims, input_shape,
-                          clamped_start_indices.data());
-    output_data[flat_input_index] = update_data[flat_update_index];
-  } while (NextIndex(input_dims,
-                     reinterpret_cast<const int*>(update_shape.DimsData()),
-                     current_dim.data()));
+  std::vector<int> output_stride(input_dims);
+  std::vector<int> update_stride(input_dims);
+  output_stride[input_dims - 1] = 1;
+  update_stride[input_dims - 1] = 1;
+  const int32_t* input_shape_data = input_shape.DimsData();
+  const int32_t* update_shape_data = update_shape.DimsData();
+  for (int i = input_dims - 2; i >= 0; --i) {
+    output_stride[i] = output_stride[i + 1] * input_shape_data[i + 1];
+    update_stride[i] = update_stride[i + 1] * update_shape_data[i + 1];
+  }
+  update_slice(0, input_dims, output_stride.data(), update_stride.data(),
+               update_shape.DimsData(), update_data,
+               clamped_start_indices.data(), output_data);
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {

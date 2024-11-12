@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -87,36 +89,44 @@ static absl::Status VerifySortInputs(absl::Span<const SortThunk::Input> inputs,
 
 absl::StatusOr<std::unique_ptr<SortThunk>> SortThunk::Create(
     Info info, absl::Span<const Input> inputs, int64_t dimension,
-    bool is_stable, LessThan less_than) {
+    bool is_stable, LessThan less_than,
+    std::optional<SortDirection> direction) {
   TF_RETURN_IF_ERROR(VerifySortInputs(inputs, dimension));
   return absl::WrapUnique(new SortThunk(std::move(info), inputs, dimension,
-                                        is_stable, std::move(less_than)));
+                                        is_stable, std::move(less_than),
+                                        direction));
 }
 
 absl::StatusOr<std::unique_ptr<SortThunk>> SortThunk::Create(
     Info info, absl::Span<const Input> inputs, int64_t dimension,
-    bool is_stable, std::string comparator_name) {
+    bool is_stable, std::string comparator_name,
+    std::optional<SortDirection> direction) {
   TF_RETURN_IF_ERROR(VerifySortInputs(inputs, dimension));
   return absl::WrapUnique(new SortThunk(std::move(info), inputs, dimension,
-                                        is_stable, std::move(comparator_name)));
+                                        is_stable, std::move(comparator_name),
+                                        direction));
 }
 
 SortThunk::SortThunk(Info info, absl::Span<const Input> inputs,
-                     int64_t dimension, bool is_stable, LessThan less_than)
+                     int64_t dimension, bool is_stable, LessThan less_than,
+                     std::optional<SortDirection> direction)
     : Thunk(Kind::kSort, std::move(info)),
       inputs_(inputs.begin(), inputs.end()),
       dimension_(dimension),
       is_stable_(is_stable),
+      direction_(direction),
       less_than_(std::move(less_than)),
       less_than_ptr_(&*less_than_) {}
 
 SortThunk::SortThunk(Info info, absl::Span<const Input> inputs,
                      int64_t dimension, bool is_stable,
-                     std::string comparator_name)
+                     std::string comparator_name,
+                     std::optional<SortDirection> direction)
     : Thunk(Kind::kSort, std::move(info)),
       inputs_(inputs.begin(), inputs.end()),
       dimension_(dimension),
       is_stable_(is_stable),
+      direction_(direction),
       comparator_name_(std::move(comparator_name)),
       less_than_ptr_(nullptr) {}
 
@@ -482,6 +492,47 @@ static SortDims GetSortDims(const Shape& shape, int64_t dimension) {
                   num_iterations};
 }
 
+template <class Iterator, class NativeT>
+static void Sort1DArrInplace(int64_t sort_dims_size, int64_t offset,
+                             Iterator begin, bool is_stable,
+                             SortThunk::SortDirection direction) {
+  if (direction == SortThunk::SortDirection::kAscending) {
+    if (is_stable) {
+      std::stable_sort(begin, begin + sort_dims_size, std::less<NativeT>());
+    } else {
+      std::sort(begin, begin + sort_dims_size, std::less<NativeT>());
+    }
+  } else {
+    if (is_stable) {
+      std::stable_sort(begin, begin + sort_dims_size, std::greater<NativeT>());
+    } else {
+      std::sort(begin, begin + sort_dims_size, std::greater<NativeT>());
+    }
+  };
+}
+
+// The most efficient way to sort a single buffer is to use the builtin
+// comparator functions.
+template <PrimitiveType Type>
+static void Sort1DArrInplace(const SortDims& sort_dims, int64_t offset,
+                             absl::Span<se::DeviceMemoryBase> data,
+                             bool is_stable,
+                             SortThunk::SortDirection direction) {
+  using NativeT = typename primitive_util::PrimitiveTypeToNative<Type>::type;
+  DCHECK_EQ(data.size(), 1);
+  NativeT* begin = reinterpret_cast<NativeT*>(data[0].opaque()) + offset;
+
+  if (sort_dims.inner_dim_size == 1) {
+    Sort1DArrInplace<NativeT*, NativeT>(sort_dims.sort_dim_size, offset, begin,
+                                        is_stable, direction);
+  } else {
+    using Iterator = SortIterator<NativeT, NativeT&, NativeT*>;
+    Iterator begin_iter(begin, /*stride=*/sort_dims.inner_dim_size);
+    Sort1DArrInplace<Iterator, NativeT>(sort_dims.sort_dim_size, offset,
+                                        begin_iter, is_stable, direction);
+  }
+}
+
 // Sorts `n` buffers in place.
 template <size_t n>
 static void SortInplace(const SortDims& sort_dims, int64_t offset,
@@ -548,10 +599,10 @@ static void DSortInplace(const SortDims& sort_dims, int64_t offset,
 }
 
 // Sorts `data` of the given `shape` along the `dimension` inplace.
-static absl::Status SortInplace(absl::Span<se::DeviceMemoryBase> data,
-                                absl::Span<const Shape> shapes,
-                                int64_t dimension, bool is_stable,
-                                SortThunk::LessThan* less_than) {
+static absl::Status SortInplace(
+    absl::Span<se::DeviceMemoryBase> data, absl::Span<const Shape> shapes,
+    int64_t dimension, bool is_stable, SortThunk::LessThan* less_than,
+    std::optional<SortThunk::SortDirection> direction) {
   // All inputs have the same dimensions and layout, so we can use the first
   // shape to get the sort dimensions.
   SortDims sort_dims = GetSortDims(shapes[0], dimension);
@@ -571,13 +622,61 @@ static absl::Status SortInplace(absl::Span<se::DeviceMemoryBase> data,
                    num_inputs);
     };
 
+    // Sorts array using builtin comparator functor
+    auto builtin_sort = [&](PrimitiveType type,
+                            SortThunk::SortDirection direction) {
+      switch (type) {
+        case S8:
+          Sort1DArrInplace<S8>(sort_dims, offset, data, is_stable, direction);
+          break;
+        case S16:
+          Sort1DArrInplace<S16>(sort_dims, offset, data, is_stable, direction);
+          break;
+        case S32:
+          Sort1DArrInplace<S32>(sort_dims, offset, data, is_stable, direction);
+          break;
+        case S64:
+          Sort1DArrInplace<S64>(sort_dims, offset, data, is_stable, direction);
+          break;
+        case U8:
+          Sort1DArrInplace<U8>(sort_dims, offset, data, is_stable, direction);
+          break;
+        case U16:
+          Sort1DArrInplace<U16>(sort_dims, offset, data, is_stable, direction);
+          break;
+        case U32:
+          Sort1DArrInplace<U32>(sort_dims, offset, data, is_stable, direction);
+          break;
+        case U64:
+          Sort1DArrInplace<U64>(sort_dims, offset, data, is_stable, direction);
+          break;
+        case F16:
+          Sort1DArrInplace<F16>(sort_dims, offset, data, is_stable, direction);
+          break;
+        case F32:
+          Sort1DArrInplace<F32>(sort_dims, offset, data, is_stable, direction);
+          break;
+        case F64:
+          Sort1DArrInplace<F64>(sort_dims, offset, data, is_stable, direction);
+          break;
+        default:
+          sort(std::integral_constant<size_t, 1>{});
+          break;
+      }
+    };
+
     // use "sort" for statically known number of sorted inputs (expected to be
     // faster) and "dsort" for dynamically known number of sorted inputs.
     // for 100 elements stable sort is 1.5 times faster than stable dsort.
     // for 100 elements unstable sort is 2.47 times faster than unstable dsort.
     switch (data.size()) {
       case 1:
-        sort(std::integral_constant<size_t, 1>{});
+        DCHECK_EQ(shapes.size(), 1);
+        if (direction.has_value()) {
+          builtin_sort(shapes[0].element_type(), *direction);
+        } else {
+          sort(std::integral_constant<size_t, 1>{});
+        }
         break;
       case 2:
         sort(std::integral_constant<size_t, 2>{});
@@ -711,7 +810,7 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
   }
 
   TF_RETURN_IF_ERROR(SortInplace(absl::MakeSpan(data), shapes, dimension_,
-                                 is_stable_, less_than));
+                                 is_stable_, less_than, direction_));
 
   return OkExecuteEvent();
 }

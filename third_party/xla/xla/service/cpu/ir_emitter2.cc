@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -126,7 +127,7 @@ static llvm::FunctionType* KernelFunctionTy(llvm::LLVMContext& ctx) {
 
 class IrEmitter2::ElementalIrEmitter : public xla::ElementalIrEmitter {
  public:
-  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilder<>* b,
+  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilderBase* b,
                      const HloModule* hlo_module, IrEmitter* nested_ir_emitter,
                      bool fast_min_max)
       : xla::ElementalIrEmitter(
@@ -504,23 +505,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo>
-IrEmitter2::EmitSelectAndScatterHostKernel(const HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                      EmitKernelPrototype(instr));
-
-  llvm_ir::IrArray operand_array = kernel_prototype.arguments[0];
-  llvm_ir::IrArray source_array = kernel_prototype.arguments[1];
-  llvm_ir::IrArray output_array = kernel_prototype.results[0];
-
-  TF_RETURN_IF_ERROR(nested_ir_emitter_->HandleSelectAndScatter(
-      const_cast<HloInstruction*>(instr), operand_array, source_array,
-      output_array));
-
-  return kernels_.emplace_back(
-      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
-}
-
-absl::StatusOr<IrEmitter2::KernelInfo>
 IrEmitter2::EmitDynamicUpdateSliceHostKernel(const HloInstruction* instr) {
   if (llvm_ir::CanUpdateDynamicSliceInPlace(const_cast<HloInstruction*>(instr),
                                             nested_ir_emitter_->assignment())) {
@@ -545,9 +529,7 @@ IrEmitter2::EmitDynamicUpdateSliceHostKernel(const HloInstruction* instr) {
 }
 
 absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
-    const HloInstruction* instr) {
-  HloComputation* comparator = instr->to_apply();
-
+    HloComputation* comparator) {
   // Find if we already emitted this comparator.
   auto info = absl::c_find_if(comparators_, [&](const ComparatorInfo& info) {
     return info.name == comparator->name();
@@ -675,7 +657,7 @@ absl::Status IrEmitter2::VerifyKernelParameters(
 }
 
 IrEmitter2::KernelThreadDims IrEmitter2::EmitKernelThreadDims(
-    llvm::IRBuilder<>& b, llvm::Value* call_frame) {
+    llvm::IRBuilderBase& b, llvm::Value* call_frame) {
   auto* td_gep = b.CreateStructGEP(call_frame_ty_, call_frame, 0, "tdims_gep");
   auto* tdims = b.CreateLoad(b.getPtrTy(), td_gep, "tdims");
   auto* x_gep = b.CreateStructGEP(thread_dims_ty_, tdims, 0, "tdim_x_gep");
@@ -687,7 +669,7 @@ IrEmitter2::KernelThreadDims IrEmitter2::EmitKernelThreadDims(
           b.CreateLoad(b.getInt64Ty(), z_gep, "tdim_z")};
 }
 
-IrEmitter2::KernelThread IrEmitter2::EmitKernelThread(llvm::IRBuilder<>& b,
+IrEmitter2::KernelThread IrEmitter2::EmitKernelThread(llvm::IRBuilderBase& b,
                                                       llvm::Value* call_frame) {
   auto* t_gep = b.CreateStructGEP(call_frame_ty_, call_frame, 1, "tid_gep");
   auto* tids = b.CreateLoad(b.getPtrTy(), t_gep, "tids");
@@ -700,7 +682,7 @@ IrEmitter2::KernelThread IrEmitter2::EmitKernelThread(llvm::IRBuilder<>& b,
           b.CreateLoad(b.getInt64Ty(), z_gep, "tid_z")};
 }
 
-llvm_ir::IrArray IrEmitter2::EmitKernelArgument(llvm::IRBuilder<>& b,
+llvm_ir::IrArray IrEmitter2::EmitKernelArgument(llvm::IRBuilderBase& b,
                                                 llvm::Value* call_frame,
                                                 int64_t index,
                                                 const Shape& shape) {
@@ -929,7 +911,7 @@ absl::Status IrEmitter2::CanDoFastConcatenate(
 };
 
 IrEmitter2::ParallelPartitionBounds IrEmitter2::EmitParallelPartitionBounds(
-    llvm::IRBuilder<>& b, const KernelPrototype& kernel_prototype,
+    llvm::IRBuilderBase& b, const KernelPrototype& kernel_prototype,
     const ParallelConfig& parallel_config, const Shape& shape,
     std::string_view name) {
   ShapePartitionIterator it(shape, parallel_config.outer_dimension_partitions);
@@ -997,7 +979,7 @@ IrEmitter2::ParallelPartitionBounds IrEmitter2::EmitParallelPartitionBounds(
 }
 
 absl::StatusOr<se::ThreadDim> IrEmitter2::EmitElementalLoops(
-    llvm::IRBuilder<>& b, const HloInstruction* instr,
+    llvm::IRBuilderBase& b, const HloInstruction* instr,
     const KernelPrototype& kernel_prototype,
     const llvm_ir::ElementGenerator& element_generator) {
   // We can emit loops for instruction with multiple results only if it is a

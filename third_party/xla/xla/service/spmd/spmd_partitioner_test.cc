@@ -41,12 +41,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/sharding_format_picker.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/sharding_format_picker.h"
 #include "xla/service/spmd/spmd_prepare.h"
 #include "xla/shape.h"
 #include "xla/tests/hlo_test_base.h"
@@ -76,7 +76,9 @@ class SpmdPartitioningTest
       bool bidirectional_windowed_einsum = false,
       int64_t threshold_for_windowed_einsum_mib = -1,
       PartitioningMethod gather_method = PartitioningMethod::kIndexParallel,
-      PartitioningMethod scatter_method = PartitioningMethod::kIndexParallel) {
+      PartitioningMethod scatter_method = PartitioningMethod::kIndexParallel,
+      std::optional<int64_t> total_bytes_windowed_einsum_threshold =
+          std::nullopt) {
     // Some tests (BackpropFilter convs) set this flag false to test two
     // different paths of the implementation.
     SpmdPartitionerOptions options;
@@ -86,6 +88,8 @@ class SpmdPartitioningTest
         choose_faster_windowed_einsum;
     options.unroll_windowed_einsum = unroll_windowed_einsum;
     options.bidirectional_windowed_einsum = bidirectional_windowed_einsum;
+    options.total_bytes_windowed_einsum_threshold =
+        total_bytes_windowed_einsum_threshold;
     if (threshold_for_windowed_einsum_mib >= 0) {
       options.threshold_for_windowed_einsum_mib =
           threshold_for_windowed_einsum_mib;
@@ -141,6 +145,16 @@ class SpmdPartitioningTest
         EXPECT_FALSE(inst->has_sharding());
       }
     }
+  }
+
+  int64_t NumOfInstructions(HloComputation* computation, HloOpcode opcode) {
+    int64_t count = 0;
+    for (const HloInstruction* inst : computation->instructions()) {
+      if (inst->opcode() == opcode) {
+        ++count;
+      }
+    }
+    return count;
   }
 };
 
@@ -3541,10 +3555,14 @@ ENTRY entry {
   VLOG(1) << module->ToString();
   auto sort = FindInstruction(module.get(), "sort.1");
   for (auto operand : sort->operands()) {
-    EXPECT_EQ(operand->shape().dimensions(0), 2);
-    EXPECT_EQ(operand->shape().dimensions(1), 512);
+    EXPECT_EQ(operand->shape().dimensions(0), 7);
+    EXPECT_EQ(operand->shape().dimensions(1), 128);
     EXPECT_EQ(operand->shape().dimensions(2), 1024);
   }
+
+  // AllToAll is inserted before/after the sort for each operand/result.
+  EXPECT_EQ(
+      NumOfInstructions(module->entry_computation(), HloOpcode::kAllToAll), 4);
 }
 
 TEST_P(SpmdPartitioningTest, SortShardedOnSortDim_LastTileDimReplicate) {
@@ -4903,6 +4921,34 @@ ENTRY entry {
       CHECK_EQ(rhs_batch_dims[1], 1);
     }
   }
+}
+
+TEST_P(SpmdPartitioningTest, WindowedEinsumNoRewriteWithTotalBytesThreshold) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p0 = f32[2048,2,3264]{2,1,0} parameter(0), sharding={devices=[1,1,2]0,1}
+  %p1 = f32[2,3264,2176]{2,1,0} parameter(1), sharding={devices=[2,1,1]0,1}
+  ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/2,
+                           /*conv_halo_exchange_always_on_lhs=*/true,
+                           /*choose_faster_windowed_einsum=*/false,
+                           /*unroll_windowed_einsum=*/false,
+                           /*bidirectional_windowed_einsum=*/false,
+                           /*threshold_for_windowed_einsum_mib=*/5,
+                           PartitioningMethod::kIndexParallel,
+                           PartitioningMethod::kIndexParallel,
+                           /*total_bytes_windowed_einsum_threshold=*/1 << 30));
+  VLOG(1) << module->ToString();
+  // Total bytes threshold overrides threshold_for_windowed_einsum_mib,
+  // there shouldn't be any while loop after partitioner.
+  HloInstruction* while_inst = FindInstruction(module.get(), HloOpcode::kWhile);
+  EXPECT_EQ(while_inst, nullptr);
 }
 
 TEST_P(SpmdPartitioningTest, DotPartialDeviceOrder) {
@@ -15004,7 +15050,7 @@ ENTRY %extracted_computation (param: f32[13,128,312,16,312]) -> f32[13,39936,499
   EXPECT_NE(all_to_all, nullptr);
 }
 
-TEST_P(SpmdPartitioningTest, SortAllGatherNonMovableDimension) {
+TEST_P(SpmdPartitioningTest, SortWithMovableAndNonMovableDimension) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -15030,18 +15076,23 @@ ENTRY entry {
           /*xla_tpu_enable_log_recorder_partitioned_logging=*/true));
   XLA_VLOG_LINES(1, module->ToString());
 
-  auto* root = module->entry_computation()->root_instruction();
-  auto* sort = FindInstruction(module.get(), HloOpcode::kSort);
   EXPECT_THAT(
-      root,
-      AllOf(op::Tuple(),
-            op::Shape("(f32[1,4096,1024]{2,1,0}, s32[1,4096,1024]{2,1,0})")));
+      module->entry_computation()->root_instruction(),
+      AllOf(op::Tuple(), op::Shape("(f32[1,4096,1024], s32[1,4096,1024])")));
+
   EXPECT_THAT(
-      sort,
-      AllOf(op::Sort(
-                AllOf(op::AllReduce(), op::Shape("f32[1,4096,4096]{2,1,0}")),
-                AllOf(op::AllReduce(), op::Shape("s32[1,4096,4096]{2,1,0}"))),
-            op::Shape("(f32[1,4096,4096]{2,1,0}, s32[1,4096,4096]{2,1,0})")));
+      FindInstruction(module.get(), HloOpcode::kSort),
+      AllOf(op::Sort(AllOf(op::Reshape(), op::Shape("f32[1,1024,4096]")),
+                     AllOf(op::Reshape(), op::Shape("s32[1,1024,4096]"))),
+            op::Shape("(f32[1,1024,4096], s32[1,1024,4096])")));
+
+  // AllToAll is inserted before/after the sort for each operand/result.
+  EXPECT_EQ(
+      NumOfInstructions(module->entry_computation(), HloOpcode::kAllToAll), 4);
+  EXPECT_EQ(
+      NumOfInstructions(module->entry_computation(), HloOpcode::kAllReduce), 0);
+  EXPECT_EQ(
+      NumOfInstructions(module->entry_computation(), HloOpcode::kAllGather), 0);
 }
 
 TEST_P(SpmdPartitioningTest, PartitionOffloading) {
@@ -15080,6 +15131,27 @@ ENTRY offloading (param0: f32[1,256,128]) -> f32[1,256,128] {
   // Verify that the offloading ops are indeed partitioned.
   EXPECT_THAT(move_to_host, op::Shape("f32[1,256,32]"));
   EXPECT_THAT(move_to_device, op::Shape("f32[1,256,32]"));
+}
+
+TEST_P(SpmdPartitioningTest, MergedPadThenSliceWithPaddingHigh) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[4] parameter(0), sharding={devices=[4]<=[4]}
+  %init = f32[] constant(2.0)
+  %pad = f32[8] pad(%param0, %init), padding=2_2, sharding={devices=[4]<=[4]}
+  ROOT %slice = f32[4] slice(%pad), slice={[4:8]}, sharding={devices=[4]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[1]"));
+  EXPECT_THAT(root, AllOf(op::Select(_, op::CollectivePermute(param0), _),
+                          op::Shape("f32[1]")));
 }
 
 }  // namespace

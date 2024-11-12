@@ -157,10 +157,6 @@ class Compiler {
     // on which compilation is performed.
     std::optional<TargetConfig> target_config;
 
-    // Registry of MLIR dialects and plugins to be loaded during optimization.
-    // If non-null, it will be used to construct relevant MLIR contexts.
-    mlir::DialectRegistry* registry = nullptr;
-
     MultiProcessKeyValueStore key_value_store;
   };
 

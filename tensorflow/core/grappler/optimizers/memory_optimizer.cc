@@ -541,7 +541,7 @@ bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
 
   if ((*memory_ptr) == nullptr) {
     memory_ptr->reset(new GraphMemory(*item));
-    Status s = (*memory_ptr)->InferStatically(cluster->GetDevices());
+    absl::Status s = (*memory_ptr)->InferStatically(cluster->GetDevices());
     if (!s.ok()) {
       memory_ptr->reset();
       VLOG(1) << "Failed to infer memory usage: " << s.message();
@@ -577,9 +577,10 @@ bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
     return false;
   }
   GraphProperties properties(*item);
-  Status s = properties.InferStatically(/*assume_valid_feeds=*/false,
-                                        /*aggressive_shape_inference=*/false,
-                                        /*include_tensor_values=*/false);
+  absl::Status s =
+      properties.InferStatically(/*assume_valid_feeds=*/false,
+                                 /*aggressive_shape_inference=*/false,
+                                 /*include_tensor_values=*/false);
   if (!s.ok()) {
     VLOG(1) << "Failed to infer shapes: " << s.message();
     return false;
@@ -588,7 +589,8 @@ bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
   // It's ok to use immutable GraphTopologyView here, because we do not destroy
   // any of the nodes in the underlying graph, we only add new nodes.
   GraphTopologyView graph_topology;
-  Status initialized_topology = graph_topology.InitializeFromGraph(item->graph);
+  absl::Status initialized_topology =
+      graph_topology.InitializeFromGraph(item->graph);
   if (!initialized_topology.ok()) {
     VLOG(1) << "Failed to initialize graph topology view: "
             << initialized_topology.message();
@@ -740,10 +742,10 @@ bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
   return updated_graph;
 }
 
-Status BuildSwapPair(NodeDef* node, int input_to_swap,
-                     const std::unordered_map<string, const NodeDef*>& name_map,
-                     GraphDef* graph,
-                     std::pair<NodeDef*, NodeDef*>* swap_pair) {
+absl::Status BuildSwapPair(
+    NodeDef* node, int input_to_swap,
+    const std::unordered_map<string, const NodeDef*>& name_map, GraphDef* graph,
+    std::pair<NodeDef*, NodeDef*>* swap_pair) {
   string task, device;
   if (!DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) ||
       !absl::StrContains(device, DEVICE_GPU)) {
@@ -984,7 +986,7 @@ static bool IdentifySwappingCandidates(
     std::unordered_map<NodeDef*, SwapInfo>* nodes_to_swap) {
   if ((*memory_ptr) == nullptr) {
     memory_ptr->reset(new GraphMemory(*item));
-    Status s = (*memory_ptr)->InferStatically(cluster->GetDevices());
+    absl::Status s = (*memory_ptr)->InferStatically(cluster->GetDevices());
     if (!s.ok()) {
       memory_ptr->reset();
       VLOG(1) << "Failed to infer memory usage: " << s.message();
@@ -1021,7 +1023,8 @@ static bool IdentifySwappingCandidates(
         return false;
       }
       RunMetadata metadata;
-      Status s = vcluster.Run(item->graph, item->feed, item->fetch, &metadata);
+      absl::Status s =
+          vcluster.Run(item->graph, item->feed, item->fetch, &metadata);
       if (!s.ok() && s.code() != error::RESOURCE_EXHAUSTED) {
         return false;
       }
@@ -1295,8 +1298,8 @@ void RelaxAssignNodes(const std::set<int>& nodes_to_relax,
 }
 
 // TODO(rmlarsen): Add distributed TF test.
-Status FindAssignNodesToRelax(const GraphDef& graph,
-                              std::set<int>* nodes_to_relax) {
+absl::Status FindAssignNodesToRelax(const GraphDef& graph,
+                                    std::set<int>* nodes_to_relax) {
   std::unordered_set<string> devices;
   std::vector<int> assign_nodes;
   bool found_send = false;
@@ -1378,8 +1381,9 @@ Status FindAssignNodesToRelax(const GraphDef& graph,
 
 }  // namespace
 
-Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                 GraphDef* optimized_graph) {
+absl::Status MemoryOptimizer::Optimize(Cluster* cluster,
+                                       const GrapplerItem& item,
+                                       GraphDef* optimized_graph) {
   std::set<int> nodes_to_relax;
   TF_RETURN_IF_ERROR(FindAssignNodesToRelax(item.graph, &nodes_to_relax));
 

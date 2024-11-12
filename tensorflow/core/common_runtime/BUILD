@@ -3566,8 +3566,8 @@ cc_library(
     name = "device_id_utils",
     hdrs = ["device_id_utils.h"],
     deps = [
-        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/tsl/framework:device_id_impl",
     ],
 )

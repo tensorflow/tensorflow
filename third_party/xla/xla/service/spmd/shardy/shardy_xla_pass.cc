@@ -46,6 +46,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
@@ -54,14 +56,12 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/mhlo_export.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/mhlo_import.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/service/spmd/shardy/utils.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
@@ -338,19 +338,13 @@ absl::StatusOr<bool> ShardyXLA::Run(
                                                "sdy_module_before_xla_import"));
   bool useTupleArgs = false;
   mlir::DictionaryAttr moduleFrontendAttrs = getFrontendAttrs(*mlirModule);
-  if (moduleFrontendAttrs && moduleFrontendAttrs.get(kUseTupleArgs)) {
+  if (hasKey(moduleFrontendAttrs, kUseTupleArgs)) {
     useTupleArgs = true;
     removeFrontendAttribute(*mlirModule, kUseTupleArgs);
   }
-  // TODO(bartchr): Only call addSdyRoundTripImportPipeline when JAX & PartIR
-  // integration is complete. Need to branch on `kPythonIntegrationComplete`
-  // since partir.jit lowers to SDY (so call addSdyRoundTripImportPipeline) but
-  // jax.jit doesn't yet (so call addMhloImportPipeline).
-  if (moduleFrontendAttrs &&
-      moduleFrontendAttrs.get(kPythonIntegrationComplete)) {
-    removeFrontendAttribute(*mlirModule, kPythonIntegrationComplete);
-    addSdyRoundTripImportPipeline(pm);
-  } else {
+
+  if (hasKey(moduleFrontendAttrs, kImportMhloShardings)) {
+    removeFrontendAttribute(*mlirModule, kImportMhloShardings);
     auto spanToArrayRef = [](absl::Span<const bool> span) {
       return mlir::ArrayRef<bool>(span.data(), span.size());
     };
@@ -361,6 +355,9 @@ absl::StatusOr<bool> ShardyXLA::Run(
                            .allow_spmd_sharding_propagation_to_parameters()),
         spanToArrayRef(
             hloModule->config().allow_spmd_sharding_propagation_to_output()));
+  } else {
+    // This is the default path.
+    addSdyRoundTripImportPipeline(pm);
   }
 
   // Store the entry computation layout, input-output alias config, and buffer
@@ -427,9 +424,7 @@ absl::StatusOr<bool> ShardyXLA::Run(
 
   // We don't fully replace the HLO module, so it will continue to have the
   // temporary frontend attributes. So clean them up as XLA won't need them.
-  removeFrontendAttributes(
-      hloModule,
-      {kUseTupleArgs, kPythonIntegrationComplete, kMeshesRoundTripAttr});
+  removeFrontendAttributes(hloModule, {kUseTupleArgs, kMeshesRoundTripAttr});
 
   return true;
 }

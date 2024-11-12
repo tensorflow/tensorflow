@@ -49,10 +49,7 @@ Platform::Id SyclPlatform::id() const { return sycl::kSyclPlatformId; }
 
 int SyclPlatform::VisibleDeviceCount() const {
   // Initialized in a thread-safe manner the first time this is run.
-  static const int num_devices = [] {
-    if (!GpuDriver::Init().ok()) return -1;
-    return GpuDriver::GetDeviceCount();
-  }();
+  static const int num_devices = [] { return 0; }();
   return num_devices;
 }
 

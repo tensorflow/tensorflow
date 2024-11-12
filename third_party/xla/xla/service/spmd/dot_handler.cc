@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal_util.h"
@@ -454,6 +454,24 @@ bool RequiresTransposeSharding(
          has_different_lhs_rhs_dim_sharding;
 }
 
+bool should_enable_windowed_einsum_with_threshold(
+    const SpmdPartitionerOptions& options, const HloInstruction* lhs,
+    const HloInstruction* rhs, int64_t operand_or_output_shape_size) {
+  if (options.total_bytes_windowed_einsum_threshold != std::nullopt) {
+    if (lhs == nullptr || rhs == nullptr) {
+      return false;
+    }
+    int64_t total_operand_bytes = (ShapeUtil::ByteSizeOf(rhs->shape()) +
+                                   ShapeUtil::ByteSizeOf(lhs->shape()));
+    int64_t operand_bytes_threshold =
+        options.total_bytes_windowed_einsum_threshold.value();
+    return total_operand_bytes >= operand_bytes_threshold;
+  } else {
+    return operand_or_output_shape_size >=
+           options.threshold_for_windowed_einsum_mib * 1024 * 1024;
+  }
+}
+
 std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     int64_t num_partitions, int64_t output_lhs_non_contracting_partitions,
     int64_t output_rhs_non_contracting_partitions,
@@ -663,8 +681,8 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
 
   if (output_lhs_non_contracting_partitions == num_partitions &&
       output_sharding_transposed_to_match_lhs == lhs_sharding &&
-      rhs_shape_size >=
-          options.threshold_for_windowed_einsum_mib * 1024 * 1024 &&
+      should_enable_windowed_einsum_with_threshold(options, lhs, rhs,
+                                                   rhs_shape_size) &&
       (!rhs || check_users_sharding(rhs)) &&
       !disable_windowed_einsum(/*lhs_needs_ag=*/false, /*rhs_needs_ag=*/true) &&
       options.enable_windowed_einsum_for_all_gather) {
@@ -695,8 +713,8 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
   }
   if (output_rhs_non_contracting_partitions == num_partitions &&
       output_sharding_transposed_to_match_rhs == rhs_sharding &&
-      lhs_shape_size >=
-          options.threshold_for_windowed_einsum_mib * 1024 * 1024 &&
+      should_enable_windowed_einsum_with_threshold(options, lhs, rhs,
+                                                   lhs_shape_size) &&
       (!lhs || check_users_sharding(lhs)) &&
       !disable_windowed_einsum(/*lhs_needs_ag=*/true, /*rhs_needs_ag=*/false) &&
       options.enable_windowed_einsum_for_all_gather) {
@@ -729,8 +747,8 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
       lhs_contracting_partitions == num_partitions &&
       (output_lhs_non_contracting_partitions == num_partitions ||
        output_rhs_non_contracting_partitions == num_partitions) &&
-      output_shape_size >=
-          options.threshold_for_windowed_einsum_mib * 1024 * 1024 &&
+      should_enable_windowed_einsum_with_threshold(options, lhs, rhs,
+                                                   output_shape_size) &&
       !disable_windowed_einsum(/*lhs_needs_ag=*/false,
                                /*rhs_needs_ag=*/false) &&
       options.enable_windowed_einsum_for_reduce_scatter) {
@@ -1848,10 +1866,7 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
         return nullptr;
       }
       auto resharded_rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs);
-      TF_ASSIGN_OR_RETURN(
-          auto dot,
-          create_sharded_dot(lhs.hlo(), resharded_rhs.hlo(), b, conv_window));
-      return dot;
+      return create_sharded_dot(lhs.hlo(), resharded_rhs.hlo(), b, conv_window);
     }
     // RHS and output are batch partitioned in the same way.
     if (rhs_batch_partitions == num_partitions &&
@@ -1865,10 +1880,7 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
         return nullptr;
       }
       auto resharded_lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs);
-      TF_ASSIGN_OR_RETURN(
-          auto dot,
-          create_sharded_dot(resharded_lhs.hlo(), rhs.hlo(), b, conv_window));
-      return dot;
+      return create_sharded_dot(resharded_lhs.hlo(), rhs.hlo(), b, conv_window);
     }
     return nullptr;
   };
@@ -2000,9 +2012,7 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
       output_lhs_non_contracting_partitions == num_partitions &&
       lhs_sharding_transposed_to_match_output == output_sharding) {
     auto rhs_replicated = rhs.Reshard(HloSharding::Replicate()).hlo();
-    TF_ASSIGN_OR_RETURN(auto dot, create_sharded_dot(lhs.hlo(), rhs_replicated,
-                                                     b, conv_window));
-    return dot;
+    return create_sharded_dot(lhs.hlo(), rhs_replicated, b, conv_window);
   }
 
   // RHS and output have the same partitioned non-contracting dimensions.
@@ -2010,9 +2020,7 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
       output_rhs_non_contracting_partitions == num_partitions &&
       rhs_sharding_transposed_to_match_output == output_sharding) {
     auto lhs_replicated = lhs.Reshard(HloSharding::Replicate()).hlo();
-    TF_ASSIGN_OR_RETURN(auto dot, create_sharded_dot(lhs_replicated, rhs.hlo(),
-                                                     b, conv_window));
-    return dot;
+    return create_sharded_dot(lhs_replicated, rhs.hlo(), b, conv_window);
   }
 
   if (may_reshard_without_detecting_match) {
@@ -2022,30 +2030,24 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
           lhs.Reshard(*output_sharding_transposed_to_match_lhs);
       auto resharded_rhs =
           rhs.Reshard(*output_sharding_transposed_to_match_rhs);
-      TF_ASSIGN_OR_RETURN(
-          auto dot, create_sharded_dot(resharded_lhs.hlo(), resharded_rhs.hlo(),
-                                       b, conv_window));
-      return dot;
+      return create_sharded_dot(resharded_lhs.hlo(), resharded_rhs.hlo(), b,
+                                conv_window);
     }
     // Output is partitioned along LHS non-contracting dimensions.
     if (output_lhs_non_contracting_partitions == num_partitions) {
       auto resharded_lhs =
           lhs.Reshard(*output_sharding_transposed_to_match_lhs);
       auto replicated_rhs = rhs.Reshard(HloSharding::Replicate());
-      TF_ASSIGN_OR_RETURN(
-          auto dot, create_sharded_dot(resharded_lhs.hlo(),
-                                       replicated_rhs.hlo(), b, conv_window));
-      return dot;
+      return create_sharded_dot(resharded_lhs.hlo(), replicated_rhs.hlo(), b,
+                                conv_window);
     }
     // Output is partitioned along RHS non-contracting dimensions.
     if (output_rhs_non_contracting_partitions == num_partitions) {
       auto replicated_lhs = lhs.Reshard(HloSharding::Replicate());
       auto resharded_rhs =
           rhs.Reshard(*output_sharding_transposed_to_match_rhs);
-      TF_ASSIGN_OR_RETURN(
-          auto dot, create_sharded_dot(replicated_lhs.hlo(),
-                                       resharded_rhs.hlo(), b, conv_window));
-      return dot;
+      return create_sharded_dot(replicated_lhs.hlo(), resharded_rhs.hlo(), b,
+                                conv_window);
     }
   }
 
@@ -4246,11 +4248,9 @@ absl::StatusOr<HloInstruction*> ReshardLHSRHSToMatchOutputSharding(
                                                  consider_other_operand,
                                                  may_combine_partial_sharding);
 
-  TF_ASSIGN_OR_RETURN(
-      auto dot, create_sharded_dot(lhs.Reshard(infered_lhs_sharding).hlo(),
-                                   rhs.Reshard(infered_rhs_sharding).hlo(), b,
-                                   conv_window));
-  return dot;
+  return create_sharded_dot(lhs.Reshard(infered_lhs_sharding).hlo(),
+                            rhs.Reshard(infered_rhs_sharding).hlo(), b,
+                            conv_window);
 }
 
 absl::StatusOr<HloInstruction*> PartitionDot(

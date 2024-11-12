@@ -116,7 +116,7 @@ TEST_F(VirtualClusterTest, OutOfMemory) {
   item.fetch.push_back("i2");
 
   TF_CHECK_OK(cluster_->Initialize(item));
-  Status s = cluster_->Run(item.graph, item.feed, item.fetch, nullptr);
+  absl::Status s = cluster_->Run(item.graph, item.feed, item.fetch, nullptr);
   EXPECT_EQ(error::RESOURCE_EXHAUSTED, s.code());
 }
 

@@ -37,6 +37,14 @@ struct ToDataType;
 // Note: If you add a new specialization below, make sure to add the
 // corresponding definition in stream_executor/dnn.cc.
 template <>
+struct ToDataType<tsl::float8_e3m4> {
+  static constexpr DataType value = DataType::kF8E3M4;
+};
+template <>
+struct ToDataType<tsl::float8_e4m3> {
+  static constexpr DataType value = DataType::kF8E4M3;
+};
+template <>
 struct ToDataType<tsl::float8_e4m3fn> {
   static constexpr DataType value = DataType::kF8E4M3FN;
 };

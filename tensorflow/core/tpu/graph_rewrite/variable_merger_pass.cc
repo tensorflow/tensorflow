@@ -58,8 +58,8 @@ uint64 MergedOpFingerprint(absl::Span<Node* const> ops) {
   return Fingerprint64(absl::StrJoin(op_names, ","));
 }
 
-Status MergeVarHandleOps(const string& device, absl::Span<Node* const> nodes,
-                         Graph* graph) {
+absl::Status MergeVarHandleOps(const string& device,
+                               absl::Span<Node* const> nodes, Graph* graph) {
   int num_var_handles(nodes.size());
   if (num_var_handles <= 1) return absl::OkStatus();
 
@@ -103,8 +103,8 @@ Status MergeVarHandleOps(const string& device, absl::Span<Node* const> nodes,
   return absl::OkStatus();
 }
 
-Status MergeReadVariableOps(Node* handle_op, Node* control_node,
-                            absl::Span<Node* const> nodes, Graph* graph) {
+absl::Status MergeReadVariableOps(Node* handle_op, Node* control_node,
+                                  absl::Span<Node* const> nodes, Graph* graph) {
   int num_reads(nodes.size());
   if (num_reads <= 1) return absl::OkStatus();
 
@@ -141,7 +141,8 @@ Status MergeReadVariableOps(Node* handle_op, Node* control_node,
 
 }  // namespace
 
-Status VariableMergerPass::Run(const GraphOptimizationPassOptions& options) {
+absl::Status VariableMergerPass::Run(
+    const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
 
   VLOG(1) << DumpGraphToFile("variable_merger_pass_before", *graph);

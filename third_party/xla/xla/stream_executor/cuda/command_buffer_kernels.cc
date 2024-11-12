@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/stream_executor/cuda/command_buffer_kernels.h"
+
 #include <string_view>
 
 #include "absl/status/statusor.h"
-#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/kernel_spec.h"
 
 namespace stream_executor {
@@ -230,7 +231,7 @@ $L__BB0_3:
 //
 // #include <cuda/std/array>
 //
-// __global__ void SetCaseCondition(
+// __global__ void set_case_condition(
 //     cudaGraphConditionalHandle h0, cudaGraphConditionalHandle h1,
 //     cudaGraphConditionalHandle h2, cudaGraphConditionalHandle h3,
 //     cudaGraphConditionalHandle h4, cudaGraphConditionalHandle h5,
@@ -281,29 +282,29 @@ inline constexpr std::string_view kSetCaseConditionKernel = R"(
 .target sm_50
 .address_size 64
 
-        // .globl       SetCaseCondition
+       // .globl       set_case_condition
 .extern .func cudaGraphSetConditional
 (
         .param .b64 cudaGraphSetConditional_param_0,
         .param .b32 cudaGraphSetConditional_param_1
 )
 ;
-.global .align 1 .b8 _INTERNAL_1c7773a2_10_example_cu_b5c0c87f::cuda::std::__4::in_place[1];
-.global .align 1 .b8 _INTERNAL_1c7773a2_10_example_cu_b5c0c87f::cuda::std::ranges::__4::__cpo::swap[1];
+.global .align 1 .b8 _ZN41_INTERNAL_1c7773a2_10_example_cu_50b664ab4cuda3std3__48in_placeE[1];
+.global .align 1 .b8 _ZN41_INTERNAL_1c7773a2_10_example_cu_50b664ab4cuda3std6ranges3__45__cpo4swapE[1];
 
-.visible .entry SetCaseCondition(
-        .param .u64 SetCaseCondition_param_0,
-        .param .u64 SetCaseCondition_param_1,
-        .param .u64 SetCaseCondition_param_2,
-        .param .u64 SetCaseCondition_param_3,
-        .param .u64 SetCaseCondition_param_4,
-        .param .u64 SetCaseCondition_param_5,
-        .param .u64 SetCaseCondition_param_6,
-        .param .u64 SetCaseCondition_param_7,
-        .param .u64 SetCaseCondition_param_8,
-        .param .u32 SetCaseCondition_param_9,
-        .param .u32 SetCaseCondition_param_10,
-        .param .u8 SetCaseCondition_param_11
+.visible .entry set_case_condition(
+        .param .u64 set_case_condition_param_0,
+        .param .u64 set_case_condition_param_1,
+        .param .u64 set_case_condition_param_2,
+        .param .u64 set_case_condition_param_3,
+        .param .u64 set_case_condition_param_4,
+        .param .u64 set_case_condition_param_5,
+        .param .u64 set_case_condition_param_6,
+        .param .u64 set_case_condition_param_7,
+        .param .u64 set_case_condition_param_8,
+        .param .u32 set_case_condition_param_9,
+        .param .u32 set_case_condition_param_10,
+        .param .u8 set_case_condition_param_11
 )
 {
         .local .align 8 .b8     __local_depot0[64];
@@ -316,18 +317,18 @@ inline constexpr std::string_view kSetCaseConditionKernel = R"(
         .loc    1 3 0
 
         mov.u64         %SPL, __local_depot0;
-        ld.param.s8     %rs1, [SetCaseCondition_param_11];
-        ld.param.u64    %rd13, [SetCaseCondition_param_0];
-        ld.param.u64    %rd14, [SetCaseCondition_param_1];
-        ld.param.u64    %rd15, [SetCaseCondition_param_2];
-        ld.param.u64    %rd16, [SetCaseCondition_param_3];
-        ld.param.u64    %rd17, [SetCaseCondition_param_4];
-        ld.param.u64    %rd18, [SetCaseCondition_param_5];
-        ld.param.u64    %rd19, [SetCaseCondition_param_6];
-        ld.param.u64    %rd20, [SetCaseCondition_param_7];
-        ld.param.u64    %rd21, [SetCaseCondition_param_8];
-        ld.param.u32    %r21, [SetCaseCondition_param_9];
-        ld.param.u32    %r20, [SetCaseCondition_param_10];
+        ld.param.s8     %rs1, [set_case_condition_param_11];
+        ld.param.u64    %rd13, [set_case_condition_param_0];
+        ld.param.u64    %rd14, [set_case_condition_param_1];
+        ld.param.u64    %rd15, [set_case_condition_param_2];
+        ld.param.u64    %rd16, [set_case_condition_param_3];
+        ld.param.u64    %rd17, [set_case_condition_param_4];
+        ld.param.u64    %rd18, [set_case_condition_param_5];
+        ld.param.u64    %rd19, [set_case_condition_param_6];
+        ld.param.u64    %rd20, [set_case_condition_param_7];
+        ld.param.u64    %rd21, [set_case_condition_param_8];
+        ld.param.u32    %r21, [set_case_condition_param_9];
+        ld.param.u32    %r20, [set_case_condition_param_10];
         cvta.to.global.u64      %rd22, %rd21;
         .loc    1 24 3
         add.u64         %rd1, %SPL, 0;
@@ -799,86 +800,43 @@ inline constexpr std::string_view kNoOpKernel = R"(
 
 }  // namespace
 
-#if CUDA_VERSION >= 12030
-void* GetSetIfConditionKernel();
-void* GetSetIfElseConditionKernel();
-void* GetSetCaseConditionKernel();
-void* GetSetForConditionKernel();
-void* GetSetWhileConditionKernel();
-void* GetNoOpKernel();
-#endif
-
-}  // namespace cuda
-
-namespace gpu {
-
-// TODO(b/362786589): Remove PTX usage when we only support cuda >= 12.4.1
-// See comment at top of this file for why PTX is used for cuda < 12.4.1.
 absl::StatusOr<MultiKernelLoaderSpec> GetSetIfConditionKernelLoaderSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/2);
-#if CUDA_VERSION >= 12030
-  spec.AddInProcessSymbol(cuda::GetSetIfConditionKernel(), "set_if_condition");
-#else
   spec.AddCudaPtxInMemory(cuda::kSetIfConditionKernel, "set_if_condition");
-#endif
   return spec;
 }
 
 absl::StatusOr<MultiKernelLoaderSpec> GetSetIfElseConditionKernelLoaderSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/3);
-#if CUDA_VERSION >= 12030
-  spec.AddInProcessSymbol(cuda::GetSetIfElseConditionKernel(),
-                          "set_if_else_condition");
-#else
   spec.AddCudaPtxInMemory(cuda::kSetIfElseConditionKernel,
                           "set_if_else_condition");
-#endif
   return spec;
 }
 
 absl::StatusOr<MultiKernelLoaderSpec> GetSetCaseConditionKernelLoaderSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/12);
-#if CUDA_VERSION >= 12030
-  spec.AddInProcessSymbol(cuda::GetSetCaseConditionKernel(),
-                          "set_case_condition");
-#else
   spec.AddCudaPtxInMemory(cuda::kSetCaseConditionKernel, "set_case_condition");
-#endif
   return spec;
 }
 
 absl::StatusOr<MultiKernelLoaderSpec> GetSetForConditionKernelLoaderSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/3);
-#if CUDA_VERSION >= 12030
-  spec.AddInProcessSymbol(cuda::GetSetForConditionKernel(),
-                          "set_for_condition");
-#else
   spec.AddCudaPtxInMemory(cuda::kSetForConditionKernel, "set_for_condition");
-#endif
   return spec;
 }
 
 absl::StatusOr<MultiKernelLoaderSpec> GetSetWhileConditionKernelLoaderSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/2);
-#if CUDA_VERSION >= 12030
-  spec.AddInProcessSymbol(cuda::GetSetWhileConditionKernel(),
-                          "set_while_condition");
-#else
   spec.AddCudaPtxInMemory(cuda::kSetWhileConditionKernel,
                           "set_while_condition");
-#endif
   return spec;
 }
 
 absl::StatusOr<MultiKernelLoaderSpec> GetNoOpKernelLoaderSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/0);
-#if CUDA_VERSION >= 12030
-  spec.AddInProcessSymbol(cuda::GetNoOpKernel(), "noop");
-#else
   spec.AddCudaPtxInMemory(cuda::kNoOpKernel, "noop");
-#endif
   return spec;
 }
 
-}  // namespace gpu
+}  // namespace cuda
 }  // namespace stream_executor

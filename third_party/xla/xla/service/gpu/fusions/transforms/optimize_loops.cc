@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -42,6 +43,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
@@ -201,7 +203,8 @@ struct PipelineLoad : mlir::OpRewritePattern<Op> {
     auto plus_one_map = mlir::AffineMap::get(
         1, 0, mlir::getAffineDimExpr(0, this->getContext()) + 1);
     b.setInsertionPoint(next_value);
-    IndexingMap indexing_map(plus_one_map, {DimVar{0, ub.getSExtValue() - 1}},
+    IndexingMap indexing_map(plus_one_map,
+                             {IndexingMap::Variable{0, ub.getSExtValue() - 1}},
                              /*range_vars=*/{}, /*rt_vars=*/{});
     auto induction_plus_one =
         b.create<ApplyIndexingOp>(new_for.getInductionVar(), indexing_map)
@@ -240,9 +243,10 @@ int GetUnrollingFactor(mlir::scf::ForOp op) {
 
   // Get a rough estimate of the size of the loop body.
   int64_t size = 0;
+  bool can_unroll = true;
   op.getBodyRegion().walk([&](mlir::Operation* op) {
     if (mlir::isa<mlir::func::CallOp, mlir::scf::ForOp>(op)) {
-      size += kMaxSize;
+      can_unroll = false;
       return;
     }
 
@@ -271,6 +275,16 @@ int GetUnrollingFactor(mlir::scf::ForOp op) {
 
     size += this_size;
   });
+
+  if (!can_unroll) {
+    return 1;
+  }
+
+  // Always unroll if the trip count is smaller than the max unroll factor,
+  // because it's very likely that the loop was meant to be unrolled.
+  if (trip_count <= MaxUnrollFactor()) {
+    return trip_count;
+  }
 
   int factor = std::min(trip_count, kMaxSize / size);
   while (factor > 1 && trip_count % factor) {

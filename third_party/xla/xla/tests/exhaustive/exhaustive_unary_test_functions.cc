@@ -21,9 +21,9 @@ limitations under the License.
 #include <limits>
 #include <type_traits>
 
-#include "xla/client/lib/constants.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
-#include "xla/client/lib/math.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
-#include "xla/client/xla_builder.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
+#include "xla/hlo/builder/lib/constants.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
+#include "xla/hlo/builder/lib/math.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
+#include "xla/hlo/builder/xla_builder.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
 #include "xla/tests/exhaustive/error_spec.h"
 #include "xla/tests/exhaustive/exhaustive_op_test.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
@@ -76,6 +76,7 @@ UNARY_TEST(Exp, {
       .Run();
 })
 UNARY_TEST(Expm1, { Expm1Op<kT>(this).Error(GetDefaultSpecGenerator()).Run(); })
+UNARY_TEST(Exp2, { Exp2Op<kT>(this).Error(GetDefaultSpecGenerator()).Run(); })
 
 UNARY_TEST(Logistic, {
   LogisticOp<kT>(this)
@@ -367,7 +368,7 @@ UNARY_TEST(Erfc, {
       .Error(+[](NativeT x) {
         NativeT min = std::numeric_limits<NativeT>::min();
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
-        return ErrorSpec::Builder().abs_err(2 * min).rel_err(50 * eps).build();
+        return ErrorSpec::Builder().abs_err(min).rel_err(35 * eps).build();
       })
       .Run();
 })

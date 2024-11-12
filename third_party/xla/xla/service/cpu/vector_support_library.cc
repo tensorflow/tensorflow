@@ -15,6 +15,14 @@ limitations under the License.
 
 #include "xla/service/cpu/vector_support_library.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <initializer_list>
+#include <iterator>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -40,7 +48,7 @@ namespace xla {
 namespace cpu {
 VectorSupportLibrary::VectorSupportLibrary(PrimitiveType primitive_type,
                                            int64_t vector_size,
-                                           llvm::IRBuilder<>* b,
+                                           llvm::IRBuilderBase* b,
                                            std::string name)
     : vector_size_(vector_size),
       primitive_type_(primitive_type),
@@ -426,7 +434,7 @@ llvm::Value* VectorSupportLibrary::GetZeroScalar() {
   return llvm::Constant::getNullValue(scalar_type());
 }
 
-LlvmVariable::LlvmVariable(llvm::Type* type, llvm::IRBuilder<>* b) : b_(b) {
+LlvmVariable::LlvmVariable(llvm::Type* type, llvm::IRBuilderBase* b) : b_(b) {
   alloca_ = llvm_ir::EmitAllocaAtFunctionEntry(type, "", b_);
 }
 

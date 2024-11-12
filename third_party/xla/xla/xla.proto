@@ -48,9 +48,11 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // XLA:CPU options.
   //--------------------------------------------------------------------------//
+  // go/keep-sorted start newline_separated=yes skip_lines=1
 
-  // go/keep-sorted start newline_separated=yes
-  //
+  // Use region analysis in copy insertion pass.
+  bool xla_cpu_copy_insertion_use_region_analysis = 337;
+
   // When true, XLA:CPU uses HLO module scheduler that is optimized for
   // extracting concurrency at the cost of extra memory: we extend the live
   // ranges of temporaries to allow XLA runtime to schedule independent
@@ -98,6 +100,9 @@ message DebugOptions {
   // When true, XLA:CPU uses the thunk runtime to execute compiled program.
   bool xla_cpu_use_thunk_runtime = 298;
 
+  // Enabling this will enable optimizations that ignore the possibility of NaN.
+  bool xla_enable_fast_math = 335;
+
   // The number of parts to split the LLVM module into before codegen. This
   // allows XLA to compile all parts in parallel, and resolve kernel symbols
   // from different dynamic libraries.
@@ -106,6 +111,11 @@ message DebugOptions {
   // A `prefer-vector-width` value that is passed to the LLVM backend. Default
   // value is `256` (AVX2 on x86 platforms).
   int32 xla_cpu_prefer_vector_width = 308;
+
+  // When set, XLA:CPU will only generate code up to the specified ISA.
+  // (It will not use newer ISAs.) Using the string format allows us to extend
+  // the flag for more flexible control if necessary.
+  string xla_cpu_max_isa = 333;
 
   // go/keep-sorted end
 
@@ -119,6 +129,28 @@ message DebugOptions {
 
   // Experimentally disables binary libraries in GPU compiler passes.
   bool xla_gpu_experimental_disable_binary_libraries = 329;
+
+  // Dump FDO profiles in a binary format to a separate file.
+  bool xla_gpu_experimental_dump_fdo_profiles = 338;
+
+  // Enabling this flag will attempt to redirect every already-constructed
+  // fusion possible to the Triton emitter.
+  //
+  // For example, a fusion with kind kLoop will be transformed to a fusion with
+  // kind kCustom (and underlying kTritonFusionKind) if it can be tiled
+  // correctly, and if all the instructions it contains are supported by XLA's
+  // Triton emitter. Tile sizes are assigned automatically.
+  //
+  // Pre-existing block-level fusions are left unmodified.
+  bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
+
+  // When enabled, the PriorityFusion pass will try to make Triton fusions first
+  // and foremost where it is possible.
+  //
+  // A kCustom fusion with underlying kTritonFusionKind will be created if it
+  // can be tiled correctly, and if all the instructions it contains are
+  // supported by XLA's Triton emitter. Tile sizes are assigned automatically.
+  bool xla_gpu_experimental_enable_triton_heroless_priority_fusion = 340;
 
   // Gates the experimental feature coupling the Triton Softmax pattern matcher
   // with priority fusion.
@@ -567,6 +599,7 @@ message DebugOptions {
     CONDITIONALS = 5;
     CUSTOM_CALL = 6;
     CUBLASLT = 7;
+    DYNAMIC_SLICE = 8;
   }
 
   // Determine the types of commands that are recorded into command buffers.
@@ -643,7 +676,8 @@ message DebugOptions {
   bool xla_gpu_enable_pipelined_all_gather = 227;
   bool xla_gpu_enable_pipelined_reduce_scatter = 231;
   bool xla_gpu_enable_pipelined_p2p = 246;
-  bool xla_gpu_run_post_layout_collective_pipeliner = 313;
+
+  reserved 313;  // Was xla_gpu_run_post_layout_collective_pipeliner.
 
   // The minimum data size in bytes to trigger collective-permute-decomposer
   // transformation.
@@ -672,8 +706,6 @@ message DebugOptions {
   bool xla_gpu_exhaustive_tiling_search = 219;
 
   reserved 220;  // Was xla_gpu_enable_triton_softmax_fusion
-
-  bool xla_gpu_enable_priority_fusion = 221;
 
   reserved 286;  // Was xla_gpu_enable_triton_softmax_priority_fusion
 
@@ -785,6 +817,8 @@ message DebugOptions {
   // Whether to use multiple compute streams to run windowed einsum.
   bool xla_gpu_multi_streamed_windowed_einsum = 280;
 
+  bool xla_gpu_experimental_stream_annotation = 342;
+
   // If enabled, uses bf16_6way gemm to compute F32 gemm.
   bool xla_gpu_enable_bf16_6way_gemm = 271;
 
@@ -800,20 +834,9 @@ message DebugOptions {
   int64 xla_gpu_nccl_p2p_max_nchannels = 274;
 
   reserved 275;  // was xla_gpu_enable_mlir_emitters
-
-  // Choose the level of mlir emitters that are enabled.
-  // Current levels:
-  // 0: Disabled.
-  // 1: Loop emitter
-  // 2: + Loop-like emitters
-  // 3: + Transpose
-  // 4: + Reduce
-  int64 xla_gpu_mlir_emitter_level = 303;
-  // The maximum number of kernels to emit with MLIR. Unlimited if 0.
   reserved 281;  // was xla_gpu_max_mlir_kernels
-  // The number of initial kernels to not emit with MLIR. Only supported kernels
-  // are counted.
   reserved 282;  // was xla_gpu_skip_mlir_kernels
+  reserved 303;  // was xla_gpu_mlir_emitter_level
 
   // Threshold to rewrite matmul to cuBLAS or Triton (minimum combined number of
   // elements of both matrices in non-batch dimensions to be considered for a
@@ -862,9 +885,6 @@ message DebugOptions {
   // Excludes non-deterministic ops from compiled executables.
   // Unlike --xla_gpu_deterministic_ops does not disable autotuning - the
   // compilation itself can be non-deterministic.
-  // At present, the HLO op SelectAndScatter does not have a
-  // deterministic XLA:GPU implementation.
-  // Compilation errors out if SelectAndScatter is encountered.
   // Scatter ops can non-deterministic by default; these get converted to
   // a deterministic implementation.
   bool xla_gpu_exclude_nondeterministic_ops = 297;
@@ -965,11 +985,6 @@ message DebugOptions {
     AUTOTUNE_CACHE_MODE_READ = 2;
   }
 
-  // Enables strict PGLE checking. If an FDO profile is specified and latency
-  // hiding scheduler encounters missing instructions in the profile
-  // compilation will halt.
-  bool xla_gpu_enable_pgle_accuracy_checker = 326;
-
   // Timeouts for RendezvousSingle stuck warning and termination.
   int32 xla_gpu_executable_warn_stuck_timeout_seconds = 327;
   int32 xla_gpu_executable_terminate_timeout_seconds = 328;
@@ -986,7 +1001,36 @@ message DebugOptions {
   // loop by a factor of two if a collective op is present.
   bool xla_gpu_enable_heuristic_pass_configuration = 332;
 
-  // Next id: 333
+  // This controls how many in-flight collectives latency hiding scheduler
+  // can schedule. Example usage:
+  // With xla_gpu_experimental_parallel_collective_overlap_limit = 1:
+  //   coll.1-start = collective(input)
+  //   coll.1-done = collective(coll.1-start)
+  //   coll.2-start = collective(input2)
+  //   coll.2-done = collective(coll.2-start)
+  // With xla_gpu_experimental_parallel_collective_overlap_limit = 2:
+  //   coll.1-start = collective(input)
+  //   coll.2-start = collective(input2)
+  //   coll.1-done = collective(coll.1-start)
+  //   coll.2-done = collective(coll.2-start)
+  int32 xla_gpu_experimental_parallel_collective_overlap_limit = 336;
+
+  // If set >= 0, this controls the total bytes(combined sizes of both
+  // operands in bytes) to enable windowed einsum and
+  // xla_gpu_threshold_for_windowed_einsum_mib will be ignored.
+  int64 xla_gpu_operand_bytes_threshold_for_windowed_einsum = 339;
+
+  // Enables strict PGLE checking. If an FDO profile is specified and latency
+  // hiding scheduler encounters missing instructions in the profile
+  // compilation will halt or warn depending on the value of this option.
+  enum PGLEStrictnessLevel {
+    PGLE_STRICTNESS_LEVEL_OFF = 0;
+    PGLE_STRICTNESS_LEVEL_WARN = 1;
+    PGLE_STRICTNESS_LEVEL_ERROR = 2;
+  }
+  PGLEStrictnessLevel xla_gpu_pgle_accuracy_checker = 341;
+
+  // Next id: 343
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1003,7 +1047,10 @@ message DebugOptions {
   // xla_gpu_single_wave_autotuning
   // xla_gpu_enable_persistent_temp_buffers
   // xla_gpu_enable_triton_gemm_int4
-  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 242, 206, 320;
+  // xla_gpu_enable_priority_fusion
+  // xla_gpu_pgle_accuracy_checker
+  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
+      326;
 }
 
 // Contains flags which affects the GPU compilation result.
@@ -1025,7 +1072,7 @@ message ShardableValueUpdatePairProto {
 // will have an effect on every platform.
 //
 // When adding new fields, keep in mind that boolean fields default to false.
-// Next id: 25.
+// Next id: 27.
 message ExecutionOptions {
   // This optional field's layout is used as a hint when storing the output of
   // this computation.  Subsequent transfers of this output array to the client
@@ -1080,6 +1127,24 @@ message ExecutionOptions {
   // Device mesh ids compatible with the above mesh_shape used when
   // use_auto_spmd_partitioning=true.
   repeated int64 auto_spmd_partitioning_mesh_ids = 17;
+
+  // The amount of effort to spend on optimizing for minimizing program
+  // execution time, as a value in [-1.0, +1.0]. The baseline is 0.0, which
+  // strongly prioritizes execution time at the cost of longer compile times,
+  // suitable for production workloads. A value of -0.5 would be appropriate for
+  // research use cases that prefer faster compilations to iterate more quickly.
+  // Positive values, on the other hand, might enable costly optimizations that
+  // are off by default.
+  float exec_time_optimization_effort = 25;
+
+  // The amount of effort to spend on making the program fit in memory (where
+  // "fit in memory" here has a backend-dependent meaning), as a value in
+  // [-1.0,+1.0]. The baseline is 0.0, which expends significant effort on
+  // attempting to make the program fit. A value of -1.0 would be appropriate
+  // for use cases that wish to spend minimal effort here and fail as quickly as
+  // possible instead. Positive values, on the other hand, might enable costly
+  // algorithms to reduce memory usage that are off by default.
+  float memory_fitting_effort = 26;
 
   // If set, deduplicate hlo into function calls to reduce binary size. Only
   // works on TPU.
@@ -1142,7 +1207,7 @@ message ExecutionOptions {
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 36.
+// Next id: 38.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -1170,6 +1235,8 @@ message HloModuleConfigProto {
   bool use_auto_spmd_partitioning = 8;
   repeated int64 auto_spmd_partitioning_mesh_shape = 9;
   repeated int64 auto_spmd_partitioning_mesh_ids = 10;
+  float exec_time_optimization_effort = 36;
+  float memory_fitting_effort = 37;
   bool deduplicate_hlo = 11;
   int64 intra_op_parallelism_threads = 12;
   string device_type = 13;

@@ -71,6 +71,9 @@ class GpuLayoutAssignment : public LayoutAssignment {
   bool InstructionCanChangeLayoutInstance(
       const HloInstruction* instruction) override;
 
+  absl::Status AddDotBackendConstraints(LayoutConstraints* constraints,
+                                        HloDotInstruction* instruction);
+
   const se::GpuComputeCapability gpu_version_;
   const se::dnn::VersionInfo dnn_version_;
 };

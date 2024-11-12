@@ -20,9 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/cpu/cpu_client.h"
-#include "xla/service/hlo_parser.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/test.h"

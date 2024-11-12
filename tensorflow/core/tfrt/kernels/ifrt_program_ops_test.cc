@@ -56,9 +56,9 @@ using ::testing::Return;
 
 class IfrtCallOpTest : public OpsTestBase {
  protected:
-  Status Init(int64_t program_id, int num_inputs, DataType input_type,
-              const std::vector<int>& variable_arg_indices,
-              const std::vector<DataType>& output_type_list) {
+  absl::Status Init(int64_t program_id, int num_inputs, DataType input_type,
+                    const std::vector<int>& variable_arg_indices,
+                    const std::vector<DataType>& output_type_list) {
     TF_CHECK_OK(NodeDefBuilder("op", "IfrtCall")
                     .Input(FakeInput(num_inputs, input_type))
                     .Attr("program_id", program_id)

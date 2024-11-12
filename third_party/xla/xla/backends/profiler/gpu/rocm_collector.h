@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_set.h"
-#include "tsl/profiler/utils/xplane_builder.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
 
 namespace xla {
 namespace profiler {

@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/status/statusor.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_finder.h"
@@ -27,27 +27,25 @@ namespace {
 
 class StreamSearchTest : public ::testing::Test {
  public:
-  Platform* GetPlatform() {
-#if GOOGLE_CUDA
-    return *PlatformManager::PlatformWithName("CUDA");
-#elif TENSORFLOW_USE_ROCM
-    return *PlatformManager::PlatformWithName("ROCM");
-#endif
+  void SetUp() override {
+    TF_ASSERT_OK_AND_ASSIGN(platform_, xla::PlatformUtil::GetPlatform("GPU"));
   }
+
+  Platform* platform_;
 };
 
 TEST_F(StreamSearchTest, NoMatchBadPtr) {
   void* bad_ptr = reinterpret_cast<void*>(0xdeadbeef);
 
-  EXPECT_FALSE(FindStream(GetPlatform(), bad_ptr).ok());
+  EXPECT_FALSE(FindStream(platform_, bad_ptr).ok());
 }
 
 TEST_F(StreamSearchTest, FoundPrevExecutor) {
-  int number_devices = GetPlatform()->VisibleDeviceCount();
+  int number_devices = platform_->VisibleDeviceCount();
   EXPECT_GT(number_devices, 0);
   TF_ASSERT_OK_AND_ASSIGN(
       StreamExecutor * executor,
-      GetPlatform()->ExecutorForDevice(number_devices > 1 ? 1 : 0));
+      platform_->ExecutorForDevice(number_devices > 1 ? 1 : 0));
 
   TF_ASSERT_OK_AND_ASSIGN(auto s, executor->CreateStream());
   TF_ASSERT_OK_AND_ASSIGN(auto s2, executor->CreateStream());
@@ -55,10 +53,9 @@ TEST_F(StreamSearchTest, FoundPrevExecutor) {
   void* gpu_ptr = s->platform_specific_handle().stream;
   void* gpu_ptr_2 = s2->platform_specific_handle().stream;
 
-  TF_ASSERT_OK_AND_ASSIGN(Stream * found1, FindStream(GetPlatform(), gpu_ptr));
+  TF_ASSERT_OK_AND_ASSIGN(Stream * found1, FindStream(platform_, gpu_ptr));
   EXPECT_EQ(found1, s.get());
-  TF_ASSERT_OK_AND_ASSIGN(Stream * found2,
-                          FindStream(GetPlatform(), gpu_ptr_2));
+  TF_ASSERT_OK_AND_ASSIGN(Stream * found2, FindStream(platform_, gpu_ptr_2));
   EXPECT_EQ(found2, s2.get());
 }
 

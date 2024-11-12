@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <numeric>
+#include <random>
 #include <string_view>
 #include <vector>
 
@@ -62,6 +65,49 @@ class LessThanComparator : public Thunk::FunctionRegistry {
   }
 };
 
+TEST_P(SortThunkTest, DescendingSortPlainArray) {
+  bool is_stable = GetParam();
+  const int data_size = 10000;
+
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<float> data(data_size);
+
+  std::default_random_engine gen;
+  std::uniform_real_distribution<float> distribution(0.0, 1000.0);
+
+  for (int i = 0; i < data_size; i++) {
+    data[i] = distribution(gen);
+  }
+
+  const size_t size_in_bytes = data_size * sizeof(float);
+  buffers.emplace_back(se::DeviceMemoryBase(data.data(), size_in_bytes));
+
+  const BufferAllocations allocations(buffers);
+  const BufferAllocation alloc(0, size_in_bytes, 0);
+  const BufferAllocation::Slice slice0(&alloc, 0, size_in_bytes);
+  const Shape data_shape = ShapeUtil::MakeShape(F32, {data_size});
+
+  // The comparator function is not used in the plain array sort when the sort
+  // direction is specified and data types are supported.
+  auto fake_less_than = [](const void** data) { return false; };
+
+  // Use sort direction to activate the most efficient sorting function.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, SortThunk::Create({"sort"}, {{slice0, data_shape}},
+                                    /*dimension=*/0, is_stable, fake_less_than,
+                                    SortThunk::SortDirection::kDescending));
+
+  Thunk::ExecuteParams params;
+  params.buffer_allocations = &allocations;
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError());
+
+  EXPECT_TRUE(
+      std::is_sorted(data.cbegin(), data.cend(), std::greater<float>()));
+}
+
 TEST_P(SortThunkTest, Sort1D) {
   bool is_stable = GetParam();
 
@@ -87,7 +133,8 @@ TEST_P(SortThunkTest, Sort1D) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, SortThunk::Create(
                       {"sort"}, {{slice0, data_shape}, {slice1, indices_shape}},
-                      /*dimension=*/0, is_stable, LessThan));
+                      /*dimension=*/0, is_stable, LessThan,
+                      SortThunk::SortDirection::kAscending));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
@@ -161,7 +208,8 @@ TEST_P(SortThunkTest, DynamicSort1D) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, SortThunk::Create({"sort"}, inputs,
-                                    /*dimension=*/0, is_stable, LessThan));
+                                    /*dimension=*/0, is_stable, LessThan,
+                                    SortThunk::SortDirection::kAscending));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
@@ -207,7 +255,8 @@ TEST_P(SortThunkTest, Sort2D) {
       auto sort_dim0,
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},
-                        /*dimension=*/0, is_stable, "less_than"));
+                        /*dimension=*/0, is_stable, "less_than",
+                        SortThunk::SortDirection::kAscending));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
@@ -234,7 +283,8 @@ TEST_P(SortThunkTest, Sort2D) {
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},
                         /*dimension=*/1,
-                        /*is_stable=*/false, "less_than"));
+                        /*is_stable=*/false, "less_than",
+                        SortThunk::SortDirection::kAscending));
 
   auto execute_event1 = sort_dim1->Execute(params);
   tsl::BlockUntilReady(execute_event1);
@@ -277,7 +327,8 @@ TEST_P(SortThunkTest, Sort2DWithLayout) {
       auto sort_dim0,
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},
-                        /*dimension=*/0, is_stable, "less_than"));
+                        /*dimension=*/0, is_stable, "less_than",
+                        SortThunk::SortDirection::kAscending));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
@@ -304,7 +355,8 @@ TEST_P(SortThunkTest, Sort2DWithLayout) {
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},
                         /*dimension=*/1,
-                        /*is_stable=*/false, "less_than"));
+                        /*is_stable=*/false, "less_than",
+                        SortThunk::SortDirection::kAscending));
 
   auto execute_event1 = sort_dim1->Execute(params);
   tsl::BlockUntilReady(execute_event1);
@@ -382,7 +434,54 @@ void BM_DynamicSort1D(::testing::benchmark::State& state, bool is_stable) {
     state.ResumeTiming();
     TF_ASSERT_OK_AND_ASSIGN(
         auto thunk, SortThunk::Create({"sort"}, inputs,
-                                      /*dimension=*/0, is_stable, LessThan));
+                                      /*dimension=*/0, is_stable, LessThan,
+                                      SortThunk::SortDirection::kAscending));
+
+    auto execute_event = thunk->Execute(params);
+    tsl::BlockUntilReady(execute_event);
+    ASSERT_FALSE(execute_event.IsError());
+  }
+}
+
+void BM_SortPlainArray(::testing::benchmark::State& state, bool is_stable) {
+  const int data_size = state.range(0);
+
+  std::vector<float> data(data_size);
+
+  std::default_random_engine gen;
+  std::uniform_real_distribution<float> distribution(0.0, 1000.0);
+
+  for (int i = 0; i < data_size; i++) {
+    data[i] = distribution(gen);
+  }
+
+  const size_t size_in_bytes = data_size * sizeof(float);
+  const BufferAllocation alloc(0, size_in_bytes, 0);
+  const BufferAllocation::Slice slice0(&alloc, 0, size_in_bytes);
+  const Shape data_shape = ShapeUtil::MakeShape(F32, {data_size});
+
+  for (auto s : state) {
+    state.PauseTiming();
+    auto data_clone(data);
+    std::vector<MaybeOwningDeviceMemory> buffer;
+    buffer.emplace_back(se::DeviceMemoryBase(data_clone.data(), size_in_bytes));
+
+    const BufferAllocations allocations(buffer);
+
+    Thunk::ExecuteParams params;
+    params.buffer_allocations = &allocations;
+
+    // The comparator function is not used in the plain array sort when the sort
+    // direction is specified and data types are supported.
+    auto fake_less_than = [](const void** data) { return false; };
+
+    state.ResumeTiming();
+    // Use sort direction to activate the most efficient sorting function.
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto thunk,
+        SortThunk::Create({"sort"}, {{slice0, data_shape}},
+                          /*dimension=*/0, is_stable, fake_less_than,
+                          SortThunk::SortDirection::kAscending));
 
     auto execute_event = thunk->Execute(params);
     tsl::BlockUntilReady(execute_event);
@@ -398,6 +497,14 @@ void BM_UnstableDynamicSort1D(::testing::benchmark::State& state) {
   BM_DynamicSort1D(state, /*is_stable=*/false);
 }
 
+void BM_StableSortPlainArray(::testing::benchmark::State& state) {
+  BM_SortPlainArray(state, /*is_stable=*/true);
+}
+
+void BM_UnstableSortPlainArray(::testing::benchmark::State& state) {
+  BM_SortPlainArray(state, /*is_stable=*/false);
+}
+
 BENCHMARK(BM_StableDynamicSort1D)
     ->MeasureProcessCPUTime()
     ->Arg(35)
@@ -409,6 +516,16 @@ BENCHMARK(BM_UnstableDynamicSort1D)
     ->Arg(35)
     ->Arg(50)
     ->Arg(100);
+
+BENCHMARK(BM_StableSortPlainArray)
+    ->MeasureProcessCPUTime()
+    ->Arg(10000)
+    ->Arg(100000);
+
+BENCHMARK(BM_UnstableSortPlainArray)
+    ->MeasureProcessCPUTime()
+    ->Arg(10000)
+    ->Arg(100000);
 
 INSTANTIATE_TEST_SUITE_P(SortThunk, SortThunkTest, testing::Bool(),
                          testing::PrintToStringParamName());

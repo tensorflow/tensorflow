@@ -373,11 +373,9 @@ TEST(PjrtCApiPlatformNameTest, AvailablePlatformName) {
   PJRT_Error* platform_name_error =
       api->PJRT_Client_PlatformName(&platform_name_args);
   EXPECT_EQ(platform_name_error, nullptr);
-#if TENSORFLOW_USE_ROCM
-  EXPECT_EQ(platform_name_args.platform_name, expected_platform_name_for_rocm);
-#else
-  EXPECT_EQ(platform_name_args.platform_name, expected_platform_name_for_cuda);
-#endif
+  EXPECT_THAT(platform_name_args.platform_name,
+              testing::AnyOf(expected_platform_name_for_cuda,
+                             expected_platform_name_for_rocm));
 
   PJRT_Client_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
@@ -437,13 +435,10 @@ TEST(PJRTGpuDeviceTopologyTest, CreateGpuTopology) {
       reinterpret_cast<const PJRT_TopologyDescription*>(args.topology);
   ASSERT_NE(pjrt_topology, nullptr);
 
-#ifdef TENSORFLOW_USE_ROCM
-  EXPECT_EQ(pjrt_topology->topology->platform_id(), xla::RocmId());
-  EXPECT_EQ(pjrt_topology->topology->platform_name(), xla::RocmName());
-#else
-  EXPECT_EQ(pjrt_topology->topology->platform_id(), xla::CudaId());
-  EXPECT_EQ(pjrt_topology->topology->platform_name(), xla::CudaName());
-#endif
+  EXPECT_TRUE((pjrt_topology->topology->platform_id() == xla::CudaId() &&
+               pjrt_topology->topology->platform_name() == xla::CudaName()) ||
+              (pjrt_topology->topology->platform_id() == xla::RocmId() &&
+               pjrt_topology->topology->platform_name() == xla::RocmName()));
 
   PJRT_TopologyDescription_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;
@@ -507,8 +502,10 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
       reinterpret_cast<const PJRT_TopologyDescription*>(args.topology);
   ASSERT_NE(pjrt_topology, nullptr);
 
-  EXPECT_EQ(pjrt_topology->topology->platform_id(), xla::CudaId());
-  EXPECT_EQ(pjrt_topology->topology->platform_name(), xla::CudaName());
+  EXPECT_TRUE((pjrt_topology->topology->platform_id() == xla::CudaId() &&
+               pjrt_topology->topology->platform_name() == xla::CudaName()) ||
+              (pjrt_topology->topology->platform_id() == xla::RocmId() &&
+               pjrt_topology->topology->platform_name() == xla::RocmName()));
 
   EXPECT_EQ(pjrt_topology->topology->ProcessCount().value(), 16 * 2);
   EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions().size(), 16 * 2 * 4);

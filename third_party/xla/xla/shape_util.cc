@@ -108,11 +108,6 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   return out;
 }
 
-/* static */ bool ShapeUtil::IsArrayPrimitiveType(
-    PrimitiveType primitive_type) {
-  return primitive_util::IsArrayType(primitive_type);
-}
-
 namespace {
 // Constructs and returns the new shape with the given minor_to_major order in
 // its Layout.
@@ -1067,6 +1062,9 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   } else {
     Shape new_shape = original;
     new_shape.set_element_type(type);
+    if (new_shape.has_layout() && !primitive_util::IsSubByteNonPredType(type)) {
+      new_shape.mutable_layout()->set_element_size_in_bits(0);
+    }
     return new_shape;
   }
 }

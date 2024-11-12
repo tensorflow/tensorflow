@@ -21,7 +21,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -33,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -93,7 +93,6 @@ using ::mlir::sdy::MeshOp;
 using ::mlir::sdy::SdyDialect;
 using ::mlir::sdy::SubAxisInfoAttr;
 using ::mlir::sdy::TensorShardingAttr;
-using ::mlir::sdy::TensorShardingPerValueAttr;
 
 // Return all axes or sub-axes in the `mesh`, such that sub-axes are derived
 // from `dimShardings` and sorted by their order in the mesh. For example, given
@@ -152,7 +151,7 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
       };
   std::function<MeshAttr(TensorShardingAttr)> getMeshAttr =
       [&](TensorShardingAttr sharding) {
-        return mlir::sdy::getMeshAttr(symbolTable, sharding.getMeshName());
+        return sharding.getMesh(symbolTable);
       };
 
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
@@ -177,11 +176,11 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
   }
 
   funcOp.front().walk([&](Operation* op) {
-    if (auto shardingPerValue =
-            op->getAttrOfType<TensorShardingPerValueAttr>(kShardingAttr)) {
-      op->setAttr(kXlaShardingAttr,
-                  convertToHloShardingAttr(op, shardingPerValue.getShardings(),
-                                           getMeshAttr, getStringAttr));
+    if (ArrayRef<TensorShardingAttr> shardings = mlir::sdy::getShardings(op);
+        !shardings.empty()) {
+      op->setAttr(
+          kXlaShardingAttr,
+          convertToHloShardingAttr(op, shardings, getMeshAttr, getStringAttr));
       op->removeAttr(kShardingAttr);
     }
   });

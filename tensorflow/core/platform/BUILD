@@ -237,7 +237,6 @@ cc_library(
     compatible_with = [],
     deps = [
         ":platform",
-        "@local_xla//xla/stream_executor/gpu:scoped_activate_context",
     ],
 )
 
@@ -685,7 +684,6 @@ cc_library(
     hdrs = if_rocm_is_configured(["rocm.h"]),
     deps = if_rocm_is_configured([
         ":platform",
-        "@local_xla//xla/stream_executor/gpu:scoped_activate_context",
     ]),
 )
 
@@ -753,6 +751,8 @@ cc_library(
         ":strcat",
         ":stringprintf",
         ":types",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:status",
     ],
 )
@@ -1085,13 +1085,12 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "@local_tsl//tsl/platform",
-        "@local_xla//xla/stream_executor",
+        "@local_tsl//tsl/platform:dso_loader",
         "@local_xla//xla/stream_executor:dnn",
         "@local_xla//xla/stream_executor:platform_manager",
+        "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/stream_executor/cuda:cuda_platform_id",
-        "@local_xla//xla/stream_executor/gpu:scoped_activate_context",
         "@local_xla//xla/stream_executor/host:host_platform_id",
-        "@local_xla//xla/stream_executor/platform:dso_loader",
         "@local_xla//xla/stream_executor/rocm:rocm_platform_id",
     ] + if_rocm_is_configured([
         "@local_xla//xla/stream_executor/rocm:miopen_plugin",
@@ -1108,13 +1107,13 @@ cc_library(
     ],
     features = ["-parse_headers"],
     deps = [
-        "@local_xla//xla/stream_executor",
+        "@local_tsl//tsl/platform:dso_loader",
         "@local_xla//xla/stream_executor:dnn",
         "@local_xla//xla/stream_executor:platform_manager",
+        "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/stream_executor/cuda:cuda_platform_id",
         "@local_xla//xla/stream_executor/host:host_platform",
         "@local_xla//xla/stream_executor/host:host_platform_id",
-        "@local_xla//xla/stream_executor/platform:dso_loader",
         "@local_xla//xla/stream_executor/rocm:rocm_platform_id",
     ],
 )
@@ -1269,7 +1268,8 @@ tf_cc_test(
 
 tf_cc_test(
     name = "fake_python_env_test",
-    size = "medium",
+    # Test size is marked as large because it showed a big runtime init overhead in build tests.
+    size = "large",
     srcs = ["fake_python_env_test.cc"],
     args = [
         "/some/path/to/pythontest.runfiles/org_tensorflow/stuff/to/run.py",

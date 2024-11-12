@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/tf_threadpool_concurrent_work_queue.h"
 
+#include <cstdint>
 #include <memory>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"

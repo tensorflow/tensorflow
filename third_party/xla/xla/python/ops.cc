@@ -31,17 +31,17 @@ limitations under the License.
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/tuple.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
-#include "xla/client/lib/approx_topk.h"
-#include "xla/client/lib/approx_topk_shape.h"
-#include "xla/client/lib/comparators.h"
-#include "xla/client/lib/lu_decomposition.h"
-#include "xla/client/lib/math.h"
-#include "xla/client/lib/qr.h"
-#include "xla/client/lib/self_adjoint_eig.h"
-#include "xla/client/lib/sorting.h"
-#include "xla/client/lib/svd.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/approx_topk.h"
+#include "xla/hlo/builder/lib/approx_topk_shape.h"
+#include "xla/hlo/builder/lib/comparators.h"
+#include "xla/hlo/builder/lib/lu_decomposition.h"
+#include "xla/hlo/builder/lib/math.h"
+#include "xla/hlo/builder/lib/qr.h"
+#include "xla/hlo/builder/lib/self_adjoint_eig.h"
+#include "xla/hlo/builder/lib/sorting.h"
+#include "xla/hlo/builder/lib/svd.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/nb_helpers.h"

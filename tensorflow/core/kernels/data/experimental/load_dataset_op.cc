@@ -81,19 +81,20 @@ class LoadDatasetOp::Dataset : public DatasetBase {
     return metadata_.num_elements();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     return captured_reader_func_->CheckExternalState();
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
     return absl::OkStatus();
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* path_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(path_, &path_node));
 
@@ -137,7 +138,7 @@ class LoadDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(dataset()->captured_reader_func_->Instantiate(
           ctx, &instantiated_captured_reader_func_));
@@ -145,9 +146,9 @@ class LoadDatasetOp::Dataset : public DatasetBase {
       return input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);
       return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
     }
@@ -158,20 +159,20 @@ class LoadDatasetOp::Dataset : public DatasetBase {
       return model::MakeUnknownRatioNode(std::move(args));
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       return this->SaveInput(ctx, writer, input_impl_);
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       return this->RestoreInput(ctx, reader, input_impl_);
     }
 
    private:
-    Status InitializeInput(IteratorContext* ctx)
+    absl::Status InitializeInput(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       auto run_dir = snapshot_util::RunDirectory(
           TranslateFileName(dataset()->path_), dataset()->metadata_.run_id());

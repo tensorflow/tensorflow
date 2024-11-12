@@ -102,7 +102,8 @@ func.func @store_control_flow( %arg0: tensor<2xf32>, %arg1: index)
   }
   func.return %result : tensor<2xf32>
 }
-// CHECK:     @store_control_flow(%[[ARG0:.*]]: !llvm.ptr, %[[X:.*]]: index) {
+// CHECK-LABEL:     @store_control_flow(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr, %[[X:.*]]: index) {
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
@@ -150,7 +151,7 @@ func.func @vector_constant() -> vector<2xindex> {
   func.return %c1 : vector<2xindex>
 }
 // vector constants should not be rewritten.
-// CHECK: @vector_constant
+// CHECK-LABEL: @vector_constant
 // CHECK-NEXT: arith.constant
 
 // -----
@@ -164,7 +165,8 @@ func.func @complex_tensor_insert(
   %out = tensor.insert %complex into %arg0[%c1] : tensor<10xcomplex<f32>>
   func.return %out : tensor<10xcomplex<f32>>
 }
-// CHECK: @complex_tensor_insert(%[[ARG0:.*]]: !llvm.ptr
+// CHECK-LABEL: @complex_tensor_insert(
+// CHECK-SAME: %[[ARG0:.*]]: !llvm.ptr
 // CHECK: %[[C:.*]] = complex.create
 // CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(f32, f32)>
 // CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %[[C]] : complex<f32> to !llvm.struct<(f32, f32)>
@@ -178,7 +180,8 @@ func.func @complex_tensor_extract(
   %v2 = tensor.extract %arg0[%c1] : tensor<10xcomplex<f32>>
   func.return %v2 : complex<f32>
 }
-// CHECK: @complex_tensor_extract(%[[ARG0:.*]]: !llvm.ptr
+// CHECK-LABEL: @complex_tensor_extract(
+// CHECK-SAME: %[[ARG0:.*]]: !llvm.ptr
 // CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(f32, f32)>
 // CHECK: %[[LOAD:.*]] = llvm.load %[[GEP]] : !llvm.ptr -> !llvm.struct<(f32, f32)>
 // CHECK: builtin.unrealized_conversion_cast %[[LOAD]] : !llvm.struct<(f32, f32)> to complex<f32>
@@ -237,7 +240,7 @@ func.func @atomic_rmw_f32(%in: tensor<8xf32>, %i: index) -> (tensor<8xf32>) {
   }
   return %ret : tensor<8xf32>
 }
-// CHECK: @atomic_rmw_f32
+// CHECK-LABEL: @atomic_rmw_f32
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]]
 // CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
@@ -256,7 +259,7 @@ func.func @atomic_rmw_f16(%in: tensor<8xf16>, %i: index)
   }
   return %ret : tensor<8xf16>
 }
-// CHECK: @atomic_rmw_f16
+// CHECK-LABEL: @atomic_rmw_f16
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
@@ -285,7 +288,7 @@ func.func @atomic_rmw_overwrite(%in: tensor<8xf16>, %i: index)
   }
   return %ret : tensor<8xf16>
 }
-// CHECK: @atomic_rmw_overwrite
+// CHECK-LABEL: @atomic_rmw_overwrite
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
@@ -307,7 +310,7 @@ func.func @shared_complex() -> tensor<10xcomplex<f32>> {
   return %shared : tensor<10xcomplex<f32>>
 }
 // CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<10 x struct<(f32, f32)>>
-// CHECK: @shared_complex
+// CHECK-LABEL: @shared_complex
 
 // -----
 
@@ -317,14 +320,33 @@ func.func @i4_load_store(%arg: tensor<10xi4>, %i: index, %j: index)
   %r = tensor.insert %v into %arg[%j] : tensor<10xi4>
   return %r : tensor<10xi4>
 }
-// CHECK: @i4_load_store
+// CHECK-LABEL: @i4_load_store
+// CHECK-DAG: %[[C4:.*]] = arith.constant 4 : i8
+// CHECK-DAG: %[[C15:.*]] = arith.constant 15 : i8
+// CHECK-DAG: %[[C_NEG16:.*]] = arith.constant -16 : i8
 // CHECK: llvm.getelementptr
 // CHECK-SAME: -> !llvm.ptr, i8
-// CHECK: llvm.load
+// CHECK: %[[VALUE_I8:.*]] = arith.extui {{.*}} : i4 to i8
 // CHECK: llvm.getelementptr
 // CHECK-SAME: -> !llvm.ptr, i8
-// CHECK: llvm.load
-// CHECK: llvm.store
+// CHECK: %[[CURRENT_I32:.*]] = llvm.load
+// CHECK-SAME: !llvm.ptr -> i32
+// CHECK: scf.while (%[[INIT:.*]] = %[[CURRENT_I32]])
+// CHECK: %[[SHIFTED:.*]] = llvm.lshr %[[INIT]]
+// CHECK: %[[CURRENT:.*]] = llvm.trunc %[[SHIFTED]]
+// CHECK: %[[MASKED_CURRENT_LO:.*]] = arith.andi %[[CURRENT]], %[[C_NEG16]] : i8
+// CHECK: %[[MASKED_VALUE_I8:.*]] = arith.andi %[[VALUE_I8]], %[[C15]] : i8
+// CHECK: %[[NEW_LO:.*]] = arith.ori %[[MASKED_CURRENT_LO]], %[[MASKED_VALUE_I8]] : i8
+// CHECK: %[[MASKED_CURRENT_HI:.*]] = arith.andi %[[CURRENT]], %[[C15]] : i8
+// CHECK: %[[VALUE_HI:.*]] = arith.shli %[[VALUE_I8]], %[[C4]] : i8
+// CHECK: %[[NEW_HI:.*]] = arith.ori %[[MASKED_CURRENT_HI]], %[[VALUE_HI]] : i8
+// CHECK: %[[NEW_VALUE:.*]] = arith.select %{{.*}}, %[[NEW_LO]], %[[NEW_HI]] : i8
+// CHECK: %[[NEW_VALUE_I32:.*]] = llvm.zext %[[NEW_VALUE]]
+// CHECK: %[[MASKED_INIT:.*]] = llvm.and %[[INIT]]
+// CHECK: %[[NEW_VALUE_SHIFTED:.*]] = llvm.shl %[[NEW_VALUE_I32]]
+// CHECK: %[[NEW_INIT:.*]] = llvm.or %[[MASKED_INIT]], %[[NEW_VALUE_SHIFTED]]
+// CHECK: llvm.cmpxchg %{{.*}}, %[[INIT]], %[[NEW_INIT]] seq_cst seq_cst
+// CHECK: scf.condition
 
 // -----
 
@@ -337,7 +359,7 @@ func.func @direct_atomic_rmw_overwrite(%in: tensor<8xi32>,
   }
   return %ret : tensor<8xi32>
 }
-// CHECK: @direct_atomic_rmw_overwrite
+// CHECK-LABEL: @direct_atomic_rmw_overwrite
 // CHECK: %[[C2:.*]] = arith.constant 2
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK: llvm.store %[[C2]], %[[ADDR]] atomic unordered {alignment = 4 : i64}
@@ -354,7 +376,7 @@ func.func @direct_atomic_rmw_addi(%in: tensor<8xi32>,
   }
   return %ret : tensor<8xi32>
 }
-// CHECK: @direct_atomic_rmw_addi
+// CHECK-LABEL: @direct_atomic_rmw_addi
 // CHECK: %[[C2:.*]] = arith.constant 2
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK: llvm.atomicrmw add %[[ADDR]], %[[C2]] seq_cst
@@ -371,7 +393,7 @@ func.func @direct_atomic_rmw_maxsi(%in: tensor<8xi32>,
   }
   return %ret : tensor<8xi32>
 }
-// CHECK: @direct_atomic_rmw_maxsi
+// CHECK-LABEL: @direct_atomic_rmw_maxsi
 // CHECK: %[[C2:.*]] = arith.constant 2
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK: llvm.atomicrmw max %[[ADDR]], %[[C2]] seq_cst
@@ -388,7 +410,7 @@ func.func @direct_atomic_rmw_maxui(%in: tensor<8xi32>,
   }
   return %ret : tensor<8xi32>
 }
-// CHECK: @direct_atomic_rmw_maxui
+// CHECK-LABEL: @direct_atomic_rmw_maxui
 // CHECK: %[[C2:.*]] = arith.constant 2
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK: llvm.atomicrmw umax %[[ADDR]], %[[C2]] seq_cst
@@ -405,7 +427,7 @@ func.func @direct_atomic_rmw_minsi(%in: tensor<8xi32>,
   }
   return %ret : tensor<8xi32>
 }
-// CHECK: @direct_atomic_rmw_minsi
+// CHECK-LABEL: @direct_atomic_rmw_minsi
 // CHECK: %[[C2:.*]] = arith.constant 2
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK: llvm.atomicrmw min %[[ADDR]], %[[C2]] seq_cst
@@ -422,7 +444,7 @@ func.func @direct_atomic_rmw_minui(%in: tensor<8xi32>,
   }
   return %ret : tensor<8xi32>
 }
-// CHECK: @direct_atomic_rmw_minui
+// CHECK-LABEL: @direct_atomic_rmw_minui
 // CHECK: %[[C2:.*]] = arith.constant 2
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK: llvm.atomicrmw umin %[[ADDR]], %[[C2]] seq_cst
@@ -698,3 +720,27 @@ func.func @transfer_read_i1(%arg0: tensor<43xi1> {xla.slice_index = 1}) -> vecto
 // CHECK:           %[[CAST:.*]] = arith.cmpi ne, %[[LOADED]], %[[C0]]
 // CHECK:           return %[[CAST]] : vector<2xi1>
 
+// -----
+
+func.func @int4_constant(%arg0: tensor<3xi4>, %arg1: index) -> i4 {
+  %cst = arith.constant dense<[1, 2, 3]> : tensor<3xi4>
+  %extracted = tensor.extract %arg0[%arg1] : tensor<3xi4>
+  %extracted_0 = tensor.extract %cst[%arg1] : tensor<3xi4>
+  %0 = arith.addi %extracted, %extracted_0 : i4
+  return %0 : i4
+}
+// CHECK: llvm.mlir.global private constant
+// CHECK-SAME: dense<[18, 48]>
+// CHECK-LABEL: @int4_constant
+
+// -----
+
+func.func @complex_expm1_approx(%arg0: tensor<3xcomplex<f32>>, %i: index)
+    -> complex<f32> {
+  %extracted = tensor.extract %arg0[%i] : tensor<3xcomplex<f32>>
+  %expm1 = complex.expm1 %extracted : complex<f32>
+  return %expm1 : complex<f32>
+}
+// CHECK-LABEL: @complex_expm1_approx
+// CHECK: math.expm1
+// CHECK-COUNT-6: math.fma

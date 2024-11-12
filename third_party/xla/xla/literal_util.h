@@ -244,6 +244,8 @@ class LiteralUtil {
   static Literal ConvertBF16ToF64(const LiteralSlice& bf16_literal);
   static Literal ConvertF32ToF8E4M3FNUZ(const LiteralSlice& f32_literal);
   static Literal ConvertF32ToF8E5M2FNUZ(const LiteralSlice& f32_literal);
+  static Literal ConvertF32ToF8E5M2(const LiteralSlice& f32_literal);
+  static Literal ConvertF32ToF8E4M3FN(const LiteralSlice& f32_literal);
   static Literal ConvertF32ToBF16(const LiteralSlice& f32_literal);
   static Literal ConvertF32ToS8(const LiteralSlice& f32_literal);
   static Literal ConvertF32ToF64(const LiteralSlice& f32_literal);
@@ -607,6 +609,32 @@ template <PrimitiveType type, typename T>
   std::minstd_rand0 engine;
   return CreateRandomLiteral<type>(shape, &engine, mean, stddev);
 }
+
+// Generates fake data in a literal of the given shape, or returns an error
+// status if the element type is currently unhandled for fake data
+// generation. See below for documentation of pseudo_random and use_large_range.
+absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape,
+                                        bool pseudo_random = true,
+                                        bool use_large_range = false);
+
+// Similar to MakeFakeLiteral above but takes a random number generator engine
+// to enable reusing the engine across randomly generated literals. 'limit' is a
+// optional pair that contains the min and the max values to be sample for
+// integers (integer format only). 'is_sorted' sorts the sample data for
+// integers (integer format only). 'no_duplicates' indicates that there should
+// be no duplicate values in each generated array. This is uniqueness is
+// best-effort only. Some types (half and bfloat16) are not supported and
+// uniqueness cannot be guaranteed if the number of elements exceeds the number
+// of different values supported by the type. (floating point format only)
+// 'use_large_range' indicates the sampled data is from the full range of the
+// floating point format. (floating point format only)
+// 'max_bits_of_precision' sets the data to have the given number of bits or
+// less (integer or floating point formats only).
+absl::StatusOr<Literal> MakeFakeLiteral(
+    const Shape& shape, std::minstd_rand0* engine,
+    std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
+    bool no_duplicates, bool use_large_range,
+    std::optional<int64_t> max_bits_of_precision);
 
 }  // namespace xla
 

@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/cpu/llvm_ir_runtime.h"
 
+#include <cstdint>
+#include <functional>
+#include <vector>
+
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
@@ -22,6 +26,7 @@ limitations under the License.
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "xla/service/cpu/vector_support_library.h"
 #include "xla/service/llvm_ir/math_ops.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -82,7 +87,7 @@ void RemoveFunctionFromUsedList(llvm::Module* module, llvm::Function* fn) {
 // the same inputs/outputs as fn_name.
 void RewriteCalls(
     llvm::Module* module, const char* fn_name,
-    std::function<llvm::Value*(llvm::IRBuilder<>* b, llvm::Value* input,
+    std::function<llvm::Value*(llvm::IRBuilderBase* b, llvm::Value* input,
                                int32_t vector_width)>
         fn_body_generator,
     int32_t vector_width, llvm::FastMathFlags fast_math_flags) {
@@ -154,17 +159,17 @@ void RewriteCalls(
   fn->eraseFromParent();
 }
 
-llvm::Value* GenerateVF32Tanh(llvm::IRBuilder<>* b, llvm::Value* input,
+llvm::Value* GenerateVF32Tanh(llvm::IRBuilderBase* b, llvm::Value* input,
                               int32_t /*vector_width*/) {
   return llvm_ir::EmitFastTanh(b, input, /*with_fma=*/true);
 }
 
-llvm::Value* GenerateVF64Tanh(llvm::IRBuilder<>* b, llvm::Value* input,
+llvm::Value* GenerateVF64Tanh(llvm::IRBuilderBase* b, llvm::Value* input,
                               int32_t /*vector_width*/) {
   return llvm_ir::EmitFastTanhF64(b, input, /*with_fma=*/true);
 }
 
-llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
+llvm::Value* GenerateVF32Exp(llvm::IRBuilderBase* b, llvm::Value* input,
                              int32_t vector_width) {
   VectorSupportLibrary vsl(F32, vector_width, b, "exp_f32");
 
@@ -289,7 +294,7 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
   return vsl.Mul(z, pow2);
 }
 
-llvm::Value* GenerateVF32Log(llvm::IRBuilder<>* b, llvm::Value* input,
+llvm::Value* GenerateVF32Log(llvm::IRBuilderBase* b, llvm::Value* input,
                              int32_t vector_width) {
   VectorSupportLibrary vsl(F32, vector_width, b, "log_f32");
 

@@ -659,7 +659,7 @@ def TF_AsStringOp : TF_Op<"AsString", [Pure, SameOperandsAndResultShape]> {
 Supports many numeric types and boolean.
 
 For Unicode, see the
-[https://www.tensorflow.org/tutorials/representation/unicode](Working with Unicode text)
+[https://www.tensorflow.org/text/guide/unicode](Working with Unicode text)
 tutorial.
 
 Examples:
@@ -20068,7 +20068,7 @@ array([[1, 2, 3, 1, 2, 3],
   TF_DerivedOperandTypeAttr Tmultiples = TF_DerivedOperandTypeAttr<1>;
 
   let hasVerifier = 1;
-
+  let hasCanonicalizer = 1;
   let hasFolder = 1;
 }
 

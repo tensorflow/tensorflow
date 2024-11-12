@@ -35,6 +35,26 @@ inline std::string HloModuleNameWithProgramId(absl::string_view hlo_module_name,
   return absl::StrCat(hlo_module_name, "(", program_id, ")");
 }
 
+inline bool IsHloRematerialization(absl::string_view hlo_expression) {
+  auto pos = hlo_expression.find_first_of('=');
+  if (pos != absl::string_view::npos) {
+    hlo_expression.remove_suffix(hlo_expression.size() - pos);
+  }
+  return absl::StrContains(hlo_expression, ".remat");
+}
+
+// Return true if framework_op is a remat.
+inline bool IsFrameworkRematerialization(absl::string_view framework_op_name) {
+  return absl::StrContains(framework_op_name, "/rematted_computation/");
+}
+
+// Return true if hlo_expression is a remat.
+inline bool IsRematerialization(absl::string_view hlo_expression,
+                                absl::string_view framework_op_name) {
+  return IsHloRematerialization(hlo_expression) ||
+         IsFrameworkRematerialization(framework_op_name);
+}
+
 }  // namespace profiler
 }  // namespace tsl
 

@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 289
+_version = 296
 
 # Version number for MLIR:Python components.
 mlir_api_version = 57
@@ -89,6 +89,7 @@ def make_gpu_client(
     platform_name=None,
     allowed_devices=None,
     mock=False,
+    mock_gpu_topology=None,
 ):
   """Returns a GPU client. BFC allocator is used by default."""
   options = generate_pjrt_gpu_plugin_options()
@@ -120,6 +121,7 @@ def make_gpu_client(
       platform_name=platform_name,
       allowed_devices=allowed_devices,
       mock=mock,
+      mock_gpu_topology=mock_gpu_topology,
   )
 
 
@@ -274,6 +276,9 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 PrimitiveType = _xla.PrimitiveType
 
 bfloat16 = ml_dtypes.bfloat16
+# TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+# float8_e3m4 = ml_dtypes.float8_e3m4
+# float8_e4m3 = ml_dtypes.float8_e4m3
 float8_e4m3fn = ml_dtypes.float8_e4m3fn
 float8_e4m3b11fnuz = ml_dtypes.float8_e4m3b11fnuz
 float8_e4m3fnuz = ml_dtypes.float8_e4m3fnuz
@@ -292,6 +297,9 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U16: np.dtype('uint16'),
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
+    # TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+    # PrimitiveType.F8E3M4: np.dtype(float8_e3m4),
+    # PrimitiveType.F8E4M3: np.dtype(float8_e4m3),
     PrimitiveType.F8E4M3FN: np.dtype(float8_e4m3fn),
     PrimitiveType.F8E4M3B11FNUZ: np.dtype(float8_e4m3b11fnuz),
     PrimitiveType.F8E5M2: np.dtype(float8_e5m2),
@@ -469,40 +477,6 @@ HostBufferSemantics = _xla.HostBufferSemantics
 # There are different implementations of Executable for different backends.
 
 
-def execute_with_python_values(executable, arguments, backend):
-  """Execute on one replica with Python values as arguments and output."""
-
-  def put(arg):
-    return backend.buffer_from_pyval(arg, device=executable.local_devices()[0])
-
-  arguments = [put(arg) for arg in arguments]
-  outputs = executable.execute(arguments)
-  return [np.asarray(x) for x in outputs]
-
-
-def execute_with_python_values_replicated(executable, arguments, backend):
-  """Execute on many replicas with Python values as arguments and output.
-
-  Args:
-    executable: the program to run.
-    arguments: a list of lists of Python values indexed by `[replica][arg_num]`
-      to pass as inputs.
-    backend: the backend we are targeting.
-
-  Returns:
-    A list of python values, one per replica.
-  """
-  devices = executable.local_devices()
-
-  # pylint: disable=g-complex-comprehension
-  def copy_to_devices(pyvals):
-    return [backend.buffer_from_pyval(v, d) for v, d in zip(pyvals, devices)]
-
-  inputs = [copy_to_devices(pyvals) for pyvals in zip(*arguments)]
-  outputs = executable.execute_sharded_on_local_devices(inputs)
-  return [[np.asarray(x) for x in xs] for xs in zip(*outputs)]
-
-
 class PaddingType(enum.Enum):
   VALID = 1
   SAME = 2
@@ -558,6 +532,7 @@ SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
 PjRtLayout = _xla.PjRtLayout
+AutotuneCacheMode = _xla.AutotuneCacheMode
 
 
 def LoadedExecutable_execute(self, arguments, device=None):
@@ -976,3 +951,4 @@ batched_block_until_ready = _xla.batched_block_until_ready
 check_and_canonicalize_memory_kind = _xla.check_and_canonicalize_memory_kind
 Layout = _xla.Layout
 custom_call_targets = _xla.custom_call_targets
+ArrayCopySemantics = _xla.ArrayCopySemantics

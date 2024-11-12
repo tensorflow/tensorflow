@@ -802,6 +802,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:extension_type",
+        "//tensorflow/python/framework:immutable_dict",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
@@ -927,6 +928,7 @@ tf_python_pybind_extension(
         "pywrap_saved_model/metrics.pyi",
     ],
     visibility = [
+        "//tensorflow/python:__pkg__",
         "//tensorflow/python/checkpoint:__subpackages__",
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/training:__subpackages__",
@@ -945,6 +947,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@pybind11",

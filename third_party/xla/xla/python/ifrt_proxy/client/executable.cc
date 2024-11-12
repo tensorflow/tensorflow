@@ -432,7 +432,12 @@ LoadedExecutable::Execute(
 
   // Populate the execution status future. `CheckFuture` deletes the server-side
   // futures after its completion.
-  result.status = rpc_helper_->CheckFuture(response->status_handle());
+  //
+  // Starting version 6, the server populates the status future only if it was
+  // explicitly requested via `options.fill_status`.
+  if (rpc_helper_->version().protocol_version() < 6 || options.fill_status) {
+    result.status = rpc_helper_->CheckFuture(response->status_handle());
+  }
 
   // Create output arrays. The cleanup logic ensures that all handles are
   // properly cleaned up on early return.

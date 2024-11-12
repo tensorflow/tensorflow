@@ -49,14 +49,14 @@ absl::StatusOr<xla::Shape> DeviceShapeRepresentation(
       &c_xla_shape.value, type, use_fast_memory,
       ConvertToCXlaLayoutPreference(layout_preference), &c_device_shape.value,
       tf_status);
-  const Status status = StatusFromTF_Status(tf_status);
+  const absl::Status status = StatusFromTF_Status(tf_status);
   TF_DeleteStatus(tf_status);
   TF_RETURN_IF_ERROR(status);
   return c_device_shape.AsCpp<xla::Shape>();
 }
 }  // namespace
 
-Status NextPluggableDeviceFactory::ListPhysicalDevices(
+absl::Status NextPluggableDeviceFactory::ListPhysicalDevices(
     std::vector<string>* devices) {
   TF_Status* c_status = TF_NewStatus();
   int32_t device_count = api_->TFNPD_GetDeviceCount(c_status);
@@ -72,7 +72,7 @@ Status NextPluggableDeviceFactory::ListPhysicalDevices(
   return absl::OkStatus();
 }
 
-Status NextPluggableDeviceFactory::CreateDevices(
+absl::Status NextPluggableDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const std::string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   TF_Status* c_status = TF_NewStatus();

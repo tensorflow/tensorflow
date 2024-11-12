@@ -107,6 +107,7 @@ tf_python_pybind_extension(
     ],
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
+        "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler:__subpackages__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
@@ -126,6 +127,7 @@ tf_python_pybind_extension(
     ],
     visibility = [
         "//tensorflow/core/profiler:internal",
+        "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/profiler:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
@@ -179,8 +181,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:variant",
-        "@local_tsl//tsl/profiler/utils:session_manager",
         "@local_xla//xla/tsl/profiler/convert:xplane_to_trace_events",
         "@local_xla//xla/tsl/profiler/rpc/client:capture_profile",
+        "@local_xla//xla/tsl/profiler/utils:session_manager",
     ],
 )

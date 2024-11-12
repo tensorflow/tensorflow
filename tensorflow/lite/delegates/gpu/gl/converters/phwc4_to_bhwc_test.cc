@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/converters/phwc4_to_bhwc.h"
 
-#include <algorithm>
+#include <cstdint>
+#include <memory>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/convert.h"

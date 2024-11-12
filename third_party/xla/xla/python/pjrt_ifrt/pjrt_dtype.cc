@@ -44,6 +44,8 @@ absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
     CASE(DType::kU16, xla::PrimitiveType::U16);
     CASE(DType::kU32, xla::PrimitiveType::U32);
     CASE(DType::kU64, xla::PrimitiveType::U64);
+    CASE(DType::kF8E3M4, xla::PrimitiveType::F8E3M4);
+    CASE(DType::kF8E4M3, xla::PrimitiveType::F8E4M3);
     CASE(DType::kF8E4M3FN, xla::PrimitiveType::F8E4M3FN);
     CASE(DType::kF8E4M3B11FNUZ, xla::PrimitiveType::F8E4M3B11FNUZ);
     CASE(DType::kF8E4M3FNUZ, xla::PrimitiveType::F8E4M3FNUZ);
@@ -56,6 +58,7 @@ absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
     CASE(DType::kC64, xla::PrimitiveType::C64);
     CASE(DType::kC128, xla::PrimitiveType::C128);
     CASE(DType::kToken, xla::PrimitiveType::TOKEN);
+    CASE(DType::kOpaque, xla::PrimitiveType::OPAQUE_TYPE);
 #undef CASE
     case DType::kString:
       return InvalidArgument("Not supported as XLA PrimitiveType: %d",
@@ -80,6 +83,8 @@ absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
     case xla::PrimitiveType::U16:
     case xla::PrimitiveType::U32:
     case xla::PrimitiveType::U64:
+    case xla::PrimitiveType::F8E3M4:
+    case xla::PrimitiveType::F8E4M3:
     case xla::PrimitiveType::F8E4M3FN:
     case xla::PrimitiveType::F8E4M3B11FNUZ:
     case xla::PrimitiveType::F8E4M3FNUZ:
@@ -92,6 +97,7 @@ absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
     case xla::PrimitiveType::C64:
     case xla::PrimitiveType::C128:
     case xla::PrimitiveType::TOKEN:
+    case xla::PrimitiveType::OPAQUE_TYPE:
       return DType(static_cast<DType::Kind>(static_cast<int>(primitive_type)));
     default:
       return InvalidArgument("Invalid XLA PrimitiveType: %d",

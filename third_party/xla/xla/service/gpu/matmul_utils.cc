@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -45,67 +46,16 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
-
-absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
-    const Shape& shape, absl::Span<const int64_t> batch_dims,
-    absl::Span<const int64_t> contracting_dims) {
-  std::vector<int64_t> non_contracting_dims;
-  // This is O(rank**2), but we expect rank to be small.
-  for (int64_t dim = 0; dim < shape.rank(); ++dim) {
-    bool is_batch = absl::c_count(batch_dims, dim) != 0;
-    bool is_contracting = absl::c_count(contracting_dims, dim) != 0;
-    TF_RET_CHECK(!(is_batch && is_contracting));
-    if (!(is_batch || is_contracting)) non_contracting_dims.push_back(dim);
-  }
-
-  TF_RET_CHECK(batch_dims.size() + contracting_dims.size() +
-                   non_contracting_dims.size() ==
-               shape.rank());
-  return non_contracting_dims;
-}
-
-const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
-    const HloInstruction& dot, const int operand_number) {
-  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
-  if (operand_number == 0) {
-    return dimension_numbers.lhs_batch_dimensions();
-  }
-  return dimension_numbers.rhs_batch_dimensions();
-}
-
-absl::StatusOr<int64_t> ContractingDimensionIndex(const HloInstruction& dot,
-                                                  const int operand_number) {
-  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
-  if (operand_number == 0) {
-    TF_RET_CHECK(dimension_numbers.lhs_contracting_dimensions().size() == 1);
-    return dimension_numbers.lhs_contracting_dimensions(0);
-  }
-  TF_RET_CHECK(dimension_numbers.rhs_contracting_dimensions().size() == 1);
-  return dimension_numbers.rhs_contracting_dimensions(0);
-}
-
-absl::StatusOr<int64_t> NonContractingDimensionIndex(const HloInstruction& dot,
-                                                     const int operand_number) {
-  TF_ASSIGN_OR_RETURN(int64_t contracting_dim,
-                      ContractingDimensionIndex(dot, operand_number));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<int64_t> non_contracting_dims,
-      GetNonContractingDims(dot.operand(operand_number)->shape(),
-                            BatchDimensionsForOperand(dot, operand_number),
-                            {contracting_dim}));
-  TF_RET_CHECK(non_contracting_dims.size() == 1);
-  return non_contracting_dims.front();
-}
 
 absl::StatusOr<Shape> GetBatchRowColumnShape(
     const Shape& shape, absl::Span<const int64_t> batch_dims,

@@ -37,11 +37,11 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
 #include "xla/tests/filecheck.h"
@@ -1334,6 +1334,43 @@ TEST_F(ElementalHloToMlirTest, ConvertToUnsigned64Saturation) {
     // CHECK:      @main_convert(
     // CHECK:        %[[UB:.*]] = arith.constant 1.84467441E+19 : f32
     // CHECK:        arith.cmpf oge, {{.*}}, %[[UB]] : f32
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ExpF16_UsesFastmathFlag) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f16[4] parameter(0)
+      ROOT exp = f16[4] exponential(p0)
+    })",
+                   R"(
+    // CHECK:      @main_exp(
+    // CHECK:        math.exp %{{.*}} fastmath<afn> : f16
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ExpBF16_UsesFastmathFlag) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = bf16[4] parameter(0)
+      ROOT exp = bf16[4] exponential(p0)
+    })",
+                   R"(
+    // CHECK:      @main_exp(
+    // CHECK:        math.exp %{{.*}} fastmath<afn> : bf16
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ExpF32_DoesntUseFastmathFlag) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      ROOT exp = f32[4] exponential(p0)
+    })",
+                   R"(
+    // CHECK:      @main_exp(
+    // CHECK:        math.exp
+    // CHECK-NOT: fastmath
   )"));
 }
 

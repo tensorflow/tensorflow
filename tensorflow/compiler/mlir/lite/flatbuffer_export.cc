@@ -60,7 +60,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -96,9 +96,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/region_isolation.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/string_utils.h"
 #include "tensorflow/compiler/mlir/lite/version.h"
@@ -117,8 +120,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/lite/tools/versioning/op_version.h"
-#include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/tstring.h"
@@ -809,6 +810,11 @@ class Translator {
 
   std::optional<BufferOffset<tflite::Operator>> BuildVhloPadV1Op(
       mlir::vhlo::PadOpV1 pad_op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results,
+      mlir::VhloToStablehloTypeConverter& vhlo_type_converter);
+
+  std::optional<BufferOffset<tflite::Operator>> BuildVhloCaseOp(
+      mlir::vhlo::CaseOpV1 op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results,
       mlir::VhloToStablehloTypeConverter& vhlo_type_converter);
 
@@ -2221,6 +2227,71 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloPadV1Op(
       GetOperatorDebugMetadataIndex(pad_op.getOperation()));
 }
 
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloCaseOp(
+    mlir::vhlo::CaseOpV1 op, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results,
+    mlir::VhloToStablehloTypeConverter& vhlo_type_converter) {
+  const uint32_t opcode_ind =
+      GetOpcodeIndex(op->getName().getStringRef().str(),
+                     tflite::BuiltinOperator_STABLEHLO_CASE);
+
+  // Figure out the "functional form" of the case op by isolating the regions.
+  // This has to be done on the fly during export time because a "functional"
+  // case op is not valid mlir, (but required for flatbuffer control-flow).
+  // NOTE: This won't round-trip without custom import logic.
+
+  // Update the regions to be self-contained all with matching signature.
+
+  mlir::OpBuilder b(op->getContext());
+
+  auto iso_result = mlir::TFL::IsolateRegions(op.getOperation(), b);
+  if (!iso_result.has_value()) {
+    op->emitError()
+        << "Failed to isolate stablehlo.case_op branches during export.\n";
+    return std::nullopt;
+  }
+
+  // Make flatbuffer subgraphs from regions.
+
+  std::vector<int32_t> subgraph_inds;
+  for (auto& region : op.getBranches()) {
+    const int32_t subgraph_ind = UnnamedRegionToSubgraph(
+        &region, tflite::BuiltinOperator_STABLEHLO_CASE);
+    if (subgraph_ind < 0) {
+      op->emitError() << "Failed to serialize stablehlo.case_op branch\n";
+      return std::nullopt;
+    }
+    subgraph_inds.push_back(subgraph_ind);
+  }
+
+  auto opts = tflite::CreateStablehloCaseOptions(
+      builder_, builder_.CreateVector(subgraph_inds));
+
+  // Compute what the signature of case op would be if it is was in "functional
+  // form". This is index arg concatted with the new region(s) signature.
+
+  auto parent_func = op->getParentOfType<mlir::func::FuncOp>();
+  const auto parent_subgraph_ind =
+      subgraph_index_map_[parent_func.getSymName().str()];
+
+  std::vector<int32_t> new_operands(operands);
+  for (auto val : *iso_result) {
+    const auto val_name = name_mapper_.GetUniqueName(val);
+    const auto val_tensor_id = tensor_index_map_[parent_subgraph_ind][val_name];
+    new_operands.push_back(val_tensor_id);
+  }
+
+  return tflite::CreateOperator(
+      builder_, opcode_ind, /*inputs=*/builder_.CreateVector(new_operands),
+      /*outputs=*/builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0, /*custom_options=*/0,
+      tflite::CustomOptionsFormat_FLEXBUFFERS, /*mutating_variable_inputs=*/0,
+      /*intermediates=*/0, /*large_custom_options_offset=*/0,
+      /*large_custom_options_size=*/0,
+      tflite::BuiltinOptions2_StablehloCaseOptions, opts.Union(),
+      GetOperatorDebugMetadataIndex(op.getOperation()));
+}
+
 std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     Operation* inst, std::vector<int32_t> operands,
     const std::vector<int32_t>& results,
@@ -2295,6 +2366,10 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
 
   if (dialect == vhlo_dialect_) {
     mlir::VhloToStablehloTypeConverter vhlo_type_converter;
+    if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::CaseOpV1>(inst)) {
+      return BuildVhloCaseOp(vhlo_op, operands, results, vhlo_type_converter);
+    }
+
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::ScatterOpV1>(inst)) {
       return BuildVhloScatterV1Op(vhlo_op, operands, results,
                                   vhlo_type_converter);

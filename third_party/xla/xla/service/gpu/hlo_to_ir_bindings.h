@@ -35,7 +35,7 @@ namespace gpu {
 // values that represent their addresses.
 class HloToIrBindings {
  public:
-  HloToIrBindings(llvm::IRBuilder<>* b, llvm::Module* llvm_module,
+  HloToIrBindings(llvm::IRBuilderBase* b, llvm::Module* llvm_module,
                   bool is_nested)
       : is_nested_(is_nested), b_(b), module_(llvm_module) {}
 
@@ -72,12 +72,10 @@ class HloToIrBindings {
                               const HloInstruction& consumer,
                               const ShapeIndex& shape_index = {});
 
-  std::string ToString() const;
-
  private:
   const bool is_nested_;
 
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
   llvm::Module* module_;
 
   // Stores the underlying llvm::IrArray for each HloInstruction.

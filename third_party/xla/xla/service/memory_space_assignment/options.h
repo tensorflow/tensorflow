@@ -105,7 +105,9 @@ struct Options {
           [](const HloPosition&) { return true; };
 
   // This function returns the amount of scoped memory in bytes that should be
-  // reserved during the execution of this instruction.
+  // reserved during the execution of this instruction. Note that the
+  // `operands_in_alternate_memory` also includes the window prefetched
+  // operands.
   ReservedScopedMemoryFunction reserved_scoped_memory_fn =
       [](const HloInstruction*,
          const absl::flat_hash_set<
@@ -214,6 +216,14 @@ struct Options {
   // If true, tries to replace synchronous copy instructions with asynchronous
   // ones. If it fails to replace the copy, it keeps the sync version.
   bool enable_sync_copy_replacement = false;
+
+  // If true, tries to replace synchronous slice instructions with asynchronous
+  // ones. If it fails to replace the slice, it keeps the sync version.
+  bool enable_sync_slice_replacement = false;
+
+  // If non-zero, this is the number of extra outstanding async copies that we
+  // allow for each sync mem op that is converted to an async mem op.
+  int extend_async_copies_limit_for_sync_mem_op_conversion = 0;
 
   // The ratio of use bytes to copy bytes for a given allocation site below
   // which we consider the site to be inefficient. A value of 0 would treat all

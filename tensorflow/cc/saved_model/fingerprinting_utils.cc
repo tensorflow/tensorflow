@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tensorflow/tools/proto_splitter/merge.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/random.h"
 #include "tsl/platform/statusor.h"
 // IWYU pragma: no_include "third_party/protobuf/repeated_ptr_field.h"
 // IWYU pragma: no_include "third_party/protobuf/io/coded_stream.h"
@@ -473,6 +475,7 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDefCpb(
 
   fingerprint_def.set_checkpoint_hash(HashCheckpointIndexFile(export_dir));
 
+  fingerprint_def.set_uuid(absl::StrFormat("%016d", tsl::random::New64()));
   reader.Close();
 
   // Set version of the fingerprint.

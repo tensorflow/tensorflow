@@ -56,12 +56,12 @@ class GraphOptimizer {
   // A return value of error::Aborted() can be used signal early termination of
   // the optimizer, e.g. if the optimization turned out to be a no-op. In this
   // case the content of *optimized_graph is undefined.
-  virtual Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                          GraphDef* optimized_graph) = 0;
+  virtual absl::Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                                GraphDef* optimized_graph) = 0;
 
   // Subclasses may define a version of Optimize that consumes item.
-  virtual Status Optimize(Cluster* cluster, GrapplerItem&& item,
-                          GraphDef* optimized_graph) {
+  virtual absl::Status Optimize(Cluster* cluster, GrapplerItem&& item,
+                                GraphDef* optimized_graph) {
     return Optimize(cluster, item, optimized_graph);
   }
 

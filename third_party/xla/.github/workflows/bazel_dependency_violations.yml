@@ -35,19 +35,25 @@ jobs:
     defaults:
       run:
         shell: bash
-    timeout-minutes: 3
+    timeout-minutes: 6
     continue-on-error: true
     steps:
       - name: "Checking out repository"
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
       - name: "Install bazelisk"
-        run: go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
+        run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
+      - name: "Run bazel build --nobuild //xla/... with retries"
+        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazelisk build --nobuild //xla/...
       - name: "Run bazel cquery ... //xla/..."
         run: |
           set -euo pipefail
           TAG_WITH_UNDERSCORES="${{ matrix.tag }}"
           TAG_WITH_UNDERSCORES="${TAG_WITH_UNDERSCORES/-/_}"
-          OUTPUT=$(bazelisk cquery --aspects build_tools/dependencies/aspects.bzl%validate_${TAG_WITH_UNDERSCORES}_tag //xla/... 2>&1)
+          if ! OUTPUT=$(bazelisk cquery --aspects build_tools/dependencies/aspects.bzl%validate_${TAG_WITH_UNDERSCORES}_tag //xla/... 2>&1); then
+            echo "Failed to run bazel cquery. Output:"
+            echo "$OUTPUT"
+            exit 1
+          fi
           if echo "$OUTPUT" | grep 'Violation' >/dev/null; then
             echo "The following dependency violations were found:"
             echo "$OUTPUT" | grep 'Violation' | sed -e 's/^.*\[Violation\]/ -/'

@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/service/cpu/target_machine_features.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <string>
 
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Function.h"
@@ -52,6 +54,10 @@ int64_t LLVMTargetMachineFeatures::minimum_alignment_for_allocation(
   // anyways.
   return std::min<int64_t>(llvm::PowerOf2Ceil(size_bytes),
                            cpu_function_runtime::MinAlign());
+}
+
+std::string LLVMTargetMachineFeatures::get_target_feature_string() const {
+  return target_machine_->getTargetFeatureString().str();
 }
 
 }  // namespace cpu
