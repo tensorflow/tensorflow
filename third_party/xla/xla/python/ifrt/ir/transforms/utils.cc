@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/transforms/utils.h"
 
+#include <string>
+
 #include "absl/log/check.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/mlir/utils/type_util.h"
@@ -102,6 +107,30 @@ void UpdateFunctionType(mlir::func::FuncOp func_op) {
 absl::StatusOr<DType> ToIfrtDType(mlir::Type type) {
   xla::PrimitiveType primitive_type = xla::ConvertMlirTypeToPrimitiveType(type);
   return ToDType(primitive_type);
+}
+
+std::string OperationToString(mlir::Operation* op,
+                              const mlir::OpPrintingFlags& flags) {
+  std::string out;
+  {
+    llvm::raw_string_ostream os(out);
+    op->print(os, flags);
+  }
+  return out;
+}
+
+mlir::ModuleOp CloneModuleUsingBuilder(mlir::ModuleOp module,
+                                       mlir::OpBuilder& builder) {
+  // Create a stub for the new module.
+  mlir::ModuleOp cloned_module =
+      builder.create<mlir::ModuleOp>(module.getLoc(), module.getName());
+  cloned_module->setAttrs(module->getAttrs());
+  mlir::IRMapping mapper;
+  // Clone each operation in the body of the module into the new module.
+  for (mlir::Operation& op : module.getBody()->getOperations()) {
+    cloned_module.getBody()->push_back(op.clone(mapper));
+  }
+  return cloned_module;
 }
 
 }  // namespace ifrt

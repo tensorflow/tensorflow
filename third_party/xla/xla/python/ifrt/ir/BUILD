@@ -1,10 +1,21 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+
+package_group(
+    name = "internal",
+    packages = [
+        "//xla/python/ifrt/ir/...",
+    ],
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        ":internal",
+    ]),
     licenses = ["notice"],
 )
 
@@ -240,6 +251,7 @@ cc_library(
         "//xla:status_macros",
         "//xla/mlir/utils:error_util",
         "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt/ir/transforms:passes",
         "//xla/python/ifrt/support:module_parsing",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -249,6 +261,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -261,6 +274,7 @@ xla_cc_test(
     deps = [
         ":ifrt_ir_program",
         ":ifrt_ir_program_serdes",
+        ":version",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt/support:module_parsing",
         "@com_google_absl//absl/status",
@@ -270,6 +284,7 @@ xla_cc_test(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
+        "@stablehlo//:version",
     ],
 )
 

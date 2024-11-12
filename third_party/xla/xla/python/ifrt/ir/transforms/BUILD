@@ -29,6 +29,8 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "ifrt_atom_programs_from_vhlo_pass.cc",
+        "ifrt_atom_programs_to_vhlo_pass.cc",
         "ifrt_compile_and_propagate_shardings_pass.cc",
         "ifrt_compile_atom_program_pass.cc",
         "ifrt_duplicated_callee_elimination_pass.cc",
@@ -68,12 +70,14 @@ cc_library(
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:atom_program_compiler",
+        "//xla/python/ifrt/ir:ifrt_ir_program_proto_cc",
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/python/ifrt/support:sharding_conversions",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:compilation_environments",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -85,6 +89,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -93,8 +98,11 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:fingerprint",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
+        "@stablehlo//:register",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_serialization",
     ],
 )
 
