@@ -391,7 +391,6 @@ class FlatBufferModelBase {
       // is found.
 #if defined(_WIN32)
       options.assert = true;
-      options.check_buf_alignment = true;
 #endif
       flatbuffers::Verifier base_verifier(
           reinterpret_cast<const uint8_t*>(allocation->base()), allocation_size,
