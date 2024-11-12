@@ -346,8 +346,7 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
     }
     // If not a binary proto, attempt to parse it as a text proto.
     profile.Clear();
-    if (tsl::protobuf::TextFormat::ParseFromString(std::string(fdo_profile),
-                                                   &profile)) {
+    if (tsl::protobuf::TextFormat::ParseFromString(fdo_profile, &profile)) {
       LOG(INFO) << "Using PGLE profile for module from fdo_profile (text)";
       return GetProfileForFingerprint(profile, fingerprint);
     }
