@@ -9,6 +9,11 @@ def _unpacked_wheel_impl(ctx):
             if linker_input.libraries and linker_input.libraries[0].dynamic_library:
                 lib = linker_input.libraries[0].dynamic_library
                 libs.append(lib)
+    wheel = None
+    for w in ctx.files.wheel_rule_outputs:
+        if w.basename.endswith(".whl"):
+            wheel = w
+            break
     script = """
     {zipper} x {wheel} -d {output}
     for lib in {libs}; do
@@ -16,12 +21,12 @@ def _unpacked_wheel_impl(ctx):
     done
     """.format(
         zipper = ctx.executable.zipper.path,
-        wheel = ctx.file.wheel.path,
+        wheel = wheel.path,
         output = output_dir.path,
         libs = " ".join(["'%s'" % lib.path for lib in libs]),
     )
     ctx.actions.run_shell(
-        inputs = [ctx.file.wheel] + libs,
+        inputs = ctx.files.wheel_rule_outputs + libs,
         command = script,
         outputs = [output_dir],
         tools = [ctx.executable.zipper],
@@ -34,7 +39,7 @@ def _unpacked_wheel_impl(ctx):
 _unpacked_wheel = rule(
     implementation = _unpacked_wheel_impl,
     attrs = {
-        "wheel": attr.label(mandatory = True, allow_single_file = True),
+        "wheel_rule_outputs": attr.label(mandatory = True, allow_files = True),
         "zipper": attr.label(
             default = Label("@bazel_tools//tools/zip:zipper"),
             cfg = "exec",
@@ -48,7 +53,7 @@ def wheel_library(name, wheel, deps = [], wheel_deps = []):
     unpacked_wheel_name = name + "_unpacked_wheel"
     _unpacked_wheel(
         name = unpacked_wheel_name,
-        wheel = wheel,
+        wheel_rule_outputs = wheel,
         deps = wheel_deps,
     )
     native.py_library(

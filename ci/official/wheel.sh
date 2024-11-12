@@ -33,7 +33,7 @@ if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
   cp ./ci/official/requirements_updater/numpy1_requirements/*.txt .
 fi
 
-tfrun bazel build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_ARGS
+tfrun bazel build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel --@local_tsl//third_party/py:wheel_compliance=true //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_ARGS
 tfrun find ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} $TFCI_OUTPUT_DIR \;
 tfrun mkdir ./dist
 tfrun cp $TFCI_OUTPUT_DIR/*.whl ./dist

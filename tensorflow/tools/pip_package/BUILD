@@ -273,6 +273,12 @@ tf_wheel(
         ":licenses",
         "//tensorflow/core:protos_all_proto_srcs",
     ],
+    linux_wheel_compliance_tag = select({
+        "@platforms//cpu:aarch64": "manylinux_2_17_aarch64",
+        "@platforms//cpu:arm64": "manylinux_2_17_aarch64",
+        "@platforms//cpu:x86_64": "manylinux_2_17_x86_64",
+        "//conditions:default": "",
+    }),
     platform_name = select({
         "@platforms//os:osx": "macosx",
         "@platforms//os:macos": "macosx",
