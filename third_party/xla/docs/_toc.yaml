@@ -51,10 +51,16 @@ toc:
     path: /xla/build_from_source
   - title: Develop a new backend for XLA
     path: /xla/developing_new_backend
-  - title: Develop a new PJRT plugin
-    path: /xla/pjrt_integration
   - title: Developer guide
     path: /xla/developer_guide
+- title: PJRT Plugins
+  section:
+  - title: PJRT Overview
+    path: /xla/pjrt/overview
+  - title: Develop a new PJRT plugin
+    path: /xla/pjrt/pjrt_integration
+  - title: PJRT Examples
+    path: /xla/pjrt/examples
 - title: Using XLA in TensorFlow
   # These should be in alphabetical order unless otherwise noted.
   section:
