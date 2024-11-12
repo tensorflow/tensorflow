@@ -1,15 +1,129 @@
+diff --git a/shardy/dialect/sdy/transforms/export/BUILD b/shardy/dialect/sdy/transforms/export/BUILD
+index 706fb60..61365b0 100644
+--- a/shardy/dialect/sdy/transforms/export/BUILD
++++ b/shardy/dialect/sdy/transforms/export/BUILD
+@@ -36,7 +36,6 @@ cc_library(
+     name = "passes",
+     srcs = [
+         "close_shardings.cc",
+-        "drop_sharding_rules.cc",
+         "export_pipeline.cc",
+         "insert_explicit_reshards.cc",
+         "remove_sharding_groups.cc",
+diff --git a/shardy/dialect/sdy/transforms/export/drop_sharding_rules.cc b/shardy/dialect/sdy/transforms/export/drop_sharding_rules.cc
+deleted file mode 100644
+index 73a00c8..0000000
+--- a/shardy/dialect/sdy/transforms/export/drop_sharding_rules.cc
++++ /dev/null
+@@ -1,42 +0,0 @@
+-/* Copyright 2024 The Shardy Authors.
+-
+-Licensed under the Apache License, Version 2.0 (the "License");
+-you may not use this file except in compliance with the License.
+-You may obtain a copy of the License at
+-
+-    http://www.apache.org/licenses/LICENSE-2.0
+-
+-Unless required by applicable law or agreed to in writing, software
+-distributed under the License is distributed on an "AS IS" BASIS,
+-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-See the License for the specific language governing permissions and
+-limitations under the License.
+-==============================================================================*/
+-
+-#include <memory>  // IWYU pragma: keep
+-
+-#include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
+-#include "mlir/IR/Operation.h"
+-#include "mlir/Pass/Pass.h"  // IWYU pragma: keep
+-#include "shardy/dialect/sdy/transforms/export/passes.h"  // IWYU pragma: keep
+-#include "shardy/dialect/sdy/ir/utils.h"
+-
+-namespace mlir {
+-namespace sdy {
+-
+-#define GEN_PASS_DEF_DROPSHARDINGRULESPASS
+-#include "shardy/dialect/sdy/transforms/export/passes.h.inc"
+-
+-namespace {
+-
+-struct DropShardingRulesPass
+-    : public impl::DropShardingRulesPassBase<DropShardingRulesPass> {
+-  using DropShardingRulesPassBase::DropShardingRulesPassBase;
+-
+-  void runOnOperation() final { removeShardingRules(getOperation()); }
+-};
+-
+-}  // namespace
+-
+-}  // namespace sdy
+-}  // namespace mlir
+diff --git a/shardy/dialect/sdy/transforms/export/passes.td b/shardy/dialect/sdy/transforms/export/passes.td
+index e9abde2..3eeada3 100644
+--- a/shardy/dialect/sdy/transforms/export/passes.td
++++ b/shardy/dialect/sdy/transforms/export/passes.td
+@@ -105,8 +105,3 @@ def CloseShardingsPass : Pass<"sdy-close-shardings", "ModuleOp"> {
+   let summary = "Closes tensor shardings and drops replicated axes.";
+   let dependentDialects = ["mlir::sdy::SdyDialect"];
+ }
+-
+-def DropShardingRulesPass : Pass<"sdy-drop-sharding-rules", "func::FuncOp"> {
+-  let summary = "Drops `OpShardingRuleAttr` from all registered ops.";
+-  let dependentDialects = ["mlir::sdy::SdyDialect"];
+-}
+diff --git a/shardy/dialect/sdy/transforms/export/test/drop_sharding_rules.mlir b/shardy/dialect/sdy/transforms/export/test/drop_sharding_rules.mlir
+deleted file mode 100644
+index 33cf2b8..0000000
+--- a/shardy/dialect/sdy/transforms/export/test/drop_sharding_rules.mlir
++++ /dev/null
+@@ -1,35 +0,0 @@
+-// RUN: sdy_opt %s -sdy-drop-sharding-rules | FileCheck %s
+-
+-sdy.mesh @mesh = <["x"=4, "y"=2]>
+-
+-// CHECK-LABEL: func @dot
+-func.func @dot(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK: %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+-  %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, k],[k, j])->([i, j]) {i=8, j=16, k=32}>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+-  return %0 : tensor<8x16xf32>
+-}
+-
+-// CHECK-LABEL: func @dot_already_no_sharding_rules
+-func.func @dot_already_no_sharding_rules(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK: %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+-  %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+-  return %0 : tensor<8x16xf32>
+-}
+-
+-// CHECK-LABEL: func @dot_and_negate_with_sharding_rules
+-func.func @dot_and_negate_with_sharding_rules(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK: %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+-  %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, k],[k, j])->([i, j]) {i=8, j=16, k=32}>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+-  // CHECK: %1 = stablehlo.negate %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<8x16xf32>
+-  %1 = stablehlo.negate %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=8, j=16}>} : tensor<8x16xf32>
+-  return %1 : tensor<8x16xf32>
+-}
+-
+-// CHECK-LABEL: func @dot_and_negate_one_has_sharding_rules
+-func.func @dot_and_negate_one_has_sharding_rules(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK: %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+-  %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, k],[k, j])->([i, j]) {i=8, j=16, k=32}>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+-  // CHECK: %1 = stablehlo.negate %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<8x16xf32>
+-  %1 = stablehlo.negate %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<8x16xf32>
+-  return %1 : tensor<8x16xf32>
+-}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 729501c..9408be4 100644
+index 9408be4..7bac065 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "fb4f426c81d7e87dbb30df7abeba15ffc2f9f41a"
--    LLVM_SHA256 = "d6851f851b95004f9c0c08bfc1fa0da47149409e9dd229a44a8783f734dc0ae9"
-+    LLVM_COMMIT = "028ea71fdda0c02cd11421cd1d26bec6f378666e"
-+    LLVM_SHA256 = "89147cbddc62fdf2b376a68f8fa4dd83ceabf99f1b73f5f4c1a0e527837b9e80"
+-    LLVM_COMMIT = "028ea71fdda0c02cd11421cd1d26bec6f378666e"
+-    LLVM_SHA256 = "89147cbddc62fdf2b376a68f8fa4dd83ceabf99f1b73f5f4c1a0e527837b9e80"
++    LLVM_COMMIT = "a912c81f651109c677dcfdf2b1173a78e853a19d"
++    LLVM_SHA256 = "4fbf52660960d4ca0ce306d97a6acc377f278fd08e552e9d15b56ca2989e7bc3"
  
      tf_http_archive(
          name = name,
