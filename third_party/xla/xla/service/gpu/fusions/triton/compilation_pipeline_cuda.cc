@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
+#include "third_party/triton/include/triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
@@ -86,6 +87,8 @@ absl::Status CreateTritonPipeline(
   // check for consistency with the upstream pipeline
   if (ccCuda.IsAtLeastAmpere()) {
     pm.addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
+    pm.addPass(mt::gpu::createTritonGPULoopScheduling(
+        {block_level_parameters.num_stages}));
     pm.addPass(
         mt::gpu::createTritonGPUPipeline({block_level_parameters.num_stages}));
   }
@@ -114,6 +117,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mt::gpu::createAllocateSharedMemoryPass());
+  pm.addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
   pm.addPass(CreateSparseLocalLoadToLLVMPass());
   pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
   // The triton_xla.sparse_dot ops need to be rewritten after

@@ -125,7 +125,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mt::createTritonAMDGPULowerInstructionSchedHintsPass(
-      block_level_parameters.num_stages, "default"));
+      ccRocm.gfx_version(), block_level_parameters.num_stages, "default"));
   pm.addPass(mt::createConvertBuiltinFuncToLLVMPass(/*ftz=*/true));
   // There is no clusters in ROCm for now.
   out_cluster_info.clusterDimX = 1;

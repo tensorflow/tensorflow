@@ -582,12 +582,10 @@ LogicalResult convertSparseMMA(triton::xla::SparseDotOp op,
 
   int bitwidth = aTensorTy.getElementType().getIntOrFloatBitWidth();
   auto mmaEnc = cast<NvidiaMmaEncodingAttr>(layoutA.getParent());
-  auto repA = mmaEnc.getMMAv2OrV3RepForOperand(
-      triton::gpu::getShapePerCTA(aTensorTy), bitwidth, layoutA.getKWidth(),
-      layoutA.getOpIdx());
-  auto repB = mmaEnc.getMMAv2OrV3RepForOperand(
-      triton::gpu::getShapePerCTA(bTensorTy), bitwidth, layoutB.getKWidth(),
-      layoutB.getOpIdx());
+  auto repA = mmaEnc.getRepForOperand(triton::gpu::getShapePerCTA(aTensorTy),
+                                      bitwidth, layoutA.getOpIdx());
+  auto repB = mmaEnc.getRepForOperand(triton::gpu::getShapePerCTA(bTensorTy),
+                                      bitwidth, layoutB.getOpIdx());
 
   assert(repA[0] == 1 && repB[0] == 1);  // batch size
   assert(repB[1] == repA[2] * kContractingFactor);
