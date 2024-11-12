@@ -1731,7 +1731,6 @@ aliased_targets = [
     "translate_lib",
     "translate_cl_options",
     "translate_registration",
-    "split_into_island_per_op_pass",
     "upgrade_graph",
 ]
 

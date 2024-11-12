@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_SPLIT_INTO_ISLAND_PER_OP_PASS_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_SPLIT_INTO_ISLAND_PER_OP_PASS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_SPLIT_INTO_ISLAND_PER_OP_PASS_H_
+#define TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_SPLIT_INTO_ISLAND_PER_OP_PASS_H_
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
@@ -28,4 +28,4 @@ void SplitIsland(mlir::tf_executor::IslandOp island_op,
 }  // namespace TF
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_SPLIT_INTO_ISLAND_PER_OP_PASS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_SPLIT_INTO_ISLAND_PER_OP_PASS_H_
