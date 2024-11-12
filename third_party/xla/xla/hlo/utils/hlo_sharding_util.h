@@ -469,10 +469,19 @@ HloSharding MergeShardingDimension(const HloSharding& sharding,
 std::shared_ptr<const HloSharding> CreateTupleSharding(
     const Shape& shape, absl::Span<const HloInstruction* const> elements);
 
-// Tests whether the sort operand is sharded along the sort dimension and there
-// exists a free (i.e., unsharded) dimension to move the sharding into.
-bool IsSortOperandShardingMovable(const HloInstruction* sort_operand,
-                                  int64_t sort_dim);
+// Returns the first mergeable dimension for the sort operand. A mergeable
+// dimension satisfies:
+// 1. The sort dimension is sharded. The size of the sort dimension is larger
+// than 1.
+// 2. The mergeable dimension is not a sort dimension.
+// 3. The size of the mergeable dimension is divisible by the merged tile size,
+// which is the product of the tile sizes of the sort dim and the picked
+// mergeable dim.
+//
+// If there is no such dimension, returns std::nullopt.
+std::optional<int64_t> GetFirstMergeableDimForSortOperand(
+    const Shape& operand_shape, const HloSharding& operand_sharding,
+    int64_t sort_dim);
 
 // Returns a set of parallel dimensions for Gather/Scatter instructions given
 // the parameters for the op.

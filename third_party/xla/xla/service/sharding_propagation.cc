@@ -2464,12 +2464,14 @@ bool ShardingPropagation::InferShardingFromOperands(
       CHECK(sort);
       const int64_t sort_dim = sort->sort_dimension();
       if (!operand->sharding().IsTileMaximal() &&
-          operand->sharding().tile_assignment().dim(sort_dim) != 1) {
+          operand->sharding().tile_assignment().dim(sort_dim) != 1 &&
+          !hlo_sharding_util::GetFirstMergeableDimForSortOperand(
+               operand->shape(), operand->sharding(), sort_dim)
+               .has_value()) {
         // In case of a sort operand sharded along the sort dimension, the
-        // sharding is propagated only if there exists a free (unsharded)
-        // dimension that we can later move the sharding into.
-        if (!hlo_sharding_util::IsSortOperandShardingMovable(operand, sort_dim))
-          return false;
+        // sharding is propagated only if there exists a mergeable dimension
+        // that we can later move the sharding into.
+        return false;
       }
 
       if (instruction->shape().IsTuple()) {

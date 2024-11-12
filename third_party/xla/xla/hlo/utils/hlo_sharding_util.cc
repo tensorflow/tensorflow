@@ -3114,29 +3114,28 @@ std::shared_ptr<const HloSharding> CreateTupleSharding(
       HloSharding::Tuple(shape, sub_shardings));
 }
 
-bool IsSortOperandShardingMovable(const HloInstruction* sort_operand,
-                                  int64_t sort_dim) {
-  // Some early exit cases.
-  if (sort_operand == nullptr || sort_operand->shape().rank() < 2 ||
-      !sort_operand->has_sharding()) {
-    return false;
+std::optional<int64_t> GetFirstMergeableDimForSortOperand(
+    const Shape& operand_shape, const HloSharding& operand_sharding,
+    int64_t sort_dim) {
+  if (operand_shape.rank() < 2 || operand_shape.dimensions(sort_dim) == 1) {
+    return std::nullopt;
   }
-  const auto& sharding = sort_operand->sharding();
-  if (!sharding.IsTiled() || sharding.IsTileMaximal() ||
-      sharding.tile_assignment().dim(sort_dim) == 1) {
-    return false;
+  if (!operand_sharding.IsTiled() ||
+      operand_sharding.tile_assignment().dim(sort_dim) == 1) {
+    return std::nullopt;
   }
-  // Test whether there exist a free dimension to move the sharding into
-  auto tile_assignment_dims = sharding.tile_assignment().dimensions();
-  const int rank = sort_operand->shape().rank();
-  for (int64_t dim = 0; dim < rank; ++dim) {
-    if (dim == sort_dim || tile_assignment_dims[dim] != 1 ||
-        sort_operand->shape().dimensions(dim) == 1) {
-      continue;
+
+  for (int64_t dim = 0; dim < operand_shape.rank(); ++dim) {
+    const int64_t merged_tile_dims =
+        operand_sharding.tile_assignment().dim(sort_dim) *
+        operand_sharding.tile_assignment().dim(dim);
+    if (dim != sort_dim &&
+        operand_shape.dimensions(dim) % merged_tile_dims == 0) {
+      return dim;
     }
-    return true;
   }
-  return false;
+
+  return std::nullopt;
 }
 
 std::optional<HloSharding> GetOutputSharding(

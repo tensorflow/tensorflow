@@ -2871,26 +2871,18 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
   if (subshape.rank() > 1 && same_subsharding && cur_sharding.IsTiled() &&
       cur_sharding.tile_assignment().dim(sort_dim) != 1) {
     // Pick the new dimension to move the sharding into
-    int64_t picked_dim = -1;
-    for (int64_t dim = 0; dim < subshape.rank(); ++dim) {
-      const int64_t merged_tile_dims =
-          cur_sharding.tile_assignment().dim(sort_dim) *
-          cur_sharding.tile_assignment().dim(dim);
-      if (dim != sort_dim && subshape.dimensions(dim) % merged_tile_dims == 0) {
-        picked_dim = dim;
-        break;
-      }
-    }
     std::vector<HloInstruction*> new_operands;
     std::vector<HloSharding> new_shardings;
     std::optional<HloSharding> new_output_sharding;
-    if (picked_dim != -1) {
+    if (std::optional<int64_t> picked_dim =
+            hlo_sharding_util::GetFirstMergeableDimForSortOperand(
+                subshape, cur_sharding, sort_dim)) {
       // We can move the sharding tiles from the sort dimension to the picked
       // dimension.
       auto new_sharding = hlo_sharding_util::MoveAndMergeShardingTiles(
-          cur_sharding, sort_dim, picked_dim);
+          cur_sharding, sort_dim, *picked_dim);
       VLOG(2) << "Move sharding tiles from sort dim " << sort_dim
-              << " to target dim " << picked_dim << " to get the new sharding "
+              << " to target dim " << *picked_dim << " to get the new sharding "
               << new_sharding.ToString();
       for (auto& operand : hlo->operands()) {
         new_operands.push_back(

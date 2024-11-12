@@ -1041,47 +1041,50 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut7) {
   }
 }
 
-TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankTwoOneFreeDim) {
-  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
-  iota.set_sharding(HloSharding::IotaTile({1, 2}));
-  EXPECT_TRUE(IsSortOperandShardingMovable(&iota, 1));
+TEST(HloShardingUtilTest, GetFirstMergeableDimForSortOperand1) {
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 8, 128, 128});
+  HloSharding sharding = HloSharding::IotaTile({8, 1, 2, 16});
+  EXPECT_FALSE(
+      GetFirstMergeableDimForSortOperand(shape, sharding, 0).has_value());
+  EXPECT_FALSE(
+      GetFirstMergeableDimForSortOperand(shape, sharding, 1).has_value());
+  EXPECT_EQ(GetFirstMergeableDimForSortOperand(shape, sharding, 2), 1);
+  EXPECT_EQ(GetFirstMergeableDimForSortOperand(shape, sharding, 3), 2);
 }
 
-TEST(HloShardingUtilTest,
-     IsSortOperandShardingMovableRankTwoOneFreeDimOfSize1) {
-  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {1, 128}), 1);
-  iota.set_sharding(HloSharding::IotaTile({1, 2}));
-  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 1));
+TEST(HloShardingUtilTest, GetFirstMergeableDimForSortOperand2) {
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 8, 128, 128});
+  HloSharding sharding = HloSharding::IotaTile({2, 2, 4, 16});
+  EXPECT_EQ(GetFirstMergeableDimForSortOperand(shape, sharding, 0), 1);
+  EXPECT_EQ(GetFirstMergeableDimForSortOperand(shape, sharding, 1), 0);
+  EXPECT_EQ(GetFirstMergeableDimForSortOperand(shape, sharding, 2), 1);
+  EXPECT_EQ(GetFirstMergeableDimForSortOperand(shape, sharding, 3), 2);
 }
 
-TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankTwoNoFreeDims) {
-  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
-  iota.set_sharding(HloSharding::IotaTile({2, 2}));
-  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 1));
+TEST(HloShardingUtilTest, GetFirstMergeableDimForSortOperand3) {
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 128});
+  HloSharding sharding = HloSharding::IotaTile({1, 2});
+  EXPECT_FALSE(
+      GetFirstMergeableDimForSortOperand(shape, sharding, 0).has_value());
+  EXPECT_FALSE(
+      GetFirstMergeableDimForSortOperand(shape, sharding, 1).has_value());
 }
 
-TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankOne) {
-  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {1024}), 1);
-  iota.set_sharding(
-      HloSharding::Tile(TileAssignment(std::initializer_list<int64_t>{2})));
-  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 0));
+TEST(HloShardingUtilTest, GetFirstMergeableDimForSortOperandRankOne) {
+  Shape shape = ShapeUtil::MakeShape(F32, {1024});
+  HloSharding sharding =
+      HloSharding::Tile(TileAssignment(std::initializer_list<int64_t>{2}));
+  EXPECT_FALSE(
+      GetFirstMergeableDimForSortOperand(shape, sharding, 0).has_value());
 }
 
-TEST(HloShardingUtilTest, IsSortOperandShardingMovableNoSharding) {
-  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {1024}), 1);
-  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 0));
-}
-
-TEST(HloShardingUtilTest, IsSortOperandShardingMovableReplicated) {
-  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
-  iota.set_sharding(HloSharding::Replicate());
-  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 1));
-}
-
-TEST(HloShardingUtilTest, IsSortOperandShardingMovableSortDimUnsharded) {
-  HloIotaInstruction iota(ShapeUtil::MakeShape(F32, {8, 128}), 1);
-  iota.set_sharding(HloSharding::IotaTile({1, 2}));
-  EXPECT_FALSE(IsSortOperandShardingMovable(&iota, 0));
+TEST(HloShardingUtilTest, GetFirstMergeableDimForSortOperandReplicated) {
+  Shape shape = ShapeUtil::MakeShape(F32, {8, 128});
+  HloSharding sharding = HloSharding::Replicate();
+  EXPECT_FALSE(
+      GetFirstMergeableDimForSortOperand(shape, sharding, 0).has_value());
+  EXPECT_FALSE(
+      GetFirstMergeableDimForSortOperand(shape, sharding, 1).has_value());
 }
 
 TEST(HloShardingUtilTest, TileShape) {
