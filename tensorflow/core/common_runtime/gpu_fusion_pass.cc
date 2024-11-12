@@ -505,8 +505,6 @@ Status ROCmFMAPass::Run(const GraphOptimizationPassOptions& options) {
 
 Status ROCmFusionPassBase::Run(const GraphOptimizationPassOptions& options,
                                int grouping) {
-  VLOG(1) << "ROCm Fusion is enabled.";
-
   // Check if the graph is present, should be either in
   // - options.graph (for all but POST_PARTITIONING grouping)
   // - options.partition_graphs (for POST_PARTITIONING_grouping)
