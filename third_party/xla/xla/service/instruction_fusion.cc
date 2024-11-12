@@ -790,9 +790,9 @@ bool InstructionFusion::MultiOutputFusionCreatesCycle(
     HloInstruction* producer, HloInstruction* consumer,
     const HloReachabilityMap& reachability) {
   absl::flat_hash_set<int> operands;
-  for (const HloInstruction* operand : consumer->operands()) {
+  auto insert = [&](const HloInstruction* operand) {
     if (operand == producer) {
-      continue;
+      return false;
     }
 
     // If the reachability map already contains the producer and the operand of
@@ -805,11 +805,25 @@ bool InstructionFusion::MultiOutputFusionCreatesCycle(
       return true;
     }
     operands.insert(operand->unique_id());
+    return false;
+  };
+
+  for (const HloInstruction* operand : consumer->operands()) {
+    if (insert(operand)) {
+      return true;
+    }
+  }
+  for (const HloInstruction* predecessor : consumer->control_predecessors()) {
+    if (insert(predecessor)) {
+      return true;
+    }
   }
 
   // Do a DFS on the producer to see if any of the other consumer operands are
   // reachable in the current state of the graph.
   std::vector<HloInstruction*> worklist = producer->users();
+  worklist.insert(worklist.end(), producer->control_successors().begin(),
+                  producer->control_successors().end());
   absl::flat_hash_set<int> visits;
   while (!worklist.empty()) {
     const HloInstruction* user = worklist.back();
@@ -821,6 +835,8 @@ bool InstructionFusion::MultiOutputFusionCreatesCycle(
       visits.insert(user->unique_id());
       worklist.insert(worklist.end(), user->users().begin(),
                       user->users().end());
+      worklist.insert(worklist.end(), user->control_successors().begin(),
+                      user->control_successors().end());
     }
   }
   return false;
