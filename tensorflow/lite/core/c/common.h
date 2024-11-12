@@ -363,6 +363,7 @@ typedef union TfLitePtrUnion {
   uint64_t* u64;
   float* f;
   TfLiteFloat16* f16;
+  TfLiteBFloat16* bf16;
   double* f64;
   char* raw;
   const char* raw_const;
