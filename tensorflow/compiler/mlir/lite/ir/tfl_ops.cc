@@ -2087,6 +2087,11 @@ int64_t DivOp::GetArithmeticCount(Operation* op) {
   return -1;
 }
 
+void DivOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                        MLIRContext* context) {
+  results.add<DivWithConstDivisor>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // PackOp
 //===----------------------------------------------------------------------===//
