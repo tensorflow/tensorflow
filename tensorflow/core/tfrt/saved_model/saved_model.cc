@@ -780,7 +780,7 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
               << persistent_cache_directory << ", and set it to read-only.";
   }
 
-  if (options.infer_model_type) {
+  if (options.emit_model_type_metric) {
     inferred_model_type_count
         ->GetCell(options.graph_execution_options.model_metadata.name(),
                   absl::StrCat(
