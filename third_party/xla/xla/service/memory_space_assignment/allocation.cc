@@ -919,19 +919,28 @@ absl::Status WindowPrefetchedAllocation::InsertWindowPrefetchInstruction(
     HloInstruction* producing_instruction, HloInstruction* use_instruction,
     HloComputation* computation) {
   // Derive the shape for window buffer.
-  Shape shape = ShapeUtil::MakeShape(U8, {options_.bytes});
+  Shape buffer_shape = ShapeUtil::MakeShape(U8, {options_.bytes});
   Layout layout = LayoutUtil::MakeLayout({0});
   layout.set_memory_space(options_.alternate_memory_space);
-  *shape.mutable_layout() = layout;
+  *buffer_shape.mutable_layout() = layout;
+  // Sync flag shape
+  Shape sflag_shape = ShapeUtil::MakeShape(S32, {});
+  // Output shape of the WindowPrefetch op.
+  Shape output_shape = ShapeUtil::MakeTupleShape({buffer_shape, sflag_shape});
 
-  // Insert async WindowPrefetch instructions as operands to the fusion.
-  HloInstruction* prefetch =
+  // Insert WindowPrefetch op.
+  HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
-          shape, {producing_instruction}, "WindowPrefetch"));
-  TF_ASSIGN_OR_RETURN(prefetch_instruction_,
-                      computation->CreateAsyncInstructions(prefetch, {}));
-  use_instruction->AppendOperand(prefetch_instruction_);
+          output_shape, {producing_instruction}, "WindowPrefetch"));
+  HloInstruction* get_buffer = computation->AddInstruction(
+      HloInstruction::CreateGetTupleElement(buffer_shape, custom_call, 0));
+  HloInstruction* get_sflag = computation->AddInstruction(
+      HloInstruction::CreateGetTupleElement(sflag_shape, custom_call, 1));
+  use_instruction->AppendOperand(get_buffer);
+  use_instruction->AppendOperand(get_sflag);
 
+  // The buffer's defining position is the get_tuple_element instruction.
+  prefetch_instruction_ = get_buffer;
   return absl::OkStatus();
 }
 
@@ -939,6 +948,7 @@ absl::Status WindowPrefetchedAllocation::Process() {
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
   HloInstruction* use_instruction = use_.instruction;
+  int64_t use_operand = use_instruction->operand_count();
   CHECK_EQ(use_instruction->opcode(), HloOpcode::kFusion);
 
   TF_RETURN_IF_ERROR(InsertWindowPrefetchInstruction(
@@ -946,7 +956,6 @@ absl::Status WindowPrefetchedAllocation::Process() {
 
   // Notify the backend that an operand has been appended as a window prefetch
   // buffer.
-  int64_t use_operand = use_instruction->operand_count() - 1;
   options_.notify_operand_appended_fn(use_instruction, options_.uid,
                                       use_operand);
 
