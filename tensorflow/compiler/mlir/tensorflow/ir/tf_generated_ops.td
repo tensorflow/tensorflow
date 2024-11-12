@@ -20068,7 +20068,7 @@ array([[1, 2, 3, 1, 2, 3],
   TF_DerivedOperandTypeAttr Tmultiples = TF_DerivedOperandTypeAttr<1>;
 
   let hasVerifier = 1;
-
+  let hasCanonicalizer = 1;
   let hasFolder = 1;
 }
 

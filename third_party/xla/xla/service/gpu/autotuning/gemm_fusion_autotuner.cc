@@ -838,6 +838,9 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
   // Retrieve the minimum bit-width participating in the dot. This is needed
   // to avoid autotuning configurations that are not supported by Triton. This
   // is used to restrict the values for tile_k.
+  // TODO(b/378449587): This assumes a convert exists which doesn't cover all
+  // cases. For example, a bf16 dot(fp8, fp8) will not be handled as the minimum
+  // bit-width will be 8 but that will not be captured here.
   std::vector<const HloInstruction*> converts =
       HloBfsFindAll({&dot}, [&](const HloInstruction* node) {
         return node->opcode() == HloOpcode::kConvert;
@@ -884,8 +887,6 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
 
   // Triton configurations are adjusted and deduplicated.
   absl::flat_hash_set<TritonGemmConfig> added;
-  bool is_hopper =
-      !config_.IsDeviceless() && GetComputeCapability().IsAtLeastHopper();
   for (TritonGemmConfig& config : triton_configs) {
     config.block_m = std::min(config.block_m, limits.block_m);
     config.block_n = std::min(config.block_n, limits.block_n);
@@ -908,10 +909,8 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
     // Sparse meta should have at least one element per thread.
     // Note: only 2:4 structured sparsity is currently supported.
     if (dot.sparse_operands()) {
-      if (is_hopper) {
-        config.block_m = std::max(config.block_m, 64);
-        config.num_warps = std::max(config.num_warps, 4);
-      }
+      config.block_m = std::max(config.block_m, 64);
+      config.num_warps = std::max(config.num_warps, 4);
       config.block_k = std::max(
           config.block_k,
           2 * std::max(kMinTileSize, kLdmatrixGranularity / minBitWidth));

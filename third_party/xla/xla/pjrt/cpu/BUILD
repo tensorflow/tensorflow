@@ -173,6 +173,7 @@ cc_library(
         "//xla/pjrt:semaphore",
         "//xla/pjrt:transpose",
         "//xla/pjrt:utils",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
         "//xla/service:computation_placer_hdr",

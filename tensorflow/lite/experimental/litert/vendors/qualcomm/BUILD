@@ -80,7 +80,6 @@ litert_cc_lib_with_qnn(
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/c:litert_support",
         "//tensorflow/lite/experimental/litert/core:dynamic_loading",
     ],
 )

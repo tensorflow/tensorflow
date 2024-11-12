@@ -81,9 +81,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #endif
 

@@ -57,17 +57,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-int GpuDriver::GetDeviceCount() {
-  int device_count = 0;
-  auto status = cuda::ToStatus(cuDeviceGetCount(&device_count));
-  if (!status.ok()) {
-    LOG(ERROR) << "could not retrieve CUDA device count: " << status;
-    return 0;
-  }
-
-  return device_count;
-}
-
 absl::StatusOr<int32_t> GpuDriver::GetDriverVersion() {
   int32_t version;
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuDriverGetVersion(&version),

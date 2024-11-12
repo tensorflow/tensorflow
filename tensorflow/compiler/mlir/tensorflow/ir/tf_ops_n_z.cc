@@ -2664,16 +2664,150 @@ LogicalResult TileOp::verify() {
 
 OpFoldResult TileOp::fold(FoldAdaptor) {
   DenseIntElementsAttr multiples_attr;
-  if (matchPattern(getMultiples(), m_Constant(&multiples_attr))) {
-    // Return input directly when multiples are all ones,
-    // regardless what input is.
-    if (multiples_attr.isSplat() &&
-        multiples_attr.getSplatValue<APInt>().getSExtValue() == 1 &&
-        getInput().getType() == getType()) {
-      return getInput();
-    }
+  if (!matchPattern(getMultiples(), m_Constant(&multiples_attr))) {
+    return {};
   }
+
+  // Return input directly when multiples are all ones,
+  // regardless what input is.
+  if (multiples_attr.isSplat() &&
+      multiples_attr.getSplatValue<APInt>().getSExtValue() == 1 &&
+      getInput().getType() == getType()) {
+    return getInput();
+  }
+
   return {};
+}
+
+namespace {
+
+mlir::Type getBroadcastedType(std::vector<mlir::Type> types,
+                              mlir::Type elementType) {
+  if (types.empty()) {
+    return mlir::Type();
+  }
+
+  mlir::Type result = types.front();
+  for (mlir::Type type : types) {
+    result = OpTrait::util::getBroadcastedType(result, type, elementType);
+  }
+  return result;
+}
+
+// If the consumer of a TileOp is broadcast compatible, and Tile solely
+// broadcasts a unit-dimension, then rewire TileOp's input to the consumer.
+class FuseWithBroadcastCompatibleOp
+    : public OpTraitRewritePattern<OpTrait::ResultsBroadcastableShape> {
+ public:
+  explicit FuseWithBroadcastCompatibleOp(MLIRContext *context)
+      : OpTraitRewritePattern(context) {}
+
+  LogicalResult matchAndRewrite(mlir::Operation *op,
+                                PatternRewriter &rewriter) const override {
+    if (op->getNumResults() > 1) {
+      return rewriter.notifyMatchFailure(op, "has multiple results.");
+    }
+
+    auto output_type =
+        mlir::dyn_cast<RankedTensorType>(op->getResultTypes().front());
+    if (!output_type) {
+      return rewriter.notifyMatchFailure(op, "not a ranked tensor.");
+    }
+
+    mlir::Type el_type = output_type.getElementType();
+    // Make sure all operand shapes are Ranked
+    std::vector<mlir::Type> input_types;
+    std::vector<llvm::SmallVector<int64_t, 6>> input_shapes;
+    for (mlir::Value operand : op->getOperands()) {
+      if (auto shape = mlir::dyn_cast<RankedTensorType>(operand.getType())) {
+        input_types.push_back(operand.getType());
+        input_shapes.push_back(llvm::SmallVector<int64_t, 6>(shape.getShape()));
+        continue;
+      }
+      return failure();
+    }
+
+    // Collect valid operands for rewiring, ensuring input_shapes are updated.
+    // Must be a TileOp, with ranked tensors, and broadcasting unit dimensions.
+    std::vector<mlir::OpOperand *> matched_operands;
+    for (mlir::OpOperand &operand : op->getOpOperands()) {
+      if (!operand.get().getDefiningOp()) {
+        continue;
+      }
+
+      auto tile = mlir::dyn_cast<TF::TileOp>(operand.get().getDefiningOp());
+      if (!tile) {
+        return failure();
+      }
+
+      DenseIntElementsAttr multiples_attr;
+      if (!matchPattern(tile.getMultiples(), m_Constant(&multiples_attr))) {
+        continue;
+      }
+
+      auto shape = tile.getInput().getType().dyn_cast<RankedTensorType>();
+      if (!shape) {
+        continue;
+      }
+      llvm::ArrayRef<int64_t> input_shape = shape.getShape();
+
+      llvm::SmallVector<int64_t, 5> multiples;
+      for (APInt multiple : multiples_attr.getValues<APInt>()) {
+        multiples.push_back(multiple.getSExtValue());
+      }
+
+      if (input_shape.size() != multiples.size()) {
+        tile->emitOpError("input and multiples must be the same");
+        return failure();
+      }
+
+      std::vector<int> range(multiples.size());
+      absl::c_iota(range, 0);
+      if (!absl::c_all_of(range, [&multiples, &input_shape](int i) {
+            return multiples[i] == 1 ||
+                   (multiples[i] != 1 && input_shape[i] == 1);
+          })) {
+        continue;
+      }
+
+      // Check if the new shape breaks broadcast compatibility.
+      // In particular, check if broadcasting produces the same resulting shape.
+      unsigned pos = operand.getOperandNumber();
+      llvm::SmallVector<int64_t, 6> old_output_shape = input_shapes[pos];
+      mlir::Type old_input_type = input_types[pos];
+      input_shapes[pos] = llvm::SmallVector<int64_t, 6>(input_shape);
+      input_types[pos] = shape;
+      if (!OpTrait::util::staticallyKnownBroadcastable(
+              llvm::ArrayRef(input_shapes)) ||
+          getBroadcastedType(input_types, el_type) != output_type) {
+        input_shapes[pos] = old_output_shape;
+        input_types[pos] = old_input_type;
+        continue;
+      }
+      matched_operands.push_back(&operand);
+    }
+
+    // No valid tile ops to rewrite
+    if (matched_operands.empty()) {
+      return failure();
+    }
+
+    // Do the rewrite.
+    for (mlir::OpOperand *operand : matched_operands) {
+      rewriter.modifyOpInPlace(op, [&] {
+        op->setOperand(operand->getOperandNumber(),
+                       operand->get().getDefiningOp()->getOperand(0));
+      });
+    }
+    return success();
+  }
+};
+
+}  // namespace
+
+void TileOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                         MLIRContext *context) {
+  results.add<FuseWithBroadcastCompatibleOp>(context);
 }
 
 //===----------------------------------------------------------------------===//

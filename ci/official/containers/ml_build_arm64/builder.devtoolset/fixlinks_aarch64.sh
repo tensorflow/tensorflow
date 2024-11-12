@@ -1,4 +1,5 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+#!/bin/bash
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,12 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-source ci/official/envs/linux_x86_build
-TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config release_cpu_linux --config=tpu"
-TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_tpu
-TFCI_BUILD_PIP_PACKAGE_ARGS="--repo_env=WHEEL_NAME=tensorflow_tpu"
-TFCI_LIB_SUFFIX="-tpu-linux-x86_64"
-TFCI_WHL_BAZEL_TEST_ENABLE=0
-TFCI_WHL_IMPORT_TEST_ENABLE=0
-TFCI_WHL_SIZE_LIMIT=580M
-TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS="-f https://storage.googleapis.com/libtpu-tf-releases/index.html"
+#
+# Re-direct all links in $1 that are relative to be canonical
+
+BASE="$1"
+find "${BASE}" -type l | \
+  while read l ; do
+    if [[ "$(readlink "$l")" == \.\./* ]]; then
+      CANONICAL="$(readlink "$l")";
+      rm "$l";
+      ln -s "${CANONICAL}" "$l"
+    fi
+  done
+

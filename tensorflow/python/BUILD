@@ -567,7 +567,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
+    ] + if_pywrap(["//tensorflow/lite/toco/python:toco_python_api"]),
 )
 
 # TODO(edloper): Remove unused dependency on safe_ptr.  (Blocker: there are
@@ -968,7 +968,6 @@ pywrap_aware_filegroup(
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "@local_tsl//tsl/platform:tensor_float_32_utils",  # tensor_float_32
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",  # profiler
-        "@local_xla//xla/stream_executor",  # stat_summarizer
         "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",  # profiler
         "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
@@ -1462,6 +1461,7 @@ pywrap_library(
             "-DEFAULTLIB:advapi32.lib",
             "-DEFAULTLIB:crypt32.lib",
             "-DEFAULTLIB:Normaliz.lib",
+            "-DEFAULTLIB:ntdll.lib",
         ],
         "//conditions:default": [],
     }),
@@ -1502,6 +1502,7 @@ pywrap_library(
         ],
     }),
     visibility = ["//visibility:public"],
+    win_def_file = "_pywrap_tensorflow.def",
     #    win_def_file = "_pywrap_tensorflow.def",
     deps = [
         ":_pywrap_quantize_training",

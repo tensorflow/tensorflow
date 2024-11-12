@@ -28,8 +28,9 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_util.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
@@ -123,9 +124,8 @@ LiteRtStatus ModelRepacker::SerializeOp(
   }
 
   // TODO: b/365299994 - Support options in serialize.
-  LITERT_RETURN_STATUS_IF_NOT_OK_MSG(
-      SetDefaultOptions(target.builtin_options, op->op_code),
-      "Failed serializing options");
+  LITERT_RETURN_STATUS_IF_NOT_OK(
+      SetDefaultOptions(target.builtin_options, op->op_code));
 
   if (op->custom_options.Size() != 0) {
     target.custom_options = op->custom_options.ToVec();
@@ -204,9 +204,8 @@ LiteRtStatus ModelRepacker::Repack(LiteRtModel model) {
 
 }  // namespace
 
-LiteRtResult<OwningBufferRef<uint8_t>> SerializeModel(Model&& model) {
-  LITERT_RETURN_RESULT_IF_NOT_OK(ModelRepacker::Repack(model.Get()),
-                                 OwningBufferRef<uint8_t>);
+Expected<OwningBufferRef<uint8_t>> SerializeModel(Model&& model) {
+  LITERT_EXPECT_OK(ModelRepacker::Repack(model.Get()));
 
   flatbuffers::FlatBufferBuilder b;
   auto model_offset =
@@ -218,20 +217,21 @@ LiteRtResult<OwningBufferRef<uint8_t>> SerializeModel(Model&& model) {
   new_buf = b.ReleaseRaw(new_size, new_offset);
 
   if (!VerifyFlatbuffer(buffer.Span())) {
-    return LiteRtResult<OwningBufferRef<uint8_t>>::FromStatus(
-        kLiteRtStatusErrorInvalidFlatbuffer);
+    return Unexpected(kLiteRtStatusErrorInvalidFlatbuffer);
   }
 
-  return LiteRtResult<OwningBufferRef<uint8_t>>::TakeValue(std::move(buffer));
+  return std::move(buffer);
 }
 
 }  // namespace litert::internal
 
 LiteRtStatus LiteRtSerializeModel(LiteRtModel model, uint8_t** buf,
                                   size_t* size, size_t* offset) {
-  LITERT_ASSIGN_OR_RETURN_STATUS(
-      auto serialized,
-      SerializeModel(::litert::Model::CreateFromOwnedHandle(model)));
-  std::tie(*buf, *size, *offset) = serialized.Release();
+  auto serialized =
+      SerializeModel(::litert::Model::CreateFromOwnedHandle(model));
+  if (!serialized) {
+    return serialized.Status();
+  }
+  std::tie(*buf, *size, *offset) = serialized->Release();
   return kLiteRtStatusOk;
 }

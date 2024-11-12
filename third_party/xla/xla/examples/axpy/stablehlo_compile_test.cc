@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -51,7 +52,6 @@ namespace xla {
 namespace {
 
 using ::testing::NotNull;
-constexpr absl::string_view kCpuPjrtName = "cpu";
 
 std::string GetTestProgramPath() {
   return tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "examples", "axpy",
@@ -59,23 +59,14 @@ std::string GetTestProgramPath() {
 }
 
 class StableHloAxpyTest : public ::testing::Test {
- public:
-  static void SetUpTestSuite() {
-    StableHloAxpyTest::RegisterXlaCpuPluginTestSetup();
-  }
-
  protected:
-  static void RegisterXlaCpuPluginTestSetup() {
-    // PJRT API isn't registered yet, so make sure we have to call register.
-    absl::StatusOr<const PJRT_Api*> pjrt_api = pjrt::PjrtApi(kCpuPjrtName);
-    EXPECT_THAT(pjrt_api, ::testing::Not(::tsl::testing::IsOk()));
-
-    // Grab the XLA:CPU PJRT API from the plugin explicitly.
-    const PJRT_Api* cpu_api = GetPjrtApi();
-    EXPECT_THAT(cpu_api, NotNull());
-
-    // Register the XLA:CPU PJRT API.
-    TF_EXPECT_OK(pjrt::SetPjrtApi(kCpuPjrtName, cpu_api));
+  static std::unique_ptr<PjRtClient> GetCpuClient() {
+    const PJRT_Api* c_api = GetPjrtApi();
+    EXPECT_THAT(c_api, NotNull());
+    absl::StatusOr<std::unique_ptr<PjRtClient>> client =
+        xla::WrapClientAroundCApi(c_api);
+    CHECK_OK(client);
+    return std::move(*client);
   }
 
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateStableHloProgram(
@@ -103,27 +94,26 @@ class StableHloAxpyTest : public ::testing::Test {
   mlir::MLIRContext context_;
 };  // class
 
-TEST_F(StableHloAxpyTest, GetCPUPlugin) {
-  // Grab the XLA:CPU PJRT API from the plugin explicitly.
-  const PJRT_Api* cpu_api = GetPjrtApi();
-  EXPECT_THAT(cpu_api, NotNull());
-
-  absl::StatusOr<const PJRT_Api*> registered_pjrt_api =
-      pjrt::PjrtApi(kCpuPjrtName);
-  EXPECT_THAT(registered_pjrt_api, ::tsl::testing::IsOkAndHolds(cpu_api));
+TEST_F(StableHloAxpyTest, UsePjrtCppWrapper) {
+  std::unique_ptr<PjRtClient> client = GetCpuClient();
+  EXPECT_THAT(client, NotNull());
 }
 
-TEST_F(StableHloAxpyTest, UsePjrtCppWrapper) {
-  absl::StatusOr<std::unique_ptr<PjRtClient>> client =
-      GetCApiClient(kCpuPjrtName);
+TEST_F(StableHloAxpyTest, RegisterAPIAndRetrieve) {
+  const char* device = "MyFancyCPUDevice";
+  EXPECT_THAT(GetCApiClient(device), ::testing::Not(::tsl::testing::IsOk()));
+  EXPECT_THAT(pjrt::PjrtApi(device), ::testing::Not(::tsl::testing::IsOk()));
 
-  EXPECT_THAT(client, ::tsl::testing::IsOk());
-  EXPECT_THAT(*client, NotNull());
+  const PJRT_Api* c_api = GetPjrtApi();
+  EXPECT_THAT(c_api, NotNull());
+  TF_EXPECT_OK(pjrt::SetPjrtApi(device, c_api));
+
+  EXPECT_THAT(GetCApiClient(device), ::tsl::testing::IsOk());
+  EXPECT_THAT(pjrt::PjrtApi(device), ::tsl::testing::IsOk());
 }
 
 TEST_F(StableHloAxpyTest, CompileCPUTestProgram) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient(kCpuPjrtName));
+  std::unique_ptr<PjRtClient> client = GetCpuClient();
 
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> program,
                           CreateStableHloProgram(GetTestProgramPath()));
@@ -134,7 +124,7 @@ TEST_F(StableHloAxpyTest, CompileCPUTestProgram) {
 }
 
 TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
-  // TODO(masonchang): Use the C API client once it supports
+  // TODO(masonchang): Use GetCpuClient() once the C API supports
   // BufferFromHostLiteral.
   xla::CpuClientOptions options;
   options.cpu_device_count = 4;

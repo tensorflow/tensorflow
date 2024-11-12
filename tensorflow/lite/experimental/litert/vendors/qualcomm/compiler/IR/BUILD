@@ -32,9 +32,9 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
-        "//tensorflow/lite/experimental/litert/c:litert_support",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
-        "//tensorflow/lite/experimental/litert/cc:litert_support",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
     ],
 )
@@ -53,7 +53,7 @@ cc_test(
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
-        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/test:common",
     ],
 )
@@ -71,7 +71,6 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
-        "//tensorflow/lite/experimental/litert/c:litert_support",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
     ],
 )
@@ -91,7 +90,7 @@ cc_test(
         "@com_google_absl//absl/strings",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_common",
-        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/test:common",
     ],
 )
@@ -112,7 +111,7 @@ cc_test(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
-        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/test:common",
     ],
 )

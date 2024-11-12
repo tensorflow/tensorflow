@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dot_as_convolution_util.h"
+#include "xla/service/gather_scatter_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -671,6 +672,57 @@ std::optional<int64_t> GetDominantDevice(
     }
   }
   return dominant_device;
+}
+
+HloSharding MoveAndMergeShardingTiles(const HloSharding& sharding,
+                                      int64_t source_dim, int64_t target_dim) {
+  CHECK(sharding.IsTiled());
+
+  CHECK_NE(source_dim, target_dim);
+  CHECK_GE(source_dim, 0);
+  CHECK_GE(target_dim, 0);
+  CHECK_LT(source_dim, sharding.TiledDataRank());
+  CHECK_LT(target_dim, sharding.TiledDataRank());
+
+  // There are 3 steps to move and merge the sharding tiles. Given the sharding
+  // with tile assignment [a, b, c, d, e], source_dim = 1, target_dim = 3, the
+  // steps are:
+  // 1. Reshape the tile assignment to [a, b, c, d, 1, e] by inserting a 1 after
+  // the target_dim.
+  // 2. Transpose the tile assignment to [a, 1, c, d, b, e] by swapping the
+  // source_dim and inserted dim of size 1.
+  // 3. Reshape the tile assignment to [a, 1, c, db, e] by merging the
+  // target_dim and the swapped source_dim.
+
+  // Step 1. Adding a dummy dim of size 1 after the target_dim.
+  std::vector<int64_t> ta_dims_1(
+      sharding.tile_assignment().dimensions().begin(),
+      sharding.tile_assignment().dimensions().end());
+  ta_dims_1.insert(ta_dims_1.begin() + target_dim + 1, 1);
+  TileAssignment new_tile_assignment =
+      sharding.tile_assignment().Reshape(ta_dims_1);
+
+  // Step 2. Transpose the tile assignment to swap the source_dim and the
+  // inserted dim of size 1.
+  std::vector<int> permutation(new_tile_assignment.num_dimensions());
+  absl::c_iota(permutation, 0);
+  std::swap(permutation[target_dim + 1],
+            permutation[source_dim + (source_dim < target_dim ? 0 : 1)]);
+  new_tile_assignment = new_tile_assignment.Transpose(permutation);
+
+  // Step 3. Reshape the tile assignment to merge the target_dim and the swapped
+  // source_dim.
+  std::vector<int64_t> ta_dims_2(new_tile_assignment.dimensions().begin(),
+                                 new_tile_assignment.dimensions().end());
+  ta_dims_2[target_dim] *= ta_dims_2[target_dim + 1];
+  ta_dims_2.erase(ta_dims_2.begin() + target_dim + 1);
+  new_tile_assignment = new_tile_assignment.Reshape(ta_dims_2);
+
+  if (sharding.ReplicateOnLastTileDim()) {
+    return HloSharding::PartialTile(new_tile_assignment, sharding.metadata());
+  }
+  return HloSharding::Subgroup(new_tile_assignment, sharding.subgroup_types(),
+                               sharding.metadata());
 }
 
 HloSharding TransposeSharding(const HloSharding& sharding,
@@ -1462,8 +1514,8 @@ absl::InlinedVector<int64_t, 1> GetGatherScatterOperandPassthroughOperandDims(
   absl::InlinedVector<int64_t, 1> passthrough_dims;
   int64_t collapsed_or_batching = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
-        absl::c_linear_search(operand_batching_dims, i)) {
+    if (IsCollapsedOrBatchingDim(collapsed_or_inserted_dims,
+                                 operand_batching_dims, i)) {
       collapsed_or_batching++;
       continue;
     }
@@ -1495,8 +1547,8 @@ GetGatherScatterOperandPassthroughOutputOrUpdateDims(
   absl::InlinedVector<int64_t, 1> passthrough_dims;
   int64_t collapsed_or_batching = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
-        absl::c_linear_search(operand_batching_dims, i)) {
+    if (IsCollapsedOrBatchingDim(collapsed_or_inserted_dims,
+                                 operand_batching_dims, i)) {
       collapsed_or_batching++;
       continue;
     }
@@ -1530,8 +1582,8 @@ std::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
   DimensionVector passthrough_tile(output_or_update_rank, 1);
   int64_t collapsed_or_batching = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
-        absl::c_linear_search(operand_batching_dims, i)) {
+    if (IsCollapsedOrBatchingDim(collapsed_or_inserted_dims,
+                                 operand_batching_dims, i)) {
       collapsed_or_batching++;
       continue;
     }
@@ -1585,8 +1637,8 @@ std::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
   // Relevant dims have shardings passed to the operand.
   DimensionVector relevant_output_or_update_dims;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
-        absl::c_linear_search(operand_batching_dims, i)) {
+    if (IsCollapsedOrBatchingDim(collapsed_or_inserted_dims,
+                                 operand_batching_dims, i)) {
       collapsed_or_batching++;
       continue;
     }
@@ -1719,8 +1771,8 @@ std::vector<int64_t> GetScatterSliceSize(const Shape& operand_shape,
   std::vector<int64_t> slice_size(operand_shape.rank(), 1);
   int64_t num_update_window_dims = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(dnums.inserted_window_dims(), i) ||
-        absl::c_linear_search(dnums.input_batching_dims(), i)) {
+    if (IsCollapsedOrBatchingDim(dnums.inserted_window_dims(),
+                                 dnums.input_batching_dims(), i)) {
       continue;
     }
     slice_size[i] = update_shape.dimensions(

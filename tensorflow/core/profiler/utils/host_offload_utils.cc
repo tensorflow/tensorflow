@@ -182,6 +182,15 @@ void HostOffloadEventProcessor::ProcessHostOffloadOpEvent(
         event_builder.AddStatValue(bytes_stat, stat.IntValue());
       }
     });
+    const XStatMetadata& shape_with_layout_str =
+        *plane_builder_->GetOrCreateStatMetadata(
+            GetStatTypeStr(StatType::kShapeWithLayout));
+    // Use the shape from start_event, since it contains the shape of end event.
+    start_event->Metadata().ForEachStat([&](const XStatVisitor& stat) {
+      if (stat.Type() == StatType::kShapeWithLayout) {
+        event_builder.AddStatValue(shape_with_layout_str, stat.StrOrRefValue());
+      }
+    });
   }
 }
 

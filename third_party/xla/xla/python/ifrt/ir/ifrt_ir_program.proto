@@ -1,0 +1,42 @@
+/* Copyright 2024 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.ifrt;
+
+message IfrtIrAtomProgramProto {
+  string name = 1;
+  // String of the form "major.minor.patch", representing the atom program
+  // version. Currently, only used to denote VHLO version.
+  optional string version = 2;
+  // Serialized atom program. If version is set then the serialized program
+  // is in the VHLO dialect, otherwise it is in its original dialect.
+  bytes program = 3;
+}
+
+// Proto for storing a serialized IFRT IR program.
+message IfrtIrProgramProto {
+  bytes ifrt_program = 1;
+
+  // String of the form "major.minor.patch", representing the IFRT IR version.
+  // If ifrt version is not set, then the program is not versioned and the
+  // whole program will be serialized into the `ifrt_program` field.
+  optional string ifrt_version = 2;
+
+  // List of atom programs that are used by the IFRT IR program. It is empty
+  // if the IFRT IR program is not versioned (i.e., `ifrt_version` is not set).
+  repeated IfrtIrAtomProgramProto atom_programs = 3;
+}

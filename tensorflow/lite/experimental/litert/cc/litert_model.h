@@ -25,41 +25,21 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 
 namespace litert {
-
-// Data type of tensor elements. C++ equivalent to LiteRtElementType.
-enum class ElementType {
-  None = kLiteRtElementTypeNone,
-  Bool = kLiteRtElementTypeBool,
-  Int4 = kLiteRtElementTypeInt4,
-  Int8 = kLiteRtElementTypeInt8,
-  Int16 = kLiteRtElementTypeInt16,
-  Int32 = kLiteRtElementTypeInt32,
-  Int64 = kLiteRtElementTypeInt64,
-  UInt8 = kLiteRtElementTypeUInt8,
-  UInt16 = kLiteRtElementTypeUInt16,
-  UInt32 = kLiteRtElementTypeUInt32,
-  UInt64 = kLiteRtElementTypeUInt64,
-  Float16 = kLiteRtElementTypeFloat16,
-  BFloat16 = kLiteRtElementTypeBFloat16,
-  Float32 = kLiteRtElementTypeFloat32,
-  Float64 = kLiteRtElementTypeFloat64,
-  Complex64 = kLiteRtElementTypeComplex64,
-  Complex128 = kLiteRtElementTypeComplex128,
-  TfResource = kLiteRtElementTypeTfResource,
-  TfString = kLiteRtElementTypeTfString,
-  TfVariant = kLiteRtElementTypeTfVariant,
-};
 
 // Tensor layout. C++ equivalent to LiteRtLayout.
 class Layout {
  public:
-  explicit Layout(std::vector<int32_t>&& dimensions,
-                  std::vector<uint32_t>&& strides = std::vector<uint32_t>())
+  explicit Layout(SmallVec<int32_t>&& dimensions,
+                  SmallVec<uint32_t>&& strides = SmallVec<uint32_t>())
       : dimensions_(std::move(dimensions)), strides_(std::move(strides)) {}
 
   explicit Layout(const LiteRtLayout& layout)
@@ -97,9 +77,25 @@ class Layout {
     return absl::MakeSpan(data, size);
   }
 
+  // Get the number of scalar elements in this tensor type. std::nullopt if
+  // not fully static.
+  std::optional<size_t> NumElements() const {
+    if (Rank() == 0) {
+      return 1;
+    }
+    size_t res = 1;
+    for (auto d : dimensions_) {
+      if (d < 0) {
+        return {};
+      }
+      res *= d;
+    }
+    return res;
+  }
+
  private:
-  std::vector<int32_t> dimensions_;
-  std::vector<uint32_t> strides_;
+  SmallVec<int32_t> dimensions_;
+  SmallVec<uint32_t> strides_;
 };
 
 // Type for tensors with known dimensions. C++ equivalent to
@@ -142,7 +138,7 @@ class Weights : public internal::NonOwnedHandle<LiteRtWeights> {
   absl::Span<const uint8_t> Bytes() const {
     size_t size;
     const void* addr;
-    litert::internal::AssertGet(LiteRtGetWeightsBytes, Get(), &addr, &size);
+    internal::AssertOk(LiteRtGetWeightsBytes, Get(), &addr, &size);
     return absl::MakeSpan(static_cast<const uint8_t*>(addr), size);
   }
 };
@@ -156,21 +152,20 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
 
   LiteRtTensorTypeId TypeId() const {
     LiteRtTensorTypeId type_id;
-    litert::internal::AssertGet(LiteRtGetTensorTypeId, Get(), &type_id);
+    internal::AssertOk(LiteRtGetTensorTypeId, Get(), &type_id);
     return type_id;
   }
 
   LiteRtUnrankedTensorType UnrankedTensorType() const {
     LiteRtUnrankedTensorType unranked_tensor_type;
-    litert::internal::AssertGet(LiteRtGetUnrankedTensorType, Get(),
-                                &unranked_tensor_type);
+    internal::AssertOk(LiteRtGetUnrankedTensorType, Get(),
+                       &unranked_tensor_type);
     return unranked_tensor_type;
   }
 
   RankedTensorType RankedTensorType() const {
     LiteRtRankedTensorType ranked_tensor_type;
-    litert::internal::AssertGet(LiteRtGetRankedTensorType, Get(),
-                                &ranked_tensor_type);
+    internal::AssertOk(LiteRtGetRankedTensorType, Get(), &ranked_tensor_type);
     return litert::RankedTensorType(ranked_tensor_type);
   }
 
@@ -181,26 +176,49 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
 
   Weights Weights() const {
     LiteRtWeights weights;
-    litert::internal::AssertGet(LiteRtGetTensorWeights, Get(), &weights);
+    internal::AssertOk(LiteRtGetTensorWeights, Get(), &weights);
     return litert::Weights(weights);
   }
 
-  void Uses(absl::Span<LiteRtOp>& uses,
-            absl::Span<LiteRtParamIndex>& user_arg_indices) const {
-    LiteRtParamIndex num_uses;
-    LiteRtOpArray users;
-    LiteRtParamIndex* user_arg_inds;
-    litert::internal::AssertGet(LiteRtGetTensorUses, Get(), &num_uses, &users,
-                                &user_arg_inds);
-    uses = absl::MakeSpan(users, num_uses);
-    user_arg_indices = absl::MakeSpan(user_arg_inds, num_uses);
+  struct TensorUse;
+  SmallVec<TensorUse> Uses() const;
+
+  template <typename T>
+  Expected<absl::Span<const T>> WeightsData() const {
+    static constexpr LiteRtStatus kStatus = kLiteRtStatusErrorInvalidArgument;
+
+    const ElementType ty = RankedTensorType().ElementType();
+    if (ty != GetElementType<T>()) {
+      return Unexpected(kStatus);
+    }
+
+    if (!HasWeights()) {
+      return Unexpected(kStatus);
+    }
+    const absl::Span<const uint8_t> weights = Weights().Bytes();
+
+    auto num_elements = RankedTensorType().Layout().NumElements();
+    if (!num_elements.has_value()) {
+      return Unexpected(kStatus);
+    }
+    auto byte_width = GetByteWidth(ty);
+    if (!byte_width.has_value()) {
+      return Unexpected(kStatus);
+    }
+
+    if (byte_width.value() * num_elements.value() != weights.size()) {
+      return Unexpected(kStatus);
+    }
+
+    return absl::MakeConstSpan(reinterpret_cast<const T*>(weights.data()),
+                               num_elements.value());
   }
 
   std::optional<LiteRtTensorDefiningOp> DefiningOp() const {
     bool has_defining_op;
     LiteRtTensorDefiningOp defining_op;
-    litert::internal::AssertGet(LiteRtGetTensorDefiningOp, Get(),
-                                &has_defining_op, &defining_op);
+    internal::AssertOk(LiteRtGetTensorDefiningOp, Get(), &has_defining_op,
+                       &defining_op);
     if (has_defining_op) {
       return defining_op;
     } else {
@@ -221,24 +239,28 @@ class Op : public internal::NonOwnedHandle<LiteRtOp> {
 
   LiteRtOpCode Code() const {
     LiteRtOpCode opcode;
-    litert::internal::AssertGet(LiteRtGetOpCode, Get(), &opcode);
+    internal::AssertOk(LiteRtGetOpCode, Get(), &opcode);
     return opcode;
   }
 
-  absl::Span<LiteRtTensor> Inputs() const {
+  SmallVec<Tensor> Inputs() const {
     LiteRtParamIndex num_inputs;
     LiteRtTensorArray inputs;
-    litert::internal::AssertGet(LiteRtGetOpInputs, Get(), &num_inputs, &inputs);
-    return absl::MakeSpan(inputs, num_inputs);
+    internal::AssertOk(LiteRtGetOpInputs, Get(), &num_inputs, &inputs);
+    return SmallVec<Tensor>(inputs, inputs + num_inputs);
   }
 
-  absl::Span<LiteRtTensor> Outputs() const {
+  SmallVec<Tensor> Outputs() const {
     LiteRtParamIndex num_outputs;
     LiteRtTensorArray outputs;
-    litert::internal::AssertGet(LiteRtGetOpOutputs, Get(), &num_outputs,
-                                &outputs);
-    return absl::MakeSpan(outputs, num_outputs);
+    internal::AssertOk(LiteRtGetOpOutputs, Get(), &num_outputs, &outputs);
+    return SmallVec<Tensor>(outputs, outputs + num_outputs);
   }
+};
+
+struct Tensor::TensorUse {
+  Op user;
+  LiteRtParamIndex user_arg_ind;
 };
 
 // Model subgraph. C++ equivalent of LiteRtSubgraph.
@@ -248,27 +270,25 @@ class Subgraph : public internal::NonOwnedHandle<LiteRtSubgraph> {
   explicit Subgraph(LiteRtSubgraph subgraph)
       : internal::NonOwnedHandle<LiteRtSubgraph>(subgraph) {}
 
-  absl::Span<LiteRtTensor> Inputs() const {
+  SmallVec<Tensor> Inputs() const {
     LiteRtParamIndex num_inputs;
     LiteRtTensorArray inputs;
-    litert::internal::AssertGet(LiteRtGetSubgraphInputs, Get(), &num_inputs,
-                                &inputs);
-    return absl::MakeSpan(inputs, num_inputs);
+    internal::AssertOk(LiteRtGetSubgraphInputs, Get(), &num_inputs, &inputs);
+    return SmallVec<Tensor>(inputs, inputs + num_inputs);
   }
 
-  absl::Span<LiteRtTensor> Outputs() const {
+  SmallVec<Tensor> Outputs() const {
     LiteRtParamIndex num_outputs;
     LiteRtTensorArray outputs;
-    litert::internal::AssertGet(LiteRtGetSubgraphOutputs, Get(), &num_outputs,
-                                &outputs);
-    return absl::MakeSpan(outputs, num_outputs);
+    internal::AssertOk(LiteRtGetSubgraphOutputs, Get(), &num_outputs, &outputs);
+    return SmallVec<Tensor>(outputs, outputs + num_outputs);
   }
 
-  absl::Span<LiteRtOp> Ops() const {
+  std::vector<Op> Ops() const {
     LiteRtParamIndex num_ops;
     LiteRtOpArray ops;
-    litert::internal::AssertGet(LiteRtGetSubgraphOps, Get(), &num_ops, &ops);
-    return absl::MakeSpan(ops, num_ops);
+    internal::AssertOk(LiteRtGetSubgraphOps, Get(), &num_ops, &ops);
+    return std::vector<Op>(ops, ops + num_ops);
   }
 };
 
@@ -298,15 +318,14 @@ class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
 
   absl::StatusOr<Subgraph> MainSubgraph() {
     LiteRtParamIndex main_subgraph_index;
-    litert::internal::AssertGet(LiteRtGetMainModelSubgraphIndex, Get(),
-                                &main_subgraph_index);
+    internal::AssertOk(LiteRtGetMainModelSubgraphIndex, Get(),
+                       &main_subgraph_index);
     return this->Subgraph(main_subgraph_index);
   }
 
   size_t NumSubgraphs() const {
     LiteRtParamIndex num_subgraphs;
-    litert::internal::AssertGet(LiteRtGetNumModelSubgraphs, Get(),
-                                &num_subgraphs);
+    internal::AssertOk(LiteRtGetNumModelSubgraphs, Get(), &num_subgraphs);
     return num_subgraphs;
   }
 

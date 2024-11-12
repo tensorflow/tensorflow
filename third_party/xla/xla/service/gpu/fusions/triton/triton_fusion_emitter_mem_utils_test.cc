@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -136,10 +135,10 @@ TritonMakeTensorPtrTest::CreateAndTileParameterHloInstruction(
 
 mlir::triton::FuncOp CreateTritonFunction(
     ImplicitLocOpBuilder& b, const std::vector<int64_t> shape_sizes) {
-  auto fn = b.create<mt::FuncOp>(
+  auto fn = b.create<::mlir::triton::FuncOp>(
       "func",
-      b.getFunctionType({mt::PointerType::get(b.getF32Type(),
-                                              mlir::NVVM::kGlobalMemorySpace)},
+      b.getFunctionType({::mlir::triton::PointerType::get(
+                            b.getF32Type(), mlir::NVVM::kGlobalMemorySpace)},
                         std::nullopt));
   for (int i = 0; i < fn.getNumArguments(); ++i) {
     fn.setArgAttr(i, "tt.divisibility", b.getIntegerAttr(b.getI32Type(), 16));
@@ -190,8 +189,9 @@ std::vector<int> ConstOpValuesToInt(const mlir::ValueRange values) {
   return result;
 }
 
-mlir::ArrayRef<int64_t> TensorShape(const mt::MakeTensorPtrOp& op) {
-  auto ptr = mlir::cast<mt::PointerType>(op->getResult(0).getType());
+mlir::ArrayRef<int64_t> TensorShape(const ::mlir::triton::MakeTensorPtrOp& op) {
+  auto ptr =
+      mlir::cast<::mlir::triton::PointerType>(op->getResult(0).getType());
   auto tensor = mlir::cast<mlir::TensorType>(ptr.getPointeeType());
   return tensor.getShape();
 }

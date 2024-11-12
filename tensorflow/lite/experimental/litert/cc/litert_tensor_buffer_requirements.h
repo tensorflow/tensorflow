@@ -25,8 +25,8 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 
 namespace litert {
 
@@ -94,8 +94,8 @@ class TensorBufferRequirements
   absl::Span<const uint32_t> Strides() const {
     int num_strides;
     const uint32_t* strides;
-    litert::internal::AssertGet(LiteRtGetTensorBufferRequirementsStrides, Get(),
-                                &num_strides, &strides);
+    litert::internal::AssertOk(LiteRtGetTensorBufferRequirementsStrides, Get(),
+                               &num_strides, &strides);
     return absl::MakeSpan(strides, num_strides);
   }
 };

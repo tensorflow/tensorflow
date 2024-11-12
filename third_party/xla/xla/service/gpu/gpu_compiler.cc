@@ -2445,7 +2445,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         gpu_executable->buffer_assignment()->ToProto();
     gpu_executable->set_hlo_proto(std::move(hlo_proto));
     gpu_executable->set_debug_info(
-        gpu_executable->buffer_assignment()->GetStats().ToString());
+        gpu_executable->buffer_assignment()->StatsString(
+            /*report_total_fragmentation=*/true));
   }
 
   return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));

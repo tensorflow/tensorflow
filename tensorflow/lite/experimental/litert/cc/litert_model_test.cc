@@ -14,22 +14,22 @@
 
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
 // Tests for CC Wrapper classes around public C api.
 
 namespace litert {
-using ::litert::internal::GetSubgraph;
-using ::litert::internal::GetSubgraphOps;
 
 namespace {
 
@@ -149,26 +149,33 @@ TEST(CcLayoutTest, NotEqual) {
   ASSERT_FALSE(layout1 == layout2);
 }
 
+TEST(CcLayoutTest, NumElements) {
+  Layout layout({2, 2, 3});
+  auto num_elements = layout.NumElements();
+  ASSERT_TRUE(num_elements.has_value());
+  EXPECT_EQ(num_elements.value(), 12);
+}
+
 //===----------------------------------------------------------------------===//
 //                                CC Op                                       //
 //===----------------------------------------------------------------------===//
 
 TEST(CcOpTest, SimpleSupportedOp) {
   auto litert_model = testing::LoadTestFileModel("one_mul.tflite");
-  ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
-                          GetSubgraph(litert_model.Get()));
-  ASSERT_RESULT_OK_ASSIGN(auto litert_ops, GetSubgraphOps(litert_subgraph));
+  auto subgraph = litert_model.MainSubgraph();
+  const auto ops = subgraph->Ops();
+  const auto& op = ops.front();
 
-  Op op(litert_ops[0]);
   EXPECT_EQ(op.Code(), kLiteRtOpCodeTflMul);
-  EXPECT_EQ(op.Get(), litert_ops[0]);
+  EXPECT_EQ(op.Inputs().size(), 2);
+  EXPECT_EQ(op.Outputs().size(), 1);
 }
 
 //===----------------------------------------------------------------------===//
 //                           CC RankedTensorType                              //
 //===----------------------------------------------------------------------===//
 
-TEST(RankedTensorType, Accessors) {
+TEST(CcRankedTensorTypeTest, Accessors) {
   Layout layout(kLayout);
   RankedTensorType tensor_type(kTensorType);
   ASSERT_EQ(tensor_type.ElementType(),
@@ -180,50 +187,52 @@ TEST(RankedTensorType, Accessors) {
 //                                CC Tensor                                   //
 //===----------------------------------------------------------------------===//
 
-TEST(Tensor, SimpleModel) {
+TEST(CcTensorTest, SimpleModel) {
   auto litert_model = testing::LoadTestFileModel("one_mul.tflite");
+  auto subgraph = litert_model.MainSubgraph();
 
-  ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
-                          GetSubgraph(litert_model.Get()));
-
-  Subgraph subgraph(litert_subgraph);
-
-  auto inputs = subgraph.Inputs();
+  auto inputs = subgraph->Inputs();
   ASSERT_EQ(inputs.size(), 2);
 
-  Tensor input_tensor(inputs[0]);
-  ASSERT_EQ(input_tensor.TypeId(), kLiteRtRankedTensorType);
+  {
+    const Tensor& input_tensor = inputs.front();
+    ASSERT_EQ(input_tensor.TypeId(), kLiteRtRankedTensorType);
 
-  auto input_ranked_tensor_type = input_tensor.RankedTensorType();
-  ASSERT_EQ(input_ranked_tensor_type.ElementType(), ElementType::Float32);
+    auto input_ranked_tensor_type = input_tensor.RankedTensorType();
+    ASSERT_EQ(input_ranked_tensor_type.ElementType(), ElementType::Float32);
 
-  EXPECT_FALSE(input_tensor.HasWeights());
+    EXPECT_FALSE(input_tensor.HasWeights());
 
-  auto input_weights = input_tensor.Weights();
-  ASSERT_EQ(input_weights.Bytes().size(), 0);
+    auto input_weights = input_tensor.Weights();
+    ASSERT_EQ(input_weights.Bytes().size(), 0);
 
-  ASSERT_EQ(input_tensor.DefiningOp(), std::nullopt);
+    ASSERT_EQ(input_tensor.DefiningOp(), std::nullopt);
 
-  absl::Span<LiteRtOp> input_uses;
-  absl::Span<LiteRtParamIndex> input_user_arg_indices;
-  input_tensor.Uses(input_uses, input_user_arg_indices);
-  ASSERT_EQ(input_uses.size(), 1);
-  ASSERT_EQ(input_user_arg_indices.size(), 1);
+    const auto uses = input_tensor.Uses();
+    ASSERT_EQ(uses.size(), 1);
+  }
 
-  auto outputs = subgraph.Outputs();
+  auto outputs = subgraph->Outputs();
   ASSERT_EQ(outputs.size(), 1);
 
-  Tensor output_tensor(outputs[0]);
-  ASSERT_EQ(output_tensor.TypeId(), kLiteRtRankedTensorType);
+  {
+    const Tensor& output_tensor = outputs.front();
+    ASSERT_EQ(output_tensor.TypeId(), kLiteRtRankedTensorType);
 
-  auto output_defining_op = output_tensor.DefiningOp();
-  EXPECT_TRUE(output_defining_op.has_value());
+    auto output_defining_op = output_tensor.DefiningOp();
+    EXPECT_TRUE(output_defining_op.has_value());
 
-  absl::Span<LiteRtOp> output_uses;
-  absl::Span<LiteRtParamIndex> output_user_arg_indices;
-  output_tensor.Uses(output_uses, output_user_arg_indices);
-  ASSERT_EQ(output_uses.size(), 0);
-  ASSERT_EQ(output_user_arg_indices.size(), 0);
+    ASSERT_TRUE(output_tensor.Uses().empty());
+  }
+}
+
+TEST(CcTensorTest, WeightsData) {
+  auto litert_model = testing::LoadTestFileModel("add_cst.tflite");
+  auto subgraph = litert_model.MainSubgraph();
+
+  auto data = subgraph->Ops().front().Inputs().back().WeightsData<float>();
+  ASSERT_TRUE(data.HasValue());
+  EXPECT_THAT(data.Value(), ::testing::ElementsAreArray({1.0, 2.0, 3.0, 4.0}));
 }
 
 //===----------------------------------------------------------------------===//
@@ -231,15 +240,26 @@ TEST(Tensor, SimpleModel) {
 //===----------------------------------------------------------------------===//
 
 TEST(CcSubgraphTest, SimpleModel) {
-  auto litert_model = litert::testing::LoadTestFileModel("one_mul.tflite");
+  auto model = testing::LoadTestFileModel("one_mul.tflite");
+  auto subgraph = model.MainSubgraph();
 
-  ASSERT_RESULT_OK_ASSIGN(auto litert_subgraph,
-                          GetSubgraph(litert_model.Get()));
+  ASSERT_EQ(subgraph->Inputs().size(), 2);
+  ASSERT_EQ(subgraph->Outputs().size(), 1);
+  ASSERT_EQ(subgraph->Ops().size(), 1);
+}
 
-  litert::Subgraph subgraph(litert_subgraph);
-  ASSERT_EQ(subgraph.Inputs().size(), 2);
-  ASSERT_EQ(subgraph.Outputs().size(), 1);
-  ASSERT_EQ(subgraph.Ops().size(), 1);
+//===----------------------------------------------------------------------===//
+//                               CC ElementType                               //
+//===----------------------------------------------------------------------===//
+
+TEST(CcElementTypeTest, GetByteWidth) {
+  const size_t width = GetByteWidth<ElementType::Bool>();
+  EXPECT_EQ(width, 1);
+}
+
+TEST(CcElementTypeTest, GetElementType) {
+  ElementType ty = GetElementType<float>();
+  EXPECT_EQ(ty, ElementType::Float32);
 }
 
 }  // namespace

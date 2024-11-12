@@ -2,7 +2,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite")
-load("//tensorflow/lite/core:special_rules.bzl", "macros_visibility_allowlist")
+load("//tensorflow/lite/core:special_rules.bzl", "core_cc_api_stable_visibility_allowlist", "macros_visibility_allowlist")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -164,7 +164,9 @@ cc_library(
         "signature_runner.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ] + core_cc_api_stable_visibility_allowlist(),
     deps = [
         ":model_builder",
         ":signature_runner",

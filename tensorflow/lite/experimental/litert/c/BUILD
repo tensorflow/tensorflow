@@ -57,7 +57,8 @@ cc_library(
         ":litert_op_code",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
-        "//tensorflow/lite/experimental/litert/cc:litert_support",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings:string_view",
@@ -71,7 +72,6 @@ cc_test(
         ":litert_common",
         ":litert_model",
         ":litert_op_code",
-        ":litert_support",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/test:common",
@@ -85,12 +85,6 @@ cc_library(
     name = "litert_op_code",
     hdrs = ["litert_op_code.h"],
     deps = ["//tensorflow/lite:builtin_ops"],
-)
-
-cc_library(
-    name = "litert_support",
-    hdrs = ["litert_support.h"],
-    deps = [":litert_common"],
 )
 
 cc_library(
@@ -118,7 +112,7 @@ cc_test(
     deps = [
         ":litert_model",
         ":litert_options",
-        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_googletest//:gtest_main",
     ],

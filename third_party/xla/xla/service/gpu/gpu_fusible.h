@@ -39,14 +39,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Check if the operation accesses the same inputs multiple times
-// while generating its outputs.
-bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr);
-
-// Check if the operation is memory or computationally expensive
-// to repeat.
-bool IsExpensiveToRepeat(const HloInstruction& instr);
-
 // Fusion passes frequently do checks across all pairs of "interesting" nodes.
 // Computing e.g. FusionFitsInBudget(a, b) requires computing expensive
 // properties of `a` and `b` individually.  This cache lets us avoid recomputing
@@ -143,12 +135,6 @@ FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
                                   bool is_consumer_producer_fusion = false,
                                   FusionInfoCache* cache = nullptr);
 
-// Check if fusing producer and consumer will generate a heavy computation, e.g.
-// producer has a complex computation per output and consumer calls this
-// computations multiple times.
-bool CreatesHeavyComputation(const HloInstruction& producer,
-                             const HloInstruction& consumer);
-
 // Returns the instruction that determines the emitter used for lowering,
 // sometimes referred to as "the real hero".
 const HloInstruction* GetRealHeroForMultiOutputFusion(
@@ -174,13 +160,6 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
 // handled by the scatter emitter.
 FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
                                         const HloInstruction& consumer);
-
-// Whether the instructions are compatible for producer-consumer fusion
-// i.e. whether the producer and consumer are loop/input fusible and
-// they are not library calls.
-// Used both by instruction fusion and fusion-fusion merging.
-FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
-                                         const HloInstruction& consumer);
 
 // Whether the producer is a valid candidate for a multi-output fusion.
 // That is, the root tuple of the multi-output fusion will contain the results

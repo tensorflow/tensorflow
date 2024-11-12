@@ -33,14 +33,15 @@ LiteRtStatus LiteRtLoadModelFromMemory(const uint8_t* buf, size_t buf_size,
 }
 
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 
 namespace litert::internal {
 
-LiteRtResult<Model> LoadModelFromFile(absl::string_view path);
+Expected<Model> LoadModelFromFile(absl::string_view path);
 
-LiteRtResult<Model> LoadModelFromMemory(litert::BufferRef<uint8_t> serialized);
+Expected<Model> LoadModelFromMemory(BufferRef<uint8_t> serialized);
 
 }  // namespace litert::internal
 

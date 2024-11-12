@@ -131,9 +131,12 @@ ThreadLocalConfigState::ThreadLocalConfigState() {
 }
 
 ThreadLocalConfigState::~ThreadLocalConfigState() {
-  // We may not hold the GIL, so we must use deferred destruction.
-  xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(entries_));
+  // It's important that we remove the thread-local state before we access
+  // entries_. This ensures that accesses to entries_ are ordered with respect
+  // any garbage collection.
   GlobalConfigState::Instance().RemoveThreadLocalState(this);
+  // We do not hold the GIL, so we must use deferred destruction.
+  xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(entries_));
 }
 
 void ThreadLocalConfigState::Set(int key, nb::object value) {

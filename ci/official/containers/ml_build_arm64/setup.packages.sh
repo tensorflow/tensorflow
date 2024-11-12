@@ -1,4 +1,6 @@
-# Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+#!/usr/bin/env bash
+#
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,13 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+#
+# setup.packages.sh: Given a list of Ubuntu packages, install them and clean up.
+# Usage: setup.packages.sh <package_list.txt>
+set -e
 
-# Temporary envs file while we migrate to the new docker image.
-# Once the migration is complete, this file will be removed.
-source ci/official/envs/linux_x86_build
-TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config release_gpu_linux"
-TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_cuda
-TFCI_BUILD_PIP_PACKAGE_ARGS="--repo_env=WHEEL_NAME=tensorflow"
-TFCI_DOCKER_ARGS="--gpus all"
-TFCI_LIB_SUFFIX="-gpu-linux-x86_64"
-TFCI_WHL_SIZE_LIMIT=610M
+# Prevent apt install tzinfo from asking our location (assumes UTC)
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update
+# Remove commented lines and blank lines
+apt-get install -y --no-install-recommends $(sed -e '/^\s*#.*$/d' -e '/^\s*$/d' "$1" | sort -u)
+rm -rf /var/lib/apt/lists/*

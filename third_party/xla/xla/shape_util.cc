@@ -108,11 +108,6 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   return out;
 }
 
-/* static */ bool ShapeUtil::IsArrayPrimitiveType(
-    PrimitiveType primitive_type) {
-  return primitive_util::IsArrayType(primitive_type);
-}
-
 namespace {
 // Constructs and returns the new shape with the given minor_to_major order in
 // its Layout.

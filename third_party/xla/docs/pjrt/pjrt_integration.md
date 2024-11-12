@@ -1,10 +1,7 @@
 # PJRT plugin integration
 
-## Background
-
-[PJRT](https://github.com/openxla/xla/blob/c23fbd601a017be25726fd6d624b22daa6a8a4e5/xla/pjrt/c/pjrt_c_api.h) is the uniform Device API that we want to add to the ML ecosystem. The long term vision is that: (1) frameworks (JAX, TF, etc.) will call PJRT, which has device-specific implementations that are opaque to the frameworks; (2) each device focuses on implementing PJRT APIs, and can be opaque to the frameworks.
-
-This doc focuses on the recommendations about how to integrate with PJRT, and how to test PJRT integration with JAX.
+This doc focuses on the recommendations about how to integrate with PJRT, and
+how to test PJRT integration with JAX.
 
 ## How to integrate with PJRT
 
@@ -140,14 +137,8 @@ jax.lax.psum(x, 'i'), axis_name='i')(arr))
 # single device: [0]
 
 # 4 devices: [6 7 8 9]
-
 ```
+
 (We'll add instructions for running the jax unit tests against your plugin soon!)
 
-## Example: JAX CUDA plugin
-
-1. PJRT C API implementation through wrapper ([pjrt\_c\_api\_gpu.h](https://github.com/openxla/xla/blob/c23fbd601a017be25726fd6d624b22daa6a8a4e5/xla/pjrt/c/pjrt_c_api_gpu.h)).
-1. Set up the entry point for the package ([setup.py](https://github.com/google/jax/blob/main/jax_plugins/cuda/setup.py)).
-1. Implement an initialize() method ([\_\_init\_\_.py](https://github.com/google/jax/blob/a10854786b6d1bc92a65dd314916b151640789af/plugins/cuda/__init__.py#L31-L51)).
-1. Can be tested with any jax tests for CUDA.
-```
+For more examples of PJRT plugins see [PJRT Examples](examples.md).

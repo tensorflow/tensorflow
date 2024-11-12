@@ -67,6 +67,9 @@ extern const char kXlaTableId[];
 extern const char kXlaBufferPlacementAttr[];
 extern const char kXlaBufferPlacementParam[];
 
+// XLA frontend attribute for stream annotation.
+extern const char kXlaStreamAnnotationAttr[];
+
 // XLA frontend attribute for collective matmul control.
 extern const char kXlaCollectiveMatmulAttr[];
 

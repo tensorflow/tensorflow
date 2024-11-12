@@ -353,6 +353,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_canonicalize_inc_gen",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",

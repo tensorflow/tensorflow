@@ -12,26 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_SUPPORT_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_SUPPORT_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MACROS_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MACROS_H_
 
-#include <alloca.h>
-#include <stdio.h>
-
+#include "absl/log/absl_check.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"  // IWYU pragma: keep
 
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
+#define _CONCAT_NAME_IMPL(x, y) x##y
 
-// #define LITERT_ABORT abort()
-// TODO: b/365295276 - Find a fatal error approach that will pass kokoro.
-#define LITERT_ABORT
+#define _CONCAT_NAME(x, y) _CONCAT_NAME_IMPL(x, y)
 
-#define LITERT_FATAL(msg)           \
-  {                                 \
-    fprintf(stderr, "%s\n", (msg)); \
-    LITERT_ABORT;                   \
+#define _RETURN_VAL(val) return val
+
+#define LITERT_CHECK_STATUS_HAS_CODE(expr, code) ABSL_CHECK(expr == code);
+
+#define LITERT_CHECK_STATUS_OK(expr) \
+  LITERT_CHECK_STATUS_HAS_CODE(expr, kLiteRtStatusOk);
+
+#define LITERT_ENSURE_SUPPORTED(cond, msg) \
+  if (!(cond)) {                           \
+    LITERT_LOG(LITERT_ERROR, "%s", msg);   \
+    return kLiteRtStatusErrorUnsupported;  \
+  }
+
+#define LITERT_ENSURE(expr, fail_stat, msg) \
+  if (!(expr)) {                            \
+    LITERT_LOG(LITERT_ERROR, "%s", msg);    \
+    return fail_stat;                       \
   }
 
 #define LITERT_RETURN_STATUS_IF_NOT_OK(expr) \
@@ -42,11 +50,6 @@ extern "C" {
       (status != kLiteRtStatusOk && status != kLiteRtStatusLegalizeNoMatch)) \
     return status;
 
-// TODO: b/365295276 - Add optional debug only print messages support
-// to all macros.
-#define LITERT_RETURN_STATUS_IF_NOT_OK_MSG(expr, d_msg) \
-  LITERT_RETURN_STATUS_IF_NOT_OK(expr)
-
 #define LITERT_RETURN_VAL_IF_NOT_OK(expr, ret_val) \
   if (LiteRtStatus status = expr; status != kLiteRtStatusOk) return ret_val;
 
@@ -56,8 +59,9 @@ extern "C" {
     *e = init;                                  \
   }
 
-#ifdef __cplusplus
-}  // extern "C"
-#endif
+#define LITERT_EXPECT_OK(status)                       \
+  if (auto stat = (status); stat != kLiteRtStatusOk) { \
+    return ::litert::Unexpected(stat);                 \
+  }
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_SUPPORT_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MACROS_H_

@@ -48,7 +48,7 @@ TEST(TritonStub, CallStubApi) {
       CompileTritonToLLVM({}, {}, {}, {}, {}, {}, nullptr, context, {}).ok());
 
   mlir::OpPassManager pm;
-  mt::nvidia_gpu::ClusterInfo cluster_info;
+  ::mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
 
   EXPECT_FALSE(CreateTritonPipeline(pm, {}, {}, cluster_info).ok());
   EXPECT_EQ(GetLibdevicePath({}, {}), "");

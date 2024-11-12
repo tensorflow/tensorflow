@@ -120,7 +120,7 @@ module {
 
   EXPECT_THAT(Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr),
               StatusIs(Not(absl::StatusCode::kOk),
-                       HasSubstr("Failed to parse IFRT IR module string")));
+                       HasSubstr("Failed to parse IfrtIrProgramProto")));
 }
 
 }  // namespace

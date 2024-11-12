@@ -749,7 +749,6 @@ absl::StatusOr<nb::object> PjitFunction::Call(nb::handle callable,
   }
 
   auto traceback = xla::Traceback::Get();
-  const auto& client = cache_entry->executable->client();
 
   // Convert the ifrt::Array objects to PyArray.
   int num_outputs = output_arrays.size();

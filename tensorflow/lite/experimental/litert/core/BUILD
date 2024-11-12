@@ -25,7 +25,8 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
-        "//tensorflow/lite/experimental/litert/cc:litert_support",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
@@ -42,30 +43,10 @@ cc_test(
         ":byte_code_util",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
-        "//tensorflow/lite/experimental/litert/cc:litert_support",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "graph_tools",
-    hdrs = [
-        "graph_tools.h",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/experimental/litert/c:litert_common",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/c:litert_model",
-        "//tensorflow/lite/experimental/litert/c:litert_op_code",
-        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
-        "//tensorflow/lite/experimental/litert/cc:litert_support",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -77,7 +58,8 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
-        "//tensorflow/lite/experimental/litert/cc:litert_support",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -103,20 +85,3 @@ cc_library(
 #     ],
 # )
 # copybara:uncomment_end
-
-cc_library(
-    name = "utils",
-    srcs = [
-        "utils.cc",
-    ],
-    hdrs = [
-        "utils.h",
-    ],
-    deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_common",
-        "//tensorflow/lite/experimental/litert/c:litert_model",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-    ],
-)

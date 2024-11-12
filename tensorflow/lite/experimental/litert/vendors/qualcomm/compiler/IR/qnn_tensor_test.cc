@@ -18,7 +18,7 @@
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
 namespace {
@@ -90,8 +90,9 @@ TEST(TestLegalizeTensor, SimpleSupportedTensorSubgraphInput) {
   auto outputs = subgraph->Outputs();
 
   auto qnn_tensor = litert::qnn::BuildDefaultTensor();
-  auto output_tensor = litert::Tensor(outputs[0]);
-  ASSERT_STATUS_OK(litert::qnn::LegalizeTensor(output_tensor, qnn_tensor));
+  const auto& output_tensor = outputs.front();
+  LITERT_ASSERT_STATUS_OK(
+      litert::qnn::LegalizeTensor(output_tensor, qnn_tensor));
 
   ASSERT_EQ(qnn_tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(qnn_tensor.v2.dataType, QNN_DATATYPE_FLOAT_32);
@@ -111,11 +112,11 @@ TEST(TestLegalizeTensor, SimpleSupportedTensor) {
   auto subgraph = model.MainSubgraph();
   EXPECT_TRUE(subgraph.ok());
   auto ops = subgraph->Ops();
-  auto op_outs = litert::Op(ops[1]).Outputs();
+  auto op_outs = ops.at(1).Outputs();
 
   auto qnn_tensor = litert::qnn::BuildDefaultTensor();
-  auto op_out = litert::Tensor(op_outs[0]);
-  ASSERT_STATUS_OK(litert::qnn::LegalizeTensor(op_out, qnn_tensor));
+  const auto& op_out = op_outs.front();
+  LITERT_ASSERT_STATUS_OK(litert::qnn::LegalizeTensor(op_out, qnn_tensor));
 
   ASSERT_EQ(qnn_tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(qnn_tensor.v2.dataType, QNN_DATATYPE_FLOAT_32);

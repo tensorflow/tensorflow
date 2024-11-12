@@ -275,6 +275,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"model_flops", kModelFlops},
        {"bytes_accessed", kBytesAccessed},
        {"memory_access_breakdown", kMemoryAccessBreakdown},
+       {"shape_with_layout", kShapeWithLayout},
        {"source", kSourceInfo},
        {"model_name", kModelName},
        {"model_version", kModelVersion},

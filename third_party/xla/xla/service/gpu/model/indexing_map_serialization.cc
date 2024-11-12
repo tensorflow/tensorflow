@@ -897,7 +897,7 @@ std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
 }
 
 SmallVector<std::string> GetRangeVarNames(const IndexingMap& map) {
-  SmallVector<std::string, 3> range_names;
+  SmallVector<std::string> range_names;
   range_names.reserve(map.GetRangeVarsCount());
   for (const auto& [index, range_var] : llvm::enumerate(map.GetRangeVars())) {
     range_names.push_back(GetRangeVarName(index, range_var.name));

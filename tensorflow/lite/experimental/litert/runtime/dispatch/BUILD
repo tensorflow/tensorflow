@@ -58,7 +58,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
-        "//tensorflow/lite/experimental/litert/core:utils",
+        "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
         "//tensorflow/lite/experimental/litert/runtime:tfl_utils",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
         "@com_google_absl//absl/status",

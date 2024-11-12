@@ -54,9 +54,11 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -1280,6 +1282,7 @@ class ReadySetLt {
 enum SkipNodeReason {
   kShouldSkipNodeFunction,
   kExceedsOverlapLimit,
+  kAnnotationGroupNotReady,
 };
 
 absl::string_view SkipNodeReasonString(SkipNodeReason reason) {
@@ -1288,6 +1291,8 @@ absl::string_view SkipNodeReasonString(SkipNodeReason reason) {
       return "Skipped due to kShouldSkipNodeFunction.";
     case SkipNodeReason::kExceedsOverlapLimit:
       return "Skipped due to kExceedsOverlapLimit.";
+    case SkipNodeReason::kAnnotationGroupNotReady:
+      return "Skipped due to kAnnotationNotReady.";
   }
 }
 
@@ -1342,6 +1347,17 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
       if (ready_chosen.node == nullptr) {
         skipped_nodes_and_reasons.push_back(
             {*ready_node_it, SkipNodeReason::kShouldSkipNodeFunction});
+      }
+      continue;
+    }
+    // These ifs will be true when the iterator points to an annotated node, but
+    // the chosen node is nullptr because the annotation group is not ready to
+    // be scheduled yet (because of the annotation roots' successors not being
+    // scheduled yet). So we skip this node and continue to the next one.
+    if ((*ready_node_it)->GetAnnotation() != -1) {
+      if (ready_chosen.node == nullptr) {
+        skipped_nodes_and_reasons.push_back(
+            {*ready_node_it, SkipNodeReason::kAnnotationGroupNotReady});
       }
       continue;
     }
@@ -1526,6 +1542,145 @@ bool DefaultSchedulerCore::AddOccupierToResource(
   return true;
 }
 
+// Comparator for the annotated ready set. This class represents the priority
+// policies for the nodes in the annotated ready set. The policies are currently
+// very minimal (recall that the scheduling is done in the reverse order):
+//  1. Async done nodes are scheduled before any other nodes.
+//  2. Among other nodes, async start nodes are scheduled after other nodes.
+class AnnotationReadySetLt {
+ public:
+  explicit AnnotationReadySetLt() = default;
+  // Implements the priority for the nodes in the annotated ready set.
+  DefaultSchedulerCore::CandidateResult operator()(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b) const {
+    // Schedule an async done.
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            a.node->DoesOccupyAnyResource(), a, b.node->DoesOccupyAnyResource(),
+            b, "kAnnotatedAsyncDone")) {
+      return *value;
+    }
+    // Schedule anything but an async start.
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            a.node->DoesReleaseAnyResource(), b,
+            b.node->DoesReleaseAnyResource(), a, "kAnnotatedNotAsyncStart")) {
+      return *value;
+    }
+    return {a, "kAnnotatedNoReason"};
+  }
+};
+absl::StatusOr<HloGraphNode*> FindAndExtractBestAnnotatedNode(
+    DefaultSchedulerCore::ReadyQueueSet& annotation_ready) {
+  using ScheduleCandidate = DefaultSchedulerCore::ScheduleCandidate;
+  using CandidateResult = DefaultSchedulerCore::CandidateResult;
+  AnnotationReadySetLt ready_lt;
+  // Construct a schedule candidate for caching.
+  ScheduleCandidate ready_chosen;
+  auto chosen_it = annotation_ready.end();
+  // Try to pick nodes from the ready set first as are the ones that cause the
+  // most latency hiding.
+  for (auto ready_node_it = annotation_ready.begin(),
+            e = annotation_ready.end();
+       ready_node_it != e; ++ready_node_it) {
+    ScheduleCandidate ready_candidate;
+    ready_candidate.node = *ready_node_it;
+    if (ready_chosen.node == nullptr) {
+      ready_chosen = ready_candidate;
+      chosen_it = ready_node_it;
+      VLOG(2) << "Choosing from ready (" << ready_chosen.node->GetInstr().name()
+              << ") Reason: First Candidate";
+      continue;
+    }
+    // Compare the current candidate with the previous candidate.
+    CandidateResult cand_result = ready_lt(ready_candidate, ready_chosen);
+    const bool new_candidate_selected =
+        cand_result.result.node == *ready_node_it;
+    auto print_pressure_change =
+        [](const std::optional<std::pair<int64_t, int64_t>>& p) {
+          if (p.has_value()) {
+            return std::to_string(p.value().first);
+          }
+          return std::string("N/A");
+        };
+    VLOG(2) << "Choosing from ready ("
+            << (new_candidate_selected ? ready_candidate.node->GetInstr().name()
+                                       : ready_chosen.node->GetInstr().name())
+            << ") vs ("
+            << (new_candidate_selected
+                    ? ready_chosen.node->GetInstr().name()
+                    : ready_candidate.node->GetInstr().name())
+            << ") Reason: " << cand_result.reason << " mem pressure chosen "
+            << print_pressure_change(
+                   (new_candidate_selected ? ready_candidate : ready_chosen)
+                       .pressure_change)
+            << " mem pressure other "
+            << print_pressure_change(
+                   (new_candidate_selected ? ready_chosen : ready_candidate)
+                       .pressure_change);
+    if (new_candidate_selected) {
+      ready_chosen = cand_result.result;
+      chosen_it = ready_node_it;
+    }
+  }
+  // Delete the node from the annotation ready set.
+  std::swap(*chosen_it, annotation_ready.back());
+  annotation_ready.pop_back();
+  return ready_chosen.node;
+}
+
+absl::Status DefaultSchedulerCore::ScheduleAnnotation(
+    int64_t annotation,
+    DefaultSchedulerCore::SchedulingState* sched_state) const {
+  // Create the ready set with the roots of the annotation
+  TF_RET_CHECK(sched_state->annotation_ready.empty());
+  for (const HloInstruction* instr :
+       annotation_tracker_->GetRootInstructions(annotation)) {
+    sched_state->annotation_ready.push_back(
+        &sched_state->sched_graph.GetNode(instr));
+  }
+  int64_t num_scheduled = 0;
+  int64_t annotation_size = annotation_tracker_->GetNumInstructions(annotation);
+  while (!sched_state->annotation_ready.empty()) {
+    // Print the current annotation ready queue.
+    VLOG(2) << "Current annotation ready queue:";
+    XLA_VLOG_LINES(2, [&]() {
+      struct LogFormatter {
+        void operator()(std::string* out, const HloGraphNode* n) const {
+          absl::StrAppend(out, "\t", n->GetInstr().name(),
+                          " Ready time: ", n->GetReadyTime());
+        }
+      };
+      return absl::StrJoin(sched_state->annotation_ready, "\n", LogFormatter());
+    }());
+    VLOG(2) << "Current time: " << sched_state->current_time;
+    // Find the best annotated node to schedule.
+    TF_ASSIGN_OR_RETURN(
+        HloGraphNode * node,
+        FindAndExtractBestAnnotatedNode(sched_state->annotation_ready));
+
+    TF_RET_CHECK(node != nullptr)
+        << "Couldn't find an annotated node to schedule.";
+    // Delete the node from the ready set.
+    auto node_it = std::find(sched_state->ready_set.begin(),
+                             sched_state->ready_set.end(), node);
+    TF_RET_CHECK(node_it != sched_state->ready_set.end())
+        << "Couldn't find the annotated node in ready set: "
+        << node->GetInstr().name();
+    std::swap(*node_it, sched_state->ready_set.back());
+    sched_state->ready_set.pop_back();
+
+    // Schedule the node.
+    TF_ASSIGN_OR_RETURN(sched_state->current_time,
+                        ScheduleNode(node, sched_state));
+    num_scheduled++;
+    VLOG(2) << "Scheduled annotated node (" << num_scheduled << "/"
+            << annotation_size << "): " << node->GetInstr().name();
+  }
+  // Check that we scheduled all the nodes in the annotation.
+  TF_RET_CHECK(num_scheduled == annotation_size)
+      << "Couldn't schedule all annotated nodes in one go.";
+  return absl::OkStatus();
+}
 absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     HloGraphNode* n, DefaultSchedulerCore::SchedulingState* sched_state) const {
   // Insert the node into the sequence and mark it as scheduled.
@@ -1712,6 +1867,25 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
       continue;
     }
     sched_state->ready_set.push_back(&edge.Target());
+    int64_t annotation = edge.Target().GetAnnotation();
+    if (annotation != -1) {
+      sched_state->ready_num_nodes_with_annotation[annotation]++;
+      VLOG(2) << "Annotation: " << annotation
+              << " ready_num_nodes_with_annotation: "
+              << sched_state->ready_num_nodes_with_annotation[annotation]
+              << " num_root_instructions: "
+              << annotation_tracker_->GetNumRootInstructions(annotation);
+      // LegalizeSchedulingAnnotations pass should have made sure that we will
+      // eventually reach a state where all of the annotation root instructions
+      // will be ready at the same time.
+      if (annotation_tracker_->GetNumRootInstructions(annotation) ==
+          sched_state->ready_num_nodes_with_annotation[annotation]) {
+        sched_state->ready_annotations.push_back(annotation);
+      }
+      if (annotation == sched_state->ongoing_annotation) {
+        sched_state->annotation_ready.push_back(&edge.Target());
+      }
+    }
     if (edge.Target().GetReadyTime() > current_time) {
       sched_state->next_ready_stack.push_back(&edge.Target());
       std::push_heap(sched_state->next_ready_stack.begin(),
@@ -2062,6 +2236,17 @@ void HloScheduleGraph::InitializeGraphAnalysis(
     }
   }
 }
+void HloScheduleGraph::AnnotateGraph(
+    const AnnotationTracker* annotation_tracker) {
+  const HloComputation* comp = original_order_[0]->parent();
+  for (int64_t annotation : annotation_tracker->GetAnnotations(comp)) {
+    for (const HloInstruction* instr :
+         annotation_tracker->GetInstructions(annotation)) {
+      HloGraphNode& node = GetNode(instr);
+      TF_CHECK_OK(node.SetAnnotation(annotation));
+    }
+  }
+}
 
 absl::Status DefaultSchedulerCore::InitializeScheduler(
     const HloModule* module) {
@@ -2070,6 +2255,10 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
       module, alias_analysis_.get(), shape_size_bytes_);
   module_pressure_state_->InitializePressureStates();
   module_pressure_state_->SetMemoryPeak(0);
+  annotation_tracker_ = std::make_unique<AnnotationTracker>(module);
+  if (VLOG_IS_ON(2)) {
+    annotation_tracker_->PrintAnnotationSets(2);
+  }
   return absl::OkStatus();
 }
 
@@ -2104,6 +2293,9 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
       latency_estimator_, async_tracker_, &memory_pressure_tracker, config_);
   async_tracker_->PostProcessScheduleGraph(&sched_state.sched_graph,
                                            latency_estimator_);
+  if (annotation_tracker_->HasAnnotations(computation)) {
+    sched_state.sched_graph.AnnotateGraph(annotation_tracker_.get());
+  }
   sched_state.sched_graph.InitializeGraphAnalysis(async_tracker_);
   VLOG(5) << "Just built graph:";
   XLA_VLOG_LINES(5, sched_state.sched_graph.ToString(async_tracker_));
@@ -2135,7 +2327,19 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
       };
       return absl::StrJoin(sched_state.ready_set, "\n", LogFormatter());
     }());
-
+    if (!sched_state.ready_annotations.empty()) {
+      // TODO (sacer): If more than one annotations are ready, decide the order
+      // with a heuristic.
+      for (int64_t annotation : sched_state.ready_annotations) {
+        VLOG(2) << "------- BEGIN ANNOTATION: " << annotation << " -------";
+        sched_state.ongoing_annotation = annotation;
+        TF_RETURN_IF_ERROR(ScheduleAnnotation(annotation, &sched_state));
+        VLOG(2) << "-------  END ANNOTATION: " << annotation << " --------";
+        sched_state.ongoing_annotation = -1;
+      }
+      sched_state.ready_annotations.clear();
+      continue;
+    }
     TF_RETURN_IF_ERROR(SchedulingStep(&sched_state));
   }
   if (VLOG_IS_ON(5)) {

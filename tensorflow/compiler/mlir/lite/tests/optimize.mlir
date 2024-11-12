@@ -2588,8 +2588,8 @@ func.func @DontConvertConstSelectMixed(%arg0: tensor<2xf32>, %arg1: tensor<2xf32
   // CHECK: return %0, %1
 }
 
-// CHECK-LABEL: FuseBroadcastToIntoSelect
-func.func @FuseBroadcastToIntoSelect(%arg0: tensor<1x8x1024x2048xf32>, %arg1: tensor<1x8x1024x2048xf32>, %arg2: tensor<1x1x1x2048xi1>) -> (tensor<1x8x1024x2048xf32>, tensor<1x8x1024x2048xf32>) {
+// CHECK-LABEL: FuseBroadcastToIntoSelectCondition
+func.func @FuseBroadcastToIntoSelectCondition(%arg0: tensor<1x8x1024x2048xf32>, %arg1: tensor<1x8x1024x2048xf32>, %arg2: tensor<1x1x1x2048xi1>) -> (tensor<1x8x1024x2048xf32>, tensor<1x8x1024x2048xf32>) {
   %cst_0 = arith.constant dense<[1, 8, 1024, 2048]> : tensor<4xi32>
   %0 = "tfl.broadcast_to"(%arg2, %cst_0) : (tensor<1x1x1x2048xi1>, tensor<4xi32>) -> tensor<1x8x1024x2048xi1>
   %1 = "tfl.select"(%0, %arg0, %arg1) : (tensor<1x8x1024x2048xi1>, tensor<1x8x1024x2048xf32>, tensor<1x8x1024x2048xf32>) -> tensor<1x8x1024x2048xf32>
@@ -2600,6 +2600,34 @@ func.func @FuseBroadcastToIntoSelect(%arg0: tensor<1x8x1024x2048xf32>, %arg1: te
   // CHECK: return %0, %1
 }
 
+// CHECK-LABEL: FuseBroadcastToIntoSelectLhs
+func.func @FuseBroadcastToIntoSelectLhs(%arg0: tensor<1x10x3xf32>, %arg1: tensor<4x10x3xf32>) -> (tensor<4x10x3xf32>) {
+  %cst = arith.constant dense<[4, 10, 3]> : tensor<3xi64>
+  %cst_0 = arith.constant dense<0.000000e+00> : tensor<4x10x3xf32>
+  %0 = tfl.not_equal(%arg1, %cst_0) : (tensor<4x10x3xf32>, tensor<4x10x3xf32>) -> tensor<4x10x3xi1>
+  %1 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<1x10x3xf32>, tensor<3xi64>) -> tensor<4x10x3xf32>
+  %2 = "tfl.select"(%0, %cst_0, %1) : (tensor<4x10x3xi1>, tensor<4x10x3xf32>, tensor<4x10x3xf32>) -> tensor<4x10x3xf32>
+  return %2 : tensor<4x10x3xf32>
+  // CHECK: %cst = arith.constant dense<0.000000e+00> : tensor<4x10x3xf32>
+  // CHECK: %0 = tfl.not_equal(%arg1, %cst) : (tensor<4x10x3xf32>, tensor<4x10x3xf32>) -> tensor<4x10x3xi1>
+  // CHECK: %1 = "tfl.select_v2"(%0, %cst, %arg0) : (tensor<4x10x3xi1>, tensor<4x10x3xf32>, tensor<1x10x3xf32>) -> tensor<4x10x3xf32>
+  // CHECK: return %1 : tensor<4x10x3xf32>
+}
+
+// CHECK-LABEL: FuseBroadcastToIntoSelectRhs
+func.func @FuseBroadcastToIntoSelectRhs(%arg0: tensor<1x10x3xf32>, %arg1: tensor<4x10x3xf32>) -> (tensor<4x10x3xf32>) {
+  %cst = arith.constant dense<[4, 10, 3]> : tensor<3xi64>
+  %cst_0 = arith.constant dense<0.000000e+00> : tensor<4x10x3xf32>
+  %0 = tfl.not_equal(%arg1, %cst_0) : (tensor<4x10x3xf32>, tensor<4x10x3xf32>) -> tensor<4x10x3xi1>
+  %1 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<1x10x3xf32>, tensor<3xi64>) -> tensor<4x10x3xf32>
+  %2 = "tfl.select"(%0, %1, %cst_0) : (tensor<4x10x3xi1>, tensor<4x10x3xf32>, tensor<4x10x3xf32>) -> tensor<4x10x3xf32>
+  return %2 : tensor<4x10x3xf32>
+  // CHECK: %cst = arith.constant dense<0.000000e+00> : tensor<4x10x3xf32>
+  // CHECK: %0 = tfl.not_equal(%arg1, %cst) : (tensor<4x10x3xf32>, tensor<4x10x3xf32>) -> tensor<4x10x3xi1>
+  // CHECK: %1 = "tfl.select_v2"(%0, %arg0, %cst) : (tensor<4x10x3xi1>, tensor<1x10x3xf32>, tensor<4x10x3xf32>) -> tensor<4x10x3xf32>
+  // CHECK: return %1 : tensor<4x10x3xf32>
+}
+
 // CHECK-LABEL: FuseBroadcastToIntoSelect1
 func.func @FuseBroadcastToIntoSelect1(%arg0: tensor<1x1x8x1024x2048xf32>, %arg1: tensor<1x1x8x1024x2048xf32>, %arg2: tensor<1x1x1x1x2048xi1>) -> tensor<1x1x8x1024x2048xf32> {
   %cst_0 = arith.constant dense<[1, 1, 8, 1024, 2048]> : tensor<5xi32>
@@ -2607,11 +2635,8 @@ func.func @FuseBroadcastToIntoSelect1(%arg0: tensor<1x1x8x1024x2048xf32>, %arg1:
   %1 = "tfl.select"(%0, %arg0, %arg1) : (tensor<1x1x8x1024x2048xi1>, tensor<1x1x8x1024x2048xf32>, tensor<1x1x8x1024x2048xf32>) -> tensor<1x1x8x1024x2048xf32>
 
   func.return %1 : tensor<1x1x8x1024x2048xf32>
-  // CHECK-DAG: %cst = arith.constant dense<[1, 1, 8, 1024, 2048]> : tensor<5xi32>
-  // CHECK: %0 = "tfl.broadcast_to"(%arg2, %cst) : (tensor<1x1x1x1x2048xi1>, tensor<5xi32>) -> tensor<1x1x8x1024x2048xi1>
-  // CHECK: %1 = "tfl.select"(%0, %arg0, %arg1) : (tensor<1x1x8x1024x2048xi1>, tensor<1x1x8x1024x2048xf32>, tensor<1x1x8x1024x2048xf32>) -> tensor<1x1x8x1024x2048xf32>
-
-  // CHECK: return %1
+  // CHECK: %0 = "tfl.select_v2"(%arg2, %arg0, %arg1) : (tensor<1x1x1x1x2048xi1>, tensor<1x1x8x1024x2048xf32>, tensor<1x1x8x1024x2048xf32>) -> tensor<1x1x8x1024x2048xf32>
+  // CHECK: return %0
 }
 
 // CHECK-LABEL: CheckSelectNegated

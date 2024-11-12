@@ -1499,7 +1499,6 @@ check_deps(
         [],
         otherwise = [
             "@local_xla//xla/stream_executor/cuda:all_runtime",
-            "@local_xla//xla/stream_executor/cuda:cuda_driver",
             "@local_xla//xla/stream_executor/cuda:cuda_platform",
             "@local_xla//xla/stream_executor/cuda:cudnn_plugin",
             "@local_xla//xla/stream_executor/cuda:cufft_plugin",

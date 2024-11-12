@@ -249,6 +249,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
   opts.set_xla_gpu_multi_streamed_windowed_einsum(false);
 
+  opts.set_xla_gpu_experimental_stream_annotation(false);
   // Minimum combined size of matrices in matrix multiplication to
   // be rewritten to cuBLAS or Triton kernel call.
   // This threshold is a conservative estimate and has been measured
@@ -281,9 +282,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_enable_command_buffers_during_profiling(false);
 
   opts.set_xla_gpu_cudnn_gemm_max_plans(5);
-
-  // TODO: remove this as it is replaced by xla_gpu_pgle_accuracy_checker.
-  opts.set_xla_gpu_enable_pgle_accuracy_checker(false);
 
   opts.set_xla_gpu_pgle_accuracy_checker(
       DebugOptions::PGLE_STRICTNESS_LEVEL_WARN);

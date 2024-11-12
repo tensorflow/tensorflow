@@ -40,7 +40,8 @@ namespace xla {
 class ReduceScatterCombiner : public HloModulePass {
  public:
   ReduceScatterCombiner(int64_t combine_threshold_in_bytes,
-                        int64_t combine_threshold_count, bool combine_by_dim);
+                        int64_t combine_threshold_count, bool combine_by_dim,
+                        bool combine_while_loops = true);
 
   absl::string_view name() const override { return "reduce-scatter-combiner"; }
 
@@ -77,6 +78,9 @@ class ReduceScatterCombiner : public HloModulePass {
 
   // Combine only reduce-scatter ops with the same dimension.
   bool combine_by_dim_;
+
+  // Combine reduce-scatter ops that are inside while loop body computations.
+  bool combine_while_loops_;
 };
 
 }  // namespace xla

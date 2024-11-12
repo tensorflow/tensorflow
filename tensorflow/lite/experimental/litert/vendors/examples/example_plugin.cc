@@ -22,8 +22,8 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 
 //
@@ -132,18 +132,17 @@ void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin) {
 LiteRtStatus LiteRtCompilerPluginPartitionModel(
     LiteRtCompilerPlugin compiler_plugin, LiteRtModel model,
     LiteRtOpList selected_ops) {
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto subgraph,
-                                 litert::internal::GetSubgraph(model));
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto ops,
-                                 litert::internal::GetSubgraphOps(subgraph));
+  auto main_subgraph =
+      litert::Model::CreateFromNonOwnedHandle(model).MainSubgraph();
+  if (!main_subgraph.ok()) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
 
-  for (auto op : ops) {
-    LiteRtOpCode op_code;
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtGetOpCode(op, &op_code));
-    if (op_code != kLiteRtOpCodeTflMul) {
+  for (const auto& op : main_subgraph->Ops()) {
+    if (op.Code() != kLiteRtOpCodeTflMul) {
       continue;
     }
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op));
+    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op.Get()));
   }
   return kLiteRtStatusOk;
 }
@@ -153,18 +152,12 @@ namespace {
 LiteRtStatus CompileSinglePartition(LiteRtParamIndex partition_index,
                                     LiteRtSubgraph subgraph,
                                     LiteRtCompiledResultT& result) {
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto ops,
-                                 litert::internal::GetSubgraphOps(subgraph));
-
+  const litert::Subgraph sg(subgraph);
   int num_muls_in_partition = 0;
-  for (auto op : ops) {
-    LiteRtOpCode op_code;
-
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtGetOpCode(op, &op_code));
-    if (op_code != kLiteRtOpCodeTflMul) {
+  for (const auto& op : sg.Ops()) {
+    if (op.Code() != kLiteRtOpCodeTflMul) {
       return kLiteRtStatusErrorUnsupported;
     }
-
     ++num_muls_in_partition;
   }
 

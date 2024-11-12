@@ -24,22 +24,19 @@
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 
 namespace litert::tools {
 
 using ::litert::internal::Serialization;
+using OutStream = std::reference_wrapper<std::ostream>;
+
+// TODO remove these usings other than Ptr and outStraemT
 
 struct ApplyPluginRun {
   // NOTE: All StrFlagT are expected to have static storage duration.
-  using StrFlagT = absl::string_view;
-  using StrFlagListT = std::vector<StrFlagT>;
-  using OptStrFlagT = std::optional<StrFlagT>;
-  using OutStreamT = std::reference_wrapper<std::ostream>;
-  using OutStreamtListT = std::vector<OutStreamT>;
-  using OptOutStreamT = std::optional<OutStreamT>;
   using Ptr = std::unique_ptr<ApplyPluginRun>;
-  using ShrPtr = std::shared_ptr<ApplyPluginRun>;
 
   // A specific command implemented by the tool to run.
   enum class Cmd {
@@ -131,29 +128,29 @@ struct ApplyPluginRun {
   // select the first ".so" file found with prefix "libLiteRtPlugin" that has
   // the "soc_manufacturer" tag passed. Providing more than one plugin shared
   // library for the same manufacturer results in an error.
-  StrFlagListT lib_search_paths = {};
+  SmallVec<absl::string_view> lib_search_paths = {};
 
   // Path to ".tflite" model the tool should operated on.
-  OptStrFlagT model = {};
+  std::optional<absl::string_view> model = {};
 
   // A tag representing a manufacturer the tool should target for compilation.
   // This is used to select the appropriate plugin if multiple plugins are found
   // in "lib_search_paths".
-  OptStrFlagT soc_manufacturer = {};
+  std::optional<absl::string_view> soc_manufacturer = {};
 
   // Collection of soc models tags the tool should target for compilation.
-  StrFlagListT soc_models = {};
+  SmallVec<absl::string_view> soc_models = {};
 
   // Where the tool should write its result file(s) to. If the command runs
   // compilation, an "out" stream should be passed for each "soc_model" target
   // requested for compilation. Output for the "ith" target will be written to
   // the "ith" outs stream.
-  OutStreamtListT outs = {std::cout};
+  SmallVec<OutStream> outs = {std::cout};
 
   // Where to direct logging for this run. Passing nullopt here indicates
   // "silent" behavior and should only be used when this tool is part of a
   // larger pipeline like an end2end test.
-  OptOutStreamT dump_out = std::cerr;
+  std::optional<OutStream> dump_out = std::cerr;
 
   // Dictates how the final model with compiled assets should be serialized.
   // Only relevant to the "apply" function.

@@ -1119,15 +1119,34 @@ foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
   // compatible for the `broadcast_to` op to be valid.
   // And considering, `shape(post_broadcast)` == `shape(%input1)`,
   // `post_broadcast` is broadcast compatible with `input1`.
-  def FuseBroadcastInto#SelectOp : Pat<
+  def FuseBroadcastConditionInto#SelectOp : Pat<
     (SelectOp
       (TFL_BroadcastToOp:$post_broadcast AnyStaticShapeTensor:$pre_broadcast, $dim),
       AnyStaticShapeTensor:$input1, AnyStaticShapeTensor:$input2),
     (TFL_SelectV2Op $pre_broadcast, $input1, $input2),
     [(HasSameStaticShapes $post_broadcast, $input1),
-     (HasRankAtMost<4> $post_broadcast),
-     (HasRankAtMost<4> $input1),
-     (HasRankAtMost<4> $input2)]>;
+     (HasSameStaticShapes $post_broadcast, $input2),
+     (HasRankAtMost<5> $post_broadcast)]>;
+
+  def FuseBroadcastLhsInto#SelectOp : Pat<
+    (SelectOp
+      AnyStaticShapeTensor:$input1,
+      (TFL_BroadcastToOp:$post_broadcast AnyStaticShapeTensor:$pre_broadcast, $dim),
+      AnyStaticShapeTensor:$input2),
+    (TFL_SelectV2Op $input1, $pre_broadcast, $input2),
+    [(HasSameStaticShapes $post_broadcast, $input1),
+     (HasSameStaticShapes $post_broadcast, $input2),
+     (HasRankAtMost<5> $post_broadcast)]>;
+
+  def FuseBroadcastRhsInto#SelectOp : Pat<
+    (SelectOp
+      AnyStaticShapeTensor:$input1,
+      AnyStaticShapeTensor:$input2,
+      (TFL_BroadcastToOp:$post_broadcast AnyStaticShapeTensor:$pre_broadcast, $dim)),
+    (TFL_SelectV2Op $input1, $input2, $pre_broadcast),
+    [(HasSameStaticShapes $post_broadcast, $input1),
+     (HasSameStaticShapes $post_broadcast, $input2),
+     (HasRankAtMost<5> $post_broadcast)]>;
 }
 
 def EliminateLogicalAndTrue : Pat<

@@ -23,8 +23,9 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/c/litert_options.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
-#include "tensorflow/lite/experimental/litert/core/graph_tools.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_op.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_tensor.h"
@@ -53,26 +54,24 @@ LiteRtStatus ConcatenationOpLegalization::LegalizeOp(
                 kQnnConcatenationOpTypeName.data(), dest));
 
   // Look up op input tensors in scope.
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto op_ins,
-                                 litert::internal::GetOpIns(src.Get()));
+  const auto op_ins = src.Inputs();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, op_ins.size(), QNN_TENSOR_INIT);
 
   Qnn_Tensor_t* cur_qnn_op_in = qnn_op_ins;
-  for (auto op_in : op_ins) {
+  for (const auto& op_in : op_ins) {
     LITERT_RETURN_STATUS_IF_NOT_OK(
-        graph_mapper.LookupInScope(op_in, *cur_qnn_op_in));
+        graph_mapper.LookupInScope(op_in.Get(), *cur_qnn_op_in));
     ++cur_qnn_op_in;
   }
 
   // QNN concatenation op expects 1 output tensor.
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto op_outs,
-                                 litert::internal::GetOpOuts(src.Get()));
+  const auto op_outs = src.Outputs();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs,
                      kReduceConcatenationOpOutputSize, QNN_TENSOR_INIT);
   LITERT_RETURN_STATUS_IF_NOT_OK(
-      graph_mapper.LegalizeAndRegister(op_outs[0], qnn_op_outs[0]));
+      graph_mapper.LegalizeAndRegister(op_outs.front().Get(), qnn_op_outs[0]));
   LITERT_RETURN_STATUS_IF_NOT_OK(
-      graph_mapper.PushToScope(op_outs[0], qnn_op_outs[0]));
+      graph_mapper.PushToScope(op_outs.front().Get(), qnn_op_outs[0]));
 
   // Extract axis option from concatenation op.
   int32_t axis;

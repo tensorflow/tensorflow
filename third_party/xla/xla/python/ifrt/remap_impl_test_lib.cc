@@ -148,11 +148,11 @@ TEST(RemapImplTest, ExtractSingleShard) {
   RemapPlan plan;
   plan.input_specs.push_back(
       ArraySpec{/*dtype=*/DType(DType::kS32),
-                /*shape=*/Shape({8, 3}),
+                /*shape=*/Shape({4, 3}),
                 /*sharding=*/
                 ConcreteEvenSharding::Create(
-                    test_util::GetDevices(client.get(), {0, 1, 2, 3}).value(),
-                    MemoryKind(), /*shape=*/Shape({8, 3}),
+                    test_util::GetDevices(client.get(), {0, 1}).value(),
+                    MemoryKind(), /*shape=*/Shape({4, 3}),
                     /*shard_shape=*/Shape({2, 3}))});
   plan.output_specs.push_back(
       ArraySpec{/*dtype=*/DType(DType::kS32),
@@ -171,10 +171,9 @@ TEST(RemapImplTest, ExtractSingleShard) {
   TF_ASSERT_OK(plan.Validate());
 
   std::vector<tsl::RCReference<Array>> arrays;
-  TF_ASSERT_OK_AND_ASSIGN(
-      arrays.emplace_back(),
-      CreateArray(client.get(), /*base_values=*/{0, 6, 100, 106},
-                  /*device_indices=*/{0, 1, 2, 3}));
+  TF_ASSERT_OK_AND_ASSIGN(arrays.emplace_back(),
+                          CreateArray(client.get(), /*base_values=*/{0, 6},
+                                      /*device_indices=*/{0, 1}));
 
   {
     TF_ASSERT_OK_AND_ASSIGN(

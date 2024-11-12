@@ -2193,10 +2193,10 @@ ENTRY AllToAll {
   input = bf16[1024,256]{1,0} parameter(0)
   output = bf16[1024,256]{1,0} parameter(1)
   input_offsets = s32[8]{0} parameter(2)
-  input_sizes = s32[8]{0} parameter(3)
+  send_sizes = s32[8]{0} parameter(3)
   output_offsets = s32[8]{0} parameter(4)
-  output_sizes = s32[8]{0} parameter(5)
-  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, input_sizes, output_offsets, output_sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+  recv_sizes = s32[8]{0} parameter(5)
+  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3,4,5,6,7}}
 }
 
 )",
@@ -2211,10 +2211,10 @@ ENTRY AllToAll {
   input = bf16[1024,256]{1,0} parameter(0)
   output = bf16[1024,256]{1,0} parameter(1)
   input_offsets = s32[8]{0} parameter(2)
-  input_sizes = s32[8]{0} parameter(3)
+  send_sizes = s32[8]{0} parameter(3)
   output_offsets = s32[8]{0} parameter(4)
-  output_sizes = s32[8]{0} parameter(5)
-  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, input_sizes, output_offsets, output_sizes), replica_groups=[2,4]<=[4,2]T(1,0)
+  recv_sizes = s32[8]{0} parameter(5)
+  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups=[2,4]<=[4,2]T(1,0)
 }
 
 )",
@@ -2229,10 +2229,10 @@ ENTRY AllToAll {
   input = bf16[1024,256]{1,0} parameter(0)
   output = bf16[1024,256]{1,0} parameter(1)
   input_offsets = s32[8]{0} parameter(2)
-  input_sizes = s32[8]{0} parameter(3)
+  send_sizes = s32[8]{0} parameter(3)
   output_offsets = s32[8]{0} parameter(4)
-  output_sizes = s32[8]{0} parameter(5)
-  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, input_sizes, output_offsets, output_sizes), replica_groups={}
+  recv_sizes = s32[8]{0} parameter(5)
+  ROOT ra2a = bf16[1024,256]{1,0} ragged-all-to-all(input, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={}
 }
 
 )"
