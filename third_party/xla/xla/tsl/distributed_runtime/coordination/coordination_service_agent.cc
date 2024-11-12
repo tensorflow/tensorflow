@@ -283,8 +283,9 @@ absl::Status CoordinationServiceAgentImpl::Connect() {
       configs_.cluster_register_timeout_in_ms() > 0
           ? configs_.cluster_register_timeout_in_ms()
           : absl::ToInt64Milliseconds(kDefaultClusterRegisterTimeout);
+  // Give 1 second for any service-related timeouts to propagate.
   const absl::Time deadline =
-      absl::Now() + absl::Milliseconds(register_timeout);
+      absl::Now() + absl::Milliseconds(register_timeout) + absl::Seconds(1);
   int attempt = 0;
   std::default_random_engine generator;
   std::uniform_real_distribution<double> distribution(0.0, 1.0);
@@ -590,9 +591,11 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
     ShutdownTaskResponse response;
     CallOptions call_opts;
     const int64_t shutdown_timeout =
-        configs_.shutdown_barrier_timeout_in_ms() > 0
-            ? configs_.shutdown_barrier_timeout_in_ms()
-            : absl::ToInt64Milliseconds(kDefaultShutdownTimeout);
+        (configs_.shutdown_barrier_timeout_in_ms() > 0
+             ? configs_.shutdown_barrier_timeout_in_ms()
+             : absl::ToInt64Milliseconds(kDefaultShutdownTimeout)) +
+        // Add 1s for service-related errors to propagate.
+        1000;
     call_opts.SetTimeout(shutdown_timeout);
 
     absl::Notification n;
@@ -605,14 +608,20 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
     if (status.ok()) {
       LOG(INFO) << "Coordination agent has successfully shut down.";
     } else {
-      LOG(ERROR)
-          << "Failed to disconnect from coordination service with status: "
-          << TrimCoordinationErrorMessage(status)
-          << "\nProceeding with agent shutdown anyway. This is usually caused "
-             "by an earlier error during execution. Check the logs of (a) this "
-             "task, (b) the leader (usually slice 0 task 0) and (c) the "
-             "scheduler (e.g. preemption, eviction) for an earlier error to "
-             "debug further.";
+      status = MakeCoordinationError(absl::Status(
+          status.code(),
+          absl::StrCat(
+              "Failed to disconnect from coordination service with "
+              "status: ",
+              TrimCoordinationErrorMessage(status).ToString(),
+              "Proceeding with agent shutdown anyway. This is usually caused "
+              "by an "
+              "earlier error during execution. Check the logs of (a) this "
+              "task, "
+              "(b) the leader (usually slice 0 task 0) and (c) the scheduler "
+              "(e.g. "
+              "preemption, eviction) for an earlier error to debug further.")));
+      SetError(status);
     }
   }
 
@@ -621,7 +630,7 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
   StopErrorPolling();
   {
     absl::MutexLock l(&state_mu_);
-    if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
+    if (status.ok() && state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
       const std::string status_message = absl::StrCat(
           "Shutdown() was called while coordination agent is in error state, "
           "implying that distributed execution failed. Note: agent will "

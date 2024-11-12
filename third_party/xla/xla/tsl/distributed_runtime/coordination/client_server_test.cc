@@ -379,6 +379,46 @@ TEST_F(ClientServerTest, MissedHeartbeatCallbackIsExecutedIfAnyClientGoesAway) {
   }
 }
 
+TEST_F(ClientServerTest, ShutdownErrorIsPropagatedToClients) {
+  int num_nodes = 2;
+  StartService(num_nodes);
+  std::vector<absl::Status> statuses = {
+      absl::UnknownError("Uninitialized status."),
+      absl::UnknownError("Uninitialized status.")};
+  absl::Notification shutdown;
+
+  auto thread_fn = [&](int node_id) {
+    auto client = GetClient(
+        node_id,
+        /*init_and_shutdown_timeout=*/absl::Seconds(2),
+        /*shutdown_on_destruction=*/true,
+        /*error_fn=*/[&statuses, node_id](const absl::Status& status) {
+          statuses[node_id] = status;
+        });
+
+    TF_ASSERT_OK(client->Connect());
+
+    if (node_id == 0) {
+      // Shut down early.
+      client = nullptr;
+      shutdown.Notify();
+    } else {
+      // Block until shutdown barrier times out.
+      shutdown.WaitForNotification();
+    }
+  };
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { thread_fn(i); });
+    }
+  }
+  EXPECT_THAT(statuses[0], StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(statuses[1], StatusIs(absl::StatusCode::kInternal));
+}
+
 TEST_F(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
 #if defined(ADDRESS_SANITIZER)
   GTEST_SKIP()
