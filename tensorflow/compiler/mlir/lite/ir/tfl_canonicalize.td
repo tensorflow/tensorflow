@@ -34,6 +34,8 @@ def GetSqueezedPermutation: NativeCodeCall<"GetSqueezedPermutation($0, $1)">;
 def CanSqueezeTensor : Constraint<CPred<
   "GetShape($0).getNumElements() > GetSqueezedShape($0).getNumElements()">>;
 
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
+
 
 // Pattern to convert TFL_TransposeOp with rank>6 to rank<=6 if there are
 // redundant dimensions in the tensor. For example- [2x1x3] == [2x3] and 1 is
@@ -54,3 +56,24 @@ def ConvertTransposeToDecreaseRank : Pat<
     [(AnyStaticShapeTensor $input),
      (HasRankAtLeast<7> $input),
      (CanSqueezeTensor $input)]>;
+
+
+// Replace division by a constant with a multiplication by a reciprocal of that
+// constant. Floating point division are more expensive and prune to have worse
+// precision than multiplication.
+def DivWithConstDivisor : Pat<
+  (TFL_DivOp
+    $arg0,
+    (Arith_ConstantOp:$divisor $value),
+    TFL_AF_None
+  ),
+  (TFL_MulOp
+    $arg0,
+    (TFL_DivOp
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+      (Arith_ConstantOp $value),
+      TFL_AF_None
+    ),
+    TFL_AF_None
+  ),
+  [(HasOneUse $divisor)]>;
