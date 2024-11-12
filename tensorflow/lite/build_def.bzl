@@ -871,7 +871,7 @@ def _label(target):
     Args:
       target: (string) a relative or absolute build target.
     """
-    if target[0:2] == "//":
+    if target[0:2] == "//" or "@org_tensorflow//" in target:
         return Label(target)
     if target[0] == ":":
         return Label("//" + native.package_name() + target)
