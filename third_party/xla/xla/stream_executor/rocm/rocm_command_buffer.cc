@@ -273,7 +273,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
       static_cast<const RocmKernel&>(kernel).gpu_function();
   params.func = function;
   params.gridDim.x = blocks.x;
-  params.gridDim.z = blocks.y;
+  params.gridDim.y = blocks.y;
   params.gridDim.z = blocks.z;
   params.blockDim.x = threads.x;
   params.blockDim.y = threads.y;
@@ -319,7 +319,7 @@ absl::Status RocmCommandBuffer::UpdateKernelNode(
       static_cast<const RocmKernel&>(kernel).gpu_function();
   params.func = function;
   params.gridDim.x = blocks.x;
-  params.gridDim.z = blocks.y;
+  params.gridDim.y = blocks.y;
   params.gridDim.z = blocks.z;
   params.blockDim.x = threads.x;
   params.blockDim.y = threads.y;
