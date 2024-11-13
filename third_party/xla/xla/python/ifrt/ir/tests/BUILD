@@ -1,4 +1,4 @@
-load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
+load("//xla:lit.bzl", "lit_test_suite")
 load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
 
 package(
@@ -8,39 +8,7 @@ package(
 
 lit_test_suite(
     name = "all_tests",
-    srcs = enforce_glob(
-        [
-            "ifrt_compile_atom_program.mlir",
-            "ifrt_compile_and_propagate_shardings.mlir",
-            "ifrt_duplicated_callee_elimination.mlir",
-            "ifrt_lower_mpmd_reshard_to_call.mlir",
-            "ifrt_lower_atom_program_metadata_to_xla.mlir",
-            "ifrt_merge_reshards.mlir",
-            "ifrt_outline_atom_program_to_module.mlir",
-            "ifrt_populate_atom_program_metadata.mlir",
-            "ifrt_precompile_atom_program_preprocessing.mlir",
-            "ifrt_remove_ifrt_attrs.mlir",
-            "ifrt_reshard_to_copy_arrays.mlir",
-            "ifrt_verify_device_type_consistency.mlir",
-            "ifrt_verify_donation.mlir",
-            "ifrt_verify_sharding_specified.mlir",
-            "spmd_expansion.mlir",
-            "spmd_interface_verification.mlir",
-            "verify_array.mlir",
-            "verify_assemble.mlir",
-            "verify_attrs.mlir",
-            "verify_call.mlir",
-            "verify_call_loaded_executable.mlir",
-            "verify_copy_arrays.mlir",
-            "verify_disassemble.mlir",
-            "verify_loaded_executable.mlir",
-            "verify_remap_arrays.mlir",
-            "verify_reshard.mlir",
-        ],
-        include = [
-            "*.mlir",
-        ],
-    ),
+    srcs = glob(["*.mlir"]),
     cfg = "//xla:lit.cfg.py",
     tools = [
         ":ifrt-opt",
