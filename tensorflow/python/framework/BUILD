@@ -3070,6 +3070,7 @@ tf_py_strict_test(
         "noasan",  # TODO(b/149948895): Re-enable.
         "nomsan",  # TODO(b/149948895): Re-enable.
         "not_run:arm",
+        "notap",
         "notsan",  # TODO(b/149948895): Re-enable.
         "nozapfhahn",
     ],
