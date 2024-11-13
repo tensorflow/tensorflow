@@ -131,28 +131,28 @@ Encountered unresolved custom op: Atan.
 ```
 
 TensorFlow Lite custom operators are defined using a simple pure-C API that
-consists of an opaque type (`TfLiteRegistrationExternal`) and related functions.
+consists of an opaque type (`TfLiteOperator`) and related functions.
 
-`TfLiteRegistrationExternal` is an opaque type:
+`TfLiteOperator` is an opaque type:
 
 ```c++
-typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
+typedef struct TfLiteOperator TfLiteOperator;
 ```
 
-`TfLiteRegistrationExternal` stores the operator's identity and implementation.
+`TfLiteOperator` stores the operator's identity and implementation.
 (Note that the operator is distinct from its operands, which are stored in the
 TF Lite graph nodes for nodes that call the operator.)
 
 Instances of this type are constructed with calls to
-`TfLiteRegistrationExternalCreate` and can be destroyed by calling
-`TfLiteRegistrationExternalDelete`.
+`TfLiteOperatorCreate` and can be destroyed by calling
+`TfLiteOperatorDelete`.
 
 The operator's identity is set via the parameters to the constructor function
-`TfLiteRegistrationExternalCreate`:
+`TfLiteOperatorCreate`:
 
 ```c++
-TfLiteRegistrationExternal*
-TfLiteRegistrationExternalCreate(
+TfLiteOperator*
+TfLiteOperatorCreate(
     TfLiteBuiltinOperator builtin_code,  // Normally `TfLiteBuiltinCustom`.
     const char* custom_name,  // The name of the custom op.
     int version  // Normally `1` for the first version of a custom op.
@@ -217,28 +217,28 @@ void* MyCustomOpInit(TfLiteOpaqueContext* context,
 </div>
 
 Since this is a C API, these "methods" are implemented as C function pointers in
-the `TfLiteRegistrationExternal` type, which are set by passing the addresses of
+the `TfLiteOperator` type, which are set by passing the addresses of
 your implementation functions to the corresponding setter functions
-`TfLiteRegistrationExternalSet`*MethodName*:
+`TfLiteOperatorSet`*MethodName*:
 
 ```c++
-void TfLiteRegistrationExternalSetInit(
-    TfLiteRegistrationExternal* registration,
+void TfLiteOperatorSetInit(
+    TfLiteOperator* registration,
     void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
                   size_t length));
-void TfLiteRegistrationExternalSetFree(
-    TfLiteRegistrationExternal* registration,
+void TfLiteOperatorSetFree(
+    TfLiteOperator* registration,
     void (*free)(TfLiteOpaqueContext* context, void* data));
-void TfLiteRegistrationExternalSetPrepare(
-    TfLiteRegistrationExternal* registration,
+void TfLiteOperatorSetPrepare(
+    TfLiteOperator* registration,
     TfLiteStatus (*prepare)(TfLiteOpaqueContext* context,
                             TfLiteOpaqueNode* node));
-void TfLiteRegistrationExternalSetInvoke(
-    TfLiteRegistrationExternal* registration,
+void TfLiteOperatorSetInvoke(
+    TfLiteOperator* registration,
     TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
                            TfLiteOpaqueNode* node));
-void TfLiteRegistrationExternalSetAsyncKernel(
-    TfLiteRegistrationExternal* registration,
+void TfLiteOperatorSetAsyncKernel(
+    TfLiteOperator* registration,
     struct TfLiteAsyncKernel* (*async_kernel)(TfLiteOpaqueContext* context,
                                               TfLiteOpaqueNode* node));
 ```
@@ -271,8 +271,8 @@ the `Invoke()` method, and here too the state is available as
 `TfLiteOpaqueNodeGetUserData(node)`.
 
 Custom ops can be implemented by defining those "method" functions, and then
-defining a function that returns an instance of `TfLiteRegistrationExternal`
-constructed by calling `TfLiteRegistrationExternalCreate` and then the relevant
+defining a function that returns an instance of `TfLiteOperator`
+constructed by calling `TfLiteOperatorCreate` and then the relevant
 setter methods:
 
 <div>
@@ -291,16 +291,16 @@ namespace my_namespace::my_custom_op {
                         TfLiteOpaqueNode* node) {... }
   };
 
-  const TfLiteRegistrationExternal* MyCustomOpRegistrationExternal() {
+  const TfLiteOperator* MyCustomOpRegistrationExternal() {
     // Singleton instance, intentionally never destroyed.
-    static const TfLiteRegistrationExternal* my_custom_op = ()[] {
-        TfLiteRegistrationExternal* r =
-            TfLiteRegistrationExternalCreate(
+    static const TfLiteOperator* my_custom_op = ()[] {
+        TfLiteOperator* r =
+            TfLiteOperatorCreate(
                 kTfLiteBuiltinCustom, "MyCustomOp", /*version=*/ 1);
-        TfLiteRegistrationExternalSetInit(r, Init);
-        TfLiteRegistrationExternalSetFree(r, Free);
-        TfLiteRegistrationExternalSetPrepare(r, Prepare);
-        TfLiteRegistrationExternalSetInvoke(r, Eval);
+        TfLiteOperatorSetInit(r, Init);
+        TfLiteOperatorSetFree(r, Free);
+        TfLiteOperatorSetPrepare(r, Prepare);
+        TfLiteOperatorSetInvoke(r, Eval);
         return r;
       };
     return my_custom_op;
@@ -326,20 +326,20 @@ static TfLiteStatus MyCustomOpPrepare(TfLiteOpaqueContext* context,
 static TfLiteStatus MyCustomOpInvoke(TfLiteOpaqueContext* context,
                                      TfLiteOpaqueNode* node) {... }
 
-static TfLiteRegistrationExternal* MyCustomOpCreate() {
-  const TfLiteRegistrationExternal* r =
-      TfLiteRegistrationExternalCreate(
+static TfLiteOperator* MyCustomOpCreate() {
+  const TfLiteOperator* r =
+      TfLiteOperatorCreate(
           kTfLiteBuiltinCustom, "MyCustomOp", /*version=*/ 1);
-  TfLiteRegistrationExternalSetInit(r, MyCustomOpInit);
-  TfLiteRegistrationExternalSetFree(r, MyCustomOpFree);
-  TfLiteRegistrationExternalSetPrepare(r, MyCustomOpPrepare);
-  TfLiteRegistrationExternalSetInvoke(r, MyCustomOpEval);
+  TfLiteOperatorSetInit(r, MyCustomOpInit);
+  TfLiteOperatorSetFree(r, MyCustomOpFree);
+  TfLiteOperatorSetPrepare(r, MyCustomOpPrepare);
+  TfLiteOperatorSetInvoke(r, MyCustomOpEval);
   return r;
 }
 
-const TfLiteRegistrationExternal* MyCustomOpRegistrationExternal() {
+const TfLiteOperator* MyCustomOpRegistrationExternal() {
   // Singleton instance, intentionally never destroyed.
-  static const TfLiteRegistrationExternal* my_custom_op = MyCustomOpCreate();
+  static const TfLiteOperator* my_custom_op = MyCustomOpCreate();
   return my_custom_op;
 }
 
@@ -363,7 +363,7 @@ separate custom libraries.
 ### Defining the kernel in the TensorFlow Lite runtime
 
 All we need to do to use the op in TensorFlow Lite is define two functions
-(`Prepare` and `Eval`), and a third to construct a `TfLiteRegistrationExternal`:
+(`Prepare` and `Eval`), and a third to construct a `TfLiteOperator`:
 
 <div>
   <devsite-selector>
@@ -409,13 +409,13 @@ namespace atan_op {
     }
   }  // anonymous namespace
 
-  const TfLiteRegistrationExternal* AtanOpRegistrationExternal() {
+  const TfLiteOperator* AtanOpRegistrationExternal() {
     // Singleton instance, intentionally never destroyed.
-    static const TfLiteRegistrationExternal* atan_op = ()[] {
-        auto* r = TfLiteRegistrationExternalCreate(
+    static const TfLiteOperator* atan_op = ()[] {
+        auto* r = TfLiteOperatorCreate(
             kTfLiteBuiltinCustom, "ATAN", /*version=*/ 1);
-        TfLiteRegistrationExternalSetPrepare(r, Prepare);
-        TfLiteRegistrationExternalSetInvoke(r, Eval);
+        TfLiteOperatorSetPrepare(r, Prepare);
+        TfLiteOperatorSetInvoke(r, Eval);
         return r;
       };
     return atan_op;
@@ -469,17 +469,17 @@ static TfLiteStatus AtanEval(TfLiteOpaqueContext* context, TfLiteOpaqueNode* nod
   return kTfLiteOk;
 }
 
-static const TfLiteRegistrationExternal* AtanOpCreate() {
-  TfLiteRegistrationExternal* r = TfLiteRegistrationExternalCreate(
+static const TfLiteOperator* AtanOpCreate() {
+  TfLiteOperator* r = TfLiteOperatorCreate(
           kTfLiteBuiltinCustom, "ATAN", /*version=*/ 1);
-  TfLiteRegistrationExternalSetPrepare(r, Prepare);
-  TfLiteRegistrationExternalSetInvoke(r, Eval);
+  TfLiteOperatorSetPrepare(r, Prepare);
+  TfLiteOperatorSetInvoke(r, Eval);
   return r;
 }
 
-const TfLiteRegistrationExternal* AtanOpRegistrationExternal() {
+const TfLiteOperator* AtanOpRegistrationExternal() {
   // Singleton instance, intentionally never destroyed.
-  static const TfLiteRegistrationExternal* atan_op = AtanOpCreate();
+  static const TfLiteOperator* atan_op = AtanOpCreate();
   return atan_op;
 }
 
@@ -524,9 +524,9 @@ class OpResolver {
 ```
 
 Note that for backwards compatibility, this class uses the older concrete type
-`TfLiteRegistration` rather than the opaque type `TfLiteRegistrationExternal`,
+`TfLiteRegistration` rather than the opaque type `TfLiteOperator`,
 but the `TfLiteRegistration` struct contains a `registration_external` field of
-type `TfLiteRegistrationExternal*`.
+type `TfLiteOperator*`.
 
 The `MutableOpResolver` and `BuiltinOpResolver` classes are derived from
 `OpResolver`:
