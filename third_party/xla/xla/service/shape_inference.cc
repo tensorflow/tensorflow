@@ -2585,33 +2585,68 @@ ShapeInference::InferCollectiveBroadcastShape(
 }
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferCollectivePermuteShape(
-    absl::Span<const Shape* const> operand_shapes) {
-  if (operand_shapes.size() == 1) {
-    TF_RETURN_IF_ERROR(
-        ExpectArray(*(operand_shapes[0]), "operand of collective-permute"));
-    return *(operand_shapes[0]);
+    absl::Span<const Shape* const> operand_shapes, bool inplace) {
+  if (!inplace) {
+    for (const Shape* operand_shape : operand_shapes) {
+      TF_RETURN_IF_ERROR(
+          ExpectArray(*operand_shape, "operand of collective-permute"));
+    }
+    if (operand_shapes.size() == 1) {
+      return *operand_shapes[0];
+    }
+    return ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
   } else {
     TF_RET_CHECK(operand_shapes.size() == 4);
     return *(operand_shapes[1]);
   }
 }
 
+/* static */ absl::StatusOr<Shape> ShapeInference::InferCollectivePermuteShape(
+    const Shape* const operand_shape, bool inplace) {
+  CHECK(operand_shape->IsTuple());
+  std::vector<const Shape*> operand_shapes;
+  absl::c_transform(operand_shape->tuple_shapes(),
+                    std::back_inserter(operand_shapes),
+                    [](const Shape& shape) { return &shape; });
+  CHECK_GT(operand_shapes.size(), 1);
+  return InferCollectivePermuteShape(operand_shapes, inplace);
+}
+
 /* static */ absl::StatusOr<Shape>
 ShapeInference::InferCollectivePermuteStartShape(
     absl::Span<const Shape* const> operand_shapes,
-    absl::Span<const Shape> context_shapes) {
-  absl::InlinedVector<const Shape*, 4> shapes;
-  if (operand_shapes.size() == 1) {
-    TF_RETURN_IF_ERROR(ExpectArray(*(operand_shapes[0]),
-                                   "operand of collective-permute-start"));
-    shapes = {operand_shapes[0], operand_shapes[0]};
+    absl::Span<const Shape> context_shapes, bool inplace) {
+  absl::InlinedVector<Shape, 4> shapes;
+  if (!inplace) {
+    if (operand_shapes.size() == 1) {
+      TF_RETURN_IF_ERROR(ExpectArray(*(operand_shapes[0]),
+                                     "operand of collective-permute-start"));
+      shapes = {*operand_shapes[0], *operand_shapes[0]};
+    } else {
+      Shape tuple_shape = ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
+      shapes = {tuple_shape, tuple_shape};
+    }
   } else {
     TF_RET_CHECK(operand_shapes.size() == 4);
-    shapes = {operand_shapes[0], operand_shapes[1]};
+    shapes = {*operand_shapes[0], *operand_shapes[1]};
   }
   absl::c_transform(context_shapes, std::back_inserter(shapes),
+                    [](const Shape& shape) { return shape; });
+  return ShapeUtil::MakeTupleShape(shapes);
+}
+
+/* static */ absl::StatusOr<Shape>
+ShapeInference::InferCollectivePermuteStartShape(
+    const Shape* const operand_shape, absl::Span<const Shape> context_shapes,
+    bool inplace) {
+  CHECK(operand_shape->IsTuple());
+  std::vector<const Shape*> operand_shapes;
+  absl::c_transform(operand_shape->tuple_shapes(),
+                    std::back_inserter(operand_shapes),
                     [](const Shape& shape) { return &shape; });
-  return ShapeUtil::MakeTupleShapeWithPtrs(shapes);
+  CHECK_GT(operand_shapes.size(), 1);
+  return InferCollectivePermuteStartShape(operand_shapes, context_shapes,
+                                          inplace);
 }
 
 /* static */ absl::StatusOr<Shape>

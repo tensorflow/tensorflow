@@ -2263,6 +2263,20 @@ ENTRY CollectivePermute {
 )",
 /*replica_count=*/4
 },
+// combined collective-permute
+{
+"CombinedCollectivePermute",
+R"(HloModule CombinedCollectivePermute, entry_computation_layout={(f32[128,32]{0,1}, f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}, replica_count=4
+
+ENTRY CollectivePermute {
+  input.0 = f32[128,32]{0,1} parameter(0)
+  input.1 = f32[128,32]{0,1} parameter(1)
+  ROOT root = (f32[128,32]{0,1}, f32[128,32]{0,1}) collective-permute(input.0, input.1), source_target_pairs={{0,1},{1,2},{2,3}}
+}
+
+)",
+/*replica_count=*/4
+},
 // collective-permute with in-place updates
 {
 "CollectivePermuteInPlaceUpdate",
@@ -2371,6 +2385,21 @@ ENTRY CollectivePermuteStartAndDone {
   input = f32[128,32]{0,1} parameter(0)
   collective-permute-start.1 = (f32[128,32]{0,1}, f32[128,32]{0,1}, u32[], u32[]) collective-permute-start(input), source_target_pairs={{0,1},{1,2},{2,3}}
   ROOT collective-permute-done.1 = f32[128,32]{0,1} collective-permute-done(collective-permute-start.1)
+}
+
+)",
+/*replica_count=*/4
+},
+// combined collective-permute-start and -done with inplace update
+{
+"CombinedCollectivePermuteStartAndDone",
+R"(HloModule CombinedCollectivePermuteStartAndDone, entry_computation_layout={(f32[128,32]{0,1}, f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}, replica_count=4
+
+ENTRY CombinedCollectivePermuteStartAndDone {
+  input.0 = f32[128,32]{0,1} parameter(0)
+  input.1 = f32[128,32]{0,1} parameter(1)
+  collective-permute-start.1 = ((f32[128,32]{0,1}, f32[128,32]{0,1}), (f32[128,32]{0,1}, f32[128,32]{0,1}), u32[], u32[]) collective-permute-start(input.0, input.1), source_target_pairs={{0,1},{1,2},{2,3}}
+  ROOT collective-permute-done.1 = (f32[128,32]{0,1}, f32[128,32]{0,1}) collective-permute-done(collective-permute-start.1)
 }
 
 )",

@@ -1840,27 +1840,22 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         pairs[i].second = (*source_targets)[i][1];
       }
       if (!slice_sizes.has_value()) {
-        if (operands.size() != 1) {
-          TokenError(
-              "CollectivePermute and CollectivePermuteStart must have exactly "
-              "one operand (input buffer) unless it performs dynamic-slice and "
-              "in-place update.");
-          return nullptr;
-        }
         if (opcode == HloOpcode::kCollectivePermute) {
           return builder->AddInstruction(
-              HloInstruction::CreateCollectivePermute(*shape, operands[0],
-                                                      pairs, channel_id));
+              HloInstruction::CreateCollectivePermute(*shape, operands, pairs,
+                                                      channel_id));
         }
         if (opcode == HloOpcode::kCollectivePermuteStart) {
           return builder->AddInstruction(
-              HloInstruction::CreateCollectivePermuteStart(*shape, operands[0],
+              HloInstruction::CreateCollectivePermuteStart(*shape, operands,
                                                            pairs, channel_id));
         }
         LOG(FATAL) << "Expect opcode to be CollectivePermute or "
                       "CollectivePermuteStart, but got "
                    << opcode;
       }
+      // TODO update the interface and legalization below for combined
+      // collective permutes
       if (operands.size() != 4) {
         TokenError(
             "CollectivePermute and CollectivePermuteStart must "

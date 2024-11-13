@@ -48,25 +48,28 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
     absl::Status InitializeId(int64_t current_id) {
       absl::MutexLock lock(&mutex_);
       if (recv_ptrs_.find(current_id) == recv_ptrs_.end()) {
-        recv_ptrs_[current_id] = tsl::MakeUnconstructedAsyncValueRef<void*>();
+        recv_ptrs_[current_id] =
+            tsl::MakeUnconstructedAsyncValueRef<std::vector<void*>>();
       }
       return absl::OkStatus();
     }
 
-    absl::Status PutRecvPtr(int64_t current_id, void* ptr) {
+    absl::Status PutRecvPtr(int64_t current_id,
+                            const std::vector<void*>& ptrs) {
       if (!IsInitialized(current_id)) {
         return absl::InternalError(absl::StrCat("Current ID ", current_id,
                                                 " has not been initialized!"));
       }
       absl::MutexLock lock(&mutex_);
       if (recv_ptrs_.at(current_id).IsUnavailable()) {
-        VLOG(3) << "Putting pointer: " << ptr << " current_id " << current_id;
-        recv_ptrs_.at(current_id).emplace(ptr);
+        VLOG(3) << "Putting pointers to current_id " << current_id;
+        recv_ptrs_.at(current_id).emplace(ptrs);
       }
       return absl::OkStatus();
     }
 
-    absl::StatusOr<AsyncValueRef<void*>> GetRecvPtr(int64_t target_id) {
+    absl::StatusOr<AsyncValueRef<std::vector<void*>>> GetRecvPtr(
+        int64_t target_id) {
       if (!IsInitialized(target_id)) {
         return absl::InternalError(absl::StrCat("Target ID ", target_id,
                                                 " has not been initialized!"));
@@ -77,7 +80,7 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
 
    private:
     absl::Mutex mutex_;
-    absl::node_hash_map<int64_t, AsyncValueRef<void*>> recv_ptrs_
+    absl::node_hash_map<int64_t, AsyncValueRef<std::vector<void*>>> recv_ptrs_
         ABSL_GUARDED_BY(mutex_);
   };
 
@@ -94,7 +97,8 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
   NcclCollectivePermuteStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                                   const HloCollectivePermuteInstruction* instr,
                                   int64_t replica_count,
-                                  int64_t partition_count, const Buffer& buffer,
+                                  int64_t partition_count,
+                                  const std::vector<Buffer>& buffers,
                                   bool p2p_memcpy_enabled);
   absl::Status Initialize(const InitializeParams& params) override;
 
@@ -108,7 +112,7 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
 
  private:
   const NcclP2PConfig config_;
-  const Buffer buffer_;
+  std::vector<Buffer> buffers_;
   RecvPtrMap recv_ptr_map_;
   bool p2p_memcpy_enabled_ = false;
   int64_t device_count_;
@@ -116,8 +120,9 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
 
 absl::Status RunCollectivePermute(
     NcclApi* nccl_api, NcclP2PConfig::SourceTargetMapEntry source_target,
-    DeviceBufferPair& buffer, se::Stream& stream, NcclApi::NcclCommHandle comm,
-    absl::string_view device_string, int64_t current_id, bool use_memcpy,
+    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+    NcclApi::NcclCommHandle comm, absl::string_view device_string,
+    int64_t current_id, bool use_memcpy,
     NcclCollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map);
 
 }  // namespace gpu
