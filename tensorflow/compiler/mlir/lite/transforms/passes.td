@@ -15,19 +15,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-
-def AnalyzeVariablesPass : Pass<"tfl-analyze-variables-pass", "mlir::ModuleOp"> {
-  let summary = "Analyze variables in the graph";
-  let description = [{
-      Pass which analyzes the variables in the graph and add an attribute whether
-      variables should be legalized to TFLite native ones.
-      This pass needs to run post TF->TFL legalization and before variable
-      legalization.
-  }];
-  let constructor = "CreateAnalyzeVariablesPass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
-}
-
 def DefaultQuantParamsPass : Pass<"tfl-default-quant", "mlir::func::FuncOp"> {
   let summary = "Apply quantization with default quantization parameter";
   let constructor = "CreateDefaultQuantParamsPass()";

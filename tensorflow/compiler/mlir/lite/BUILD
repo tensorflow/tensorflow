@@ -558,6 +558,7 @@ cc_library(
         "transforms/pass_registry_utils.h",
         "transforms/passes.h",
         "transforms/push_transpose_through_ewise_pass.h",
+        "transforms/tf_legalizations/analyze_variables_pass.h",
         "transforms/unfreeze_global_constants.h",
         "utils/attribute_utils.h",
         "utils/utils.h",
@@ -574,6 +575,7 @@ cc_library(
         ":pipeline",
         ":size_utils",
         ":tensorflow_lite_canonicalize_inc_gen",
+        ":tensorflow_lite_legalize_tf_analyze_variables",
         ":tensorflow_lite_op_enums_inc_gen",
         ":tensorflow_lite_op_interfaces_inc_gen",
         ":tensorflow_lite_ops",
@@ -894,9 +896,26 @@ cc_library(
 )
 
 cc_library(
+    name = "tensorflow_lite_legalize_tf_analyze_variables",
+    srcs = [
+        "transforms/tf_legalizations/analyze_variables_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tf_legalizations/analyze_variables_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":tensorflow_lite_ops",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
-        "transforms/analyze_variables.cc",
         "transforms/dilated_conv.cc",
         "transforms/generated_legalize_tensorlist.inc",
         "transforms/generated_legalize_tf.inc",
@@ -945,6 +964,7 @@ cc_library(
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tensorflow_lite_legalize_tensorlist_inc_gen",
+        ":tensorflow_lite_legalize_tf_analyze_variables",
         ":tensorflow_lite_legalize_tf_inc_gen",
         ":tensorflow_lite_legalize_variables_inc_gen",
         ":tensorflow_lite_lower_static_tensor_list_inc_gen",

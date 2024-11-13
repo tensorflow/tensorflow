@@ -12,21 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/analyze_variables_pass.h"
+
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
-
-#define GEN_PASS_DEF_ANALYZEVARIABLESPASS
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Attribute name to be added on the module to identify whether
 // variables should be legalized to TFLite or not.
@@ -59,13 +57,7 @@ bool IsSupportedTFDataForwardingOp(Operation* op) {
 bool IsSupportedTFCustomOp(Operation* op) {
   return op->getName().getStringRef().str() == "tf.SentencepieceTokenizeOp";
 }
-
-class AnalyzeVariablesPass
-    : public impl::AnalyzeVariablesPassBase<AnalyzeVariablesPass> {
- public:
-  explicit AnalyzeVariablesPass() {}
-  void runOnOperation() override;
-};
+}  // namespace
 
 void AnalyzeVariablesPass::runOnOperation() {
   auto* context = &getContext();
@@ -103,12 +95,6 @@ void AnalyzeVariablesPass::runOnOperation() {
   });
   module->setAttr(kLegalizeTflVariables,
                   BoolAttr::get(context, legalize_to_tfl));
-}
-
-}  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> CreateAnalyzeVariablesPass() {
-  return std::make_unique<AnalyzeVariablesPass>();
 }
 
 }  // namespace TFL
