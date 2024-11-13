@@ -308,5 +308,114 @@ TEST_F(AsyncAllReduceCreatorTest, ControlPredecessor) {
   ASSERT_EQ(done->control_successors().size(), 1);
   EXPECT_THAT(done->control_successors()[0], GmockMatch(m::Parameter(1)));
 }
+
+TEST_F(AsyncAllReduceCreatorTest, PreserveFrontendAttributesAllGather) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT ag = f32[1024] all-gather(p0), dimensions={0}, replica_groups={{0,1,2,3,4,5,6,7}}, frontend_attributes={_scheduling_group_id="0"}
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_gather = HloPredicateTrue;
+  TF_ASSERT_OK(
+      RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
+
+  HloInstruction* done = hlo_module->entry_computation()->root_instruction();
+  HloInstruction* start = done->mutable_operand(0);
+  EXPECT_TRUE(
+      done->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_EQ(done->frontend_attributes().map().at("_scheduling_group_id"), "0");
+  EXPECT_TRUE(
+      start->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_EQ(start->frontend_attributes().map().at("_scheduling_group_id"), "0");
+}
+
+TEST_F(AsyncAllReduceCreatorTest, PreserveFrontendAttributesAllReduce) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+  ENTRY entry {
+    p0 = f32[1024] parameter(0)
+    ROOT ar = f32[1024] all-reduce(p0), replica_groups={{0,1,2,3,4,5,6,7}}, to_apply=add, frontend_attributes={_scheduling_group_id="0"}
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_reduce = HloPredicateTrue;
+  TF_ASSERT_OK(
+      RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
+
+  HloInstruction* done = hlo_module->entry_computation()->root_instruction();
+  HloInstruction* start = done->mutable_operand(0);
+  EXPECT_TRUE(
+      done->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_EQ(done->frontend_attributes().map().at("_scheduling_group_id"), "0");
+  EXPECT_TRUE(
+      start->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_EQ(start->frontend_attributes().map().at("_scheduling_group_id"), "0");
+}
+
+TEST_F(AsyncAllReduceCreatorTest, PreserveFrontendAttributesCollectivePermute) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[1024] parameter(0)
+    ROOT cp = f32[1024] collective-permute(p0), source_target_pairs={{0,1},{1,2},{2,3},{3,0}}, frontend_attributes={_scheduling_group_id="0"}
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_collective_permute = HloPredicateTrue;
+  TF_ASSERT_OK(
+      RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
+
+  HloInstruction* done = hlo_module->entry_computation()->root_instruction();
+  HloInstruction* start = done->mutable_operand(0);
+  EXPECT_TRUE(
+      done->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_EQ(done->frontend_attributes().map().at("_scheduling_group_id"), "0");
+  EXPECT_TRUE(
+      start->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_EQ(start->frontend_attributes().map().at("_scheduling_group_id"), "0");
+}
+
+TEST_F(AsyncAllReduceCreatorTest, PreserveFrontendAttributesAllToAll) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[1024] parameter(0)
+    ROOT a2a = f32[1024] all-to-all(p0), replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={0}, frontend_attributes={_scheduling_group_id="0"}
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_to_all = HloPredicateTrue;
+  TF_ASSERT_OK(
+      RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
+
+  HloInstruction* done = hlo_module->entry_computation()->root_instruction();
+  HloInstruction* start = done->mutable_operand(0);
+  EXPECT_TRUE(
+      done->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_EQ(done->frontend_attributes().map().at("_scheduling_group_id"), "0");
+  EXPECT_TRUE(
+      start->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_EQ(start->frontend_attributes().map().at("_scheduling_group_id"), "0");
+}
 }  // namespace
 }  // namespace xla

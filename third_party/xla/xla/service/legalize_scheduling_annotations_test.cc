@@ -180,5 +180,25 @@ TEST_F(LegalizeSchedulingAnnotationsTest, AnnotationWithGaps2) {
   EXPECT_IS_NOT_OK(
       LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
 }
+
+TEST_F(LegalizeSchedulingAnnotationsTest, MissingAnnotationInStart) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[256,1024]{1,0} parameter(0)
+    p1 = f32[16,64,256]{2,1,0} parameter(1)
+    p2 = f32[16,64,256]{2,1,0} parameter(2)
+    ags0 = (f32[256,1024]{1,0}, f32[1024,1024]{1,0}) all-gather-start(p0), replica_groups={{0,1,2,3}}, dimensions={0}
+    c0 = f32[16,256,256]{2,1,0} convolution(p1, p2), window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="0"}
+    agd0 = f32[1024,1024]{1,0} all-gather-done(ags0), frontend_attributes={_scheduling_group_id="0"}
+    ROOT tuple = (f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(c0, agd0)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  EXPECT_IS_NOT_OK(
+      LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
+}
 }  // namespace
 }  // namespace xla

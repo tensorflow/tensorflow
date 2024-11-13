@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
 
@@ -87,6 +88,15 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     for (HloInstruction* instr : annotated_instructions) {
       CHECK(annotation.contains(instr));
       CHECK_EQ(annotation[instr], id);
+      if (HloPredicateIsOp<HloOpcode::kAllGatherDone, HloOpcode::kAllReduceDone,
+                           HloOpcode::kCollectivePermuteDone,
+                           HloOpcode::kAsyncDone>(instr) &&
+          (!annotation.contains(instr->operand(0)) ||
+           annotation[instr->mutable_operand(0)] != id)) {
+        return absl::InternalError(absl::StrCat(
+            "Done instruction's operand is not annotated with the same id: ",
+            instr->operand(0)->name(), ", annotation: ", id));
+      }
       for (HloInstruction* user : instr->users()) {
         if (!visited.contains(user) &&
             (!annotation.contains(user) || annotation[user] != id)) {
