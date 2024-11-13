@@ -54,10 +54,11 @@ limitations under the License.
 namespace tsl {
 namespace {
 using ::tensorflow::CoordinationServiceConfig;
+using ::testing::AnyOf;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
-using tsl::testing::StatusIs;
+using ::tsl::testing::StatusIs;
 
 constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
 
@@ -310,12 +311,14 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
   }
   TF_EXPECT_OK(statuses[0]);
   for (int i = 1; i < num_nodes; ++i) {
-    EXPECT_THAT(statuses[i], StatusIs(::testing::AnyOf(
-                                 // Shutdown barrier took too long and failed.
-                                 absl::StatusCode::kDeadlineExceeded,
-                                 // Agent polled error first, and so Shutdown()
-                                 // fails because agent is already in error.
-                                 absl::StatusCode::kFailedPrecondition)));
+    EXPECT_THAT(
+        statuses[i],
+        AnyOf(
+            // Shutdown barrier took too long and failed.
+            StatusIs(absl::StatusCode::kInternal, HasSubstr("timed out")),
+            // Agent polled error first, and so Shutdown()
+            // fails because agent is already in error.
+            StatusIs(absl::StatusCode::kFailedPrecondition)));
   }
 }
 

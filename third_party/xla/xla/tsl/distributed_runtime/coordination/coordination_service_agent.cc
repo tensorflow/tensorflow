@@ -283,9 +283,9 @@ absl::Status CoordinationServiceAgentImpl::Connect() {
       configs_.cluster_register_timeout_in_ms() > 0
           ? configs_.cluster_register_timeout_in_ms()
           : absl::ToInt64Milliseconds(kDefaultClusterRegisterTimeout);
-  // Give 1 second for any service-related timeouts to propagate.
+  // Give 5 seconds for any service-related timeouts to propagate.
   const absl::Time deadline =
-      absl::Now() + absl::Milliseconds(register_timeout) + absl::Seconds(1);
+      absl::Now() + absl::Milliseconds(register_timeout) + absl::Seconds(5);
   int attempt = 0;
   std::default_random_engine generator;
   std::uniform_real_distribution<double> distribution(0.0, 1.0);
@@ -594,8 +594,8 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
         (configs_.shutdown_barrier_timeout_in_ms() > 0
              ? configs_.shutdown_barrier_timeout_in_ms()
              : absl::ToInt64Milliseconds(kDefaultShutdownTimeout)) +
-        // Add 1s for service-related errors to propagate.
-        1000;
+        // Add 5s for service-related errors to propagate.
+        5 * 1000;
     call_opts.SetTimeout(shutdown_timeout);
 
     absl::Notification n;

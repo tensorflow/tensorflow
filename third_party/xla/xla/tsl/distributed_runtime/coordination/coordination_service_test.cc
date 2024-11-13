@@ -1761,7 +1761,8 @@ TEST_F(CoordinateTwoTasksTest,
   // Block until barrier times out.
   n.WaitForNotification();
 
-  EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kDeadlineExceeded));
+  EXPECT_THAT(barrier_status,
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("timed out")));
   // Task 0 should not be allowed to silently register again to the
   // same service instance, regardless of incarnation (same process or
   // restarted).
@@ -1795,7 +1796,8 @@ TEST_F(CoordinateTwoTasksTest,
   Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(absl::Seconds(1)));
 
-  EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kDeadlineExceeded));
+  EXPECT_THAT(barrier_status,
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("timed out")));
 
   // Task 1 sends unexpected heartbeat that is aborted because it is in error.
   absl::Status s = coord_service_->RecordHeartbeat(task_1_, incarnation_1_);

@@ -105,6 +105,11 @@ struct CoordinatedTaskEqual {
   }
 };
 
+absl::Status MakeShutdownBarrierError(const absl::Status& error) {
+  return MakeCoordinationError(absl::InternalError(absl::StrCat(
+      "Shutdown barrier has failed.\nBarrier result: '", error.ToString())));
+}
+
 // Standalone implementation of the coordination service.
 class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
  public:
@@ -891,7 +896,13 @@ void CoordinationServiceStandaloneImpl::ShutdownTaskAsync(
     BarrierAsync(shutdown_barrier_id_, kUniqueBarrierCounter,
                  shutdown_barrier_timeout_, task, {},
                  [done = std::move(done)](const absl::Status& s,
-                                          int64_t unused_counter) { done(s); });
+                                          int64_t unused_counter) {
+                   if (s.ok()) {
+                     done(absl::OkStatus());
+                   } else {
+                     done(MakeShutdownBarrierError(s));
+                   }
+                 });
   } else {
     absl::Status status;
     {
@@ -1805,9 +1816,7 @@ void CoordinationServiceStandaloneImpl::CompleteShutdownAfterBarrier(
                   "too fast in its execution, or (c) too slow / hanging. Check "
                   "the logs (both the program and scheduler events) for an "
                   "earlier error to identify the root cause.";
-    absl::Status shutdown_error = MakeCoordinationError(absl::InternalError(
-        absl::StrCat("Shutdown barrier has failed.\nBarrier result: '",
-                     barrier->result.ToString())));
+    absl::Status shutdown_error = MakeShutdownBarrierError(result);
     // Propagate error to all tasks.
     // 1. Identify all straggling tasks.
     std::vector<CoordinatedTask> straggling_tasks;
