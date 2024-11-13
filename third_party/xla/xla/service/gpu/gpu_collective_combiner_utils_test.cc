@@ -175,9 +175,8 @@ TEST_F(CollectiveCombinerUtilsTest,
       current-loop-index, constant.0, constant.0), dynamic_slice_sizes={1,8,128}
     all-reduce = bf16[1,8,128] all-reduce(sliced-input-buffer),
       replica_groups={}, to_apply=add, channel_id=1
-    bitcast.0 = bf16[3,8,128] bitcast(all-reduce)
     dynamic-update-slice = bf16[3,8,128] dynamic-update-slice(output-buffer,
-      bitcast.0, current-loop-index, constant.0, constant.0)
+      all-reduce, current-loop-index, constant.0, constant.0)
     ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(next-loop-index,
       dynamic-update-slice, input-buffer)
   }
