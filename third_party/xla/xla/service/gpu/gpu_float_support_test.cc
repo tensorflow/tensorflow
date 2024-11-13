@@ -271,6 +271,21 @@ ENTRY main {
   EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32));
 }
 
+TEST_F(FloatSupportTest, Bf16ExpIsNotNormalized) {
+  auto cc = se::CudaComputeCapability::Ampere();
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+ENTRY main {
+  p0 = bf16[] parameter(0)
+  ROOT r = bf16[] exponential(p0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32));
+}
+
 TEST_F(FloatSupportTest,
        BF16ReductionOnHopperIsOnlyNormalizedIfReducerIsUnsupported) {
   auto cc = se::CudaComputeCapability::Hopper();
