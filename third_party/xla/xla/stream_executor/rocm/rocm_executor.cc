@@ -463,7 +463,6 @@ RocmExecutor::~RocmExecutor() {
   for (auto& it : in_memory_modules_) {
     UnloadRocmModule(rocm_context_, it.second);
   }
-  set_context(nullptr);
   CHECK(kernel_to_gpu_binary_.empty()) << "RocmExecutor has live kernels.";
   CHECK(gpu_binary_to_module_.empty()) << "RocmExecutor has loaded modules.";
 }
@@ -602,7 +601,6 @@ absl::Status RocmExecutor::Init() {
 
   TF_ASSIGN_OR_RETURN(rocm_context_,
                       RocmContext::Create(device_ordinal(), device_));
-  set_context(rocm_context_);
   TF_ASSIGN_OR_RETURN(version_, GetGpuISAVersion(device_));
   return absl::OkStatus();
 }

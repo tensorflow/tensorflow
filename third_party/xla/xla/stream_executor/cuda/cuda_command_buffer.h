@@ -29,6 +29,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -45,15 +46,16 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
  public:
   // Creates a new CUDA command buffer and the underlying CUDA graph.
   static absl::StatusOr<std::unique_ptr<CudaCommandBuffer>> Create(
-      Mode mode, GpuExecutor* parent);
+      Mode mode, GpuExecutor* parent, CudaContext* cuda_context);
 
   ~CudaCommandBuffer() override;
 
  private:
-  CudaCommandBuffer(Mode mode, GpuExecutor* parent, CUgraph graph,
-                    bool is_owned_graph)
+  CudaCommandBuffer(Mode mode, GpuExecutor* parent, CudaContext* cuda_context,
+                    CUgraph graph, bool is_owned_graph)
       : GpuCommandBuffer(mode, parent),
         parent_(parent),
+        cuda_context_(cuda_context),
         graph_(graph),
         is_owned_graph_(is_owned_graph) {
     VLOG(5) << "Created command buffer for graph " << graph_
@@ -183,6 +185,8 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   NoOpKernel noop_kernel_;
 
   GpuExecutor* parent_;
+
+  CudaContext* cuda_context_;
 
   static_assert(std::is_pointer_v<CUgraph>, "CUgraph must be a pointer");
   static_assert(std::is_pointer_v<CUgraphExec>,

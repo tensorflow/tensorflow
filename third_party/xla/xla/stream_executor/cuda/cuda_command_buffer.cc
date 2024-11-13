@@ -135,10 +135,10 @@ absl::Status GraphInstantiate(CUgraphExec* exec, CUgraph graph) {
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<CudaCommandBuffer>> CudaCommandBuffer::Create(
-    Mode mode, GpuExecutor* parent) {
+    Mode mode, GpuExecutor* parent, CudaContext* cuda_context) {
   TF_ASSIGN_OR_RETURN(CUgraph graph, CreateGraph());
   return std::unique_ptr<CudaCommandBuffer>(
-      new CudaCommandBuffer(mode, parent, graph,
+      new CudaCommandBuffer(mode, parent, cuda_context, graph,
                             /*is_owned_graph=*/true));
 }
 
@@ -250,12 +250,10 @@ CudaCommandBuffer::CreateConditionalNode(const Dependencies& dependencies,
 
   CUgraphNodeParams cu_params;
   std::memset(&cu_params, 0, sizeof(cu_params));
-  CudaContext* gpu_context =
-      tensorflow::down_cast<CudaContext*>(parent_->gpu_context());
 
   cu_params.type = CU_GRAPH_NODE_TYPE_CONDITIONAL;
   cu_params.conditional.handle = ToCudaGraphHandle(conditional);
-  cu_params.conditional.ctx = gpu_context->context();
+  cu_params.conditional.ctx = cuda_context_->context();
   cu_params.conditional.size = 1;
 
   switch (type) {
@@ -279,9 +277,10 @@ CudaCommandBuffer::CreateConditionalNode(const Dependencies& dependencies,
 
   return ConditionalNodeResult{
       FromCudaGraphHandle(node_handle),
-      std::unique_ptr<CudaCommandBuffer>(new CudaCommandBuffer(
-          Mode::kNested, parent_, cu_params.conditional.phGraph_out[0],
-          /*is_owned_graph=*/false))};
+      std::unique_ptr<CudaCommandBuffer>(
+          new CudaCommandBuffer(Mode::kNested, parent_, cuda_context_,
+                                cu_params.conditional.phGraph_out[0],
+                                /*is_owned_graph=*/false))};
 #else
   return absl::UnimplementedError("unsupported node type");
 #endif  // CUDA_VERSION >= 12030
@@ -290,13 +289,11 @@ CudaCommandBuffer::CreateConditionalNode(const Dependencies& dependencies,
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemsetNode(
     const Dependencies& dependencies, DeviceMemoryBase destination,
     BitPattern bit_pattern, size_t num_elements) {
-  CudaContext* cuda_context =
-      tensorflow::down_cast<CudaContext*>(parent_->gpu_context());
   VLOG(2) << "Add memset node to a graph " << graph_
           << "; dst: " << destination.opaque()
           << "; bit_pattern: " << bit_pattern.ToString()
           << "; num_elements: " << num_elements
-          << "; context: " << cuda_context->context()
+          << "; context: " << cuda_context_->context()
           << "; deps: " << dependencies.size();
 
   CUDA_MEMSET_NODE_PARAMS params{};
@@ -312,7 +309,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemsetNode(
   CUgraphNode node_handle = nullptr;
   TF_RETURN_IF_ERROR(cuda::ToStatus(
       cuGraphAddMemsetNode(&node_handle, graph_, deps.data(), deps.size(),
-                           &params, cuda_context->context()),
+                           &params, cuda_context_->context()),
       "Failed to add memset node to a CUDA graph"));
 
   return FromCudaGraphHandle(node_handle);
@@ -322,13 +319,11 @@ absl::Status CudaCommandBuffer::UpdateMemsetNode(GraphNodeHandle node_handle,
                                                  DeviceMemoryBase destination,
                                                  BitPattern bit_pattern,
                                                  size_t num_elements) {
-  CudaContext* cuda_context =
-      tensorflow::down_cast<CudaContext*>(parent_->gpu_context());
   VLOG(2) << "Set memset node params " << node_handle << " in graph executable "
           << exec_ << "; dst: " << destination.opaque()
           << "; bit_pattern: " << bit_pattern.ToString()
           << "; num_elements: " << num_elements
-          << "; context: " << cuda_context->context();
+          << "; context: " << cuda_context_->context();
 
   CUDA_MEMSET_NODE_PARAMS params{};
   params.dst = AsDevicePtr(destination);
@@ -340,18 +335,16 @@ absl::Status CudaCommandBuffer::UpdateMemsetNode(GraphNodeHandle node_handle,
 
   return cuda::ToStatus(
       cuGraphExecMemsetNodeSetParams(exec_, ToCudaGraphHandle(node_handle),
-                                     &params, cuda_context->context()),
+                                     &params, cuda_context_->context()),
       "Failed to set memset node params");
 }
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemcpyD2DNode(
     const Dependencies& dependencies, DeviceMemoryBase destination,
     DeviceMemoryBase source, uint64_t size) {
-  CudaContext* cuda_context =
-      tensorflow::down_cast<CudaContext*>(parent_->gpu_context());
   VLOG(2) << "Add memcpy d2d node to a graph " << graph_
           << "; dst: " << destination.opaque() << "; src: " << source.opaque()
-          << "; size: " << size << "; context: " << cuda_context->context()
+          << "; size: " << size << "; context: " << cuda_context_->context()
           << "; deps: " << dependencies.size();
 
   CUDA_MEMCPY3D params{};
@@ -368,7 +361,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemcpyD2DNode(
   CUgraphNode node_handle = nullptr;
   TF_RETURN_IF_ERROR(cuda::ToStatus(
       cuGraphAddMemcpyNode(&node_handle, graph_, deps.data(), deps.size(),
-                           &params, cuda_context->context()),
+                           &params, cuda_context_->context()),
       "Failed to add memcpy d2d node to a CUDA graph"));
   return FromCudaGraphHandle(node_handle);
 }
@@ -376,12 +369,10 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemcpyD2DNode(
 absl::Status CudaCommandBuffer::UpdateMemcpyD2DNode(
     GraphNodeHandle node_handle, DeviceMemoryBase destination,
     DeviceMemoryBase source, uint64_t size) {
-  CudaContext* cuda_context =
-      tensorflow::down_cast<CudaContext*>(parent_->gpu_context());
   VLOG(2) << "Set memcpy d2d node params " << node_handle
           << " in graph executable " << exec_
           << "; dst: " << destination.opaque() << "; src: " << source.opaque()
-          << "; size: " << size << "; context: " << cuda_context->context();
+          << "; size: " << size << "; context: " << cuda_context_->context();
 
   CUDA_MEMCPY3D params{};
   params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
@@ -394,7 +385,7 @@ absl::Status CudaCommandBuffer::UpdateMemcpyD2DNode(
 
   return cuda::ToStatus(
       cuGraphExecMemcpyNodeSetParams(exec_, ToCudaGraphHandle(node_handle),
-                                     &params, cuda_context->context()),
+                                     &params, cuda_context_->context()),
       "Failed to set memcpy d2d node params");
 }
 
@@ -634,18 +625,15 @@ CudaCommandBuffer::CreateConditionalHandle() {
   constexpr int kDefaultLaunchValue = 0;
   constexpr int kNoFlags = 0;
   VLOG(2) << "Create conditional handle for a graph " << graph_
-          << "; context: " << parent_->gpu_context()
+          << "; context: " << cuda_context_
           << "; default_launch_value: " << kDefaultLaunchValue
           << "; flags: " << kNoFlags;
 
 #if CUDA_VERSION >= 12030
   CUgraphConditionalHandle handle;
   TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuGraphConditionalHandleCreate(
-          &handle, graph_,
-          tensorflow::down_cast<CudaContext*>(parent_->gpu_context())
-              ->context(),
-          kDefaultLaunchValue, kNoFlags),
+      cuGraphConditionalHandleCreate(&handle, graph_, cuda_context_->context(),
+                                     kDefaultLaunchValue, kNoFlags),
       "Failed to create conditional handle for a CUDA graph"));
   return FromCudaGraphHandle(handle);
 #else

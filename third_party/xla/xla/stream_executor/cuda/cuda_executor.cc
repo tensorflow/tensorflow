@@ -550,7 +550,6 @@ std::unique_ptr<ActivateContext> CudaExecutor::Activate() {
 CudaExecutor::~CudaExecutor() {
   CHECK(kernel_to_gpu_binary_.empty()) << "CudaExecutor has live kernels.";
   CHECK(gpu_binary_to_module_.empty()) << "CudaExecutor has loaded modules.";
-  set_context(nullptr);
 }
 
 void CudaExecutor::UnifiedMemoryDeallocate(void* location) {
@@ -587,7 +586,6 @@ absl::Status CudaExecutor::Init() {
   TF_ASSIGN_OR_RETURN(device_, GetDevice(device_ordinal()));
   TF_ASSIGN_OR_RETURN(CudaContext * context,
                       CudaContext::Create(device_ordinal(), device_));
-  set_context(context);
   cuda_context_ = context;
   TF_RETURN_IF_ERROR(GetComputeCapability(&cc_major_, &cc_minor_, device_));
   TF_ASSIGN_OR_RETURN(delay_kernels_supported_, DelayKernelIsSupported());
@@ -1151,7 +1149,7 @@ absl::StatusOr<std::unique_ptr<Stream>> CudaExecutor::CreateStream(
 absl::StatusOr<std::unique_ptr<CommandBuffer>>
 CudaExecutor::CreateCommandBuffer(CommandBuffer::Mode mode) {
   VLOG(2) << "Create CUDA command buffer (CUDA graph)";
-  return CudaCommandBuffer::Create(mode, this);
+  return CudaCommandBuffer::Create(mode, this, cuda_context_);
 }
 
 absl::Status CudaExecutor::TrimGraphMemory() {

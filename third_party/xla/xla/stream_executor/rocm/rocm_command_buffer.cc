@@ -146,7 +146,6 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemsetNode(
           << "; dst: " << destination.opaque()
           << "; bit_pattern: " << bit_pattern.ToString()
           << "; num_elements: " << num_elements
-          << "; context: " << parent_->gpu_context()
           << "; deps: " << dependencies.size();
 
   hipMemsetParams params{};
@@ -194,8 +193,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemcpyD2DNode(
     DeviceMemoryBase source, uint64_t size) {
   VLOG(2) << "Add memcpy d2d node to a graph " << graph_
           << "; dst: " << destination.opaque() << "; src: " << source.opaque()
-          << "; size: " << size << "; context: " << parent_->gpu_context()
-          << "; deps: " << dependencies.size();
+          << "; size: " << size << "; deps: " << dependencies.size();
 
   std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
 
