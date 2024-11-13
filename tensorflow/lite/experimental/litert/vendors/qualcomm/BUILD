@@ -113,11 +113,11 @@ cc_library(
         ":qnn_manager",
         ":qnn_tensor",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
     ],
 )
 
