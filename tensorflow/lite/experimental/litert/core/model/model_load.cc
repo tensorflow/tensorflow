@@ -92,6 +92,8 @@ LiteRtStatus ModelUnpacker::ConvertTensor(const tflite::TensorT& tensor,
   ranked_tensor.layout.strides =
       nullptr;  // TFL tensors don't support strides yet.
 
+  target->name = tensor.name;
+
   return kLiteRtStatusOk;
 }
 

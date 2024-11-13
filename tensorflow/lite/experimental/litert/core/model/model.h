@@ -57,9 +57,14 @@ struct LiteRtTensorT {
   // Not a reference.
   LiteRtWeightsT weights;
 
+  // Id for union tensor type.
   LiteRtTensorTypeId type_id;
 
+  // Union tensor type.
   LiteRtTypeDetail type_detail;
+
+  // Authored name of tensor, may be empty.
+  std::string name;
 };
 
 //

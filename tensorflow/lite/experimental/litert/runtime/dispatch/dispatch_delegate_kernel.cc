@@ -14,25 +14,32 @@
 
 #include "tensorflow/lite/experimental/litert/runtime/dispatch/dispatch_delegate_kernel.h"
 
+#include <any>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <string>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/core/util/tensor_type_util.h"
 #include "tensorflow/lite/experimental/litert/runtime/dispatch/dispatch_delegate_options.h"
 #include "tensorflow/lite/experimental/litert/runtime/tfl_utils.h"
@@ -40,6 +47,61 @@
 
 namespace litert {
 namespace internal {
+
+namespace {
+
+// Get the bytecode and function name from given custom op options data.
+Expected<std::pair<absl::string_view, BufferRef<uint8_t>>> ResolveExecInfo(
+    BufferRef<uint8_t> custom_opts, TfLiteOpaqueContext* context,
+    const LiteRtDispatchDelegateOptions& options) {
+  auto exec_info = ParseExecInfo(custom_opts);
+  if (!exec_info) {
+    LITERT_LOG(LITERT_ERROR, "Failed to parse custom initial data", "");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+  }
+
+  auto [function_name, metadata_key] = *exec_info;
+
+  const char* metadata;
+  size_t bytes;
+  if (auto stat = TfLiteOpaqueContextGetMetadata(context, metadata_key.data(),
+                                                 &metadata, &bytes);
+      stat != kTfLiteOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to get metadata for dispatch op: %d",
+               stat);
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+  }
+
+  BufferRef<uint8_t> metadata_buf(metadata, bytes);
+
+  auto bytecode_loc = ParseByteCodePlaceholder(metadata_buf);
+  if (!bytecode_loc) {
+    LITERT_LOG(LITERT_ERROR, "Failed to parse metadata for dispatch op", "");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+  }
+
+  auto [bytecode_offset, bytecode_size] = *bytecode_loc;
+
+  LITERT_LOG(
+      LITERT_INFO,
+      "Initializing invocation context for dispatch op\n\tfunction_name: "
+      "%s\n\tbyte_code_offset: %lu \n\tbyte_code_size: %lu",
+      function_name.data(), bytecode_offset, bytecode_size);
+
+  auto alloc_base = FindAllocBase(options);
+  if (!alloc_base) {
+    LITERT_LOG(LITERT_ERROR,
+               "Could not find requried delegate options \"alloc_base\"", "");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+  }
+
+  const void* alloc = std::any_cast<const void*>(*alloc_base);
+  const void* bytecode =
+      reinterpret_cast<const uint8_t*>(alloc) + bytecode_offset;
+  return std::make_pair(function_name,
+                        BufferRef<uint8_t>(bytecode, bytecode_size));
+}
+}  // namespace
 
 DispatchDelegateKernel::~DispatchDelegateKernel() {
   for (size_t i = 0; i < input_tensor_buffer_handles_.size(); ++i) {
@@ -172,24 +234,21 @@ TfLiteStatus DispatchDelegateKernel::Init(
     return kTfLiteError;
   }
 
-  std::string custom_option(static_cast<const char*>(init_data),
-                            init_data_size);
-  auto exec_info = options_.GetExecInfo(custom_option);
-  if (!exec_info.ok()) {
-    LITERT_LOG(LITERT_ERROR, "Failed to fetch ExecInfo for %s: %s",
-               custom_option.data(), exec_info.status().message().data());
+  BufferRef<uint8_t> custom_opts(init_data, init_data_size);
+  auto exec_info = ResolveExecInfo(custom_opts, context, options_);
+  if (!exec_info) {
+    LITERT_LOG(LITERT_ERROR, "Failed to parse custom options");
     return kTfLiteError;
   }
+  auto [function_name, bytecode] = *exec_info;
 
-  const char* function_name = exec_info->function_name.has_value()
-                                  ? exec_info->function_name->data()
-                                  : nullptr;
-  int num_inputs = params->input_tensors->size;
-  int num_outputs = params->output_tensors->size;
+  const int num_inputs = params->input_tensors->size;
+  const int num_outputs = params->output_tensors->size;
+
   if (auto status = LiteRtDispatchInvocationContextCreate(
           device_context_, kLiteRtDispatchExecutableTypeMlModel,
-          exec_info->bytecode.data(), exec_info->bytecode.size(), function_name,
-          num_inputs, num_outputs, &invocation_context_);
+          bytecode.Data(), bytecode.Size(), function_name.data(), num_inputs,
+          num_outputs, &invocation_context_);
       status != kLiteRtStatusOk) {
     LITERT_LOG(LITERT_ERROR, "Failed to create invocation context: %d", status);
     return kTfLiteError;

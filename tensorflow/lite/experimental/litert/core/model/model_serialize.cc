@@ -107,6 +107,8 @@ LiteRtStatus ModelRepacker::SerializeTensor(LiteRtTensor tensor,
       << "Submitting a null buffer";
   target.buffer = SubmitBuffer(std::move(tensor->weights.fb_buffer));
 
+  target.name = tensor->name;
+
   return kLiteRtStatusOk;
 }
 

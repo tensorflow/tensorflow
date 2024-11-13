@@ -16,65 +16,62 @@
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/interpreter_builder.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/signature_runner.h"
 
+namespace litert {
+
+namespace {
+
+using ::testing::FloatNear;
+using ::testing::Pointwise;
+
+static constexpr absl::string_view kNpuFile = kQualcommModelFileName;
+static constexpr absl::string_view kTfliteFile = "simple_model_npu.tflite";
+
 TEST(DispatchDelegate, Qualcomm) {
-  auto npu_model_file_name = kQualcommModelFileName;
-  auto npu_model = litert::testing::LoadBinaryFile(npu_model_file_name);
-  ASSERT_TRUE(npu_model.ok());
-  ABSL_LOG(INFO) << "Loaded model " << npu_model_file_name << ", "
-                 << npu_model->size() << " bytes";
+  auto runtime =
+      testing::TflRuntime::CreateFromTflFileWithByteCode(kTfliteFile, kNpuFile);
+  ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
+  auto& rt = **runtime;
+  auto& interpreter = rt.Interp();
 
-  auto tflite_file_name =
-      litert::testing::GetTestFilePath("simple_model_npu.tflite");
-  auto model = tflite::FlatBufferModel::BuildFromFile(tflite_file_name.data());
-  ASSERT_NE(model, nullptr);
+  EXPECT_EQ(interpreter.nodes_size(), 1);
+  EXPECT_EQ(interpreter.inputs().size(), 2);
+  EXPECT_EQ(interpreter.outputs().size(), 1);
+  ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
-  tflite::ops::builtin::BuiltinOpResolver resolver;
-  std::unique_ptr<tflite::Interpreter> interpreter;
-  tflite::InterpreterBuilder(*model, resolver)(&interpreter);
-  ASSERT_NE(interpreter, nullptr);
-
-  EXPECT_EQ(interpreter->nodes_size(), 1);
-  EXPECT_EQ(interpreter->inputs().size(), 2);
-  EXPECT_EQ(interpreter->outputs().size(), 1);
-  ASSERT_EQ(interpreter->execution_plan().size(), 1);
-
-  auto dispatch_delegate_options = litert::CreateDispatchDelegateOptionsPtr();
-  ASSERT_EQ(
-      LiteRtAddDispatchDelegateExecInfoOption(
-          dispatch_delegate_options.get(), "npu_bytecode", npu_model->data(),
-          npu_model->size(), /*function_name=*/"simple"),
-      kTfLiteOk);
+  auto dispatch_delegate_options = CreateDispatchDelegateOptionsPtr();
+  LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
+                                           rt.AllocBase());
   auto dispatch_delegate =
-      litert::CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
+      CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
                   "Qualcomm HTP";
 #endif
 
-  ASSERT_EQ(interpreter->ModifyGraphWithDelegate(dispatch_delegate.get()),
+  ASSERT_EQ(interpreter.ModifyGraphWithDelegate(dispatch_delegate.get()),
             kTfLiteOk);
 
   // Get the list of signatures and check it.
-  auto signature_defs = interpreter->signature_keys();
+  auto signature_defs = interpreter.signature_keys();
   ASSERT_EQ(signature_defs.size(), 0);
 
   tflite::impl::SignatureRunner* runner =
-      interpreter->GetSignatureRunner(/*signature_key=*/nullptr);
+      interpreter.GetSignatureRunner(/*signature_key=*/nullptr);
   ASSERT_NE(runner, nullptr);
 
   EXPECT_EQ(runner->AllocateTensors(), kTfLiteOk);
@@ -98,11 +95,14 @@ TEST(DispatchDelegate, Qualcomm) {
   ASSERT_STREQ(runner->output_names()[0], "tfl.custom");
   auto output_tensor = runner->output_tensor("tfl.custom");
   ASSERT_NE(output_tensor, nullptr);
-  auto* output = output_tensor->data.f;
+  const float* output = output_tensor->data.f;
   for (auto i = 0; i < kTestOutputSize; ++i) {
     ABSL_LOG(INFO) << output[i] << "\t" << kTestOutputTensor[i];
   }
-  for (auto i = 0; i < kTestOutputSize; ++i) {
-    EXPECT_NEAR(output[i], kTestOutputTensor[i], 1e-5);
-  }
+  EXPECT_THAT(absl::MakeConstSpan(output, kTestOutputSize),
+              Pointwise(FloatNear(1e-5), kTestOutputTensor));
 }
+
+}  // namespace
+
+}  // namespace litert
