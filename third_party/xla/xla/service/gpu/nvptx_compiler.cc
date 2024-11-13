@@ -95,6 +95,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
+#include "xla/stream_executor/cuda/cuda_driver_version.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
@@ -105,7 +106,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/util/env_var.h"
@@ -919,8 +919,9 @@ absl::StatusOr<se::PtxLinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
 
   int ptxas_version =
       asm_compiler_version.major() * 1000 + asm_compiler_version.minor() * 10;
-  TF_ASSIGN_OR_RETURN(int driver_version,
-                      se::gpu::GpuDriver::GetDriverVersion());
+  int32_t driver_version;
+  TF_ASSIGN_OR_RETURN(driver_version,
+                      stream_executor::gpu::CudaDriverVersion());
 
   if (driver_version >= ptxas_version) {
     return LinkingMethod::kDriver;

@@ -44,7 +44,6 @@ cc_library(
         "//xla/stream_executor:executor_cache",
         "//xla/stream_executor/platform:initialize",
         "//xla/stream_executor/gpu:gpu_types_header",
-        "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "@local_tsl//tsl/platform:errors",
     ]),

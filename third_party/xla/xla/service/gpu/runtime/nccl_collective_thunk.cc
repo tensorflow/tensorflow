@@ -58,7 +58,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #endif  // GOOGLE_CUDA
 
