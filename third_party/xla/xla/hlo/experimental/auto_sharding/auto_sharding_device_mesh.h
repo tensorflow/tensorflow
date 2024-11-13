@@ -25,60 +25,66 @@ limitations under the License.
 
 namespace xla {
 namespace spmd {
-struct DeviceMesh {
-  Array<int64_t> device_array;
-  bool is_iota;
-
+class DeviceMesh {
+ public:
   explicit DeviceMesh(absl::Span<const int64_t> sizes)
-      : device_array(sizes), is_iota(false) {}
+      : device_array_(sizes), is_iota_(false) {}
 
   void FillIota(const int64_t value) {
-    device_array.FillIota(value);
-    is_iota = true;
+    device_array_.FillIota(value);
+    is_iota_ = true;
   }
 
   void SetValues(absl::Span<const int64_t> values);
 
-  int64_t num_dimensions() const { return device_array.num_dimensions(); }
+  bool IsIota() const { return is_iota_; }
+
+  const Array<int64_t>& DeviceArray() const { return device_array_; }
+
+  int64_t num_dimensions() const { return device_array_.num_dimensions(); }
 
   // Returns the size of the dimension at the given index.
-  int64_t dim(int64_t n) const { return device_array.dim(n); }
+  int64_t dim(int64_t n) const { return device_array_.dim(n); }
 
   // Returns a vector containing the dimensions of the array.
   absl::Span<const int64_t> dimensions() const {
-    return device_array.dimensions();
+    return device_array_.dimensions();
   }
 
   // Returns the total number of elements in the array.
-  int64_t num_elements() const { return device_array.num_elements(); }
+  int64_t num_elements() const { return device_array_.num_elements(); }
 
-  std::string ToString() const { return device_array.ToString(); }
+  std::string ToString() const { return device_array_.ToString(); }
 
   void Reshape(absl::Span<const int64_t> new_dimensions) {
-    device_array.Reshape(new_dimensions);
+    device_array_.Reshape(new_dimensions);
   }
 
   void TransposeDimensions(absl::Span<const int> permutation) {
-    device_array.TransposeDimensions(permutation);
-    is_iota = false;
+    device_array_.TransposeDimensions(permutation);
+    is_iota_ = false;
   }
 
   const int64_t& operator()(absl::Span<const int64_t> indexes) const {
-    return device_array(indexes);
+    return device_array_(indexes);
   }
 
   int64_t& operator()(absl::Span<const int64_t> indexes) {
-    return device_array(indexes);
+    return device_array_(indexes);
   }
 
   void Each(absl::FunctionRef<void(absl::Span<const int64_t>, int64_t*)> f) {
-    device_array.Each(f);
+    device_array_.Each(f);
   }
 
   void Each(
       absl::FunctionRef<void(absl::Span<const int64_t>, int64_t)> f) const {
-    device_array.Each(f);
+    device_array_.Each(f);
   }
+
+ private:
+  Array<int64_t> device_array_;
+  bool is_iota_;
 };
 
 template <class T>

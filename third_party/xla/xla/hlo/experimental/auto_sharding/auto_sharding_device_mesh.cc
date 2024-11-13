@@ -24,8 +24,8 @@ namespace xla {
 namespace spmd {
 
 void DeviceMesh::SetValues(absl::Span<const int64_t> values) {
-  device_array.SetValues(values);
-  is_iota = AreValuesIota(values);
+  device_array_.SetValues(values);
+  is_iota_ = AreValuesIota(values);
 }
 }  // namespace spmd
 }  // namespace xla

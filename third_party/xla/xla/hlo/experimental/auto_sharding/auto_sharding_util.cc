@@ -1595,7 +1595,7 @@ HloSharding TileV1(const Shape& tensor_shape,
 
     if (proceed_to_next_tensor_dim &&
         current_tensor_dim == tensor_shape.rank() - 1) {
-      AppendFlattenElements(&tile_assignment_devices, device_mesh.device_array,
+      AppendFlattenElements(&tile_assignment_devices, device_mesh.DeviceArray(),
                             mesh_indices);
       return;
     }
@@ -1710,7 +1710,7 @@ HloSharding Tile(const Shape& tensor_shape,
                  absl::Span<const int64_t> tensor_dims,
                  const std::vector<std::vector<int64_t>>& mesh_dims,
                  const DeviceMesh& device_mesh) {
-  if (device_mesh.is_iota) {
+  if (device_mesh.IsIota()) {
     return TileV2(tensor_shape, tensor_dims, mesh_dims, device_mesh);
   }
   return TileV1(tensor_shape, tensor_dims, mesh_dims, device_mesh);
@@ -1724,7 +1724,7 @@ HloSharding Tile(const Shape& tensor_shape,
   for (int i = 0; i < mesh_dims.size(); ++i) {
     mesh_dims_general[i].push_back(mesh_dims[i]);
   }
-  if (device_mesh.is_iota) {
+  if (device_mesh.IsIota()) {
     return TileV2(tensor_shape, tensor_dims, mesh_dims_general, device_mesh);
   }
   return TileV1(tensor_shape, tensor_dims, mesh_dims_general, device_mesh);

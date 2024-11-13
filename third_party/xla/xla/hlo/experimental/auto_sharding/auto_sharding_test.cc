@@ -79,7 +79,7 @@ using ::testing::status::StatusIs;
 TEST(DeviceMeshTest, IotaDeviceMesh2DStartsWith0) {
   DeviceMesh device_mesh({2, 4});
   device_mesh.FillIota(0);
-  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_TRUE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4));
   EXPECT_EQ(device_mesh.num_elements(), 8);
 }
@@ -87,7 +87,7 @@ TEST(DeviceMeshTest, IotaDeviceMesh2DStartsWith0) {
 TEST(DeviceMeshTest, IotaDeviceMesh3DStartsWithNonZero) {
   DeviceMesh device_mesh({2, 4, 8});
   device_mesh.FillIota(55);
-  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_TRUE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 }
@@ -97,7 +97,7 @@ TEST(DeviceMeshTest, ExplicitSetValuesInferIotaIotaValues) {
   std::vector<int64_t> device_mesh_values(64);
   absl::c_iota(device_mesh_values, 34);
   device_mesh.SetValues(device_mesh_values);
-  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_TRUE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 }
@@ -108,7 +108,7 @@ TEST(DeviceMeshTest, ExplicitSetValuesInferIotaNonIotaValues) {
   absl::c_iota(device_mesh_values, 34);
   device_mesh_values[54] = 54;
   device_mesh.SetValues(device_mesh_values);
-  EXPECT_FALSE(device_mesh.is_iota);
+  EXPECT_FALSE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 }
@@ -119,12 +119,12 @@ TEST(DeviceMeshTest, ReshapeTestWithoutIota) {
   absl::c_iota(device_mesh_values, 34);
   device_mesh_values[54] = 54;
   device_mesh.SetValues(device_mesh_values);
-  EXPECT_FALSE(device_mesh.is_iota);
+  EXPECT_FALSE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 
   device_mesh.Reshape({2, 32});
-  EXPECT_FALSE(device_mesh.is_iota);
+  EXPECT_FALSE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 32));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 }
@@ -134,12 +134,12 @@ TEST(DeviceMeshTest, ReshapeTestWithIota) {
   std::vector<int64_t> device_mesh_values(64);
   absl::c_iota(device_mesh_values, 34);
   device_mesh.SetValues(device_mesh_values);
-  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_TRUE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 
   device_mesh.Reshape({2, 32});
-  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_TRUE(device_mesh.IsIota());
   EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 32));
   EXPECT_EQ(device_mesh.num_elements(), 64);
 }
