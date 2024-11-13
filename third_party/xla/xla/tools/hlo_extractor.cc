@@ -168,13 +168,11 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     // Rename HLOs so that their name matches the original. By default,
     // HLOs get new unique names when adding a new entry computation to
     // a module.
-    for (auto computation : old_module_->MakeComputationPostOrder()) {
-      for (auto old_instruction : computation->MakeInstructionPostOrder()) {
-        if (auto new_instruction =
-                clone_context_.FindInstruction(old_instruction)) {
-          new_instruction->SetAndSanitizeName(old_instruction->name());
-        }
-      }
+    for (const auto& instruction_mapping :
+         clone_context_.cloned_instructions()) {
+      auto old_instruction = instruction_mapping.first;
+      auto new_instruction = instruction_mapping.second;
+      new_instruction->SetAndSanitizeName(old_instruction->name());
     }
     // For the extra created instructions (e.g., the ones created when replacing
     // with broadcasted zeros), we make sure they have unique names without
