@@ -64,7 +64,7 @@
 # Placeholder: load py_proto_library
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
-# copybara:uncomment(google-only) load("//tools/build_defs/go:go_library.bzl", "go_library")
+#  load("//tools/build_defs/go:go_library.bzl", "go_library")
 
 load(
     "@local_xla//xla/tsl/mkl:build_defs.bzl",
