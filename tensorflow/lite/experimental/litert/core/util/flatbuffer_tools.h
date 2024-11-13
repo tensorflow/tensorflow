@@ -19,6 +19,9 @@
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace litert::internal {
 
@@ -42,6 +45,10 @@ bool VerifyFlatbuffer(const uint8_t* buf, size_t buf_size);
 
 // Override of above with view input.
 bool VerifyFlatbuffer(absl::Span<const uint8_t> buf);
+
+// Get the metadata buffer under given key if it exists.
+Expected<BufferRef<uint8_t>> GetMetadata(absl::string_view key,
+                                         const tflite::Model* model);
 
 }  // namespace litert::internal
 

@@ -66,6 +66,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core/model:model_load",
         "//tensorflow/lite/experimental/litert/core/model:model_serialize",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

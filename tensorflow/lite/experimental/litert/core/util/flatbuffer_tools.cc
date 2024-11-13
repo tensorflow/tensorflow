@@ -27,6 +27,9 @@
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "flatbuffers/verifier.h"  // from @flatbuffers
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace litert::internal {
@@ -64,6 +67,20 @@ bool VerifyFlatbuffer(const uint8_t* buf, size_t buf_size) {
 #endif
   flatbuffers::Verifier verifier(buf, buf_size, options);
   return VerifyModelBuffer(verifier);
+}
+
+Expected<BufferRef<uint8_t>> GetMetadata(absl::string_view key,
+                                         const tflite::Model* model) {
+  for (int i = 0; i < model->metadata()->size(); ++i) {
+    const auto& metadata = model->metadata()->Get(i);
+    if (metadata->name()->string_view() != key) {
+      continue;
+    }
+    const auto buf_ind = metadata->buffer();
+    const auto& fb_vec = model->buffers()->Get(buf_ind)->data();
+    return BufferRef<uint8_t>(fb_vec->data(), fb_vec->size());
+  }
+  return Unexpected(kLiteRtStatusErrorNotFound);
 }
 
 }  // namespace litert::internal

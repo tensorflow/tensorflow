@@ -27,6 +27,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
@@ -39,6 +40,7 @@
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/stderr_reporter.h"
 #include "tsl/platform/platform.h"
 
 namespace litert {
@@ -171,7 +173,18 @@ Expected<TflRuntime::Ptr> TflRuntime::CreateFromTflFile(
     absl::string_view filename) {
   auto runtime = std::make_unique<TflRuntime>();
 
-  runtime->fb_model_ = tflite::FlatBufferModel::BuildFromFile(filename.data());
+  {
+    auto alloc = tflite::GetAllocationFromFile(filename.data(),
+                                               tflite::DefaultErrorReporter());
+    if (alloc == nullptr) {
+      return Unexpected(kLiteRtStatusErrorFileIO);
+    }
+    runtime->alloc_ = std::move(alloc);
+  }
+
+  runtime->fb_model_ = tflite::FlatBufferModel::BuildFromBuffer(
+      reinterpret_cast<const char*>(runtime->alloc_->base()),
+      runtime->alloc_->bytes());
   if (runtime->fb_model_ == nullptr) {
     return Unexpected(kLiteRtStatusErrorFileIO);
   }
@@ -198,8 +211,13 @@ Expected<TflRuntime::Ptr> TflRuntime::CreateFromTflFileWithByteCode(
     runtime->model_buf_ = std::move(*model_with_byte_code);
   }
 
+  runtime->alloc_ = std::make_unique<tflite::MemoryAllocation>(
+      runtime->model_buf_.Data(), runtime->model_buf_.Size(),
+      tflite::DefaultErrorReporter());
+
   runtime->fb_model_ = tflite::FlatBufferModel::BuildFromBuffer(
-      runtime->model_buf_.StrData(), runtime->model_buf_.Size());
+      reinterpret_cast<const char*>(runtime->alloc_->base()),
+      runtime->alloc_->bytes());
   if (runtime->fb_model_ == nullptr) {
     return Unexpected(kLiteRtStatusErrorFileIO);
   }

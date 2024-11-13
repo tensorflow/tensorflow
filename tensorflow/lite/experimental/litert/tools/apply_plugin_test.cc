@@ -75,7 +75,6 @@ ApplyPluginRun::Ptr MakeBaseRun(ApplyPluginRun::Cmd cmd) {
 
 TEST(TestApplyPluginTool, TestInfoBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::INFO);
-  run->dump_out = {};
   run->lib_search_paths.clear();
   LITERT_ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
                                 kLiteRtStatusErrorInvalidToolConfig);

@@ -26,6 +26,7 @@ cc_library(
     hdrs = ["apply_plugin.h"],
     deps = [
         ":dump",
+        ":outstream",
         ":tool_display",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
@@ -86,6 +87,7 @@ litert_cc_bin_with_qnn(
     export_litert_only = 1,
     include_system = 1,
     linkstatic = 1,
+    malloc = "//base:system_malloc",
     tags = [
         "noasan",
         "nobuilder",
@@ -95,7 +97,9 @@ litert_cc_bin_with_qnn(
     ungrte = True,
     deps = [
         ":apply_plugin",
+        ":outstream",
         "//tensorflow/lite/experimental/litert/core:byte_code_util",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
     ],
@@ -118,7 +122,9 @@ cc_binary(
     ],
     deps = [
         ":apply_plugin",
+        ":outstream",
         "//tensorflow/lite/experimental/litert/core:byte_code_util",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -128,6 +134,7 @@ cc_library(
     srcs = ["tool_display.cc"],
     hdrs = ["tool_display.h"],
     deps = [
+        ":outstream",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -169,5 +176,14 @@ cc_test(
         "//tensorflow/lite/experimental/litert/test:common",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "outstream",
+    hdrs = ["outstream.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
