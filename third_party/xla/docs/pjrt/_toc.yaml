@@ -6,7 +6,7 @@ toc:
     path: /xla/pjrt
   - title: PJRT C++ API Overview
     path: /xla/pjrt/cpp_api_overview
-  - title: Develop a new PJRT plugin
+  - title: Develop a New PJRT Plugin
     path: /xla/pjrt/pjrt_integration
   - title: PJRT Examples
     path: /xla/pjrt/examples

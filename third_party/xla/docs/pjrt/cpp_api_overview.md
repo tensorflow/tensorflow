@@ -13,14 +13,14 @@ vision is that:
 
 PJRT offers both a C API and C++ API. Plugging in at either layer is OK, the C++
 API uses classes to abstract away some concepts, but also has stronger ties to
-XLA datatypes. This page docuses on the C++ API.
+XLA datatypes. This page focuses on the C++ API.
 
 ## PJRT Components
 
 ![PJRT Components](images/pjrt_client.svg)
 
 Note: Most items in this diagram also have backpointers, memory spaces know
-thier device(s) and client, devices know their client, buffers know their memory
+their device(s) and client, devices know their client, buffers know their memory
 space.
 
 ### PjRtClient
@@ -41,7 +41,7 @@ A device class is used to describe a single device. A device has a device
 description to help identify its kind (unique hash to identify GPU/CPU/xPU), and
 location within a grid of devices both locally and globally.
 
-Devices also know thier associated memory spaces and the client it is owned by.
+Devices also know their associated memory spaces and the client it is owned by.
 
 A device does *not* necessarily know the buffers of actual data associated with
 it, but it can figure that out by looking through its associated memory spaces.
@@ -65,11 +65,11 @@ A buffer holds data on a device in some format that will be easy to work with
 inside the plugin, such as an MLIR elements attr or a proprietary tensor format.
 A framework may try to send data to a device in the form of an `xla::Literal`,
 i.e. for an input argument to the module, which must be cloned (or borrowed), to
-the devices memory. Once a buffer is no longer needed the `Delete` method is
+the device's memory. Once a buffer is no longer needed the `Delete` method is
 invoked by the framework to clean up.
 
 A buffer knows the memory space it is a part of, and transitively can figure out
-which devices are able to access it, but buffers to not necessarily know thier
+which devices are able to access it, but buffers don't necessarily know their
 devices.
 
 For communicating with frameworks, buffers know how to convert to and from an
@@ -190,6 +190,7 @@ we log JAX interacting with the StableHLO Reference PJRT plugin.
 <summary>Example log</summary>
 <br>
 <pre>
+
 ```
 //////////////////////////////////
 // Load the plugin

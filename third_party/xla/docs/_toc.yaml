@@ -55,10 +55,10 @@ toc:
     path: /xla/developer_guide
 - title: PJRT Plugins
   section:
-  - title: PJRT Overview
-    path: /xla/pjrt/overview
   - title: Develop a new PJRT plugin
     path: /xla/pjrt/pjrt_integration
+  - title: PJRT C++ API Overview
+    path: /xla/pjrt/cpp_api_overview
   - title: PJRT Examples
     path: /xla/pjrt/examples
 - title: Using XLA in TensorFlow
