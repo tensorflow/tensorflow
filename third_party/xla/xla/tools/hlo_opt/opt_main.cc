@@ -16,12 +16,10 @@ limitations under the License.
 // A tool for reading a HloModule from a HloProto file and execute the module on
 // given platform(s). See kUsage for details.
 
-#include <cstdint>
 #include <cstdio>
 #include <iostream>
 #include <memory>
 #include <optional>
-#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/tools/hlo_module_loader.h"
@@ -63,12 +62,13 @@ struct HloOptConfig {
   // Optional flags.
   bool help{false};
   bool split_input_file{false};
-  std::string platform{"gpu"};
+  std::string platform{"transforms"};
   std::string input_file{""};
   std::string input_format{""};
   std::string output_file{"-"};
   std::string stage{"hlo"};
   bool list_stages{false};
+  std::string passes{""};
 };
 
 }  // namespace
@@ -145,7 +145,7 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
 absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
                                              const HloOptConfig& opts) {
   TF_ASSIGN_OR_RETURN(OptProvider * provider,
-                      OptProvider::ProviderForPlatform(opts.platform));
+                      OptProvider::GetProviderForPlatform(opts.platform));
 
   if (opts.list_stages) {
     return absl::StrJoin(provider->SupportedStages(), "\n");
@@ -156,8 +156,14 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
   std::string out_combined;
 
   for (std::unique_ptr<HloModule>& m : modules) {
-    TF_ASSIGN_OR_RETURN(std::optional<std::string> out,
-                        provider->GenerateStage(std::move(m), opts.stage));
+    std::optional<std::string> out;
+    if (!opts.passes.empty()) {
+      TF_ASSIGN_OR_RETURN(out, provider->BuildAndRunTransformPipeline(
+                                   std::move(m), opts.passes));
+    } else {
+      TF_ASSIGN_OR_RETURN(out,
+                          provider->GenerateStage(std::move(m), opts.stage));
+    }
     if (!out.has_value()) {
       return absl::UnimplementedError("Stage not supported");
     }
@@ -209,7 +215,9 @@ int main(int argc, char** argv) {
                 "Print all supported stages for a given platform and exit"),
       tsl::Flag("split-input-file", &opts.split_input_file,
                 "Splits the input file in pieces based on '// -----' "
-                "substring, and processes each chunk independently")};
+                "substring, and processes each chunk independently"),
+      tsl::Flag("passes", &opts.passes,
+                "Comma-separated list of passes to run.")};
   // Modifies global DebugOptions, populates flags with every flag available
   // from xla.proto.
   xla::AppendDebugOptionsFlags(&flag_list);

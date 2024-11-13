@@ -34,6 +34,8 @@ namespace {
 
 class CpuOptProvider : public CompiledOptProvider {
  public:
+  CpuOptProvider() : CompiledOptProvider() {}
+
   absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {
     if (s == "llvm-before-optimizations") {

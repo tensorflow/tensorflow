@@ -20,23 +20,28 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_graph_dumper.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/platform_util.h"
-#include "xla/xla.pb.h"
+#include "xla/stream_executor/platform/initialize.h"
+#include "xla/tools/hlo_opt/transforms_example_passes.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 
+namespace {
 using ProviderMap =
     absl::flat_hash_map<std::string, std::unique_ptr<OptProvider>>;
 static absl::Mutex provider_mu(absl::kConstInit);
@@ -45,6 +50,7 @@ static ProviderMap& GetProviderMap() {
   static auto& provider_map = *new ProviderMap();
   return provider_map;
 }
+}  // namespace
 
 /*static*/ void OptProvider::RegisterForPlatform(
     std::string platform, std::unique_ptr<OptProvider> translate_provider) {
@@ -56,7 +62,7 @@ static ProviderMap& GetProviderMap() {
   GetProviderMap()[*canonical_name] = std::move(translate_provider);
 }
 
-/*static*/ absl::StatusOr<OptProvider*> OptProvider::ProviderForPlatform(
+/*static*/ absl::StatusOr<OptProvider*> OptProvider::GetProviderForPlatform(
     std::string platform) {
   absl::MutexLock l(&provider_mu);
 
@@ -76,29 +82,42 @@ static ProviderMap& GetProviderMap() {
   return it->second.get();
 }
 
+// Placeholder for `key function` of the class to avoid an error due to
+// missing vtable entry.
 absl::StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
     std::unique_ptr<HloModule> module, absl::string_view stage) {
-  if (stage == "hlo") {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
-                        GetOptimizedHlo(std::move(module)));
-    return optimized_module->ToString();
-  } else if (stage == "html") {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
-                        GetOptimizedHlo(std::move(module)));
-    TF_ASSIGN_OR_RETURN(std::string cmps,
-                        RenderAllComputationsToHtml(*optimized_module));
-    return cmps;
-  }
-
-  return std::nullopt;
+  return module->ToString();
 }
 
-std::set<std::string> OptProvider::SupportedStages() { return {"hlo", "html"}; }
+absl::StatusOr<std::optional<std::string>>
+OptProvider::BuildAndRunTransformPipeline(std::unique_ptr<HloModule> module,
+                                          const std::string& input_pass_names) {
+  HloPassPipeline transforms_pipeline{"transforms_pipeline"};
+  for (const auto& pass_name :
+       std::vector<std::string>(absl::StrSplit(input_pass_names, ','))) {
+    auto it = pass_registry_.find(pass_name);
+    if (it != pass_registry_.end()) {
+      it->second(transforms_pipeline);
+    } else {
+      LOG(ERROR) << "Pass " << pass_name << " not found.";
+    }
+  }
+  CHECK_OK(transforms_pipeline.Run(module.get(), {}));
+  return module->ToString();
+}
 
-absl::StatusOr<std::unique_ptr<HloModule>> OptProvider::GetOptimizedHlo(
-    std::unique_ptr<HloModule> input_module) {
-  return absl::UnimplementedError(
-      "Not supported in platform independent opt tool");
+std::set<std::string> OptProvider::SupportedStages() { return {"hlo"}; }
+
+// Register Hardware-independent HLO passes here if you want the hlo-opt tool
+// to be able to apply them.
+void OptProvider::RegisterAllHardwareIndependentPasses() {
+  RegisterPass<FooToBarModulePass>();
+  RegisterPass<BarToHelloModulePass>();
 }
 
 }  // namespace xla
+
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(transforms_opt_provider, {
+  xla::OptProvider::RegisterForPlatform("transforms",
+                                        std::make_unique<xla::OptProvider>());
+});
