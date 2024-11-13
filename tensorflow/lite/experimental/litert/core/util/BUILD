@@ -24,6 +24,9 @@ cc_library(
         "flatbuffer_tools.h",
     ],
     deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",

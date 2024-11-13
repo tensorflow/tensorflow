@@ -26,11 +26,11 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
+#include "tensorflow/lite/experimental/litert/tools/outstream.h"
 
 namespace litert::tools {
 
 using ::litert::internal::Serialization;
-using OutStream = std::reference_wrapper<std::ostream>;
 
 // TODO remove these usings other than Ptr and outStraemT
 
@@ -150,7 +150,7 @@ struct ApplyPluginRun {
   // Where to direct logging for this run. Passing nullopt here indicates
   // "silent" behavior and should only be used when this tool is part of a
   // larger pipeline like an end2end test.
-  std::optional<OutStream> dump_out = std::cerr;
+  UserStream dump_out;
 
   // Dictates how the final model with compiled assets should be serialized.
   // Only relevant to the "apply" function.

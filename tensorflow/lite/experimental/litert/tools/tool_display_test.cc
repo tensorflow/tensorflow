@@ -16,6 +16,7 @@
 
 #include <sstream>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -23,6 +24,8 @@
 namespace {
 
 using ::litert::tools::ToolDisplay;
+using ::testing::EndsWith;
+using ::testing::StartsWith;
 
 static constexpr absl::string_view kToolName = "test-tool";
 static constexpr absl::string_view kLabel = "[LITERT_TOOLS:test-tool]";
@@ -69,8 +72,9 @@ TEST(TestToolDisplay, Start) {
 TEST(TestToolDisplay, Done) {
   std::stringstream out;
   ToolDisplay display(out, kToolName);
-  display.Done();
-  EXPECT_EQ(out.view(), absl::StrFormat("%s \tDone!\n", kLabel));
+  display.Done(kStartLabel);
+  EXPECT_EQ(out.view(),
+            absl::StrFormat("%s \t%s Done!\n", kLabel, kStartLabel));
 }
 
 TEST(TestToolDisplay, Fail) {
@@ -78,6 +82,18 @@ TEST(TestToolDisplay, Fail) {
   ToolDisplay display(out, kToolName);
   display.Fail();
   EXPECT_EQ(out.view(), absl::StrFormat("%s \tFailed\n", kLabel));
+}
+
+TEST(TestLoggedScope, EnterExit) {
+  std::stringstream out;
+  ToolDisplay display(out, kToolName);
+  {
+    auto s = display.StartS(kStartLabel);
+  }
+  EXPECT_THAT(out.view(), StartsWith(absl::StrFormat("%s Starting %s...\n",
+                                                     kLabel, kStartLabel)));
+  EXPECT_THAT(out.view(), EndsWith(absl::StrFormat("%s \t%s Done!\n", kLabel,
+                                                   kStartLabel)));
 }
 
 }  // namespace

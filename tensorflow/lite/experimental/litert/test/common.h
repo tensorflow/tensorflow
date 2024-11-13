@@ -26,6 +26,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 #define _LITERT_ASSERT_RESULT_OK_ASSIGN(decl, expr, result) \
   auto result = (expr);                                     \
@@ -82,14 +83,19 @@ class TflRuntime {
       absl::string_view tfl_filename, absl::string_view npu_filename);
 
   tflite::Interpreter& Interp() { return *interp_; }
-  BufferRef<uint8_t> ModelBuf() const { return model_buf_; }
-  const void* AllocBase() const {
-    return reinterpret_cast<const void*>(ModelBuf().Data());
+
+  BufferRef<uint8_t> ModelBuf() const {
+    return BufferRef<uint8_t>(alloc_->base(), alloc_->bytes());
   }
+
+  const void* AllocBase() const { return alloc_->base(); }
+
+  const ::tflite::Model* Model() const { return fb_model_->GetModel(); }
 
  private:
   std::unique_ptr<::tflite::Interpreter> interp_;
   std::unique_ptr<::tflite::FlatBufferModel> fb_model_;
+  std::unique_ptr<::tflite::Allocation> alloc_;
   OwningBufferRef<uint8_t> model_buf_;
 };
 
