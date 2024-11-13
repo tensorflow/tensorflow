@@ -280,6 +280,10 @@ absl::Status ParseArguments(
     absl::InlinedVector<nanobind::object, 2>& flat_dynamic_args) {
   tsl::profiler::TraceMe traceme("ParseArguments");
 
+  DCHECK(absl::c_all_of(static_argnames, [](const nb::str& name) {
+    return PyUnicode_CHECK_INTERNED(name.ptr());
+  }));
+
   flat_dynamic_args.reserve(positional_args.size() + keyword_args.size());
   if (static_argnums.empty()) {
     signature.dynamic_arg_treedefs.reserve(positional_args.size());
@@ -452,9 +456,20 @@ void BuildJaxjitSubmodule(nb::module_& m) {
         absl::Span<PyObject* const> keyword_args_span =
             absl::MakeSpan(PySequence_Fast_ITEMS(keyword_args_seq.ptr()),
                            PySequence_Fast_GET_SIZE(keyword_args_seq.ptr()));
-        xla::ThrowIfError(ParseArguments(
-            positional_args_span, keyword_args_span, kwnames, static_argnums,
-            static_argnames, pytree_registry, signature, flat_dynamic_args));
+
+        // Intern the static argument names.
+        std::vector<nb::str> static_argnames_interned;
+        static_argnames_interned.reserve(static_argnames.size());
+        for (const nb::str& name : static_argnames) {
+          PyObject* s = name.inc_ref().ptr();
+          PyUnicode_InternInPlace(&s);
+          static_argnames_interned.push_back(nb::steal<nb::str>(s));
+        }
+
+        xla::ThrowIfError(
+            ParseArguments(positional_args_span, keyword_args_span, kwnames,
+                           static_argnums, static_argnames_interned,
+                           pytree_registry, signature, flat_dynamic_args));
         return std::make_pair(std::move(signature),
                               std::move(flat_dynamic_args));
       },
