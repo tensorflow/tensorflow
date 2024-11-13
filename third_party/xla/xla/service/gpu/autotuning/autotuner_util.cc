@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/autotuning/autotuner_status_key.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
@@ -595,9 +596,6 @@ AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
   absl::MutexLock lock(&autotune_cache_mu);
   autotune_cache_stats = CacheStats();
 }
-
-constexpr absl::string_view kAutotuneCacheRequiredErrorPayloadKey =
-    "https://openxla.org/gpu/autotune_cache_hit_required/";
 
 }  // namespace gpu
 }  // namespace xla

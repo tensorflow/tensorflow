@@ -36,6 +36,7 @@ cc_library(
     ],
     deps = [
         ":autotuner_compile_util",
+        ":autotuner_status_key",
         ":autotuner_util",
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
@@ -213,11 +214,19 @@ cc_library(
 )
 
 cc_library(
+    name = "autotuner_status_key",
+    srcs = ["autotuner_status_key.cc"],
+    hdrs = ["autotuner_status_key.h"],
+    deps = ["@com_google_absl//absl/strings"],
+)
+
+cc_library(
     name = "autotuner_util",
     srcs = ["autotuner_util.cc"],
     hdrs = ["autotuner_util.h"],
     tags = ["gpu"],
     deps = [
+        ":autotuner_status_key",
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
         "//xla:shape_util",
@@ -529,6 +538,7 @@ xla_cc_test(
         "gpu",
     ],
     deps = [
+        ":autotuner_status_key",
         ":autotuner_util",
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
