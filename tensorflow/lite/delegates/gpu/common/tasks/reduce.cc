@@ -34,7 +34,11 @@ int GetMaximumWGTotalSize(const GpuInfo& gpu_info) {
   int total_wg_size = 256;
   if (gpu_info.IsIntel() && gpu_info.IsApiOpenCl() &&
       gpu_info.opencl_info.IsCLVK()) {
-    total_wg_size = gpu_info.GetMaxWorkGroupTotalSize();
+    int total_wg_size_tmp = gpu_info.GetMaxWorkGroupTotalSize() / total_wg_size;
+    while (total_wg_size_tmp >> 1) {
+      total_wg_size <<= 1;
+      total_wg_size_tmp >>= 1;
+    }
   }
   if (gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
     total_wg_size = 128;
