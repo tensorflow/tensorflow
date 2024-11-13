@@ -135,6 +135,7 @@ tf_cc_binary(
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ToLLVMIRTranslation",
+        "@local_xla//xla/service/llvm_ir:llvm_command_line_options",
     ] + if_llvm_aarch32_available([
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
     ]) + if_llvm_aarch64_available([

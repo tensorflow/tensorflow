@@ -366,14 +366,6 @@ absl::StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
 
 namespace {
 
-// LLVM makes certain options configurable only through its command-line
-// options; it provide the ParseCommandLineOptions function that lets us set
-// flags at runtime. However, since these flags are global we want to avoid
-// multiple invocations of the LLVM compilation pipeline with a different set of
-// flags. Therefore, we only pass command-line flags to LLVM once, before the
-// first module is compiled.
-absl::once_flag llvm_command_line_options_initialized;
-
 // This visitor records which HLO instructions should have profiling information
 // recorded.
 class CollectProfileCandidates : public DfsHloVisitorWithDefault {
@@ -1048,11 +1040,6 @@ CreateOrcJITPostCompilationHook(const HloModule* module,
   };
 }
 
-void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
-  llvm_ir::InitializeLLVMCommandLineOptions(
-      config.debug_options().xla_backend_extra_options());
-}
-
 struct ComputationToEmit {
   HloComputation* computation;
 
@@ -1723,9 +1710,9 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   std::string slow_compilation_msg =
       absl::StrCat("Compiling module ", module->name());
   auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
-
-  absl::call_once(llvm_command_line_options_initialized,
-                  &InitializeLLVMCommandLineOptions, module->config());
+  auto llvm_options = llvm_ir::ExtractXlaBackendExtraOptions(
+      module->config().debug_options().xla_backend_extra_options());
+  llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
   std::unique_ptr<CpuExecutable> cpu_executable;
   TF_ASSIGN_OR_RETURN(cpu_executable,
@@ -1745,8 +1732,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   std::vector<std::unique_ptr<HloModule>> modules =
       module_group->ConsumeModules();
 
-  absl::call_once(llvm_command_line_options_initialized,
-                  &InitializeLLVMCommandLineOptions, modules[0]->config());
+  auto llvm_options = llvm_ir::ExtractXlaBackendExtraOptions(
+      modules[0]->config().debug_options().xla_backend_extra_options());
+  llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
   // We can pass just one llvm::TargetOptions when we compile the LLVM module,
   // so we bail if the configs have conflicting flags. At the moment, the only
