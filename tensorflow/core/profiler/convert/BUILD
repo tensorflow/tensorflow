@@ -346,6 +346,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
         "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
