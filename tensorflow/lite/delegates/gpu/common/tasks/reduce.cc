@@ -32,6 +32,10 @@ namespace {
 int GetMaximumWGTotalSize(const GpuInfo& gpu_info) {
   // total_wg_size must be power of 2 and >= 4;
   int total_wg_size = 256;
+  if (gpu_info.IsIntel() && gpu_info.IsApiOpenCl() &&
+      gpu_info.opencl_info.IsCLVK()) {
+    total_wg_size = gpu_info.GetMaxWorkGroupTotalSize();
+  }
   if (gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
     total_wg_size = 128;
   }
@@ -169,7 +173,7 @@ Reduce::Reduce(const std::map<Axis, int>& axis_to_reduce, OperationType op_type,
   int current_wg_size_total =
       current_wg_size.x * current_wg_size.y * current_wg_size.z;
   int threshold = max_total_wg_size / 4;
-  if (gpu_info.IsApple()) {
+  if (gpu_info.IsApple() || gpu_info.IsIntel()) {
     threshold = 16;
   }
   if (current_wg_size_total < threshold) {
