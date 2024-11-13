@@ -142,6 +142,8 @@ cc_library(
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_reachability",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:collective_ops_utils",
         "//xla/service:pattern_matcher",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",

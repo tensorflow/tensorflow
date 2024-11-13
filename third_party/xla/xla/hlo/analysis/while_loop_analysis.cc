@@ -29,8 +29,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_reachability.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 
@@ -42,18 +44,18 @@ namespace m = match;
 
 // Finds and returns the non-constant operand in instr.
 //
-// CHECK-fails if instr doesn't have exactly one unique non-constant operand.
+// If the instruction doesn't have exactly one unique non-constant operand,
+// nullptr is returned.
 static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
   const HloInstruction* result = nullptr;
   for (const HloInstruction* operand : instr->operands()) {
     if (!operand->IsConstant()) {
-      if (result != nullptr) {
-        CHECK_EQ(result, operand);
+      if (result != nullptr && result != operand) {
+        return nullptr;
       }
       result = operand;
     }
   }
-  CHECK_NE(result, nullptr);
   return result;
 }
 
@@ -354,6 +356,30 @@ optional<int64_t> CheckedSubtract(int64_t a, int64_t b) {
   return result;
 }
 
+// This function returns true if the operation is a simple scalar operation.
+// While loop analysis can execute such an operation at compile time without
+// incurring huge overheads.
+bool IsScalarOp(const HloInstruction* op) {
+  if (IsCollective(op)) return false;
+  switch (op->opcode()) {
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kCustomCall:
+      return false;
+    default:
+      break;
+  }
+  for (const HloComputation* computation : op->called_computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (!IsScalarOp(instruction)) return false;
+    }
+  }
+  return ShapeUtil::IsEffectiveScalar(op->shape()) ||
+         op->opcode() == HloOpcode::kParameter;
+}
+
 optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
                                             int64_t indvar_tuple_idx,
                                             const Literal& indvar_init) {
@@ -373,6 +399,14 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
   auto* while_body_indvar_update =
       while_body->root_instruction()->mutable_operand(indvar_tuple_idx);
   auto* while_body_indvar = NonConstantOperand(while_body_indvar_update);
+  if (while_body_indvar == nullptr ||
+      while_body_indvar !=
+          hlo_query::GetUniqueGteInstruction(
+              while_body->parameter_instruction(0), indvar_tuple_idx)) {
+    // We do not need a guard for scalar operations here, because we are pattern
+    // matching with add operation later, which is a scalar operation.
+    return std::nullopt;
+  }
   HloInstruction* trip_count_increase_step_instr = nullptr;
   int64_t trip_count_step = 0;
   if (!Match(while_body_indvar_update,
@@ -417,6 +451,15 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
   auto* while_cond = while_op->while_condition();
   auto* while_cond_root = while_cond->root_instruction();
   auto* while_cond_indvar = NonConstantOperand(while_cond_root);
+  if (while_cond_indvar == nullptr ||
+      while_cond_indvar !=
+          hlo_query::GetUniqueGteInstruction(
+              while_cond->parameter_instruction(0), indvar_tuple_idx)) {
+    // We do not need a guard for scalar operations here because we are pattern
+    // matching the condition operation with compare later, which is a scalar
+    // operation.
+    return std::nullopt;
+  }
   HloInstruction* while_cond_bound = nullptr;
   if (!Match(while_cond_root,
              m::Op().WithBinaryOperandsAnyOrder(
@@ -530,10 +573,24 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
   auto* while_body_indvar_update =
       while_body->root_instruction()->operand(*indvar_tuple_idx);
   auto* while_body_indvar = NonConstantOperand(while_body_indvar_update);
+  if (while_body_indvar == nullptr ||
+      while_body_indvar !=
+          hlo_query::GetUniqueGteInstruction(
+              while_body->parameter_instruction(0), *indvar_tuple_idx) ||
+      !IsScalarOp(while_body_indvar_update)) {
+    return std::nullopt;
+  }
 
   auto* while_cond = while_op->while_condition();
   auto* while_cond_root = while_cond->root_instruction();
   auto* while_cond_indvar = NonConstantOperand(while_cond_root);
+  if (while_cond_indvar == nullptr ||
+      while_cond_indvar !=
+          hlo_query::GetUniqueGteInstruction(
+              while_cond->parameter_instruction(0), *indvar_tuple_idx) ||
+      !IsScalarOp(while_cond_root)) {
+    return std::nullopt;
+  }
 
   for (int64_t trip_count = 0; trip_count != max_brute_force_iters + 1;
        ++trip_count) {

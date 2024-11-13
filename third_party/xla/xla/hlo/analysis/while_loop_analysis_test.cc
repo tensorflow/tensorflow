@@ -425,5 +425,209 @@ TEST_F(WhileLoopAnalysisTest, AIVNoChain) {
   EXPECT_EQ(aux_indices[0]->tuple_index(), 1);
 }
 
+TEST_F(WhileLoopAnalysisTest, NonScalarUpdateOp) {
+  const char* hlo = R"(
+    HloModule test, replica_count=2
+    add {
+      param.3 = s32[] parameter(0)
+      param.4 = s32[] parameter(1)
+      ROOT add = add(param.3, param.4)
+    }
+    body {
+      param.0 = (s32[], s32[]) parameter(0)
+      p0.1 = s32[] get-tuple-element(param.0), index=0
+      p1.1 = s32[] get-tuple-element(param.0), index=1
+      update = s32[] all-reduce(p0.1), replica_groups={{0,1}}, to_apply=add
+      ROOT tuple = (s32[], s32[]) tuple(update, p1.1)
+    }
+    condition {
+      param.2 = (s32[], s32[]) parameter(0)
+      p0.2 = s32[] get-tuple-element(param.2), index=0
+      c4 = s32[] constant(4)
+      ROOT compare = pred[] compare(p0.2, c4), direction=LT
+    }
+    ENTRY entry {
+      c0 = s32[] constant(0)
+      data = s32[] parameter(0)
+      tuple = (s32[], s32[]) tuple(c0, data)
+      ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  const HloInstruction* while_op =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(ComputeWhileLoopTripCount(while_op), std::nullopt);
+}
+
+TEST_F(WhileLoopAnalysisTest, FusedUpdateOp) {
+  const char* hlo = R"(
+  HloModule test, replica_count=2
+  add {
+    param.3 = s32[] parameter(0)
+    param.4 = s32[] parameter(1)
+    ROOT add = add(param.3, param.4)
+  }
+  body {
+    param.0 = (s32[], s32[]) parameter(0)
+    p0.1 = s32[] get-tuple-element(param.0), index=0
+    p1.1 = s32[] get-tuple-element(param.0), index=1
+    c1 = s32[] constant(1)
+    update = s32[] fusion(p0.1, c1), kind=kInput, calls=add
+    ROOT tuple = (s32[], s32[]) tuple(update, p1.1)
+  }
+  condition {
+    param.2 = (s32[], s32[]) parameter(0)
+    p0.2 = s32[] get-tuple-element(param.2), index=0
+    c4 = s32[] constant(4)
+    ROOT compare = pred[] compare(p0.2, c4), direction=LT
+  }
+  ENTRY entry {
+    c0 = s32[] constant(0)
+    data = s32[] parameter(0)
+    tuple = (s32[], s32[]) tuple(c0, data)
+    ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+  std::optional<int64_t> trip_count = ComputeWhileLoopTripCount(while_op);
+  ASSERT_NE(trip_count, std::nullopt);
+  EXPECT_EQ(trip_count, 4);
+}
+
+TEST_F(WhileLoopAnalysisTest, NonScalarConditionOp) {
+  const char* hlo = R"(
+    HloModule test, replica_count=2
+    add {
+      param.3 = s32[] parameter(0)
+      param.4 = s32[] parameter(1)
+      ROOT add = add(param.3, param.4)
+    }
+    body {
+      param.0 = (s32[], s32[]) parameter(0)
+      p0.1 = s32[] get-tuple-element(param.0), index=0
+      p1.1 = s32[] get-tuple-element(param.0), index=1
+      c1 = s32[] constant(1)
+      update = s32[] add(p0.1, c1)
+      ROOT tuple = (s32[], s32[]) tuple(update, p1.1)
+    }
+    fused_computation {
+      param.5 = s32[] parameter(0)
+      param.6 = s32[] parameter(1)
+      all-reduce.1 = s32[] all-reduce(param.5), replica_groups={{0,1}}, to_apply=add
+      ROOT compare = pred[] compare(all-reduce.1, param.6), direction=LT
+    }
+    condition {
+      param.2 = (s32[], s32[]) parameter(0)
+      p0.2 = s32[] get-tuple-element(param.2), index=0
+      c4 = s32[] constant(4)
+      ROOT compare = pred[] call(p0.2, c4), to_apply=fused_computation
+    }
+    ENTRY entry {
+      c0 = s32[] constant(0)
+      data = s32[] parameter(0)
+      tuple = (s32[], s32[]) tuple(c0, data)
+      ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  const HloInstruction* while_op =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(ComputeWhileLoopTripCount(while_op), std::nullopt);
+}
+
+TEST_F(WhileLoopAnalysisTest, FusedConditionOp) {
+  const char* hlo = R"(
+  HloModule test, replica_count=2
+  add {
+    param.3 = s32[] parameter(0)
+    param.4 = s32[] parameter(1)
+    ROOT add = add(param.3, param.4)
+  }
+  body {
+    param.0 = (s32[], s32[]) parameter(0)
+    p0.1 = s32[] get-tuple-element(param.0), index=0
+    p1.1 = s32[] get-tuple-element(param.0), index=1
+    c1 = s32[] constant(1)
+    update = s32[] add(p0.1, c1)
+    ROOT tuple = (s32[], s32[]) tuple(update, p1.1)
+  }
+  fused_computation {
+    param.5 = s32[] parameter(0)
+    param.6 = s32[] parameter(1)
+    ROOT compare = pred[] compare(param.5, param.6), direction=LT
+  }
+  condition {
+    param.2 = (s32[], s32[]) parameter(0)
+    p0.2 = s32[] get-tuple-element(param.2), index=0
+    c4 = s32[] constant(4)
+    ROOT compare = pred[] fusion(p0.2, c4), kind=kInput, calls=fused_computation
+  }
+  ENTRY entry {
+    c0 = s32[] constant(0)
+    data = s32[] parameter(0)
+    tuple = (s32[], s32[]) tuple(c0, data)
+    ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+  std::optional<int64_t> trip_count = ComputeWhileLoopTripCount(while_op);
+  ASSERT_NE(trip_count, std::nullopt);
+  EXPECT_EQ(trip_count, 4);
+}
+
+TEST_F(WhileLoopAnalysisTest, AvoidBruteForceForHugeParams) {
+  const char* hlo = R"(
+  HloModule test
+  fused_comp {
+    p.0 = pred[100000000]{0} parameter(0)
+    p.1 = s32[] parameter(1)
+    dynamic-slice = pred[1]{0} constant({false})
+    ROOT dus = pred[100000000]{0} dynamic-update-slice(p.0, dynamic-slice, p.1)
+  }
+  body {
+    param.2 = (pred[100000000], s32[]) parameter(0)
+    gte.1 = pred[100000000] get-tuple-element(param.2), index=0
+    iter = s32[] get-tuple-element(param.2), index=1
+    fusion = pred[100000000] call(gte.1,iter), to_apply=fused_comp
+    c.1 = s32[] constant(1)
+    add = s32[] add(iter, c.1)
+    ROOT tuple = tuple(fusion, add)
+  }
+  or {
+    x = pred[] parameter(0)
+    y = pred[] parameter(1)
+    ROOT res = pred[] or(x, y)
+  }
+  condition {
+    param.1 = (pred[100000000], s32[]) parameter(0)
+    gte = pred[100000000] get-tuple-element(param.1), index=0
+    false.1 = pred[] constant(false)
+    ROOT any = pred[] reduce(gte, false.1), dimensions={0}, to_apply=or
+  }
+
+  ENTRY main {
+    true.1 = pred[] constant(true)
+    param.0 = pred[100000000] broadcast(true.1)
+    c.0 = s32[] constant(0)
+    tuple = tuple(param.0, c.0)
+    while = while(tuple), body=body, condition=condition
+    ROOT iter = s32[] get-tuple-element(while), index=1
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  const HloInstruction* while_op =
+      module->entry_computation()->root_instruction()->operand(0);
+  std::optional<int64_t> trip_count = ComputeWhileLoopTripCount(while_op);
+  EXPECT_EQ(trip_count, std::nullopt);
+}
+
 }  // namespace
 }  // namespace xla
