@@ -36,6 +36,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel_runner_utils.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
+#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
 #include "tfrt/concurrency/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
@@ -353,6 +355,7 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
       },
       tsl::profiler::ContextType::kTfrtExecutor, step_id,
       tsl::profiler::TraceMeLevel::kInfo);
+  auto trace_me_context_id = activity.GetContextId();
 
   // Copy the ExecutionContext and its user contexts for async execution.
   auto user_contexts = caller_context.CopyUserContexts();
@@ -374,8 +377,12 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   execution_context.CallByMove(batch_function_, absl::MakeSpan(arguments),
                                absl::MakeSpan(results));
 
-  work_queue->AddTask(
-      [&execution_context]() { mlrt::Execute(execution_context); });
+  work_queue->AddTask([&execution_context, &trace_me_context_id]() {
+    tsl::profiler::TraceMeConsumer activity(
+        [&] { return "RunMlrtFunction::Execute"; },
+        tsl::profiler::ContextType::kTfrtExecutor, trace_me_context_id);
+    mlrt::Execute(execution_context);
+  });
 
   work_queue->Await(chain.CopyRCRef());
 
