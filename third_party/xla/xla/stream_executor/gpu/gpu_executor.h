@@ -44,10 +44,6 @@ class GpuExecutor : public StreamExecutorCommon {
 
   int device_ordinal() const override { return device_ordinal_; };
 
-  // Frees unused memory cached on the device for use with graphs back to the
-  // OS.
-  virtual absl::Status TrimGraphMemory() = 0;
-
   absl::StatusOr<std::vector<ApiTrace>> ExtractApiTrace() override {
     absl::MutexLock lock(&logger_mu_);
     return std::move(argument_logs_);

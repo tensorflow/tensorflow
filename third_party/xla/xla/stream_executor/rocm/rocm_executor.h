@@ -97,7 +97,6 @@ class RocmExecutor : public GpuExecutor {
   absl::Status SynchronousMemcpy(void* host_dst,
                                  const DeviceMemoryBase& gpu_src,
                                  uint64_t size) override;
-  absl::Status TrimGraphMemory() override;
   void DeallocateStream(Stream* stream) override;
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override;
   bool CanEnablePeerAccessTo(StreamExecutor* other) override;

@@ -1152,11 +1152,6 @@ CudaExecutor::CreateCommandBuffer(CommandBuffer::Mode mode) {
   return CudaCommandBuffer::Create(mode, this, cuda_context_);
 }
 
-absl::Status CudaExecutor::TrimGraphMemory() {
-  return cuda::ToStatus(cuDeviceGraphMemTrim(device_),
-                        "Failed to trim device graph memory");
-}
-
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   TF_ASSIGN_OR_RETURN(CUdevice device, GetDevice(device_ordinal));

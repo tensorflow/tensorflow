@@ -958,11 +958,6 @@ RocmExecutor::CreateCommandBuffer(CommandBuffer::Mode mode) {
   return RocmCommandBuffer::Create(mode, this);
 }
 
-absl::Status RocmExecutor::TrimGraphMemory() {
-  return ToStatus(wrap::hipDeviceGraphMemTrim(device_),
-                  "Failed to trim device graph memory");
-}
-
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   TF_ASSIGN_OR_RETURN(hipDevice_t device, GetDevice(device_ordinal));

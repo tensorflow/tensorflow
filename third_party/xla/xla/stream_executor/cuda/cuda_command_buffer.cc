@@ -662,8 +662,12 @@ absl::Status CudaCommandBuffer::InstantiateGraph() {
   auto instantiated = GraphInstantiate(&exec_, graph_);
   if (instantiated.code() == absl::StatusCode::kResourceExhausted) {
     LOG(WARNING) << "Retry CUDA graph instantiation after OOM error";
-
-    TF_RETURN_IF_ERROR(parent_->TrimGraphMemory());
+    CUdevice device;
+    TF_RETURN_IF_ERROR(
+        cuda::ToStatus(cuDeviceGet(&device, parent_->device_ordinal()),
+                       "Failed call to cuDeviceGet"));
+    TF_RETURN_IF_ERROR(cuda::ToStatus(cuDeviceGraphMemTrim(device),
+                                      "Failed to trim device graph memory"));
     TF_RETURN_IF_ERROR(GraphInstantiate(&exec_, graph_));
   } else {
     TF_RETURN_IF_ERROR(instantiated);
