@@ -265,6 +265,26 @@ static bool IsCommand(const HloInstruction* hlo,
                 (IsCommand(hero, config) || IsAsyncStartCommand(hero, config)));
       }
     }
+
+    // Cuda has a bug that when the cuda kernel's parameter size is larger than
+    // 4KB, then cudaGraphAddKernelNode will have segment fault, we disable the
+    // command buffer lowering for kernels which has over 512 parameters.
+    // TODO(shawnw): remove this when cuda driver has release a fix.
+    int64_t total_args = fusion->operands().size();
+    ShapeUtil::ForEachLeafShape(
+        fusion->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsArray()) {
+            total_args++;
+          }
+        });
+    if (total_args > 512) {
+      // shared memory allocation needs a pointer inside kernel's packed
+      // arguments, and PackKernelArgs will round to 1024 args for the kernel
+      // has arg count between 512 and 1024.
+      VLOG(2) << "disable fusion kernel due to large argument count (>512)";
+      return false;
+    }
+
     return config.enabled_commands.contains(DebugOptions::FUSION);
   }
 
