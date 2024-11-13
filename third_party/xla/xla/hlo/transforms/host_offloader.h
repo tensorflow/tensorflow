@@ -75,12 +75,11 @@ class HostOffloader : public HloModulePass {
   absl::StatusOr<bool> ProcessNextMoveToHostInstr(HloComputation* computation);
 
   const int64_t kHostMemorySpaceColor;
-  absl::flat_hash_set<HloInstruction*>
-      already_visited_move_to_host_custom_calls_;
-  absl::flat_hash_set<HloInstruction*> dynamic_update_slices_already_allocated_;
-  absl::flat_hash_set<HloInstruction*> validated_slices_;
-  absl::flat_hash_map<HloInstruction*, HloInstruction*> copies_created_after_;
-  absl::flat_hash_set<HloInstruction*> move_to_device_custom_calls_to_remove_;
+  HloInstructionSet already_visited_move_to_host_custom_calls_;
+  HloInstructionSet dynamic_update_slices_already_allocated_;
+  HloInstructionSet validated_slices_;
+  HloInstructionMap<HloInstruction*> copies_created_after_;
+  HloInstructionSet move_to_device_custom_calls_to_remove_;
   absl::flat_hash_set<host_offload_utils::InstructionAndShapeIndex>
       already_inserted_copy_before_;
 

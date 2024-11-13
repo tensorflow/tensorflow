@@ -131,9 +131,9 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
     const InstructionAndShapeIndex& starting_instruction_and_index,
     bool insert_copy_before) {
   bool changed = false;
-  absl::flat_hash_set<HloInstruction*> mth_custom_calls_to_remove;
-  absl::flat_hash_set<HloInstruction*> slices_to_dynamify;
-  absl::flat_hash_set<HloInstruction*> custom_calls_to_insert_copies_before;
+  HloInstructionSet mth_custom_calls_to_remove;
+  HloInstructionSet slices_to_dynamify;
+  HloInstructionSet custom_calls_to_insert_copies_before;
   std::vector<InstructionAndShapeIndex> buffers_to_set_to_host_memory;
   std::vector<HloInstruction*> dynamic_update_slices;
   HloInstruction* starting_instruction =
