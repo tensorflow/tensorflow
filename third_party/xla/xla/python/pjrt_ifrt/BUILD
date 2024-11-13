@@ -279,22 +279,6 @@ cc_library(
 )
 
 cc_library(
-    name = "se_gpu_client_test_lib",
-    testonly = True,
-    srcs = ["se_gpu_client_test_lib.cc"],
-    deps = [
-        ":pjrt_ifrt",
-        "//xla/pjrt/gpu:se_gpu_pjrt_client",
-        "//xla/python/ifrt",
-        "//xla/python/ifrt:test_util",
-        "//xla/service:gpu_plugin",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
     name = "pjrt_attribute_map_util",
     srcs = ["pjrt_attribute_map_util.cc"],
     hdrs = ["pjrt_attribute_map_util.h"],
@@ -405,21 +389,6 @@ xla_cc_test(
     srcs = [],
     deps = [
         ":tfrt_cpu_client_test_lib",
-        "//xla/python/ifrt:client_impl_test_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-xla_cc_test(
-    name = "pjrt_client_impl_test_se_gpu",
-    size = "small",
-    srcs = [],
-    tags = [
-        "no_oss",
-        "requires-gpu-nvidia:2",
-    ],
-    deps = [
-        ":se_gpu_client_test_lib",
         "//xla/python/ifrt:client_impl_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
