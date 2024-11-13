@@ -33,8 +33,8 @@ class RsqrtOpLegalization : public Legalization {
  public:
   RsqrtOpLegalization() = default;
   ~RsqrtOpLegalization() = default;
-  using UniquePtr = std::unique_ptr<RsqrtOpLegalization>;
-  static UniquePtr Create() { return std::make_unique<RsqrtOpLegalization>(); }
+  using Ptr = std::unique_ptr<RsqrtOpLegalization>;
+  static Ptr Create() { return std::make_unique<RsqrtOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const litert::Op& src, Qnn_OpConfig_t& dest,
                           GraphMapper& graph_mapper);

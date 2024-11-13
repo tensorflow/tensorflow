@@ -17,6 +17,7 @@
 
 #include <gtest/gtest.h>
 #include "absl/log/absl_check.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -41,7 +42,12 @@ const auto kSupportedOps =
                     "simple_reshape_op.tflite",
                     "simple_batch_matmul_op.tflite",
                     "rms_norm.tflite",
-                    "simple_concatenation_op.tflite"
+                    "simple_concatenation_op.tflite",
+                    "simple_softmax_op.tflite",
+                    "simple_cast_op.tflite",
+                    "simple_transpose_op.tflite",
+                    "simple_sin_op.tflite",
+                    "simple_cos_op.tflite"
                     );
 // clang-format on
 
@@ -119,6 +125,7 @@ class QnnPluginOpCompatibilityTest
     : public ::testing::TestWithParam<std::string> {};
 
 TEST_P(QnnPluginOpCompatibilityTest, SupportedOpsTest) {
+  LITERT_LOG(LITERT_INFO, "Testing TFLite model: %s", GetParam().c_str());
   auto plugin = GetQnnPlugin();
   auto model = litert::testing::LoadTestFileModel(GetParam());
 

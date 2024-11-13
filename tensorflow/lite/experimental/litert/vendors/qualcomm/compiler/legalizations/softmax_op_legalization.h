@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_COMPILER_LEGALIZATIONS_MUL_OP_LEGALIZATION_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_COMPILER_LEGALIZATIONS_MUL_OP_LEGALIZATION_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_COMPILER_LEGALIZATIONS_SOFTMAX_OP_LEGALIZATION_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_COMPILER_LEGALIZATIONS_SOFTMAX_OP_LEGALIZATION_H_
 
 #include <alloca.h>
 #include <stdio.h>
@@ -29,12 +29,12 @@
 
 namespace litert::qnn {
 
-class MulOpLegalization : public Legalization {
+class SoftmaxOpLegalization : public Legalization {
  public:
-  MulOpLegalization() = default;
-  ~MulOpLegalization() = default;
-  using Ptr = std::unique_ptr<MulOpLegalization>;
-  static Ptr Create() { return std::make_unique<MulOpLegalization>(); }
+  SoftmaxOpLegalization() = default;
+  ~SoftmaxOpLegalization() = default;
+  using Ptr = std::unique_ptr<SoftmaxOpLegalization>;
+  static Ptr Create() { return std::make_unique<SoftmaxOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
                           GraphMapper& graph_mapper);
@@ -46,4 +46,4 @@ class MulOpLegalization : public Legalization {
 
 }  // namespace litert::qnn
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_COMPILER_LEGALIZATIONS_MUL_OP_LEGALIZATION_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_COMPILER_LEGALIZATIONS_SOFTMAX_OP_LEGALIZATION_H_

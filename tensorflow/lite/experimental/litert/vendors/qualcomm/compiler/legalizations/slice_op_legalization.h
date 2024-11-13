@@ -33,8 +33,8 @@ class SliceOpLegalization : public Legalization {
  public:
   SliceOpLegalization() = default;
   ~SliceOpLegalization() = default;
-  using UniquePtr = std::unique_ptr<SliceOpLegalization>;
-  static UniquePtr Create() { return std::make_unique<SliceOpLegalization>(); }
+  using Ptr = std::unique_ptr<SliceOpLegalization>;
+  static Ptr Create() { return std::make_unique<SliceOpLegalization>(); }
 
   LiteRtStatus LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
                           GraphMapper& graph_mapper);

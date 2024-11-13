@@ -118,6 +118,21 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflConcatenation:
       out << "TFL_CONCATENATION";
       break;
+    case kLiteRtOpCodeTflSoftmax:
+      out << "TFL_SOFTMAX";
+      break;
+    case kLiteRtOpCodeTflCast:
+      out << "TFL_CAST";
+      break;
+    case kLiteRtOpCodeTflTranspose:
+      out << "TFL_TRANSPOSE";
+      break;
+    case kLiteRtOpCodeTflSin:
+      out << "TFL_SIN";
+      break;
+    case kLiteRtOpCodeTflCos:
+      out << "TFL_COS";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;

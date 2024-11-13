@@ -35,16 +35,21 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/add_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/batch_matmul_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/cast_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/concatenation_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/cos_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/div_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/mul_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/reshape_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/rsqrt_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/sin_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/slice_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/softmax_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/sub_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/sum_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/tanh_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/transpose_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
 namespace litert::qnn {
@@ -64,6 +69,11 @@ LiteRtStatus RegisterAllLegalizations(
   legalizations.push_back(ReshapeOpLegalization::Create());
   legalizations.push_back(SumOpLegalization::Create());
   legalizations.push_back(ConcatenationOpLegalization::Create());
+  legalizations.push_back(SoftmaxOpLegalization::Create());
+  legalizations.push_back(CastOpLegalization::Create());
+  legalizations.push_back(TransposeOpLegalization::Create());
+  legalizations.push_back(SinOpLegalization::Create());
+  legalizations.push_back(CosOpLegalization::Create());
   LITERT_LOG(LITERT_INFO, "Scheduling %lu legalizations", legalizations.size());
   return kLiteRtStatusOk;
 }
