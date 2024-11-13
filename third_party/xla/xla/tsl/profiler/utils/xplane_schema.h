@@ -363,7 +363,8 @@ enum MegaScaleStatType : uint8_t {
   kMegaScaleNetworkTransportLatency,
   kMegaScaleTransmissionBudgetUs,
   kMegaScaleDelayBudgetUs,
-  kLastMegaScaleStatType = kMegaScaleDelayBudgetUs,
+  kMegaScaleHloModule,
+  kLastMegaScaleStatType = kMegaScaleHloModule,
 };
 
 enum TaskEnvStatType {

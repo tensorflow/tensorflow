@@ -375,6 +375,7 @@ const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
       {"delay_budget_us", kMegaScaleDelayBudgetUs},
       {"graph_protos", kMegaScaleGraphProtos},
       {"network_transport_latency_us", kMegaScaleNetworkTransportLatency},
+      {"hlo_module", kMegaScaleHloModule},
   });
   DCHECK_EQ(stat_type_map->size(), kNumMegaScaleStatTypes);
   return *stat_type_map;
