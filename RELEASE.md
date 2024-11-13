@@ -74,6 +74,8 @@ This release contains contributions from many people at Google, as well as:
 ### Breaking Changes
 
 * `tf.lite`
+    * Interpreter:
+      * `tf.lite.Interpreter` gives a deprecation warning and a redirection notice to its new location at `ai_edge_litert.interpreter`. See the [migration guide](https://ai.google.dev/edge/litert/migration) for details.
     * C API:
       * An optional, fourth parameter was added `TfLiteOperatorCreate` as a step forward towards a cleaner API for `TfLiteOperator`. Function `TfLiteOperatorCreate` was added recently, in TensorFlow Lite version 2.17.0, released on 7/11/2024, and we do not expect there will be much code using this function yet. Any code breakages can be easily resolved by passing nullptr as the new, 4th parameter.
 
