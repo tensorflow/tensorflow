@@ -391,6 +391,11 @@ class FlatBufferModelBase {
       // is found.
 #if defined(_WIN32)
       options.assert = true;
+#if defined(FLATBUFFER_VERIFIER_HAS_CHECK_BUFFER_ALIGNMENT)
+      // `check_buf_alignment` is not supported in all implementations of
+      // `flatbuffers::Verifier`.
+      options.check_buf_alignment = true;
+#endif
 #endif
       flatbuffers::Verifier base_verifier(
           reinterpret_cast<const uint8_t*>(allocation->base()), allocation_size,
