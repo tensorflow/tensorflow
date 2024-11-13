@@ -3934,6 +3934,57 @@ std::unique_ptr<HloInstruction> HloDotInstruction::CloneWithNewOperandsImpl(
       precision_config_, sparsity_, new_operands.subspan(kOperands));
 }
 
+HloRaggedDotInstruction::HloRaggedDotInstruction(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    HloInstruction* group_sizes,
+    const RaggedDotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config)
+    : HloInstruction(HloOpcode::kRaggedDot, shape),
+      ragged_dot_dimension_numbers_(dimension_numbers),
+      precision_config_(precision_config) {
+  AppendOperand(lhs);
+  AppendOperand(rhs);
+  AppendOperand(group_sizes);
+}
+
+HloInstructionProto HloRaggedDotInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_ragged_dot_dimension_numbers() = ragged_dot_dimension_numbers_;
+  *proto.mutable_precision_config() = precision_config_;
+  return proto;
+}
+
+void HloRaggedDotInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    printer->Append(
+        RaggedDotDimensionNumbersToString(ragged_dot_dimension_numbers_));
+  });
+  PrintPrecisionConfig(printer, precision_config_);
+}
+
+bool HloRaggedDotInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloRaggedDotInstruction&>(other);
+  return protobuf_util::ProtobufEquals(
+             ragged_dot_dimension_numbers(),
+             casted_other.ragged_dot_dimension_numbers()) &&
+         protobuf_util::ProtobufEquals(precision_config(),
+                                       casted_other.precision_config());
+}
+
+std::unique_ptr<HloInstruction>
+HloRaggedDotInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), kOperands);
+  return std::make_unique<HloRaggedDotInstruction>(
+      shape, new_operands[0], new_operands[1], new_operands[2],
+      ragged_dot_dimension_numbers_, precision_config_);
+}
+
 HloDomainInstruction::HloDomainInstruction(
     const Shape& shape, HloInstruction* operand,
     std::unique_ptr<DomainMetadata> operand_side_metadata,

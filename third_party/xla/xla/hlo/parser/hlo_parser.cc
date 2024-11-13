@@ -165,6 +165,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kPartitionId:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kPower:
+    case HloOpcode::kRaggedDot:
     case HloOpcode::kReal:
     case HloOpcode::kReduce:
     case HloOpcode::kRemainder:
@@ -3191,6 +3192,91 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       return builder->AddInstruction(HloInstruction::CreateDot(
           *shape, operands[0], operands[1], dnum, precision_config, sparsity,
           absl::MakeSpan(operands).subspan(HloDotInstruction::kOperands)));
+    }
+    case HloOpcode::kRaggedDot: {
+      optional<std::vector<int64_t>> lhs_contracting_dims;
+      attrs["lhs_contracting_dims"] = {
+          /*required=*/false, AttrTy::kBracedInt64List, &lhs_contracting_dims};
+      optional<std::vector<int64_t>> rhs_contracting_dims;
+      attrs["rhs_contracting_dims"] = {
+          /*required=*/false, AttrTy::kBracedInt64List, &rhs_contracting_dims};
+      optional<std::vector<int64_t>> lhs_batch_dims;
+      attrs["lhs_batch_dims"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                                 &lhs_batch_dims};
+      optional<std::vector<int64_t>> rhs_batch_dims;
+      attrs["rhs_batch_dims"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                                 &rhs_batch_dims};
+      optional<std::vector<int64_t>> lhs_ragged_dims;
+      attrs["lhs_ragged_dims"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                                  &lhs_ragged_dims};
+      optional<std::vector<int64_t>> rhs_group_dims;
+      attrs["rhs_group_dims"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                                 &rhs_group_dims};
+      optional<std::vector<PrecisionConfig::Precision>> operand_precision;
+      attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
+                                    &operand_precision};
+
+      LocTy loc = lexer_.GetLoc();
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
+          !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+
+      int expected_size = HloRaggedDotInstruction::kOperands;
+      if (operands.size() != expected_size) {
+        Error(loc, StrCat("expects ", expected_size, " operands, but has ",
+                          operands.size(), " operands"));
+        return nullptr;
+      }
+
+      DotDimensionNumbers dnum;
+      if (lhs_contracting_dims) {
+        *dnum.mutable_lhs_contracting_dimensions() = {
+            lhs_contracting_dims->begin(), lhs_contracting_dims->end()};
+      }
+      if (rhs_contracting_dims) {
+        *dnum.mutable_rhs_contracting_dimensions() = {
+            rhs_contracting_dims->begin(), rhs_contracting_dims->end()};
+      }
+      if (lhs_batch_dims) {
+        *dnum.mutable_lhs_batch_dimensions() = {lhs_batch_dims->begin(),
+                                                lhs_batch_dims->end()};
+      }
+      if (rhs_batch_dims) {
+        *dnum.mutable_rhs_batch_dimensions() = {rhs_batch_dims->begin(),
+                                                rhs_batch_dims->end()};
+      }
+      RaggedDotDimensionNumbers ragged_dnum;
+      *ragged_dnum.mutable_dot_dimension_numbers() = dnum;
+      if (lhs_ragged_dims) {
+        *ragged_dnum.mutable_lhs_ragged_dimensions() = {
+            lhs_ragged_dims->begin(), lhs_ragged_dims->end()};
+      }
+      if (rhs_group_dims) {
+        *ragged_dnum.mutable_rhs_group_dimensions() = {rhs_group_dims->begin(),
+                                                       rhs_group_dims->end()};
+      }
+
+      PrecisionConfig precision_config;
+      if (operand_precision) {
+        *precision_config.mutable_operand_precision() = {
+            operand_precision->begin(), operand_precision->end()};
+      } else {
+        // Only the lhs and rhs operands have precision.
+        precision_config.mutable_operand_precision()->Resize(
+            HloRaggedDotInstruction::kOperands - 1, PrecisionConfig::DEFAULT);
+      }
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferRaggedDotOpShape(
+                operands[0]->shape(), operands[1]->shape(),
+                operands[2]->shape(), ragged_dnum,
+                /*preferred_element_type=*/std::nullopt);
+          })) {
+        return nullptr;
+      }
+      return builder->AddInstruction(HloInstruction::CreateRaggedDot(
+          *shape, operands[0], operands[1], operands[2], ragged_dnum,
+          precision_config));
     }
     case HloOpcode::kGather: {
       optional<std::vector<int64_t>> offset_dims;

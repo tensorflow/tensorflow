@@ -1108,6 +1108,25 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           absl::MakeSpan(operand_vector).subspan(HloDotInstruction::kOperands));
       break;
     }
+    case HloOpcode::kRaggedDot: {
+      int expected_operands = HloRaggedDotInstruction::kOperands;
+      TF_RET_CHECK(proto.operand_ids_size() == expected_operands)
+          << proto.opcode() << " instruction should have " << expected_operands
+          << " operands but sees " << proto.operand_ids_size();
+      TF_RET_CHECK(proto.has_ragged_dot_dimension_numbers())
+          << "RaggedDot instruction should have ragged_dot_dimension_numbers.";
+      TF_RET_CHECK(absl::c_all_of(proto.precision_config().operand_precision(),
+                                  PrecisionConfig::Precision_IsValid));
+      PrecisionConfig precision_config = proto.precision_config();
+      // Only the lhs and rhs have precisions.
+      precision_config.mutable_operand_precision()->Resize(
+          HloRaggedDotInstruction::kOperands - 1, PrecisionConfig::DEFAULT);
+      auto operand_vector = all_operands();
+      instruction = std::make_unique<HloRaggedDotInstruction>(
+          shape, operands(0), operands(1), operands(2),
+          proto.ragged_dot_dimension_numbers(), precision_config);
+      break;
+    }
     case HloOpcode::kDomain: {
       std::shared_ptr<const HloSharding> entry_hlo_sharding;
       std::shared_ptr<const HloSharding> exit_hlo_sharding;
@@ -1530,6 +1549,15 @@ HloInstruction::CreateTriangularSolve(const Shape& shape, HloInstruction* a,
   return std::make_unique<HloDotInstruction>(shape, lhs, rhs, dimension_numbers,
                                              precision_config,
                                              std::move(sparsity), sparse_meta);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRaggedDot(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    HloInstruction* group_sizes,
+    const RaggedDotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config) {
+  return std::make_unique<HloRaggedDotInstruction>(
+      shape, lhs, rhs, group_sizes, dimension_numbers, precision_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -2548,6 +2576,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kScatter:
     case HloOpcode::kIota:
     case HloOpcode::kDot:
+    case HloOpcode::kRaggedDot:
     case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kSetDimensionSize:
@@ -3139,6 +3168,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kGather:
     case HloOpcode::kScatter:
     case HloOpcode::kDot:
+    case HloOpcode::kRaggedDot:
     case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kRaggedAllToAll:
@@ -4361,6 +4391,8 @@ absl::Status HloInstruction::Visit(
       return visitor->HandleMultiply(this);
     case HloOpcode::kDot:
       return visitor->HandleDot(this);
+    case HloOpcode::kRaggedDot:
+      return visitor->HandleRaggedDot(this);
     case HloOpcode::kPower:
       return visitor->HandlePower(this);
     case HloOpcode::kRemainder:
@@ -4993,6 +5025,21 @@ std::string DotDimensionNumbersToString(const DotDimensionNumbers& dnums) {
                           StrJoin(dnums.rhs_contracting_dimensions(), ","),
                           "}"));
 
+  return StrJoin(result, ", ");
+}
+
+std::string RaggedDotDimensionNumbersToString(
+    const RaggedDotDimensionNumbers& dnums) {
+  std::vector<std::string> result;
+  result.push_back(DotDimensionNumbersToString(dnums.dot_dimension_numbers()));
+  if (!dnums.lhs_ragged_dimensions().empty()) {
+    result.push_back(StrCat("lhs_ragged_dims={",
+                            StrJoin(dnums.lhs_ragged_dimensions(), ","), "}"));
+  }
+  if (!dnums.rhs_group_dimensions().empty()) {
+    result.push_back(StrCat("rhs_group_dims={",
+                            StrJoin(dnums.rhs_group_dimensions(), ","), "}"));
+  }
   return StrJoin(result, ", ");
 }
 
@@ -5633,6 +5680,11 @@ const ScatterDimensionNumbers& HloInstruction::scatter_dimension_numbers()
 
 const DotDimensionNumbers& HloInstruction::dot_dimension_numbers() const {
   return Cast<HloDotInstruction>(this)->dot_dimension_numbers();
+}
+
+const RaggedDotDimensionNumbers& HloInstruction::ragged_dot_dimension_numbers()
+    const {
+  return Cast<HloRaggedDotInstruction>(this)->ragged_dot_dimension_numbers();
 }
 
 const DomainMetadata& HloInstruction::operand_side_metadata() const {

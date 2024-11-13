@@ -761,6 +761,15 @@ message DotDimensionNumbers {
   repeated int64 rhs_batch_dimensions = 4;
 }
 
+message RaggedDotDimensionNumbers {
+  // The contracting and batch dimensions of the 'lhs' and 'rhs'.
+  DotDimensionNumbers dot_dimension_numbers = 1;
+  // The dimension numbers that represent the 'lhs' ragged dimensions.
+  repeated int64 lhs_ragged_dimensions = 2;
+  // The dimension numbers that represent the 'rhs' group dimensions.
+  repeated int64 rhs_group_dimensions = 3;
+}
+
 enum SparsityType {
   SPARSITY_INVALID = 0;
 

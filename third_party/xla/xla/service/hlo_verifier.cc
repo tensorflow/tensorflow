@@ -267,6 +267,19 @@ absl::Status ShapeVerifier::HandleDot(HloInstruction* dot) {
   return CheckShape(dot, expected);
 }
 
+absl::Status ShapeVerifier::HandleRaggedDot(HloInstruction* ragged_dot) {
+  TF_RETURN_IF_ERROR(
+      CheckOperandCount(ragged_dot, HloRaggedDotInstruction::kOperands));
+  TF_ASSIGN_OR_RETURN(
+      const Shape expected,
+      ShapeInference::InferRaggedDotOpShape(
+          ragged_dot->operand(0)->shape(), ragged_dot->operand(1)->shape(),
+          ragged_dot->operand(2)->shape(),
+          ragged_dot->ragged_dot_dimension_numbers(),
+          /*preferred_element_type=*/ragged_dot->shape().element_type()));
+  return CheckShape(ragged_dot, expected);
+}
+
 absl::Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
   TF_ASSIGN_OR_RETURN(
       Shape expected,

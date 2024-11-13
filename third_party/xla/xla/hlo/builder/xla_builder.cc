@@ -2023,6 +2023,32 @@ XlaOp XlaBuilder::SparseDot(
   });
 }
 
+XlaOp XlaBuilder::RaggedDot(
+    XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
+    const RaggedDotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig* precision_config,
+    std::optional<PrimitiveType> preferred_element_type) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
+    TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
+    TF_ASSIGN_OR_RETURN(const Shape* group_sizes_shape,
+                        GetShapePtr(group_sizes));
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferRaggedDotOpShape(
+                            *lhs_shape, *rhs_shape, *group_sizes_shape,
+                            dimension_numbers, preferred_element_type));
+
+    std::vector<XlaOp> operands{lhs, rhs, group_sizes};
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    *instr.mutable_ragged_dot_dimension_numbers() = dimension_numbers;
+    if (precision_config != nullptr) {
+      *instr.mutable_precision_config() = *precision_config;
+    }
+    return AddInstruction(std::move(instr), HloOpcode::kRaggedDot, operands);
+  });
+}
+
 absl::Status XlaBuilder::VerifyConvolution(
     const Shape& lhs_shape, const Shape& rhs_shape,
     const ConvolutionDimensionNumbers& dimension_numbers) const {
@@ -5074,6 +5100,14 @@ XlaOp SparseDot(const XlaOp lhs, const XlaOp rhs,
   return lhs.builder()->SparseDot(lhs, rhs, sparse_meta, sparsity,
                                   dimension_numbers, precision_config,
                                   preferred_element_type);
+}
+
+XlaOp RaggedDot(const XlaOp lhs, const XlaOp rhs, const XlaOp group_sizes,
+                const RaggedDotDimensionNumbers& dimension_numbers,
+                const PrecisionConfig* precision_config,
+                std::optional<PrimitiveType> preferred_element_type) {
+  return lhs.builder()->RaggedDot(lhs, rhs, group_sizes, dimension_numbers,
+                                  precision_config, preferred_element_type);
 }
 
 XlaOp Conv(const XlaOp lhs, const XlaOp rhs,

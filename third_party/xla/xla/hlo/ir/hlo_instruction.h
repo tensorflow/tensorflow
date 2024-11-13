@@ -880,6 +880,15 @@ class HloInstruction {
       std::vector<SparsityDescriptor> sparsity = {},
       absl::Span<HloInstruction* const> sparse_meta = {});
 
+  // Creates a ragged dot op with operands 'lhs', 'rhs', and 'group_sizes', with
+  // contracting, batch, ragged, and group dimensions specified in
+  // 'dimension_numbers'.
+  static std::unique_ptr<HloInstruction> CreateRaggedDot(
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      HloInstruction* group_sizes,
+      const RaggedDotDimensionNumbers& dimension_numbers,
+      const PrecisionConfig& precision_config);
+
   // Creates a reduce-precision op, where operand is the data to reduce in
   // precision, and exponent_bits and mantissa_bits describe the precision to
   // reduce it to.
@@ -2613,6 +2622,9 @@ class HloInstruction {
   // Delegates to HloDotInstruction::dot_dimension_numbers().
   const DotDimensionNumbers& dot_dimension_numbers() const;
 
+  // Delegates to HloRaggedDotInstruction::ragged_dot_dimension_numbers().
+  const RaggedDotDimensionNumbers& ragged_dot_dimension_numbers() const;
+
   // Delegates to HloDomainInstruction::operand_side_metadata().
   const DomainMetadata& operand_side_metadata() const;
 
@@ -2976,6 +2988,8 @@ std::string RandomDistributionToString(const RandomDistribution& distribution);
 std::string PrecisionToString(const PrecisionConfig::Precision& precision);
 std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm);
 std::string DotDimensionNumbersToString(const DotDimensionNumbers& dnums);
+std::string RaggedDotDimensionNumbersToString(
+    const RaggedDotDimensionNumbers& dnums);
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
 
