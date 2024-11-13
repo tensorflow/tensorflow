@@ -2113,8 +2113,7 @@ absl::StatusOr<HloInstruction*> PartitionDot(
     const SpmdPartitionerOptions& options, SpmdBuilder* b,
     std::vector<SpmdPartitioningVisitor::WindowedDotGeneralLoop>*
         windowed_dot_general_loops,
-    SpmdPartitioningVisitor* visitor,
-    bool reshard_lhs_rhs_to_match_output_sharding = false);
+    SpmdPartitioningVisitor* visitor);
 
 absl::StatusOr<HloInstruction*> PartitionDotGroupOnBatchImpl(
     PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
@@ -4231,22 +4230,23 @@ absl::StatusOr<HloInstruction*> PartitionDot(
 // Reshard the LHS and RHS to match the output sharding.
 absl::StatusOr<HloInstruction*> ReshardLHSRHSToMatchOutputSharding(
     const PartitionedHlo& lhs, const PartitionedHlo& rhs,
+    const HloSharding& output_sharding,
     const DotConvolutionDimsInfo& dims_mapping,
     absl::FunctionRef<absl::StatusOr<HloInstruction*>(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
         const Window& conv_window)>
         create_sharded_dot,
-    const Window& conv_window, HloInstruction* original_hlo, SpmdBuilder* b) {
+    const Window& conv_window, SpmdBuilder* b) {
   const bool consider_other_operand = false;
   const bool may_combine_partial_sharding = false;
   const HloSharding infered_lhs_sharding =
-      hlo_sharding_util::InferDotOperandSharding(original_hlo, 0, dims_mapping,
-                                                 consider_other_operand,
-                                                 may_combine_partial_sharding);
+      hlo_sharding_util::InferDotOperandSharding(
+          &output_sharding, &lhs.sharding(), 0, dims_mapping,
+          consider_other_operand, may_combine_partial_sharding);
   const HloSharding infered_rhs_sharding =
-      hlo_sharding_util::InferDotOperandSharding(original_hlo, 1, dims_mapping,
-                                                 consider_other_operand,
-                                                 may_combine_partial_sharding);
+      hlo_sharding_util::InferDotOperandSharding(
+          &output_sharding, &rhs.sharding(), 1, dims_mapping,
+          consider_other_operand, may_combine_partial_sharding);
 
   return create_sharded_dot(lhs.Reshard(infered_lhs_sharding).hlo(),
                             rhs.Reshard(infered_rhs_sharding).hlo(), b,
@@ -4265,8 +4265,7 @@ absl::StatusOr<HloInstruction*> PartitionDot(
     const SpmdPartitionerOptions& options, SpmdBuilder* b,
     std::vector<SpmdPartitioningVisitor::WindowedDotGeneralLoop>*
         windowed_dot_general_loops,
-    SpmdPartitioningVisitor* visitor,
-    bool reshard_lhs_rhs_to_match_output_sharding) {
+    SpmdPartitioningVisitor* visitor) {
   // First try partitioning without resharding the groups, then try allow
   // resharding the groups.
   for (bool require_matching_devices_to_group : {true, false}) {
@@ -4281,10 +4280,10 @@ absl::StatusOr<HloInstruction*> PartitionDot(
     }
   }
 
-  if (reshard_lhs_rhs_to_match_output_sharding) {
-    return ReshardLHSRHSToMatchOutputSharding(lhs, rhs, dims_mapping,
-                                              create_sharded_dot, conv_window,
-                                              original_hlo, b);
+  if (dims_mapping.conv_spatial_dims.empty()) {
+    return ReshardLHSRHSToMatchOutputSharding(lhs, rhs, output_sharding,
+                                              dims_mapping, create_sharded_dot,
+                                              conv_window, b);
   }
 
   // Default action.
@@ -4319,9 +4318,7 @@ absl::Status SpmdPartitioningVisitor::HandleDotHelper(
       auto partitioned_dot,
       PartitionDot(lhs, rhs, hlo->shape(), hlo->sharding(), dims_mapping,
                    num_partitions_, create_sharded_dot, conv_window, module_,
-                   hlo, options_, &b_, &windowed_dot_general_loops_, this,
-                   /*reshard_lhs_rhs_to_match_output_sharding=*/
-                   dims_mapping.conv_spatial_dims.empty()));
+                   hlo, options_, &b_, &windowed_dot_general_loops_, this));
   SetPartitionedHlo(hlo, [&] { return partitioned_dot; });
   return absl::OkStatus();
 }
