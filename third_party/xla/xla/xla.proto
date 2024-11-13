@@ -1044,7 +1044,14 @@ message DebugOptions {
 
   bool xla_pjrt_allow_auto_layout_in_hlo = 344;
 
-  // Next id: 345
+  // Enable the scatter determinism expander, an optimized pass that
+  // rewrites scatter operations to ensure deterministic behavior with high
+  // performance.
+  // Note that even when this flag is disabled, scatter operations may still
+  // be deterministic, although with additional overhead.
+  bool xla_gpu_enable_scatter_determinism_expander = 345;
+
+  // Next id: 346
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
