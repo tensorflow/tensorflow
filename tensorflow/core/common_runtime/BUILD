@@ -996,10 +996,7 @@ cc_library(
     ],
     copts = tf_copts(),
     features = ["-layering_check"],
-    visibility = default_package_visibility + [
-        "//platforms/performance/autograppler:__subpackages__",
-        "//platforms/performance/tf_sim:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":device",
         ":device_factory",
