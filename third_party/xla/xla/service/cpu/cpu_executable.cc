@@ -58,7 +58,6 @@ limitations under the License.
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
-#include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/service_executable_run_options.h"
@@ -290,17 +289,11 @@ CpuExecutable::CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
 
 absl::Status CpuExecutable::ExecuteComputeFunction(
     const ExecutableRunOptions* run_options,
-    absl::Span<MaybeOwningDeviceMemory const> buffers,
-    HloExecutionProfile* hlo_execution_profile) {
+    absl::Span<MaybeOwningDeviceMemory const> buffers) {
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
-  size_t profile_counters_size =
-      hlo_execution_profile ? hlo_execution_profile->profile_counters().size()
-                            : 0;
-  int64_t* profile_counters =
-      hlo_execution_profile
-          ? hlo_execution_profile->mutable_profile_counters()->data()
-          : nullptr;
+  size_t profile_counters_size = 0;
+  int64_t* profile_counters = nullptr;
 
   // Call the computation function following the calling convention. See the
   // definition of 'ComputeFunctionType' for the details of the calling
@@ -329,12 +322,6 @@ absl::Status CpuExecutable::ExecuteComputeFunction(
       const double nanoseconds = (end_micros - start_micros) * 1000.0;
       run_options->execution_profile()->set_compute_time_ns(
           std::max(nanoseconds, 1.0));
-      // If hlo profiling was disabled then the cycle count is left empty.
-      if (hlo_execution_profile) {
-        run_options->execution_profile()->set_compute_cycle_count(
-            hlo_execution_profile->total_cycles_executed(
-                *module().entry_computation()));
-      }
     }
   };
 
@@ -356,17 +343,11 @@ absl::Status CpuExecutable::ExecuteComputeFunction(
 
 absl::Status CpuExecutable::ExecuteThunks(
     const ExecutableRunOptions* run_options,
-    absl::Span<MaybeOwningDeviceMemory const> buffers,
-    HloExecutionProfile* hlo_execution_profile) {
+    absl::Span<MaybeOwningDeviceMemory const> buffers) {
   uint64_t start_ns = tsl::Env::Default()->NowNanos();
 
-  size_t profile_counters_size =
-      hlo_execution_profile ? hlo_execution_profile->profile_counters().size()
-                            : 0;
-  int64_t* profile_counters =
-      hlo_execution_profile
-          ? hlo_execution_profile->mutable_profile_counters()->data()
-          : nullptr;
+  size_t profile_counters_size = 0;
+  int64_t* profile_counters = nullptr;
 
   BufferAllocations allocations(buffers);
 
@@ -412,12 +393,6 @@ absl::Status CpuExecutable::ExecuteThunks(
     uint64_t end_ns = tsl::Env::Default()->NowNanos();
     run_options->execution_profile()->set_compute_time_ns(
         std::max<int64_t>(end_ns - start_ns, 1));
-    // If hlo profiling was disabled then the cycle count is left empty.
-    if (hlo_execution_profile) {
-      run_options->execution_profile()->set_compute_cycle_count(
-          hlo_execution_profile->total_cycles_executed(
-              *module().entry_computation()));
-    }
   }
 
   return ABSL_PREDICT_FALSE(executed_event.IsError())
@@ -527,8 +502,7 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
 
 absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    std::vector<ExecutionInput> arguments) {
   if (GetRootValueSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
   }
@@ -576,15 +550,14 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     CpuExecutable* executable;
     ServiceExecutableRunOptions run_options;
     std::shared_ptr<std::vector<MaybeOwningDeviceMemory>> task_buffers;
-    HloExecutionProfile* hlo_execution_profile;
 
     absl::Status operator()() {
       if (executable->has_compute_function()) {
-        return executable->ExecuteComputeFunction(
-            &run_options.run_options(), *task_buffers, hlo_execution_profile);
+        return executable->ExecuteComputeFunction(&run_options.run_options(),
+                                                  *task_buffers);
       } else if (executable->has_thunks()) {
         return executable->ExecuteThunks(&run_options.run_options(),
-                                         *task_buffers, hlo_execution_profile);
+                                         *task_buffers);
       } else {
         return Internal("No compute function or thunks found.");
       }
@@ -593,8 +566,7 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   host_stream->EnqueueTaskWithStatus(
       AsyncRunTask{this, *run_options,
                    std::make_shared<std::vector<MaybeOwningDeviceMemory>>(
-                       std::move(buffers)),
-                   hlo_execution_profile});
+                       std::move(buffers))});
 
   MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);

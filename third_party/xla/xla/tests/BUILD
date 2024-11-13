@@ -593,37 +593,6 @@ xla_test(
 )
 
 xla_test(
-    name = "xla_hlo_profile_test",
-    srcs = ["xla_hlo_profile_test.cc"],
-    backends = [
-        # Hlo profiles are only supported on CPU/GPU.
-        "cpu",
-        "gpu",
-    ],
-    tags = ["not_run:arm"],
-    deps = [
-        ":client_library_test_base",
-        ":test_macros_header",
-        ":test_utils",
-        "//xla:array2d",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla/client:local_client",
-        "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/builder:xla_computation",
-        "//xla/service:platform_util",
-        "//xla/service:stream_pool",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:regexp",
-        "@local_tsl//tsl/platform:test",
-    ],
-)
-
-xla_test(
     name = "axpy_simple_test",
     srcs = ["axpy_simple_test.cc"],
     tags = ["test_xla_cpu_thunks"],

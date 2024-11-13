@@ -546,8 +546,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
             for (int64_t i = 0; i < options.num_replicas; ++i) {
               pool.Schedule([&, i] {
                 auto result = executable->ExecuteOnStream(
-                    &service_run_options[i], argument_buffer_slices[i],
-                    nullptr);
+                    &service_run_options[i], argument_buffer_slices[i]);
                 absl::MutexLock lock(&mutex);
                 thread_results[i] = std::move(result);
               });
@@ -605,7 +604,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
             }
             pool.Schedule([&, i] {
               auto result = executable_provider(i)->ExecuteOnStream(
-                  &service_run_options[i], argument_buffer_slices[i], nullptr);
+                  &service_run_options[i], argument_buffer_slices[i]);
               absl::MutexLock lock(&mutex);
               thread_results[i] = std::move(result);
             });

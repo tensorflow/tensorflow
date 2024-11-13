@@ -122,8 +122,7 @@ class PjRtWrappedExecutable : public Executable {
 
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
+      std::vector<ExecutionInput> arguments) override;
 
   PjRtLoadedExecutable* GetPjRtLoadedExecutable() const {
     return pjrt_loaded_executable_.get();
@@ -135,8 +134,7 @@ class PjRtWrappedExecutable : public Executable {
 
 absl::StatusOr<ExecutionOutput> PjRtWrappedExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    std::vector<ExecutionInput> arguments) {
   return Unimplemented(
       "PjRtWrappedExecutable: Unimplemented ExecuteAsyncOnStream");
 }

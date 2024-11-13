@@ -609,7 +609,6 @@ cc_library(
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_status_internal",
         "//xla/service:executable",
-        "//xla/service:hlo_execution_profile",
         "//xla/service:hlo_profile_printer_data_cc",
         "//xla/service:hlo_value",
         "//xla/service:maybe_owning_device_memory",

@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
-#include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
@@ -89,21 +88,18 @@ class CpuExecutable : public Executable {
 
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
+      std::vector<ExecutionInput> arguments) override;
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.
   absl::Status ExecuteComputeFunction(
       const ExecutableRunOptions* run_options,
-      absl::Span<MaybeOwningDeviceMemory const> buffers,
-      HloExecutionProfile* hlo_execution_profile);
+      absl::Span<MaybeOwningDeviceMemory const> buffers);
 
   // Calls emitted thunk sequence with the given arguments using the supplied
   // buffers.
   absl::Status ExecuteThunks(const ExecutableRunOptions* run_options,
-                             absl::Span<MaybeOwningDeviceMemory const> buffers,
-                             HloExecutionProfile* hlo_execution_profile);
+                             absl::Span<MaybeOwningDeviceMemory const> buffers);
 
   absl::Span<const std::string> obj_files() const { return obj_files_; }
 

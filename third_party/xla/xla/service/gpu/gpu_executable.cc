@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/rendezvous.h"
@@ -782,15 +781,13 @@ absl::StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
 
 absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    std::vector<ExecutionInput> arguments) {
   return ExecuteAsyncOnStreamImpl(run_options, absl::MakeSpan(arguments));
 }
 
 absl::StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   TF_ASSIGN_OR_RETURN(ExecutionOutput out,
                       ExecuteAsyncOnStreamImpl(run_options, arguments));
   return out.ConsumeResult();
