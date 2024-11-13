@@ -1024,7 +1024,7 @@ cc_library(
         ":mlir_roundtrip_flags",
         ":serialize_mlir_module_utils",
         ":tensorflow",
-        ":translate_cl_options",
+        "//tensorflow/compiler/mlir/lite/tools:translate_cl_options",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/mlir/utils:string_container_utils",
         "//tensorflow/compiler/tf2xla:layout_util",
@@ -1729,7 +1729,6 @@ aliased_targets = [
     "mlir_roundtrip_flags",
     "mlir_import_options",
     "translate_lib",
-    "translate_cl_options",
     "translate_registration",
     "upgrade_graph",
 ]

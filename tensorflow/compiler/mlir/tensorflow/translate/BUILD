@@ -154,28 +154,14 @@ cc_library(
 )
 
 cc_library(
-    name = "translate_cl_options",
-    srcs = [
-        "tf_mlir_translate_cl.cc",
-    ],
-    hdrs = [
-        "tf_mlir_translate_cl.h",
-    ],
-    deps = [
-        "@llvm-project//llvm:Support",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "translate_registration",
     srcs = [
         "tf_mlir_translate_registration.cc",
     ],
     deps = [
         ":mlir_roundtrip_flags",
-        ":translate_cl_options",
         ":translate_lib",
+        "//tensorflow/compiler/mlir/lite/tools:translate_cl_options",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_executor_to_graph",
         "//tensorflow/compiler/tf2xla:xla_compiler",
