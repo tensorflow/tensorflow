@@ -364,8 +364,8 @@ float RuntimeSimulator::SimulateElapsedTime(
               ? instruction->operand(0)->shape()
               : ShapeUtil::GetSubshape(instruction->shape(),
                                        /*index=*/{1});
-      float transfer_bytes = static_cast<float>(
-          cost_analysis_->base_costs().GetShapeSize(transfer_shape));
+      float transfer_bytes =
+          static_cast<float>(cost_analysis_->GetShapeSizeBytes(transfer_shape));
       if (direction == MemoryTransferDirection::kDefaultToAlternate) {
         outstanding_read_default_queue_.push_back(
             OutstandingAsyncCopyLike{instruction, transfer_bytes});

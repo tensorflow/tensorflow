@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_COST_ANALYSIS_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_COST_ANALYSIS_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -63,15 +65,16 @@ struct CostAnalysisOptions {
 
   // Scales effective bandwidth for async copies. Valid range is (0, 1].
   float async_copy_bandwidth_scaling_factor = 1.0;
+
+  // Used to get the layout size of a shape in bytes.
+  std::function<int64_t(const Shape&)> shape_size_bytes_fn =
+      [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); };
 };
 
 // An interface for getting basic HLO costs.
 class BaseCosts {
  public:
   virtual ~BaseCosts() = default;
-
-  // The size of shape in bytes
-  virtual int64_t GetShapeSize(const Shape& shape) = 0;
 
   // The number of operand and output bytes accessed by instruction.
   virtual float BytesAccessed(const HloInstruction& instruction) = 0;
@@ -104,7 +107,6 @@ class HloCostAnalysisCosts : public BaseCosts {
 
   ~HloCostAnalysisCosts() override = default;
 
-  int64_t GetShapeSize(const Shape& shape) override;
   float BytesAccessed(const HloInstruction& instruction) override;
   float OperandBytesAccessed(const HloInstruction& instruction,
                              int64_t operand_num,
@@ -146,6 +148,8 @@ class CostAnalysis {
       const HloModule& module);
 
   BaseCosts& base_costs() const { return base_costs_; }
+
+  int64_t GetShapeSizeBytes(const Shape& shape) const;
 
   // Returns a heuristic value that captures how much putting this tensor to the
   // alternate memory would help if the op is memory bound, or otherwise how far

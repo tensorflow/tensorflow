@@ -49,10 +49,6 @@ HloCostAnalysisCosts::HloCostAnalysisCosts(
     const HloCostAnalysis& hlo_cost_analysis)
     : hlo_cost_analysis_(hlo_cost_analysis) {}
 
-int64_t HloCostAnalysisCosts::GetShapeSize(const Shape& shape) {
-  return hlo_cost_analysis_.GetShapeSize(shape);
-}
-
 float HloCostAnalysisCosts::BytesAccessed(const HloInstruction& instruction) {
   return static_cast<float>(hlo_cost_analysis_.bytes_accessed(instruction));
 }
@@ -97,6 +93,10 @@ float HloCostAnalysisCosts::ComputeSeconds(const HloInstruction& instruction) {
   return absl::WrapUnique(
       new CostAnalysis(base_costs, options, std::move(alias_analysis),
                        std::move(hlo_live_range), std::move(call_graph)));
+}
+
+int64_t CostAnalysis::GetShapeSizeBytes(const Shape& shape) const {
+  return options_.shape_size_bytes_fn(shape);
 }
 
 float CostAnalysis::GetAlternateMemoryBenefit(
@@ -467,7 +467,7 @@ float CostAnalysis::GetInstructionElapsedInAlternateMemory(
 }
 
 float CostAnalysis::GetAsyncCopyElapsed(const Shape& shape) const {
-  int64_t size_in_bytes = base_costs_.GetShapeSize(shape);
+  int64_t size_in_bytes = GetShapeSizeBytes(shape);
   return static_cast<float>(size_in_bytes) /
          (options_.async_copy_bandwidth_bytes_per_second *
           options_.async_copy_bandwidth_scaling_factor);
