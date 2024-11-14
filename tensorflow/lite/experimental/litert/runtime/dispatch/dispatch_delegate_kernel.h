@@ -92,9 +92,17 @@ class DispatchDelegateKernel
   LiteRtDispatchDeviceContext device_context_;
   LiteRtDispatchInvocationContext invocation_context_ = nullptr;
 
+  // Indicates whether the input tensor buffer requires a CPU sync before
+  // invoking the Dispatch API.
+  std::vector<bool> input_tensor_buffers_require_cpu_sync_;
+
   std::vector<TensorBuffer> input_tensor_buffers_;
   std::vector<LiteRtTensorBufferHandle> input_tensor_buffer_handles_;
   std::vector<size_t> input_tensor_buffer_used_size_;
+
+  // Indicates whether the output tensor buffer requires a CPU sync after
+  // invoking the Dispatch API.
+  std::vector<bool> output_tensor_buffers_require_cpu_sync_;
 
   std::vector<TensorBuffer> output_tensor_buffers_;
   std::vector<LiteRtTensorBufferHandle> output_tensor_buffer_handles_;

@@ -15,18 +15,18 @@
 #include <cstring>
 #include <memory>
 #include <utility>
+#include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
@@ -34,16 +34,12 @@
 #include "tensorflow/lite/signature_runner.h"
 
 namespace litert {
-
 namespace {
-
-using ::testing::FloatNear;
-using ::testing::Pointwise;
 
 static constexpr absl::string_view kNpuFile = kQualcommModelFileName;
 static constexpr absl::string_view kTfliteFile = "simple_model_npu.tflite";
 
-TEST(DispatchDelegate, Qualcomm) {
+TEST(DispatchDelegate, QualcommCpuBuffer) {
   auto runtime =
       testing::TflRuntime::CreateFromTflFileWithByteCode(kTfliteFile, kNpuFile);
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
@@ -71,40 +67,6 @@ TEST(DispatchDelegate, Qualcomm) {
 
   ASSERT_EQ(interpreter.ModifyGraphWithDelegate(dispatch_delegate.get()),
             kTfLiteOk);
-
-  // Create and register tensor buffers for all inputs and outputs.
-  for (int i = 0; i < interpreter.inputs().size(); ++i) {
-    auto input_buffer_requirements =
-        buffer_context.GetBufferRequirement(interpreter.input_tensor(i));
-    ASSERT_TRUE(input_buffer_requirements.HasValue());
-    ASSERT_EQ((*input_buffer_requirements)->SupportedTypes().value()[0],
-              kLiteRtTensorBufferTypeFastRpc);
-    auto input_buffer =
-        buffer_context.CreateBufferForTensor(interpreter.input_tensor(i));
-    ASSERT_TRUE(input_buffer.HasValue());
-    ASSERT_TRUE(input_buffer->IsOwned());
-    ASSERT_EQ(input_buffer->BufferType().value(),
-              kLiteRtTensorBufferTypeFastRpc);
-    auto status = buffer_context.RegisterTensorBuffer(
-        interpreter.input_tensor(i), std::move(*input_buffer));
-    ASSERT_EQ(status, kLiteRtStatusOk);
-  }
-  for (int i = 0; i < interpreter.outputs().size(); ++i) {
-    auto output_buffer_requirements =
-        buffer_context.GetBufferRequirement(interpreter.output_tensor(i));
-    ASSERT_TRUE(output_buffer_requirements.HasValue());
-    ASSERT_EQ((*output_buffer_requirements)->SupportedTypes().value()[0],
-              kLiteRtTensorBufferTypeFastRpc);
-    auto output_buffer =
-        buffer_context.CreateBufferForTensor(interpreter.output_tensor(i));
-    ASSERT_TRUE(output_buffer.HasValue());
-    ASSERT_TRUE(output_buffer->IsOwned());
-    ASSERT_EQ(output_buffer->BufferType().value(),
-              kLiteRtTensorBufferTypeFastRpc);
-    auto status = buffer_context.RegisterTensorBuffer(
-        interpreter.output_tensor(i), std::move(*output_buffer));
-    ASSERT_EQ(status, kLiteRtStatusOk);
-  }
 
   // Get the list of signatures and check it.
   auto signature_defs = interpreter.signature_keys();
@@ -135,12 +97,132 @@ TEST(DispatchDelegate, Qualcomm) {
   ASSERT_STREQ(runner->output_names()[0], "tfl.custom");
   auto output_tensor = runner->output_tensor("tfl.custom");
   ASSERT_NE(output_tensor, nullptr);
-  const float* output = output_tensor->data.f;
+  auto* output = output_tensor->data.f;
   for (auto i = 0; i < kTestOutputSize; ++i) {
     ABSL_LOG(INFO) << output[i] << "\t" << kTestOutputTensor[i];
   }
-  EXPECT_THAT(absl::MakeConstSpan(output, kTestOutputSize),
-              Pointwise(FloatNear(1e-5), kTestOutputTensor));
+  for (auto i = 0; i < kTestOutputSize; ++i) {
+    EXPECT_NEAR(output[i], kTestOutputTensor[i], 1e-5);
+  }
+}
+
+TEST(DispatchDelegate, QualcommHwBuffer) {
+  auto runtime =
+      testing::TflRuntime::CreateFromTflFileWithByteCode(kTfliteFile, kNpuFile);
+  ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
+  auto& rt = **runtime;
+  auto& interpreter = rt.Interp();
+
+  litert::internal::ExternalLiteRtBufferContext buffer_context;
+  interpreter.SetExternalContext(kTfLiteLiteRtBufferContext, &buffer_context);
+
+  EXPECT_EQ(interpreter.nodes_size(), 1);
+  EXPECT_EQ(interpreter.inputs().size(), 2);
+  EXPECT_EQ(interpreter.outputs().size(), 1);
+  ASSERT_EQ(interpreter.execution_plan().size(), 1);
+
+  auto dispatch_delegate_options = CreateDispatchDelegateOptionsPtr();
+  LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
+                                           rt.AllocBase());
+  auto dispatch_delegate =
+      CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
+
+#if !defined(__ANDROID__)
+  GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
+                  "Qualcomm HTP";
+#endif
+
+  ASSERT_EQ(interpreter.ModifyGraphWithDelegate(dispatch_delegate.get()),
+            kTfLiteOk);
+
+  // Create and register tensor buffers for all inputs and outputs.
+
+  std::vector<litert::TensorBuffer> input_buffers;
+  for (int i = 0; i < interpreter.inputs().size(); ++i) {
+    auto input_buffer_requirements =
+        buffer_context.GetBufferRequirement(interpreter.input_tensor(i));
+    ASSERT_TRUE(input_buffer_requirements.HasValue());
+    ASSERT_EQ((*input_buffer_requirements)->SupportedTypes().value()[0],
+              kLiteRtTensorBufferTypeFastRpc);
+    auto input_buffer =
+        buffer_context.CreateBufferForTensor(interpreter.input_tensor(i));
+    ASSERT_TRUE(input_buffer.HasValue());
+    ASSERT_TRUE(input_buffer->IsOwned());
+    ASSERT_EQ(input_buffer->BufferType().value(),
+              kLiteRtTensorBufferTypeFastRpc);
+    auto duplicate_buffer = (*input_buffer).Duplicate();
+    ASSERT_TRUE(duplicate_buffer.ok());
+    auto status = buffer_context.RegisterTensorBuffer(
+        interpreter.input_tensor(i), std::move(*duplicate_buffer));
+    ASSERT_EQ(status, kLiteRtStatusOk);
+    input_buffers.push_back(std::move(*input_buffer));
+  }
+
+  std::vector<litert::TensorBuffer> output_buffers;
+  for (int i = 0; i < interpreter.outputs().size(); ++i) {
+    auto output_buffer_requirements =
+        buffer_context.GetBufferRequirement(interpreter.output_tensor(i));
+    ASSERT_TRUE(output_buffer_requirements.HasValue());
+    ASSERT_EQ((*output_buffer_requirements)->SupportedTypes().value()[0],
+              kLiteRtTensorBufferTypeFastRpc);
+    auto output_buffer =
+        buffer_context.CreateBufferForTensor(interpreter.output_tensor(i));
+    ASSERT_TRUE(output_buffer.HasValue());
+    ASSERT_TRUE(output_buffer->IsOwned());
+    ASSERT_EQ(output_buffer->BufferType().value(),
+              kLiteRtTensorBufferTypeFastRpc);
+    auto duplicate_buffer = (*output_buffer).Duplicate();
+    ASSERT_TRUE(duplicate_buffer.ok());
+    auto status = buffer_context.RegisterTensorBuffer(
+        interpreter.output_tensor(i), std::move(*duplicate_buffer));
+    ASSERT_EQ(status, kLiteRtStatusOk);
+    output_buffers.push_back(std::move(*output_buffer));
+  }
+
+  // Get the list of signatures and check it.
+  auto signature_defs = interpreter.signature_keys();
+  ASSERT_EQ(signature_defs.size(), 0);
+
+  tflite::impl::SignatureRunner* runner =
+      interpreter.GetSignatureRunner(/*signature_key=*/nullptr);
+  ASSERT_NE(runner, nullptr);
+
+  EXPECT_EQ(runner->AllocateTensors(), kTfLiteOk);
+
+  // Fill model inputs.
+  ASSERT_STREQ(runner->input_names()[0], "arg0");
+  auto& input_0_buffer = input_buffers[0];
+  {
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create(input_0_buffer);
+    ASSERT_TRUE(lock_and_addr.ok());
+    std::memcpy(lock_and_addr->second, kTestInput0Tensor,
+                sizeof(kTestInput0Tensor));
+  }
+  ASSERT_STREQ(runner->input_names()[1], "arg1");
+  auto& input_1_buffer = input_buffers[1];
+  {
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create(input_1_buffer);
+    ASSERT_TRUE(lock_and_addr.ok());
+    std::memcpy(lock_and_addr->second, kTestInput1Tensor,
+                sizeof(kTestInput1Tensor));
+  }
+
+  EXPECT_EQ(runner->Invoke(), kTfLiteOk);
+
+  // Check model output.
+  ASSERT_STREQ(runner->output_names()[0], "tfl.custom");
+  auto& output_buffer = output_buffers[0];
+  {
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create(output_buffer);
+    ASSERT_TRUE(lock_and_addr.ok());
+    const float* output = reinterpret_cast<const float*>(lock_and_addr->second);
+    for (auto i = 0; i < kTestOutputSize; ++i) {
+      ABSL_LOG(INFO) << "Result: " << output[i] << "\t" << kTestOutputTensor[i];
+    }
+    for (auto i = 0; i < kTestOutputSize; ++i) {
+      EXPECT_NEAR(output[i], kTestOutputTensor[i], 1e-5);
+    }
+  }
 }
 
 }  // namespace

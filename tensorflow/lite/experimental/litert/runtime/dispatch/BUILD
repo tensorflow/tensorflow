@@ -92,6 +92,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/runtime:external_litert_buffer_context",
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:simple_model_npu",
@@ -120,6 +121,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/runtime:external_litert_buffer_context",
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:simple_model_npu",
@@ -127,7 +129,6 @@ cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -253,10 +253,12 @@ TfLiteStatus DispatchDelegateKernel::Init(
     return kTfLiteError;
   }
 
+  input_tensor_buffers_require_cpu_sync_.resize(num_inputs);
   input_tensor_buffers_.resize(num_inputs);
   input_tensor_buffer_handles_.resize(num_inputs);
   input_tensor_buffer_used_size_.resize(num_inputs);
 
+  output_tensor_buffers_require_cpu_sync_.resize(num_outputs);
   output_tensor_buffers_.resize(num_outputs);
   output_tensor_buffer_handles_.resize(num_outputs);
   output_tensor_buffer_used_size_.resize(num_outputs);
@@ -487,6 +489,9 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffers(
     auto* tfl_opaque_tensor = TfLiteOpaqueNodeGetInput(context, node, i);
     auto tensor_buffer = buffer_context->GetTensorBuffer(tfl_opaque_tensor);
     if (tensor_buffer.HasValue()) {
+      // TODO - b/379176766: If the provided TensorBuffer is not supported
+      // types, we need to create a new one and convert the data from the
+      // provided TensorBuffer.
       size_t buffer_size = (*tensor_buffer).Size().value();
       if (auto status = RegisterLiteRtTensorBuffer(std::move(*tensor_buffer),
                                                    buffer_size, i,
@@ -494,6 +499,7 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffers(
           status != kTfLiteOk) {
         return status;
       }
+      input_tensor_buffers_require_cpu_sync_[i] = false;
     } else {
       LITERT_LOG(LITERT_INFO,
                  "Input#%d TensorBuffer is not registered. Create a new one",
@@ -503,6 +509,7 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffers(
           status != kTfLiteOk) {
         return status;
       }
+      input_tensor_buffers_require_cpu_sync_[i] = true;
     }
   }
 
@@ -511,6 +518,9 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffers(
     auto* tfl_opaque_tensor = TfLiteOpaqueNodeGetOutput(context, node, i);
     auto tensor_buffer = buffer_context->GetTensorBuffer(tfl_opaque_tensor);
     if (tensor_buffer.HasValue()) {
+      // TODO - b/379176766: If the provided TensorBuffer is not supported
+      // types, we need to create a new one and convert the data back to the
+      // provided TensorBuffer.
       size_t buffer_size = (*tensor_buffer).Size().value();
       if (auto status = RegisterLiteRtTensorBuffer(std::move(*tensor_buffer),
                                                    buffer_size, i,
@@ -518,6 +528,7 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffers(
           status != kTfLiteOk) {
         return status;
       }
+      output_tensor_buffers_require_cpu_sync_[i] = false;
     } else {
       LITERT_LOG(LITERT_INFO,
                  "Output#%d TensorBuffer is not registered. Create a new one",
@@ -527,6 +538,7 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffers(
           status != kTfLiteOk) {
         return status;
       }
+      output_tensor_buffers_require_cpu_sync_[i] = true;
     }
   }
 
@@ -548,6 +560,9 @@ TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
   }
 
   for (size_t i = 0; i < num_node_inputs; ++i) {
+    if (!input_tensor_buffers_require_cpu_sync_[i]) {
+      continue;
+    }
     auto* tfl_opaque_tensor = TfLiteOpaqueNodeGetInput(context, node, i);
     void* tensor_data = TfLiteOpaqueTensorData(tfl_opaque_tensor);
     auto& tensor_buffer = input_tensor_buffers_[i];
@@ -575,6 +590,9 @@ TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
   }
 
   for (size_t i = 0; i < num_node_outputs; ++i) {
+    if (!output_tensor_buffers_require_cpu_sync_[i]) {
+      continue;
+    }
     auto* tfl_opaque_tensor = TfLiteOpaqueNodeGetOutput(context, node, i);
     void* tensor_data = TfLiteOpaqueTensorData(tfl_opaque_tensor);
     auto& tensor_buffer = output_tensor_buffers_[i];
