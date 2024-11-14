@@ -4071,6 +4071,139 @@ std::vector<int64_t> GetPaddedDims(const HloInstruction* pad) {
   }
   return padded_dims;
 }
+
+// Returns a map from start_indices explicit batching dims to their
+// corresponding output dims.
+absl::flat_hash_map<int64_t, int64_t> GetStartIndicesDimsToOutputDims(
+    const HloInstruction* gather) {
+  absl::flat_hash_map<int64_t, int64_t> start_indices_dims_to_output_dims;
+  const GatherDimensionNumbers& dnums = gather->gather_dimension_numbers();
+  start_indices_dims_to_output_dims.reserve(
+      dnums.start_indices_batching_dims_size());
+
+  for (int64_t output_dim = 0, start_indices_dim = 0;
+       output_dim < gather->shape().rank(); ++output_dim) {
+    if (absl::c_linear_search(dnums.offset_dims(), output_dim)) {
+      continue;
+    }
+    // Output_dim is an implicit or explicit batching dim.
+    if (start_indices_dim == dnums.index_vector_dim()) {
+      start_indices_dim++;
+    }
+    CHECK_LT(start_indices_dim, gather->operand(1)->shape().rank());
+    if (absl::c_linear_search(dnums.start_indices_batching_dims(),
+                              start_indices_dim)) {
+      // Explicit batching dim.
+      start_indices_dims_to_output_dims[start_indices_dim] = output_dim;
+    }
+    ++start_indices_dim;
+  }
+  return start_indices_dims_to_output_dims;
+}
+
+struct GatherOfPadInfo {
+  bool should_transform;
+  bool has_padded_batching_dims;
+};
+
+// Returns a GatherOfPadInfo struct containing two booleans should_transform and
+// has_padded_batching_dims.
+//
+// The returned value should_transform is true if each dim in
+// padded_operand_dims is either (1) an operand-passthrough dim or (2) an
+// explicit operand batching dim whose corresponding start_indices batching dim
+// is padded the same way, in this case the pad instruction that produces
+// start_indices should only pad the needed explicit batching dims and not pad
+// any other dims.
+//
+// If should_transform is true, has_padded_batching_dims indicates whether case
+// (2) happens, and adds such explicit operand batching dims and their
+// corresponding result dims to padded_operand_dims_to_output_dims and
+// output_dims_to_padded_operand_dims.
+//
+// Precondition: operand is produced by a pad instruction.
+GatherOfPadInfo CheckPaddedDimsForGatherOfPad(
+    const HloInstruction* gather,
+    const std::vector<int64_t>& padded_operand_dims,
+    absl::flat_hash_map<int64_t, int64_t>& padded_operand_dims_to_output_dims,
+    absl::flat_hash_map<int64_t, int64_t>& output_dims_to_padded_operand_dims) {
+  const GatherDimensionNumbers& dnums = gather->gather_dimension_numbers();
+  absl::Span<const int64_t> operand_batching_dims =
+      dnums.operand_batching_dims();
+  absl::Span<const int64_t> start_indices_batching_dims =
+      dnums.start_indices_batching_dims();
+  const HloInstruction* operand = gather->operand(0);
+  const HloInstruction* start_indices = gather->operand(1);
+  auto operand_batching_dims_to_start_indices_batching_dims = [&](int64_t dim) {
+    return start_indices_batching_dims[absl::c_find(operand_batching_dims,
+                                                    dim) -
+                                       operand_batching_dims.begin()];
+  };
+
+  int64_t num_padded_batching_dims = 0;
+  struct GatherOfPadInfo skip_transform{false, false};
+  for (int64_t operand_dim : padded_operand_dims) {
+    if (padded_operand_dims_to_output_dims.contains(operand_dim)) {
+      continue;
+    }
+    if (!absl::c_linear_search(operand_batching_dims, operand_dim)) {
+      // An operand dim that is neither a passthrough dim nor an explicit
+      // operand batching dim is padded. Can't perform the transformation.
+      return skip_transform;
+    }
+
+    if (start_indices->opcode() != HloOpcode::kPad) {
+      // An explicit operand batching dim is padded, but start indices is not
+      // produced by a pad instruction. can't perform the transformation.
+      return skip_transform;
+    }
+
+    int64_t start_indices_dim =
+        operand_batching_dims_to_start_indices_batching_dims(operand_dim);
+    const PaddingConfig::PaddingConfigDimension& start_indices_pad =
+        start_indices->padding_config().dimensions(start_indices_dim);
+    const PaddingConfig::PaddingConfigDimension& operand_pad =
+        operand->padding_config().dimensions(operand_dim);
+    if (!tsl::protobuf::util::MessageDifferencer::Equals(start_indices_pad,
+                                                         operand_pad)) {
+      return skip_transform;
+    }
+
+    num_padded_batching_dims++;
+  }
+
+  if (num_padded_batching_dims == 0) {
+    return {true, false};
+  }
+
+  if (num_padded_batching_dims != GetPaddedDims(start_indices).size()) {
+    // The start_indices pad instructions pads dims beyond the needed
+    // explicit batching dims, we can't perform the transformation.
+    return skip_transform;
+  }
+
+  // Add padded explicit operand batching dims and their corresponding result
+  // dims to padded_operand_dims_to_output_dims and
+  // output_dims_to_padded_operand_dims.
+  const absl::flat_hash_map<int64_t, int64_t>&
+      start_indices_dims_to_output_dims =
+          GetStartIndicesDimsToOutputDims(gather);
+  for (int64_t operand_dim : padded_operand_dims) {
+    if (!absl::c_linear_search(operand_batching_dims, operand_dim)) {
+      continue;
+    }
+
+    int64_t start_indices_dim =
+        operand_batching_dims_to_start_indices_batching_dims(operand_dim);
+    int64_t output_dim =
+        start_indices_dims_to_output_dims.at(start_indices_dim);
+    padded_operand_dims_to_output_dims[operand_dim] = output_dim;
+    output_dims_to_padded_operand_dims[output_dim] = operand_dim;
+  }
+
+  return {true, true};
+}
+
 }  // namespace
 
 absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
@@ -4154,17 +4287,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
   // gather the unpadded operand and then pad.
   if (HloInstruction* pad = gather->mutable_operand(0);
       pad->opcode() == HloOpcode::kPad) {
-    bool padded_on_gather_operand_passthrough_operand_dims = true;
     std::vector<int64_t> padded_dims = GetPaddedDims(pad);
-    for (int64_t padded_dims : padded_dims) {
-      if (!gather_operand_passthrough_operand_to_output_dims.contains(
-              padded_dims)) {
-        padded_on_gather_operand_passthrough_operand_dims = false;
-        break;
-      }
-    }
+    GatherOfPadInfo info = CheckPaddedDimsForGatherOfPad(
+        gather, padded_dims, gather_operand_passthrough_operand_to_output_dims,
+        gather_operand_passthrough_output_to_operand_dims);
     // Change gather(pad(...)) to pad(gather(...)).
-    if (padded_on_gather_operand_passthrough_operand_dims) {
+    if (info.should_transform) {
       Shape gather_shape = gather->shape();
       for (int64_t padded_dim : padded_dims) {
         gather_shape.mutable_dimensions()
@@ -4174,15 +4302,22 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
       auto gather_inst = Cast<HloGatherInstruction>(gather);
       std::vector<int64_t> slice_sizes;
       for (int i = 0; i != gather_inst->gather_slice_sizes().size(); ++i) {
-        if (absl::c_linear_search(padded_dims, i)) {
+        if (absl::c_linear_search(padded_dims, i) &&
+            !absl::c_linear_search(
+                gather->gather_dimension_numbers().operand_batching_dims(),
+                i)) {
           slice_sizes.push_back(pad->operand(0)->shape().dimensions()[i]);
         } else {
           slice_sizes.push_back(gather_inst->gather_slice_sizes()[i]);
         }
       }
+      HloInstruction* mutable_start_indices = gather->mutable_operand(1);
       HloInstruction* result =
           gather->AddInstruction(HloInstruction::CreateGather(
-              gather_shape, pad->mutable_operand(0), gather->mutable_operand(1),
+              gather_shape, pad->mutable_operand(0),
+              info.has_padded_batching_dims
+                  ? mutable_start_indices->mutable_operand(0)
+                  : mutable_start_indices,
               gather_inst->gather_dimension_numbers(), slice_sizes,
               gather_inst->indices_are_sorted()));
       PaddingConfig pad_config;
