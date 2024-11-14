@@ -238,8 +238,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
   opts.set_xla_gpu_enable_libnvptxcompiler(
       stream_executor::IsLibNvPtxCompilerSupported());
-  opts.set_xla_gpu_enable_libnvjitlink(
-      stream_executor::IsLibNvJitLinkSupported());
+  opts.set_xla_gpu_libnvjitlink_mode(DebugOptions::LIB_NV_JIT_LINK_MODE_AUTO);
 
   opts.set_xla_gpu_enable_dot_strength_reduction(true);
 
@@ -1851,6 +1850,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       },
       debug_options->xla_gpu_enable_libnvptxcompiler(),
       "Use libnvptxcompiler for PTX-to-GPU-assembly compilation instead of "
+      "calling ptxas."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_libnvjitlink",
+      [debug_options](bool enabled) {
+        debug_options->set_xla_gpu_libnvjitlink_mode(
+            enabled ? DebugOptions::LIB_NV_JIT_LINK_MODE_ENABLED
+                    : DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
+        return true;
+      },
+      stream_executor::IsLibNvJitLinkSupported(),
+      "Use libnvjitlink for PTX-to-GPU-assembly compilation instead of "
       "calling ptxas."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_dot_strength_reduction",

@@ -195,9 +195,11 @@ class NVPTXCompilationTests
     debug_options->set_xla_gpu_enable_libnvptxcompiler(
         compilation_method == PtxCompilationMethod::kNvPtxCompiler);
 
-    debug_options->set_xla_gpu_enable_libnvjitlink(
-        compilation_method == PtxCompilationMethod::kNvJitLink ||
-        linking_method == PtxLinkingMethod::kNvJitLink);
+    debug_options->set_xla_gpu_libnvjitlink_mode(
+        (compilation_method == PtxCompilationMethod::kNvJitLink ||
+         linking_method == PtxLinkingMethod::kNvJitLink)
+            ? DebugOptions::LIB_NV_JIT_LINK_MODE_ENABLED
+            : DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
 
     debug_options->set_xla_gpu_enable_llvm_module_compilation_parallelism(
         linking_method != PtxLinkingMethod::kNone);

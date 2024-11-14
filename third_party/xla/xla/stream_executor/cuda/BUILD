@@ -61,10 +61,7 @@ config_setting(
 
 bool_flag(
     name = "enable_libnvjitlink_support",
-    build_setting_default = if_google(
-        True,
-        oss_value = False,
-    ),
+    build_setting_default = True,
 )
 
 config_setting(
@@ -907,6 +904,30 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "nvjitlink_known_issues",
+    srcs = ["nvjitlink_known_issues.cc"],
+    hdrs = ["nvjitlink_known_issues.h"],
+    deps = [":nvjitlink"],
+)
+
+xla_cc_test(
+    name = "nvjitlink_known_issues_test",
+    srcs = ["nvjitlink_known_issues_test.cc"],
+    # LibNvJitLink is a binary-only library. Therefore is not compatible with msan/tsan.
+    tags = [
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":nvjitlink_known_issues",
+        ":nvjitlink_support",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],

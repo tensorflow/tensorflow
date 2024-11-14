@@ -966,8 +966,20 @@ message DebugOptions {
   // but potentially higher the performance.
   int32 xla_gpu_cudnn_gemm_max_plans = 318;
 
+  enum LibNvJitLinkMode {
+    // LibNvJitLink is used if it is available and no buggy version has been
+    // detected.
+    LIB_NV_JIT_LINK_MODE_AUTO = 0;
+    // LibNvJitLink is never used.
+    LIB_NV_JIT_LINK_MODE_DISABLED = 1;
+    // LibNvJitLink is used always. If it is not available, compilation will
+    // fail.
+    LIB_NV_JIT_LINK_MODE_ENABLED = 2;
+  }
+
   // If enabled, uses the libnvjitlink library for PTX compilation and linking
-  bool xla_gpu_enable_libnvjitlink = 319;
+  LibNvJitLinkMode xla_gpu_libnvjitlink_mode = 343;
+  reserved 319;  // was xla_gpu_enable_libnvjitlink with boolean type.
 
   // If true, XLA will wrap `dot` operations into async computations in an
   // effort to parallelize matrix operations.
@@ -1030,7 +1042,7 @@ message DebugOptions {
   }
   PGLEStrictnessLevel xla_gpu_pgle_accuracy_checker = 341;
 
-  // Next id: 343
+  // Next id: 344
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
