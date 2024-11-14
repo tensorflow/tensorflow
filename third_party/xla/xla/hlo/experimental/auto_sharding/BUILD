@@ -365,6 +365,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "auto_sharding_config",
+    hdrs = ["auto_sharding_config.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+    ],
+)
+
 build_test(
     name = "auto_sharding_runner_build_test",
     targets = [
