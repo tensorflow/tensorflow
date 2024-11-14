@@ -43,7 +43,8 @@ std::optional<int64_t> ComputeWhileLoopTripCountUpperBound(
 std::vector<const HloInstruction *> GetAuxiliaryLoopInductionVars(
     const HloInstruction *while_op);
 // Returns the tuple index of the loop induction variable if there is such an
-// induction variable detected. Otherwise returns nullopt.
+// induction variable detected. It is also checked that all ops that depend on
+// the induction variable have scalar shape. Otherwise returns nullopt.
 std::optional<int64_t> GetLoopInductionVarTupleIdx(
     const HloInstruction *while_op);
 
