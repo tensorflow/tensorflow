@@ -6304,4 +6304,16 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "scoped_timer",
+    hdrs = ["scoped_timer.h"],
+    deps = [
+        "//xla:util",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:source_location",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
 exports_files(["xla_aot_compile_test_gpu_target_config.prototxt"])

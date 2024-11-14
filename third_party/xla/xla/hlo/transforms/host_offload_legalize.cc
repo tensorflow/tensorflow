@@ -416,7 +416,7 @@ Shape RemoveMajormostDimension(const Shape& shape) {
   return ShapeUtil::DeleteDimension(majormost_dim, shape);
 }
 
-absl::Status MoveCopy(
+absl::Status MoveCopyDown(
     const InstructionAndIndex& copy_to_move_instruction_and_index,
     const CallGraph* call_graph,
     absl::flat_hash_set<HloInstruction*>& processed_annotations,
@@ -625,7 +625,7 @@ absl::Status MoveCopy(
 
 // Returns true if the copy should be moved. A copy can be moved if there is
 // always a place for it after being moved back to device.
-bool ShouldMoveCopy(InstructionAndIndex copy_to_move) {
+bool ShouldMoveCopyDown(InstructionAndIndex copy_to_move) {
   std::queue<host_offload_utils::InstructionAndShapeIndex> queue;
   queue.push({copy_to_move.instruction, {}});
   while (!queue.empty()) {
@@ -821,11 +821,29 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
   // Process all copies one at a time from the last to the first and push it to
   // its specific user.
   for (auto it = copies_to_move.rbegin(); it != copies_to_move.rend(); ++it) {
-    InstructionAndIndex& copy_to_move = *it;
-    if (ShouldMoveCopy(copy_to_move)) {
-      TF_RETURN_IF_ERROR(
-          MoveCopy(copy_to_move, call_graph, processed_annotations, to_remove));
+    InstructionAndIndex& copy_to_move_and_index = *it;
+    HloInstruction* copy_to_move = copy_to_move_and_index.instruction;
+    if (ShouldMoveCopyDown(copy_to_move_and_index)) {
+      TF_RETURN_IF_ERROR(MoveCopyDown(copy_to_move_and_index, call_graph,
+                                      processed_annotations, to_remove));
       changed = true;
+    } else {
+      // We should not move this copy down; maybe we can move it up. For now, we
+      // only check if we can easily move it up by swapping places with its
+      // operand.
+      if (copy_to_move->operand(0)->IsCustomCall(
+              host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
+        HloInstruction* custom_call = copy_to_move->mutable_operand(0);
+        TF_RETURN_IF_ERROR(copy_to_move->ReplaceAllUsesWith(custom_call));
+        TF_RETURN_IF_ERROR(copy_to_move->ReplaceOperandWith(
+            0, custom_call->mutable_operand(0)));
+        TF_RETURN_IF_ERROR(custom_call->ReplaceOperandWith(0, copy_to_move));
+        copy_to_move->mutable_shape()->mutable_layout()->set_memory_space(
+            Layout::kDefaultMemorySpace);
+        *custom_call->mutable_shape()->mutable_layout() =
+            copy_to_move->shape().layout();
+        changed = true;
+      }
     }
   }
   return changed;
