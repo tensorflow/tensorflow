@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -1277,17 +1278,32 @@ class AlgorithmsSupportTest
   }
 
   absl::StatusOr<std::unique_ptr<HloModule>> GetModule(
-      std::string_view hlo_template, std::string_view backend_name,
-      std::string_view algorithm, int m, int n, const DebugOptions& options) {
+      std::string_view hlo_template,
+      const std::vector<std::pair<std::string, std::string>>& args,
+      const DebugOptions& options) {
     auto config = GetModuleConfig(options);
-    auto module_name =
-        absl::StrCat(backend_name, "_", m, "_", n, "_", kMaxK, "_", algorithm);
-    auto hlo_text =
-        absl::Substitute(hlo_template, module_name, m, kMaxK, n, algorithm);
-    TF_ASSIGN_OR_RETURN(auto module,
-                        ParseAndReturnVerifiedModule(hlo_text, config));
-    return backend().compiler()->RunHloPasses(
-        std::move(module), backend().default_stream_executor(), GetAllocator());
+    auto hlo_text = absl::StrReplaceAll(hlo_template, args);
+
+    static int counter = 0;
+
+    DumpToFileInDirOrStdout(options, ++counter, GetTestName("_"), "",
+                            "hlo_text.before_passes.txt", hlo_text);
+    auto verified_module_or = ParseAndReturnVerifiedModule(hlo_text, config);
+    if (!verified_module_or.ok()) {
+      LOG(ERROR) << "Failed to parse module: " << verified_module_or.status();
+      return verified_module_or.status();
+    }
+    auto module_or = backend().compiler()->RunHloPasses(
+        std::move(verified_module_or.value()),
+        backend().default_stream_executor(), GetAllocator());
+    if (!module_or.ok()) {
+      LOG(ERROR) << "Failed to compile module: " << module_or.status();
+    }
+    DumpToFileInDirOrStdout(options, counter, GetTestName("_"), "",
+                            "hlo_text.after_passes.txt",
+                            module_or.ok() ? module_or.value()->ToString()
+                                           : module_or.status().message());
+    return module_or;
   };
 
  protected:
@@ -1306,19 +1322,23 @@ class AlgorithmsSupportTest
     algorithm_ = AlgorithmToString(std::get<0>(GetParam()));
   }
 
-  void DumpResults(const CSVWriter& csv, std::string_view suffix) {
+  std::string GetTestName(std::string_view delimiter) const {
     auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
     auto suite_name = test_info->test_suite_name();
     std::string test_name = test_info->name();
-    auto title = absl::StrCat("Test name: ", suite_name, ".", test_name);
+    return absl::StrReplaceAll(absl::StrCat(suite_name, delimiter, test_name),
+                               {{"/", "_"}});
+  }
+
+  void DumpResults(const CSVWriter& csv, std::string_view suffix) {
+    auto title = absl::StrCat("Test name: ", GetTestName("."));
     auto result = csv.GetResult(title, ", ");
     LOG(ERROR) << "result: \n" << result;
 
-    test_name = absl::StrReplaceAll(test_name, {{" ", "_"}, {"/", "_"}});
-    auto name = absl::StrCat(suite_name, test_name, "_", suffix);
-    DumpToFileInDirOrStdout(debug_options_, 0, algorithm_, name, ".txt",
-                            result);
+    auto test_name = GetTestName("_");
+    DumpToFileInDirOrStdout(debug_options_, 0, test_name, "", suffix, result);
   }
+
   DebugOptions debug_options_;
 
   DebugOptions triton_options_;
@@ -1334,17 +1354,67 @@ class AlgorithmsSupportTest
   static constexpr int kMaxK = kMaxSize;
 };
 
-TEST_P(AlgorithmsSupportTest, Dot2D) {
+TEST_P(AlgorithmsSupportTest, DotBC) {
   const std::string kHloText = R"(
-    HloModule $0
+    HloModule ${module_name}
 
     ENTRY e {
-      p0 = f32[$1,$2] parameter(0)
-      p1 = f32[$2,$3] parameter(1)
-      ROOT dot = f32[$1,$3] dot(p0, p1),
+      p0 = f32[${b},${k}] parameter(0)
+      p1 = f32[${b},${k}] parameter(1)
+      ROOT dot = f32[${b}] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={1},
+        lhs_batch_dims={0},
+        rhs_batch_dims={0},
+        algorithm=${algorithm}
+    }
+  )";
+  CSVWriter csv;
+  csv.appendValue("M/N");
+  for (int k = 1; k <= kMaxSize; k *= kStepSize) {
+    csv.appendValue(k);
+  }
+  for (int b = 1; b <= kMaxSize; b *= kStepSize) {
+    csv.nextRow();
+    csv.appendValue(b);
+    for (int k = 1; k <= kMaxSize; k *= kStepSize) {
+      auto run = [&](std::string_view backend, std::string_view pattern,
+                     const DebugOptions& options) -> std::string_view {
+        auto test_name = absl::StrReplaceAll(TestName(), {{"/", "_"}});
+        auto module_name =
+            absl::StrCat(test_name, "_", backend, "_", b, "_", k);
+        auto module = GetModule(kHloText,
+                                {{"${module_name}", module_name},
+                                 {"${algorithm}", algorithm_},
+                                 {"${b}", absl::StrCat(b)},
+                                 {"${k}", absl::StrCat(k)}},
+                                options);
+        if (!module.ok()) {
+          return "Fail";
+        }
+        return absl::StrContains(module.value()->ToString(), pattern) ? " Yes"
+                                                                      : "  No";
+      };
+
+      csv.appendValue(absl::StrCat(
+          "('triton': ", run("triton", kTritonGemmPattern, triton_options_),
+          ", 'blas': ", run("blas", kBlasPattern, blas_options_), ")"));
+    }
+  }
+  DumpResults(csv, "backend_support_matrix");
+}
+
+TEST_P(AlgorithmsSupportTest, DotNC) {
+  const std::string kHloText = R"(
+    HloModule ${module_name}
+
+    ENTRY e {
+      p0 = f32[${m},${k}] parameter(0)
+      p1 = f32[${k},${n}] parameter(1)
+      ROOT dot = f32[${m},${n}] dot(p0, p1),
         lhs_contracting_dims={1},
         rhs_contracting_dims={0},
-        algorithm=$4
+        algorithm=${algorithm}
     }
   )";
   CSVWriter csv;
@@ -1356,9 +1426,18 @@ TEST_P(AlgorithmsSupportTest, Dot2D) {
     csv.nextRow();
     csv.appendValue(m);
     for (int n = 1; n <= kMaxSize; n *= kStepSize) {
-      auto run = [&](std::string_view backend, std::string_view pattern,
+      auto run = [&](std::string backend, std::string_view pattern,
                      const DebugOptions& options) -> std::string_view {
-        auto module = GetModule(kHloText, backend, algorithm_, m, n, options);
+        auto test_name = absl::StrReplaceAll(TestName(), {{"/", "_"}});
+        auto module_name = absl::StrCat(test_name, "_", backend, "_", m, "_",
+                                        kMaxK, "_", n, "_", algorithm_);
+        auto module = GetModule(kHloText,
+                                {{"${module_name}", module_name},
+                                 {"${algorithm}", algorithm_},
+                                 {"${m}", absl::StrCat(m)},
+                                 {"${n}", absl::StrCat(n)},
+                                 {"${k}", absl::StrCat(kMaxK)}},
+                                options);
         if (!module.ok()) {
           return "Fail";
         }
