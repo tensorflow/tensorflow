@@ -50,6 +50,10 @@ class Handle {
 
   H Release() noexcept { return ptr_.release(); }
 
+  bool IsOwned() const noexcept {
+    return ptr_.get_deleter() != DummyDeleter<H>;
+  }
+
  private:
   std::unique_ptr<std::remove_pointer_t<H>, void (*)(H)> ptr_ = {nullptr,
                                                                  DummyDeleter};

@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TENSOR_BUFFER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TENSOR_BUFFER_H_
 
+#include <atomic>
 #include <memory>
 #include <type_traits>
 #include <variant>
@@ -81,6 +82,26 @@ class LiteRtTensorBufferT {
   absl::StatusOr<void*> Lock(LiteRtEvent event = nullptr);
   absl::Status Unlock();
 
+  // Used to duplicate the current tensor buffer. Internally it increases
+  // reference count to the underlying buffer.
+  void Duplicate() const { Ref(); }
+
+  // Increments reference count by one.
+  void Ref() const { ref_.fetch_add(1, std::memory_order_relaxed); }
+
+  // Decrements reference count by one.  If the count remains
+  // positive, returns false.  When the count reaches zero, returns
+  // true.
+  bool Unref() const {
+    if (ref_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+      return true;
+    }
+    return false;
+  }
+
+  // Gets the current reference count.
+  int RefCount() const { return ref_.load(std::memory_order_relaxed); }
+
  private:
   struct HostBuffer {
     void* addr;
@@ -139,6 +160,7 @@ class LiteRtTensorBufferT {
   size_t buffer_offset_;
   std::variant<HostBuffer, AhwbBuffer, IonBuffer, DmaBufBuffer, FastRpcBuffer>
       buffer_;
+  mutable std::atomic_int_fast32_t ref_;
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TENSOR_BUFFER_H_

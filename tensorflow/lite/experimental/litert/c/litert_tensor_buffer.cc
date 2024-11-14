@@ -213,6 +213,14 @@ LiteRtStatus LiteRtCreateManagedTensorBuffer(
   return kLiteRtStatusOk;
 }
 
+LiteRtStatus LiteRtDuplicateTensorBuffer(LiteRtTensorBuffer tensor_buffer) {
+  if (!tensor_buffer) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  tensor_buffer->Duplicate();
+  return kLiteRtStatusOk;
+}
+
 LiteRtStatus LiteRtGetTensorBufferType(LiteRtTensorBuffer tensor_buffer,
                                        LiteRtTensorBufferType* buffer_type) {
   if (!tensor_buffer || !buffer_type) {
@@ -295,5 +303,7 @@ LiteRtStatus LiteRtUnlockTensorBuffer(LiteRtTensorBuffer tensor_buffer) {
 }
 
 void LiteRtDestroyTensorBuffer(LiteRtTensorBuffer tensor_buffer) {
-  delete tensor_buffer;
+  if (tensor_buffer->Unref()) {
+    delete tensor_buffer;
+  }
 }

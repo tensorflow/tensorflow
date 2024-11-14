@@ -153,6 +153,11 @@ LiteRtStatus LiteRtCreateManagedTensorBuffer(
     const LiteRtRankedTensorType* tensor_type, size_t buffer_size,
     LiteRtTensorBuffer* buffer);
 
+// Create a duplicate of the current tensor buffer. It will increase the
+// reference count of a managed tensor buffer. And the number decreases when
+// LiteRtDestroyTensorBuffer() is called.
+LiteRtStatus LiteRtDuplicateTensorBuffer(LiteRtTensorBuffer tensor_buffer);
+
 LiteRtStatus LiteRtGetTensorBufferType(LiteRtTensorBuffer tensor_buffer,
                                        LiteRtTensorBufferType* buffer_type);
 
@@ -165,7 +170,7 @@ LiteRtStatus LiteRtGetTensorBufferSize(LiteRtTensorBuffer tensor_buffer,
 LiteRtStatus LiteRtGetTensorBufferOffset(LiteRtTensorBuffer tensor_buffer,
                                          size_t* offset);
 
-// Lock a tensor buffer and map it to host memory, optionally syncronizing on a
+// Lock a tensor buffer and map it to host memory, optionally synchronizing on a
 // given input event (parameter `event` can be NULL).
 LiteRtStatus LiteRtLockTensorBuffer(LiteRtTensorBuffer tensor_buffer,
                                     void** host_mem_addr, LiteRtEvent event);
@@ -173,6 +178,9 @@ LiteRtStatus LiteRtLockTensorBuffer(LiteRtTensorBuffer tensor_buffer,
 // Unlock a tensor buffer and (potentially) unmap it from host memory.
 LiteRtStatus LiteRtUnlockTensorBuffer(LiteRtTensorBuffer buffer);
 
+// Destroy a tensor buffer. If the tensor buffer is managed, the number of
+// references to it is decreased and released the underlying TensorBufferT when
+// the last reference is removed.
 void LiteRtDestroyTensorBuffer(LiteRtTensorBuffer buffer);
 
 #ifdef __cplusplus

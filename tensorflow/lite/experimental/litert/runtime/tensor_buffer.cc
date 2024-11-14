@@ -54,7 +54,8 @@ LiteRtTensorBufferT::LiteRtTensorBufferT(
     : tensor_type_(tensor_type),
       buffer_type_(buffer_type),
       buffer_size_(buffer_size),
-      buffer_offset_(buffer_offset) {
+      buffer_offset_(buffer_offset),
+      ref_(1) {
   // Copy local memory passed by the caller.
   Copy(tensor_type_.layout.rank, tensor_type_.layout.dimensions, dimensions_);
   if (tensor_type_.layout.strides) {

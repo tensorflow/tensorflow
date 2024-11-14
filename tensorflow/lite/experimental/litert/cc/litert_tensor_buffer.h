@@ -41,6 +41,21 @@ class TensorBuffer
       : internal::Handle<LiteRtTensorBuffer, LiteRtDestroyTensorBuffer>(
             tensor_buffer, owned) {}
 
+  // Creates a duplicate of the current TensorBuffer object. The returned
+  // object is reference counted so the underlying LiteRtTensorBuffer handle is
+  // not released with the destructor until the last reference is removed.
+  absl::StatusOr<TensorBuffer> Duplicate() const {
+    if (!IsOwned()) {
+      return absl::FailedPreconditionError(
+          "Cannot duplicate a non-owned tensor buffer");
+    }
+    if (auto status = LiteRtDuplicateTensorBuffer(Get());
+        status != kLiteRtStatusOk) {
+      return absl::InternalError("Failed to duplicate managed tensor buffer");
+    }
+    return TensorBuffer(Get());
+  }
+
   static absl::StatusOr<TensorBuffer> CreateManaged(
       LiteRtTensorBufferType buffer_type, const RankedTensorType& tensor_type,
       size_t buffer_size) {
