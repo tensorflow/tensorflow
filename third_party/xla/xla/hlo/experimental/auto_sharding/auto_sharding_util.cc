@@ -1105,58 +1105,6 @@ bool TileAssignmentMatchesMesh(const HloSharding& sharding,
   return sharded_dims <= 0;
 }
 
-absl::StatusOr<std::vector<int64_t>> GetMeshDimPermutationOrderInShardingSpec(
-    const HloSharding& spec, const DeviceMesh& device_mesh,
-    bool consider_reverse_device_meshes) {
-  auto check_mesh =
-      [&](const Array<int64_t>& mesh) -> std::optional<std::vector<int64_t>> {
-    // Permute the dimensions (or axes in numpy term), find the transform that
-    // makes tile_assignment == device_mesh.
-    std::vector<int64_t> axes(mesh.num_dimensions());
-    absl::c_iota(axes, 0);
-    do {
-      Array<int64_t> transposed_mesh = Transpose(mesh, axes);
-      if (std::equal(transposed_mesh.begin(), transposed_mesh.end(),
-                     spec.tile_assignment().array().begin())) {
-        return axes;
-      }
-    } while (absl::c_next_permutation(axes));
-    return std::nullopt;
-  };
-
-  // This is an expensive search, as we try all possible meshes obtained by
-  // reversing a subset of the mesh axes. Reversed shardings only occur due to
-  // the somewhat rare kReverse HLO op. The hope therefore is that most calls to
-  // the function that reach here will find a mapping within the first iteration
-  // of the loop below.
-  std::vector<int64_t> axes(device_mesh.num_dimensions());
-  size_t num_subsets =
-      consider_reverse_device_meshes ? (1 << device_mesh.num_dimensions()) : 1;
-  std::vector<int64_t> reverse_dimensions;
-  for (size_t i = 0; i < num_subsets; ++i) {
-    reverse_dimensions.clear();
-    for (size_t j = 0; j < device_mesh.num_dimensions(); ++j) {
-      if (i & (1 << j)) {
-        reverse_dimensions.push_back(j);
-      }
-    }
-    Array<int64_t> new_mesh(device_mesh.dimensions());
-    new_mesh.Each([&](absl::Span<const int64_t> indices, int64_t* device) {
-      std::vector<int64_t> original_indices(indices.begin(), indices.end());
-      for (int64_t d : reverse_dimensions) {
-        original_indices[d] = new_mesh.dim(d) - 1 - original_indices[d];
-      }
-      *device = device_mesh(original_indices);
-    });
-    if (auto result = check_mesh(new_mesh); result.has_value()) {
-      return result.value();
-    }
-  }
-  return absl::NotFoundError(absl::StrCat("Could not find mapping for ",
-                                          spec.ToString(), " with device mesh ",
-                                          device_mesh.ToString()));
-}
-
 absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
     int64_t tensor_shape_rank, const HloSharding& spec,
     const DeviceMesh& device_mesh, bool consider_reverse_device_meshes) {
@@ -1176,8 +1124,8 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<int64_t> axes,
-                      GetMeshDimPermutationOrderInShardingSpec(
-                          spec, device_mesh, consider_reverse_device_meshes));
+                      device_mesh.GetMeshDimPermutationOrderInShardingSpec(
+                          spec, consider_reverse_device_meshes));
   // Transform tile_assignment_dimensions using found transformation (axes).
   std::vector<int64_t> tensor_dim_to_device_dim(tensor_shape_rank, -1);
   int mesh_index = 0;
@@ -1211,10 +1159,9 @@ GetTensorDimToMeshDimMixedMeshSharding(int64_t tensor_shape_rank,
         "sharded dims.");
   }
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<int64_t> axes,
-      GetMeshDimPermutationOrderInShardingSpec(sharding, device_mesh,
-                                               consider_reverse_device_meshes));
+  TF_ASSIGN_OR_RETURN(std::vector<int64_t> axes,
+                      device_mesh.GetMeshDimPermutationOrderInShardingSpec(
+                          sharding, consider_reverse_device_meshes));
 
   std::vector<absl::btree_set<int64_t>> tensor_dim_to_mesh_axis_mapping;
   int mesh_axis_idx = 0;
@@ -2223,10 +2170,11 @@ AdjustShardingWithPartialMeshShapePerElement(
 
   std::vector<int64_t> new_tile_assignment_dimensions;
   bool replicate_on_last_dim = false;
-  TF_ASSIGN_OR_RETURN(std::vector<int64_t> axes,
-                      GetMeshDimPermutationOrderInShardingSpec(
-                          sharding, original_device_mesh,
-                          /*consider_reverse_device_meshes=*/true));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> axes,
+      original_device_mesh.GetMeshDimPermutationOrderInShardingSpec(
+          sharding,
+          /*consider_reverse_device_meshes=*/true));
 
   int mesh_axis_idx = 0;
   int end = sharding.ReplicateOnLastTileDim()
