@@ -128,7 +128,7 @@ llvm::SmallVector<int64_t, 4> ResolveStridesOrDilations(
 
 // Resolves optional paddings attributes. If not present, will return
 // trivial [0, 0] paddings on each dim.
-llvm::SmallVector<DimPadding, 2> ResolvePadding(
+llvm::SmallVector<DimPadding, 4> ResolvePadding(
     int64_t rank, std::optional<mlir::DenseIntElementsAttr> opt_padding);
 
 // Does the padding correspond to "SAME" on given dimension configuration.
