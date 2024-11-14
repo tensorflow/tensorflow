@@ -1,15 +1,528 @@
+diff --git a/docs/_toc.yaml b/docs/_toc.yaml
+index 35221fa..c0ca861 100644
+--- a/docs/_toc.yaml
++++ b/docs/_toc.yaml
+@@ -2,12 +2,18 @@ toc:
+ - heading: Shardy documentation
+ - title: Getting started
+   section:
+-  - title: Introduction
++  - Introduction
+     path: /shardy
+   - title: Overview
+     path: /shardy/overview
+   - title: Use Shardy from JAX
+     path: /shardy/getting_started_jax
++  # - title: Use Shardy with MyDialect
++  #   path: /shardy/getting_started_mydialect
++  # - title: Automatic partitioner
++  #   path: /shardy/automatic_partitioner
++  # - title: Contributing guide
++  #   path: /shardy/contributing
+ - title: Concepts
+   section:
+   - title: Sharding representation
+@@ -18,13 +24,13 @@ toc:
+     path: /shardy/compiler_api
+ - title: Reference documentation
+   section:
+-  - title: SDY dialect
+-    path: /shardy/sdy_dialect
+-  - title: SDY export passes
+-    path: /shardy/sdy_export_passes
+-  - title: SDY import passes
+-    path: /shardy/sdy_import_passes
+-  - title: SDY op interfaces
+-    path: /shardy/sdy_op_interfaces
+-  - title: SDY propagation passes
+-    path: /shardy/sdy_propagation_passes
++    - title: SDY dialect
++      path: /shardy/sdy_dialect
++    - title: SDY export passes
++      path: /shardy/sdy_export_passes
++    - title: SDY import passes
++      path: /shardy/sdy_import_passes
++    - title: SDY op interfaces
++      path: /shardy/sdy_op_interfaces
++    - title: SDY propagation passes
++      path: /shardy/sdy_propagation_passes
+diff --git a/docs/compiler_api.md b/docs/compiler_api.md
+index 9da5054..f86ec7e 100644
+--- a/docs/compiler_api.md
++++ b/docs/compiler_api.md
+@@ -9,7 +9,7 @@ sharding representations can be used in a program, e.g. to attach a sharding to
+ a specific tensor of the program.
+ 
+ Sharding propagation is the process of deciding on a sharding for every tensor
+-in a program given sharding constraints for a subset of the tensors. Shardy's
++in a program given sharding constraints for a subset of the tensors. Shardy’s
+ compiler API exposes several ways to influence/control sharding propagation.
+ Additionally it allows users to insert manually sharded computations into their
+ programs.
+@@ -19,7 +19,7 @@ programs.
+ This doc describes the design of such API components in Shardy and explains
+ their behavior and invariants. Note that while this API is used to control
+ sharding propagation, this doc is **NOT** going to discuss anything about the
+-behavior of propagation nor how it's designed.
++behavior of propagation nor how it’s designed.
+ 
+ ## Overview
+ 
+@@ -132,9 +132,9 @@ module @"jit_zeros_like" {
+ }
+ ```
+ 
+-In this simple example above, alternatively we could've explicitly specified the
++In this simple example above, alternatively we could’ve explicitly specified the
+ same sharding on the output as the input, which would achieve the same effect,
+-since we've already known what shard we want to assign to the input ahead of
++since we’ve already known what shard we want to assign to the input ahead of
+ time but in more realistic cases, we use shard as to keep the sharding of
+ multiple tensors in sync without necessarily knowing the sharding for any of
+ them, while Shardy will take care of the rest and find the best sharding to
+diff --git a/docs/getting_started_jax.ipynb b/docs/getting_started_jax.ipynb
+index 2f458b5..6da26b3 100644
+--- a/docs/getting_started_jax.ipynb
++++ b/docs/getting_started_jax.ipynb
+@@ -229,7 +229,7 @@
+     "\n",
+     "`None` is no sharding as expected since GSPMD will populate this during sharding propagation.\n",
+     "\n",
+-    "Notice how all the axis names go away? While there is a 1:1 correspondence between `NamedSharding` and GSPMD sharding, as a reader, it can be difficult to read. It is only more difficult once you introduce various axis names.\n",
++    "Notice how all the axis names go away? While there is a 1:1 correspondance between `NamedSharding` and GSPMD sharding, as a reader, it can be difficult to read. It is only more difficult once you introduce various axis names.\n",
+     "\n",
+     "Let's look at Shardy for comparison. To enable Shardy in JAX, simply enable the flag:"
+    ]
+@@ -283,7 +283,7 @@
+     "| `NamedSharding(mesh, PartitionSpec(None, 'model'))` | `#sdy.sharding<@mesh, [{}, {\"model\"}]>`     |\n",
+     "| `None`    | nothing    |\n",
+     "\n",
+-    "Shardy's representation is a lot closer to what JAX `NamedSharding`s are like. So when looking at a file dump of your program after propagation, it will be a lot easier to understand what is going on since the correspondence is a lot closer to JAX.\n",
++    "Shardy's representation is a lot closer to what JAX `NamedSharding`s are like. So when looking at a file dump of your program after propagation, it will be a lot easier to understand what is going on since the correspondance is a lot closer to JAX.\n",
+     "\n",
+     "Note that instead of the total devices/axes living on the sharding, they live on a top level `@mesh` value."
+    ]
+diff --git a/docs/propagation.md b/docs/propagation.md
+index f6ae395..7c708b3 100644
+--- a/docs/propagation.md
++++ b/docs/propagation.md
+@@ -35,11 +35,11 @@ We compose multiple conflict resolution strategies in a hierarchy:
+     partitioning of the program, e.g., doing batch parallelism -> megatron ->
+     ZeRO sharding. This is achieved by applying propagation in iterations - at
+     iteration `i` we propagate all dimension shardings that have priority `<=i`
+-    and ignore all others. We also make sure that propagation won't override
++    and ignore all others. We also make sure that propagation won’t override
+     user defined shardings with lower priority (`>i`), even if they are ignored
+     during previous iterations.
+ 2.  **Operation based priorities**. We propagate shardings, based on the
+-    operation type. The "pass-through" operations (e.g., element-wise operations
++    operation type. The “pass-through” operations (e.g., element-wise operations
+     and reshape) have the highest priority, while operations with shape
+     transformation (e.g., dot and reduce) have lower priority.
+ 3.  **Aggressive propagation.** Propagate shardings with an aggressive strategy.
+@@ -91,7 +91,7 @@ In this encoding, every dimension is mapped to a single factor.
+ sharded along an axis, propagation will lookup the factor of that dimension in
+ this mapping, and shard other operands/results along their respective dimension
+ with the same factor – and (subject to the earlier discussion about replication)
+-potentially also replicate other operands/results that don't have that factor
++potentially also replicate other operands/results that don’t have that factor
+ along that axis.
+ 
+ ### Compound factors: extending the rule for reshapes
+diff --git a/docs/sdy_dialect.md b/docs/sdy_dialect.md
+index 0fe5f17..19b1259 100755
+--- a/docs/sdy_dialect.md
++++ b/docs/sdy_dialect.md
+@@ -751,7 +751,7 @@ Syntax:
+ A tensor sharding is bound to a specific mesh, and can only reference axis
+ names from that mesh. The dimension shardings tell us for each dimension of
+ the tensor, along which axes (or sub-axes) it is sharded from major to
+-minor. All other axes that don't shard a dimension are either implicitly or
++minor. All other axes that don’t shard a dimension are either implicitly or
+ explicitly (if they appear in the list of replicated axes) replicated.
+ 
+ The mesh this sharding is bound to can either be specified by a symbol
+diff --git a/docs/sharding_representation.md b/docs/sharding_representation.md
+index f54e64c..b881438 100644
+--- a/docs/sharding_representation.md
++++ b/docs/sharding_representation.md
+@@ -24,7 +24,7 @@ specifies along which axes (of a specific logical mesh), each dimension of the
+ tensor is sharded, ordered from major to minor. The tensor is replicated along
+ all other axes of the mesh.
+ 
+-Let's explore the sharding representation with a simple rank 2 tensor and 4
++Let’s explore the sharding representation with a simple rank 2 tensor and 4
+ devices.
+ 
+ We first reshape the 4 devices `[0, 1, 2, 3]` into a 2-d array `[[0, 1], [2,
+@@ -42,7 +42,7 @@ We can then shard the following rank 2 tensor `[[a, b], [c, d]]` as follows:
+ 
+ *   [**Open/Closed dimensions**](#openclosed-dimensions) - dimensions can either
+     be open - can be further sharded on available axes; or closed - are fixed
+-    and can't be changed.
++    and can’t be changed.
+ *   [**Explicitly replicated axes**](#explicitly-replicated-axes) - all axes
+     that are not used to shard a dimension are implicitly replicated, but the
+     sharding can specify axes that are explicitly replicated and therefore
+@@ -58,7 +58,7 @@ We can then shard the following rank 2 tensor `[[a, b], [c, d]]` as follows:
+     order per-dimension sharding constraints will be propagated throughout the
+     module.
+ *   [**Dimension sharding divisibility**](#dimension-sharding-divisibility) - a
+-    dimension can be sharded on axes whose product of sizes doesn't divide the
++    dimension can be sharded on axes whose product of sizes doesn’t divide the
+     dimension size.
+ 
+ ## Detailed Design
+@@ -69,7 +69,7 @@ We expand the basic structure and each key component in this section.
+ 
+ The dimension shardings tell us for each dimension of the tensor, along which
+ axes (or [sub-axes](#axis-splitting-and-sub-axes)) it is sharded from major to
+-minor. All other axes that don't shard a dimension are implicitly replicated (or
++minor. All other axes that don’t shard a dimension are implicitly replicated (or
+ [explicitly replicated](#explicitly-replicated-axes)).
+ 
+ We will start with a simple example and extend it as we describe additional
+@@ -98,22 +98,22 @@ Each dimension of a tensor can either be open or closed.
+ #### Open
+ 
+ An open dimension is open for propagation to further shard it along additional
+-axes, i.e. the specified dimension sharding doesn't have to be the final
++axes, i.e. the specified dimension sharding doesn’t have to be the final
+ sharding of that dimension. This is similar (but not exactly the same as) to
+ 
+ *   [`jax.sharding.PartitionSpec.UNCONSTRAINED`](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.PartitionSpec)
+-*   GSPMD's `unspecified_dims`
++*   GSPMD’s `unspecified_dims`
+ 
+ If a dimension is open we add a `?` following the axes that the dimension is
+ already sharded on (see example below).
+ 
+ #### Closed
+ 
+-A closed dimension is one that isn't available for propagation to add further
++A closed dimension is one that isn’t available for propagation to add further
+ sharding to, i.e. the specified dimension sharding is the final sharding of that
+-dimension and it can't be changed. A common use case of this is how GSPMD
+-(usually) doesn't modify the input/output arguments of a module, or how with
+-`jax.jit`, the user specified `in_shardings` are static - they can't change.
++dimension and it can’t be changed. A common use case of this is how GSPMD
++(usually) doesn’t modify the input/output arguments of a module, or how with
++`jax.jit`, the user specified `in_shardings` are static - they can’t change.
+ 
+ We can extend the example from above to have an open dimension and a closed
+ dimension.
+@@ -193,7 +193,7 @@ greater than the 1st dimension of the result, we need to split the axis into two
+ sub-axes `"x.0"` and `"x.1"` of size 2 each, and shard the 1st dimension on
+ `"x.0"` and the 2nd dimension on `"x.1"`.
+ 
+-**Note**: shardings that are specified by the users can't have sub-axes and must
++**Note**: shardings that are specified by the users can’t have sub-axes and must
+ reference full axes, as this is currently not supported by JAX and users can
+ always change their mesh to have smaller axes.
+ 
+@@ -201,8 +201,8 @@ always change their mesh to have smaller axes.
+ 
+ It is possible that during propagation an input or output of the main function
+ will become sharded along a sub-axis. This can be a problem for some frameworks,
+-where we can't express such shardings to give back to the user (e.g. in JAX we
+-can't express sub-axes with
++where we can’t express such shardings to give back to the user (e.g. in JAX we
++can’t express sub-axes with
+ [`jax.sharding.NamedSharding`](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.NamedSharding)).
+ 
+ We have a few options for dealing with such cases:
+@@ -239,9 +239,9 @@ sub-axes: `"x":(m)k`.
+     the right of (that are minor to) this sub-axis (if equal to 1 it means there
+     are none, If larger than 1 it corresponds to a single or multiple sub-axes).
+ 
+-However, the number of other sub-axes doesn't make a difference when using a
+-specific sub-axis `"x":(m)k`, and any other sub-axis doesn't need to be
+-referenced in the tensor sharding if it doesn't shard a dimension or is
++However, the number of other sub-axes doesn’t make a difference when using a
++specific sub-axis `"x":(m)k`, and any other sub-axis doesn’t need to be
++referenced in the tensor sharding if it doesn’t shard a dimension or is
+ explicitly replicated.
+ 
+ Going back to the example in [Motivation section](#motivation), we can shard the
+@@ -287,7 +287,7 @@ as explicitly replicated. We allow this in the representation because sub-axes
+ behave just like full axes, i.e. when you shard a dimension along a sub-axis of
+ axis `"x"`, the other sub-axes of `"x"` are implicitly replicated, and therefore
+ can be explicitly replicated to indicate that a sub-axis must stay replicated
+-and can't be used to shard a dimension.
++and can’t be used to shard a dimension.
+ 
+ For example:
+ 
+@@ -324,7 +324,7 @@ assignments.
+ For example,
+ [`jax.sharding.PositionalSharding` does not have one common logical mesh](https://jax.readthedocs.io/en/latest/notebooks/Distributed_arrays_and_automatic_parallelization.html#sharding-basics-and-the-positionalsharding-subclass).
+ GSPMD currently supports that with HloSharding, where the representation can be
+-an ordered list of devices and dimension sizes, but this can't be represented
++an ordered list of devices and dimension sizes, but this can’t be represented
+ with the [axis splitting](#axis-splitting-and-sub-axes) above.
+ 
+ We overcome this limitation and handle existing corner cases by defining
+@@ -362,7 +362,7 @@ Priority is a way to prioritize certain partitioning+propagation decisions over
+ others, and allows for incremental partitioning of a program.
+ 
+ Priorities are values attached to some or all dimensions of a sharding
+-representation (replicated axes don't have priorities).
++representation (replicated axes don’t have priorities).
+ 
+ For example:
+ 
+@@ -375,7 +375,7 @@ For example:
+ 
+ Priorities give users more fine grained control over propagation, e.g., batch
+ parallelism first, then megatron, and finally ZeRO sharding. This allows for
+-strong guarantees about what's partitioned and allows for better debuggability
++strong guarantees about what’s partitioned and allows for better debuggability
+ by having more fine grained sharding strategies (can see how the program looks
+ after just megatron in isolation).
+ 
+@@ -384,12 +384,12 @@ indicates that all shardings with priority `<i` will be propagated to the entire
+ program before shardings with priority `i`.
+ 
+ Even if a sharding has an open dimension with lower priority, e.g., `{"z",?}p2`,
+-it won't be overridden by another tensor sharding with a higher priority during
++it won’t be overridden by another tensor sharding with a higher priority during
+ propagation. However, such an open dimension can be further sharded after all
+ higher priority shardings have been propagated.
+ 
+ In other words, priorities are **NOT** about which dimension sharding is more
+-important than another - it's the order in which distinct groups of dimension
++important than another - it’s the order in which distinct groups of dimension
+ shardings should propagate to the entire program, and how conflicts on
+ intermediate, unannotated tensors should be resolved.
+ 
+@@ -397,14 +397,14 @@ intermediate, unannotated tensors should be resolved.
+ 
+ *   Priorities start at 0 (highest priority) and increase (to allow users to add
+     and remove priorities easily, we allow gaps between priorities, e.g., p0 and
+-    p2 are used but p1 isn't).
++    p2 are used but p1 isn’t).
+ 
+-*   An empty closed dimension sharding (i.e., `{}`), shouldn't have a priority,
+-    as this won't have any effect.
++*   An empty closed dimension sharding (i.e., `{}`), shouldn’t have a priority,
++    as this won’t have any effect.
+ 
+ ### Dimension sharding divisibility
+ 
+-It's possible for a dimension of size `d` to be sharded along axes whose product
++It’s possible for a dimension of size `d` to be sharded along axes whose product
+ of sizes is `n`, such that `d` is not divisible by `n` (which in practice would
+ require the dimension to be padded).
+ 
+diff --git a/rfcs/2024-03-14-shardy-partitioner-rfc.md b/rfcs/2024-03-14-shardy-partitioner-rfc.md
+index 2edfc06..ff31d09 100644
+--- a/rfcs/2024-03-14-shardy-partitioner-rfc.md
++++ b/rfcs/2024-03-14-shardy-partitioner-rfc.md
+@@ -60,7 +60,7 @@ A logical mesh is a multi-dimensional view of devices, defined by a list of axis
+ 
+ The proposed sharding representation is bound to a specific logical mesh by its name, and can only reference axis names from that mesh. The sharding of a tensor specifies along which axes (of a specific logical mesh), each dimension of the tensor is sharded, ordered from major to minor. The tensor is replicated along all other axes of the mesh.
+ 
+-Let's explore the sharding representation with a simple rank 2 tensor and 4 devices.
++Let’s explore the sharding representation with a simple rank 2 tensor and 4 devices.
+ 
+ We first reshape the 4 devices `[0, 1, 2, 3] `into a 2-d array `[[0, 1], [2, 3]]` to create a mesh with 2 axes:
+ 
+@@ -74,12 +74,12 @@ We can then shard the following rank 2 tensor `[[a, b], [c, d]]` as follows:
+ 
+ #### Other key components
+ 
+-* **Open/Closed dimensions** - dimensions can either be open - can be further sharded on available axes; or closed - are fixed and can't be changed.
++* **Open/Closed dimensions** - dimensions can either be open - can be further sharded on available axes; or closed - are fixed and can’t be changed.
+ * **Explicitly replicated axes** - all axes that are not used to shard a dimension are implicitly replicated, but the sharding can specify axes that are explicitly replicated and therefore cannot be used to shard a dimension later on.
+ * **Axis splitting and sub-axes** - a (full) mesh axis can be split into multiple sub-axes that can be individually used to shard a dimension or be explicitly replicated.
+ * **Multiple logical meshes** - different shardings can be bound to different logical meshes, which can have different axes or even a different order of logical device ids.
+ * **Priorities** - to partition a program incrementally, priorities can be attached to dimension shardings, which determine in which order per-dimension sharding constraints will be propagated throughout the module.
+-* **Dimension sharding divisibility** - a dimension can be sharded on axes whose product of sizes doesn't divide the dimension size.
++* **Dimension sharding divisibility** - a dimension can be sharded on axes whose product of sizes doesn’t divide the dimension size.
+ 
+ 
+ ## Detailed Design
+@@ -89,7 +89,7 @@ We expand the basic structure and each key component in this section.
+ 
+ ### Basic structure
+ 
+-The dimension shardings tell us for each dimension of the tensor, along which axes (or"sub-axes") it is sharded from major to minor. All other axes that don't shard a dimension are implicitly replicated (or explicitly replicated)
++The dimension shardings tell us for each dimension of the tensor, along which axes (or"sub-axes") it is sharded from major to minor. All other axes that don’t shard a dimension are implicitly replicated (or explicitly replicated)
+ 
+ We will start with a simple example and extend it as we describe additional features.
+ 
+@@ -115,9 +115,9 @@ Each dimension of a tensor can either be open or closed.
+ 
+ #### Open
+ 
+-An open dimension is one open for propagation to further shard it along additional axes, i.e. the specified dimension sharding doesn't have to be the final sharding of that dimension. This is similar (but not exactly the same as) to
++An open dimension is one open for propagation to further shard it along additional axes, i.e. the specified dimension sharding doesn’t have to be the final sharding of that dimension. This is similar (but not exactly the same as) to
+ 
+-*   GSPMD's <code>unspecified_dims</code>
++*   GSPMD’s <code>unspecified_dims</code>
+ *   <code>partir.UNKNOWN</code>
+ 
+ If a dimension is open we add a <code>?</code> following the axes that the dimension is already sharded on (see example below).
+@@ -125,7 +125,7 @@ If a dimension is open we add a <code>?</code> following the axes that the dimen
+ 
+ #### Closed
+ 
+-A closed dimension is one that isn't available for propagation to add further sharding to, i.e. the specified dimension sharding is the final sharding of that dimension and it can't be changed. A common use case of this is to make all inputs/outputs of a module static, i.e. they can't be modified.
++A closed dimension is one that isn’t available for propagation to add further sharding to, i.e. the specified dimension sharding is the final sharding of that dimension and it can’t be changed. A common use case of this is to make all inputs/outputs of a module static, i.e. they can't be modified.
+ 
+ We can extend the example from above to have an open dimension and a closed dimension.
+ 
+@@ -193,7 +193,7 @@ We want to shard the result of the reshape in a way that would avoid communicati
+ 
+ #### Function Input/output shardings
+ 
+-It is possible that during propagation an input or output of the main function will become sharded along a sub-axis. This can be a problem for some frameworks, where we can't express such shardings to give back to the user.
++It is possible that during propagation an input or output of the main function will become sharded along a sub-axis. This can be a problem for some frameworks, where we can’t express such shardings to give back to the user.
+ 
+ We have a few options for dealing with such cases:
+ 
+@@ -211,7 +211,7 @@ To extract a specific sub-axis of size `k` from a full axis `"x"` of size `n`, w
+ *   `k>1` is the **_actual size_** of this sub-axis (`k` should be a divisor of `n`).
+ *   `n/(m*k)` is the **_post-size_**. It is the product of all sub-axis sizes to the right of (that are minor to) this sub-axis (if equal to 1 it means there are none, If larger than 1 it corresponds to a single or multiple sub-axes).
+ 
+-However, the number of other sub-axes doesn't make a difference when using a specific sub-axis `"x":(m)k`, and any other sub-axes don't need to be referenced in the tensor sharding if they don't shard a dimension or are explicitly replicated.
++However, the number of other sub-axes doesn’t make a difference when using a specific sub-axis `"x":(m)k`, and any other sub-axes don't need to be referenced in the tensor sharding if they don't shard a dimension or are explicitly replicated.
+ 
+ Going back to the example in motivation, we can shard the result as follows:
+ 
+@@ -249,7 +249,7 @@ sharding<@mesh_full, [{"devices":(1)4}, {"devices":(4)2}]> : tensor<4x4xf32>
+ 
+ #### Explicitly replicated sub-axes
+ 
+-In addition to sub-axes being used to shard dimension, they can also be marked as explicitly replicated. We allow this in the representation because sub-axes behave just like full axes, i.e. when you shard a dimension along a sub-axis of axis `"x"`, the other sub-axes of `"x"` are implicitly replicated, and therefore can be explicitly replicated to indicate that a sub-axis must stay replicated and can't be used to shard a dimension.
++In addition to sub-axes being used to shard dimension, they can also be marked as explicitly replicated. We allow this in the representation because sub-axes behave just like full axes, i.e. when you shard a dimension along a sub-axis of axis `"x"`, the other sub-axes of `"x"` are implicitly replicated, and therefore can be explicitly replicated to indicate that a sub-axis must stay replicated and can’t be used to shard a dimension.
+ 
+ For example:
+ 
+@@ -324,7 +324,7 @@ We allow attaching a priority to each dimension sharding (0 by default), which i
+ 
+ Even if a sharding has an open dimension with lower priority, e.g., `{"z",?}p2`, it won't be overridden by another tensor sharding with a higher priority during propagation. However, such an open dimension can be further sharded after all higher priority shardings have been propagated.
+ 
+-In other words, priorities are **NOT** about which dimension sharding is more important than another - it's the order in which distinct groups of dimension shardings should propagate to the entire program, and how conflicts on intermediate, unannotated tensors should be resolved.
++In other words, priorities are **NOT** about which dimension sharding is more important than another - it’s the order in which distinct groups of dimension shardings should propagate to the entire program, and how conflicts on intermediate, unannotated tensors should be resolved.
+ 
+ 
+ #### Invariants
+diff --git a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+index 6baf5bb..4bbe938 100644
+--- a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
++++ b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+@@ -16,7 +16,6 @@ limitations under the License.
+ #include <cassert>
+ #include <cstdint>
+ #include <optional>
+-#include <utility>
+ 
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+@@ -169,8 +168,6 @@ bool axisRefsOverlap(ArrayRef<AxisRefAttr> first,
+   return false;
+ }
+ 
+-using FactorAxesPair = std::pair<int64_t, ArrayRef<AxisRefAttr>>;
+-
+ // Broadly the algorithm is, at each iteration, to pick a {factor,axis} pair
+ // with the largest count from a list that is initialized with all the
+ // pairs with non-zero count, assign the picked axis to the picked factor, and
+@@ -183,7 +180,8 @@ AxesPerFactor findCommonAxesUsingMajorityVoteHeuristic(
+   SmallVector<DenseMap<ArrayRef<AxisRefAttr>, int64_t>> factorAxesCounts(
+       numFactors);
+   int64_t maxCount = 0;
+-  FactorAxesPair bestFactorAxes;
++  int64_t bestFactorIndex;
++  ArrayRef<AxisRefAttr> bestAxisRefs;
+   for (const TensorFactorShardings& tensorFactorSharding :
+        llvm::concat<const TensorFactorShardings>(projection.getOperands(),
+                                                  projection.getResults())) {
+@@ -196,7 +194,8 @@ AxesPerFactor findCommonAxesUsingMajorityVoteHeuristic(
+       int64_t axesCount = ++factorAxesCounts[factorIndex][axisRefs];
+       if (axesCount > maxCount) {
+         maxCount = axesCount;
+-        bestFactorAxes = FactorAxesPair(factorIndex, axisRefs);
++        bestFactorIndex = factorIndex;
++        bestAxisRefs = axisRefs;
+       }
+     }
+   }
+@@ -210,22 +209,22 @@ AxesPerFactor findCommonAxesUsingMajorityVoteHeuristic(
+   BitVector unseenFactors(numFactors, true);
+   // TODO(enver): Optimize to mark unseen only the factors with an axis.
+   while (maxCount > 0) {
+-    factorAxisRefs[bestFactorAxes.first] =
+-        llvm::to_vector(bestFactorAxes.second);
+-    unseenFactors.reset(bestFactorAxes.first);
++    factorAxisRefs[bestFactorIndex] = llvm::to_vector(bestAxisRefs);
++    unseenFactors.reset(bestFactorIndex);
+     // TODO(enver): Tie-breaking currently depends on the order of iteration.
+     // Consider some heuristic for breaking ties.
+     // Invalidate axes that overlaps with the picked one across all unseen
+     // factors. During the iteration, also find the new best.
+     maxCount = 0;
+-    FactorAxesPair nextBestFactorAxes;
++    int64_t nextBestFactorIndex;
++    ArrayRef<AxisRefAttr> nextBestAxisRefs;
+     for (int factorIndex : unseenFactors.set_bits()) {
+       auto& axesCounts = factorAxesCounts[factorIndex];
+       for (const auto& [axisRefs, count] : axesCounts) {
+         // TODO(enver): Relax the overlap check. We need to erase in case of an
+         // overlap only if the factor indices appear together in any of the
+         // operands or results.
+-        if (axisRefsOverlap(bestFactorAxes.second, axisRefs)) {
++        if (axisRefsOverlap(bestAxisRefs, axisRefs)) {
+           // TODO(enver): Optimize to flip unseen if all the axes of the factor
+           // have zero count.
+           // Clear the count of overlapping axis, effectively erasing.
+@@ -236,11 +235,13 @@ AxesPerFactor findCommonAxesUsingMajorityVoteHeuristic(
+         }
+         if (count > maxCount) {
+           maxCount = count;
+-          nextBestFactorAxes = FactorAxesPair(factorIndex, axisRefs);
++          nextBestFactorIndex = factorIndex;
++          nextBestAxisRefs = axisRefs;
+         }
+       }
+     }
+-    bestFactorAxes = nextBestFactorAxes;
++    bestFactorIndex = nextBestFactorIndex;
++    bestAxisRefs = nextBestAxisRefs;
+   }
+   return factorAxisRefs;
+ }
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398d..0d8fe66 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,13 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Utils/CodeExtractor.cpp b/llvm/lib/Transforms/Utils/CodeExtractor.cpp
++--- a/llvm/lib/Transforms/Utils/CodeExtractor.cpp
+++++ b/llvm/lib/Transforms/Utils/CodeExtractor.cpp
++@@ -1465,7 +1465,7 @@
++           : Suffix;
++ 
++   ValueSet StructValues;
++-  StructType *StructTy;
+++  StructType *StructTy = nullptr;
++   Function *newFunction = constructFunctionDeclaration(
++       inputs, outputs, EntryFreq, oldFunction->getName() + "." + SuffixToUse,
++       StructValues, StructTy);
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index a7cade2..cb6697a 100644
+index cb6697a..ffa6478 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "0e936e375e61ed2c85c5e9fc53c5a4ac01cf9ed1"
--    LLVM_SHA256 = "25615cf42dd3dfdaa64416765c65c53343bd32e90769c52ebec9084480757bcf"
-+    LLVM_COMMIT = "01d233ff403823389f8480897e41aea84ecbb3d3"
-+    LLVM_SHA256 = "283a1d9c251d5028ae78f7a659816588fedaa6a8ba5733bee7249724fb3ed2bc"
+-    LLVM_COMMIT = "01d233ff403823389f8480897e41aea84ecbb3d3"
+-    LLVM_SHA256 = "283a1d9c251d5028ae78f7a659816588fedaa6a8ba5733bee7249724fb3ed2bc"
++    LLVM_COMMIT = "97298853b4de70dbce9c0a140ac38e3ac179e02e"
++    LLVM_SHA256 = "ac811cb61d281043c865c39260a5114a0e96d16ec0e4eb74a2516a24981b9064"
  
      tf_http_archive(
          name = name,

@@ -1,1 +1,13 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Utils/CodeExtractor.cpp b/llvm/lib/Transforms/Utils/CodeExtractor.cpp
+--- a/llvm/lib/Transforms/Utils/CodeExtractor.cpp
++++ b/llvm/lib/Transforms/Utils/CodeExtractor.cpp
+@@ -1465,7 +1465,7 @@
+           : Suffix;
+ 
+   ValueSet StructValues;
+-  StructType *StructTy;
++  StructType *StructTy = nullptr;
+   Function *newFunction = constructFunctionDeclaration(
+       inputs, outputs, EntryFreq, oldFunction->getName() + "." + SuffixToUse,
+       StructValues, StructTy);
