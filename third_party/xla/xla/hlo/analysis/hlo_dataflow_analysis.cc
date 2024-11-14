@@ -1108,25 +1108,31 @@ bool HloDataflowAnalysis::UpdateCollectivePermuteStartValueSet(
   bool changed = false;
   // CollectivePermuteStart forwards the operand value to element {0} of its
   // output.
-  if (collective_permute_start->operand(0)->shape().IsTuple()) {
-    for (int i = 0; i < ShapeUtil::TupleElementCount(
-                            collective_permute_start->operand(0)->shape());
-         ++i) {
+  for (int oprd_idx = 0; oprd_idx < collective_permute_start->operands().size();
+       ++oprd_idx) {
+    if (collective_permute_start->operand(oprd_idx)->shape().IsTuple()) {
+      for (int i = 0;
+           i < ShapeUtil::TupleElementCount(
+                   collective_permute_start->operand(oprd_idx)->shape());
+           ++i) {
+        const HloValueSet& operand_value_set =
+            GetValueSet(collective_permute_start->operand(oprd_idx), {i});
+        HloValueSet& value_set =
+            GetValueSet(collective_permute_start, {0, oprd_idx, i});
+        if (value_set != operand_value_set) {
+          value_set = operand_value_set;
+          changed = true;
+        }
+      }
+    } else {
       const HloValueSet& operand_value_set =
-          GetValueSet(collective_permute_start->operand(0), {i});
-      HloValueSet& value_set = GetValueSet(collective_permute_start, {0, i});
+          GetValueSet(collective_permute_start->operand(oprd_idx));
+      HloValueSet& value_set =
+          GetValueSet(collective_permute_start, {0, oprd_idx});
       if (value_set != operand_value_set) {
         value_set = operand_value_set;
         changed = true;
       }
-    }
-  } else {
-    const HloValueSet& operand_value_set =
-        GetValueSet(collective_permute_start->operand(0));
-    HloValueSet& value_set = GetValueSet(collective_permute_start, {0});
-    if (value_set != operand_value_set) {
-      value_set = operand_value_set;
-      changed = true;
     }
   }
   return changed;
@@ -1574,16 +1580,16 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // AllReduceDone's output aliases its input.
           break;
         case HloOpcode::kCollectivePermuteStart:
-          // CollectivePermuteStart produces a tuple of
-          // {aliased operand, destination buffer, contexts}, where the context
-          // data are optional.
+          // CollectivePermuteStart produces a tuple of {{aliased operand(s)},
+          // {destination buffer(s)}, contexts}, where the context data are
+          // optional.
           define_value_at(/*index=*/{});
           define_value_at(/*index=*/{1});
           for (int i = 2; i < instruction->shape().tuple_shapes_size(); ++i) {
             define_value_at(/*index=*/{i});
           }
 
-          if (instruction->operand_count() > 1) {
+          if (Cast<HloCollectivePermuteInstruction>(instruction)->inplace()) {
             CHECK_EQ(instruction->operand_count(), 4);
             if (instruction->operand(1)->shape().IsTuple()) {
               for (int i = 0; i < ShapeUtil::TupleElementCount(
@@ -1591,6 +1597,10 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
                    ++i) {
                 define_value_at(/*index=*/{1, i});
               }
+            }
+          } else if (instruction->operand_count() > 1) {
+            for (int i = 0; i < instruction->operand_count(); ++i) {
+              define_value_at(/*index=*/{1, i});
             }
           }
           break;

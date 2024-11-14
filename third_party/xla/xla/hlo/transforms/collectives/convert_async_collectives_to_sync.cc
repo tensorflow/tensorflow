@@ -68,10 +68,9 @@ absl::StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
     }
     case HloOpcode::kCollectivePermuteStart: {
       auto* async_cp = Cast<HloCollectivePermuteInstruction>(async_start);
-      TF_RET_CHECK(async_cp->operand_count() == 1);
       sync_instruction =
           computation->AddInstruction(HloInstruction::CreateCollectivePermute(
-              async_done->shape(), async_cp->mutable_operand(0),
+              async_done->shape(), async_cp->operands(),
               async_cp->source_target_pairs(), async_cp->channel_id()));
       break;
     }
@@ -85,7 +84,7 @@ absl::StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
     }
     default:
       return Internal("Unexpected async start op %s",
-                           HloOpcodeString(async_start->opcode()));
+                      HloOpcodeString(async_start->opcode()));
   }
 
   sync_instruction->set_metadata(async_start->metadata());
