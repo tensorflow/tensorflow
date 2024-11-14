@@ -43,6 +43,29 @@ xla_cc_binary(
     ],
 )
 
+xla_cc_binary(
+    name = "ifrt-translate",
+    testonly = True,
+    srcs = ["ifrt-translate.cc"],
+    deps = [
+        "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:ifrt_ir_program",
+        "//xla/python/ifrt/ir:ifrt_ir_program_serdes",  # build_cleaner: keep
+        "//xla/python/ifrt/ir:version",
+        "//xla/python/ifrt/ir:vifrt_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:TranslateLib",
+        "@stablehlo//:register",
+        "@stablehlo//:version",
+    ],
+)
+
 cc_library(
     name = "executable_impl_test_base",
     testonly = True,

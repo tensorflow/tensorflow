@@ -73,6 +73,21 @@ struct SerializeIfrtIRProgramOptions
   std::string atom_program_version;
 };
 
+// Options for deserializing IFRT IR programs.
+// If `context` is not nullptr then deserialization will create a new MLIR
+// context, which will be owned by the deserialized program. Otherwise, the
+// deserialization will use the provided MLIR context and the returned program
+// will not own a MLIR context.
+struct DeserializeIfrtIRProgramOptions
+    : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions, DeserializeOptions> {
+  explicit DeserializeIfrtIRProgramOptions(mlir::MLIRContext* context)
+      : context(context) {}
+
+  static char ID;  // NOLINT
+
+  mlir::MLIRContext* context;
+};
+
 // CompileOptions for an IFRT IR program.
 struct IfrtIRCompileOptions
     : llvm::RTTIExtends<IfrtIRCompileOptions, CompileOptions> {
