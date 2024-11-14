@@ -1962,7 +1962,6 @@ AlgebraicSimplifierVisitor::TryRemoveUpcastAndDowncastSurroundingBinaryOp(
   HloInstruction* bin_op_instr = nullptr;
   HloInstruction* final_convert_instr = nullptr;
 
-  // TODO(b/277095115): Instead, consider a more broad matching here which will
   // also catch constants. For an example, look at
   // cudnn_fused_conv_rewriter.cc's IsLosslesslyConvertibleTo().
   auto arg_1_pattern = m::Convert(m::Op(&arg_1)).WithOneUser();
@@ -2012,7 +2011,6 @@ AlgebraicSimplifierVisitor::TryRemoveUpcastAndDowncastSurroundingBinaryOp(
        primitive_util::IsUnsignedIntegralType(bin_op_type))) {
     // So far, only the safety of this transformation with same signedness
     // non-4-bit integer types has been verified.
-    // TODO(b/277095299): Add support for floating point types.
     return absl::OkStatus();
   }
 
@@ -2837,7 +2835,6 @@ AlgebraicSimplifierVisitor::OptimizeDotOfConcatHelper(
         rhs_slice_shape, rhs, /*start_indices=*/start_indices,
         /*limit_indices=*/limit_indices, /*strides=*/{1, 1}));
 
-    // TODO(b/69062148): We can get rid of `swapped` once all backends support
     // "non-canonical" contraction dimensions (that contracts dimension 1 of the
     // LHS with dimension 0 of the RHS).  But for now we keep the same
     // contraction dimensions as the incoming dot operation to ensure the new
@@ -5735,7 +5732,6 @@ absl::Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     // Pad has negative padding. Replace with a pad with the non-negative
     // padding followed by a slice which effectively performs the negative
     // padding.
-    // TODO(b/34628603): Add support for negative padding in the backends, or
     // change kPad semantics to disallow negative padding and use slice
     // instead.
 
@@ -8303,7 +8299,6 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     return ReplaceWithNewInstruction(
         reduce_window, HloInstruction::CreateTuple({new_reduce_window}));
   }
-  // TODO(b/73062247) Variadic reduce window is not yet supported in simplifier.
   if (multi_output_reduce_window) {
     return absl::OkStatus();
   }
@@ -9445,7 +9440,6 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     return false;
   }
 
-  // TODO(b/31337498): For now, we cowardly refuse to do this optimization in
   // layout-insensitive mode, for fear of adding nontrivial reshapes.
   if (!options_.is_layout_sensitive()) {
     return false;
