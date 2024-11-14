@@ -10,6 +10,7 @@ option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobu
 message CoordinatedTask {
   string job_name = 1;
   int32 task_id = 2;
+  bool recoverable = 3;
 }
 
 // Represents the state of a remote worker

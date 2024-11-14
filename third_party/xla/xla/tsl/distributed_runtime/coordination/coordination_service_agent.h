@@ -76,6 +76,11 @@ class CoordinationServiceAgent {
       tsl::Env* env, std::string_view job_name, int task_id,
       const tensorflow::CoordinationServiceConfig& configs,
       std::unique_ptr<CoordinationClient> leader_client,
+      StatusCallback error_fn, bool recoverable) = 0;
+  virtual absl::Status Initialize(
+      tsl::Env* env, std::string_view job_name, int task_id,
+      const tensorflow::CoordinationServiceConfig& configs,
+      std::unique_ptr<CoordinationClient> leader_client,
       StatusCallback error_fn) = 0;
   virtual absl::Status Initialize(
       tsl::Env* env, const tensorflow::CoordinatedTask& task,

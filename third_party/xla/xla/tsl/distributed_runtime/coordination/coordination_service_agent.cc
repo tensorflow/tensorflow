@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/flags/flag.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -54,6 +55,11 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
 
+// TODO(b/342448688): Expose via config and API instead of flag.
+ABSL_FLAG(
+    bool, coordination_agent_recoverable, false,
+    "If true, allow it to silently reconnect to the service after a restart.");
+
 namespace tsl {
 using tensorflow::CoordinatedTask;
 using tensorflow::CoordinatedTaskState;
@@ -63,6 +69,7 @@ using tensorflow::DeviceInfo;
 using tensorflow::KeyValueEntry;
 
 namespace {
+
 auto* enabled_usage_metric =
     monitoring::Gauge<bool, 0>::New("/coordination_service/agent/enabled",
                                     "Tracks usage of coordination service.");
@@ -79,6 +86,10 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
     absl::Status s = ShutdownInternal();
     VLOG(3) << "Coordination agent dtor failed with status: " << s;
   }
+  absl::Status Initialize(Env* env, std::string_view job_name, int task_id,
+                          const CoordinationServiceConfig& configs,
+                          std::unique_ptr<CoordinationClient> leader_client,
+                          StatusCallback error_fn, bool recoverable) override;
   absl::Status Initialize(Env* env, std::string_view job_name, int task_id,
                           const CoordinationServiceConfig& configs,
                           std::unique_ptr<CoordinationClient> leader_client,
@@ -195,9 +206,27 @@ absl::Status CoordinationServiceAgentImpl::Initialize(
     const CoordinationServiceConfig& configs,
     std::unique_ptr<CoordinationClient> leader_client,
     StatusCallback error_fn) {
+  return Initialize(env, job_name, task_id, configs, std::move(leader_client),
+                    error_fn,
+                    /*recoverable=*/false);
+}
+
+absl::Status CoordinationServiceAgentImpl::Initialize(
+    Env* env, std::string_view job_name, int task_id,
+    const CoordinationServiceConfig& configs,
+    std::unique_ptr<CoordinationClient> leader_client, StatusCallback error_fn,
+    bool recoverable) {
   CoordinatedTask task;
   task.set_job_name(std::string(job_name));
   task.set_task_id(task_id);
+  if (recoverable || absl::GetFlag(FLAGS_coordination_agent_recoverable)) {
+    LOG(WARNING)
+        << "Using experimental recoverable task feature. The default shutdown "
+           "barrier will only block non-recoverable tasks. If a synchronized "
+           "shutdown is desired, the user / library should invoke "
+           "`WaitAtBarrier` explicitly at the end of the program.";
+    task.set_recoverable(true);
+  }
   return Initialize(env, task, configs, std::move(leader_client), error_fn);
 }
 

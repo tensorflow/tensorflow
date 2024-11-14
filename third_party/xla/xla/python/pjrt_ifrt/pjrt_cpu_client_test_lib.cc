@@ -16,9 +16,13 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "xla/pjrt/cpu/cpu_client.h"
+#include "absl/status/statusor.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -27,10 +31,10 @@ namespace {
 const bool kUnused =
     (test_util::RegisterClientFactory(
          []() -> absl::StatusOr<std::shared_ptr<Client>> {
-           CpuClientOptions options;
+           xla::CpuClientOptions options;
            options.cpu_device_count = 4;
            TF_ASSIGN_OR_RETURN(auto pjrt_client,
-                               xla::GetTfrtCpuClient(std::move(options)));
+                               xla::GetXlaPjrtCpuClient(std::move(options)));
            return std::shared_ptr<Client>(
                PjRtClient::Create(std::move(pjrt_client)));
          }),
