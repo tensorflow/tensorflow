@@ -515,6 +515,33 @@ cc_library(
 )
 
 cc_library(
+    name = "dlpack_strides",
+    srcs = ["dlpack_strides.cc"],
+    hdrs = ["dlpack_strides.h"],
+    deps = [
+        "//xla:util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "dlpack_strides_test",
+    srcs = ["dlpack_strides_test.cc"],
+    deps = [
+        ":dlpack_strides",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "dlpack",
     srcs = ["dlpack.cc"],
     hdrs = ["dlpack.h"],
@@ -525,6 +552,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":dlpack_strides",
         ":nb_class_ptr",
         ":py_client",
         ":python_ref_manager",
