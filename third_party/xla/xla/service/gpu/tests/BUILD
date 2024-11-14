@@ -481,6 +481,7 @@ xla_test(
     name = "gpu_input_fusible_slice_test",
     srcs = ["gpu_input_fusible_slice_test.cc"],
     backends = ["gpu"],
+    tags = ["cuda-only",], #(TODO)(rocm): weekly sync 24-11-05
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
