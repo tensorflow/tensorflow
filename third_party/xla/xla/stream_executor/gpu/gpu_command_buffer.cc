@@ -104,7 +104,7 @@ static std::atomic<int64_t> alive_execs(0);
 // GpuCommandBuffer implementation
 //===----------------------------------------------------------------------===//
 
-GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent)
+GpuCommandBuffer::GpuCommandBuffer(Mode mode, StreamExecutor* parent)
     : mode_(mode), parent_(parent) {
   execution_scopes_.try_emplace(kDefaulExecutionScope);
 }

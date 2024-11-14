@@ -31,10 +31,10 @@ limitations under the License.
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
 
@@ -96,7 +96,7 @@ class GpuCommandBuffer : public CommandBuffer {
     size_t nodes_offset = 0;
   };
 
-  GpuCommandBuffer(Mode mode, GpuExecutor* parent);
+  GpuCommandBuffer(Mode mode, StreamExecutor* parent);
 
   absl::Status Barrier(ExecutionScopeId execution_scope_id) override;
 
@@ -319,7 +319,7 @@ class GpuCommandBuffer : public CommandBuffer {
   Mode mode_;
   State state_ = State::kCreate;
 
-  GpuExecutor* parent_;  // not owned, must outlive *this
+  StreamExecutor* parent_;  // not owned, must outlive *this
 
  private:
   // ExecutionScope holds the state of an underlying CUDA graph (nodes an

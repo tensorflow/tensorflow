@@ -32,12 +32,12 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/scoped_gpu_graph_exec.h"
 #include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
 
@@ -46,13 +46,14 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
  public:
   // Creates a new CUDA command buffer and the underlying CUDA graph.
   static absl::StatusOr<std::unique_ptr<CudaCommandBuffer>> Create(
-      Mode mode, GpuExecutor* parent, CudaContext* cuda_context);
+      Mode mode, StreamExecutor* parent, CudaContext* cuda_context);
 
   ~CudaCommandBuffer() override;
 
  private:
-  CudaCommandBuffer(Mode mode, GpuExecutor* parent, CudaContext* cuda_context,
-                    CUgraph graph, bool is_owned_graph)
+  CudaCommandBuffer(Mode mode, StreamExecutor* parent,
+                    CudaContext* cuda_context, CUgraph graph,
+                    bool is_owned_graph)
       : GpuCommandBuffer(mode, parent),
         parent_(parent),
         cuda_context_(cuda_context),
@@ -184,7 +185,7 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   SetWhileConditionKernel set_while_condition_kernel_;
   NoOpKernel noop_kernel_;
 
-  GpuExecutor* parent_;
+  StreamExecutor* parent_;
 
   CudaContext* cuda_context_;
 
