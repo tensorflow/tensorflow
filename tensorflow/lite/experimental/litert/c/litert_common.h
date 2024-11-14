@@ -76,7 +76,7 @@ typedef enum {
   kLiteRtStatusErrorInvalidFlatbuffer = 501,
   kLiteRtStatusErrorDynamicLoading = 502,
   kLiteRtStatusErrorSerialization = 503,
-  kLiteRtStatusErrorCompilationr = 504,
+  kLiteRtStatusErrorCompilation = 504,
 
   // IR related errors.
   kLiteRtStatusErrorIndexOOB = 1000,

@@ -27,7 +27,7 @@ namespace litert {
 
 namespace {
 
-static constexpr LiteRtStatus kStatus = kLiteRtStatusErrorInvalidArgument;
+static constexpr LiteRtStatus kErrorStatus = kLiteRtStatusErrorInvalidArgument;
 
 struct TypeWithAllocation {
   std::vector<int> allocated;
@@ -49,30 +49,30 @@ TEST(ExpectedTest, PrimitiveImplicit) {
 }
 
 TEST(ExpectedTest, ClassWithAllocation) {
-  Expected<TypeWithAllocation> exp({1, 2, 3});
+  Expected<TypeWithAllocation> exp(TypeWithAllocation({1, 2, 3}));
   ASSERT_TRUE(exp.HasValue());
 }
 
 TEST(ExpectedTest, ClassWithFields) {
-  Expected<TypeWithFields> exp(1, 2);
+  Expected<TypeWithFields> exp(TypeWithFields(1, 2));
   ASSERT_TRUE(exp.HasValue());
 }
 
 TEST(ExpectedTest, FromErrorExplicit) {
-  Expected<TypeWithAllocation> exp((Unexpected(kStatus, "MESSAGE")));
+  Expected<TypeWithAllocation> exp((Unexpected(kErrorStatus, "MESSAGE")));
   ASSERT_FALSE(exp.HasValue());
 }
 
 TEST(ExpectedTest, FromErrorImplicit) {
-  Expected<TypeWithAllocation> exp = Unexpected(kStatus);
+  Expected<TypeWithAllocation> exp = Unexpected(kErrorStatus);
   ASSERT_FALSE(exp.HasValue());
 }
 
 TEST(ExpectedTest, CopyCstorError) {
-  const Expected<int> exp = Unexpected(kStatus);
+  const Expected<int> exp = Unexpected(kErrorStatus);
   Expected<int> other(exp);
   ASSERT_FALSE(other.HasValue());
-  EXPECT_EQ(other.Status(), kStatus);
+  EXPECT_EQ(other.Error().Status(), kErrorStatus);
 }
 
 TEST(ExpectedTest, CopyCstorVal) {
@@ -83,11 +83,11 @@ TEST(ExpectedTest, CopyCstorVal) {
 }
 
 TEST(ExpectedTest, CopyAssignError) {
-  const Expected<int> exp = Unexpected(kStatus);
+  const Expected<int> exp = Unexpected(kErrorStatus);
   ASSERT_FALSE(exp.HasValue());
   Expected<int> other = exp;
   ASSERT_FALSE(other.HasValue());
-  EXPECT_EQ(other.Status(), kStatus);
+  EXPECT_EQ(other.Error().Status(), kErrorStatus);
 }
 
 TEST(ExpectedTest, CopyAssignVal) {
@@ -98,10 +98,10 @@ TEST(ExpectedTest, CopyAssignVal) {
 }
 
 TEST(ExpectedTest, MoveCstorError) {
-  Expected<int> exp = Unexpected(kStatus);
+  Expected<int> exp = Unexpected(kErrorStatus);
   Expected<int> other(std::move(exp));
   ASSERT_FALSE(other.HasValue());
-  EXPECT_EQ(other.Status(), kStatus);
+  EXPECT_EQ(other.Error().Status(), kErrorStatus);
 }
 
 TEST(ExpectedTest, MoveCstorVal) {
@@ -112,10 +112,10 @@ TEST(ExpectedTest, MoveCstorVal) {
 }
 
 TEST(ExpectedTest, MoveAssignError) {
-  Expected<int> exp = Unexpected(kStatus);
+  Expected<int> exp = Unexpected(kErrorStatus);
   Expected<int> other = std::move(exp);
   ASSERT_FALSE(other.HasValue());
-  EXPECT_EQ(other.Status(), kStatus);
+  EXPECT_EQ(other.Error().Status(), kErrorStatus);
 }
 
 TEST(ExpectedTest, MoveAssignVal) {
@@ -126,28 +126,28 @@ TEST(ExpectedTest, MoveAssignVal) {
 }
 
 TEST(ExpectedTest, Indirection) {
-  Expected<TypeWithFields> exp(1, 2);
+  Expected<TypeWithFields> exp(TypeWithFields(1, 2));
   EXPECT_EQ(exp->i, 1);
   EXPECT_EQ(exp->j, 2);
 }
 
 TEST(ExpectedTest, Dereference) {
-  Expected<TypeWithFields> exp(1, 2);
+  Expected<TypeWithFields> exp(TypeWithFields(1, 2));
   const auto& val = *exp;
   EXPECT_EQ(val.i, 1);
   EXPECT_EQ(val.j, 2);
 }
 
 TEST(UnexpectedTest, WithStatus) {
-  Unexpected err(kStatus);
-  EXPECT_EQ(err.Status(), kStatus);
-  EXPECT_TRUE(err.Message().empty());
+  Unexpected err(kErrorStatus);
+  EXPECT_EQ(err.Error().Status(), kErrorStatus);
+  EXPECT_TRUE(err.Error().Message().empty());
 }
 
 TEST(UnexpectedTest, WithMessage) {
-  Unexpected err(kStatus, "MESSAGE");
-  EXPECT_EQ(err.Status(), kStatus);
-  EXPECT_EQ(err.Message(), "MESSAGE");
+  Unexpected err(kErrorStatus, "MESSAGE");
+  EXPECT_EQ(err.Error().Status(), kErrorStatus);
+  EXPECT_EQ(err.Error().Message(), "MESSAGE");
 }
 
 Expected<OwningBufferRef<uint8_t>> Go() {
@@ -159,7 +159,7 @@ Expected<OwningBufferRef<uint8_t>> Go() {
 Expected<OwningBufferRef<uint8_t>> Forward() {
   auto thing = Go();
   if (!thing.HasValue()) {
-    return thing.Unex();
+    return thing.Error();
   }
   // No copy ellision here.
   return thing;
@@ -169,6 +169,18 @@ TEST(ExpectedTest, ForwardBufThroughFuncs) {
   auto res = Forward();
   EXPECT_TRUE(res.HasValue());
   EXPECT_EQ(res->StrView(), "21234");
+}
+
+TEST(ExpectedWithNoValue, WithoutError) {
+  Expected<void> expected = {};
+  EXPECT_TRUE(expected.HasValue());
+}
+
+TEST(ExpectedWithNoValue, WithError) {
+  Expected<void> expected(Unexpected(kErrorStatus, "MESSAGE"));
+  EXPECT_FALSE(expected.HasValue());
+  EXPECT_EQ(expected.Error().Status(), kErrorStatus);
+  EXPECT_EQ(expected.Error().Message(), "MESSAGE");
 }
 
 }  // namespace

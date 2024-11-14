@@ -36,29 +36,51 @@ namespace litert {
 
 // C++ wrapper around LiteRtStatus code. Provides a status as well
 // as an error message.
-class Unexpected {
+class Error {
  public:
   // Construct Unexpected from status and optional error message. NOTE:
   // kLiteRtStatusOk should not be passed to Unexpected.
-  explicit Unexpected(LiteRtStatus status, absl::string_view message = "")
-      : status_(status), message_(message.begin(), message.end()) {
+  explicit Error(LiteRtStatus status, absl::string_view message = "")
+      : status_(status), message_(message) {
     ABSL_DCHECK(status != kLiteRtStatusOk);
   }
+
+  // Get the status.
+  constexpr LiteRtStatus Status() const { return status_; }
+
+  // Get the error message, empty string if none was attached.
+  constexpr absl::string_view Message() const { return message_; }
+
+ private:
+  LiteRtStatus status_;
+  absl::string_view message_;
+};
+
+class Unexpected {
+ public:
+  template <class... Args>
+  constexpr explicit Unexpected(Args&&... args)
+      : error_(std::forward<Args>(args)...) {}
+
+  // Allow for implicit conversion from convertible Error value inplace.
+  template <class Err = class Error>
+  explicit(!std::convertible_to<Err, class Error>) Unexpected(Err&& e)
+      : error_(static_cast<class Error>(std::forward<Err>(e))) {}
 
   Unexpected(Unexpected&& other) = default;
   Unexpected(const Unexpected& other) = default;
   Unexpected& operator=(Unexpected&& other) = default;
   Unexpected& operator=(const Unexpected& other) = default;
 
-  // Get the status.
-  LiteRtStatus Status() const { return status_; }
-
-  // Get the error message, empty string if none was attached.
-  absl::string_view Message() const { return message_; }
+  constexpr const class Error& Error() const& noexcept { return error_; }
+  constexpr class Error& Error() & noexcept { return error_; }
+  constexpr const class Error&& Error() const&& noexcept {
+    return std::move(error_);
+  }
+  constexpr class Error&& Error() && noexcept { return std::move(error_); }
 
  private:
-  LiteRtStatus status_;
-  std::string message_;
+  class Error error_;
 };
 
 // Utility for generic return values that may be a statused failure.
@@ -74,62 +96,14 @@ class Unexpected {
 // to an Expected. For example,
 //
 // Expected<Foo> Bar() {
-//   if (Baz()) { return Unexpected(kLiteRtStatus("Bad Baz"); }
+//   bool success = ...
+//   if (!success) { return Unexpected(kLiteRtStatus, "Bad Baz"); }
 //   return Foo();
 // }
 //
 template <class T>
 class Expected {
  public:
-  // Observers for T value, program exits if it doesn't have one.
-  const T& Value() const& {
-    CheckVal();
-    return value_;
-  }
-  T& Value() & {
-    CheckVal();
-    return value_;
-  }
-  const T&& Value() const&& {
-    CheckVal();
-    return value_;
-  }
-  T&& Value() && {
-    CheckVal();
-    return value_;
-  }
-  const T* operator->() const {
-    CheckVal();
-    return &value_;
-  }
-  T* operator->() {
-    CheckVal();
-    return &value_;
-  }
-  const T& operator*() const& { return Value(); }
-  T& operator*() & { return Value(); }
-  const T&& operator*() const&& { return Value(); }
-  T&& operator*() && { return Value(); }
-
-  // Observer for Unexpected, program exits if it doesn't have one.
-  const Unexpected& Unex() const& {
-    CheckNoVal();
-    return unexpected_;
-  }
-
-  // Shortcut for getting status from the underlying Unexpected, program exits
-  // if it doesn't have one.
-  LiteRtStatus Status() const {
-    CheckNoVal();
-    return Unex().Status();
-  }
-
-  // Does this expected contain a T Value. It contains an unexpected if not.
-  bool HasValue() const { return has_value_; }
-
-  // Convert to bool for HasValue.
-  explicit operator bool() const { return HasValue(); }
-
   // Construct Expected with T inplace.
 
   // Construct T from initializer list inplace.
@@ -141,7 +115,7 @@ class Expected {
   explicit Expected(Args&&... args)
       : has_value_(true), value_(std::forward<Args>(args)...) {}
 
-  // Allow for implicit conversion from convertible T values inplace.
+  // Allow for implicit conversion from convertible T value inplace.
   template <class U = T>
   explicit(!std::convertible_to<U, T>) Expected(U&& v)
       : has_value_(true), value_(static_cast<T>(std::forward<U>(v))) {}
@@ -150,10 +124,12 @@ class Expected {
 
   // Allow for implicit conversion from Error.
   // NOLINTNEXTLINE
+  Expected(const Unexpected& err) : has_value_(false), unexpected_(err) {}
+  // NOLINTNEXTLINE
   Expected(Unexpected&& err)
       : has_value_(false), unexpected_(std::forward<Unexpected>(err)) {}
   // NOLINTNEXTLINE
-  Expected(const Unexpected& err) : has_value_(false), unexpected_(err) {}
+  Expected(const Error& e) : has_value_(false), unexpected_(e) {}
 
   // Copy/move
 
@@ -191,9 +167,9 @@ class Expected {
     ~Expected();
     has_value_ = other.has_value_;
     if (HasValue()) {
-      value_ = other.Value();
+      value_ = other.value_;
     } else {
-      unexpected_ = other.Unex();
+      unexpected_ = other.unexpected_;
     }
     return *this;
   }
@@ -206,10 +182,117 @@ class Expected {
     }
   }
 
+  // Observers for T value, program exits if it doesn't have one.
+  const T& Value() const& {
+    CheckVal();
+    return value_;
+  }
+
+  T& Value() & {
+    CheckVal();
+    return value_;
+  }
+
+  const T&& Value() const&& {
+    CheckVal();
+    return value_;
+  }
+
+  T&& Value() && {
+    CheckVal();
+    return value_;
+  }
+
+  const T* operator->() const {
+    CheckVal();
+    return &value_;
+  }
+
+  T* operator->() {
+    CheckVal();
+    return &value_;
+  }
+
+  const T& operator*() const& { return Value(); }
+
+  T& operator*() & { return Value(); }
+
+  const T&& operator*() const&& { return Value(); }
+
+  T&& operator*() && { return Value(); }
+
+  // Observer for Unexpected, program exits if it doesn't have one.
+  const class Error& Error() const& {
+    CheckNoVal();
+    return unexpected_.Error();
+  }
+
+  // Does this expected contain a T Value. It contains an unexpected if not.
+  bool HasValue() const { return has_value_; }
+
+  // Convert to bool for HasValue.
+  explicit operator bool() const { return HasValue(); }
+
  private:
   bool has_value_;
   union {
     T value_;
+    Unexpected unexpected_;
+  };
+  void CheckNoVal() const { ABSL_CHECK(!HasValue()); }
+  void CheckVal() const { ABSL_CHECK(HasValue()); }
+};
+
+template <>
+class Expected<void> {
+ public:
+  // Implicit construction is used to simplify returning a valid value, e.g., in
+  // "return {};"
+  Expected() : has_value_(true) {}
+
+  // NOLINTNEXTLINE
+  Expected(Unexpected&& err)
+      : has_value_(false), unexpected_(std::forward<Unexpected>(err)) {}
+
+  ~Expected() {
+    if (!has_value_) {
+      unexpected_.~Unexpected();
+    }
+  }
+
+  Expected& operator=(Expected&& other) {
+    if (this != &other) {
+      Expected::~Expected();
+      has_value_ = other.has_value_;
+      unexpected_ = std::move(other.unexpected_);
+    }
+    return *this;
+  }
+
+  Expected& operator=(const Expected& other) {
+    if (this != &other) {
+      Expected::~Expected();
+      has_value_ = other.has_value_;
+      unexpected_ = other.unexpected_;
+    }
+    return *this;
+  }
+
+  // Observer for Unexpected, program exits if it doesn't have one.
+  const class Error& Error() const& {
+    CheckNoVal();
+    return unexpected_.Error();
+  }
+
+  // Does this expected contain a T Value. It contains an unexpected if not.
+  bool HasValue() const { return has_value_; }
+
+  // Convert to bool for HasValue.
+  explicit operator bool() const { return HasValue(); }
+
+ private:
+  bool has_value_;
+  union {
     Unexpected unexpected_;
   };
   void CheckNoVal() const { ABSL_CHECK(!HasValue()); }

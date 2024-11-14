@@ -76,7 +76,7 @@ inline litert::Expected<const void*> FindAllocBase(
     const LiteRtDispatchDelegateOptions& opts) {
   auto alloc_base = opts.FindDispatchOption(kAllocBase);
   if (!alloc_base) {
-    return alloc_base.Unex();
+    return alloc_base.Error();
   }
   return std::any_cast<const void*>(*alloc_base);
 }

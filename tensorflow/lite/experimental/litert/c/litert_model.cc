@@ -57,7 +57,7 @@ LiteRtStatus LiteRtGetModelMetadata(LiteRtModel model, const char* metadata_key,
                                     size_t* metadata_buffer_size) {
   auto m_buf = model->FindMetadata(metadata_key);
   if (!m_buf) {
-    return m_buf.Status();
+    return m_buf.Error().Status();
   }
   *metadata_buffer = m_buf->Data();
   *metadata_buffer_size = m_buf->Size();

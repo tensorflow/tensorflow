@@ -84,12 +84,12 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
 
   auto src_begin_indices = op_ins.at(1).WeightsData<int32_t>();
   if (!src_begin_indices) {
-    return src_begin_indices.Status();
+    return src_begin_indices.Error().Status();
   }
 
   auto src_size_indices = op_ins.at(2).WeightsData<int32_t>();
   if (!src_size_indices) {
-    return src_size_indices.Status();
+    return src_size_indices.Error().Status();
   }
 
   // Check if src_begin_indices and src_size_indices are weights tensors.

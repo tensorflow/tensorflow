@@ -232,7 +232,7 @@ LiteRtStatus LiteRtSerializeModel(LiteRtModel model, uint8_t** buf,
   auto serialized =
       SerializeModel(::litert::Model::CreateFromOwnedHandle(model));
   if (!serialized) {
-    return serialized.Status();
+    return serialized.Error().Status();
   }
   std::tie(*buf, *size, *offset) = serialized->Release();
   return kLiteRtStatusOk;

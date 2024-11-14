@@ -150,7 +150,7 @@ Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
 
   auto api_version = plugin.ApiVersion();
   if (!api_version) {
-    return api_version.Unex();
+    return api_version.Error();
   }
 
   if (api_version->major != LITERT_API_VERSION_MAJOR) {
@@ -168,7 +168,7 @@ Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
   // plugin so save to avoid recalling.
   auto soc_models = GetSocModels(plugin.plugin_api_, plugin.plugin_handle_);
   if (!soc_models) {
-    return soc_models.Unex();
+    return soc_models.Error();
   }
   plugin.soc_models_ = *soc_models;
 
@@ -272,7 +272,7 @@ LiteRtStatus CompilerPlugin::Compile(
   {
     auto num_call = result.NumCalls();
     if (!num_call) {
-      return num_call.Status();
+      return num_call.Error().Status();
     }
     if (num_call.Value() != partitions.size()) {
       LITERT_LOG(
@@ -283,7 +283,7 @@ LiteRtStatus CompilerPlugin::Compile(
     for (int i = 0; i < num_call.Value(); ++i) {
       auto call_info = result.CallInfo(i);
       if (!call_info) {
-        return call_info.Status();
+        return call_info.Error().Status();
       }
       call_info_out.emplace_back() = *call_info;
     }
@@ -293,7 +293,7 @@ LiteRtStatus CompilerPlugin::Compile(
   {
     auto byte_code = result.ByteCode();
     if (!byte_code) {
-      return byte_code.Status();
+      return byte_code.Error().Status();
     }
     LITERT_LOG(LITERT_INFO, "Compiled %d partitions in %lu bytes",
                partitions.size(), byte_code->Size());

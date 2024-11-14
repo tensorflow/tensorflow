@@ -169,7 +169,7 @@ Expected<SmallVec<CompilerPlugin>> LoadAllPlugins(Context& ctx) {
 Expected<CompilerPlugin> LoadPlugin(Context& ctx) {
   auto plugins = LoadAllPlugins(ctx);
   if (!plugins) {
-    return plugins.Unex();
+    return plugins.Error();
   }
 
   ctx.Dump().Start("Select Plugin");
@@ -274,7 +274,7 @@ Expected<std::vector<std::string>> CompilePartitions(
   if (plugin.Compile(ctx.SocModelTarget(), partitions, ctx.Out(),
                      call_info_out) != kLiteRtStatusOk) {
     ctx.Dump().Fail();
-    return Unexpected(kLiteRtStatusErrorCompilationr);
+    return Unexpected(kLiteRtStatusErrorCompilation);
   }
 
   ctx.Dump().Labeled() << "Entry point info: ";
@@ -303,7 +303,7 @@ LiteRtStatus ValidateInfoRun(const ApplyPluginRun& run) {
 LiteRtStatus Info(Context& ctx) {
   auto plugins = LoadAllPlugins(ctx);
   if (!plugins) {
-    return plugins.Status();
+    return plugins.Error().Status();
   }
 
   for (auto& plugin : *plugins) {
@@ -334,12 +334,12 @@ LiteRtStatus ValidateNoopRun(const ApplyPluginRun& run) {
 LiteRtStatus Noop(Context& ctx) {
   auto model = LoadModel(ctx);
   if (!model) {
-    return model.Status();
+    return model.Error().Status();
   }
 
   auto serialized = SerializeModel(std::move(*model));
   if (!serialized) {
-    return serialized.Status();
+    return serialized.Error().Status();
   }
   LITERT_ENSURE(VerifyFlatbuffer(serialized->Span()),
                 kLiteRtStatusErrorInvalidFlatbuffer,
@@ -363,17 +363,17 @@ LiteRtStatus ValidatePartitionRun(const ApplyPluginRun& run) {
 LiteRtStatus Partition(Context& ctx) {
   auto plugin = LoadPlugin(ctx);
   if (!plugin) {
-    return plugin.Status();
+    return plugin.Error().Status();
   }
 
   auto model = LoadModel(ctx);
   if (!model) {
-    return model.Status();
+    return model.Error().Status();
   }
 
   auto partitioned_model = PartitionModel(ctx, std::move(*model), *plugin);
   if (!partitioned_model) {
-    return partitioned_model.Status();
+    return partitioned_model.Error().Status();
   }
 
   ctx.Dump().Start("Serializing model");
@@ -412,12 +412,12 @@ LiteRtStatus ValidateCompileRun(const ApplyPluginRun& run) {
 LiteRtStatus Compile(Context& ctx) {
   auto model = LoadModel(ctx);
   if (!model) {
-    return model.Status();
+    return model.Error().Status();
   }
 
   auto plugin = LoadPlugin(ctx);
   if (!plugin) {
-    return plugin.Status();
+    return plugin.Error().Status();
   }
 
   std::vector<LiteRtSubgraph> compilation_input;
@@ -428,7 +428,7 @@ LiteRtStatus Compile(Context& ctx) {
 
   auto entry_points = CompilePartitions(ctx, compilation_input, *plugin);
   if (!entry_points) {
-    return entry_points.Status();
+    return entry_points.Error().Status();
   }
 
   return kLiteRtStatusOk;
@@ -442,7 +442,7 @@ LiteRtStatus StampModel(Context& ctx, LiteRtModel model) {
   auto stamp = MakeBuildStamp(ctx.SocManufacturer(), ctx.SocModelTarget(),
                               ctx.Serialization());
   if (!stamp) {
-    return stamp.Status();
+    return stamp.Error().Status();
   }
   ctx.Dump().Labeled() << absl::StreamFormat("Stamping model: %s\n",
                                              stamp->StrView());
@@ -477,7 +477,7 @@ Expected<OwningBufferRef<uint8_t>> DoMetadataSerialization(
 
   auto serialized = SerializeModel(std::move(model));
   if (!serialized) {
-    return serialized.Unex();
+    return serialized.Error();
   }
 
   ctx.Dump().Labeled() << absl::StreamFormat(
@@ -558,12 +558,12 @@ LiteRtStatus ValidateApplyRun(const ApplyPluginRun& run) {
 LiteRtStatus Apply(Context& ctx) {
   auto model = LoadModel(ctx);
   if (!model) {
-    return model.Status();
+    return model.Error().Status();
   }
 
   auto plugin = LoadPlugin(ctx);
   if (!plugin) {
-    return plugin.Status();
+    return plugin.Error().Status();
   }
 
   static constexpr size_t kNumInputSubgraphs = 1;
@@ -590,7 +590,7 @@ LiteRtStatus Apply(Context& ctx) {
 
   // Update custom op info the it's respective entry point info from the plugin.
   LITERT_ENSURE(call_info->size() == custom_ops.size(),
-                kLiteRtStatusErrorCompilationr,
+                kLiteRtStatusErrorCompilation,
                 "Failed to verify entry point information.");
 
   model->Get()->subgraphs.resize(kNumInputSubgraphs);
@@ -604,7 +604,7 @@ LiteRtStatus Apply(Context& ctx) {
     auto serialized = DoMetadataSerialization(
         ctx, custom_ops, *call_info, compiled_buffer, std::move(*model));
     if (!serialized) {
-      return serialized.Status();
+      return serialized.Error().Status();
     }
     serialized->WriteStr(ctx.Out());
 
@@ -612,7 +612,7 @@ LiteRtStatus Apply(Context& ctx) {
     auto serialized = DoAppendSerialization(ctx, custom_ops, *call_info,
                                             compiled_buffer, std::move(*model));
     if (!serialized) {
-      return serialized.Status();
+      return serialized.Error().Status();
     }
     serialized->WriteStr(ctx.Out());
 

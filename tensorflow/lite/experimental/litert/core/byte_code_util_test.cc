@@ -42,7 +42,7 @@ TEST(TestBuildStamp, MakeBuildStampInputsTooLarge) {
   // NOLINTNEXTLINE
   std::string long_manufacturer(256, 'a');
   auto res = MakeBuildStamp(long_manufacturer, kSocModel, kSerialization);
-  EXPECT_EQ(res.Status(), kLiteRtStatusErrorInvalidArgument);
+  EXPECT_EQ(res.Error().Status(), kLiteRtStatusErrorInvalidArgument);
 }
 
 TEST(TestBuildStamp, MakeBuildStamp) {
@@ -57,14 +57,14 @@ TEST(TestBuildStamp, MakeBuildStamp) {
 TEST(TestByteCodePlaceholder, ParseBadPlaceholder) {
   OwningBufferRef<uint8_t> placeholder;
   auto res = ParseByteCodePlaceholder(placeholder);
-  EXPECT_EQ(res.Status(), kLiteRtStatusErrorInvalidArgument);
+  EXPECT_EQ(res.Error().Status(), kLiteRtStatusErrorInvalidArgument);
 }
 
 TEST(TestByteCodePlaceholder, BuildAndParseEmptyInvalid) {
   auto placeholder = MakeByteCodePlaceholder();
   ASSERT_THAT(placeholder.StrView(), StartsWith(kByteCodePrefix));
   auto res = ParseByteCodePlaceholder(placeholder);
-  EXPECT_EQ(res.Status(), kLiteRtStatusErrorInvalidArgument);
+  EXPECT_EQ(res.Error().Status(), kLiteRtStatusErrorInvalidArgument);
 }
 
 TEST(TestByteCodePlaceholder, BuildAndFinishByteCodePlaceholder) {
@@ -101,7 +101,7 @@ TEST(TestExecInfo, ExecInfoTooLarge) {
   // NOLINTNEXTLINE
   std::string long_entry_point(256, 'a');
   auto res = MakeExecInfo(long_entry_point, "key");
-  EXPECT_EQ(res.Status(), kLiteRtStatusErrorInvalidArgument);
+  EXPECT_EQ(res.Error().Status(), kLiteRtStatusErrorInvalidArgument);
 }
 
 }  // namespace

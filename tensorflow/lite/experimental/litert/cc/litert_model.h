@@ -185,29 +185,27 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
 
   template <typename T>
   Expected<absl::Span<const T>> WeightsData() const {
-    static constexpr LiteRtStatus kStatus = kLiteRtStatusErrorInvalidArgument;
-
     const ElementType ty = RankedTensorType().ElementType();
     if (ty != GetElementType<T>()) {
-      return Unexpected(kStatus);
+      return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }
 
     if (!HasWeights()) {
-      return Unexpected(kStatus);
+      return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }
     const absl::Span<const uint8_t> weights = Weights().Bytes();
 
     auto num_elements = RankedTensorType().Layout().NumElements();
     if (!num_elements.has_value()) {
-      return Unexpected(kStatus);
+      return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }
     auto byte_width = GetByteWidth(ty);
     if (!byte_width.has_value()) {
-      return Unexpected(kStatus);
+      return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }
 
     if (byte_width.value() * num_elements.value() != weights.size()) {
-      return Unexpected(kStatus);
+      return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }
 
     return absl::MakeConstSpan(reinterpret_cast<const T*>(weights.data()),

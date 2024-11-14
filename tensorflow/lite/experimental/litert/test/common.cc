@@ -142,7 +142,7 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     auto exec_info =
         MakeExecInfo(op->custom_options.StrView(), kByteCodeMetadataKey);
     if (!exec_info) {
-      return exec_info.Unex();
+      return exec_info.Error();
     }
     op->custom_options = std::move(*exec_info);
   }
@@ -206,7 +206,7 @@ Expected<TflRuntime::Ptr> TflRuntime::CreateFromTflFileWithByteCode(
     auto model_with_byte_code =
         GetModelBufWithByteCode(tfl_filename, npu_filename);
     if (!model_with_byte_code) {
-      return model_with_byte_code.Unex();
+      return model_with_byte_code.Error();
     }
     runtime->model_buf_ = std::move(*model_with_byte_code);
   }
