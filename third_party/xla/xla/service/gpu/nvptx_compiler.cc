@@ -98,7 +98,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_driver_version.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
-#include "xla/stream_executor/cuda/nvjitlink_known_issues.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compilation_method.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
@@ -671,35 +670,8 @@ absl::StatusOr<PtxCompilationMethod> ChooseCompilationMethod(
     }
   };
 
-  // This is true if the user explicitly requested the use of libNvJitLink
-  // through the command line flag. In that case we bypass all the sanity checks
-  // and enable its usage. It means compilation might fail which is a better
-  // diagnostic to the user instead of silently discarding NvJitLink.
-  const bool libnvjitlink_force_enabled =
-      debug_options.xla_gpu_libnvjitlink_mode() ==
-      DebugOptions::LIB_NV_JIT_LINK_MODE_ENABLED;
-
-  if (!stream_executor::IsLibNvJitLinkSupported() &&
-      !libnvjitlink_force_enabled) {
-    VLOG(3) << "Discarding NvJitLink since it is not supported in this build.";
-    remove_compilation_method(PtxCompilationMethod::kNvJitLink);
-  } else if (stream_executor::LoadedNvJitLinkHasKnownIssues() &&
-             !libnvjitlink_force_enabled) {
-    auto formatted_version = [&]() -> std::string {
-      absl::StatusOr<stream_executor::NvJitLinkVersion> version =
-          stream_executor::GetNvJitLinkVersion();
-      if (version.ok()) {
-        return absl::StrCat(std::get<0>(*version), ".", std::get<1>(*version));
-      }
-      return "unknown";
-    }();
-
-    VLOG(3) << "Discarding NvJitLink since the loaded library version ("
-            << formatted_version << ") has known issues.";
-    remove_compilation_method(PtxCompilationMethod::kNvJitLink);
-  } else if (debug_options.xla_gpu_libnvjitlink_mode() ==
-             DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED) {
-    VLOG(3) << "Discarding NvJitLink since it was explicitly disabled.";
+  if (!debug_options.xla_gpu_enable_libnvjitlink()) {
+    VLOG(3) << "Discarding NvJitLink since it is disabled.";
     remove_compilation_method(PtxCompilationMethod::kNvJitLink);
   }
   if (!debug_options.xla_gpu_enable_libnvptxcompiler()) {
@@ -931,17 +903,8 @@ absl::StatusOr<se::PtxLinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
 
   using LinkingMethod = se::PtxLinkingMethod;
 
-  // If the user has explicitly requested NvJitLink we will try to use it and
-  // fail later during linking if it is not available or has known issues.
-  if (debug_options.xla_gpu_libnvjitlink_mode() ==
-      DebugOptions::LIB_NV_JIT_LINK_MODE_ENABLED) {
-    return LinkingMethod::kNvJitLink;
-  }
-
   if (stream_executor::IsLibNvJitLinkSupported() &&
-      !stream_executor::LoadedNvJitLinkHasKnownIssues() &&
-      debug_options.xla_gpu_libnvjitlink_mode() !=
-          DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED) {
+      debug_options.xla_gpu_enable_libnvjitlink()) {
     return se::PtxLinkingMethod::kNvJitLink;
   }
 
