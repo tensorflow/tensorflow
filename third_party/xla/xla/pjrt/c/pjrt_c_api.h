@@ -79,7 +79,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 55
+#define PJRT_API_MINOR 56
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1759,6 +1759,20 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_IsDeleted_Args, is_deleted);
 // True if and only if PJRT_Buffer_Delete has previously been called.
 typedef PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
 
+struct PJRT_Buffer_CopyRawToHost_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Buffer* buffer;
+  void* dst;
+  int64_t offset;
+  int64_t transfer_size;
+  PJRT_Event* event;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyRawToHost_Args, event);
+
+typedef PJRT_Error* PJRT_Buffer_CopyRawToHost(
+    PJRT_Buffer_CopyRawToHost_Args* args);
+
 struct PJRT_Buffer_CopyToDevice_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -2206,6 +2220,7 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Memory);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyRawToHost);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToDevice);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ToHostBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
