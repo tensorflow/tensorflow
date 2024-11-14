@@ -64,7 +64,7 @@ class Unexpected {
 
   // Allow for implicit conversion from convertible Error value inplace.
   // NOLINTNEXTLINE
-  Unexpected(Error&& e) : error_(std::move(e)) {}
+  Unexpected(class Error&& e) : error_(std::move(e)) {}
 
   Unexpected(Unexpected&& other) = default;
   Unexpected(const Unexpected& other) = default;
@@ -127,7 +127,7 @@ class Expected {
   Expected(Unexpected&& err)
       : has_value_(false), unexpected_(std::forward<Unexpected>(err)) {}
   // NOLINTNEXTLINE
-  Expected(const Error& e) : has_value_(false), unexpected_(e) {}
+  Expected(const class Error& e) : has_value_(false), unexpected_(e) {}
 
   // Copy/move
 

@@ -102,7 +102,7 @@ class Layout {
 // LiteRtRankedTensorType.
 class RankedTensorType {
  public:
-  RankedTensorType(ElementType element_type, Layout&& layout)
+  RankedTensorType(enum ElementType element_type, class Layout&& layout)
       : element_type_(element_type), layout_(std::move(layout)) {}
   explicit RankedTensorType(const LiteRtRankedTensorType& type)
       : element_type_(static_cast<enum ElementType>(type.element_type)),
@@ -119,9 +119,9 @@ class RankedTensorType {
     return ElementType() == other.ElementType() && Layout() == other.Layout();
   }
 
-  ElementType ElementType() const { return element_type_; }
+  enum ElementType ElementType() const { return element_type_; }
 
-  const Layout& Layout() const { return layout_; }
+  const class Layout& Layout() const { return layout_; }
 
  private:
   enum ElementType element_type_;
@@ -163,7 +163,7 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
     return unranked_tensor_type;
   }
 
-  RankedTensorType RankedTensorType() const {
+  class RankedTensorType RankedTensorType() const {
     LiteRtRankedTensorType ranked_tensor_type;
     internal::AssertOk(LiteRtGetRankedTensorType, Get(), &ranked_tensor_type);
     return litert::RankedTensorType(ranked_tensor_type);
@@ -174,7 +174,7 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
     return !weights.Bytes().empty();
   }
 
-  Weights Weights() const {
+  class Weights Weights() const {
     LiteRtWeights weights;
     internal::AssertOk(LiteRtGetTensorWeights, Get(), &weights);
     return litert::Weights(weights);
@@ -314,7 +314,7 @@ class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
     return absl::MakeSpan(static_cast<const uint8_t*>(buffer), buffer_size);
   }
 
-  absl::StatusOr<Subgraph> MainSubgraph() {
+  absl::StatusOr<class Subgraph> MainSubgraph() {
     LiteRtParamIndex main_subgraph_index;
     internal::AssertOk(LiteRtGetMainModelSubgraphIndex, Get(),
                        &main_subgraph_index);
@@ -327,7 +327,7 @@ class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
     return num_subgraphs;
   }
 
-  absl::StatusOr<Subgraph> Subgraph(size_t subgraph_index) {
+  absl::StatusOr<class Subgraph> Subgraph(size_t subgraph_index) {
     LiteRtSubgraph subgraph;
     if (LiteRtGetModelSubgraph(Get(), subgraph_index, &subgraph) !=
         kLiteRtStatusOk) {
