@@ -497,11 +497,9 @@ TEST(CurlHttpRequestTest, GetRequest_CouldntResolveHost) {
   const auto& status = http_request.Send();
   EXPECT_EQ(error::FAILED_PRECONDITION, status.code());
   EXPECT_EQ(
-      absl::StrCat(
-          "Error executing an HTTP request: libcurl code 6 meaning ",
-          (kIsOpenSource ? "'Couldn't resolve host name', error details: "
-                         : "'Could not resolve hostname', error details: "),
-          "Could not resolve host ", "'metadata'"),
+      absl::StrCat("Error executing an HTTP request: libcurl code 6 meaning ",
+                   "'Could not resolve hostname', error details: ",
+                   "Could not resolve host ", "'metadata'"),
       status.message());
   EXPECT_EQ(0, http_request.GetResponseCode());
 }
