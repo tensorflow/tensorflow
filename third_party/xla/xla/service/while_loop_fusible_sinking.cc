@@ -203,9 +203,11 @@ absl::StatusOr<bool> TryRewritingBroadcastAsAllocateBuffer(
       while_instr->while_init()->mutable_operand(
           induction_var_tuple_index.value());
   // We only support integer loop iteration variables since these are the only
-  // ones that can be compared to get the first iteration value.
+  // ones that can be compared to get the first iteration value. Also the
+  // iteration variable should have a scalar shape.
   if (!ShapeUtil::ElementIsIntegral(
-          loop_iteration_variable_initial_value->shape())) {
+          loop_iteration_variable_initial_value->shape()) ||
+      !ShapeUtil::IsScalar(loop_iteration_variable_initial_value->shape())) {
     return false;
   }
 

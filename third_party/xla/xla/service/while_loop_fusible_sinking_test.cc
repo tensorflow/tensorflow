@@ -202,6 +202,46 @@ TEST_F(WhileLoopFusibleSinkingTest, TestPlumbSingleBroadcast) {
               op::While(op::Tuple(_, op::CustomCall(), _, _)));
 }
 
+TEST_F(WhileLoopFusibleSinkingTest, TestDontSinkBroadcastNoScalarIndvar) {
+  const std::string hlo_string_before = R"(
+  HloModule test
+
+  loop.body {
+    loop_var.1 = (s32[2]{0:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}) parameter(0)
+    get-tuple-element.1 = s32[2]{0:T(128)} get-tuple-element(loop_var.1), index=0
+    get-tuple-element.2 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} get-tuple-element(loop_var.1), index=1
+    iota = s32[4,3,5]{2,1,0} iota(), iota_dimension=0
+    bitcast.12855 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} bitcast(iota)
+    add.40974 = s32[1,1,1,4,3,5]{5,4,3,2,1,0} add(get-tuple-element.2, bitcast.12855)
+    constant.1 = s32[2]{0:T(128)} constant({1, 1})
+    idx = s32[2]{0:T(128)} add(get-tuple-element.1, constant.1)
+    ROOT tuple = (s32[2]{0:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}) tuple(idx, add.40974)
+  }
+
+  loop.condition {
+    loop_var.2 = (s32[2]{0:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}) parameter(0)
+    get-tuple-element.3 = s32[2]{0:T(128)} get-tuple-element(loop_var.2), index=0
+    slice = s32[1]{0:T(128)} slice(get-tuple-element.3), slice={[0:1]}
+    constant.2 = s32[1]{0:T(128)} constant({4})
+    less-than = pred[1]{0:T(128)} compare(slice, constant.2), direction=LT
+    ROOT bitcast = pred[]{:T(128)} bitcast(less-than)
+  }
+
+  ENTRY %main {
+    first_idx = s32[2]{0:T(128)} constant({0, 1})
+    zeros32 = s32[]{:T(128)} constant(0)
+    broadcast = s32[1,1,1,4,3,5]{5,4,3,2,1,0} broadcast(zeros32)
+    input = (s32[2]{0:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}) tuple(first_idx, broadcast)
+    ROOT while = (s32[2]{0:T(128)}, s32[1,1,1,4,3,5]{5,4,3,2,1,0}) while(input), condition=loop.condition, body=loop.body
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_before,
+                          ParseAndReturnVerifiedModule(hlo_string_before));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopFusibleSinking{}.Run(module_before.get()));
+  EXPECT_FALSE(changed);
+}
+
 TEST_F(WhileLoopFusibleSinkingTest, TestDontSinkBroadcast) {
   const std::string hlo_string_before = R"(
   HloModule test
