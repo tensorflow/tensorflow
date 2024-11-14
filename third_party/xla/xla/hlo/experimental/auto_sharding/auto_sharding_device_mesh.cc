@@ -61,9 +61,8 @@ Array<T> Transpose(const Array<T> array, std::vector<int64_t> axes) {
 absl::StatusOr<std::vector<int64_t>>
 DeviceMesh::GetMeshDimPermutationOrderInShardingSpec(
     const HloSharding& sharding, bool consider_reverse_device_meshes) const {
-  MeshDimPermutationOrderCacheKey cache_key{
-      .sharding = sharding,
-      .consider_reverse_device_meshes = consider_reverse_device_meshes};
+  MeshDimPermutationOrderCacheKey cache_key(sharding,
+                                            consider_reverse_device_meshes);
   if (auto it = mesh_dim_permutation_order_cache_.find(cache_key);
       it != mesh_dim_permutation_order_cache_.end()) {
     return it->second;

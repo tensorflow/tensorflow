@@ -94,31 +94,37 @@ class DeviceMesh {
   Array<int64_t> device_array_;
   bool is_iota_;
 
-  struct MeshDimPermutationOrderCacheKey {
-    const HloSharding sharding;
-    bool consider_reverse_device_meshes;
+  class MeshDimPermutationOrderCacheKey {
+   public:
+    MeshDimPermutationOrderCacheKey(const HloSharding& sharding,
+                                    bool consider_reverse_device_meshes)
+        : sharding_string_(sharding.ToString()),
+          consider_reverse_device_meshes_(consider_reverse_device_meshes) {}
 
     bool operator==(const MeshDimPermutationOrderCacheKey& other) const {
-      return this->sharding == other.sharding &&
-             this->consider_reverse_device_meshes ==
-                 other.consider_reverse_device_meshes;
+      return this->sharding_string_ == other.sharding_string_ &&
+             this->consider_reverse_device_meshes_ ==
+                 other.consider_reverse_device_meshes_;
     };
 
     template <typename H>
     friend H AbslHashValue(H h, const MeshDimPermutationOrderCacheKey& key) {
-      // NB: We use Hash(key.sharding.ToString()) instead of Hash(key.sharding)
-      // as the latter will materialize the tile assignment array of the
-      // sharding (if it is V2, as are a majority of our sharding objects). This
-      // is necessary has a sharding can have a V1 or a V2 representation. Hash
-      // the ToString repr of the sharding is much faster as it won't
-      // materialize the tile assignment array. This can, however, mean that
-      // equivalent shardings can have different hash values. In this case, this
-      // is okay, as a cache miss will merely invoke the function again, and the
-      // faster hashing more than compensates for the potentially lower hit
-      // rate.
-      return H::combine(std::move(h), key.sharding.ToString(),
-                        key.consider_reverse_device_meshes);
+      return H::combine(std::move(h), key.sharding_string_,
+                        key.consider_reverse_device_meshes_);
     }
+
+   private:
+    // NB: We use sharding.ToString() instead of key.sharding as the latter will
+    // materialize the tile assignment array of the sharding (if it is V2, as
+    // are a majority of our sharding objects). This is necessary has a sharding
+    // can have a V1 or a V2 representation. Hashing the ToString repr of the
+    // sharding is much faster as it won't materialize the tile assignment
+    // array. This can, however, mean that equivalent shardings can have
+    // different hash values. In this case, this is okay, as a cache miss will
+    // merely invoke the function again, and the faster hashing more than
+    // compensates for the potentially lower hit rate.
+    const std::string sharding_string_;
+    bool consider_reverse_device_meshes_;
   };
 
   mutable absl::flat_hash_map<MeshDimPermutationOrderCacheKey,
