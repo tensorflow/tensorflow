@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/mlir/lite/transforms/push_transpose_through_ewise_pass.h"
+
 #include <cstdint>
-#include <memory>
-#include <optional>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -29,28 +29,15 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_DEF_PUSHTRANSPOSETHROUGHEWISEPASS
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
-
-class PushTransposeThroughEwisePass
-    : public impl::PushTransposeThroughEwisePassBase<
-          PushTransposeThroughEwisePass> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PushTransposeThroughEwisePass)
-  void runOnOperation() override;
-};
 
 // Compute the permutation that would take `arr` to the identity.
 llvm::SmallVector<int32_t> InvertPermutation(llvm::SmallVector<int32_t> arr) {
@@ -321,6 +308,7 @@ class CommuteTransposeWithEwiseOps : public RewritePattern {
     return success();
   }
 };
+}  // namespace
 
 void PushTransposeThroughEwisePass::runOnOperation() {
   auto module = getOperation();
@@ -331,12 +319,6 @@ void PushTransposeThroughEwisePass::runOnOperation() {
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
     signalPassFailure();
   }
-}
-
-}  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> CreatePushTransposeThroughEwisePass() {
-  return std::make_unique<PushTransposeThroughEwisePass>();
 }
 
 }  // namespace TFL

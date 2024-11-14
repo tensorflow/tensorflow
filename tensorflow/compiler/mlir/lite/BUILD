@@ -512,6 +512,7 @@ cc_library(
         "transforms/optimize_pass.h",
         "transforms/pass_registry_utils.h",
         "transforms/passes.h",
+        "transforms/push_transpose_through_ewise_pass.h",
         "transforms/unfreeze_global_constants.h",
         "utils/attribute_utils.h",
         "utils/utils.h",
@@ -531,6 +532,7 @@ cc_library(
         ":tensorflow_lite_ops_inc_gen",
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_passes_inc_gen",
+        ":tensorflow_lite_push_transpose_through_ewise_pass",
         ":tensorflow_lite_tf_unfreeze_global_tensors",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
@@ -1030,23 +1032,21 @@ cc_library(
 )
 
 cc_library(
-    name = "tensorflow_lite_push_transpose_through_ewise",
+    name = "tensorflow_lite_push_transpose_through_ewise_pass",
     srcs = [
-        "transforms/push_transpose_through_ewise.cc",
+        "transforms/push_transpose_through_ewise_pass.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/push_transpose_through_ewise_pass.h",
     ],
     deps = [
-        ":tensorflow_lite",
-        ":tensorflow_lite_passes_inc_gen",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
-        "@com_google_absl//absl/container:flat_hash_set",
+        ":pass",
+        ":tensorflow_lite_ops",
+        ":utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -1633,7 +1633,7 @@ cc_library(
         ":tensorflow_lite_legalize_tf",  # buildcleaner: keep
         ":tensorflow_lite_optimize",  # buildcleaner: keep
         ":tensorflow_lite_optimize_batch_matmul",  # buildcleaner: keep
-        ":tensorflow_lite_push_transpose_through_ewise",  # buildcleaner: keep
+        ":tensorflow_lite_push_transpose_through_ewise_pass",  # buildcleaner: keep
         ":tensorflow_lite_quantize",  # buildcleaner: keep
         ":tensorflow_lite_tf_unfreeze_global_tensors",
         "//tensorflow/compiler/mlir/lite/core:macros",
