@@ -79,11 +79,6 @@ bool HasCycles(const SourceTargetPairs& pairs) {
 // with only one input and without any context data.
 bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
                      int64_t threshold_in_bytes) {
-  // TODO(b/316043789): enable the transformation for the no channel_id case.
-  if (!collective_permute.channel_id().has_value()) {
-    return false;
-  }
-
   const Shape& result_shape = collective_permute.shape();
   // Skip the transformation if result is not an array, such as containing
   // context data.
@@ -115,7 +110,7 @@ absl::Status DecomposeCollectivePermute(
     HloCollectivePermuteInstruction* collective_permute,
     HloComputation* computation, const std::string& pipeline_decision) {
   // We currently only decompose collective-permute with a channel_id.
-  int64_t channel_id = collective_permute->channel_id().value();
+  std::optional<int64_t> channel_id = collective_permute->channel_id();
   HloInstruction* data = collective_permute->mutable_operand(0);
   const Shape& data_shape = data->shape();
   const OpMetadata& metadata = collective_permute->metadata();
@@ -142,13 +137,17 @@ absl::Status DecomposeCollectivePermute(
 
   HloInstruction* after_all =
       computation->AddInstruction(HloInstruction::CreateToken());
-  HloInstruction* recv = computation->AddInstruction(
-      HloInstruction::CreateRecv(data_shape, after_all, channel_id));
+  // TODO: once channel id becomes optional, we should remove the default value
+  // of 0. Same for send.
+  HloInstruction* recv = computation->AddInstruction(HloInstruction::CreateRecv(
+      /*shape=*/data_shape, /*token=*/after_all,
+      /*channel_id=*/channel_id.value_or(0)));
   recv->add_frontend_attributes(attributes);
   recv->set_metadata(metadata);
 
   HloInstruction* send = computation->AddInstruction(
-      HloInstruction::CreateSend(data, after_all, channel_id));
+      HloInstruction::CreateSend(/*operand=*/data, /*token=*/after_all,
+                                 /*channel_id=*/channel_id.value_or(0)));
   send->add_frontend_attributes(attributes);
   send->set_metadata(metadata);
 

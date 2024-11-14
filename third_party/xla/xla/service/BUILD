@@ -282,6 +282,7 @@ xla_cc_test(
         ":collective_permute_decomposer",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/hlo/utils:hlo_query",
         "//xla/service/gpu:backend_configs_cc",
