@@ -141,6 +141,7 @@ tf_proto_library(
         ":power_metrics_proto",
         ":steps_db_proto",
         ":tf_function_proto",
+        "//tensorflow/core/profiler/protobuf:hardware_types_proto",
     ],
     visibility = [
         ":friends",

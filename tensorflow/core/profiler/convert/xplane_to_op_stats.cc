@@ -173,6 +173,7 @@ void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
       env->set_device_type("GPU");
     }
     env->set_device_core_count(gpu_planes.size());
+    env->set_hardware_type(tensorflow::profiler::HardwareType::GPU);
   } else if (std::vector<const XPlane*> tpu_planes =
                  FindTensorCorePlanes(space);
              !tpu_planes.empty()) {
@@ -183,9 +184,11 @@ void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
       env->set_device_type(std::string(xstat->StrOrRefValue()));
     }
     env->set_device_core_count(tpu_planes.size());
+    env->set_hardware_type(tensorflow::profiler::HardwareType::TPU);
   } else {
     env->set_device_type("CPU");
     env->set_device_core_count(0);
+    env->set_hardware_type(tensorflow::profiler::HardwareType::CPU_ONLY);
   }
 }
 
