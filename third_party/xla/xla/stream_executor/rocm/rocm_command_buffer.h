@@ -51,7 +51,6 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   RocmCommandBuffer(Mode mode, StreamExecutor* parent, hipGraph_t graph,
                     bool is_owned_graph)
       : GpuCommandBuffer(mode, parent),
-        parent_(parent),
         graph_(graph),
         is_owned_graph_(is_owned_graph) {}
 
@@ -144,8 +143,6 @@ class RocmCommandBuffer : public GpuCommandBuffer {
 
   absl::StatusOr<std::vector<GraphNodeHandle>> GetNodeDependencies(
       GraphNodeHandle node) override;
-
-  StreamExecutor* parent_;
 
   static_assert(std::is_pointer_v<hipGraph_t>, "hipGraph_t must be a pointer");
   static_assert(std::is_pointer_v<hipGraphExec_t>,
