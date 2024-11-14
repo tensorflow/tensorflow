@@ -200,8 +200,8 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
     ASSERT_EQ(sliced_subgraph_inputs.size(), 1);
 
     ASSERT_TRUE(MatchUses(sliced_subgraph_inputs.front(),
-                          {UseInfo(sliced_subgraph_ops.front().Code(), 0),
-                           UseInfo(sliced_subgraph_ops.front().Code(), 0)}));
+                          {UseInfo{sliced_subgraph_ops.front().Code(), 0},
+                           UseInfo{sliced_subgraph_ops.front().Code(), 0}}));
     ASSERT_TRUE(sliced_subgraph_inputs.front().IsSubgraphInput());
   }
 
@@ -211,8 +211,8 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
     const auto& hal_call_out = hal_call_outs.front();
 
     ASSERT_TRUE(MatchUses(hal_call_out,
-                          {UseInfo(edited_subgraph_ops.back().Code(), 0),
-                           UseInfo(edited_subgraph_ops.back().Code(), 1)}));
+                          {UseInfo{edited_subgraph_ops.back().Code(), 0},
+                           UseInfo{edited_subgraph_ops.back().Code(), 1}}));
 
     auto sliced_subgraph_outputs = sliced_graph.Outputs();
 

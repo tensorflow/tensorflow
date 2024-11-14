@@ -69,7 +69,7 @@ inline void AddAllocBaseOption(const void* alloc_base,
   LiteRtAny opt;
   opt.type = kLiteRtAnyTypeVoidPtr;
   opt.ptr_value = alloc_base;
-  opts.AddOption(LiteRtDispatchOption(kAllocBase.data(), opt));
+  opts.AddOption(LiteRtDispatchOption{kAllocBase.data(), opt});
 }
 
 inline litert::Expected<const void*> FindAllocBase(

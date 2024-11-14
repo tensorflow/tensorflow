@@ -18,7 +18,9 @@
 
 #ifndef __ANDROID__
 #include <glob.h>
+#if __has_include(<link.h>)
 #include <link.h>
+#endif
 #endif
 
 #include <cstddef>
@@ -34,10 +36,10 @@
 namespace litert::internal {
 
 LiteRtStatus OpenLib(absl::string_view so_path, void** lib_handle) {
-#ifdef __ANDROID__
-  void* res = ::dlopen(so_path.data(), RTLD_NOW | RTLD_LOCAL);
-#else
+#ifdef RTLD_DEEPBIND
   void* res = ::dlopen(so_path.data(), RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND);
+#else
+  void* res = ::dlopen(so_path.data(), RTLD_NOW | RTLD_LOCAL);
 #endif
 
   if (res == nullptr) {
@@ -61,7 +63,9 @@ LiteRtStatus CloseLib(void* lib_handle) {
 
 LiteRtStatus MakePluginLibGlobPattern(absl::string_view search_path,
                                       std::string& pattern) {
-  LITERT_ENSURE(!search_path.ends_with("/"), kLiteRtStatusErrorInvalidArgument,
+  bool search_path_ends_with_slash =
+      !search_path.empty() && (search_path[search_path.size() - 1] == '/');
+  LITERT_ENSURE(!search_path_ends_with_slash, kLiteRtStatusErrorInvalidArgument,
                 "Search paths must not have trailing slash");
 
   // NOTE: Compiler plugin shared libraries also have "Plugin" somewhere after

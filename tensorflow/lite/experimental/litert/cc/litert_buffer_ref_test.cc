@@ -99,7 +99,7 @@ TEST(BufferRefTest, Dump) {
   BufferRef buf(kData.data(), kData.size());
   std::stringstream out;
   buf.Dump(out);
-  EXPECT_THAT(out.view(), StartsWith("BufferRef"));
+  EXPECT_THAT(out.str(), StartsWith("BufferRef"));
 }
 
 TEST(BufferRefTest, WithData) {
@@ -127,7 +127,7 @@ TEST(BufferRefTest, WriteStr) {
   BufferRef buf(data.data(), data.size());
   std::stringstream out;
   buf.WriteStr(out);
-  EXPECT_EQ(out.view(), kData);
+  EXPECT_EQ(out.str(), kData);
 }
 
 TEST(BufferRefTest, WriteStrOffset) {
@@ -135,7 +135,7 @@ TEST(BufferRefTest, WriteStrOffset) {
   BufferRef buf(data.data(), data.size(), kOffset);
   std::stringstream out;
   buf.WriteStr(out);
-  EXPECT_EQ(out.view(), kData.substr(kOffset, buf.Size()));
+  EXPECT_EQ(out.str(), kData.substr(kOffset, buf.Size()));
 }
 
 TEST(BufferRefTest, TupleGet) {
@@ -154,7 +154,7 @@ TEST(MutableBufferRefTest, Dump) {
   MutableBufferRef<char> buf;
   std::stringstream out;
   buf.Dump(out);
-  EXPECT_THAT(out.view(), StartsWith("MutableBufferRef"));
+  EXPECT_THAT(out.str(), StartsWith("MutableBufferRef"));
 }
 
 TEST(MutableBufferRefTest, WriteInto) {
@@ -200,7 +200,7 @@ TEST(OwningBufferRefTest, Dump) {
   OwningBufferRef buf;
   std::stringstream out;
   buf.Dump(out);
-  EXPECT_THAT(out.view(), StartsWith("OwningBufferRef"));
+  EXPECT_THAT(out.str(), StartsWith("OwningBufferRef"));
 }
 
 TEST(OwningBufferRefTest, MoveCstor) {

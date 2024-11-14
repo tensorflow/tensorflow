@@ -15,6 +15,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,10 +31,12 @@ namespace {
 static constexpr LiteRtStatus kErrorStatus = kLiteRtStatusErrorInvalidArgument;
 
 struct TypeWithAllocation {
+  TypeWithAllocation(std::initializer_list<int> il) : allocated(il) {}
   std::vector<int> allocated;
 };
 
 struct TypeWithFields {
+  TypeWithFields(int i_, int j_) : i(i_), j(j_) {}
   int i;
   int j;
 };

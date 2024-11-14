@@ -95,7 +95,7 @@ OwningBufferRef<uint8_t> MakeByteCodePlaceholder() {
 Expected<std::pair<size_t, size_t>> ParseByteCodePlaceholder(
     BufferRef<uint8_t> buf) {
   if (buf.Size() != kByteCodePlaceholderBufSize ||
-      !buf.StrView().starts_with(kByteCodePrefix)) {
+      buf.StrView().compare(0, kByteCodePrefix.size(), kByteCodePrefix) != 0) {
     LITERT_LOG(LITERT_ERROR, "%s", "Byte code placeholder size mismatch\n");
     return Unexpected(kLiteRtStatusErrorInvalidArgument);
   }

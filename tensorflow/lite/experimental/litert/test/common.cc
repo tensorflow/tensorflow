@@ -101,7 +101,7 @@ bool ValidateTopology(const std::vector<Op>& ops) {
   for (const auto& op : ops) {
     const auto inputs = op.Inputs();
     for (int i = 0; i < inputs.size(); ++i) {
-      if (!MatchUse(inputs.at(i), UseInfo(op.Code(), i))) {
+      if (!MatchUse(inputs.at(i), UseInfo{op.Code(), i})) {
         return false;
       }
     }

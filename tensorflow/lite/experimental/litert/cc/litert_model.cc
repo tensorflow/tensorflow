@@ -37,7 +37,7 @@ SmallVec<Tensor::TensorUse> Tensor::Uses() const {
                              &user_arg_inds);
   SmallVec<Tensor::TensorUse> res;
   for (int i = 0; i < num_uses; ++i) {
-    res.emplace_back(Op(users[i]), user_arg_inds[i]);  // NOLINT
+    res.push_back(Tensor::TensorUse{Op(users[i]), user_arg_inds[i]});  // NOLINT
   }
   return res;
 }

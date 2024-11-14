@@ -153,7 +153,7 @@ TEST(MatchUseTest, Match) {
   ABSL_CHECK(subgraph.ok());
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
-  EXPECT_TRUE(MatchUse(inputs.back(), UseInfo(kLiteRtOpCodeTflAdd, 1)));
+  EXPECT_TRUE(MatchUse(inputs.back(), UseInfo{kLiteRtOpCodeTflAdd, 1}));
 }
 
 TEST(MatchUseTest, MatchAnyCode) {
@@ -162,7 +162,7 @@ TEST(MatchUseTest, MatchAnyCode) {
   ABSL_CHECK(subgraph.ok());
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
-  EXPECT_TRUE(MatchUse(inputs.back(), UseInfo(std::nullopt, 1)));
+  EXPECT_TRUE(MatchUse(inputs.back(), UseInfo{std::nullopt, 1}));
 }
 
 TEST(MatchUseTest, NoMatch) {
@@ -171,7 +171,7 @@ TEST(MatchUseTest, NoMatch) {
   ABSL_CHECK(subgraph.ok());
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
-  EXPECT_FALSE(MatchUse(inputs.back(), UseInfo(std::nullopt, 2)));
+  EXPECT_FALSE(MatchUse(inputs.back(), UseInfo{std::nullopt, 2}));
 }
 
 TEST(MatchUsesTest, StrictMatch) {

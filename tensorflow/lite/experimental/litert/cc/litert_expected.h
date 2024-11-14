@@ -63,9 +63,8 @@ class Unexpected {
       : error_(std::forward<Args>(args)...) {}
 
   // Allow for implicit conversion from convertible Error value inplace.
-  template <class Err = class Error>
-  explicit(!std::convertible_to<Err, class Error>) Unexpected(Err&& e)
-      : error_(static_cast<class Error>(std::forward<Err>(e))) {}
+  // NOLINTNEXTLINE
+  Unexpected(Error&& e) : error_(std::move(e)) {}
 
   Unexpected(Unexpected&& other) = default;
   Unexpected(const Unexpected& other) = default;
@@ -116,9 +115,8 @@ class Expected {
       : has_value_(true), value_(std::forward<Args>(args)...) {}
 
   // Allow for implicit conversion from convertible T value inplace.
-  template <class U = T>
-  explicit(!std::convertible_to<U, T>) Expected(U&& v)
-      : has_value_(true), value_(static_cast<T>(std::forward<U>(v))) {}
+  // NOLINTNEXTLINE
+  Expected(T&& t) : has_value_(true), value_(std::move(t)) {}
 
   // Construct from Unexpected inplace.
 
