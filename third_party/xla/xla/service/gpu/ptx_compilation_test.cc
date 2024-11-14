@@ -296,9 +296,8 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   // reference build when the build under test also uses a separate linking
   // step.
   const PtxLinkingMethod reference_linking_method =
-      (linking_method == PtxLinkingMethod::kNone)
-          ? PtxLinkingMethod::kNone
-          : PtxLinkingMethod::kNvJitLink;
+      (linking_method == PtxLinkingMethod::kNone) ? PtxLinkingMethod::kNone
+                                                  : PtxLinkingMethod::kNvLink;
 
   absl::StatusOr<std::unique_ptr<Executable>> reference =
       compile(PtxCompilationMethod::kPtxas, reference_linking_method);

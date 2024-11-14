@@ -61,7 +61,10 @@ config_setting(
 
 bool_flag(
     name = "enable_libnvjitlink_support",
-    build_setting_default = True,
+    build_setting_default = if_google(
+        True,
+        oss_value = False,
+    ),
 )
 
 config_setting(
