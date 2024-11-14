@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cstddef>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -26,10 +28,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -38,10 +44,12 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/triton/kernel_name_tracer.h"
 #include "xla/service/gpu/fusions/triton/triton_test_utils.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
@@ -56,7 +64,9 @@ class AlgorithmTest : public GpuCodegenTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options.set_xla_dump_to("sponge");
+    if (debug_options.xla_dump_to().empty()) {
+      debug_options.set_xla_dump_to("sponge");
+    }
     debug_options.set_xla_dump_hlo_pass_re(".*");
     debug_options.set_xla_gpu_dump_autotuned_gemm_fusions(true);
 
@@ -1180,6 +1190,197 @@ INSTANTIATE_TEST_SUITE_P(TritonCanHandle, TritonCanHandle,
                          Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X3,
                                         PC::ALG_DOT_BF16_BF16_F32_X6)),
                          CanHandleTestParamsToString);
+
+// Collects the results of a test. The results can be dumped in CSV format.
+class CSVWriter {
+ public:
+  // Appends a value to the current row. If there is no current row, creates a
+  // new one.
+  template <typename V>
+  void appendValue(V v) {
+    if (results_.empty()) {
+      results_.emplace_back();
+    }
+    results_.back().push_back(absl::StrCat(v));
+  }
+
+  // Appends a new empty row.
+  void nextRow() { results_.emplace_back(); }
+
+  // Appends a row with the given values.
+  template <typename V>
+  void appendRow(std::vector<V> v) {
+    results_.emplace_back();
+    for (const auto& v : v) {
+      results_.back().push_back(absl::StrCat(v));
+    }
+  }
+
+  // Returns the results in CSV format.
+  std::string GetResult(std::string_view title,
+                        std::string_view delimiter = ", ",
+                        bool separate_first_row = true) const {
+    std::vector<size_t> sizes;
+    size_t columns = 0;
+    for (const auto& row : results_) {
+      columns = std::max(columns, row.size());
+      sizes.resize(columns);
+      for (int i = 0; i < row.size(); ++i) {
+        sizes[i] = std::max(sizes[i], row[i].size());
+      }
+    }
+    std::string result = absl::StrCat(title, "\n");
+    bool first_row = true;
+    for (const auto& row : results_) {
+      for (int i = 0; i < row.size(); ++i) {
+        auto format = absl::StrFormat("%%%ds", sizes[i]);
+        auto format_runtime = absl::ParsedFormat<'s'>::New(format);
+        absl::StrAppend(&result, absl::StrFormat(*format_runtime, row[i]),
+                        delimiter);
+      }
+      result += "\n";
+      if (first_row && separate_first_row) {
+        first_row = false;
+        auto total_size = delimiter.size() * (columns - 1);
+        for (const auto& size : sizes) {
+          total_size += size;
+        }
+        result += std::string(total_size, '-');
+        result += "\n";
+      }
+    }
+    return result;
+  }
+
+ private:
+  std::vector<std::vector<std::string>> results_;
+};
+
+class AlgorithmsSupportTest
+    : public CanHandleArguments,
+      public WithParamInterface<CanHandleTestsParams::TupleType>,
+      public AlgorithmTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
+    debug_options.clear_xla_dump_hlo_pass_re();  // Too many dumps.
+    debug_options.clear_xla_gpu_dump_autotuned_gemm_fusions();
+    return debug_options;
+  }
+
+  static auto GetModuleConfig(const DebugOptions& debug_options) {
+    HloModuleConfig config;
+    config.set_debug_options(debug_options);
+    config.set_replica_count(1);
+    config.set_num_partitions(1);
+    return config;
+  }
+
+  absl::StatusOr<std::unique_ptr<HloModule>> GetModule(
+      std::string_view hlo_template, std::string_view backend_name,
+      std::string_view algorithm, int m, int n, const DebugOptions& options) {
+    auto config = GetModuleConfig(options);
+    auto module_name =
+        absl::StrCat(backend_name, "_", m, "_", n, "_", kMaxK, "_", algorithm);
+    auto hlo_text =
+        absl::Substitute(hlo_template, module_name, m, kMaxK, n, algorithm);
+    TF_ASSIGN_OR_RETURN(auto module,
+                        ParseAndReturnVerifiedModule(hlo_text, config));
+    return backend().compiler()->RunHloPasses(
+        std::move(module), backend().default_stream_executor(), GetAllocator());
+  };
+
+ protected:
+  void SetUp() override {
+    AlgorithmTest::SetUp();
+    debug_options_ = GetDebugOptionsForTest();
+
+    triton_options_ = debug_options_;
+    triton_options_.set_xla_gpu_triton_gemm_any(true);
+    triton_options_.set_xla_gpu_cublas_fallback(false);
+
+    blas_options_ = debug_options_;
+    blas_options_.set_xla_gpu_enable_triton_gemm(false);
+    blas_options_.set_xla_gpu_cublas_fallback(true);
+
+    algorithm_ = AlgorithmToString(std::get<0>(GetParam()));
+  }
+
+  void DumpResults(const CSVWriter& csv, std::string_view suffix) {
+    auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
+    auto suite_name = test_info->test_suite_name();
+    std::string test_name = test_info->name();
+    auto title = absl::StrCat("Test name: ", suite_name, ".", test_name);
+    auto result = csv.GetResult(title, ", ");
+    LOG(ERROR) << "result: \n" << result;
+
+    test_name = absl::StrReplaceAll(test_name, {{" ", "_"}, {"/", "_"}});
+    auto name = absl::StrCat(suite_name, test_name, "_", suffix);
+    DumpToFileInDirOrStdout(debug_options_, 0, algorithm_, name, ".txt",
+                            result);
+  }
+  DebugOptions debug_options_;
+
+  DebugOptions triton_options_;
+
+  DebugOptions blas_options_;
+
+  std::string algorithm_;
+
+  static constexpr std::string_view kBlasPattern = "__cublas$gemm";
+  static constexpr std::string_view kTritonGemmPattern = "__triton_gemm";
+  static constexpr int kMaxSize = 8192;
+  static constexpr int kStepSize = 8;
+  static constexpr int kMaxK = kMaxSize;
+};
+
+TEST_P(AlgorithmsSupportTest, Dot2D) {
+  const std::string kHloText = R"(
+    HloModule $0
+
+    ENTRY e {
+      p0 = f32[$1,$2] parameter(0)
+      p1 = f32[$2,$3] parameter(1)
+      ROOT dot = f32[$1,$3] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0},
+        algorithm=$4
+    }
+  )";
+  CSVWriter csv;
+  csv.appendValue("M/N");
+  for (int n = 1; n <= kMaxSize; n *= kStepSize) {
+    csv.appendValue(n);
+  }
+  for (int m = 1; m <= kMaxSize; m *= kStepSize) {
+    csv.nextRow();
+    csv.appendValue(m);
+    for (int n = 1; n <= kMaxSize; n *= kStepSize) {
+      auto run = [&](std::string_view backend, std::string_view pattern,
+                     const DebugOptions& options) -> std::string_view {
+        auto module = GetModule(kHloText, backend, algorithm_, m, n, options);
+        if (!module.ok()) {
+          return "Fail";
+        }
+        return absl::StrContains(module.value()->ToString(), pattern) ? " Yes"
+                                                                      : "  No";
+      };
+
+      csv.appendValue(absl::StrCat(
+          "('triton': ", run("triton", kTritonGemmPattern, triton_options_),
+          ", 'blas': ", run("blas", kBlasPattern, blas_options_), ")"));
+    }
+  }
+  DumpResults(csv, "backend_support_matrix");
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AlgorithmsSupportTest, AlgorithmsSupportTest,
+    Combine(Values(PC::ALG_DOT_BF16_BF16_F32, PC::ALG_DOT_BF16_BF16_F32_X3,
+                   PC::ALG_DOT_BF16_BF16_F32_X6, PC::ALG_DOT_F32_F32_F32,
+                   PC::ALG_DOT_TF32_TF32_F32_X3, PC::ALG_DOT_F64_F64_F64,
+                   PC::ALG_UNSET)),
+    CanHandleTestParamsToString);
 
 }  // namespace
 }  // namespace gpu
