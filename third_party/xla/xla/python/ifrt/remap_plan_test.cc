@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -45,7 +47,18 @@ using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
 
-class RemapPlanTest : public test_util::DeviceTest {};
+class RemapPlanTest : public test_util::DeviceTest {
+ public:
+  ArraySpec GetDummySpec() {
+    return ArraySpec{
+        /*dtype=*/DType(DType::kS32),
+        /*shape=*/Shape({4, 3}),
+        /*sharding=*/
+        ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                     /*shape=*/Shape({4, 3}),
+                                     /*shard_shape=*/Shape({2, 3}))};
+  }
+};
 
 TEST_P(RemapPlanTest, ToFromProto) {
   RemapPlan plan;
@@ -407,6 +420,73 @@ TEST_P(RemapPlanTest, InvalidOutputDevices) {
           absl::StatusCode::kInvalidArgument,
           HasSubstr(
               "Output array 0 devices and sharding devices do not match")));
+}
+
+TEST_P(RemapPlanTest, CheckOneInputToOneOutput) {
+  ArraySpec dummy_spec = GetDummySpec();
+
+  RemapPlan plan;
+  plan.input_specs.push_back(dummy_spec);
+  plan.output_specs.push_back(dummy_spec);
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  *plan.mappings = {RemapPlan::Mapping{/*in_array=*/0,
+                                       /*out_array=*/0,
+                                       /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                                       /*to=*/{RemapPlan::Interval{0, 2, 1}}}};
+
+  TF_EXPECT_OK(
+      plan.CheckArrayCopySemantics(xla::ifrt::ArrayCopySemantics::kReuseInput));
+  TF_EXPECT_OK(plan.CheckArrayCopySemantics(
+      xla::ifrt::ArrayCopySemantics::kDonateInput));
+}
+
+TEST_P(RemapPlanTest, CheckOneInputToMultipleOutputs) {
+  ArraySpec dummy_spec = GetDummySpec();
+
+  RemapPlan plan;
+  plan.input_specs = {dummy_spec};
+  plan.output_specs = {dummy_spec, dummy_spec};
+
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  *plan.mappings = {RemapPlan::Mapping{/*in_array=*/0,
+                                       /*out_array=*/0,
+                                       /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                                       /*to=*/{RemapPlan::Interval{0, 2, 1}}},
+                    RemapPlan::Mapping{/*in_array=*/0,
+                                       /*out_array=*/1,
+                                       /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                                       /*to=*/{RemapPlan::Interval{0, 2, 1}}}};
+
+  TF_EXPECT_OK(
+      plan.CheckArrayCopySemantics(xla::ifrt::ArrayCopySemantics::kReuseInput));
+  TF_EXPECT_OK(plan.CheckArrayCopySemantics(
+      xla::ifrt::ArrayCopySemantics::kDonateInput));
+}
+
+TEST_P(RemapPlanTest, CheckMultipleInputsToOneOutput) {
+  ArraySpec dummy_spec = GetDummySpec();
+
+  RemapPlan plan;
+  plan.input_specs = {dummy_spec, dummy_spec};
+  plan.output_specs = {dummy_spec};
+
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  *plan.mappings = {RemapPlan::Mapping{/*in_array=*/0,
+                                       /*out_array=*/0,
+                                       /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                                       /*to=*/{RemapPlan::Interval{0, 2, 1}}},
+                    RemapPlan::Mapping{/*in_array=*/1,
+                                       /*out_array=*/0,
+                                       /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                                       /*to=*/{RemapPlan::Interval{0, 2, 1}}}};
+
+  EXPECT_THAT(
+      plan.CheckArrayCopySemantics(xla::ifrt::ArrayCopySemantics::kReuseInput),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("kDonateInput is required if multiple inputs are "
+                         "mapped to one output")));
+  TF_EXPECT_OK(plan.CheckArrayCopySemantics(
+      xla::ifrt::ArrayCopySemantics::kDonateInput));
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, RemapPlanTest,

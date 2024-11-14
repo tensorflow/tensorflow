@@ -245,12 +245,11 @@ TEST(RemapImplTest, InterleaveArrays) {
                           CreateArray(client.get(), /*base_values=*/{100, 106},
                                       /*device_indices=*/{2, 3}));
 
-  EXPECT_THAT(
-      client->RemapArrays(plan, absl::MakeSpan(arrays),
-                          ArrayCopySemantics::kReuseInput),
-      StatusIs(
-          absl::StatusCode::kInvalidArgument,
-          HasSubstr("kDonateInput is required if multiple inputs are used")));
+  EXPECT_THAT(client->RemapArrays(plan, absl::MakeSpan(arrays),
+                                  ArrayCopySemantics::kReuseInput),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("kDonateInput is required if multiple inputs "
+                                 "are mapped to one output")));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_arrays, client->RemapArrays(plan, absl::MakeSpan(arrays),

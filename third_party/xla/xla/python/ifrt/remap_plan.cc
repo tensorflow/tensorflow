@@ -21,11 +21,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -119,6 +121,24 @@ absl::Status CheckRange(int64_t num_shards,
 // Returns the number of steps in `interval`.
 int64_t GetNumberOfSteps(const RemapPlan::Interval& interval) {
   return (interval.end - interval.start + interval.step - 1) / interval.step;
+}
+
+bool CheckOneInputForOneOutput(const xla::ifrt::RemapPlan& plan) {
+  if (!plan.mappings) return false;
+  const auto& mappings = *plan.mappings;
+  absl::flat_hash_map<int, int> output_to_input;
+
+  for (const auto& mapping : mappings) {
+    int in_array = mapping.in_array;
+    int out_array = mapping.out_array;
+
+    const auto [it, inserted] = output_to_input.insert({out_array, in_array});
+    if (!inserted && it->second != in_array) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 }  // namespace
@@ -334,6 +354,18 @@ std::string RemapPlan::DebugString() const {
   return absl::StrCat("RemapPlan(input_specs=", format_array_specs(input_specs),
                       ",output_specs=", format_array_specs(output_specs), ",",
                       "mappings=", format_mappings(*mappings), ")");
+}
+
+absl::Status RemapPlan::CheckArrayCopySemantics(
+    xla::ifrt::ArrayCopySemantics semantics) const {
+  if (semantics != xla::ifrt::ArrayCopySemantics::kDonateInput) {
+    if (!CheckOneInputForOneOutput(*this)) {
+      return absl::InvalidArgumentError(
+          "kDonateInput is required if multiple inputs are mapped to one "
+          "output");
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace ifrt
