@@ -401,6 +401,14 @@ typedef struct TfLiteIntArray TfLiteIntArray;
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
     TfLiteOpaqueContext* opaque_context, TfLiteIntArray** execution_plan);
 
+/// Returns the external context of the specified type associated with the
+/// provided `opaque_context`. Returns `kTfLiteOk` if the external context was
+/// successfully loaded. A return value different from `kTfLiteOk` indicates a
+/// failure and the `external_context` will be left in an unspecified state.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueContextGetExternalContext(
+    TfLiteOpaqueContext* opaque_context, void** external_context,
+    TfLiteExternalContextType type);
+
 /// Given the specified 'opaque_context' and 'node_index', load the caller's
 /// opaque '*node' and '*registration_external' pointer.  Return 'kTfLiteOk' if
 /// both the '*node' as well as the '*registration_external' have been loaded

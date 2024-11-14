@@ -22,7 +22,10 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
 #include "tensorflow/lite/interpreter.h"
@@ -40,6 +43,9 @@ TEST(DispatchDelegate, GoogleTensor) {
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
   auto& rt = **runtime;
   auto& interpreter = rt.Interp();
+
+  litert::internal::ExternalLiteRtBufferContext buffer_context;
+  interpreter.SetExternalContext(kTfLiteLiteRtBufferContext, &buffer_context);
 
   EXPECT_EQ(interpreter.nodes_size(), 1);
   EXPECT_EQ(interpreter.inputs().size(), 2);
@@ -59,6 +65,38 @@ TEST(DispatchDelegate, GoogleTensor) {
 
   ASSERT_EQ(interpreter.ModifyGraphWithDelegate(dispatch_delegate.get()),
             kTfLiteOk);
+
+  // Create and register tensor buffers for all inputs and outputs.
+  for (int i = 0; i < interpreter.inputs().size(); ++i) {
+    auto input_buffer_requirements =
+        buffer_context.GetBufferRequirement(interpreter.input_tensor(i));
+    ASSERT_TRUE(input_buffer_requirements.HasValue());
+    ASSERT_EQ((*input_buffer_requirements)->SupportedTypes().value()[0],
+              kLiteRtTensorBufferTypeAhwb);
+    auto input_buffer =
+        buffer_context.CreateBufferForTensor(interpreter.input_tensor(i));
+    ASSERT_TRUE(input_buffer.HasValue());
+    ASSERT_TRUE(input_buffer->IsOwned());
+    ASSERT_EQ(input_buffer->BufferType().value(), kLiteRtTensorBufferTypeAhwb);
+    auto status = buffer_context.RegisterTensorBuffer(
+        interpreter.input_tensor(i), std::move(*input_buffer));
+    ASSERT_EQ(status, kLiteRtStatusOk);
+  }
+  for (int i = 0; i < interpreter.outputs().size(); ++i) {
+    auto output_buffer_requirements =
+        buffer_context.GetBufferRequirement(interpreter.output_tensor(i));
+    ASSERT_TRUE(output_buffer_requirements.HasValue());
+    ASSERT_EQ((*output_buffer_requirements)->SupportedTypes().value()[0],
+              kLiteRtTensorBufferTypeAhwb);
+    auto output_buffer =
+        buffer_context.CreateBufferForTensor(interpreter.output_tensor(i));
+    ASSERT_TRUE(output_buffer.HasValue());
+    ASSERT_TRUE(output_buffer->IsOwned());
+    ASSERT_EQ(output_buffer->BufferType().value(), kLiteRtTensorBufferTypeAhwb);
+    auto status = buffer_context.RegisterTensorBuffer(
+        interpreter.output_tensor(i), std::move(*output_buffer));
+    ASSERT_EQ(status, kLiteRtStatusOk);
+  }
 
   // Get the list of signatures and check it.
   auto signature_defs = interpreter.signature_keys();

@@ -66,8 +66,26 @@ class DispatchDelegateKernel
   absl::StatusOr<TensorBufferRequirements> GetBufferRequirements(
       const RankedTensorType& tensor_type, int io_tensor_index,
       bool is_input) const;
-  TfLiteStatus SetBuffer(const TfLiteOpaqueTensor* tfl_opaque_tensor,
-                         int buffer_index, bool is_input);
+
+  // Creates a new tensor buffer for the given tensor. After that the created
+  // tensor buffer is registered with RegisterLiteRtTensorBuffer().
+  TfLiteStatus CreateAndSetBuffer(const TfLiteOpaqueTensor* tfl_opaque_tensor,
+                                  int buffer_index, bool is_input);
+
+  // Registers the given LiteRtTensorBuffer (and its size) with the Dispatch
+  // API.
+  // Also update the internal state (input_tensor_buffers_, etc.) to keep track
+  // of the registered tensor buffers.
+  TfLiteStatus RegisterLiteRtTensorBuffer(TensorBuffer&& tensor_buffer,
+                                          size_t used_size, int buffer_index,
+                                          bool is_input);
+
+  // Registers LiteRtTensorBuffers for all inputs and outputs of the given
+  // node.
+  // Also update the internal state (input_tensor_buffers_, etc.) to keep track
+  // of the registered tensor buffers.
+  TfLiteStatus RegisterLiteRtTensorBuffers(TfLiteOpaqueContext* context,
+                                           TfLiteOpaqueNode* node);
 
   const LiteRtDispatchDelegateOptions& options_;
   std::string graph_name_;

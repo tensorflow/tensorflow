@@ -71,3 +71,26 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
     ],
 )
+
+cc_library(
+    name = "external_litert_buffer_context",
+    srcs = ["external_litert_buffer_context.cc"],
+    hdrs = ["external_litert_buffer_context.h"],
+    deps = [
+        ":tfl_utils",
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_opaque",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer_requirements",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
