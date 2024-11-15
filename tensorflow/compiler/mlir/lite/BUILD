@@ -509,6 +509,7 @@ cc_library(
     ],
     hdrs = [
         "ir/tfl_ops.h",
+        "transforms/canonicalize_boundary_value_pass.h",
         "transforms/optimize_pass.h",
         "transforms/pass_registry_utils.h",
         "transforms/passes.h",
@@ -519,6 +520,7 @@ cc_library(
     ],
     deps = [
         ":attribute_utils",
+        ":canonicalize_boundary_value",
         ":converter_inc",
         ":cost_estimators",
         ":optimize_pass_options",
@@ -563,6 +565,7 @@ cc_library(
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -827,20 +830,17 @@ cc_library(
         "transforms/canonicalize_boundary_value_pass.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/canonicalize_boundary_value_pass.h",
     ],
     deps = [
-        ":tensorflow_lite",
-        ":tensorflow_lite_passes_inc_gen",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
+        ":pass",
+        ":utils",
         "//tensorflow/compiler/mlir/tensorflow",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:stablehlo_ops",

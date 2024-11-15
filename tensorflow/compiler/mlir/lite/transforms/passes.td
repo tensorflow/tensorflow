@@ -432,8 +432,3 @@ def ReduceTypePrecisionPass : Pass<"tfl-reduce-type-precision", "mlir::ModuleOp"
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
 
-def CanonicalizeBoundaryValuePass : Pass<"canonicalize-boundary-value", "mlir::ModuleOp"> {
-  let summary = "Canonicalize the IR representations of boundary values";
-  let dependentDialects = ["mlir::stablehlo::StablehloDialect", "TF::TensorFlowDialect", "mlir::arith::ArithDialect"];
-  let constructor = "CreateCanonicalizeBoundaryValuePass()";
-}
