@@ -94,6 +94,7 @@ namespace xla::gpu {
 namespace ma = ::mlir::arith;
 namespace mm = ::mlir::math;
 namespace mt = ::mlir::triton;
+namespace mh = ::mlir::mhlo;
 
 using ::llvm::SmallVector;
 using ::mlir::ArrayRef;
@@ -149,13 +150,12 @@ Type StorageType(mlir::OpBuilder b, Type t) {
 
 // Create a scalar constant.
 template <typename T>
-mlir::arith::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b,
-                                    mlir::Type type, T value) {
+ma::ConstantOp CreateConst(ImplicitLocOpBuilder b, Type type, T value) {
   if (mlir::isa<mlir::IntegerType>(type)) {
-    return b.create<mlir::arith::ConstantOp>(b.getIntegerAttr(type, value));
+    return b.create<ma::ConstantOp>(b.getIntegerAttr(type, value));
   }
   if (mlir::isa<mlir::FloatType>(type)) {
-    return b.create<mlir::arith::ConstantOp>(
+    return b.create<ma::ConstantOp>(
         b.getFloatAttr(type, static_cast<double>(value)));
   }
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
@@ -163,17 +163,16 @@ mlir::arith::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b,
 
 // Create a tensor constant.
 template <typename T>
-mlir::arith::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder& b,
-                                    mlir::Type type, T value,
-                                    llvm::ArrayRef<int64_t> shape) {
+ma::ConstantOp CreateConst(ImplicitLocOpBuilder& b, Type type, T value,
+                           llvm::ArrayRef<int64_t> shape) {
   auto tensor_type = mlir::RankedTensorType::get(shape, type);
   if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
-    return b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
+    return b.create<ma::ConstantOp>(mlir::DenseElementsAttr::get(
         tensor_type, mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
                                  /*isSigned=*/std::is_signed_v<T>)));
   }
   if (auto float_type = mlir::dyn_cast<mlir::FloatType>(type)) {
-    return b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
+    return b.create<ma::ConstantOp>(mlir::DenseElementsAttr::get(
         tensor_type, b.getFloatAttr(type, static_cast<double>(value))));
   }
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
@@ -297,20 +296,17 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     int64_t max = llvm::maxIntN(dst_element_ty.getIntOrFloatBitWidth());
 
     // value <= static_cast<float>(INT_MIN) ? INT_MIN : ...
-    auto clamped = b.create<mlir::arith::SelectOp>(
-        b.create<mlir::arith::CmpFOp>(mlir::arith::CmpFPredicate::OLE, value,
-                                      cst_float(min)),
+    auto clamped = b.create<ma::SelectOp>(
+        b.create<ma::CmpFOp>(ma::CmpFPredicate::OLE, value, cst_float(min)),
         cst_int(min), fptosi);
     // value >= static_cast<float>(INT_MAX) ? INT_MAX : ...
-    clamped = b.create<mlir::arith::SelectOp>(
-        b.create<mlir::arith::CmpFOp>(mlir::arith::CmpFPredicate::OGE, value,
-                                      cst_float(max)),
+    clamped = b.create<ma::SelectOp>(
+        b.create<ma::CmpFOp>(ma::CmpFPredicate::OGE, value, cst_float(max)),
         cst_int(max), clamped);
     // isnan(value) ? 0 : ...
-    return b.create<mlir::arith::SelectOp>(
-        b.create<mlir::arith::CmpFOp>(mlir::arith::CmpFPredicate::UNO, value,
-                                      value),
-        cst_int(0), clamped);
+    return b.create<ma::SelectOp>(
+        b.create<ma::CmpFOp>(ma::CmpFPredicate::UNO, value, value), cst_int(0),
+        clamped);
   }
 
   LOG(FATAL) << "Type conversion not supported: "
@@ -327,19 +323,18 @@ Value Subtract(ImplicitLocOpBuilder& b, ValueRange values) {
 }
 
 Value Compare(ImplicitLocOpBuilder& b, ValueRange values,
-              mlir::mhlo::ComparisonDirection direction) {
+              mh::ComparisonDirection direction) {
   const Type type = mlir::getElementTypeOrSelf(values[0]);
   if (mlir::isa<mlir::IntegerType>(type)) {
-    return b.create<ma::CmpIOp>(
-        mlir::mhlo::impl::getCmpPredicate<ma::CmpIPredicate>(
-            direction,
-            /*isSigned=*/!type.isInteger(1))
-            .value(),
-        values[0], values[1]);
+    return b.create<ma::CmpIOp>(mh::impl::getCmpPredicate<ma::CmpIPredicate>(
+                                    direction,
+                                    /*isSigned=*/!type.isInteger(1))
+                                    .value(),
+                                values[0], values[1]);
   }
   return b.create<ma::CmpFOp>(
-      mlir::mhlo::impl::getCmpPredicate<ma::CmpFPredicate>(direction,
-                                                           /*isSigned=*/true)
+      mh::impl::getCmpPredicate<ma::CmpFPredicate>(direction,
+                                                   /*isSigned=*/true)
           .value(),
       values[0], values[1]);
 }
@@ -355,10 +350,10 @@ Value Maximum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
   // This also works, but we wanted to make it similar to minimum.
   // logic: isNaN(lhs) || lhs >= rhs ? lhs : rhs
   Value lhs_is_nan =
-      Compare(b, {values[0], values[0]}, mlir::mhlo::ComparisonDirection::NE);
+      Compare(b, {values[0], values[0]}, mh::ComparisonDirection::NE);
   Value rhs_is_not_nan =
-      Compare(b, {values[1], values[1]}, mlir::mhlo::ComparisonDirection::EQ);
-  Value lhs_is_ge = Compare(b, values, mlir::mhlo::ComparisonDirection::GE);
+      Compare(b, {values[1], values[1]}, mh::ComparisonDirection::EQ);
+  Value lhs_is_ge = Compare(b, values, mh::ComparisonDirection::GE);
   return b.create<ma::SelectOp>(
       b.create<ma::OrIOp>(lhs_is_nan,
                           b.create<ma::AndIOp>(rhs_is_not_nan, lhs_is_ge)),
@@ -377,10 +372,10 @@ Value Minimum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
   // minimum(x, NaN):
   // logic: isNaN(lhs) || lhs <= rhs ? lhs : rhs
   Value lhs_is_nan =
-      Compare(b, {values[0], values[0]}, mlir::mhlo::ComparisonDirection::NE);
+      Compare(b, {values[0], values[0]}, mh::ComparisonDirection::NE);
   Value rhs_is_not_nan =
-      Compare(b, {values[1], values[1]}, mlir::mhlo::ComparisonDirection::EQ);
-  Value lhs_is_le = Compare(b, values, mlir::mhlo::ComparisonDirection::LE);
+      Compare(b, {values[1], values[1]}, mh::ComparisonDirection::EQ);
+  Value lhs_is_le = Compare(b, values, mh::ComparisonDirection::LE);
   return b.create<ma::SelectOp>(
       b.create<ma::OrIOp>(lhs_is_nan,
                           b.create<ma::AndIOp>(rhs_is_not_nan, lhs_is_le)),
@@ -462,16 +457,16 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
     case HloOpcode::kCompare:
       return Compare(
           b, inputs,
-          mlir::mhlo::symbolizeComparisonDirection(
+          mh::symbolizeComparisonDirection(
               ComparisonDirectionToString(hlo.comparison_direction()))
               .value());
     case HloOpcode::kSelect:
       return b.create<ma::SelectOp>(
           Compare(b, {inputs[0], ZerosLike(b, inputs[0])},
-                  mlir::mhlo::ComparisonDirection::NE),
+                  mh::ComparisonDirection::NE),
           inputs[1], inputs[2]);
     case HloOpcode::kReducePrecision:
-      return mlir::mhlo::reducePrecision<mt::BitcastOp>(
+      return mh::reducePrecision<mt::BitcastOp>(
           b.getLoc(), inputs[0], hlo.exponent_bits(), hlo.mantissa_bits(), &b);
     default:
       return absl::InvalidArgumentError(
