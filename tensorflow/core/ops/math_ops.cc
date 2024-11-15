@@ -1513,8 +1513,21 @@ absl::Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
 
   int64_t size;
   if (std::is_integral<T>::value) {
-    size = Eigen::divup(static_cast<int64_t>(Eigen::numext::abs(limit - start)),
-                        static_cast<int64_t>(Eigen::numext::abs(delta)));
+    uint64_t range;
+    if ((limit > 0 && start < 0) || (limit < 0 && start > 0)) {
+      range = static_cast<uint64_t>(Eigen::numext::abs(limit))
+              + static_cast<uint64_t>(Eigen::numext::abs(start));
+    } else {
+      range = static_cast<uint64_t>(Eigen::numext::abs(limit - start));
+    }
+
+    uint64_t size_unsigned = Eigen::divup(range,
+                             static_cast<uint64_t>(Eigen::numext::abs(delta)));
+    if (size_unsigned > std::numeric_limits<int64_t>::max()) {
+      return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                     std::numeric_limits<int64_t>::max());
+    }
+    size = static_cast<int64_t>(size_unsigned);
   } else {
     auto size_auto =
         Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));

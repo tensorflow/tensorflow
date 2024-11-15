@@ -32,6 +32,8 @@ namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
+using errors::InvalidArgument;
+
 namespace functor {
 
 template <typename T>
@@ -39,8 +41,12 @@ struct RangeFunctor<CPUDevice, T> {
   void operator()(OpKernelContext* context, int64_t size, T start, T delta,
                   typename TTypes<T>::Flat output) const {
     (void)context;
+    T value = start;
     for (int64_t i = 0; i < size; ++i) {
-      output(i) = start + static_cast<T>(i) * delta;
+      output(i) = T(value);
+      if (i < size - 1) {
+        value += delta;
+      }
     }
   }
 };
@@ -93,8 +99,21 @@ class RangeOp : public OpKernel {
     }
     int64_t size;
     if constexpr (std::is_integral<T>::value) {
-      size = Eigen::divup(Eigen::numext::abs(limit - start),
-                          Eigen::numext::abs(delta));
+      uint64_t range;
+      if ((limit > 0 && start < 0) || (limit < 0 && start > 0)) {
+        range = static_cast<uint64_t>(Eigen::numext::abs(limit))
+                + static_cast<uint64_t>(Eigen::numext::abs(start));
+      } else {
+        range = static_cast<uint64_t>(Eigen::numext::abs(limit - start));
+      }
+
+      uint64_t size_unsigned = Eigen::divup(range,
+                    static_cast<uint64_t>(Eigen::numext::abs(delta)));
+      OP_REQUIRES(context,
+                  size_unsigned <= std::numeric_limits<int64_t>::max(),
+                  InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                  std::numeric_limits<int64_t>::max()));
+      size = static_cast<int64_t>(size_unsigned); 
     } else {
       auto size_auto =
           Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
