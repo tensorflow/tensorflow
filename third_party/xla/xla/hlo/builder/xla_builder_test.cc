@@ -3609,5 +3609,38 @@ INSTANTIATE_TEST_SUITE_P(
          "f32[?, 10]", &Sub},
     }));
 
+TEST(XlaBuilderTest, UnorderedInfeed) {
+  XlaBuilder b(TestName());
+  const Shape s = ShapeUtil::MakeShape(PRED, {});
+  XlaOp infeed0 = Infeed(&b, s);
+  XlaOp infeed1 = Infeed(&b, s);
+  And(infeed0, infeed1);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  // infeed0 should use an arbitrary token.
+  // infeed1 should use the token produced by infeed0.
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::And(
+                  m::GetTupleElement(m::Infeed(m::AfterAll()), 0),
+                  m::GetTupleElement(
+                      m::Infeed(m::GetTupleElement(m::Infeed(), 1)), 0))));
+}
+
+TEST(XlaBuilderTest, UnorderedOutfeed) {
+  XlaBuilder b(TestName());
+  const Shape s = ShapeUtil::MakeShape(S32, {});
+  XlaOp param0 = Parameter(&b, 0, s, "p0");
+  XlaOp param1 = Parameter(&b, 1, s, "p1");
+  Outfeed(param0, s, "");
+  Outfeed(param1, s, "");
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  // outfeed0 should use an arbitrary token.
+  // outfeed1 should use the token produced by infeed0.
+  HloInstruction* p1 = module->entry_computation()->parameter_instruction(1);
+  EXPECT_EQ(p1->user_count(), 1);
+  EXPECT_THAT(p1->users()[0], GmockMatch(m::Outfeed(
+                                  m::Parameter(1),
+                                  m::Outfeed(m::Parameter(0), m::AfterAll()))));
+}
+
 }  // namespace
 }  // namespace xla

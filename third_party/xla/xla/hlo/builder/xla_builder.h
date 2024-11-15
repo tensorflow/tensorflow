@@ -1213,6 +1213,12 @@ class XlaBuilder {
 
   FrontendAttributes frontend_attributes_;
 
+  // If the user cannot provide a token for infeed/outfeed, assume they are
+  // being added to the computation in the correct order. Implicitly reuse
+  // the tokens from the previous op to guarantee the user intended ordering.
+  XlaOp infeed_token_;
+  XlaOp outfeed_token_;
+
   friend XlaOp Parameter(XlaBuilder* builder, int64_t parameter_number,
                          const Shape& shape, const std::string& name,
                          const std::vector<bool>& replicated_at_leaf_buffers);
