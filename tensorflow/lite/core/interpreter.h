@@ -561,7 +561,7 @@ class Interpreter {
 
   /// \warning This is an experimental API and subject to change. \n
   /// \brief  Attempts to cancel in flight invocation if any.
-  /// This will not affect `Invoke`s that happends after the cancellation.
+  /// This will not affect `Invoke`s that happen after the cancellation.
   /// Non blocking. Thread safe.
   /// Returns kTfLiteError if cancellation is not enabled, otherwise returns
   /// kTfLiteOk.
