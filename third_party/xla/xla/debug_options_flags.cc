@@ -293,6 +293,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
   opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
+  opts.set_xla_gpu_enable_scatter_determinism_expander(true);
   return opts;
 }
 
@@ -2064,6 +2065,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Experimental: Make unset entry computation layout mean auto layout "
       "instead of default layout in HLO when run through PjRT. In other cases "
       "(StableHLO or non-PjRT) the auto layout is already used."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_scatter_determinism_expander",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_scatter_determinism_expander),
+      debug_options->xla_gpu_enable_scatter_determinism_expander(),
+      "Enable the scatter determinism expander, an optimized pass that "
+      "rewrites scatter operations to ensure deterministic behavior with high "
+      "performance."
+      "Note that even when this flag is disabled, scatter operations may still "
+      "be deterministic, although with additional overhead."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
