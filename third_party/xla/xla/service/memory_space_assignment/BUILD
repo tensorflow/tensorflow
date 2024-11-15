@@ -107,7 +107,6 @@ xla_cc_test(
         "//xla/service/heap_simulator:allocation_block",
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_utils",
-        "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
@@ -273,6 +272,7 @@ cc_library(
     srcs = [],
     hdrs = ["options.h"],
     deps = [
+        ":allocation_value",
         ":buffer_interval_comparator",
         ":cost_analysis",
         ":memory_space_assignment_proto_cc",
@@ -508,6 +508,7 @@ cc_library(
     hdrs = ["algorithm.h"],
     deps = [
         ":allocation",
+        ":allocation_value",
         ":buffer_interval_comparator",
         ":cost_analysis",
         ":memory_bound_loop_optimizer",
@@ -574,6 +575,18 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_googlesource_code_re2//:re2",
+    ],
+)
+
+cc_library(
+    name = "allocation_value",
+    hdrs = ["allocation_value.h"],
+    deps = [
+        ":allocation",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_value",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

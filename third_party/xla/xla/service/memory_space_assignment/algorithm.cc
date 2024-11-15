@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
+#include "xla/service/memory_space_assignment/allocation_value.h"
 #include "xla/service/memory_space_assignment/buffer_interval_comparator.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_bound_loop_optimizer.h"
@@ -1828,7 +1829,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
       }
       options_.prefetch_interval_picker->SetRetryNumber(retry_number);
       TF_ASSIGN_OR_RETURN(
-          Result result,
+          AllocationResult result,
           AllocateAllocationValues(absl::MakeSpan(proposal.allocation_values)));
       VLOG(2) << "Allocation result = " << ResultToString(result);
       VLOG(3) << "--Allocations List Begin--";
@@ -1845,10 +1846,11 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
         }
       }
       VLOG(3) << "--Allocations List End--";
-      if (result_is(result, Result::kFailSyncDataMoveReplacement)) {
+      if (result_is(result, AllocationResult::kFailSyncDataMoveReplacement)) {
         CHECK(options_.enable_sync_copy_replacement ||
               options_.enable_sync_slice_replacement)
-            << "Allocation result is Result::kFailSyncCopyReplacement, but "
+            << "Allocation result is "
+               "AllocationResult::kFailSyncCopyReplacement, but "
                "no sync replacement is enabled.";
         UncommitPendingChunks(absl::MakeSpan(proposal.allocation_values));
         proposal = GetJointProposal(interval);
@@ -1871,7 +1873,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
           proposal = GetJointProposal(interval);
           --retry_number;
         }
-      } else if ((result_is(result, Result::kFailOutOfMemory) ||
+      } else if ((result_is(result, AllocationResult::kFailOutOfMemory) ||
                   options_.repack_after_every_allocation) &&
                  num_repacks_ < options_.max_repacks && !repacked &&
                  !RepackAllocationsIncludeConvertedSyncMemOp()) {
@@ -2366,7 +2368,7 @@ MsaAlgorithm::GenerateAllocationSegmentContexts(
   return uses_work_list;
 }
 
-absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
+absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
     absl::Span<AllocationValue> allocation_values) {
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
   absl::flat_hash_map<const HloInstruction*, std::vector<size_t>>
@@ -2400,7 +2402,7 @@ absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
       preferred_offset_for_allocation_value;
   absl::flat_hash_map<const AllocationValue*, int64_t>
       definition_time_for_allocation_value;
-  Result result = Result::kSuccess;
+  AllocationResult result = AllocationResult::kSuccess;
   for (int alloc_value_idx = 0; alloc_value_idx < allocation_values.size();
        ++alloc_value_idx) {
     auto& allocation_value = allocation_values.at(alloc_value_idx);
@@ -2523,8 +2525,8 @@ absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
                        "normal mode.";
             failed_async_conversions_[request.required_copy_allocation_for] =
                 AsyncConversionResult::kFailedSatisfyingConstraints;
-            result_mark(Result::kFailSyncDataMoveReplacement, result);
-            result_mark(Result::kFailRequiresUncommit, result);
+            result_mark(AllocationResult::kFailSyncDataMoveReplacement, result);
+            result_mark(AllocationResult::kFailRequiresUncommit, result);
           } else {
             bool has_correct_use = false;
             for (auto& alloc_use : (*it)->uses()) {
@@ -2540,8 +2542,9 @@ absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
                          "normal mode.";
               failed_async_conversions_[request.required_copy_allocation_for] =
                   AsyncConversionResult::kFailedPrecondition;
-              result_mark(Result::kFailSyncDataMoveReplacement, result);
-              result_mark(Result::kFailRequiresUncommit, result);
+              result_mark(AllocationResult::kFailSyncDataMoveReplacement,
+                          result);
+              result_mark(AllocationResult::kFailRequiresUncommit, result);
             } else {
               not_finalized_async_conversions_.push_back(
                   request.required_copy_allocation_for);
@@ -2552,7 +2555,7 @@ absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
           }
         }
         if (request.require_no_copy_alternate_mem_allocation &&
-            result != Result::kSuccess) {
+            result != AllocationResult::kSuccess) {
           absl::Status failed_precondition = FailedPrecondition(
               "The value defined at %s requires allocation in the alternate "
               "memory, which could not be satisfied. This typically happens "
@@ -2588,8 +2591,8 @@ absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
   }
 
   if (!VerifyAllConversionsAreSuccessful()) {
-    result_mark(Result::kFailSyncDataMoveReplacement, result);
-    result_mark(Result::kFailRequiresUncommit, result);
+    result_mark(AllocationResult::kFailSyncDataMoveReplacement, result);
+    result_mark(AllocationResult::kFailRequiresUncommit, result);
   }
 
   return result;
@@ -2613,9 +2616,8 @@ bool MsaAlgorithm::VerifyAllConversionsAreSuccessful() {
   return true;
 }
 
-MsaAlgorithm::AliasedOffset* MsaAlgorithm::UpdatePreferredOffsetForUse(
-    const AllocationValue::Use& use,
-    MsaAlgorithm::AliasedOffset* preferred_offset) const {
+AliasedOffset* MsaAlgorithm::UpdatePreferredOffsetForUse(
+    const AllocationValue::Use& use, AliasedOffset* preferred_offset) const {
   // Assign the required assignment offset as a preferred offset.
   std::optional<RequiredMemoryAssignment> required_assignment =
       AliasedRequiredAssignmentForUse(use);
@@ -2632,7 +2634,7 @@ MsaAlgorithm::AliasedOffset* MsaAlgorithm::UpdatePreferredOffsetForUse(
   return preferred_offset;
 }
 
-MsaAlgorithm::AllocationRequest MsaAlgorithm::CreateAllocationRequest(
+AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     AllocationValue& allocation_value,
     AllocationValue& allocation_value_to_update,
     const AllocationValue::Use& use, const AllocationValue::Use* previous_use,
@@ -3313,15 +3315,14 @@ std::string AsynchronousCopyResource::Dump(
   return absl::StrJoin(lines, "\n");
 }
 
-MsaAlgorithm::AliasedOffset* MsaAlgorithm::GetAliasedOffset(
-    const Allocation& allocation) {
+AliasedOffset* MsaAlgorithm::GetAliasedOffset(const Allocation& allocation) {
   auto aliased_offset_it = aliased_offset_map_.find(&allocation);
   CHECK(aliased_offset_it != aliased_offset_map_.end());
   return aliased_offset_it->second;
 }
 
-void MsaAlgorithm::CreateOrAddToAliasedOffset(
-    const Allocation& allocation, MsaAlgorithm::AliasedOffset* aliased_offset) {
+void MsaAlgorithm::CreateOrAddToAliasedOffset(const Allocation& allocation,
+                                              AliasedOffset* aliased_offset) {
   CHECK(allocation.memory_space() == MemorySpace::kAlternate);
   CHECK(!aliased_offset_map_.contains(&allocation));
   if (!aliased_offset) {
@@ -4284,43 +4285,45 @@ std::optional<int> MsaAlgorithm::FindEarliestExclusiveTimeToSatisfyPeakMemory(
   return earliest_time_exclusive;
 }
 
-std::string MsaAlgorithm::SingleFailureResultToString(const Result& result) {
+std::string MsaAlgorithm::SingleFailureResultToString(
+    const AllocationResult& result) {
   switch (result) {
-    case Result::kSuccess:
+    case AllocationResult::kSuccess:
       return "Success";
-    case Result::kFailOutOfMemory:
+    case AllocationResult::kFailOutOfMemory:
       return "FailOutOfMemory";
-    case Result::kFailPrevAllocationNotInAlternateMem:
+    case AllocationResult::kFailPrevAllocationNotInAlternateMem:
       return "FailPrevAllocationNotInAlternateMem";
-    case Result::kFailLiveRangeTooLong:
+    case AllocationResult::kFailLiveRangeTooLong:
       return "FailLiveRangeTooLong";
-    case Result::kFailLiveRangeTooShort:
+    case AllocationResult::kFailLiveRangeTooShort:
       return "FailLiveRangeTooShort";
-    case Result::kFailOutOfAsyncCopies:
+    case AllocationResult::kFailOutOfAsyncCopies:
       return "FailOutOfAsyncCopies";
-    case Result::kFailViolatesAsyncCopyResource:
+    case AllocationResult::kFailViolatesAsyncCopyResource:
       return "FailViolatesAsyncCopyResource";
-    case Result::kFailRequiresUncommit:
+    case AllocationResult::kFailRequiresUncommit:
       return "FailRequiresUncommit";
-    case Result::kAllSlicesHaveTheSameStartTime:
+    case AllocationResult::kAllSlicesHaveTheSameStartTime:
       return "AllSlicesHaveTheSameStartTime";
-    case Result::kFailConflictingPreferredOffsets:
+    case AllocationResult::kFailConflictingPreferredOffsets:
       return "FailConflictingPreferredOffsets";
-    case Result::kFailSyncDataMoveReplacement:
+    case AllocationResult::kFailSyncDataMoveReplacement:
       return "FailSyncDataMoveReplacement";
     default:
       return "UnknownResult";
   }
 }
 
-std::string MsaAlgorithm::ResultToString(const Result& result) {
-  if (result == Result::kSuccess) {
+std::string MsaAlgorithm::ResultToString(const AllocationResult& result) {
+  if (result == AllocationResult::kSuccess) {
     return "Success";
   }
   std::string result_str = "";
   for (int failure_order = 0; failure_order < 16; ++failure_order) {
-    Result failure_value = static_cast<Result>(1 << failure_order);
-    if (result_is(result, static_cast<Result>(failure_value))) {
+    AllocationResult failure_value =
+        static_cast<AllocationResult>(1 << failure_order);
+    if (result_is(result, static_cast<AllocationResult>(failure_value))) {
       result_str += (SingleFailureResultToString(failure_value) + " | ");
     }
   }
@@ -4328,7 +4331,7 @@ std::string MsaAlgorithm::ResultToString(const Result& result) {
   return result_str;
 }
 
-MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
+AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   auto allocation_sequence =
       request.allocation_value->mutable_allocation_sequence();
   // inclusive_start_time == end_time is a special case where the value is
@@ -4340,7 +4343,7 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
         request.end_time);
     CHECK_NE(allocation, nullptr);
     allocation->AddUse(request.use->hlo_use);
-    return Result::kSuccess;
+    return AllocationResult::kSuccess;
   }
 
   const HloPosition& defining_position =
@@ -4443,15 +4446,15 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
     }
   }
 
-  Result allocation_result = Result::kSuccess;
+  AllocationResult allocation_result = AllocationResult::kSuccess;
   // First try keeping the allocation entirely in the alternate memory.
   if (required_memory_space_at_start != MemorySpace::kDefault &&
       required_memory_space_at_end != MemorySpace::kDefault &&
       request.allow_no_copy_alternate_mem_allocation &&
       !request.require_copy_allocation) {
     allocation_result = AllocateInAlternateMemoryNoCopy(request);
-    if (allocation_result == Result::kSuccess) {
-      return Result::kSuccess;
+    if (allocation_result == AllocationResult::kSuccess) {
+      return AllocationResult::kSuccess;
     }
     // If we required alternate memory allocation, return on failure.
     if (request.require_no_copy_alternate_mem_allocation) {
@@ -4477,10 +4480,11 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
         (*prev_allocation_it)->defining_position() == defining_position) {
       // If there was an allocation for this HloValue that was in the alternate
       // memory space, we also need to perform an eviction.
-      Result eviction_result = Evict(request);
-      if (eviction_result != Result::kSuccess) {
+      AllocationResult eviction_result = Evict(request);
+      if (eviction_result != AllocationResult::kSuccess) {
         // A non-success eviction requires us to uncommit previous allocations.
-        return result_mark(Result::kFailRequiresUncommit, eviction_result);
+        return result_mark(AllocationResult::kFailRequiresUncommit,
+                           eviction_result);
       }
       prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
     } else if (prev_allocation_in_default_mem_it ==
@@ -4495,7 +4499,8 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   } else if (prev_allocation_in_default_mem_it == allocation_sequence->rend()) {
     VLOG(3) << "Allocation requires contiguous allocation, but it wasn't "
                "possible to find one.";
-    return result_mark(Result::kFailRequiresUncommit, allocation_result);
+    return result_mark(AllocationResult::kFailRequiresUncommit,
+                       allocation_result);
   }
 
   CHECK(prev_allocation_in_default_mem_it != allocation_sequence->rend());
@@ -4511,7 +4516,8 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
       required_memory_space_at_start != required_memory_space_at_end) {
     VLOG(3) << "Allocation requires contiguous allocation but has memory space "
                "mismatch.";
-    return result_mark(Result::kFailRequiresUncommit, allocation_result);
+    return result_mark(AllocationResult::kFailRequiresUncommit,
+                       allocation_result);
   }
 
   // If the buffer must be in default memory at the end_time, don't prefetch.
@@ -4525,7 +4531,7 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
     // prefetching it, which will try to prefetch only a window worth of data to
     // alternate memory.
     WindowPrefetch(request, **prev_allocation_in_default_mem_it);
-    return Result::kSuccess;
+    return AllocationResult::kSuccess;
   }
 
   // Finally, try to prefetch the buffer into alternate memory.
@@ -4555,9 +4561,9 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
         request.latest_prefetch_time = latest_prefetch_time;
       }
     }
-    Result prefetch_result =
+    AllocationResult prefetch_result =
         Prefetch(request, **prev_allocation_in_default_mem_it);
-    if (prefetch_result == Result::kSuccess) {
+    if (prefetch_result == AllocationResult::kSuccess) {
       if (request.preferred_prefetch_time) {
         // Warn if the prefetch time picked doesn't match the preferred prefetch
         // time.
@@ -4587,7 +4593,7 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
                   << "): " << request.use->hlo_use.ToString();
         }
       }
-      return Result::kSuccess;
+      return AllocationResult::kSuccess;
     }
     // Warn if there was a preferred prefetch time but we couldn't actually
     // prefetch.
@@ -4603,7 +4609,8 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   // If the end assignment was required to be in alternate memory but that
   // wasn't possible, then this allocation is invalid.
   if (required_memory_space_at_end == MemorySpace::kAlternate) {
-    return result_mark(Result::kFailRequiresUncommit, allocation_result);
+    return result_mark(AllocationResult::kFailRequiresUncommit,
+                       allocation_result);
   }
 
   // If the start assignment was required to be in alternate memory and the
@@ -4611,7 +4618,8 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   // and must abort.
   if (required_memory_space_at_start == MemorySpace::kAlternate &&
       request.allocation_value->requires_contiguous_allocation()) {
-    return result_mark(Result::kFailRequiresUncommit, allocation_result);
+    return result_mark(AllocationResult::kFailRequiresUncommit,
+                       allocation_result);
   }
 
   // If a copy wasn't inserted, then add this use to the latest allocation in
@@ -4794,7 +4802,7 @@ bool MsaAlgorithm::ViolatesMaximumOutstandingAsyncCopies(
   }
 }
 
-MsaAlgorithm::Result MsaAlgorithm::AllocateInAlternateMemoryNoCopy(
+AllocationResult MsaAlgorithm::AllocateInAlternateMemoryNoCopy(
     const AllocationRequest& request) {
   Allocation* prev_allocation = nullptr;
   bool can_eliminate_copy = false;
@@ -4815,7 +4823,7 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateInAlternateMemoryNoCopy(
 
   if (!can_eliminate_copy) {
     VLOG(3) << "Can't eliminate copy.";
-    return Result::kFailPrevAllocationNotInAlternateMem;
+    return AllocationResult::kFailPrevAllocationNotInAlternateMem;
   }
 
   const HloPosition& defining_position =
@@ -4828,7 +4836,7 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateInAlternateMemoryNoCopy(
           defining_position.shape(), request.inclusive_start_time,
           request.end_time)) {
     VLOG(3) << "Live range is too long.";
-    return Result::kFailLiveRangeTooLong;
+    return AllocationResult::kFailLiveRangeTooLong;
   }
 
   MsaBufferInterval alternate_mem_interval;
@@ -4854,7 +4862,7 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateInAlternateMemoryNoCopy(
                  "preferred_offset = "
               << preferred_offset->offset << ", request.preferred_offset = "
               << request.preferred_offset->offset;
-      return Result::kFailConflictingPreferredOffsets;
+      return AllocationResult::kFailConflictingPreferredOffsets;
     }
     preferred_offset = request.preferred_offset;
   }
@@ -4918,16 +4926,16 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateInAlternateMemoryNoCopy(
       request.allocation_value->allocation_sequence()->back()->AddUse(
           request.use->hlo_use);
     }
-    return Result::kSuccess;
+    return AllocationResult::kSuccess;
   }
   if (request.prefer_no_copy_alternate_mem_allocation) {
     VLOG(1) << "Preferred no-copy allocation, but this was not possible: "
             << request.use->hlo_use.ToString();
   }
-  return Result::kFailOutOfMemory;
+  return AllocationResult::kFailOutOfMemory;
 }
 
-MsaAlgorithm::Result MsaAlgorithm::Evict(const AllocationRequest& request) {
+AllocationResult MsaAlgorithm::Evict(const AllocationRequest& request) {
   CHECK_GT(request.allocation_value->allocation_sequence()->size(), 0);
   Allocation* prev_allocation =
       request.allocation_value->allocation_sequence()->back().get();
@@ -5053,10 +5061,10 @@ MsaAlgorithm::Result MsaAlgorithm::Evict(const AllocationRequest& request) {
               << hlo_live_range_.flattened_instruction_sequence()
                      .instructions()[eviction_end_time]
               << ")";
-      return Result::kFailOutOfAsyncCopies;
+      return AllocationResult::kFailOutOfAsyncCopies;
     }
   }
-  return Result::kSuccess;
+  return AllocationResult::kSuccess;
 }
 
 int64_t MsaAlgorithm::FindPrefetchEndTime(
@@ -5091,11 +5099,11 @@ std::string DescribeSlicedBufferMove(
 
 }  // namespace
 
-MsaAlgorithm::Result MsaAlgorithm::WindowPrefetch(
+AllocationResult MsaAlgorithm::WindowPrefetch(
     const AllocationRequest& request,
     Allocation& prev_allocation_in_default_mem) {
   if (!options_.enable_window_prefetch) {
-    return Result::kSuccess;
+    return AllocationResult::kSuccess;
   }
 
   const HloUse use = request.use->hlo_use;
@@ -5120,10 +5128,10 @@ MsaAlgorithm::Result MsaAlgorithm::WindowPrefetch(
     const Shape shape = ShapeUtil::MakeShape(U8, {window.size()});
     Prefetch(window_prefetch_request, prev_allocation_in_default_mem, &shape);
   }
-  return Result::kSuccess;
+  return AllocationResult::kSuccess;
 }
 
-MsaAlgorithm::Result MsaAlgorithm::Prefetch(
+AllocationResult MsaAlgorithm::Prefetch(
     const AllocationRequest& request,
     Allocation& prev_allocation_in_default_mem, const Shape* shape) {
   // Try partially placing the buffer in the alternate space. The time that is
@@ -5157,12 +5165,12 @@ MsaAlgorithm::Result MsaAlgorithm::Prefetch(
   SetupPrefetchWorkingIntervalsAndSliceProposal(context);
 
   // Compute some additional preliminaries
-  Result init_result = InitializePrefetchIntervalPicker(context);
-  if (init_result != Result::kSuccess) {
+  AllocationResult init_result = InitializePrefetchIntervalPicker(context);
+  if (init_result != AllocationResult::kSuccess) {
     return init_result;
   }
-  Result check_result = EnsureSomeSpatialPrefetchFitExists(context);
-  if (check_result != Result::kSuccess) {
+  AllocationResult check_result = EnsureSomeSpatialPrefetchFitExists(context);
+  if (check_result != AllocationResult::kSuccess) {
     return check_result;
   }
   const HloUse& use = request.use->hlo_use;
@@ -5191,7 +5199,7 @@ MsaAlgorithm::Result MsaAlgorithm::Prefetch(
   // request and a non-sliced version of the request. We return the first sliced
   // solution that we find. We fallback to the first unsliced solution we find,
   // if we are unable to find a sliced solution.
-  Result result = Result::kSuccess;
+  AllocationResult result = AllocationResult::kSuccess;
   while (!options_.prefetch_interval_picker->Done()) {
     // Get the prefetch start time from the interval picker.
     context.exclusive_prefetch_start_time =
@@ -5201,19 +5209,20 @@ MsaAlgorithm::Result MsaAlgorithm::Prefetch(
         context.exclusive_prefetch_start_time <=
             *context.exclusive_out_of_mem_start) {
       VLOG(4) << "This would OOM (cached).";
-      return Result::kFailOutOfMemory;
+      return AllocationResult::kFailOutOfMemory;
     }
 
     if (context.slice_proposal_collection) {
       VLOG(5) << "Trying sliced solution.";
       // Check if a sliced solution fits.
-      Result sliced_result =
+      AllocationResult sliced_result =
           CheckPrefetchFit(/*for_sliced_solution=*/true, context);
-      if (sliced_result == Result::kSuccess) {
+      if (sliced_result == AllocationResult::kSuccess) {
         // Break out of the loop and use the sliced solution.
         CHECK(context.sliced_solution);
         break;
-      } else if (sliced_result != Result::kAllSlicesHaveTheSameStartTime) {
+      } else if (sliced_result !=
+                 AllocationResult::kAllSlicesHaveTheSameStartTime) {
         result_mark(sliced_result, result);
       }
     }
@@ -5221,9 +5230,9 @@ MsaAlgorithm::Result MsaAlgorithm::Prefetch(
     // If we don't already have an unsliced solution, check the current fit.
     if (!context.unsliced_solution) {
       VLOG(5) << "Trying unsliced solution.";
-      Result unsliced_result =
+      AllocationResult unsliced_result =
           CheckPrefetchFit(/*for_sliced_solution=*/false, context);
-      if (unsliced_result != Result::kSuccess) {
+      if (unsliced_result != AllocationResult::kSuccess) {
         result_mark(unsliced_result, result);
       } else if (!context.slice_proposal_collection) {
         // We found an unsliced solution and there is no slice proposal, so
@@ -5257,7 +5266,7 @@ MsaAlgorithm::Result MsaAlgorithm::Prefetch(
     context.request->allocation_value_to_update->allocation_sequence()
         ->back()
         ->AddUse(context.request->use->hlo_use);
-    return Result::kSuccess;
+    return AllocationResult::kSuccess;
   }
   if (context.unsliced_solution) {
     VLOG(3) << "Move the buffer to alternate memory after time "
@@ -5302,12 +5311,14 @@ MsaAlgorithm::Result MsaAlgorithm::Prefetch(
 
     request.allocation_value_to_update->allocation_sequence()->back()->AddUse(
         request.use->hlo_use);
-    return Result::kSuccess;
+    return AllocationResult::kSuccess;
   }
 
   // If we didn't consider any prefetch intervals, then the live range was too
   // short.
-  return (result == Result::kSuccess ? Result::kFailLiveRangeTooShort : result);
+  return (result == AllocationResult::kSuccess
+              ? AllocationResult::kFailLiveRangeTooShort
+              : result);
 }
 
 void MsaAlgorithm::GenerateSliceProposal(PrefetchContext& context) const {
@@ -5403,7 +5414,7 @@ void MsaAlgorithm::SetupPrefetchWorkingIntervalsAndSliceProposal(
               context.unsliced_solution_intervals.full));
 }
 
-MsaAlgorithm::Result MsaAlgorithm::InitializePrefetchIntervalPicker(
+AllocationResult MsaAlgorithm::InitializePrefetchIntervalPicker(
     PrefetchContext& context) {
   int64_t earliest_exclusive_prefetch_time =
       context.prev_allocation_in_default_mem->earliest_available_time();
@@ -5425,7 +5436,7 @@ MsaAlgorithm::Result MsaAlgorithm::InitializePrefetchIntervalPicker(
     VLOG(3) << "Any prefetch in range (" << earliest_exclusive_prefetch_time
             << ", " << context.prefetch_end_time << ") for size "
             << context.request->size << " would go out of memory.";
-    return Result::kFailOutOfMemory;
+    return AllocationResult::kFailOutOfMemory;
   }
   if (!context.slice_proposal_collection) {
     // We can only perform this optimization if we are not slicing.
@@ -5452,10 +5463,10 @@ MsaAlgorithm::Result MsaAlgorithm::InitializePrefetchIntervalPicker(
   VLOG(3) << "Trying prefetch picker = "
           << options_.prefetch_interval_picker->ToDebugString();
 
-  return Result::kSuccess;
+  return AllocationResult::kSuccess;
 }
 
-MsaAlgorithm::Result MsaAlgorithm::EnsureSomeSpatialPrefetchFitExists(
+AllocationResult MsaAlgorithm::EnsureSomeSpatialPrefetchFitExists(
     PrefetchContext& context) const {
   SlicedBufferInterval* interval =
       (context.slice_proposal_collection
@@ -5473,10 +5484,10 @@ MsaAlgorithm::Result MsaAlgorithm::EnsureSomeSpatialPrefetchFitExists(
     VLOG(3) << "The latest prefetch (" << interval->full_buffer_interval().start
             << ", " << context.request->end_time
             << ") cannot find valid chunks. Giving up.";
-    return Result::kFailOutOfMemory;
+    return AllocationResult::kFailOutOfMemory;
   }
 
-  return Result::kSuccess;
+  return AllocationResult::kSuccess;
 }
 
 namespace {
@@ -5588,8 +5599,8 @@ absl::flat_hash_map<int64_t, int64_t> GetCandidateToProposalIndexMap(
 
 }  // namespace
 
-MsaAlgorithm::Result MsaAlgorithm::CheckPrefetchFit(bool for_sliced_solution,
-                                                    PrefetchContext& context) {
+AllocationResult MsaAlgorithm::CheckPrefetchFit(bool for_sliced_solution,
+                                                PrefetchContext& context) {
   SlicedBufferInterval* sliced_buffer_interval =
       context.GetMutableWorkingIntervals(for_sliced_solution).sliced.get();
 
@@ -5631,7 +5642,7 @@ MsaAlgorithm::Result MsaAlgorithm::CheckPrefetchFit(bool for_sliced_solution,
           exclusive_slice_start_times, [&](int64_t slice_start_time) {
             return slice_start_time == exclusive_slice_start_times.front();
           })) {
-    return Result::kAllSlicesHaveTheSameStartTime;
+    return AllocationResult::kAllSlicesHaveTheSameStartTime;
   }
 
   // Check that we have enough copy resource for the prefetching.
@@ -5666,7 +5677,7 @@ MsaAlgorithm::Result MsaAlgorithm::CheckPrefetchFit(bool for_sliced_solution,
                                   context.prefetch_end_time,
                                   copy_resource_per_slice_sorted_by_start_time,
                                   prefetch_async_copy_resource_)) {
-    return Result::kFailViolatesAsyncCopyResource;
+    return AllocationResult::kFailViolatesAsyncCopyResource;
   }
 
   // Check if the copies we would add for the prefetch would violate copy
@@ -5678,7 +5689,7 @@ MsaAlgorithm::Result MsaAlgorithm::CheckPrefetchFit(bool for_sliced_solution,
                            slice_start_time, context.prefetch_end_time);
                      })) {
     VLOG(4) << "This would violate asynchronous copy ordering.";
-    return Result::kFailViolatesAsyncCopyResource;
+    return AllocationResult::kFailViolatesAsyncCopyResource;
   }
 
   // Check if the copies we would add for the prefetch violate the maximum
@@ -5688,7 +5699,7 @@ MsaAlgorithm::Result MsaAlgorithm::CheckPrefetchFit(bool for_sliced_solution,
             exclusive_slice_start_times[i], context.prefetch_end_time,
             /*is_prefetch=*/true, context.extra_async_copy_limit, i)) {
       VLOG(4) << "This would violate the outstanding async copy limit.";
-      return Result::kFailOutOfAsyncCopies;
+      return AllocationResult::kFailOutOfAsyncCopies;
     }
   }
 
@@ -5730,7 +5741,7 @@ MsaAlgorithm::Result MsaAlgorithm::CheckPrefetchFit(bool for_sliced_solution,
             exclusive_slice_start_times, context.prefetch_end_time,
             copy_resource_per_slice_sorted_by_start_time,
             prefetch_async_copy_resource_)) {
-      return Result::kFailViolatesAsyncCopyResource;
+      return AllocationResult::kFailViolatesAsyncCopyResource;
     }
 
     // Construct MsaBufferInterval-Chunk pairs that are appropriate for pending
@@ -5791,7 +5802,7 @@ MsaAlgorithm::Result MsaAlgorithm::CheckPrefetchFit(bool for_sliced_solution,
         std::move(slices_for_pending_chunks),
         prefetch_picker_debug_string,
     };
-    return Result::kSuccess;
+    return AllocationResult::kSuccess;
   } else if (!chunk_candidates.empty()) {
     // We're trying an unsliced solution. So, if FindBestChunkCandidates() found
     // a solution, there must be only 1 chunk for it.
@@ -5802,7 +5813,7 @@ MsaAlgorithm::Result MsaAlgorithm::CheckPrefetchFit(bool for_sliced_solution,
         copy_resource_per_slice_sorted_by_start_time.front(),
         prefetch_picker_debug_string,
     };
-    return Result::kSuccess;
+    return AllocationResult::kSuccess;
   }
 
   // Mark the out of memory start with the prefetch start time so that we don't
@@ -5819,7 +5830,7 @@ MsaAlgorithm::Result MsaAlgorithm::CheckPrefetchFit(bool for_sliced_solution,
   }
 
   VLOG(4) << "Out of memory.";
-  return Result::kFailOutOfMemory;
+  return AllocationResult::kFailOutOfMemory;
 }
 
 std::string MsaAlgorithm::AlternateMemoryAllocationAttemptToString(
