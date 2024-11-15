@@ -19,6 +19,34 @@ include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/IR/PatternBase.td"
 
+////////////////////////////////////////////////////////////////////////////////
+///////////////// TENSOR RANK UTILITIES ////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+// Checks if the rank of the value is less than or equal to the rank of the
+// other value.
+def IsRankLessThanEqualTo : Constraint<CPred<
+  "$0.getType().cast<ShapedType>().getRank() <= "
+  "$1.getType().cast<ShapedType>().getRank()">>;
+
+// Checks if the value has rank at most 'n'.
+class HasRankAtMost<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
+
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////// OP BROADCASTING UTILITIES ////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+def OperandsBroadcastToOutputType : Constraint<CPred<
+  "TFL::OperandsBroadcastToOutputType($0.getType(), $1.getType(), "
+                                     "$2.getType())">>;
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////// TENSOR SHAPE UTILITIES ///////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
 def CreateNoneValue : NativeCodeCall<
   "$_builder.create<TFL::NoValueOp>($0.getLoc(), $_builder.getUnitAttr())">;
 
