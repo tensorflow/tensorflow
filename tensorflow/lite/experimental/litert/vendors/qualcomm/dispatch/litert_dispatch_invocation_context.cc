@@ -67,13 +67,25 @@ LiteRtDispatchInvocationContextT::Create(
     return context_binary_info.status();
   }
 
-  int graph_index = -1;
   const auto& graphs = context_binary_info->Graphs();
-  for (auto i = 0; i < graphs.size(); ++i) {
-    const auto& graph = graphs[i];
-    if (graph.Name() == absl::string_view(function_name)) {
-      graph_index = i;
-      break;
+  if (graphs.empty()) {
+    return absl::InternalError("No graph found");
+  }
+
+  int graph_index = -1;
+  // If the function_name is not specified and there is only one graph, then
+  // take that graph.
+  if (absl::string_view(function_name).empty() && graphs.size() == 1) {
+    graph_index = 0;
+    const auto& graph = graphs[graph_index];
+    function_name = graph.Name().c_str();
+  } else {
+    for (auto i = 0; i < graphs.size(); ++i) {
+      const auto& graph = graphs[i];
+      if (graph.Name() == absl::string_view(function_name)) {
+        graph_index = i;
+        break;
+      }
     }
   }
   if (graph_index < 0) {
