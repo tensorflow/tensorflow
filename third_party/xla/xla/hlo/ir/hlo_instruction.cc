@@ -5239,6 +5239,9 @@ const PrecisionConfig& HloInstruction::precision_config() const {
   if (auto* dot = DynCast<HloDotInstruction>(this)) {
     return dot->precision_config();
   }
+  if (auto* ragged_dot = DynCast<HloRaggedDotInstruction>(this)) {
+    return ragged_dot->precision_config();
+  }
 
   if (auto* custom_call = DynCast<HloCustomCallInstruction>(this)) {
     return custom_call->precision_config();
@@ -5252,6 +5255,9 @@ PrecisionConfig* HloInstruction::mutable_precision_config() {
   }
   if (auto* dot = DynCast<HloDotInstruction>(this)) {
     return dot->mutable_precision_config();
+  }
+  if (auto* ragged_dot = DynCast<HloRaggedDotInstruction>(this)) {
+    return ragged_dot->mutable_precision_config();
   }
   if (auto* custom_call = DynCast<HloCustomCallInstruction>(this)) {
     return custom_call->mutable_precision_config();

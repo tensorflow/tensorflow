@@ -3181,5 +3181,23 @@ TEST_F(HloInstructionTest, UnfuseInstructionWithConstantOperand) {
               GmockMatch(m::Add(m::Parameter(0), m::Broadcast(m::Constant()))));
 }
 
+TEST_F(HloInstructionTest, RaggedDotHasPrecisionConfig) {
+  constexpr char kHloString[] = R"(
+  HloModule module
+  ENTRY entry_computation {
+    a = f32[11,5] parameter(0)
+    b = f32[3,5,7] parameter(1)
+    c = u32[3] parameter(2)
+    ROOT dot = f32[11,7] ragged-dot(a, b, c), lhs_contracting_dims={1}, rhs_contracting_dims={1}, lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  auto* ragged_dot = module->entry_computation()->root_instruction();
+
+  EXPECT_THAT(ragged_dot->precision_config().operand_precision(),
+              ::testing::ElementsAre(PrecisionConfig::DEFAULT,
+                                     PrecisionConfig::DEFAULT));
+}
+
 }  // namespace
 }  // namespace xla
