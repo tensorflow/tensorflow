@@ -37,11 +37,6 @@ def FloatElementsAttr : ElementsAttrBase<
 def ExtractSingleElementAsFloat : NativeCodeCall<
     "ExtractSingleElementAsFloat($_self.cast<ElementsAttr>())">;
 
-// Checks if the value has rank at most 'n'.
-class HasRankAtMost<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
-          "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
-
 // Checks if the value has rank 'n'.
 class HasRank<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
@@ -57,13 +52,6 @@ class IsBoolAttrEqual<string true_or_false> : Constraint<CPred<
 def FlattenTo1D : NativeCodeCall<"FlattenTo1D($0)">;
 
 def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
-
-def HasSameStaticShapes : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().hasStaticShape() && "
-          "$1.getType().cast<ShapedType>().hasStaticShape() && "
-          "$0.getType().cast<ShapedType>().getShape() =="
-          "$1.getType().cast<ShapedType>().getShape()">,
-    "have the same static shape">;
 
 def IsPermutationNCHW : Constraint<CPred<"IsPermutationNCHW($0)">>;
 
@@ -445,19 +433,11 @@ foreach L2NormalizePairs = [[TFL_MulOp, TFL_RsqrtOp], [TFL_DivOp, TFL_SqrtOp]]
 def AreBroadcastableTypes : Constraint<CPred<
   "TFL::IsBroadcastableElementsAttrAndType($0.getType(), $1.getType())">>;
 
-def OperandsBroadcastToOutputType : Constraint<CPred<
-  "TFL::OperandsBroadcastToOutputType($0.getType(), $1.getType(), "
-                                     "$2.getType())">>;
-
 def IsTailOfShape : Constraint<CPred<
   "TFL::IsTailOfShape($0.getType(), $1.getType())">>;
 
 def IsReducedTailOfShape : Constraint<CPred<
   "TFL::IsReducedTailOfShape($0.getType(), $1.getType())">>;
-
-def IsRankLessThanEqualTo : Constraint<CPred<
-  "$0.getType().cast<ShapedType>().getRank() <= "
-  "$1.getType().cast<ShapedType>().getRank()">>;
 
 def Flatten : NativeCodeCall<
   "$0.cast<DenseElementsAttr>()"

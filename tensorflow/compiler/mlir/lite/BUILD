@@ -76,6 +76,7 @@ td_library(
         "transforms/legalize_patterns.td",
         "transforms/legalize_variables.td",
         "transforms/optimize_batch_matmul.td",
+        "transforms/optimize_broadcasting_patterns.td",
         "transforms/optimize_patterns.td",
         "transforms/post_quantize_patterns.td",
         "transforms/prepare_patterns.td",
@@ -281,6 +282,20 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "optimize_broadcasting_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "transforms/generated_optimize_broadcasting.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/optimize_broadcasting_patterns.td",
+    deps = [":tensorflow_lite_patterns_td_files"],
+)
+
+gentbl_cc_library(
     name = "tensorflow_lite_quantize_inc_gen",
     compatible_with = get_compatible_with_portable(),
     tbl_outs = [
@@ -364,6 +379,7 @@ cc_library(
     hdrs = ["utils/utils.h"],
     deps = [
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -553,6 +569,7 @@ cc_library(
     hdrs = [
         "ir/tfl_ops.h",
         "transforms/canonicalize_boundary_value_pass.h",
+        "transforms/optimize_broadcasting_pass.h",
         "transforms/optimize_pass.h",
         "transforms/pass_registry_utils.h",
         "transforms/passes.h",
@@ -566,6 +583,7 @@ cc_library(
         ":canonicalize_boundary_value",
         ":converter_inc",
         ":cost_estimators",
+        ":optimize_broadcasting_pass",
         ":optimize_pass_options",
         ":pass",
         ":pass_options",
@@ -1065,6 +1083,34 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:verification_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "optimize_broadcasting_pass",
+    srcs = [
+        "transforms/generated_optimize_broadcasting.inc",
+        "transforms/optimize_broadcasting_pass.cc",
+    ],
+    hdrs = [
+        "transforms/optimize_broadcasting_pass.h",
+    ],
+    deps = [
+        ":optimize_broadcasting_inc_gen",
+        ":pass",
+        ":pass_options",
+        ":tensorflow_lite_ops",
+        ":tensorflow_lite_passes_inc_gen",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
+        "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -1672,6 +1718,7 @@ cc_library(
         ":converter_flags_proto_cc",
         ":converter_pass_options_setter",
         ":fake_quant_utils",
+        ":optimize_broadcasting_pass",
         ":pass",
         ":pass_registry_utils",
         ":tensorflow_lite_d2s",  # buildcleaner: keep

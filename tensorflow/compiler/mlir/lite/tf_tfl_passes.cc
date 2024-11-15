@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/transforms/converter_pass_options_setter.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcasting_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -533,6 +534,9 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
 
     auto add_tfl_optimization_passes = [&]() {
       pass_manager->addPass(mlir::TFL::CreatePushTransposeThroughEwisePass());
+
+      pass_manager->addNestedPass<mlir::func::FuncOp>(
+          mlir::TFL::Create<mlir::TFL::OptimizeBroadcastingPass>());
 
       // Add TFLite optimize pass.
       std::unique_ptr<mlir::Pass> optimize_pass =
