@@ -3,7 +3,6 @@ FROM ubuntu:20.04@sha256:8e5c4f0285ecbb4ead070431d29b576a530d3166df73ec44affc1cd
 ################################################################################
 
 # Install devtoolset build dependencies
-RUN echo "Installing devtoolset build dependencies"
 COPY setup.sources.sh /setup.sources.sh
 COPY setup.packages.sh /setup.packages.sh
 COPY builder.packages.txt /builder.packages.txt
@@ -23,6 +22,13 @@ RUN /build_devtoolset.sh devtoolset-10 /dt10
 
 # Build later version of patchelf that is not so buggy
 RUN wget https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-aarch64.tar.gz && tar -zxvf patchelf-0.18.0-aarch64.tar.gz -C /usr && rm -rf patchelf-0.18.0-aarch64.tar.gz
+
+RUN curl https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-arm.tar.gz | \
+    tar zxf - google-cloud-sdk && \
+    google-cloud-sdk/install.sh --quiet && \
+    ln -s /google-cloud-sdk/bin/gcloud /usr/bin/gcloud
+
+ENV PATH="$PATH:/google-cloud-sdk/bin/"
 
 # Install various tools.
 # - bats: bash unit testing framework
@@ -58,8 +64,10 @@ COPY setup.python.sh /setup.python.sh
 RUN /setup.python.sh python3.9 requirements.txt
 RUN /setup.python.sh python3.10 requirements.txt
 RUN /setup.python.sh python3.11 requirements.txt
-RUN /setup.python.sh python3.12 requirements.txt
 RUN /setup.python.sh python3.13 requirements.txt
+RUN /setup.python.sh python3.12 requirements.txt
 
-# "python3" commands by default run under 3.10
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+# "python3" commands by default run under 3.12
+RUN ln -sf /usr/bin/python3.12 /usr/bin/python3
+RUN ln -sf /usr/bin/python3.12 /usr/bin/python
+RUN ln -sf /usr/lib/python3.12 /usr/lib/tf_python
