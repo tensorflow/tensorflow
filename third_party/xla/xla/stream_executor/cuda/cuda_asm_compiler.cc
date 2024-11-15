@@ -47,7 +47,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
@@ -55,7 +54,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/cuda_root_path.h"
 #include "tsl/platform/env.h"
@@ -141,9 +139,9 @@ absl::StatusOr<SemanticVersion> GetToolVersion(std::string_view tool_path) {
 }
 
 absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
-    stream_executor::StreamExecutor* executor, const char* ptx,
+    const CudaComputeCapability& cc, const std::string& ptx,
     GpuAsmOpts compilation_options) {
-  using PtxCacheKey = std::tuple<stream_executor::StreamExecutor*, std::string,
+  using PtxCacheKey = std::tuple<CudaComputeCapability, std::string,
                                  GpuAsmOpts::PtxOptionsTuple>;
   using PtxCompilerResult = absl::StatusOr<std::vector<uint8_t>>;
   static absl::Mutex ptx_cache_mutex(absl::kConstInit);
@@ -151,12 +149,10 @@ absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
       *new absl::flat_hash_map<PtxCacheKey, PtxCompilerResult>();
 
   absl::MutexLock lock(&ptx_cache_mutex);
-  PtxCacheKey cache_key{executor, std::string(ptx),
-                        compilation_options.ToTuple()};
+  PtxCacheKey cache_key{cc, ptx, compilation_options.ToTuple()};
   auto it = ptx_cache.find(cache_key);
   if (it == ptx_cache.end()) {
-    PtxCompilerResult compiled =
-        CompileGpuAsm(executor, ptx, compilation_options);
+    PtxCompilerResult compiled = CompileGpuAsm(cc, ptx, compilation_options);
     it = ptx_cache.emplace(cache_key, std::move(compiled)).first;
   }
 
@@ -172,15 +168,6 @@ absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
 
   const std::vector<uint8_t>& compiled = it->second.value();
   return absl::MakeSpan(compiled);
-}
-
-absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
-    stream_executor::StreamExecutor* executor, const char* ptx_contents,
-    GpuAsmOpts options) {
-  auto& device_description = executor->GetDeviceDescription();
-  int cc_major = device_description.cuda_compute_capability().major;
-  int cc_minor = device_description.cuda_compute_capability().minor;
-  return CompileGpuAsm(cc_major, cc_minor, ptx_contents, options);
 }
 
 absl::StatusOr<std::string> FindCudaExecutable(
@@ -311,7 +298,7 @@ absl::StatusOr<SemanticVersion> GetAsmCompilerVersion(
 }
 
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
-    int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
+    const CudaComputeCapability& cc, const std::string& ptx, GpuAsmOpts options,
     bool cancel_if_reg_spill) {
   TF_ASSIGN_OR_RETURN(std::string ptxas_path,
                       FindPtxAsExecutable(options.preferred_cuda_dir));
@@ -323,7 +310,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     return absl::InternalError("couldn't get temp PTX file name");
   }
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      tsl::WriteStringToFile(env, ptx_path, ptx_contents),
+      tsl::WriteStringToFile(env, ptx_path, ptx),
       "Unable to write PTX contents to: ", ptx_path);
   VLOG(2) << "ptx written to: " << ptx_path;
 
@@ -345,13 +332,13 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
   // On Hopper, default to sm_90a so that all instructions can be used. But
   // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-  std::string extension = (cc_major == 9 && cc_minor == 0) ? "a" : "";
+  std::string extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
   std::vector<std::string> ptxas_args = {
       ptxas_path,
       ptx_path,
       "-o",
       cubin_path,
-      absl::StrCat("-arch=sm_", cc_major, cc_minor, extension),
+      absl::StrCat("-arch=sm_", cc.major, cc.minor, extension),
       "--warn-on-spills"};
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");
@@ -377,7 +364,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     if (absl::StrContains(stderr_output, "ptxas fatal   : Value '") &&
         absl::StrContains(stderr_output,
                           "is not defined for option 'gpu-name'")) {
-      LogPtxasTooOld(ptxas_path, cc_major, cc_minor);
+      LogPtxasTooOld(ptxas_path, cc.major, cc.minor);
       return absl::UnimplementedError(absl::StrFormat(
           "%s ptxas too old. Falling back to the driver to compile.",
           ptxas_path));
@@ -593,10 +580,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
 
 absl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
     stream_executor::CudaComputeCapability cc,
-    stream_executor::StreamExecutor* executor,
     std::vector<CubinOrPTXImage> images) {
-  std::unique_ptr<ActivateContext> activation = executor->Activate();
-
   CUlinkState link_state;
   CUjit_option options[] = {CU_JIT_TARGET};
   CUjit_target target = static_cast<CUjit_target>(cc.major * 10 + cc.minor);
@@ -640,20 +624,18 @@ absl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
   return std::move(cubin);
 }
 
-absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
-                                                   const char* ptx_contents,
-                                                   GpuAsmOpts options,
-                                                   bool cancel_if_reg_spill) {
+absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
+    const CudaComputeCapability& cc, const std::string& ptx, GpuAsmOpts options,
+    bool cancel_if_reg_spill) {
   if (IsLibNvPtxCompilerSupported()) {
     VLOG(3) << "Compiling GPU ASM with libnvptxcompiler";
-    return CompileGpuAsmUsingLibNvPtxCompiler(cc_major, cc_minor, ptx_contents,
-                                              options, cancel_if_reg_spill);
+    return CompileGpuAsmUsingLibNvPtxCompiler(cc, ptx, options,
+                                              cancel_if_reg_spill);
   }
 
   VLOG(3) << "Compiling GPU ASM with PTXAS. Libnvptxcompiler compilation "
              "not supported.";
-  return CompileGpuAsmUsingPtxAs(cc_major, cc_minor, ptx_contents, options,
-                                 cancel_if_reg_spill);
+  return CompileGpuAsmUsingPtxAs(cc, ptx, options, cancel_if_reg_spill);
 }
 
 }  // namespace stream_executor

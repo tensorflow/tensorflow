@@ -145,6 +145,11 @@ struct CudaComputeCapability {
     proto.set_minor(minor);
     return proto;
   }
+
+  template <typename H>
+  friend H AbslHashValue(H state, const CudaComputeCapability &cc) {
+    return H::combine(std::move(state), cc.major, cc.minor);
+  }
 };
 
 // ROCm compute capability, as reported by the device description.

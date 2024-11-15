@@ -143,8 +143,8 @@ auto CompileAndLinkHelper(stream_executor::CudaComputeCapability cc,
   stream_executor::GpuAsmOpts options{};
   options.disable_gpuasm_optimizations = disable_gpuasm_optimizations;
 
-  return stream_executor::CompileAndLinkUsingLibNvJitLink(
-      cc.major, cc.minor, inputs, options, cancel_if_reg_spill);
+  return stream_executor::CompileAndLinkUsingLibNvJitLink(cc, inputs, options,
+                                                          cancel_if_reg_spill);
 }
 
 class NvJitLinkTest : public ::testing::Test {

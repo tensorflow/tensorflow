@@ -709,6 +709,7 @@ cc_library(
         "ptx_compiler_stub.cc",
     ],
     deps = [
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status",
@@ -725,6 +726,7 @@ cc_library(
     tags = ["manual"],
     deps = [
         ":ptx_compiler_helpers",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/algorithm:container",
@@ -749,6 +751,7 @@ cc_library(
         ":libnvptxcompiler_support_enabled": [":ptx_compiler_impl"],
         "//conditions:default": [":ptx_compiler_stub"],
     }) + [
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status:statusor",
@@ -820,6 +823,7 @@ cc_library(
         "nvjitlink_stub.cc",
     ],
     deps = [
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -836,6 +840,7 @@ cc_library(
     tags = ["manual"],
     deps = [
         ":ptx_compiler_helpers",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -876,6 +881,7 @@ cc_library(
         ":libnvjitlink_support_enabled": [":nvjitlink_cuda_supported"],
         "//conditions:default": [":nvjitlink_stub"],
     }) + [
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
@@ -974,10 +980,8 @@ cc_library(
         ":ptx_compiler_support",
         "//xla:status_macros",
         "//xla:util",
-        "//xla/stream_executor:activate_context",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
-        "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",

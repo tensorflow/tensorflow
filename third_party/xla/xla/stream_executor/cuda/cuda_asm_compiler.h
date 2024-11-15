@@ -21,44 +21,48 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
-// Compiles the given PTX string using ptxas and returns the resulting machine
-// code (i.e. a cubin) as a byte array. The generated cubin matches the compute
-// capabilities of the device associated with 'stream_executor'.
+// Compiles the given PTX string using a statically determined compilation
+// method and returns the resulting machine code (i.e. a cubin) as a byte array.
+// The generated cubin matches the compute capabilities provided by 'cc'.
 //
 // 'options' is used to query for the CUDA location in case it is
 // customized in a passed flag, and for controlling ptxas optimizations.
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
-    stream_executor::StreamExecutor* executor, const char* ptx_contents,
-    GpuAsmOpts options);
+    const CudaComputeCapability& cc, const std::string& ptx_contents,
+    GpuAsmOpts options, bool cancel_if_reg_spill = false);
 
-// Compiles the given PTX string using ptxas and returns the resulting machine
-// code (i.e. a cubin) as a byte array. The generated cubin matches the compute
-// capabilities provided by 'cc_major' and 'cc_minor'.
-//
-// 'options' is used to query for the CUDA location in case it is
-// customized in a passed flag, and for controlling ptxas optimizations.
-absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
+// Temporary overload for users outside of XLA that still use the old API.
+inline absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
     int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
-    bool cancel_if_reg_spill = false);
+    bool cancel_if_reg_spill = false) {
+  return CompileGpuAsm(CudaComputeCapability(cc_major, cc_minor),
+                       std::string(ptx_contents), options, cancel_if_reg_spill);
+}
 
+// Compiles the given PTX string using ptxas and returns the resulting machine
+// code (i.e. a cubin) as a byte array. The generated cubin matches the compute
+// capabilities provided by 'cc'.
+//
+// 'options' is used to query for the CUDA location in case it is
+// customized in a passed flag, and for controlling ptxas optimizations.
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
-    int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
-    bool cancel_if_reg_spill = false);
+    const CudaComputeCapability& cc, const std::string& ptx_contents,
+    GpuAsmOpts options, bool cancel_if_reg_spill = false);
 
 // Same as CompileGpuAsm, but caches the result, and returns unowned view of
 // the compiled binary.
 //
 // A copy of the string provided in ptx will be made.
 absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
-    stream_executor::StreamExecutor* executor, const char* ptx,
+    const CudaComputeCapability& cc, const std::string& ptx_contents,
     GpuAsmOpts compilation_options);
 
 struct CubinOrPTXImage {
@@ -75,7 +79,6 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 // single image.
 absl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
     stream_executor::CudaComputeCapability cc,
-    stream_executor::StreamExecutor* executor,
     std::vector<CubinOrPTXImage> images);
 
 absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
