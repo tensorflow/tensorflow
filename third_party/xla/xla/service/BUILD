@@ -4286,6 +4286,7 @@ xla_test(
         "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/service/llvm_ir:ir_array",
+        "//xla/service/llvm_ir:llvm_util",
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
