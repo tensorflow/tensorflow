@@ -12664,5 +12664,23 @@ TEST_F(AlgebraicSimplifierTest, PathologicalComplexity) {
               GmockMatch(m::Broadcast(m::Constant())));
 }
 
+TEST_F(AlgebraicSimplifierTest, TestNew123) {
+  const char* hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      param0 = f32[16384,126]{1,0:T(8,128)S(5)} parameter(0), sharding={replicated}
+      copy0 = f32[16384,126]{1,0:T(8,128)} copy(param0)
+      bitcast0 = f32[126,16384]{0,1:T(8,128)} bitcast(copy0)
+      ROOT copy1 = f32[16384,126]{1,0:T(8,128)} copy(bitcast0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+}
+
 }  // namespace
 }  // namespace xla

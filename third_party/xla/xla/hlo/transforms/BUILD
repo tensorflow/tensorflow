@@ -650,6 +650,7 @@ cc_library(
         "//xla/service:hlo_creation_utils",
         "//xla/service:hlo_module_config",
         "//xla/service:host_memory_offload_annotations_hdr",
+        "//xla/service:host_offload_utils",
         "//xla/service:pattern_matcher",
         "//xla/service:shape_inference",
         "@com_google_absl//absl/algorithm:container",

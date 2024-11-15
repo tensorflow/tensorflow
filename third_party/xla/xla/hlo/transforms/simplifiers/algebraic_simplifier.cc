@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/host_offload_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
@@ -1518,6 +1519,9 @@ bool AlgebraicSimplifierVisitor::SwapCopyBitcastCopy(
   if (root_copy->opcode() != HloOpcode::kCopy) {
     return false;
   }
+  if (host_offload_utils::IsSynchronousCopyFromOrToHost(root_copy)) {
+    return false;
+  }
   HloInstruction* bitcast = root_copy->mutable_operand(0);
   if (bitcast->opcode() != HloOpcode::kBitcast) {
     return false;
@@ -1528,6 +1532,9 @@ bool AlgebraicSimplifierVisitor::SwapCopyBitcastCopy(
     copy = copy->mutable_operand(0);
   }
   if (copy->opcode() != HloOpcode::kCopy) {
+    return false;
+  }
+  if (host_offload_utils::IsSynchronousCopyFromOrToHost(copy)) {
     return false;
   }
   VLOG(2) << "Processing " << copy->ToString() << "\n"

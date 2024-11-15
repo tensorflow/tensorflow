@@ -249,12 +249,19 @@ bool IsSynchronousCopyFromOrToHost(const HloInstruction* instruction) {
   if (instruction->opcode() != HloOpcode::kCopy) {
     return false;
   }
-  return (instruction->shape().has_layout() &&
-          instruction->shape().layout().memory_space() ==
-              Layout::kHostMemorySpace) ||
-         (instruction->operand(0)->shape().has_layout() &&
-          instruction->operand(0)->shape().layout().memory_space() ==
-              Layout::kHostMemorySpace);
+  if (!instruction->shape().has_layout() ||
+      !instruction->operand(0)->shape().has_layout()) {
+    // Host offloading copies do not exist without layouts.
+    return false;
+  }
+  const int64_t copy_memory_space =
+      instruction->shape().layout().memory_space();
+  const int64_t operand_memory_space =
+      instruction->operand(0)->shape().layout().memory_space();
+  return (copy_memory_space == Layout::kHostMemorySpace &&
+          operand_memory_space != Layout::kHostMemorySpace) ||
+         (copy_memory_space != Layout::kHostMemorySpace &&
+          operand_memory_space == Layout::kHostMemorySpace);
 }
 
 bool ComputeTypeIsHost(const HloInstruction* hlo_instruction) {
