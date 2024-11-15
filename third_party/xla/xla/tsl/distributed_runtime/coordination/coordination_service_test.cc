@@ -956,6 +956,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
   task_1.set_job_name("worker");
   task_1.set_task_id(1);
   absl::Status status = absl::OkStatus();
+  absl::Status initial_wait_for_all_tasks_status;
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
@@ -972,8 +973,11 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
       CreateTestDevice("task1_device0"));
   // Task0 sends device info.
   DeviceInfo cluster_devices;
-  coord_service->WaitForAllTasks(task_0, local_devices_0,
-                                 [](absl::Status s) { ASSERT_OK(s); });
+  coord_service->WaitForAllTasks(
+      task_0, local_devices_0,
+      [&initial_wait_for_all_tasks_status](absl::Status s) {
+        initial_wait_for_all_tasks_status = s;
+      });
 
   // Task0 sends device info again.
   coord_service->WaitForAllTasks(task_0, local_devices_0,
@@ -997,6 +1001,8 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
   expected_devices->Add(local_devices_1.device().begin(),
                         local_devices_1.device().end());
   EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
+  EXPECT_THAT(initial_wait_for_all_tasks_status,
+              StatusIs(absl::StatusCode::kCancelled));
 }
 
 TEST_F(CoordinationBarrierTest, Barrier) {
@@ -1460,9 +1466,9 @@ TEST_F(CoordinationBarrierTest, BarrierCancelled) {
 TEST_F(CoordinationBarrierTest, CancelAfterBarrierHasPassed) {
   const std::string barrier_id = "barrier_id";
   absl::Duration timeout = absl::Seconds(5);
-  absl::Status barrier_status_0;
-  absl::Status barrier_status_1;
-  absl::Status barrier_status_2;
+  absl::Status barrier_status_0 = absl::UnknownError("Uninitialized error.");
+  absl::Status barrier_status_1 = absl::UnknownError("Uninitialized error.");
+  absl::Status barrier_status_2 = absl::UnknownError("Uninitialized error.");
 
   GetCoordinationService()->BarrierAsync(
       barrier_id, 0, timeout, GetTask(0),
@@ -1486,11 +1492,73 @@ TEST_F(CoordinationBarrierTest, CancelAfterBarrierHasPassed) {
   absl::Status cancelled_status =
       GetCoordinationService()->CancelBarrier(barrier_id, 0, GetTask(0));
 
-  EXPECT_THAT(cancelled_status,
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(cancelled_status, StatusIs(absl::StatusCode::kFailedPrecondition,
+                                         HasSubstr("already been passed")));
   TF_EXPECT_OK(barrier_status_0);
   TF_EXPECT_OK(barrier_status_1);
   TF_EXPECT_OK(barrier_status_2);
+}
+
+TEST_F(CoordinationBarrierTest, CancelBarrier_WrongCounter_FailedPrecondition) {
+  const std::string barrier_id = "barrier_id";
+  absl::Duration timeout = absl::Seconds(5);
+  absl::Status barrier_status_0 = absl::UnknownError("Uninitialized error.");
+  absl::Status barrier_status_1 = absl::UnknownError("Uninitialized error.");
+  absl::Status barrier_status_2 = absl::UnknownError("Uninitialized error.");
+  absl::Status barrier_status_cancelled =
+      absl::UnknownError("Uninitialized error.");
+
+  // First barrier passes (counter: 0).
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_0](absl::Status s, int64_t counter) {
+        barrier_status_0 = s;
+      });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(1),
+      /*participating_tasks=*/{},
+      [&barrier_status_1](absl::Status s, int64_t counter) {
+        barrier_status_1 = s;
+      });
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 0, timeout, GetTask(2),
+      /*participating_tasks=*/{},
+      [&barrier_status_2](absl::Status s, int64_t counter) {
+        barrier_status_2 = s;
+      });
+  TF_ASSERT_OK(barrier_status_0);
+  TF_ASSERT_OK(barrier_status_1);
+  TF_ASSERT_OK(barrier_status_2);
+  // Second barrier (counter: 1)
+  GetCoordinationService()->BarrierAsync(
+      barrier_id, 1, timeout, GetTask(0),
+      /*participating_tasks=*/{},
+      [&barrier_status_cancelled](absl::Status s, int64_t counter) {
+        barrier_status_cancelled = s;
+      });
+  // Specify low counter (e.g. due to restart on client-side).
+  absl::Status cancelled_status_low_counter =
+      GetCoordinationService()->CancelBarrier(barrier_id, 0, GetTask(0));
+  EXPECT_THAT(barrier_status_cancelled,
+              StatusIs(absl::StatusCode::kUnknown, HasSubstr("Uninitialized")));
+  // Specify high counter (e.g. due to restart on service-side).
+  absl::Status cancelled_status_high_counter =
+      GetCoordinationService()->CancelBarrier(barrier_id, 2, GetTask(0));
+  EXPECT_THAT(barrier_status_cancelled,
+              StatusIs(absl::StatusCode::kUnknown, HasSubstr("Uninitialized")));
+  // Specify correct counter.
+  absl::Status cancelled_status_correct_counter =
+      GetCoordinationService()->CancelBarrier(barrier_id, 1, GetTask(1));
+
+  EXPECT_THAT(barrier_status_cancelled, StatusIs(absl::StatusCode::kCancelled));
+  EXPECT_THAT(cancelled_status_low_counter,
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("likely due to a restart")));
+  EXPECT_THAT(cancelled_status_high_counter,
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("likely due to a restart")));
+  TF_EXPECT_OK(cancelled_status_correct_counter);
 }
 
 TEST_F(CoordinationBarrierTest, PassedBarrierReturnsImmediately) {
@@ -1610,7 +1678,9 @@ TEST_F(CoordinationBarrierTest,
         n_1.Notify();
       });
   // All listed tasks passed the barrier.
-  EXPECT_FALSE(n_0.HasBeenNotified());
+  // Second call should cancel the first.
+  EXPECT_TRUE(n_0.HasBeenNotified());
+  EXPECT_THAT(barrier_status_0, StatusIs(absl::StatusCode::kCancelled));
   EXPECT_FALSE(n_1.HasBeenNotified());
 
   GetCoordinationService()->BarrierAsync(
@@ -1620,7 +1690,6 @@ TEST_F(CoordinationBarrierTest,
         barrier_status_2 = s;
         n_2.Notify();
       });
-  TF_EXPECT_OK(barrier_status_0);
   TF_EXPECT_OK(barrier_status_1);
   TF_EXPECT_OK(barrier_status_2);
 }

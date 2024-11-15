@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/barrier.h"
@@ -55,12 +56,15 @@ namespace tsl {
 namespace {
 using ::tensorflow::CoordinationServiceConfig;
 using ::testing::AnyOf;
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
 using ::tsl::testing::StatusIs;
 
 constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
+constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(3);
+constexpr char kBarrierId[] = "barrier_id";
 
 tensorflow::CoordinatedTask GetTask(int node_id) {
   tensorflow::CoordinatedTask task;
@@ -88,7 +92,7 @@ class ClientServerTest : public ::testing::Test {
     config.set_cluster_register_timeout_in_ms(
         absl::ToInt64Milliseconds(init_and_shutdown_timeout));
     config.set_heartbeat_timeout_in_ms(
-        absl::ToInt64Milliseconds(absl::Seconds(3)));
+        absl::ToInt64Milliseconds(kHeartbeatTimeout));
     if (cluster_shutdown_with_barrier) {
       config.set_shutdown_barrier_timeout_in_ms(
           absl::ToInt64Milliseconds(init_and_shutdown_timeout));
@@ -119,7 +123,7 @@ class ClientServerTest : public ::testing::Test {
 
   std::unique_ptr<CoordinationServiceAgent> GetClient(
       int node_id, absl::Duration init_and_shutdown_timeout = absl::Seconds(3),
-      bool shutdown_on_destruction = true,
+      bool shutdown_on_destruction = true, bool recoverable = false,
       StatusCallback error_fn = [](const absl::Status& status) {
         LOG(ERROR) << "Agent hit an error: " << status;
       }) {
@@ -133,9 +137,9 @@ class ClientServerTest : public ::testing::Test {
     auto coord_agent = tsl::CreateCoordinationServiceAgent();
     CoordinationServiceConfig config =
         GetConfig(init_and_shutdown_timeout, shutdown_on_destruction);
-    const absl::Status status =
-        coord_agent->Initialize(tsl::Env::Default(), "agent", node_id, config,
-                                std::move(leader_client), std::move(error_fn));
+    const absl::Status status = coord_agent->Initialize(
+        tsl::Env::Default(), "agent", node_id, config, std::move(leader_client),
+        std::move(error_fn), recoverable);
     if (!status.ok()) {
       LOG(ERROR) << "Coordination agent failed to initialize: " << status;
     }
@@ -211,6 +215,24 @@ class ClientServerTest : public ::testing::Test {
   std::unique_ptr<tsl::AsyncServiceInterface> coord_rpc_service_;
   std::unique_ptr<tsl::Thread> coord_rpc_thread_;
 };
+
+struct RecoverableTestParams {
+  // This determines if the restarted clients will invoke shutdown before going
+  // away. This checks if the service logic will not be corrupted even if the
+  // client does not gracefully disconnect (i.e. param set to false).
+  bool recoverable_node_shutdown_on_destruction;
+  // This inserts errors to transition the cluster into error states (from the
+  // service's POV), which may result in different code paths or error codes.
+  bool inject_heartbeat_errors;
+  // This exercises barrier counter validation logic. On the agent side, a
+  // restarted client will have its counter reset. Thus, the service needs to
+  // let the recoverable node join despite a mismatched counter.
+  bool pass_multiple_barriers_before_test;
+};
+
+class RecoverableTest
+    : public ClientServerTest,
+      public ::testing::WithParamInterface<RecoverableTestParams> {};
 
 TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
   int num_nodes = 3;
@@ -316,6 +338,10 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
         AnyOf(
             // Shutdown barrier took too long and failed.
             StatusIs(absl::StatusCode::kInternal, HasSubstr("timed out")),
+            // Heartbeat timeout sets node into error state, failing shutdown
+            // barrier.
+            StatusIs(absl::StatusCode::kInternal,
+                     HasSubstr("heartbeat timeout")),
             // Agent polled error first, and so Shutdown()
             // fails because agent is already in error.
             StatusIs(absl::StatusCode::kFailedPrecondition)));
@@ -354,11 +380,14 @@ TEST_F(ClientServerTest, MissedHeartbeatCallbackIsExecutedIfAnyClientGoesAway) {
 
   auto thread_fn = [&](int node_id) -> absl::Status {
     absl::Notification shutdown;
-    auto client = GetClient(
-        node_id,
-        /*init_and_shutdown_timeout=*/absl::Seconds(3),
-        /*shutdown_on_destruction=*/node_id != 0,
-        /*error_fn=*/[&](const absl::Status& status) { shutdown.Notify(); });
+    auto client =
+        GetClient(node_id,
+                  /*init_and_shutdown_timeout=*/absl::Seconds(3),
+                  /*shutdown_on_destruction=*/node_id != 0,
+                  /*recoverable=*/false,
+                  /*error_fn=*/[&shutdown](const absl::Status& status) {
+                    shutdown.Notify();
+                  });
 
     TF_RETURN_IF_ERROR(client->Connect());
 
@@ -395,6 +424,7 @@ TEST_F(ClientServerTest, ShutdownErrorIsPropagatedToClients) {
         node_id,
         /*init_and_shutdown_timeout=*/absl::Seconds(2),
         /*shutdown_on_destruction=*/true,
+        /*recoverable=*/false,
         /*error_fn=*/[&statuses, node_id](const absl::Status& status) {
           statuses[node_id] = status;
         });
@@ -439,7 +469,10 @@ TEST_F(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
         /*node_id=*/node_id,
         /*init_and_shutdown_timeout=*/absl::Seconds(10),
         /*shutdown_on_destruction=*/true,
-        /*error_fn=*/[&](const absl::Status& status) { shutdown.Notify(); });
+        /*recoverable=*/false,
+        /*error_fn=*/[&shutdown](const absl::Status& status) {
+          shutdown.Notify();
+        });
 
     TF_RETURN_IF_ERROR(client->Connect());
 
@@ -1121,5 +1154,424 @@ TEST_F(ClientServerTest, Dtor_CancelsOngoingGetKeyValueAndBarrier) {
   absl::SleepFor(absl::Seconds(1));
 }
 
+TEST_F(ClientServerTest, RecoverableClientNeverJoins_InitialConnectFails) {
+  int num_nodes = 3;
+  StartService(num_nodes);
+  absl::Notification node_2_joins_late;
+  std::vector<absl::Status> statuses(num_nodes);
+
+  auto thread_fn = [&](int node_id) {
+    auto client = GetClient(node_id,
+                            /*init_and_shutdown_timeout=*/absl::Seconds(2),
+                            /*shutdown_on_destruction=*/true,
+                            // Nodes 1, 2 are recoverable.
+                            /*recoverable=*/node_id != 0);
+    if (node_id == 0) {
+      statuses[0] = client->Connect();
+    } else if (node_id == 1) {
+      statuses[1] = client->Connect();
+      // Connect should time out and fail because node 2 is not connected yet.
+      node_2_joins_late.Notify();
+    } else {
+      node_2_joins_late.WaitForNotification();
+      statuses[2] = client->Connect();
+    }
+  };
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { thread_fn(i); });
+    }
+  }
+  // Even though node 2 is recoverable, initial connect still fails if it is
+  // late.
+  for (int i = 0; i < num_nodes; ++i) {
+    // 1) Connect() starts a barrier.
+    // 2) Barrier times out, returning `DeadlineExceeded` error.
+    // 3) The failed barrier sets the entire cluster to an error state.
+    // Subsequent connect attempts will return `Aborted` error due to this error
+    // state.
+    EXPECT_THAT(statuses[i], StatusIs(AnyOf(absl::StatusCode::kDeadlineExceeded,
+                                            absl::StatusCode::kAborted)))
+        << i;
+  }
+}
+
+TEST_F(ClientServerTest, NonrecoverableClientDies_ErrorPropagated) {
+  int num_nodes = 3;
+  StartService(num_nodes);
+  absl::Notification shutdown;
+  std::vector<absl::Status> statuses(num_nodes);
+
+  auto thread_fn = [&](int node_id) {
+    auto client = GetClient(node_id,
+                            /*init_and_shutdown_timeout=*/absl::Seconds(2),
+                            /*shutdown_on_destruction=*/false,
+                            // Nodes 1, 2 are recoverable.
+                            /*recoverable=*/node_id != 0,
+                            /*error_fn=*/
+                            [&statuses, node_id](const absl::Status& status) {
+                              statuses[node_id] = status;
+                            });
+    TF_ASSERT_OK(client->Connect());
+    if (node_id == 0) {
+      // Non-recoverable node crashed unexpectedly.
+      return;
+    }
+    // Other nodes will get heartbeat timeouts.
+    absl::SleepFor(kHeartbeatTimeout * 2);
+  };
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { thread_fn(i); });
+    }
+  }
+  EXPECT_THAT(statuses,
+              ElementsAre(
+                  // Node 0 died unexpectedly, so no error function invoked.
+                  StatusIs(absl::StatusCode::kOk),
+                  // Node 1, 2 get error notification that node 0 died.
+                  StatusIs(absl::StatusCode::kUnavailable),
+                  StatusIs(absl::StatusCode::kUnavailable)));
+}
+
+TEST_F(ClientServerTest, RecoverableClientDies_NoErrorPropagated) {
+  int num_nodes = 3;
+  StartService(num_nodes);
+  absl::Notification shutdown;
+  std::vector<absl::Status> statuses(num_nodes);
+
+  auto thread_fn = [&](int node_id) {
+    auto client = GetClient(node_id,
+                            /*init_and_shutdown_timeout=*/absl::Seconds(2),
+                            /*shutdown_on_destruction=*/false,
+                            // Nodes 1, 2 are recoverable.
+                            /*recoverable=*/node_id != 0,
+                            /*error_fn=*/
+                            [&statuses, node_id](const absl::Status& status) {
+                              statuses[node_id] = status;
+                            });
+    TF_ASSERT_OK(client->Connect());
+    if (node_id == 1) {
+      // Recoverable node crashed unexpectedly.
+      return;
+    }
+    // Other nodes will get heartbeat timeouts.
+    absl::SleepFor(kHeartbeatTimeout * 2);
+  };
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { thread_fn(i); });
+    }
+  }
+  // Nobody noticed that node 1 (recoverable) died.
+  TF_EXPECT_OK(statuses[0]);
+  TF_EXPECT_OK(statuses[1]);
+  TF_EXPECT_OK(statuses[2]);
+}
+
+TEST_F(ClientServerTest, RecoverableClient_RestartsAndStartsBarrier) {
+  int num_nodes = 2;
+  StartService(num_nodes);
+  absl::Notification node_1_joins_barrier;
+  absl::Status status_0, status_0_shutdown, status_1, status_1_shutdown;
+  status_0 = status_0_shutdown = status_1 = status_1_shutdown =
+      absl::UnknownError("Uninitialized error.");
+
+  auto thread_fn = [&](int node_id) {
+    auto client = GetClient(node_id,
+                            /*init_and_shutdown_timeout=*/absl::Seconds(2),
+                            /*shutdown_on_destruction=*/true,
+                            // Node 0 is recoverable.
+                            /*recoverable=*/node_id == 0);
+    TF_ASSERT_OK(client->Connect());
+    // This increments the internal barrier counter, and checks if the
+    // recoverable node can start a new barrier later (despite having a reset
+    // counter on the client-side)
+    TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+    TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+    TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+    // Timeline:
+    // 1. Node 0 restarts.
+    // 2. Node 0 starts a new barrier.
+    // 3. Node 1 joins barrier.
+    // 4. End-of-job barrier.
+    if (node_id == 0) {
+      // Restart the client.
+      client = nullptr;
+      auto restarted_client =
+          GetClient(/*node_id=*/0,
+                    /*init_and_shutdown_timeout=*/absl::Seconds(2),
+                    /*shutdown_on_destruction=*/true,
+                    /*recoverable=*/true);
+
+      restarted_client->WaitAtBarrierAsync(
+          kBarrierId, absl::Seconds(10), {},
+          [&status_0](const absl::Status& status) { status_0 = status; });
+      // This makes sure that the underlying async RPC layer sends the request
+      // before we let node 1 join the barrier.
+      absl::SleepFor(absl::Seconds(1));
+      // Node 1 should join the barrier after the new barrier is initiated.
+      node_1_joins_barrier.Notify();
+      // Check that the cluster is healthy at the end of the test.
+      status_0_shutdown = restarted_client->WaitAtBarrier(
+          "before_shutdown", absl::Seconds(10), {});
+    } else {
+      node_1_joins_barrier.WaitForNotification();
+      status_1 = client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {});
+      // Check that the cluster is healthy at the end of the test.
+      status_1_shutdown =
+          client->WaitAtBarrier("before_shutdown", absl::Seconds(10), {});
+    }
+  };
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { thread_fn(i); });
+    }
+  }
+  TF_EXPECT_OK(status_0);
+  TF_EXPECT_OK(status_0_shutdown);
+  TF_EXPECT_OK(status_1);
+  TF_EXPECT_OK(status_1_shutdown);
+}
+
+TEST_P(RecoverableTest, RecoverableClient_RestartsAndJoinsBarrier) {
+  const RecoverableTestParams params = GetParam();
+  int num_nodes = 2;
+  StartService(num_nodes);
+  absl::Notification restart_now;
+  absl::Status status_0, status_0_shutdown, status_1, status_1_shutdown;
+  status_0 = status_0_shutdown = status_1 = status_1_shutdown =
+      absl::UnknownError("Uninitialized error.");
+
+  auto thread_fn = [&](int node_id) {
+    auto client = GetClient(
+        node_id,
+        /*init_and_shutdown_timeout=*/absl::Seconds(2),
+        /*shutdown_on_destruction=*/
+        params.recoverable_node_shutdown_on_destruction ? true : node_id != 1,
+        // Node 1 is recoverable.
+        /*recoverable=*/node_id == 1);
+    TF_ASSERT_OK(client->Connect());
+    if (params.pass_multiple_barriers_before_test) {
+      // This increments the internal barrier counter, and checks if the
+      // recoverable node can join the barrier later (despite having a reset
+      // counter on the client-side)
+      TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+      TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+      TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+    }
+    // Timeline:
+    // 1. Node 0 joins barrier.
+    // 2. Node 1 restarts.
+    // 3. Node 1 joins barrier.
+    // 4. End-of-job barrier.
+    if (node_id == 0) {
+      // Usually, if a non-recoverable node goes away, the barrier will fail
+      // immediately. However, if the node is recoverable, the barrier will wait
+      // for the node to restart.
+      client->WaitAtBarrierAsync(
+          kBarrierId, absl::Seconds(10), {},
+          [&status_0](const absl::Status& status) { status_0 = status; });
+      // This makes sure that the underlying async RPC layer sends the request
+      // before we let node 1 restart.
+      absl::SleepFor(absl::Seconds(1));
+      // Node 1 should restart after the barrier is initiated.
+      restart_now.Notify();
+      // Check that the cluster is healthy at the end of the test.
+      status_0_shutdown =
+          client->WaitAtBarrier("before_shutdown", absl::Seconds(10), {});
+    } else {
+      restart_now.WaitForNotification();
+      // Restart the client.
+      client = nullptr;
+      if (params.inject_heartbeat_errors) {
+        absl::SleepFor(2 * kHeartbeatTimeout);
+      }
+      auto restarted_client =
+          GetClient(/*node_id=*/1,
+                    /*init_and_shutdown_timeout=*/absl::Seconds(2),
+                    /*shutdown_on_destruction=*/true,
+                    /*recoverable=*/true);
+      TF_ASSERT_OK(restarted_client->Connect());
+      status_1 =
+          restarted_client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {});
+      // Check that the cluster is healthy at the end of the test.
+      status_1_shutdown = restarted_client->WaitAtBarrier(
+          "before_shutdown", absl::Seconds(10), {});
+    }
+  };
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { thread_fn(i); });
+    }
+  }
+  TF_EXPECT_OK(status_0);
+  TF_EXPECT_OK(status_0_shutdown);
+  TF_EXPECT_OK(status_1);
+  TF_EXPECT_OK(status_1_shutdown);
+}
+
+TEST_P(RecoverableTest,
+       RecoverableClient_JoinsBarrierThenRestartsAndJoinsBarrierAgain) {
+  const RecoverableTestParams params = GetParam();
+  int num_nodes = 3;
+  StartService(num_nodes);
+  absl::Notification node_0_restarts, node_2_joins_barrier_last;
+  absl::Status status_0_before_restart, status_0_after_restart,
+      status_0_shutdown, status_1, status_1_shutdown, status_2,
+      status_2_shutdown;
+  status_0_before_restart = status_0_after_restart = status_0_shutdown =
+      status_1 = status_1_shutdown = status_2 = status_2_shutdown =
+          absl::UnknownError("Uninitialized error.");
+
+  auto thread_fn = [&](int node_id) {
+    auto client = GetClient(
+        node_id,
+        /*init_and_shutdown_timeout=*/absl::Seconds(2),
+        /*shutdown_on_destruction=*/
+        params.recoverable_node_shutdown_on_destruction ? true : node_id != 0,
+        // Node 0 is recoverable.
+        /*recoverable=*/node_id == 0);
+    TF_ASSERT_OK(client->Connect());
+    if (params.pass_multiple_barriers_before_test) {
+      // This increments the internal barrier counter, and checks if the
+      // recoverable node can join the barrier later (despite having a reset
+      // counter on the client-side)
+      TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+      TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+      TF_ASSERT_OK(client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {}));
+    }
+    // Timeline:
+    // 1. Node 0, 1 joins barrier.
+    // 2. Node 0 restarts.
+    // 3. Node 0 joins barrier again.
+    // 4. Node 2 joins barrier.
+    // 5. End-of-job barrier.
+    if (node_id == 0) {
+      // This is the key difference: client invokes the barrier **first**, then
+      // restarts and joins barrier again.
+      // This means that service has to deal with the barrier state from a stale
+      // client.
+      client->WaitAtBarrierAsync(
+          kBarrierId, absl::Seconds(10), {},
+          [&status_0_before_restart](const absl::Status& status) {
+            status_0_before_restart = status;
+          });
+      node_0_restarts.WaitForNotification();
+      // Restart the client.
+      client = nullptr;
+      if (params.inject_heartbeat_errors) {
+        absl::SleepFor(2 * kHeartbeatTimeout);
+      }
+      auto restarted_client =
+          GetClient(/*node_id=*/0,
+                    /*init_and_shutdown_timeout=*/absl::Seconds(2),
+                    /*shutdown_on_destruction=*/true,
+                    /*recoverable=*/true);
+      TF_ASSERT_OK(restarted_client->Connect());
+      restarted_client->WaitAtBarrierAsync(
+          kBarrierId, absl::Seconds(10), {},
+          [&status_0_after_restart](const absl::Status& status) {
+            status_0_after_restart = status;
+          });
+      node_2_joins_barrier_last.Notify();
+      status_0_shutdown = restarted_client->WaitAtBarrier(
+          "before_shutdown", absl::Seconds(10), {});
+    } else if (node_id == 1) {
+      client->WaitAtBarrierAsync(
+          kBarrierId, absl::Seconds(10), {},
+          [&status_1](const absl::Status& status) { status_1 = status; });
+      // This makes sure that the underlying async RPC layer sends the request
+      // before node 0 restarts.
+      absl::SleepFor(absl::Seconds(1));
+      node_0_restarts.Notify();
+      status_1_shutdown =
+          client->WaitAtBarrier("before_shutdown", absl::Seconds(10), {});
+    } else {
+      node_2_joins_barrier_last.WaitForNotification();
+      status_2 = client->WaitAtBarrier(kBarrierId, absl::Seconds(10), {});
+      status_2_shutdown =
+          client->WaitAtBarrier("before_shutdown", absl::Seconds(10), {});
+    }
+  };
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { thread_fn(i); });
+    }
+  }
+  // If node 0 restarts before joining the barrier, the barrier should be
+  // cancelled.
+  EXPECT_THAT(status_0_before_restart, StatusIs(absl::StatusCode::kCancelled));
+  TF_EXPECT_OK(status_0_after_restart);
+  TF_EXPECT_OK(status_0_shutdown);
+  TF_EXPECT_OK(status_1);
+  TF_EXPECT_OK(status_1_shutdown);
+  TF_EXPECT_OK(status_2);
+  TF_EXPECT_OK(status_2_shutdown);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    RecoverableTestSuite, RecoverableTest,
+    // Full matrix of test parameters.
+    ::testing::Values(
+        // Basic tests: agent will invoke shutdown on destruction.
+        RecoverableTestParams{
+            /*recoverable_node_shutdown_on_destruction=*/true,
+            /*inject_heartbeat_errors=*/true,
+            /*pass_multiple_barriers_before_test=*/false,
+        },
+        RecoverableTestParams{/*recoverable_node_shutdown_on_destruction=*/true,
+                              /*inject_heartbeat_errors=*/false,
+                              /*pass_multiple_barriers_before_test=*/false},
+        // Check if service can handle restarted clients that do not gracefully
+        // disconnect.
+        RecoverableTestParams{
+            /*recoverable_node_shutdown_on_destruction=*/false,
+            /*inject_heartbeat_errors=*/true,
+            /*pass_multiple_barriers_before_test=*/false},
+        // Hard test case: agent does not invoke shutdown, and doesn't trigger
+        // heartbeat errors either.
+        RecoverableTestParams{
+            /*recoverable_node_shutdown_on_destruction=*/false,
+            /*inject_heartbeat_errors=*/false,
+            /*pass_multiple_barriers_before_test=*/false},
+        // Same as above, but with multiple barriers to exercise counter
+        // validation logic.
+        RecoverableTestParams{
+            /*recoverable_node_shutdown_on_destruction=*/true,
+            /*inject_heartbeat_errors=*/true,
+            /*pass_multiple_barriers_before_test=*/true,
+        },
+        RecoverableTestParams{/*recoverable_node_shutdown_on_destruction=*/true,
+                              /*inject_heartbeat_errors=*/false,
+                              /*pass_multiple_barriers_before_test=*/true},
+        RecoverableTestParams{
+            /*recoverable_node_shutdown_on_destruction=*/false,
+            /*inject_heartbeat_errors=*/true,
+            /*pass_multiple_barriers_before_test=*/true},
+        // Hardest test case: agent does not invoke shutdown or trigger
+        // heartbeat errors. It silently restarts and re-connects.
+        RecoverableTestParams{
+            /*recoverable_node_shutdown_on_destruction=*/false,
+            /*inject_heartbeat_errors=*/false,
+            /*pass_multiple_barriers_before_test=*/true}));
 }  // namespace
 }  // namespace tsl
