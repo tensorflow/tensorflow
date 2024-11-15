@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/version.h"
-#include "xla/python/ifrt/ir/vifrt_ops.h"
+#include "xla/python/ifrt/ir/vifrt_dialect.h"
 #include "xla/python/ifrt/serdes.h"
 
 namespace xla {

@@ -13,17 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_VIFRT_OPS_H_
-#define XLA_PYTHON_IFRT_IR_VIFRT_OPS_H_
+#ifndef XLA_PYTHON_IFRT_IR_VIFRT_DIALECT_H_
+#define XLA_PYTHON_IFRT_IR_VIFRT_DIALECT_H_
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/DialectConversion.h"
+#include "xla/python/ifrt/ir/sharding_param.h"  // IWYU pragma: export
 #include "xla/python/ifrt/ir/version.h"  // IWYU pragma: export
-#include "xla/python/ifrt/ir/vifrt_types.h"  // IWYU pragma: export
 
 namespace xla {
 namespace ifrt {
@@ -47,31 +50,50 @@ class VifrtDialect : public mlir::Dialect {
   // Prints an attribute registered in the VIFRT dialect.
   void printAttribute(mlir::Attribute attr,
                       mlir::DialectAsmPrinter &os) const override;
-
- private:
-  // Adds VIFRT types to this dialect.
-  // See implementation comment for additional details.
-  void addVifrtTypes();
-
-  // Does the same this as Dialect::addTypes but without calling `registerType`.
-  // See comments for `addVifrtTypes` for additional details.
-  template <typename... Types>
-  void addTypesWithoutRegistering() {
-    (addType(Types::getTypeID(), mlir::AbstractType::get<Types>(*this)), ...);
-  }
 };
+
+class VifrtTypeConverterBase : public mlir::TypeConverter {
+ public:
+  VifrtTypeConverterBase() : mlir::TypeConverter() {};
+
+  ~VifrtTypeConverterBase() override = default;
+};
+
+// Class used to manage conversions between VIFRT and Builtin types.
+class VifrtTypeConverterBuiltin : public VifrtTypeConverterBase {
+ public:
+  // A subclass can call this method to add conversions from VIFRT to Builtin
+  // types. Conversions are applied in reverse order, with the most recently
+  // added conversion attempted to be applied first.
+  void addVifrtToBuiltinConversions();
+
+  // A subclass can call this method to add conversions from Builtin to VIFRT
+  // types. Conversions are applied in reverse order, with the most recently
+  // added conversion attempted to be applied first.
+  void addBuiltinToVifrtConversions();
+};
+
+// Auto-generated VIFRT type printers and parsers.
+mlir::LogicalResult printVifrtType(mlir::Type type, mlir::AsmPrinter &printer);
+mlir::OptionalParseResult parseVifrtType(mlir::AsmParser &parser,
+                                         llvm::StringRef *mnemonic,
+                                         mlir::Type &type);
 
 }  // namespace ifrt
 }  // namespace xla
 
-// Attrs
+// Generated definitions.
+// Attributes
 #include "xla/python/ifrt/ir/vifrt_attr_interfaces.h.inc"
 #define GET_ATTRDEF_CLASSES
 #include "xla/python/ifrt/ir/vifrt_attrs.h.inc"
-
+// Types
+#include "xla/python/ifrt/ir/vifrt_type_interfaces.h.inc"
+#define GET_TYPEDEF_CLASSES
+#include "xla/python/ifrt/ir/vifrt_types.h.inc"
 // Ops
 #include "xla/python/ifrt/ir/vifrt_op_interfaces.h.inc"
 #define GET_OP_CLASSES
 #include "xla/python/ifrt/ir/vifrt_ops.h.inc"
 
-#endif  // XLA_PYTHON_IFRT_IR_VIFRT_OPS_H_
+#endif  // XLA_PYTHON_IFRT_IR_VIFRT_DIALECT_H_

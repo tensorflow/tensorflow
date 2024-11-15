@@ -53,7 +53,7 @@ xla_cc_binary(
         "//xla/python/ifrt/ir:ifrt_ir_program",
         "//xla/python/ifrt/ir:ifrt_ir_program_serdes",  # build_cleaner: keep
         "//xla/python/ifrt/ir:version",
-        "//xla/python/ifrt/ir:vifrt_ops",
+        "//xla/python/ifrt/ir:vifrt",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",

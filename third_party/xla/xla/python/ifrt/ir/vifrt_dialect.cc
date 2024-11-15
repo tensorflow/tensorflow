@@ -13,23 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/ir/vifrt_ops.h"
+#include "xla/python/ifrt/ir/vifrt_dialect.h"
 
 #include <cassert>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: export
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TypeID.h"
-#include "xla/python/ifrt/ir/vifrt_types.h"
 
 namespace xla {
 namespace ifrt {
@@ -37,6 +36,7 @@ namespace ifrt {
 namespace {
 
 // Verifies if a given type or attribute is from VIFRT dialect.
+// Must be defined before importing the generated type interfaces and defs.
 template <typename TypeOrAttr>
 bool isFromVifrt(TypeOrAttr t) {
   return t.getDialect().getNamespace() == VifrtDialect::getDialectNamespace();
@@ -46,8 +46,6 @@ template <typename TypeOrAttr>
 bool allFromVifrt(llvm::ArrayRef<TypeOrAttr> range) {
   return llvm::all_of(range, isFromVifrt<TypeOrAttr>);
 }
-
-}  // namespace
 
 // Helper functions for VIFRT printers and parsers.
 static void printAttributeArray(mlir::AsmPrinter& os,
@@ -66,57 +64,45 @@ mlir::ParseResult parseAttributeArray(
   return mlir::success();
 }
 
+}  // namespace
+
 }  // namespace ifrt
 }  // namespace xla
 
+// Attributes
 #include "xla/python/ifrt/ir/vifrt_attr_interfaces.cc.inc"
 #define GET_ATTRDEF_CLASSES
 #include "xla/python/ifrt/ir/vifrt_attrs.cc.inc"
+// Types
+#include "xla/python/ifrt/ir/vifrt_type_interfaces.cc.inc"
+#define GET_TYPEDEF_CLASSES
+#include "xla/python/ifrt/ir/vifrt_types.cc.inc"
+// Ops
 #include "xla/python/ifrt/ir/vifrt_op_interfaces.cc.inc"
 #define GET_OP_CLASSES
 #include "xla/python/ifrt/ir/vifrt_ops.cc.inc"
 
+//===----------------------------------------------------------------------===//
+// VIFRT Dialect
+//===----------------------------------------------------------------------===//
 namespace xla {
 namespace ifrt {
-
-//===----------------------------------------------------------------------===//
-// VIFRT Dialect Constructor
-//===----------------------------------------------------------------------===//
 
 VifrtDialect::VifrtDialect(mlir::MLIRContext* context)
     : mlir::Dialect(getDialectNamespace(), context,
                     mlir::TypeID::get<VifrtDialect>()) {
-  addOperations<
-#define GET_OP_LIST
-#include "xla/python/ifrt/ir/vifrt_ops.cc.inc"
-      >();
-  addVifrtTypes();
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "xla/python/ifrt/ir/vifrt_attrs.cc.inc"
       >();
-}
-
-void VifrtDialect::addVifrtTypes() {
-  // Following the same solution as in VHLO; Idiomatically, this functionality
-  // is expressed as shown below:
-  //     addTypes<
-  //   #define GET_TYPEDEF_LIST
-  //   #include
-  //   "third_party/tensorflow/compiler/xla/python/ifrt/ir/vifrt_type_defs.cc.inc"
-  //         >();
-  //
-  // However, Dialect::addTypes doesn't work for our situation where we want to
-  // decouple the vifrt_ops and vifrt_types targets because
-  // vifrt_type_defs.h.inc only includes forward declarations of `TypeStorage`
-  // structs, and that's not sufficient for Dialect::addTypes to compile.
-  // Therefore, we introduce this function and then reimplementing
-  // Dialect::addTypes as shown below.
-  addTypesWithoutRegistering<
+  addTypes<
 #define GET_TYPEDEF_LIST
-#include "xla/python/ifrt/ir/vifrt_type_defs.cc.inc"
+#include "xla/python/ifrt/ir/vifrt_types.cc.inc"
       >();
-  registerVifrtTypes(getContext());
+  addOperations<
+#define GET_OP_LIST
+#include "xla/python/ifrt/ir/vifrt_ops.cc.inc"
+      >();
 }
 
 mlir::Type VifrtDialect::parseType(mlir::DialectAsmParser& parser) const {
@@ -156,6 +142,30 @@ void VifrtDialect::printAttribute(mlir::Attribute attr,
   // Avoid clang unused variable error.
   (void)result;
   assert(mlir::succeeded(result));
+}
+
+//===----------------------------------------------------------------------===//
+// VIFRT Type Converter to/from Builtin
+//===----------------------------------------------------------------------===//
+
+void VifrtTypeConverterBuiltin::addBuiltinToVifrtConversions() {
+  // We currently rely on the builtin types being stable, and thus we do not
+  // convert builtin types to VIFRT types.
+}
+
+void VifrtTypeConverterBuiltin::addVifrtToBuiltinConversions() {
+  // We currently rely on the builtin types are stable, and thus we do not
+  // convert from VIFRT types to builtin types.
+}
+
+mlir::LogicalResult printVifrtType(mlir::Type type, mlir::AsmPrinter& printer) {
+  return generatedTypePrinter(type, printer);
+}
+
+mlir::OptionalParseResult parseVifrtType(mlir::AsmParser& parser,
+                                         llvm::StringRef* mnemonic,
+                                         mlir::Type& type) {
+  return generatedTypeParser(parser, mnemonic, type);
 }
 
 }  // namespace ifrt

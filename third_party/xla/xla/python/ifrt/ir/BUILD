@@ -315,8 +315,23 @@ cc_library(
     ],
 )
 
+td_library(
+    name = "vifrt_td",
+    srcs = [
+        "vifrt_dialect.td",
+        "vifrt_interfaces.td",
+        "vifrt_ops.td",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//mlir:BuiltinDialectTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:ShapeOpsTdFiles",
+    ],
+)
+
 gentbl_cc_library(
-    name = "vifrt_attr_interfaces_inc_gen",
+    name = "vifrt_interfaces_inc_gen",
     compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
@@ -327,17 +342,61 @@ gentbl_cc_library(
             ["-gen-attr-interface-defs"],
             "vifrt_attr_interfaces.cc.inc",
         ),
+        (
+            ["-gen-type-interface-decls"],
+            "vifrt_type_interfaces.h.inc",
+        ),
+        (
+            ["-gen-type-interface-defs"],
+            "vifrt_type_interfaces.cc.inc",
+        ),
+        (
+            ["-gen-op-interface-decls"],
+            "vifrt_op_interfaces.h.inc",
+        ),
+        (
+            ["-gen-op-interface-defs"],
+            "vifrt_op_interfaces.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "vifrt_attrs.td",
+    td_file = "vifrt_interfaces.td",
     test = True,
-    deps = [":vifrt_ops_td_files"],
+    deps = [":vifrt_td"],
 )
 
 gentbl_cc_library(
-    name = "vifrt_attrs_inc_gen",
+    name = "vifrt_dialect_inc_gen",
     compatible_with = get_compatible_with_portable(),
     tbl_outs = [
+        (
+            [
+                "-gen-dialect-decls",
+                "-dialect=vifrt",
+            ],
+            "vifrt_dialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=vifrt",
+            ],
+            "vifrt_dialect.cc.inc",
+        ),
+        (
+            [
+                "-gen-typedef-decls",
+                "--typedefs-dialect=vifrt",
+            ],
+            "vifrt_types.h.inc",
+        ),
+        (
+            [
+                "-gen-typedef-defs",
+                "--typedefs-dialect=vifrt",
+            ],
+            "vifrt_types.cc.inc",
+        ),
         (
             [
                 "-gen-attrdef-decls",
@@ -354,50 +413,9 @@ gentbl_cc_library(
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "vifrt_ops.td",
+    td_file = "vifrt_dialect.td",
     test = True,
-    deps = [":vifrt_ops_td_files"],
-)
-
-gentbl_cc_library(
-    name = "vifrt_op_interfaces_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-interface-decls"],
-            "vifrt_op_interfaces.h.inc",
-        ),
-        (
-            ["-gen-op-interface-defs"],
-            "vifrt_op_interfaces.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "vifrt_ops.td",
-    deps = [":vifrt_ops_td_files"],
-)
-
-cc_library(
-    name = "vifrt_ops",
-    srcs = [
-        "vifrt_ops.cc",
-    ],
-    hdrs = [
-        "vifrt_ops.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":version",
-        ":vifrt_attr_interfaces_inc_gen",
-        ":vifrt_attrs_inc_gen",
-        ":vifrt_op_interfaces_inc_gen",
-        ":vifrt_ops_inc_gen",
-        ":vifrt_types",
-        ":vifrt_types_inc_gen",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
+    deps = [":vifrt_td"],
 )
 
 gentbl_cc_library(
@@ -416,85 +434,24 @@ gentbl_cc_library(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "vifrt_ops.td",
     test = True,
-    deps = [":vifrt_ops_td_files"],
-)
-
-td_library(
-    name = "vifrt_ops_td_files",
-    srcs = [
-        "vifrt_attrs.td",
-        "vifrt_base.td",
-        "vifrt_dialect.td",
-        "vifrt_ops.td",
-        "vifrt_types.td",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:ShapeOpsTdFiles",
-    ],
+    deps = [":vifrt_td"],
 )
 
 cc_library(
-    name = "vifrt_types",
-    srcs = ["vifrt_types.cc"],
-    hdrs = ["vifrt_types.h"],
+    name = "vifrt",
+    srcs = ["vifrt_dialect.cc"],
+    hdrs = ["vifrt_dialect.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:friends"],
     deps = [
+        ":sharding_param",
         ":version",
-        ":vifrt_type_interfaces_inc_gen",
-        ":vifrt_types_inc_gen",
+        ":vifrt_dialect_inc_gen",
+        ":vifrt_interfaces_inc_gen",
+        ":vifrt_ops_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@stablehlo//:stablehlo_assembly_format",
-    ],
-)
-
-gentbl_cc_library(
-    name = "vifrt_type_interfaces_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-type-interface-decls"],
-            "vifrt_type_interfaces.h.inc",
-        ),
-        (
-            ["-gen-type-interface-defs"],
-            "vifrt_type_interfaces.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "vifrt_types.td",
-    deps = [
-        ":vifrt_ops_td_files",
-    ],
-)
-
-gentbl_cc_library(
-    name = "vifrt_types_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-typedef-decls",
-                "--typedefs-dialect=vifrt",
-            ],
-            "vifrt_type_defs.h.inc",
-        ),
-        (
-            [
-                "-gen-typedef-defs",
-                "--typedefs-dialect=vifrt",
-            ],
-            "vifrt_type_defs.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "vifrt_ops.td",
-    deps = [
-        ":vifrt_ops_td_files",
     ],
 )
