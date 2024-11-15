@@ -5346,11 +5346,27 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:env",
+    ],
+)
+
+xla_cc_test(
+    name = "slow_operation_alarm_test",
+    srcs = ["slow_operation_alarm_test.cc"],
+    deps = [
+        ":slow_operation_alarm",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
