@@ -246,7 +246,6 @@ TEST_F(ShardyXLATest, DotMergeOperands1) {
 }
 
 TEST_F(ShardyXLATest, DotMergeOperands2) {
-  GTEST_SKIP() << "Temporarily skip failing test until Shardy fix is in.";
   const char* const hloString = R"(
     HloModule module
     ENTRY %conv {
@@ -267,7 +266,7 @@ TEST_F(ShardyXLATest, DotMergeOperands2) {
               op::Sharding("{devices=[2,2,2]<=[8]}"));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Sharding("{devices=[2,1,1,4]<=[8] last_tile_dim_replicate}"));
+              op::Sharding("{devices=[2,2,1,2]<=[8] last_tile_dim_replicate}"));
 }
 
 TEST_F(ShardyXLATest, DotMergeOperands3) {
