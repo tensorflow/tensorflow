@@ -1376,6 +1376,12 @@ TEST_F(PassOrderTest,
       /*last_pass_regex=*/".*all-gather-dynamic-slice-simplifier.*");
 }
 
+TEST_F(PassOrderTest, StableSortExpanderRunsAfterDynamicPadder) {
+  VerifyPassOrder(
+      /*first_pass_regex=*/"dynamic_padder",
+      /*last_pass_regex=*/"stable-sort-expander");
+}
+
 TEST_F(PassOrderTest, GemmFusionRunsAfterDotNormalizer) {
   auto cc = backend()
                 .default_stream_executor()

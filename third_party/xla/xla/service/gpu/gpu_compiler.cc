@@ -735,9 +735,6 @@ absl::Status RunOptimizationPasses(
   // Replace PRED convolutions with F16.
   pipeline.AddPass<ConvolutionPredExpander>();
 
-  // Expand the sort op to support stable sorting if required.
-  pipeline.AddPass<StableSortExpander>();
-
   pipeline.AddPass<BatchNormExpander>(
       /*rewrite_training_op=*/true,
       /*rewrite_inference_op=*/true,
@@ -781,6 +778,10 @@ absl::Status RunOptimizationPasses(
   }
 
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
+
+  // Expand the sort op to support stable sorting if required.
+  pipeline.AddPass<StableSortExpander>();
+
   se::GpuComputeCapability gpu_version =
       gpu_target_config.device_description.gpu_compute_capability();
 
