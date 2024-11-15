@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -150,27 +151,6 @@ ENTRY main.24 {
   EXPECT_EQ(custom_call->shape().layout(), LayoutUtil::MakeLayout({0, 1}));
   EXPECT_EQ(custom_call->users()[0]->shape().layout(),
             LayoutUtil::MakeLayout({1, 0}));
-}
-
-TEST_F(HostOffloadLegalizeTest, NoMoveHostToHostCopy) {
-  const std::string& hlo_string = R"(
-HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{1,0:S(5)}}
-
-ENTRY main.24 {
-  Arg_0.1 = f32[16,256]{0,1} parameter(0)
-  cosine.4 = f32[16,256]{0,1} cosine(Arg_0.1)
-  custom-call.5 = f32[16,256]{0,1} custom-call(cosine.4), custom_call_target="MoveToHost"
-  ROOT copy = f32[16,256]{1,0} copy(custom-call.5)
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
-  EXPECT_FALSE(changed);
-  HloInstruction* copy = FindInstruction(module.get(), "copy");
-  EXPECT_NE(copy, nullptr);
-  XLA_VLOG_LINES(1, module->ToString());
 }
 
 TEST_F(HostOffloadLegalizeTest, XposeCopyOnParameterStreaming) {
@@ -575,6 +555,36 @@ ENTRY main {
   EXPECT_EQ(custom_call->users()[0]->shape().layout(),
             LayoutUtil::MakeLayout({3, 1, 2, 0}, {}, {}, {},
                                    {Tile{{8, 128}}, Tile{{2, 1}}}));
+}
+
+TEST_F(HostOffloadLegalizeTest, MoveCopyUp) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(bf16[4,4,128,8]{2,0,1,3:T(8,128)(2,1)})->bf16[4,4,128,8]{2,3,1,0:T(8,128)(2,1)S(5)}}
+
+ENTRY main {
+  param = bf16[4,4,128,8]{2,0,1,3:T(8,128)(2,1)} parameter(0)
+  custom_call = bf16[4,4,128,8]{2,0,1,3:T(8,128)(2,1)} custom-call(param), custom_call_target="MoveToHost"
+  ROOT copy = bf16[4,4,128,8]{2,3,1,0:T(8,128)(2,1)S(5)} copy(custom_call)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+
+  ASSERT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  // Check that the custom call and copy have swapped places.
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom_call");
+  EXPECT_TRUE(custom_call->IsRoot());
+  EXPECT_TRUE(custom_call->IsCustomCall(
+      host_memory_offload_annotations::kMoveToHostCustomCallTarget));
+  const HloInstruction* copy = custom_call->operand(0);
+  ASSERT_EQ(copy->opcode(), HloOpcode::kCopy);
+  const HloInstruction* param = copy->operand(0);
+  EXPECT_EQ(copy->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(param->opcode(), HloOpcode::kParameter);
 }
 
 }  // namespace
