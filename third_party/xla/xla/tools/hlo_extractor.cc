@@ -348,7 +348,7 @@ absl::Status Inline(HloModule* module) {
 std::unique_ptr<HloModule> ExtractModule(
     const HloInstruction* instruction, int64_t height,
     ExtractSelector extract_selector, ReplaceTypeSelector replace_type_selector,
-    bool cross_computation, bool inline_calls_and_fusions) {
+    bool cross_computation, bool inline_calls_and_fusions, bool run_verifier) {
   QCHECK(height == -1 || !cross_computation)
       << "Boundary cannnot be calculated across the computations.";
 
@@ -384,9 +384,11 @@ std::unique_ptr<HloModule> ExtractModule(
       /*ignore_control_predecessors=*/false,
       /*cross_computation=*/false));
 
-  HloVerifier verifier(/*layout_sensitive=*/false,
-                       /*allow_mixed_precision=*/true);
-  TF_CHECK_OK(verifier.Run(cleanup_visitor.module()).status());
+  if (run_verifier) {
+    HloVerifier verifier(/*layout_sensitive=*/false,
+                         /*allow_mixed_precision=*/true);
+    TF_CHECK_OK(verifier.Run(cleanup_visitor.module()).status());
+  }
   return cleanup_visitor.ConsumeModule();
 }
 

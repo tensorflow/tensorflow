@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
@@ -476,6 +478,33 @@ TEST_F(HloExtractorTest, TestWithCalledComputationsAndFusion) {
                     nullptr, nullptr, false, true);
   EXPECT_THAT(extracted->entry_computation()->root_instruction(),
               op::Tuple(op::Parameter(0), op::Parameter(0)));
+}
+
+TEST_F(HloExtractorTest, TestInvalidModule) {
+  constexpr std::string_view hlo = R"(
+HloModule main
+
+computation {
+  ROOT arg.0 = s32[16] parameter(0)
+}
+
+ENTRY main {
+  arg.0 = s32[16] parameter(0)
+  ROOT call.0 = call(arg.0), to_apply=computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* arg0 =
+      FindComputation(module.get(), "computation")->root_instruction();
+  // Create invalid operand shape.
+  *arg0->mutable_shape() = ShapeUtil::MakeShape(S32, {4});
+
+  auto extracted =
+      ExtractModule(module->entry_computation()->root_instruction(), -1,
+                    nullptr, nullptr, false, false, false);
+
+  // Restore the operand shape to be valid.
+  *arg0->mutable_shape() = ShapeUtil::MakeShape(S32, {16});
 }
 
 }  // namespace

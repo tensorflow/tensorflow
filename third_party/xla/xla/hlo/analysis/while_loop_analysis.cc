@@ -173,7 +173,9 @@ static std::optional<int64_t> GetUniqueGTEDependenceIndex(
       /*replace_type_selector=*/
       [](const HloInstruction* inst) -> ReplaceType {
         return ReplaceType::kReplaceParam;
-      });
+      },
+      /*cross_computation=*/false, /*inline_calls_and_fusions=*/false,
+      /*run_verifier=*/false);
   HloComputation* entry = extracted->entry_computation();
 
   // Check that the extracted module takes nothing but `in` as input. If `out`
