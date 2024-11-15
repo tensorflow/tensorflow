@@ -30,8 +30,10 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
 #include "tsl/platform/statusor.h"
 
@@ -123,7 +125,9 @@ absl::StatusOr<const ComparisonKernel*> GetComparisonKernel(
     StreamExecutor* executor, GpuAsmOpts gpu_asm_opts) {
   absl::Span<const uint8_t> compiled_ptx = {};
   absl::StatusOr<absl::Span<const uint8_t>> compiled_ptx_or =
-      CompileGpuAsmOrGetCached(executor, redzone_checker_ptx, gpu_asm_opts);
+      CompileGpuAsmOrGetCached(
+          executor->GetDeviceDescription().cuda_compute_capability(),
+          redzone_checker_ptx, gpu_asm_opts);
   if (compiled_ptx_or.ok()) {
     compiled_ptx = compiled_ptx_or.value();
   } else {

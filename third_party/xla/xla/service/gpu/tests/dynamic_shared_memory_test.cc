@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/log/log.h"
@@ -152,8 +153,9 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
   VLOG(1) << "Using " << buffer_size_bytes << " bytes of shared memory";
 
   std::vector<uint8_t> compiled_ptx =
-      se::CompileGpuAsm(executor, kPTX.data(),
-                        PtxOptsFromDebugOptions(DebugOptions{}))
+      se::CompileGpuAsm(
+          executor->GetDeviceDescription().cuda_compute_capability(),
+          std::string{kPTX}, PtxOptsFromDebugOptions(DebugOptions{}))
           .value();
   std::unique_ptr<stream_executor::Kernel> kernel =
       CreateKernel("dyn_shmem_kernel", /*num_args=*/3,

@@ -762,7 +762,7 @@ static absl::StatusOr<std::vector<uint8_t>> AssembleOptionsAndCompile(
     switch (compilation_method) {
       case PtxCompilationMethod::kNvJitLink:
         return se::CompileAndLinkUsingLibNvJitLink(
-            cc.major, cc.minor,
+            cc,
             {se::NvJitLinkInput{
                 se::NvJitLinkInput::Type::kPtx,
                 absl::Span<const uint8_t>{
@@ -771,11 +771,11 @@ static absl::StatusOr<std::vector<uint8_t>> AssembleOptionsAndCompile(
             ptxas_config, cancel_if_reg_spill);
 
       case PtxCompilationMethod::kNvPtxCompiler:
-        return se::CompileGpuAsmUsingLibNvPtxCompiler(
-            cc.major, cc.minor, ptx.c_str(), ptxas_config, cancel_if_reg_spill);
+        return se::CompileGpuAsmUsingLibNvPtxCompiler(cc, ptx, ptxas_config,
+                                                      cancel_if_reg_spill);
       case PtxCompilationMethod::kPtxas:
-        return se::CompileGpuAsmUsingPtxAs(cc.major, cc.minor, ptx.c_str(),
-                                           ptxas_config, cancel_if_reg_spill);
+        return se::CompileGpuAsmUsingPtxAs(cc, ptx, ptxas_config,
+                                           cancel_if_reg_spill);
     }
   }();
 
@@ -1023,7 +1023,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
 
     se::GpuAsmOpts ptxas_config = PtxOptsFromDebugOptions(debug_options);
     return stream_executor::CompileAndLinkUsingLibNvJitLink(
-        cc.major, cc.minor, nvjitlink_inputs, ptxas_config,
+        cc, nvjitlink_inputs, ptxas_config,
         /*cancel_if_reg_spill=*/false);
   }
 
@@ -1040,7 +1040,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     return LinkUsingNvlink(cc, debug_options.xla_gpu_cuda_data_dir(),
                            cubin_images);
   }
-  return LinkGpuAsm(cc, stream_exec, cubin_images);
+  return LinkGpuAsm(cc, cubin_images);
 }
 
 }  // namespace gpu
