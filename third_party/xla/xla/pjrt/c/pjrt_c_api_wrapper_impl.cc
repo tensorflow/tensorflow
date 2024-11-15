@@ -1742,16 +1742,6 @@ PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args) {
   return nullptr;
 }
 
-PJRT_Error* PJRT_Buffer_CopyRawToHost(PJRT_Buffer_CopyRawToHost_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "PJRT_Buffer_CopyRawToHost_Args",
-      PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE, args->struct_size));
-  xla::PjRtFuture<> wrapped_promise = args->buffer->buffer->CopyRawToHost(
-      args->dst, args->offset, args->transfer_size);
-  args->event = new PJRT_Event{std::move(wrapped_promise)};
-  return nullptr;
-}
-
 PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Buffer_CopyToDevice_Args",
@@ -2471,7 +2461,6 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       /*PJRT_Buffer_Memory=*/pjrt::PJRT_Buffer_Memory,
       /*PJRT_Buffer_Delete=*/pjrt::PJRT_Buffer_Delete,
       /*PJRT_Buffer_IsDeleted=*/pjrt::PJRT_Buffer_IsDeleted,
-      /*PJRT_Buffer_CopyRawToHost=*/pjrt::PJRT_Buffer_CopyRawToHost,
       /*PJRT_Buffer_CopyToDevice=*/pjrt::PJRT_Buffer_CopyToDevice,
       /*PJRT_Buffer_ToHostBuffer=*/pjrt::PJRT_Buffer_ToHostBuffer,
       /*PJRT_Buffer_IsOnCpu=*/pjrt::PJRT_Buffer_IsOnCpu,

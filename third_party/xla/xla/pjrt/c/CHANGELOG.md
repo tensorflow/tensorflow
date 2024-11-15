@@ -1,8 +1,5 @@
 # PJRT C API changelog
 
-## 0.56 (Nov 11, 2024)
-* Added ``PJRT_Buffer_CopyRawToHost``
-
 ## 0.55
 * Added types F8E4M3 and F8E3M4.
 

@@ -2006,21 +2006,6 @@ bool PjRtCApiBuffer::IsDeleted() {
   return args.is_deleted;
 }
 
-PjRtFuture<> PjRtCApiBuffer::CopyRawToHost(void* dst, int64_t offset,
-                                           int64_t transfer_size) {
-  PJRT_Buffer_CopyRawToHost_Args args;
-  args.struct_size = PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.buffer = buffer_.get();
-  args.dst = dst;
-  args.offset = offset;
-  args.transfer_size = transfer_size;
-  const PJRT_Api* api = pjrt_c_api();
-  RETURN_FUTURE_IF_ERROR(api->PJRT_Buffer_CopyRawToHost(&args), api);
-  CHECK(args.event != nullptr);
-  return pjrt::ConvertCEventToCppFuture(args.event, api);
-}
-
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
     PjRtDevice* dst_device) {
   if (dst_device->client() == client_) {

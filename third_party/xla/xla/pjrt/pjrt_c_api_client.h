@@ -516,7 +516,11 @@ class PjRtCApiBuffer : public PjRtBuffer {
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
   PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                             int64_t transfer_size) override;
+                             int64_t transfer_size) override {
+    return PjRtFuture<>(Unimplemented(
+        "PJRT C API does not support CopyRawToHost. Please report an issue at "
+        "https://github.com/google/jax/issues if you need this feature."));
+  }
 
   void Delete() override;
 

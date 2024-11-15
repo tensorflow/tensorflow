@@ -812,6 +812,7 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_cost_analysis",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/framework:allocator",
         "@com_google_absl//absl/cleanup",
