@@ -98,7 +98,7 @@ using ::testing::_;
 using ::testing::Return;
 using ::testing::UnorderedElementsAre;
 
-constexpr float kAsyncCopyBandwidth = 100;
+constexpr float kDefaultMemBandwidth = 100;
 constexpr float kAlternateMemBandwidth = 1000;
 constexpr float kBytesPerSecond = 100;
 constexpr float kFlopsPerSecond = 1000;
@@ -171,7 +171,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
 
   CostAnalysisOptions DefaultCostAnalysisOptions() {
     CostAnalysisOptions options;
-    options.async_copy_bandwidth_bytes_per_second = kAsyncCopyBandwidth;
+    options.default_mem_bandwidth_bytes_per_second = kDefaultMemBandwidth;
     options.alternate_mem_bandwidth_bytes_per_second = kAlternateMemBandwidth;
     return options;
   }
@@ -10547,6 +10547,8 @@ ENTRY main {
   HloCostAnalysis hlo_cost_analysis(HloCostAnalysis::DefaultShapeSize,
                                     properties);
   CostAnalysisOptions cost_analysis_options;
+  cost_analysis_options.default_mem_bandwidth_bytes_per_second =
+      kBytesPerSecond;
   HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,

@@ -59,9 +59,9 @@ struct CostAnalysisOptions {
   // the default memory, in MiB.
   float pipeline_overhead_window_size_mib = 0;
 
-  float alternate_mem_bandwidth_bytes_per_second = 0.0f;
+  double alternate_mem_bandwidth_bytes_per_second = 0.0f;
 
-  float async_copy_bandwidth_bytes_per_second = 0.0f;
+  double default_mem_bandwidth_bytes_per_second = 0.0f;
 
   // Scales effective bandwidth for async copies. Valid range is (0, 1].
   float async_copy_bandwidth_scaling_factor = 1.0;
@@ -89,9 +89,6 @@ class BaseCosts {
   virtual float OutputBytesAccessed(const HloInstruction& instruction,
                                     const ShapeIndex& shape_index) = 0;
 
-  // The bandwidth of copies to/from alternate memory.
-  virtual float BytesPerSecond() = 0;
-
   // The compute cost of instruction. The compute cost assumes 0 memory transfer
   // is required.
   virtual float ComputeSeconds(const HloInstruction& instruction) = 0;
@@ -113,7 +110,6 @@ class HloCostAnalysisCosts : public BaseCosts {
                              const ShapeIndex& shape_index) override;
   float OutputBytesAccessed(const HloInstruction& instruction,
                             const ShapeIndex& shape_index) override;
-  float BytesPerSecond() override;
   float ComputeSeconds(const HloInstruction& instruction) override;
 
  private:
@@ -150,6 +146,9 @@ class CostAnalysis {
   BaseCosts& base_costs() const { return base_costs_; }
 
   int64_t GetShapeSizeBytes(const Shape& shape) const;
+
+  double DefaultMemBandwidthBytesPerSecond(
+      bool use_scaling_factor = false) const;
 
   // Returns a heuristic value that captures how much putting this tensor to the
   // alternate memory would help if the op is memory bound, or otherwise how far
