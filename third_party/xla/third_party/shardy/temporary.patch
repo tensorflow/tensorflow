@@ -1,114 +1,15 @@
-diff --git a/shardy/dialect/sdy/ir/ops.td b/shardy/dialect/sdy/ir/ops.td
-index dcf2c77..63ecbab 100644
---- a/shardy/dialect/sdy/ir/ops.td
-+++ b/shardy/dialect/sdy/ir/ops.td
-@@ -197,7 +197,7 @@ def Sdy_ShardingGroupOp : Sdy_Op<"sharding_group",
-   // Op is non-pure since it modifies the internal representation of the
-   // sharding group.
-   []>{
--  let summary = "Constrains tensors in the group to have the same sharding.";
-+  let summary = "Sharding group operation";
-   let description = [{
-     This op provides an interface to assign tensors to sharding groups (
-     groups of tensors that will be enforced to have identical shardings).
-diff --git a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
-index b07398e..24b5f26 100644
---- a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
-+++ b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
-@@ -468,11 +468,29 @@ OpShardingRuleAttr createOpShardingRule(Operation* op,
-           //
-           // Operands: [operand, iota, init_val (scalar), init_arg (scalar)]
-           // Results: [values, indices]
-+          ArrayRef<int64_t> inputShape =
-+              getTensorShape(customCall.getOperand(0));
-+          ArrayRef<int64_t> resultShape =
-+              getTensorShape(customCall.getResult(0));
-+          int64_t numInputs = 2, numResults = 2;
-+          SmallVector<int64_t> operandDims(customCall->getNumOperands(),
-+                                           kNullDim);
-+          SmallVector<int64_t> resultDims(customCall->getNumResults(),
-+                                          kNullDim);
-           return OpShardingRuleBuilder(customCall)
-               .addPointwiseIfDimSizesMatch(
--                  getTensorShape(customCall.getOperand(0)),
--                  getTensorShape(customCall.getResult(0)),
--                  /*alwaysAddFactor=*/false)
-+                  inputShape, resultShape,
-+                  /*alwaysAddFactor=*/false,
-+                  /*onMismatchFn=*/
-+                  [&](int64_t dim, OpShardingRuleBuilder& builder) {
-+                    std::fill_n(operandDims.begin(), numInputs, dim);
-+                    resultDims.assign(numResults, kNullDim);
-+                    builder.addFactor(operandDims, resultDims, inputShape[dim]);
-+                    resultDims.assign(numResults, dim);
-+                    std::fill_n(operandDims.begin(), numInputs, kNullDim);
-+                    builder.addFactor(operandDims, resultDims,
-+                                      resultShape[dim]);
-+                  })
-               .build();
-         }
-         // TODO(b/327191011): output unregistered op stats instead.
-diff --git a/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir b/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir
-index 0ff2642..768d43a 100644
---- a/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir
-+++ b/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir
-@@ -259,7 +259,7 @@ func.func @custom_call_top2_of_2d(%arg0: tensor<16x8xf32>) -> (tensor<16x2xf32>,
- 
- // CHECK-LABEL: func @custom_call_approx_topk
- func.func @custom_call_approx_topk(%arg0: tensor<16x4xf32>, %arg1: tensor<16x4xf32>, %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<16x2xf32>, tensor<16x2xf32>) {
--  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, k], [], [])->([i, l], [i, m]) {i=16, j=1, k=1, l=1, m=1}>
-+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, j], [], [])->([i, k], [i, k]) {i=16, j=4, k=2}>
-   %0:2 = stablehlo.custom_call @ApproxTopK(%arg0, %arg1, %arg2, %arg3) {
-     mhlo.backend_config = {
-       aggregate_to_topk = true,
-@@ -274,7 +274,7 @@ func.func @custom_call_approx_topk(%arg0: tensor<16x4xf32>, %arg1: tensor<16x4xf
- 
- // CHECK-LABEL: func @custom_call_partial_reduce
- func.func @custom_call_partial_reduce(%arg0: tensor<16x4xf32>, %arg1: tensor<16x4xf32>, %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<16x2xf32>, tensor<16x2xf32>) {
--  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, k], [], [])->([i, l], [i, m]) {i=16, j=1, k=1, l=1, m=1}>
-+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, j], [], [])->([i, k], [i, k]) {i=16, j=4, k=2}>
-   %0:2 = stablehlo.custom_call @PartialReduce(%arg0, %arg1, %arg2, %arg3) {
-     mhlo.backend_config = {
-       aggregate_to_topk = true,
-@@ -289,7 +289,7 @@ func.func @custom_call_partial_reduce(%arg0: tensor<16x4xf32>, %arg1: tensor<16x
- 
- // CHECK-LABEL: func @custom_call_partial_reduce_string_backend_config
- func.func @custom_call_partial_reduce_string_backend_config(%arg0: tensor<16x4xf32>, %arg1: tensor<16x4xf32>, %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<16x2xf32>, tensor<16x2xf32>) {
--  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, k], [], [])->([i, l], [i, m]) {i=16, j=1, k=1, l=1, m=1}>
-+  // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j], [i, j], [], [])->([i, k], [i, k]) {i=16, j=4, k=2}>
-   %0:2 = stablehlo.custom_call @PartialReduce(%arg0, %arg1, %arg2, %arg3) {
-     backend_config = "{\22log2_reduction\22: 5, \22reduction_dim\22: 1, \22to_apply_type\22: \22comparator\22, \22top_k\22: 2, \22recall_target\22: 0.950000}",
-     called_computations = [@top_k_gt_f32_comparator]} :
-diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 0d8fe66..509398d 100644
---- a/third_party/llvm/generated.patch
-+++ b/third_party/llvm/generated.patch
-@@ -1,13 +1 @@
- Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Utils/CodeExtractor.cpp b/llvm/lib/Transforms/Utils/CodeExtractor.cpp
----- a/llvm/lib/Transforms/Utils/CodeExtractor.cpp
--+++ b/llvm/lib/Transforms/Utils/CodeExtractor.cpp
--@@ -1465,7 +1465,7 @@
--           : Suffix;
-- 
--   ValueSet StructValues;
---  StructType *StructTy;
--+  StructType *StructTy = nullptr;
--   Function *newFunction = constructFunctionDeclaration(
--       inputs, outputs, EntryFreq, oldFunction->getName() + "." + SuffixToUse,
--       StructValues, StructTy);
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index ffa6478..ad42b42 100644
+index ad42b42..63355e1 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "97298853b4de70dbce9c0a140ac38e3ac179e02e"
--    LLVM_SHA256 = "ac811cb61d281043c865c39260a5114a0e96d16ec0e4eb74a2516a24981b9064"
-+    LLVM_COMMIT = "03730cdd3d10c5270fe436777a37d50b0838a3bf"
-+    LLVM_SHA256 = "54d843249c75b200f7bf9b7947079fe16fa0b657c4aee4abdde4ac05a9cd5f84"
+-    LLVM_COMMIT = "03730cdd3d10c5270fe436777a37d50b0838a3bf"
+-    LLVM_SHA256 = "54d843249c75b200f7bf9b7947079fe16fa0b657c4aee4abdde4ac05a9cd5f84"
++    LLVM_COMMIT = "b3134fa2338388adf8cfb2d77339d0b042eab9f6"
++    LLVM_SHA256 = "b6024606092290b0838735c26ad1c5c239b3e931136b420af8680e3a1156e759"
  
      tf_http_archive(
          name = name,
