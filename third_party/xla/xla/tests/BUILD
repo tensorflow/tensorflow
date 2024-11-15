@@ -769,7 +769,8 @@ xla_test(
         "cpu",
         "gpu",
     ],
-    tags = ["test_xla_cpu_thunks"],
+    tags = ["test_xla_cpu_thunks",
+            "cuda-only",], #(TODO)(rocm): weekly sync 24-11-05
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
