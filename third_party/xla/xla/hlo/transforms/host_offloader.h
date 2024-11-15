@@ -78,7 +78,6 @@ class HostOffloader : public HloModulePass {
   absl::flat_hash_set<HloInstruction*>
       already_visited_move_to_host_custom_calls_;
   absl::flat_hash_set<HloInstruction*> dynamic_update_slices_already_allocated_;
-  absl::flat_hash_set<HloInstruction*> validated_slices_;
   absl::flat_hash_map<HloInstruction*, HloInstruction*> copies_created_after_;
   absl::flat_hash_set<HloInstruction*> move_to_device_custom_calls_to_remove_;
   absl::flat_hash_set<host_offload_utils::InstructionAndShapeIndex>
@@ -87,7 +86,7 @@ class HostOffloader : public HloModulePass {
   // Sometimes previous transformations turn a DynamicSlice into a Slice. Since
   // we're doing a DMA between the host and device, we need to turn the Slice
   // back into a DynamicSlice.
-  absl::StatusOr<HloInstruction*> DynamifySlice(HloInstruction* slice);
+  absl::Status DynamifySlice(HloInstruction* slice);
 
   // Returns true if the instruction is allowed to be in the
   // middle of a path between a MoveToHost custom-call annotation and a
@@ -126,9 +125,10 @@ class HostOffloader : public HloModulePass {
   absl::Status CreateAllocateBufferForDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice);
 
-  // Returns an error if something unallowed exists between the
-  // Slice/DynamicSlice and the MoveToDevice custom call.
-  absl::Status ValidateSliceLeadsToMoveToDeviceCustomCall(
+  // One way to move data to the device is to use a Slice or DynamicSlice. This
+  // function returns true if the slice is followed by a MoveToDevice custom
+  // call.
+  absl::StatusOr<bool> SliceLeadsToMoveToDeviceCustomCall(
       HloInstruction* slice);
 
   // Common function for doing the actual walking of the graph. Host memory
