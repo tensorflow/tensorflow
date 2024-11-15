@@ -48,6 +48,8 @@ using MemrefInfoHandler = std::shared_ptr<MemrefInfoPOD>;
 
 MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal);
 
+MemrefInfoHandler CreateMemrefFromShape(const Shape& shape, void* buf);
+
 StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilderBase& builder,
                                        const llvm_ir::IrArray& ir_array);
 
@@ -102,7 +104,7 @@ inline PrimitiveType ToXlaPrimitiveType(dnnl::memory::data_type dtype) {
 
 class MemrefInfo {
  public:
-  MemrefInfo(void* data);
+  explicit MemrefInfo(void* pod_data);
 
   dnnl::memory::dims GetOneDnnDims() const;
   dnnl::memory::dims GetOneDnnStrides() const;
