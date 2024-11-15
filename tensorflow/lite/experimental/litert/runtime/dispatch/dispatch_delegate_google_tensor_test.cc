@@ -152,7 +152,7 @@ TEST(DispatchDelegate, GoogleTensorHwBuffer) {
     auto duplicate_buffer = (*input_buffer).Duplicate();
     ASSERT_TRUE(duplicate_buffer.ok());
     auto status = buffer_context.RegisterTensorBuffer(
-        interpreter.input_tensor(i), std::move(*input_buffer));
+        interpreter.input_tensor(i), std::move(*duplicate_buffer));
     ASSERT_EQ(status, kLiteRtStatusOk);
     input_buffers.push_back(std::move(*input_buffer));
   }
@@ -172,7 +172,7 @@ TEST(DispatchDelegate, GoogleTensorHwBuffer) {
     auto duplicate_buffer = (*output_buffer).Duplicate();
     ASSERT_TRUE(duplicate_buffer.ok());
     auto status = buffer_context.RegisterTensorBuffer(
-        interpreter.output_tensor(i), std::move(*output_buffer));
+        interpreter.output_tensor(i), std::move(*duplicate_buffer));
     ASSERT_EQ(status, kLiteRtStatusOk);
     output_buffers.push_back(std::move(*output_buffer));
   }
