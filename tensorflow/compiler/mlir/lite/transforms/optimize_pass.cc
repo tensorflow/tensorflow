@@ -290,17 +290,6 @@ bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
   return OpTrait::util::getBroadcastedType(a, b) != Type();
 }
 
-// Returns whether the resultant type of any broadcastable operation with
-// operands `a` and `b` matches `expected_output`. Returns false if `a` is not
-// broadcast-compatible with `b`.
-bool OperandsBroadcastToOutputType(Type a, Type b, Type expected_output) {
-  Type output_element_type =
-      mlir::cast<ShapedType>(expected_output).getElementType();
-  Type broadcasted_type =
-      OpTrait::util::getBroadcastedType(a, b, output_element_type);
-  return broadcasted_type != Type() && broadcasted_type == expected_output;
-}
-
 // Returns whether if `type1` dimensions are the same as the ending dimensions
 // of `type2`. This is more restricted than broadcastable.
 bool IsTailOfShape(Type type1, Type type2) {

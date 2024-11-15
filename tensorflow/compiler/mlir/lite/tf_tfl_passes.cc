@@ -37,10 +37,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/transforms/converter_pass_options_setter.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcasting_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
+#include "tensorflow/compiler/mlir/lite/transforms/variable_freezing_pipeline.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -115,20 +116,18 @@ void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
 }
 
 void AddVariableFreezingFromGlobalTensorsPasses(
+    const tflite::ConverterFlags& converter_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager) {
   // This pass does resource analysis of saved model global tensors and marks
   // those deemed read-only as immutable.
-  pass_manager->addPass(
-      mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
-
-  // This pass 'freezes' immutable global tensors and inlines them as tf
-  // constant ops.
-  pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
-      /*allow_mutable_tensors=*/pass_config.enable_tflite_variables));
-
-  pass_manager->addPass(
-      mlir::TFL::Create<mlir::TFL::UnfreezeMutableGlobalTensorsPass>());
+  auto pass = mlir::TFL::Create<mlir::TFL::VariableFreezingPipeline,
+                                mlir::TFL::VariableFreezingPipelineOptions>();
+  auto pass_ptr = dynamic_cast<mlir::TFL::MutableOptionsPass*>(pass.get());
+  if (pass_ptr)
+    pass_ptr->ApplyOptionsVisitor(
+        mlir::TFL::ConverterPassOptionsSetter(converter_flags, pass_config));
+  pass_manager->addPass(std::move(pass));
 }
 
 void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
@@ -535,6 +534,9 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
 
     auto add_tfl_optimization_passes = [&]() {
       pass_manager->addPass(mlir::TFL::CreatePushTransposeThroughEwisePass());
+
+      pass_manager->addNestedPass<mlir::func::FuncOp>(
+          mlir::TFL::Create<mlir::TFL::OptimizeBroadcastingPass>());
 
       // Add TFLite optimize pass.
       std::unique_ptr<mlir::Pass> optimize_pass =
