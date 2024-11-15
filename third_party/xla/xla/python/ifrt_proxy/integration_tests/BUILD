@@ -24,7 +24,8 @@ cc_library(
     srcs = ["register_pjrt_cpu_for_ifrt_api_tests.cc"],
     deps = [
         "//xla/pjrt:pjrt_client",
-        "//xla/pjrt/cpu:cpu_client",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
         "//xla/python/ifrt_proxy/client:grpc_client",
@@ -90,7 +91,8 @@ ifrt_proxy_cc_test(
     size = "small",
     srcs = ["mock_array_test.cc"],
     deps = [
-        "//xla/pjrt/cpu:cpu_client",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/python/ifrt",
         "//xla/python/ifrt:mock",
         "//xla/python/ifrt_proxy/client",

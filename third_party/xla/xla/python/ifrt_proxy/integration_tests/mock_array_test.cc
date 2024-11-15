@@ -33,7 +33,8 @@
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -121,13 +122,13 @@ class MockArrayTest : public testing::Test {
  private:
   absl::StatusOr<std::unique_ptr<xla::ifrt::Client>> CreateMockBackend() {
     // TODO(b/292339723): Use reference backend as the delegate while mocking.
-    CpuClientOptions options;
+    xla::CpuClientOptions options;
     options.asynchronous = true;
     options.cpu_device_count = 2;
-    TF_ASSIGN_OR_RETURN(auto tfrt_cpu_client,
-                        xla::GetTfrtCpuClient(std::move(options)));
+    TF_ASSIGN_OR_RETURN(auto pjrt_cpu_client,
+                        xla::GetXlaPjrtCpuClient(std::move(options)));
     auto mock_backend = std::make_unique<MockClient>(
-        /*delegate=*/xla::ifrt::PjRtClient::Create(std::move(tfrt_cpu_client)));
+        /*delegate=*/xla::ifrt::PjRtClient::Create(std::move(pjrt_cpu_client)));
 
     ON_CALL(*mock_backend, MakeArrayFromHostBuffer)
         .WillByDefault(
