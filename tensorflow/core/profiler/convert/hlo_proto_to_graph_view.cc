@@ -95,15 +95,11 @@ void AddGraphMetadata(std::string& graph_json_str,
                       const HloInstruction& instr) {
 #ifdef PLATFORM_GOOGLE
   nlohmann::json graph_json = nlohmann::json::parse(graph_json_str);
-  // Name for computation/instruction should be distinct under a module.
   // 1. Fusion instruction is represented as a layer on client, use its
-  // pinned node as the center node, and use the name of the fused computation
-  // as the node id.
-  // 2. Other instructions are represented as nodes on client, use it as the
-  // center node directly, and name of the instructions as the node id.
-  std::string id = instr.opcode() == xla::HloOpcode::kFusion
-                       ? std::string(instr.called_computations()[0]->name())
-                       : absl::StrCat(instr.name());
+  // pinned node as the center node, id of the pinned node is the fusion name.
+  // 2. Other instructions are represented as nodes on client, use iteself as
+  // the center node, where node id is the instruction name.
+  std::string id = absl::StrCat(instr.name());
   AddCenterNodeMetadata(graph_json, id, instr.name(),
                         HloOpcodeString(instr.opcode()));
   graph_json_str = graph_json.dump();
@@ -113,8 +109,8 @@ void AddGraphMetadata(std::string& graph_json_str,
 void AddGraphMetadata(std::string& graph_json_str, const HloComputation& comp) {
 #ifdef PLATFORM_GOOGLE
   nlohmann::json graph_json = nlohmann::json::parse(graph_json_str);
-  // Computation is represented as a node on client, use name of the computation
-  // as the center node id.
+  // Computation is represented as a layer on client, use its pinned node as the
+  // center node,id of the pinned node is the computation name.
   AddCenterNodeMetadata(graph_json, absl::StrCat(comp.name()), comp.name(), "");
   graph_json_str = graph_json.dump();
 #endif  // PLATFORM_GOOGLE
