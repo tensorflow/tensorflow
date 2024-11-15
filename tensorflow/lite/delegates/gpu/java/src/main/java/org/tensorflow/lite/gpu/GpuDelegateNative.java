@@ -28,13 +28,11 @@ class GpuDelegateNative {
   private static volatile boolean isInit = false;
 
   static {
-    Throwable exception = null;
     try {
       System.loadLibrary(TFLITE_GPU_LIB);
     } catch (UnsatisfiedLinkError e) {
-      exception = e;
+      LOAD_LIBRARY_EXCEPTION = e;
     }
-    LOAD_LIBRARY_EXCEPTION = exception;
   }
 
   /**
