@@ -2475,6 +2475,9 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
           definition_time_for_allocation_value.at(&allocation_value_to_update),
           RequiresNoCopyAlternateMemAllocation(allocation_value_to_update),
           all_use_times, entry.only_extend_existing_allocation);
+      if (options_.allocation_request_modifier_testing_fn) {
+        options_.allocation_request_modifier_testing_fn(request);
+      }
       // Bitcasts don't define buffers and don't directly consume buffers.
       // Skip allocating buffers for bitcast uses (unless they are the root
       // instruction). The uses that feed from bitcasts will be handled
@@ -2483,6 +2486,9 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
           use.hlo_use.instruction ==
               use.hlo_use.instruction->parent()->root_instruction()) {
         result_mark(AllocateSegment(request), result);
+        if (options_.allocation_result_modifier_testing_fn) {
+          options_.allocation_result_modifier_testing_fn(request, result);
+        }
         if (request.require_copy_allocation) {
           auto allocation_sequence =
               allocation_value_to_update.mutable_allocation_sequence();

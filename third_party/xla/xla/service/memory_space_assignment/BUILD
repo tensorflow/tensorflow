@@ -79,6 +79,7 @@ xla_cc_test(
     deps = [
         ":algorithm",
         ":allocation",
+        ":allocation_value",
         ":buffer_interval_comparator",
         ":cost_analysis",
         ":memory_space_assignment",

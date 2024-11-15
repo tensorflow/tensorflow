@@ -30,8 +30,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_value.h"
-#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/memory_space_assignment/allocation_value.h"
 #include "xla/service/memory_space_assignment/buffer_interval_comparator.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
@@ -128,8 +128,22 @@ struct Options {
   WindowPrefetchNotifyOperandAppendedFunction notify_operand_appended_fn =
       [](HloInstruction*, int64_t, int64_t) {};
 
+  // This function can be used to check if an equivalent asynchronous slice
+  // lowering is implemented for a given  synchronous slice instruction.
   IsAsyncSliceImplementedFunction is_async_slice_implemented_fn =
       [](const HloInstruction*) { return false; };
+
+  // Should only be used for testing purposes. This function allows us to
+  // modify the AllocationResult after the AllocationRequest has been processed
+  // by AllocateSegment().
+  std::function<void(const AllocationRequest&, AllocationResult&)>
+      allocation_result_modifier_testing_fn = nullptr;
+
+  // Should only be used for testing purposes. This function allows us to
+  // modify the AllocationRequest before the AllocationRequest is passed to
+  // AllocateSegment().
+  std::function<void(AllocationRequest&)>
+      allocation_request_modifier_testing_fn = nullptr;
 
   // If true, we will try to reduce scoped allocation buffer size for all
   // instructions if their operand/output has been allocated in alternate

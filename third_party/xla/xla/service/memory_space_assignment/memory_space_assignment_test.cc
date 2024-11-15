@@ -18,11 +18,12 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <ostream>
+#include <set>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -65,6 +66,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/algorithm.h"
 #include "xla/service/memory_space_assignment/allocation.h"
+#include "xla/service/memory_space_assignment/allocation_value.h"
 #include "xla/service/memory_space_assignment/buffer_interval_comparator.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
@@ -1212,6 +1214,99 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalCopyReplacement) {
   CHECK_NE(copy, nullptr);
   EXPECT_THAT(copy,
               op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, p0));
+}
+
+TEST_F(MemorySpaceAssignmentTest, AllocationRequestAndResultModifierTest) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  negate0 = f32[2,3]{1,0} negate(p1)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  negate3 = f32[2,3]{1,0} negate(negate2)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  negate6 = f32[2,3]{1,0} negate(negate5)
+  negate7 = f32[2,3]{1,0} negate(negate6)
+  ROOT add0 = f32[2,3]{1,0} add(p0, negate7)
+  }
+  )";
+  // The baseline behavior is to prefetch p0 at add0.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> baseline_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  AssignMemorySpace(baseline_module.get(), options);
+  HloInstruction* add0 = FindInstruction(baseline_module.get(), "add0");
+  ASSERT_NE(add0, nullptr);
+  HloInstruction* p0 = FindInstruction(baseline_module.get(), "p0");
+  ASSERT_NE(p0, nullptr);
+  EXPECT_THAT(add0->operand(0),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, p0));
+
+  // We should be able to prevent prefetching p0 at add0 using
+  // allocation_result_modifier_testing_fn.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> result_modifier_module,
+      ParseAndReturnVerifiedModule(hlo_string));
+  options.max_retries = 1;
+  options.allocation_request_modifier_testing_fn = nullptr;
+  options.allocation_result_modifier_testing_fn =
+      [](const AllocationRequest& request, AllocationResult& result) {
+        if (request.allocation_value_to_update->defining_instruction()
+                    ->name() == "p0" &&
+            request.use->hlo_use.instruction->name() == "add0") {
+          result = AllocationResult::kFailRequiresUncommit;
+        }
+      };
+  AssignMemorySpace(result_modifier_module.get(), options);
+  add0 = FindInstruction(result_modifier_module.get(), "add0");
+  ASSERT_NE(add0, nullptr);
+  p0 = FindInstruction(result_modifier_module.get(), "p0");
+  ASSERT_NE(p0, nullptr);
+  EXPECT_EQ(add0->operand(0), p0);
+
+  // We should be able to enforce an earlier prefetch of p0 at add0 using
+  // allocation_request_modifier_testing_fn.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> request_modifier_module,
+      ParseAndReturnVerifiedModule(hlo_string));
+  options.max_retries = 1;
+  options
+      .allocation_request_modifier_testing_fn = [](AllocationRequest& request) {
+    if (request.allocation_value_to_update->defining_instruction()->name() ==
+            "p0" &&
+        request.use->hlo_use.instruction->name() == "add0") {
+      // Schedule the copy-done before negate4 (scheduled at 6).
+      request.latest_prefetch_time = 6;
+    }
+  };
+  options.allocation_result_modifier_testing_fn = nullptr;
+  AssignMemorySpace(request_modifier_module.get(), options);
+  add0 = FindInstruction(request_modifier_module.get(), "add0");
+  CHECK_NE(add0, nullptr);
+  p0 = FindInstruction(request_modifier_module.get(), "p0");
+  CHECK_NE(p0, nullptr);
+  EXPECT_THAT(add0->operand(0),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, p0));
+  // The copy-done should have been scheduled before negate4.
+  HloInstruction* negate4 =
+      FindInstruction(request_modifier_module.get(), "negate4");
+  CHECK_NE(negate4, nullptr);
+  const HloInstructionSequence& sequence =
+      request_modifier_module->schedule().sequence(
+          request_modifier_module->entry_computation());
+  auto find_index = [&](const HloInstruction* instruction) {
+    return std::distance(sequence.instructions().begin(),
+                         std::find(sequence.instructions().begin(),
+                                   sequence.instructions().end(), instruction));
+  };
+
+  int negate4_index = find_index(negate4);
+  int copy_done_index = find_index(add0->operand(0));
+  EXPECT_LT(copy_done_index, negate4_index);
 }
 
 TEST_F(MemorySpaceAssignmentTest, AlwaysSpillJitPrefetchTest) {
