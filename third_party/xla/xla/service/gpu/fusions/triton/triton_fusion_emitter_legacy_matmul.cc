@@ -638,11 +638,15 @@ absl::StatusOr<Value> EmitBroadcast(ImplicitLocOpBuilder& b,
   Value expanded_input = tensor_input;
   int dim_idx = 0;
   for (const DimProperties& dim : side.tiled_dims) {
-    if (auto* spec = analysis->IterSpec(side.scope, &broadcast, dim.index);
-        spec != nullptr && spec->at(0).stride > 0) {
-      if (analysis->IterSpec(side.scope, broadcast.operand(0), dim.index) ==
-          nullptr) {
-        // Broadcasted dimension.
+    const auto* output_spec =
+        analysis->IterSpec(side.scope, &broadcast, dim.index);
+    if (output_spec != nullptr && output_spec->at(0).stride > 0) {
+      const auto* input_spec =
+          analysis->IterSpec(side.scope, broadcast.operand(0), dim.index);
+      // A dimension is broadcasted if it's either absent in the input or
+      // if its size is increased from the input to the output.
+      if (input_spec == nullptr ||
+          output_spec->at(0).count > input_spec->at(0).count) {
         expanded_input = b.create<mt::ExpandDimsOp>(expanded_input, dim_idx);
       }
       ++dim_idx;
@@ -1090,8 +1094,38 @@ class MatMulEmitterHelper {
     } else if (scope == TritonFusionAnalysis::Scope::RHS) {
       return dims_.rhs_noncontracting_dim_idx;
     } else {
-      CHECK(false) << "This shouldn't be called for the output scope.";
+      CHECK(false) << "This shouldn't be called for the other scopes.";
     }
+  }
+
+  bool IsNonTrivialTiledDimension(TritonFusionAnalysis::Scope scope,
+                                  int64_t dim_index) {
+    switch (scope) {
+      case TritonFusionAnalysis::Scope::LHS:
+        return (dim_index == dims_.lhs_noncontracting_dim_idx && dims_.m > 1) ||
+               (dim_index == dims_.lhs_contracting_dim_idx && dims_.k > 1);
+      case TritonFusionAnalysis::Scope::RHS:
+        return (dim_index == dims_.rhs_noncontracting_dim_idx && dims_.n > 1) ||
+               (dim_index == dims_.rhs_contracting_dim_idx && dims_.k > 1);
+      case TritonFusionAnalysis::Scope::OUTPUT:
+        return (dim_index == dims_.out_lhs_noncontracting_dim_idx &&
+                dims_.m > 1) ||
+               (dim_index == dims_.out_rhs_noncontracting_dim_idx &&
+                dims_.n > 1);
+      default:
+        break;
+    }
+    return false;
+  }
+
+  bool NonTrivialTiledDimensionHasNoIterationAtParameter(
+      TritonFusionAnalysis::Scope scope, const HloInstruction& hlo,
+      int64_t dim_index) {
+    const TensorIterationSpec::DimIterationSpec* spec =
+        analysis_.IterSpec(scope, &hlo, dim_index);
+    return spec == nullptr ||
+           (IsNonTrivialTiledDimension(scope, dim_index) && spec->size() == 1 &&
+            (spec->at(0).count <= 1 || spec->at(0).stride == 0));
   }
 
   // Return the batch stride of the HLO passed as a parameter. If the
@@ -1207,7 +1241,12 @@ class MatMulEmitterHelper {
     }
 
     auto add_dim = [&](const DimProperties& properties) -> absl::Status {
-      if (analysis_.IterSpec(side.scope, hlo, properties.index) == nullptr) {
+      if (NonTrivialTiledDimensionHasNoIterationAtParameter(side.scope, *hlo,
+                                                            properties.index)) {
+        // If a non-trivial tiled dimension has only one element at
+        // the parameter, it's being broadcasted. Skip it in the tensor
+        // pointer to prevent it from being padded to the tile size on load
+        // instead of being broadcasted.
         return absl::OkStatus();
       }
       Value pid_offset =
@@ -1401,7 +1440,7 @@ class MatMulEmitterHelper {
     if (dims_.out_split_k_dim_idx.has_value()) {
       const TensorIterationSpec::DimIterationSpec* spec = analysis_.IterSpec(
           TritonFusionAnalysis::Scope::OUTPUT, hlo, *dims_.out_split_k_dim_idx);
-      if (spec != nullptr) {
+      if (spec != nullptr && spec->at(0).count > 1) {
         TF_RET_CHECK(pid_k != nullptr);
         base = AddPtr(b_, base,
                       b_.create<ma::MulIOp>(ConvertScalar(pid_k),
@@ -2107,9 +2146,8 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
       CHECK(values[index].insert({param_hlo, param_value}).second);
       SmallVector<Value> increments;
       for (const DimProperties& dim : side.tiled_dims) {
-        const TensorIterationSpec::DimIterationSpec* spec =
-            analysis.IterSpec(side.scope, iter_args_to_inputs[i], dim.index);
-        if (spec == nullptr || spec->at(0).stride == 0) {
+        if (emitter.NonTrivialTiledDimensionHasNoIterationAtParameter(
+                side.scope, *iter_args_to_inputs[i], dim.index)) {
           continue;
         }
         // Only the contracting dimensions are advanced.

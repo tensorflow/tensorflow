@@ -1811,6 +1811,53 @@ ENTRY e {
 )");
 }
 
+TEST_F(TritonGemmTest,
+       BroadcastsOfTriviallySizedNonContractingDimensionsAreSupported) {
+  EXPECT_TRUE(RunAndCompare(R"(
+f {
+  p0 = f32[64,6464] parameter(0)
+  p1 = f32[16,6464] parameter(1)
+  dot = f32[16,64] dot(p1, p0),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  bc0 = f32[1,16,64] bitcast(dot)
+  p2 = f32[64] parameter(2)
+  bc1 = f32[1,64] bitcast(p2)
+  br = f32[1,16,64] broadcast(bc1), dimensions={0,2}
+  m = f32[1,16,64] multiply(bc0, br)
+}
+
+e {
+  p0 = f32[64,6464] parameter(0)
+  p1 = f32[16,6464] parameter(1)
+  p2 = f32[64] parameter(2)
+  f = f32[1,16,64] fusion(p0, p1, p2),
+    kind=kCustom, calls=f, backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest,
+       BroadcastsOfTriviallySizedContractingDimensionsAreSupported) {
+  EXPECT_TRUE(RunAndCompare(R"(
+f {
+  a = f16[2] parameter(0)
+  bc0 = f16[1,2] bitcast(a)
+  br = f16[1,4000,2] broadcast(bc0), dimensions={0,2}
+  bc1 = f16[4000,2] bitcast(br)
+  b = f16[3,4000] parameter(1)
+  d = f16[2,3] dot(bc1, b),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+e {
+  a = f16[2] parameter(0)
+  b = f16[3,4000] parameter(1)
+  f = f16[2,3] fusion(a, b),
+    kind=kCustom, calls=f, backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 class TritonGemmTestAny : public TritonGemmTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
