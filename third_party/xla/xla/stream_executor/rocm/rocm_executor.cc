@@ -584,6 +584,7 @@ void RocmExecutor::UnloadKernel(const Kernel* kernel) {
   VLOG(3) << "Unloading kernel " << kernel << " : " << kernel->name();
 
   absl::MutexLock lock{&in_memory_modules_mu_};
+  loaded_kernels_.erase(kernel);
   auto gpu_binary_it = kernel_to_gpu_binary_.find(kernel);
   if (kernel_to_gpu_binary_.end() == gpu_binary_it) {
     VLOG(3) << "Kernel " << kernel << " : " << kernel->name()
@@ -649,6 +650,9 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
   } else {
     return absl::InternalError("No method of loading ROCM kernel provided");
   }
+
+  absl::MutexLock lock{&in_memory_modules_mu_};
+  loaded_kernels_.insert(rocm_kernel.get());
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the ROCM API.
