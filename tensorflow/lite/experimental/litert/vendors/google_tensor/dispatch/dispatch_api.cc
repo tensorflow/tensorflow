@@ -1033,8 +1033,13 @@ LiteRtStatus AssignNodeFunction(LiteRtDispatchGraph graph,
   ThrGraph* thr_graph = graph->thr_graph();
   auto thr_node_id = ThrNodeIdStr(node_id);
   ThrSqContainerHandle sq_handle = exec_handle;
+  // An empty function name represent no function name being provided and
+  // therefore we must pass a nullptr to the call below, otherwise the SB API
+  // will expect a model with a signature. See b/378913220.
+  const char* function_name_ptr =
+      absl::string_view(function_name).empty() ? nullptr : function_name;
   if (auto status = thr_graph_assign_sq(thr_graph, thr_node_id.data(),
-                                        sq_handle, function_name);
+                                        sq_handle, function_name_ptr);
       status != kThrStatusSuccess) {
     LITERT_LOG(LITERT_ERROR, "thr_graph_assign_sq failed: %d", status);
     return kLiteRtStatusErrorRuntimeFailure;
