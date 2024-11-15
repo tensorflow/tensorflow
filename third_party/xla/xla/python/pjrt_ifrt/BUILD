@@ -168,7 +168,7 @@ xla_cc_test(
     size = "small",
     srcs = ["xla_sharding_test.cc"],
     deps = [
-        ":tfrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_test_lib",
         ":xla_ifrt",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -267,15 +267,25 @@ cc_library(
 )
 
 cc_library(
-    name = "tfrt_cpu_client_test_lib",
+    name = "pjrt_cpu_client_test_lib",
     testonly = True,
-    srcs = ["tfrt_cpu_client_test_lib.cc"],
+    srcs = ["pjrt_cpu_client_test_lib.cc"],
     deps = [
         ":pjrt_ifrt",
-        "//xla/pjrt/cpu:cpu_client",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
     ],
     alwayslink = True,
+)
+
+# TODO(hyeontaek): Remove this target after migration is done.
+alias(
+    name = "tfrt_cpu_client_test_lib",
+    actual = ":pjrt_cpu_client_test_lib",
 )
 
 cc_library(
@@ -347,7 +357,7 @@ xla_cc_test(
     srcs = ["basic_string_array_test.cc"],
     deps = [
         ":basic_string_array",
-        ":tfrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_test_lib",
         "//xla:shape_util",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_layout",
@@ -375,7 +385,7 @@ xla_cc_test(
     size = "small",
     srcs = ["pjrt_array_impl_test_tfrt_cpu.cc"],
     deps = [
-        ":tfrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_test_lib",
         "//xla/python/ifrt:array_impl_test_lib",
         "//xla/python/ifrt:test_util",
         "@com_google_absl//absl/strings",
@@ -388,7 +398,7 @@ xla_cc_test(
     size = "small",
     srcs = [],
     deps = [
-        ":tfrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_test_lib",
         "//xla/python/ifrt:client_impl_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -399,7 +409,7 @@ xla_cc_test(
     size = "small",
     srcs = ["pjrt_executable_impl_test_tfrt_cpu.cc"],
     deps = [
-        ":tfrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_test_lib",
         ":xla_executable_impl_test_lib",
         "//xla/python/ifrt:test_util",
         "@com_google_absl//absl/strings",
@@ -412,7 +422,7 @@ xla_cc_test(
     size = "small",
     srcs = [],
     deps = [
-        ":tfrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_test_lib",
         "//xla/python/ifrt:tuple_impl_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -423,7 +433,7 @@ xla_cc_test(
     size = "small",
     srcs = [],
     deps = [
-        ":tfrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_test_lib",
         "//xla/python/ifrt:remap_impl_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
