@@ -180,6 +180,7 @@ xla_cc_test(
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt/distributed:in_memory_key_value_store",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:gpu_plugin",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_memory",

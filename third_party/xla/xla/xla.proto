@@ -1042,7 +1042,9 @@ message DebugOptions {
   }
   PGLEStrictnessLevel xla_gpu_pgle_accuracy_checker = 341;
 
-  // Next id: 344
+  bool xla_pjrt_allow_auto_layout_in_hlo = 344;
+
+  // Next id: 345
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

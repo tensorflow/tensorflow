@@ -292,6 +292,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_dot_merger_threshold_mb(32);
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
+  opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
   return opts;
 }
 
@@ -2056,6 +2057,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_parallel_collective_overlap_limit(),
       "This controls how many in-flight collectives "
       "latency hiding scheduler can schedule."));
+  flag_list->push_back(tsl::Flag(
+      "xla_pjrt_allow_auto_layout_in_hlo",
+      bool_setter_for(&DebugOptions::set_xla_pjrt_allow_auto_layout_in_hlo),
+      debug_options->xla_pjrt_allow_auto_layout_in_hlo(),
+      "Experimental: Make unset entry computation layout mean auto layout "
+      "instead of default layout in HLO when run through PjRT. In other cases "
+      "(StableHLO or non-PjRT) the auto layout is already used."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
