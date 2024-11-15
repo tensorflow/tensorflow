@@ -58,6 +58,7 @@ int64_t CalculatePostOrderScheduleHelper(
   int64_t ordinal = start_ordinal;
   for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
     if (instruction->opcode() == HloOpcode::kCall ||
+        instruction->opcode() == HloOpcode::kAsyncStart ||
         instruction->opcode() == HloOpcode::kConditional) {
       for (const HloComputation* called_computation :
            instruction->called_computations()) {
@@ -75,6 +76,8 @@ int64_t CalculatePostOrderScheduleHelper(
     // flatten (meaning we could have multiple callers for one computation). In
     // that case the oridinal_map will see the instruction multiple times. We
     // consider that case to be ok as it only shows up in unit tests.
+    VLOG(4) << "Add instruction " << instruction->name()
+            << " to ordinal map with ordinal " << ordinal;
     ordinal_map->insert({instruction, ordinal++});
   }
   return ordinal;
@@ -1293,6 +1296,8 @@ void HloDataflowAnalysis::Propagate() {
   auto add_to_worklist = [&priority_map, &worklist,
                           &workset](HloInstruction* instruction) {
     if (workset.insert(instruction).second) {
+      VLOG(4) << "Add " << instruction->name() << " to worklist with priority "
+              << priority_map[instruction];
       worklist.emplace(priority_map[instruction], instruction);
     }
   };
@@ -1316,7 +1321,7 @@ void HloDataflowAnalysis::Propagate() {
 
     workset.erase(workset.find(instruction));
 
-    VLOG(3) << "Worklist top: " << instruction->name();
+    VLOG(4) << "Worklist top: " << instruction->name();
     XLA_VLOG_LINES(3, ToString());
 
     if (!UpdateInstructionValueSet(instruction)) {
