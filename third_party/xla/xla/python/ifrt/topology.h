@@ -44,6 +44,8 @@ class Topology : public llvm::RTTIExtends<Topology, llvm::RTTIRoot> {
 
   virtual PjRtPlatformId platform_id() const = 0;
 
+  virtual bool is_subslice_topology() const = 0;
+
   // Returns an unordered list of descriptions for all devices in this topology.
   // TODO(phawkins): consider introducing an IFRT-specific API here instead of
   // delegating to PJRT.
