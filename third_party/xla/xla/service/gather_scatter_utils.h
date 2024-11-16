@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GATHER_SCATTER_UTILS_H_
 #define XLA_SERVICE_GATHER_SCATTER_UTILS_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/shape.h"
 
 namespace xla {
 
@@ -66,6 +71,15 @@ absl::StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
 bool IsCollapsedOrBatchingDim(absl::Span<const int64_t> collapsed_dims,
                               absl::Span<const int64_t> batching_dims,
                               int64_t dim);
+
+// Returns a map from start_indices explicit batching dims to their
+// corresponding output dims.
+absl::flat_hash_map<int64_t, int64_t>
+GetStartIndicesDimToOutputDimForExplicitBatchingDims(
+    absl::Span<const int64_t> start_indices_batching_dims,
+    int64_t index_vector_dim, absl::Span<const int64_t> offset_dims,
+    int64_t start_indices_rank, int64_t output_rank);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_GATHER_SCATTER_UTILS_H_

@@ -646,6 +646,7 @@ cc_library(
         "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_sharding_util",
+        "//xla/service:gather_scatter_utils",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_creation_utils",
         "//xla/service:hlo_module_config",

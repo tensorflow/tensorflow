@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/overflow_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
@@ -4076,35 +4077,6 @@ std::vector<int64_t> GetPaddedDims(const HloInstruction* pad) {
   return padded_dims;
 }
 
-// Returns a map from start_indices explicit batching dims to their
-// corresponding output dims.
-absl::flat_hash_map<int64_t, int64_t> GetStartIndicesDimsToOutputDims(
-    const HloInstruction* gather) {
-  absl::flat_hash_map<int64_t, int64_t> start_indices_dims_to_output_dims;
-  const GatherDimensionNumbers& dnums = gather->gather_dimension_numbers();
-  start_indices_dims_to_output_dims.reserve(
-      dnums.start_indices_batching_dims_size());
-
-  for (int64_t output_dim = 0, start_indices_dim = 0;
-       output_dim < gather->shape().rank(); ++output_dim) {
-    if (absl::c_linear_search(dnums.offset_dims(), output_dim)) {
-      continue;
-    }
-    // Output_dim is an implicit or explicit batching dim.
-    if (start_indices_dim == dnums.index_vector_dim()) {
-      start_indices_dim++;
-    }
-    CHECK_LT(start_indices_dim, gather->operand(1)->shape().rank());
-    if (absl::c_linear_search(dnums.start_indices_batching_dims(),
-                              start_indices_dim)) {
-      // Explicit batching dim.
-      start_indices_dims_to_output_dims[start_indices_dim] = output_dim;
-    }
-    ++start_indices_dim;
-  }
-  return start_indices_dims_to_output_dims;
-}
-
 struct GatherOfPadInfo {
   bool should_transform;
   bool has_padded_batching_dims;
@@ -4189,9 +4161,12 @@ GatherOfPadInfo CheckPaddedDimsForGatherOfPad(
   // Add padded explicit operand batching dims and their corresponding result
   // dims to padded_operand_dims_to_output_dims and
   // output_dims_to_padded_operand_dims.
-  const absl::flat_hash_map<int64_t, int64_t>&
+  const absl::flat_hash_map<int64_t, int64_t>
       start_indices_dims_to_output_dims =
-          GetStartIndicesDimsToOutputDims(gather);
+          GetStartIndicesDimToOutputDimForExplicitBatchingDims(
+              dnums.start_indices_batching_dims(), dnums.index_vector_dim(),
+              dnums.offset_dims(), start_indices->shape().rank(),
+              gather->shape().rank());
   for (int64_t operand_dim : padded_operand_dims) {
     if (!absl::c_linear_search(operand_batching_dims, operand_dim)) {
       continue;
