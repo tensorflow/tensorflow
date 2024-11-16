@@ -496,7 +496,7 @@ TEST(CurlHttpRequestTest, GetRequest_CouldntResolveHost) {
   EXPECT_EQ(error::FAILED_PRECONDITION, status.code());
   EXPECT_EQ(
       "Error executing an HTTP request: libcurl code 6 meaning "
-      "'Couldn't resolve host name', error details: Could not resolve host "
+      "'Could not resolve host name', error details: Could not resolve host "
       "'metadata'",
       status.message());
   EXPECT_EQ(0, http_request.GetResponseCode());
