@@ -55,14 +55,14 @@ TEST(TensorBuffer, HostMemory) {
 
   auto tensor_buffer = litert::TensorBuffer::CreateManaged(
       kTensorBufferType, kTensorType, sizeof(kTensorData));
-  ASSERT_TRUE(tensor_buffer.ok());
+  ASSERT_TRUE(tensor_buffer);
 
   auto tensor_buffer_type = tensor_buffer->BufferType();
-  ASSERT_TRUE(tensor_buffer_type.ok());
+  ASSERT_TRUE(tensor_buffer_type);
   ASSERT_EQ(*tensor_buffer_type, kTensorBufferType);
 
   auto tensor_type = tensor_buffer->TensorType();
-  ASSERT_TRUE(tensor_type.ok());
+  ASSERT_TRUE(tensor_type);
 
   ASSERT_EQ(tensor_type->ElementType(), litert::ElementType::Float32);
   ASSERT_EQ(tensor_type->Layout().Rank(), 1);
@@ -71,22 +71,22 @@ TEST(TensorBuffer, HostMemory) {
   ASSERT_FALSE(tensor_type->Layout().HasStrides());
 
   auto size = tensor_buffer->Size();
-  ASSERT_TRUE(size.ok());
+  ASSERT_TRUE(size);
   ASSERT_EQ(*size, sizeof(kTensorData));
 
   auto offset = tensor_buffer->Offset();
-  ASSERT_TRUE(offset.ok());
+  ASSERT_TRUE(offset);
   ASSERT_EQ(*offset, 0);
 
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     std::memcpy(lock_and_addr->second, kTensorData, sizeof(kTensorData));
   }
 
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     ASSERT_EQ(
         std::memcmp(lock_and_addr->second, kTensorData, sizeof(kTensorData)),
         0);
@@ -104,14 +104,14 @@ TEST(TensorBuffer, Ahwb) {
 
   auto tensor_buffer = litert::TensorBuffer::CreateManaged(
       kTensorBufferType, kTensorType, sizeof(kTensorData));
-  ASSERT_TRUE(tensor_buffer.ok());
+  ASSERT_TRUE(tensor_buffer);
 
   auto tensor_buffer_type = tensor_buffer->BufferType();
-  ASSERT_TRUE(tensor_buffer_type.ok());
+  ASSERT_TRUE(tensor_buffer_type);
   ASSERT_EQ(*tensor_buffer_type, kTensorBufferType);
 
   auto tensor_type = tensor_buffer->TensorType();
-  ASSERT_TRUE(tensor_type.ok());
+  ASSERT_TRUE(tensor_type);
 
   ASSERT_EQ(tensor_type->ElementType(), litert::ElementType::Float32);
   ASSERT_EQ(tensor_type->Layout().Rank(), 1);
@@ -120,22 +120,22 @@ TEST(TensorBuffer, Ahwb) {
   ASSERT_FALSE(tensor_type->Layout().HasStrides());
 
   auto size = tensor_buffer->Size();
-  ASSERT_TRUE(size.ok());
+  ASSERT_TRUE(size);
   ASSERT_EQ(*size, sizeof(kTensorData));
 
   auto offset = tensor_buffer->Offset();
-  ASSERT_TRUE(offset.ok());
+  ASSERT_TRUE(offset);
   ASSERT_EQ(*offset, 0);
 
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     std::memcpy(lock_and_addr->second, kTensorData, sizeof(kTensorData));
   }
 
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     ASSERT_EQ(
         std::memcmp(lock_and_addr->second, kTensorData, sizeof(kTensorData)),
         0);
@@ -153,14 +153,14 @@ TEST(TensorBuffer, Ion) {
 
   auto tensor_buffer = litert::TensorBuffer::CreateManaged(
       kTensorBufferType, kTensorType, sizeof(kTensorData));
-  ASSERT_TRUE(tensor_buffer.ok());
+  ASSERT_TRUE(tensor_buffer);
 
   auto tensor_buffer_type = tensor_buffer->BufferType();
-  ASSERT_TRUE(tensor_buffer_type.ok());
+  ASSERT_TRUE(tensor_buffer_type);
   ASSERT_EQ(*tensor_buffer_type, kTensorBufferType);
 
   auto tensor_type = tensor_buffer->TensorType();
-  ASSERT_TRUE(tensor_type.ok());
+  ASSERT_TRUE(tensor_type);
 
   ASSERT_EQ(tensor_type->ElementType(), litert::ElementType::Float32);
   ASSERT_EQ(tensor_type->Layout().Rank(), 1);
@@ -169,22 +169,22 @@ TEST(TensorBuffer, Ion) {
   ASSERT_FALSE(tensor_type->Layout().HasStrides());
 
   auto size = tensor_buffer->Size();
-  ASSERT_TRUE(size.ok());
+  ASSERT_TRUE(size);
   ASSERT_EQ(*size, sizeof(kTensorData));
 
   auto offset = tensor_buffer->Offset();
-  ASSERT_TRUE(offset.ok());
+  ASSERT_TRUE(offset);
   ASSERT_EQ(*offset, 0);
 
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     std::memcpy(lock_and_addr->second, kTensorData, sizeof(kTensorData));
   }
 
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     ASSERT_EQ(
         std::memcmp(lock_and_addr->second, kTensorData, sizeof(kTensorData)),
         0);
@@ -203,14 +203,14 @@ TEST(TensorBuffer, DmaBuf) {
 
   auto tensor_buffer = litert::TensorBuffer::CreateManaged(
       kTensorBufferType, kTensorType, sizeof(kTensorData));
-  ASSERT_TRUE(tensor_buffer.ok());
+  ASSERT_TRUE(tensor_buffer);
 
   auto tensor_buffer_type = tensor_buffer->BufferType();
-  ASSERT_TRUE(tensor_buffer_type.ok());
+  ASSERT_TRUE(tensor_buffer_type);
   ASSERT_EQ(*tensor_buffer_type, kTensorBufferType);
 
   auto tensor_type = tensor_buffer->TensorType();
-  ASSERT_TRUE(tensor_type.ok());
+  ASSERT_TRUE(tensor_type);
 
   ASSERT_EQ(tensor_type->ElementType(), litert::ElementType::Float32);
   ASSERT_EQ(tensor_type->Layout().Rank(), 1);
@@ -219,22 +219,22 @@ TEST(TensorBuffer, DmaBuf) {
   ASSERT_FALSE(tensor_type->Layout().HasStrides());
 
   auto size = tensor_buffer->Size();
-  ASSERT_TRUE(size.ok());
+  ASSERT_TRUE(size);
   ASSERT_EQ(*size, sizeof(kTensorData));
 
   auto offset = tensor_buffer->Offset();
-  ASSERT_TRUE(offset.ok());
+  ASSERT_TRUE(offset);
   ASSERT_EQ(*offset, 0);
 
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     std::memcpy(lock_and_addr->second, kTensorData, sizeof(kTensorData));
   }
 
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     ASSERT_EQ(
         std::memcmp(lock_and_addr->second, kTensorData, sizeof(kTensorData)),
         0);
@@ -253,14 +253,14 @@ TEST(TensorBuffer, FastRpc) {
 
   auto tensor_buffer = litert::TensorBuffer::CreateManaged(
       kTensorBufferType, kTensorType, sizeof(kTensorData));
-  ASSERT_TRUE(tensor_buffer.ok());
+  ASSERT_TRUE(tensor_buffer);
 
   auto tensor_buffer_type = tensor_buffer->BufferType();
-  ASSERT_TRUE(tensor_buffer_type.ok());
+  ASSERT_TRUE(tensor_buffer_type);
   ASSERT_EQ(*tensor_buffer_type, kTensorBufferType);
 
   auto tensor_type = tensor_buffer->TensorType();
-  ASSERT_TRUE(tensor_type.ok());
+  ASSERT_TRUE(tensor_type);
 
   ASSERT_EQ(tensor_type->ElementType(), litert::ElementType::Float32);
   ASSERT_EQ(tensor_type->Layout().Rank(), 1);
@@ -269,22 +269,22 @@ TEST(TensorBuffer, FastRpc) {
   ASSERT_FALSE(tensor_type->Layout().HasStrides());
 
   auto size = tensor_buffer->Size();
-  ASSERT_TRUE(size.ok());
+  ASSERT_TRUE(size);
   ASSERT_EQ(*size, sizeof(kTensorData));
 
   auto offset = tensor_buffer->Offset();
-  ASSERT_TRUE(offset.ok());
+  ASSERT_TRUE(offset);
   ASSERT_EQ(*offset, 0);
 
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     std::memcpy(lock_and_addr->second, kTensorData, sizeof(kTensorData));
   }
 
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     ASSERT_EQ(
         std::memcmp(lock_and_addr->second, kTensorData, sizeof(kTensorData)),
         0);
@@ -315,7 +315,7 @@ TEST(TensorBuffer, Duplicate) {
   ASSERT_EQ(GetReferenceCount(tensor_buffer), 1);
   {
     auto duplicated_tensor_buffer = tensor_buffer.Duplicate();
-    ASSERT_TRUE(duplicated_tensor_buffer.ok());
+    ASSERT_TRUE(duplicated_tensor_buffer);
     ASSERT_EQ(GetReferenceCount(*duplicated_tensor_buffer), 2);
     // The duplicated tensor buffer should point to the same underlying
     // LiteRtTensorBuffer object.
@@ -324,7 +324,7 @@ TEST(TensorBuffer, Duplicate) {
     // Update tensor buffer using the duplicated tensor buffer.
     auto lock_and_addr =
         litert::TensorBufferScopedLock::Create(*duplicated_tensor_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     std::memcpy(lock_and_addr->second, kTensorData, sizeof(kTensorData));
 
     // When the scope ends, the duplicated tensor buffer should be destroyed.
@@ -335,7 +335,7 @@ TEST(TensorBuffer, Duplicate) {
   // Check that the original tensor buffer is not affected.
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(tensor_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     ASSERT_EQ(
         std::memcmp(lock_and_addr->second, kTensorData, sizeof(kTensorData)),
         0);

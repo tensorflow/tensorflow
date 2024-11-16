@@ -17,9 +17,9 @@
 
 #include <string>
 
-#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 namespace litert::internal {
 
@@ -30,15 +30,13 @@ struct Ratio {
   std::string ToString() const { return absl::StrCat(num, "/", denom); }
 };
 
-absl::StatusOr<Ratio> GetElementSize(LiteRtElementType element_type);
+Expected<Ratio> GetElementSize(LiteRtElementType element_type);
 
-absl::StatusOr<size_t> GetNumElements(
-    const LiteRtRankedTensorType& tensor_type);
+Expected<size_t> GetNumElements(const LiteRtRankedTensorType& tensor_type);
 
 // Get the number of bytes necessary to represent a tensor type, ignoring any
 // stride information.
-absl::StatusOr<size_t> GetNumPackedBytes(
-    const LiteRtRankedTensorType& tensor_type);
+Expected<size_t> GetNumPackedBytes(const LiteRtRankedTensorType& tensor_type);
 
 }  // namespace litert::internal
 

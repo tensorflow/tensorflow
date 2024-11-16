@@ -97,11 +97,11 @@ DispatchDelegate::CreateDelegateKernelInterface() {
 
   auto kernel = litert::internal::DispatchDelegateKernel::Create(
       std::move(dispatch_graph_name), *options_);
-  if (kernel.ok()) {
+  if (kernel) {
     return std::move(*kernel);
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to create a dispatch delegate kernel: %s",
-               kernel.status().message().data());
+               kernel.Error().Message().data());
     return nullptr;
   }
 }

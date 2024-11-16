@@ -34,7 +34,7 @@ using ::litert::testing::LoadTestFileModel;
 TEST(MatchRankedTensorTypeTest, HasAll) {
   auto litert_model = LoadTestFileModel("one_mul.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   const auto& input = inputs.front();
@@ -45,7 +45,7 @@ TEST(MatchRankedTensorTypeTest, HasAll) {
 TEST(MatchRankedTensorTypeTest, NoMatch) {
   auto litert_model = LoadTestFileModel("one_mul.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   const auto& input = inputs.front();
@@ -56,7 +56,7 @@ TEST(MatchRankedTensorTypeTest, NoMatch) {
 TEST(MatchRankedTensorTypeTest, AnyDims) {
   auto litert_model = LoadTestFileModel("one_mul.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   const auto& input = inputs.front();
@@ -67,7 +67,7 @@ TEST(MatchRankedTensorTypeTest, AnyDims) {
 TEST(MatchRankedTensorTypeTest, AnyElementType) {
   auto litert_model = LoadTestFileModel("one_mul.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   const auto& input = inputs.front();
@@ -78,7 +78,7 @@ TEST(MatchRankedTensorTypeTest, AnyElementType) {
 TEST(MatchOpTypeTest, HasAll) {
   auto litert_model = LoadTestFileModel("one_mul.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   TensorTypeInfo expected_type(ElementType::Float32, {2, 2});
   EXPECT_TRUE(MatchOpType(ops.front(), {expected_type, expected_type},
@@ -88,7 +88,7 @@ TEST(MatchOpTypeTest, HasAll) {
 TEST(MatchOpTypeTest, NoMatch) {
   auto litert_model = LoadTestFileModel("one_mul.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   TensorTypeInfo expected_type(ElementType::Float32, {2, 2});
   TensorTypeInfo not_expected_type(ElementType::Int32, {2, 2});
@@ -99,7 +99,7 @@ TEST(MatchOpTypeTest, NoMatch) {
 TEST(MatchOpTypeTest, AnyInput) {
   auto litert_model = LoadTestFileModel("one_mul.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   TensorTypeInfo expected_type(ElementType::Float32, {2, 2});
   EXPECT_TRUE(
@@ -109,7 +109,7 @@ TEST(MatchOpTypeTest, AnyInput) {
 TEST(MatchOpTypeTest, AnyOutput) {
   auto litert_model = LoadTestFileModel("one_mul.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   TensorTypeInfo expected_type(ElementType::Float32, {2, 2});
   EXPECT_TRUE(
@@ -119,7 +119,7 @@ TEST(MatchOpTypeTest, AnyOutput) {
 TEST(MatchWeightsTest, Matches) {
   auto litert_model = LoadTestFileModel("add_cst.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   const auto& cst = inputs.back();
@@ -129,7 +129,7 @@ TEST(MatchWeightsTest, Matches) {
 TEST(MatchWeightsTest, NoMatchBadType) {
   auto litert_model = LoadTestFileModel("add_cst.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   const auto& cst = inputs.back();
@@ -139,7 +139,7 @@ TEST(MatchWeightsTest, NoMatchBadType) {
 TEST(MatchWeightsTest, NoMatchBadVals) {
   auto litert_model = LoadTestFileModel("add_cst.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   const auto& cst = inputs.back();
@@ -150,7 +150,7 @@ TEST(MatchWeightsTest, NoMatchBadVals) {
 TEST(MatchUseTest, Match) {
   auto litert_model = LoadTestFileModel("add_cst.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   EXPECT_TRUE(MatchUse(inputs.back(), UseInfo{kLiteRtOpCodeTflAdd, 1}));
@@ -159,7 +159,7 @@ TEST(MatchUseTest, Match) {
 TEST(MatchUseTest, MatchAnyCode) {
   auto litert_model = LoadTestFileModel("add_cst.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   EXPECT_TRUE(MatchUse(inputs.back(), UseInfo{std::nullopt, 1}));
@@ -168,7 +168,7 @@ TEST(MatchUseTest, MatchAnyCode) {
 TEST(MatchUseTest, NoMatch) {
   auto litert_model = LoadTestFileModel("add_cst.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto ops = subgraph->Ops();
   const auto inputs = ops.front().Inputs();
   EXPECT_FALSE(MatchUse(inputs.back(), UseInfo{std::nullopt, 2}));
@@ -177,7 +177,7 @@ TEST(MatchUseTest, NoMatch) {
 TEST(MatchUsesTest, StrictMatch) {
   auto litert_model = LoadTestFileModel("add_simple.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto subgraph_inputs = subgraph->Inputs();
   const auto& tensor = subgraph_inputs.front();
   EXPECT_TRUE(
@@ -187,7 +187,7 @@ TEST(MatchUsesTest, StrictMatch) {
 TEST(MatchUsesTest, StrictNoMatch) {
   auto litert_model = LoadTestFileModel("add_simple.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto subgraph_inputs = subgraph->Inputs();
   const auto& tensor = subgraph_inputs.front();
   EXPECT_FALSE(MatchUses(tensor, {{kLiteRtOpCodeTflAdd, 0}}));
@@ -196,7 +196,7 @@ TEST(MatchUsesTest, StrictNoMatch) {
 TEST(MatchUsesTest, NonStrict) {
   auto litert_model = LoadTestFileModel("add_simple.tflite");
   auto subgraph = litert_model.MainSubgraph();
-  ABSL_CHECK(subgraph.ok());
+  ABSL_CHECK(subgraph);
   auto subgraph_inputs = subgraph->Inputs();
   const auto& tensor = subgraph_inputs.front();
   EXPECT_TRUE(MatchUses(tensor, {{kLiteRtOpCodeTflAdd, 0}}, /*strict=*/false));

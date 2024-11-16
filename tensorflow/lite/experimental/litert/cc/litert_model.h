@@ -22,8 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -303,18 +301,18 @@ class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
     return Model(model, /*owned=*/false);
   }
 
-  absl::StatusOr<absl::Span<const uint8_t>> Metadata(
+  Expected<absl::Span<const uint8_t>> Metadata(
       const std::string& metadata_key) const {
     const void* buffer;
     size_t buffer_size;
     if (LiteRtGetModelMetadata(Get(), metadata_key.data(), &buffer,
                                &buffer_size) != kLiteRtStatusOk) {
-      return absl::NotFoundError("Metadata key not found");
+      return Unexpected(kLiteRtStatusErrorNotFound, "Metadata key not found");
     }
     return absl::MakeSpan(static_cast<const uint8_t*>(buffer), buffer_size);
   }
 
-  absl::StatusOr<class Subgraph> MainSubgraph() {
+  Expected<class Subgraph> MainSubgraph() {
     LiteRtParamIndex main_subgraph_index;
     internal::AssertOk(LiteRtGetMainModelSubgraphIndex, Get(),
                        &main_subgraph_index);
@@ -327,11 +325,11 @@ class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
     return num_subgraphs;
   }
 
-  absl::StatusOr<class Subgraph> Subgraph(size_t subgraph_index) {
+  Expected<class Subgraph> Subgraph(size_t subgraph_index) {
     LiteRtSubgraph subgraph;
     if (LiteRtGetModelSubgraph(Get(), subgraph_index, &subgraph) !=
         kLiteRtStatusOk) {
-      return absl::NotFoundError("Subgraph not found");
+      return Unexpected(kLiteRtStatusErrorNotFound, "Subgraph not found");
     }
     return litert::Subgraph(subgraph);
   }

@@ -58,7 +58,7 @@ TEST(DispatchApi, GoogleTensor) {
 
   auto model_file_name = kGoogleTensorModelFileName;
   auto model = litert::testing::LoadBinaryFile(model_file_name);
-  EXPECT_TRUE(model.ok());
+  EXPECT_TRUE(model);
   ABSL_LOG(INFO) << "Loaded model " << model_file_name << ", " << model->size()
                  << " bytes";
 

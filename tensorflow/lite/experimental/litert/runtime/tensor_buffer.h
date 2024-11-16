@@ -20,10 +20,10 @@
 #include <type_traits>
 #include <variant>
 
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 class LiteRtTensorBufferT {
  public:
@@ -38,33 +38,33 @@ class LiteRtTensorBufferT {
   LiteRtTensorBufferT& operator=(const LiteRtTensorBufferT&) = delete;
   LiteRtTensorBufferT& operator=(LiteRtTensorBufferT&&) = delete;
 
-  static absl::StatusOr<Ptr> CreateFromHostMemory(
+  static litert::Expected<Ptr> CreateFromHostMemory(
       const LiteRtRankedTensorType& tensor_type,
       absl::Span<uint8_t> host_memory,
       LiteRtHostMemoryDeallocator deallocator = nullptr);
 
-  static absl::StatusOr<Ptr> CreateFromAhwb(
+  static litert::Expected<Ptr> CreateFromAhwb(
       const LiteRtRankedTensorType& tensor_type, AHardwareBuffer* ahwb,
       size_t ahwb_offset, LiteRtAhwbDeallocator deallocator = nullptr);
 
-  static absl::StatusOr<Ptr> CreateFromIonBuffer(
+  static litert::Expected<Ptr> CreateFromIonBuffer(
       const LiteRtRankedTensorType& tensor_type, void* ion_buffer_addr,
       int ion_buffer_fd, size_t ion_buffer_size, size_t ion_buffer_offset,
       LiteRtIonDeallocator deallocator = nullptr);
 
-  static absl::StatusOr<Ptr> CreateFromDmaBufBuffer(
+  static litert::Expected<Ptr> CreateFromDmaBufBuffer(
       const LiteRtRankedTensorType& tensor_type, void* dmabuf_buffer_addr,
       int dmabuf_buffer_fd, size_t dmabuf_buffer_size,
       size_t dmabuf_buffer_offset,
       LiteRtDmaBufDeallocator deallocator = nullptr);
 
-  static absl::StatusOr<Ptr> CreateFromFastRpcBuffer(
+  static litert::Expected<Ptr> CreateFromFastRpcBuffer(
       const LiteRtRankedTensorType& tensor_type, void* fastrpc_buffer_addr,
       int fastrpc_buffer_fd, size_t fastrpc_buffer_size,
       size_t fastrpc_buffer_offset,
       LiteRtFastRpcDeallocator deallocator = nullptr);
 
-  static absl::StatusOr<Ptr> CreateManaged(
+  static litert::Expected<Ptr> CreateManaged(
       LiteRtTensorBufferType buffer_type,
       const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
 
@@ -73,14 +73,14 @@ class LiteRtTensorBufferT {
   size_t buffer_size() const { return buffer_size_; }
   size_t buffer_offset() const { return buffer_offset_; }
 
-  absl::StatusOr<void*> GetHostBuffer() const;
-  absl::StatusOr<AHardwareBuffer*> GetAhwbBuffer() const;
-  absl::StatusOr<std::pair<void*, int>> GetIonBuffer() const;
-  absl::StatusOr<std::pair<void*, int>> GetDmaBufBuffer() const;
-  absl::StatusOr<std::pair<void*, int>> GetFastRpcBuffer() const;
+  litert::Expected<void*> GetHostBuffer();
+  litert::Expected<AHardwareBuffer*> GetAhwbBuffer();
+  litert::Expected<std::pair<void*, int>> GetIonBuffer();
+  litert::Expected<std::pair<void*, int>> GetDmaBufBuffer();
+  litert::Expected<std::pair<void*, int>> GetFastRpcBuffer();
 
-  absl::StatusOr<void*> Lock(LiteRtEvent event = nullptr);
-  absl::Status Unlock();
+  litert::Expected<void*> Lock(LiteRtEvent event = nullptr);
+  litert::Expected<void> Unlock();
 
   // Used to duplicate the current tensor buffer. Internally it increases
   // reference count to the underlying buffer.
@@ -135,22 +135,22 @@ class LiteRtTensorBufferT {
                       LiteRtTensorBufferType buffer_type, size_t buffer_size,
                       size_t buffer_offset = 0);
 
-  static absl::StatusOr<Ptr> CreateManagedOnHostMemory(
+  static litert::Expected<Ptr> CreateManagedOnHostMemory(
       const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
 
-  static absl::StatusOr<Ptr> CreateManagedAhwbBuffer(
+  static litert::Expected<Ptr> CreateManagedAhwbBuffer(
       const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
 
-  static absl::StatusOr<Ptr> CreateManagedIonBuffer(
+  static litert::Expected<Ptr> CreateManagedIonBuffer(
       const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
 
-  static absl::StatusOr<Ptr> CreateManagedDmaBufBuffer(
+  static litert::Expected<Ptr> CreateManagedDmaBufBuffer(
       const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
 
-  static absl::StatusOr<Ptr> CreateManagedFastRpcBuffer(
+  static litert::Expected<Ptr> CreateManagedFastRpcBuffer(
       const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
 
-  absl::Status IsValid() const;
+  litert::Expected<void> IsValid();
 
   LiteRtRankedTensorType tensor_type_;
   std::vector<std::decay_t<decltype(LiteRtLayout::dimensions[0])>> dimensions_;

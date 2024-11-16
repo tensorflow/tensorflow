@@ -45,8 +45,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "@com_google_absl//absl/strings",
     ],
 )

@@ -77,7 +77,7 @@ bool HasValidGeneralTopology(LiteRtSubgraph subgraph) {
 TEST(TestPartitionsFromFlatList, SimpleMultiOp) {
   auto model = litert::testing::LoadTestFileModel("simple_multi_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
 
@@ -148,7 +148,7 @@ TEST(TestPartitionsFromFlatList, SimpleMultiOp) {
 TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
   auto model = litert::testing::LoadTestFileModel("simple_multi_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
 
@@ -229,7 +229,7 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
 TEST(TestSliceSubgraphSimpleMultiOp, TwoPartitions) {
   auto model = litert::testing::LoadTestFileModel("simple_multi_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
 

@@ -21,19 +21,21 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/core/util/tensor_type_util.h"
 #include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/dmabuf_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/event.h"
 #include "tensorflow/lite/experimental/litert/runtime/fastrpc_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/ion_buffer.h"
+
+using litert::Expected;
+using litert::Unexpected;
 
 namespace {
 
@@ -96,8 +98,7 @@ LiteRtTensorBufferT::~LiteRtTensorBufferT() {
   }
 }
 
-absl::StatusOr<LiteRtTensorBufferT::Ptr>
-LiteRtTensorBufferT::CreateFromHostMemory(
+Expected<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateFromHostMemory(
     const LiteRtRankedTensorType& tensor_type, absl::Span<uint8_t> host_memory,
     LiteRtHostMemoryDeallocator deallocator) {
   Ptr tensor_buffer(new LiteRtTensorBufferT(
@@ -107,21 +108,22 @@ LiteRtTensorBufferT::CreateFromHostMemory(
       .deallocator = deallocator,
   };
 
-  if (auto status = tensor_buffer->IsValid(); !status.ok()) {
-    return status;
+  if (auto status = tensor_buffer->IsValid(); !status) {
+    return Unexpected(status.Error());
   }
 
   return tensor_buffer;
 }
 
-absl::StatusOr<LiteRtTensorBufferT::Ptr>
+Expected<LiteRtTensorBufferT::Ptr>
 LiteRtTensorBufferT::CreateManagedOnHostMemory(
     const LiteRtRankedTensorType& tensor_type, size_t buffer_size) {
   void* host_memory_ptr;
   if (auto rc = ::posix_memalign(
           &host_memory_ptr, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT, buffer_size);
       rc) {
-    return absl::InternalError("Failed to allocate aligned memory");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to allocate aligned memory");
   }
 
   LiteRtHostMemoryDeallocator deallocator = ::free;
@@ -129,20 +131,20 @@ LiteRtTensorBufferT::CreateManagedOnHostMemory(
       tensor_type,
       absl::MakeSpan(static_cast<uint8_t*>(host_memory_ptr), buffer_size),
       deallocator);
-  if (!tensor_buffer.ok()) {
+  if (!tensor_buffer) {
     free(host_memory_ptr);
-    return tensor_buffer.status();
+    return Unexpected(tensor_buffer.Error());
   }
 
   return std::move(*tensor_buffer);
 }
 
-absl::StatusOr<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateFromAhwb(
+Expected<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateFromAhwb(
     const LiteRtRankedTensorType& tensor_type, AHardwareBuffer* ahwb,
     size_t ahwb_offset, LiteRtAhwbDeallocator deallocator) {
   auto buffer_size = litert::internal::AhwbBuffer::GetSize(ahwb);
-  if (!buffer_size.ok()) {
-    return buffer_size.status();
+  if (!buffer_size) {
+    return Unexpected(buffer_size.Error());
   }
 
   Ptr tensor_buffer(new LiteRtTensorBufferT(
@@ -152,34 +154,34 @@ absl::StatusOr<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateFromAhwb(
       .deallocator = deallocator,
   };
 
-  if (auto status = tensor_buffer->IsValid(); !status.ok()) {
-    return status;
+  if (auto status = tensor_buffer->IsValid(); !status) {
+    return Unexpected(status.Error());
   }
 
   return tensor_buffer;
 }
 
-absl::StatusOr<LiteRtTensorBufferT::Ptr>
-LiteRtTensorBufferT::CreateManagedAhwbBuffer(
+Expected<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateManagedAhwbBuffer(
     const LiteRtRankedTensorType& tensor_type, size_t buffer_size) {
   auto buffer = litert::internal::AhwbBuffer::Alloc(buffer_size);
-  if (!buffer.ok()) {
-    return buffer.status();
+  if (!buffer) {
+    return Unexpected(buffer.Error());
   }
   return CreateFromAhwb(tensor_type, buffer->ahwb, /*ahwb_offset=*/0,
                         /*deallocator=*/litert::internal::AhwbBuffer::Free);
 }
 
-absl::StatusOr<LiteRtTensorBufferT::Ptr>
-LiteRtTensorBufferT::CreateFromIonBuffer(
+Expected<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateFromIonBuffer(
     const LiteRtRankedTensorType& tensor_type, void* ion_buffer_addr,
     int ion_buffer_fd, size_t ion_buffer_size, size_t ion_buffer_offset,
     LiteRtIonDeallocator deallocator) {
   if (!ion_buffer_addr) {
-    return absl::InvalidArgumentError("Invalid ION buffer address");
+    return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                      "Invalid ION buffer address");
   }
   if (ion_buffer_fd < 0) {
-    return absl::InvalidArgumentError("Invalid ION buffer fd");
+    return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                      "Invalid ION buffer fd");
   }
 
   Ptr tensor_buffer(
@@ -191,36 +193,36 @@ LiteRtTensorBufferT::CreateFromIonBuffer(
       .deallocator = deallocator,
   };
 
-  if (auto status = tensor_buffer->IsValid(); !status.ok()) {
-    return status;
+  if (auto status = tensor_buffer->IsValid(); !status) {
+    return Unexpected(status.Error());
   }
 
   return tensor_buffer;
 }
 
-absl::StatusOr<LiteRtTensorBufferT::Ptr>
-LiteRtTensorBufferT::CreateManagedIonBuffer(
+Expected<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateManagedIonBuffer(
     const LiteRtRankedTensorType& tensor_type, size_t buffer_size) {
   auto buffer = litert::internal::IonBuffer::Alloc(
       buffer_size, /*alignment=*/LITERT_HOST_MEMORY_BUFFER_ALIGNMENT);
-  if (!buffer.ok()) {
-    return buffer.status();
+  if (!buffer) {
+    return Unexpected(buffer.Error());
   }
   return CreateFromIonBuffer(tensor_type, buffer->addr, buffer->fd, buffer_size,
                              /*ion_buffer_offset=*/0,
                              litert::internal::IonBuffer::Free);
 }
 
-absl::StatusOr<LiteRtTensorBufferT::Ptr>
-LiteRtTensorBufferT::CreateFromDmaBufBuffer(
+Expected<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateFromDmaBufBuffer(
     const LiteRtRankedTensorType& tensor_type, void* dmabuf_buffer_addr,
     int dmabuf_buffer_fd, size_t dmabuf_buffer_size,
     size_t dmabuf_buffer_offset, LiteRtDmaBufDeallocator deallocator) {
   if (!dmabuf_buffer_addr) {
-    return absl::InvalidArgumentError("Invalid DMA-BUF buffer address");
+    return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                      "Invalid DMA-BUF buffer address");
   }
   if (dmabuf_buffer_fd < 0) {
-    return absl::InvalidArgumentError("Invalid DMA-BUF buffer fd");
+    return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                      "Invalid DMA-BUF buffer fd");
   }
 
   Ptr tensor_buffer(
@@ -232,35 +234,36 @@ LiteRtTensorBufferT::CreateFromDmaBufBuffer(
       .deallocator = deallocator,
   };
 
-  if (auto status = tensor_buffer->IsValid(); !status.ok()) {
-    return status;
+  if (auto status = tensor_buffer->IsValid(); !status) {
+    return Unexpected(status.Error());
   }
 
   return tensor_buffer;
 }
 
-absl::StatusOr<LiteRtTensorBufferT::Ptr>
+Expected<LiteRtTensorBufferT::Ptr>
 LiteRtTensorBufferT::CreateManagedDmaBufBuffer(
     const LiteRtRankedTensorType& tensor_type, size_t buffer_size) {
   auto buffer = litert::internal::DmaBufBuffer::Alloc(buffer_size);
-  if (!buffer.ok()) {
-    return buffer.status();
+  if (!buffer) {
+    return Unexpected(buffer.Error());
   }
   return CreateFromDmaBufBuffer(tensor_type, buffer->addr, buffer->fd,
                                 buffer_size, /*dmabuf_buffer_offset=*/0,
                                 litert::internal::DmaBufBuffer::Free);
 }
 
-absl::StatusOr<LiteRtTensorBufferT::Ptr>
-LiteRtTensorBufferT::CreateFromFastRpcBuffer(
+Expected<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateFromFastRpcBuffer(
     const LiteRtRankedTensorType& tensor_type, void* fastrpc_buffer_addr,
     int fastrpc_buffer_fd, size_t fastrpc_buffer_size,
     size_t fastrpc_buffer_offset, LiteRtFastRpcDeallocator deallocator) {
   if (!fastrpc_buffer_addr) {
-    return absl::InvalidArgumentError("Invalid FastRPC buffer address");
+    return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                      "Invalid FastRPC buffer address");
   }
   if (fastrpc_buffer_fd < 0) {
-    return absl::InvalidArgumentError("Invalid FastRPC buffer fd");
+    return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                      "Invalid FastRPC buffer fd");
   }
 
   Ptr tensor_buffer(
@@ -272,26 +275,26 @@ LiteRtTensorBufferT::CreateFromFastRpcBuffer(
       .deallocator = deallocator,
   };
 
-  if (auto status = tensor_buffer->IsValid(); !status.ok()) {
-    return status;
+  if (auto status = tensor_buffer->IsValid(); !status) {
+    return Unexpected(status.Error());
   }
 
   return tensor_buffer;
 }
 
-absl::StatusOr<LiteRtTensorBufferT::Ptr>
+Expected<LiteRtTensorBufferT::Ptr>
 LiteRtTensorBufferT::CreateManagedFastRpcBuffer(
     const LiteRtRankedTensorType& tensor_type, size_t buffer_size) {
   auto buffer = litert::internal::FastRpcBuffer::Alloc(buffer_size);
-  if (!buffer.ok()) {
-    return buffer.status();
+  if (!buffer) {
+    return Unexpected(buffer.Error());
   }
   return CreateFromFastRpcBuffer(tensor_type, buffer->addr, buffer->fd,
                                  buffer_size, /*fastrpc_buffer_offset=*/0,
                                  litert::internal::FastRpcBuffer::Free);
 }
 
-absl::StatusOr<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateManaged(
+Expected<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateManaged(
     LiteRtTensorBufferType buffer_type,
     const LiteRtRankedTensorType& tensor_type, size_t buffer_size) {
   switch (buffer_type) {
@@ -306,96 +309,103 @@ absl::StatusOr<LiteRtTensorBufferT::Ptr> LiteRtTensorBufferT::CreateManaged(
     case kLiteRtTensorBufferTypeFastRpc:
       return CreateManagedFastRpcBuffer(tensor_type, buffer_size);
     default:
-      return absl::InvalidArgumentError("Unexpected tensor type");
+      return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                        "Unexpected tensor type");
   }
 }
 
-absl::Status LiteRtTensorBufferT::IsValid() const {
+Expected<void> LiteRtTensorBufferT::IsValid() {
   // Check for static dimensions.
   for (auto i = 0; i < tensor_type_.layout.rank; ++i) {
     if (tensor_type_.layout.dimensions[i] <= 0) {
-      return absl::InternalError(
-          "TensorBuffer must have all static dimensions");
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "TensorBuffer must have all static dimensions");
     }
   }
 
   // Check for valid offset.
   if (buffer_offset() >= buffer_size()) {
-    return absl::InternalError("Invalid buffer offset");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Invalid buffer offset");
   }
 
   // Check for sufficient size.
   if (auto num_bytes = litert::internal::GetNumPackedBytes(tensor_type_);
-      !num_bytes.ok()) {
-    return num_bytes.status();
+      !num_bytes) {
+    return Unexpected(num_bytes.Error());
   } else if (*num_bytes > buffer_size() - buffer_offset()) {
-    return absl::InternalError("Insufficient buffer size");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Insufficient buffer size");
   }
 
   // Check for proper alignment.
   if (buffer_type() == kLiteRtTensorBufferTypeHostMemory) {
     auto host_buffer = GetHostBuffer();
-    if (!host_buffer.ok()) {
-      return host_buffer.status();
+    if (!host_buffer) {
+      return Unexpected(host_buffer.Error());
     }
     if (reinterpret_cast<uintptr_t>(*host_buffer) %
         LITERT_HOST_MEMORY_BUFFER_ALIGNMENT) {
-      return absl::InternalError("Unaligned host memory pointer");
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Unaligned host memory pointer");
     }
   }
 
   return {};
 }
 
-absl::StatusOr<void*> LiteRtTensorBufferT::GetHostBuffer() const {
+Expected<void*> LiteRtTensorBufferT::GetHostBuffer() {
   if (buffer_type_ != kLiteRtTensorBufferTypeHostMemory) {
-    return absl::InternalError("Unexpected tensor buffer type");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Unexpected tensor buffer type");
   }
   return std::get<HostBuffer>(buffer_).addr;
 }
 
-absl::StatusOr<AHardwareBuffer*> LiteRtTensorBufferT::GetAhwbBuffer() const {
+Expected<AHardwareBuffer*> LiteRtTensorBufferT::GetAhwbBuffer() {
   if (buffer_type_ != kLiteRtTensorBufferTypeAhwb) {
-    return absl::InternalError("Unexpected tensor buffer type");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Unexpected tensor buffer type");
   }
   return std::get<AhwbBuffer>(buffer_).ahwb;
 }
 
-absl::StatusOr<std::pair<void*, int>> LiteRtTensorBufferT::GetIonBuffer()
-    const {
+Expected<std::pair<void*, int>> LiteRtTensorBufferT::GetIonBuffer() {
   if (buffer_type_ != kLiteRtTensorBufferTypeIon) {
-    return absl::InternalError("Unexpected tensor buffer type");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Unexpected tensor buffer type");
   }
   auto buffer = std::get<IonBuffer>(buffer_);
   return std::make_pair(buffer.addr, buffer.fd);
 }
 
-absl::StatusOr<std::pair<void*, int>> LiteRtTensorBufferT::GetDmaBufBuffer()
-    const {
+Expected<std::pair<void*, int>> LiteRtTensorBufferT::GetDmaBufBuffer() {
   if (buffer_type_ != kLiteRtTensorBufferTypeDmaBuf) {
-    return absl::InternalError("Unexpected tensor buffer type");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Unexpected tensor buffer type");
   }
   auto buffer = std::get<DmaBufBuffer>(buffer_);
   return std::make_pair(buffer.addr, buffer.fd);
 }
 
-absl::StatusOr<std::pair<void*, int>> LiteRtTensorBufferT::GetFastRpcBuffer()
-    const {
+Expected<std::pair<void*, int>> LiteRtTensorBufferT::GetFastRpcBuffer() {
   if (buffer_type_ != kLiteRtTensorBufferTypeFastRpc) {
-    return absl::InternalError("Unexpected tensor buffer type");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Unexpected tensor buffer type");
   }
   auto buffer = std::get<FastRpcBuffer>(buffer_);
   return std::make_pair(buffer.addr, buffer.fd);
 }
 
-absl::StatusOr<void*> LiteRtTensorBufferT::Lock(LiteRtEvent event) {
+Expected<void*> LiteRtTensorBufferT::Lock(LiteRtEvent event) {
   if (event) {
     // Only AHWB supports waiting on an input sync fence when locking the
     // buffer. For all other buffer types we wait here.
     if (buffer_type() != kLiteRtTensorBufferTypeAhwb) {
       if (auto status = event->Wait(/*timeout_in_ms*/ -1);
           status != kLiteRtStatusOk) {
-        return absl::InternalError("Failed to wait on input event");
+        return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                          "Failed to wait on input event");
       }
     }
   }
@@ -412,11 +422,12 @@ absl::StatusOr<void*> LiteRtTensorBufferT::Lock(LiteRtEvent event) {
     case kLiteRtTensorBufferTypeFastRpc:
       return GetFastRpcBuffer()->first;
     default:
-      return absl::InternalError("Unexpected tensor buffer type");
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Unexpected tensor buffer type");
   }
 }
 
-absl::Status LiteRtTensorBufferT::Unlock() {
+Expected<void> LiteRtTensorBufferT::Unlock() {
   if (buffer_type() == kLiteRtTensorBufferTypeAhwb) {
     auto ahwb = std::get<AhwbBuffer>(buffer_).ahwb;
     return litert::internal::AhwbBuffer::Unlock(ahwb);

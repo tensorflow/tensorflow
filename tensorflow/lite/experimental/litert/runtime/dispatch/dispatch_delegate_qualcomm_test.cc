@@ -141,17 +141,16 @@ TEST(DispatchDelegate, QualcommHwBuffer) {
   for (int i = 0; i < interpreter.inputs().size(); ++i) {
     auto input_buffer_requirements =
         buffer_context.GetBufferRequirement(interpreter.input_tensor(i));
-    ASSERT_TRUE(input_buffer_requirements.HasValue());
-    ASSERT_EQ((*input_buffer_requirements)->SupportedTypes().value()[0],
+    ASSERT_TRUE(input_buffer_requirements);
+    ASSERT_EQ((*input_buffer_requirements)->SupportedTypes().Value()[0],
               kLiteRtTensorBufferTypeFastRpc);
     auto input_buffer =
         buffer_context.CreateBufferForTensor(interpreter.input_tensor(i));
-    ASSERT_TRUE(input_buffer.HasValue());
+    ASSERT_TRUE(input_buffer);
     ASSERT_TRUE(input_buffer->IsOwned());
-    ASSERT_EQ(input_buffer->BufferType().value(),
-              kLiteRtTensorBufferTypeFastRpc);
+    ASSERT_EQ(*input_buffer->BufferType(), kLiteRtTensorBufferTypeFastRpc);
     auto duplicate_buffer = (*input_buffer).Duplicate();
-    ASSERT_TRUE(duplicate_buffer.ok());
+    ASSERT_TRUE(duplicate_buffer);
     auto status = buffer_context.RegisterTensorBuffer(
         interpreter.input_tensor(i), std::move(*duplicate_buffer));
     ASSERT_EQ(status, kLiteRtStatusOk);
@@ -162,17 +161,16 @@ TEST(DispatchDelegate, QualcommHwBuffer) {
   for (int i = 0; i < interpreter.outputs().size(); ++i) {
     auto output_buffer_requirements =
         buffer_context.GetBufferRequirement(interpreter.output_tensor(i));
-    ASSERT_TRUE(output_buffer_requirements.HasValue());
-    ASSERT_EQ((*output_buffer_requirements)->SupportedTypes().value()[0],
+    ASSERT_TRUE(output_buffer_requirements);
+    ASSERT_EQ((*output_buffer_requirements)->SupportedTypes().Value()[0],
               kLiteRtTensorBufferTypeFastRpc);
     auto output_buffer =
         buffer_context.CreateBufferForTensor(interpreter.output_tensor(i));
     ASSERT_TRUE(output_buffer.HasValue());
     ASSERT_TRUE(output_buffer->IsOwned());
-    ASSERT_EQ(output_buffer->BufferType().value(),
-              kLiteRtTensorBufferTypeFastRpc);
+    ASSERT_EQ(*output_buffer->BufferType(), kLiteRtTensorBufferTypeFastRpc);
     auto duplicate_buffer = (*output_buffer).Duplicate();
-    ASSERT_TRUE(duplicate_buffer.ok());
+    ASSERT_TRUE(duplicate_buffer);
     auto status = buffer_context.RegisterTensorBuffer(
         interpreter.output_tensor(i), std::move(*duplicate_buffer));
     ASSERT_EQ(status, kLiteRtStatusOk);
@@ -194,7 +192,7 @@ TEST(DispatchDelegate, QualcommHwBuffer) {
   auto& input_0_buffer = input_buffers[0];
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(input_0_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     std::memcpy(lock_and_addr->second, kTestInput0Tensor,
                 sizeof(kTestInput0Tensor));
   }
@@ -202,7 +200,7 @@ TEST(DispatchDelegate, QualcommHwBuffer) {
   auto& input_1_buffer = input_buffers[1];
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(input_1_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     std::memcpy(lock_and_addr->second, kTestInput1Tensor,
                 sizeof(kTestInput1Tensor));
   }
@@ -214,7 +212,7 @@ TEST(DispatchDelegate, QualcommHwBuffer) {
   auto& output_buffer = output_buffers[0];
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(output_buffer);
-    ASSERT_TRUE(lock_and_addr.ok());
+    ASSERT_TRUE(lock_and_addr);
     const float* output = reinterpret_cast<const float*>(lock_and_addr->second);
     for (auto i = 0; i < kTestOutputSize; ++i) {
       ABSL_LOG(INFO) << "Result: " << output[i] << "\t" << kTestOutputTensor[i];
@@ -226,5 +224,4 @@ TEST(DispatchDelegate, QualcommHwBuffer) {
 }
 
 }  // namespace
-
 }  // namespace litert

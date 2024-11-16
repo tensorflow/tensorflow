@@ -16,9 +16,12 @@
 
 #include <memory>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+
+using litert::Expected;
+using litert::Unexpected;
 
 LiteRtDispatchDeviceContextT::~LiteRtDispatchDeviceContextT() {
   if (!thr_graphs_.empty()) {
@@ -42,15 +45,15 @@ LiteRtDispatchDeviceContextT::~LiteRtDispatchDeviceContextT() {
   }
 }
 
-absl::StatusOr<std::unique_ptr<LiteRtDispatchDeviceContextT>>
+Expected<LiteRtDispatchDeviceContextT::Ptr>
 LiteRtDispatchDeviceContextT::Create(
     const litert::google_tensor::Southbound& southbound) {
-  std::unique_ptr<LiteRtDispatchDeviceContextT> device_context(
-      new LiteRtDispatchDeviceContextT(southbound));
+  Ptr device_context(new LiteRtDispatchDeviceContextT(southbound));
 
   auto thr_context_create = southbound.thr_functions().thr_context_create;
   if (!thr_context_create) {
-    return absl::InternalError("thr_context_create not found");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "thr_context_create not found");
   }
 
   device_context->thr_context_ = thr_context_create();

@@ -31,7 +31,7 @@ TEST(TestInitQnnOp, BuildDefaultOp) {
 TEST(TestLegalizeOp, SimpleSupportedOp) {
   auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
   auto ops = subgraph->Ops();
 
   Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();
@@ -51,7 +51,7 @@ TEST(TestLegalizeOp, SimpleSupportedOp) {
 TEST(TestLegalizeOp, UnsupportedOp) {
   auto model = litert::testing::LoadTestFileModel("simple_floor_mod_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
   auto ops = subgraph->Ops();
 
   Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();

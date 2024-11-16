@@ -24,7 +24,7 @@ namespace {
 TEST(GetOpOptionTest, TestGetAddOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_add_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
   auto op = ops.front().Get();
@@ -39,7 +39,7 @@ TEST(GetOpOptionTest, TestGetBatchMatmulOptions) {
   auto model =
       litert::testing::LoadTestFileModel("simple_batch_matmul_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
   auto op = ops.front().Get();
@@ -62,7 +62,7 @@ TEST(GetOpOptionTest, TestGetConcatenationOptions) {
   auto model =
       litert::testing::LoadTestFileModel("simple_concatenation_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
   auto op = ops.front().Get();
@@ -80,7 +80,7 @@ TEST(GetOpOptionTest, TestGetConcatenationOptions) {
 TEST(GetOpOptionTest, TestGetDivOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_div_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
   auto op = ops.front().Get();
@@ -95,7 +95,7 @@ TEST(GetOpOptionTest, TestGetFullyConnectedOptions) {
   auto model =
       litert::testing::LoadTestFileModel("simple_fully_connected_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
   auto op = ops.front().Get();
@@ -129,7 +129,7 @@ TEST(GetOpOptionTest, TestGetFullyConnectedOptions) {
 TEST(GetOpOptionTest, TestGetMulOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_mul_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
   auto op = ops.front().Get();
@@ -143,7 +143,7 @@ TEST(GetOpOptionTest, TestGetMulOptions) {
 TEST(GetOpOptionTest, TestGetSoftmaxOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_softmax_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
   auto op = ops.front().Get();
@@ -157,7 +157,7 @@ TEST(GetOpOptionTest, TestGetStridedSliceOptions) {
   auto model =
       litert::testing::LoadTestFileModel("simple_strided_slice_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
   auto op = ops.front().Get();
@@ -194,7 +194,7 @@ TEST(GetOpOptionTest, TestGetStridedSliceOptions) {
 TEST(GetOpOptionTest, TestGetSubOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_sub_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
   auto op = ops.front().Get();
@@ -208,7 +208,7 @@ TEST(GetOpOptionTest, TestGetSubOptions) {
 TEST(GetOpOptionTest, TestGetReshapeOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_reshape_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
   auto op = ops.front().Get();
@@ -223,7 +223,7 @@ TEST(GetOpOptionTest, TestGetReshapeOptions) {
 TEST(GetOpOptionTest, TestGetSumOptions) {
   auto model = litert::testing::LoadTestFileModel("simple_sum_op.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
 
   auto ops = subgraph->Ops();
   auto op = ops.front().Get();

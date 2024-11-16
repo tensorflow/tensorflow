@@ -18,18 +18,17 @@
 #include <string>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "third_party/qairt/latest/include/QNN/QnnInterface.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 namespace litert {
 namespace qnn {
 
 class QnnTensor {
  public:
-  static absl::StatusOr<QnnTensor> Create(const Qnn_Tensor_t& tensor);
+  static Expected<QnnTensor> Create(const Qnn_Tensor_t& tensor);
 
   QnnTensor(const QnnTensor& other);
   QnnTensor(QnnTensor&& other);
@@ -45,7 +44,7 @@ class QnnTensor {
 
  private:
   explicit QnnTensor(const Qnn_Tensor_t& tensor) : tensor_(tensor) {}
-  absl::Status DeepCopy();
+  Expected<void> DeepCopy();
 
   Qnn_Tensor_t tensor_;
   std::string name_;

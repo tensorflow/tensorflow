@@ -24,8 +24,6 @@
 #include <vector>
 
 #include "absl/log/absl_check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -69,18 +67,18 @@ std::string GetTestFilePath(absl::string_view filename) {
   return result_path.generic_string();
 }
 
-absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename) {
+Expected<std::vector<char>> LoadBinaryFile(absl::string_view filename) {
   std::string model_path = GetTestFilePath(filename);
   ABSL_CHECK(std::filesystem::exists(model_path));
   auto size = std::filesystem::file_size(model_path);
   std::vector<char> buffer(size);
   std::ifstream f(model_path, std::ifstream::binary);
   if (!f) {
-    return absl::InternalError("Failed to open file");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure, "Failed to open file");
   }
   f.read(buffer.data(), buffer.size());
   if (!f) {
-    return absl::InternalError("Failed to read file");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure, "Failed to read file");
   }
   f.close();
   return buffer;
@@ -124,8 +122,8 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
   auto model = LoadTestFileModel(tfl_file);
 
   auto npu_code = LoadBinaryFile(npu_file);
-  if (!npu_code.ok()) {
-    return Unexpected(kLiteRtStatusErrorFileIO);
+  if (!npu_code) {
+    return Unexpected(npu_code.Error());
   }
 
   LiteRtModelT& internal_model = *model.Get();

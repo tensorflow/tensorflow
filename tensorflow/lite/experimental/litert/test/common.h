@@ -19,10 +19,10 @@
 #include <string>
 #include <vector>
 
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model_builder.h"
@@ -59,7 +59,7 @@ namespace testing {
 
 std::string GetTestFilePath(absl::string_view filename);
 
-absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename);
+Expected<std::vector<char>> LoadBinaryFile(absl::string_view filename);
 
 Model LoadTestFileModel(absl::string_view filename);
 

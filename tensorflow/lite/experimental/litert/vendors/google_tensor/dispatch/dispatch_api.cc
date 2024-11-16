@@ -24,8 +24,6 @@
 #include <android/hardware_buffer.h>
 #endif
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "third_party/odml/infra/southbound/sb_api.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -34,6 +32,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch_api.h"
 #include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/litert_dispatch_device_context.h"
@@ -99,10 +98,10 @@ LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
 
   if (auto southbound =
           litert::google_tensor::Southbound::Create(shared_library_dir_opt);
-      !southbound.ok()) {
+      !southbound) {
     LITERT_LOG(LITERT_INFO, "Initialization failure: %s",
-               southbound.status().message().data());
-    return kLiteRtStatusErrorRuntimeFailure;
+               southbound.Error().Message().data());
+    return southbound.Error().Status();
   } else {
     TheSouthbound = southbound->release();
   }
@@ -152,14 +151,14 @@ LiteRtStatus GetCapabilities(int* capabilities) {
 }
 
 LiteRtStatus DeviceContextCreate(LiteRtDispatchDeviceContext* device_context) {
-  if (auto status_or = LiteRtDispatchDeviceContextT::Create(*TheSouthbound);
-      status_or.ok()) {
-    *device_context = status_or->release();
+  if (auto context = LiteRtDispatchDeviceContextT::Create(*TheSouthbound);
+      context) {
+    *device_context = context->release();
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to create device context: %s",
-               status_or.status().message().data());
-    return kLiteRtStatusErrorRuntimeFailure;
+               context.Error().Message().data());
+    return context.Error().Status();
   }
   return kLiteRtStatusOk;
 }
@@ -175,13 +174,13 @@ LiteRtStatus GetInputRequirements(
     LiteRtTensorBufferRequirements* tensor_buffer_requirements) {
   if (auto requirements =
           invocation_context->GetInputRequirements(input_index, *tensor_type);
-      requirements.ok()) {
+      requirements) {
     *tensor_buffer_requirements = *requirements;
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
-               requirements.status().message().data());
-    return kLiteRtStatusErrorRuntimeFailure;
+               requirements.Error().Message().data());
+    return requirements.Error().Status();
   }
 }
 
@@ -191,13 +190,13 @@ LiteRtStatus GetOutputRequirements(
     LiteRtTensorBufferRequirements* tensor_buffer_requirements) {
   if (auto requirements =
           invocation_context->GetOutputRequirements(output_index, *tensor_type);
-      requirements.ok()) {
+      requirements) {
     *tensor_buffer_requirements = *requirements;
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
-               requirements.status().message().data());
-    return kLiteRtStatusErrorRuntimeFailure;
+               requirements.Error().Message().data());
+    return requirements.Error().Status();
   }
 }
 
@@ -468,7 +467,7 @@ LiteRtStatus AttachInput(LiteRtDispatchInvocationContext invocation_context,
                          LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (auto status_or =
           invocation_context->graph()->InputEdge(graph_input_index);
-      !status_or.ok()) {
+      !status_or) {
     LITERT_LOG(LITERT_ERROR, "Unexpected graph input index: %d",
                graph_input_index);
     return kLiteRtStatusErrorInvalidArgument;
@@ -483,7 +482,7 @@ LiteRtStatus AttachOutput(LiteRtDispatchInvocationContext invocation_context,
                           int graph_output_index,
                           LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (auto status = invocation_context->graph()->OutputEdge(graph_output_index);
-      !status.ok()) {
+      !status) {
     LITERT_LOG(LITERT_ERROR, "Unexpected graph output index: %d",
                graph_output_index);
     return kLiteRtStatusErrorInvalidArgument;
@@ -526,7 +525,7 @@ LiteRtStatus DetachInput(LiteRtDispatchInvocationContext invocation_context,
                          LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (auto status_or =
           invocation_context->graph()->InputEdge(graph_input_index);
-      !status_or.ok()) {
+      !status_or) {
     LITERT_LOG(LITERT_ERROR, "Unexpected graph input index: %d",
                graph_input_index);
     return kLiteRtStatusErrorInvalidArgument;
@@ -541,7 +540,7 @@ LiteRtStatus DetachOutput(LiteRtDispatchInvocationContext invocation_context,
                           int graph_output_index,
                           LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (auto status = invocation_context->graph()->OutputEdge(graph_output_index);
-      !status.ok()) {
+      !status) {
     LITERT_LOG(LITERT_ERROR, "Unexpected graph output index: %d",
                graph_output_index);
     return kLiteRtStatusErrorInvalidArgument;
@@ -636,7 +635,7 @@ LiteRtStatus AttachInputEvent(
     LiteRtDispatchInvocationContext invocation_context, int graph_input_index,
     LiteRtEvent input_event) {
   auto status_or = invocation_context->graph()->InputEdge(graph_input_index);
-  if (!status_or.ok()) {
+  if (!status_or) {
     LITERT_LOG(LITERT_ERROR, "Unexpected graph input index: %d",
                graph_input_index);
     return kLiteRtStatusErrorInvalidArgument;
@@ -680,7 +679,7 @@ namespace {
 LiteRtStatus GetOutputEvent(LiteRtDispatchInvocationContext invocation_context,
                             int graph_output_index, LiteRtEvent* output_event) {
   auto status_or = invocation_context->graph()->OutputEdge(graph_output_index);
-  if (!status_or.ok()) {
+  if (!status_or) {
     LITERT_LOG(LITERT_ERROR, "Unexpected graph output index: %d",
                graph_output_index);
     return kLiteRtStatusErrorInvalidArgument;

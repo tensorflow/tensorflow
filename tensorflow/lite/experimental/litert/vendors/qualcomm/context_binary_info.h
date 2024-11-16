@@ -17,11 +17,10 @@
 
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "third_party/qairt/latest/include/QNN/QnnInterface.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_tensor.h"
 
@@ -30,7 +29,7 @@ namespace qnn {
 
 class GraphInfo {
  public:
-  static absl::StatusOr<GraphInfo> Create(
+  static Expected<GraphInfo> Create(
       const QnnSystemContext_GraphInfo_t& graph_info);
   const std::string& Name() const { return name_; }
   const std::vector<QnnTensor>& Inputs() const { return inputs_; }
@@ -38,7 +37,7 @@ class GraphInfo {
 
  private:
   GraphInfo() = default;
-  absl::Status Init(const QnnSystemContext_GraphInfo_t& graph_info);
+  Expected<void> Init(const QnnSystemContext_GraphInfo_t& graph_info);
   std::string name_;
   std::vector<QnnTensor> inputs_;
   std::vector<QnnTensor> outputs_;
@@ -46,9 +45,9 @@ class GraphInfo {
 
 class ContextBinaryInfo {
  public:
-  static absl::StatusOr<ContextBinaryInfo> Create(QnnManager& qnn,
-                                                  const void* exec_bytecode_ptr,
-                                                  size_t exec_bytecode_size);
+  static Expected<ContextBinaryInfo> Create(QnnManager& qnn,
+                                            const void* exec_bytecode_ptr,
+                                            size_t exec_bytecode_size);
   const std::vector<QnnTensor>& ContextTensors() const {
     return context_tensors_;
   }
@@ -56,7 +55,7 @@ class ContextBinaryInfo {
 
  private:
   ContextBinaryInfo() = default;
-  absl::Status Init(const QnnSystemContext_BinaryInfo_t& binary_info);
+  Expected<void> Init(const QnnSystemContext_BinaryInfo_t& binary_info);
   std::vector<QnnTensor> context_tensors_;
   std::vector<GraphInfo> graphs_;
 };

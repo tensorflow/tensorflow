@@ -17,7 +17,6 @@
 
 #include <initializer_list>
 #include <memory>
-#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -116,6 +115,8 @@ class Expected {
 
   // Allow for implicit conversion from convertible T value inplace.
   // NOLINTNEXTLINE
+  Expected(const T& t) : has_value_(true), value_(t) {}
+  // NOLINTNEXTLINE
   Expected(T&& t) : has_value_(true), value_(std::move(t)) {}
 
   // Construct from Unexpected inplace.
@@ -124,8 +125,7 @@ class Expected {
   // NOLINTNEXTLINE
   Expected(const Unexpected& err) : has_value_(false), unexpected_(err) {}
   // NOLINTNEXTLINE
-  Expected(Unexpected&& err)
-      : has_value_(false), unexpected_(std::forward<Unexpected>(err)) {}
+  Expected(Unexpected&& err) : has_value_(false), unexpected_(std::move(err)) {}
   // NOLINTNEXTLINE
   Expected(const class Error& e) : has_value_(false), unexpected_(e) {}
 
@@ -193,12 +193,12 @@ class Expected {
 
   const T&& Value() const&& {
     CheckVal();
-    return value_;
+    return std::move(value_);
   }
 
   T&& Value() && {
     CheckVal();
-    return value_;
+    return std::move(value_);
   }
 
   const T* operator->() const {
@@ -215,14 +215,29 @@ class Expected {
 
   T& operator*() & { return Value(); }
 
-  const T&& operator*() const&& { return Value(); }
+  const T&& operator*() const&& { return std::move(Value()); }
 
-  T&& operator*() && { return Value(); }
+  T&& operator*() && { return std::move(Value()); }
 
   // Observer for Unexpected, program exits if it doesn't have one.
   const class Error& Error() const& {
     CheckNoVal();
     return unexpected_.Error();
+  }
+
+  class Error& Error() & {
+    CheckNoVal();
+    return unexpected_.Error();
+  }
+
+  const class Error&& Error() const&& {
+    CheckNoVal();
+    return std::move(unexpected_.Error());
+  }
+
+  class Error&& Error() && {
+    CheckNoVal();
+    return std::move(unexpected_.Error());
   }
 
   // Does this expected contain a T Value. It contains an unexpected if not.
@@ -249,8 +264,7 @@ class Expected<void> {
   Expected() : has_value_(true) {}
 
   // NOLINTNEXTLINE
-  Expected(Unexpected&& err)
-      : has_value_(false), unexpected_(std::forward<Unexpected>(err)) {}
+  Expected(Unexpected&& err) : has_value_(false), unexpected_(std::move(err)) {}
 
   ~Expected() {
     if (!has_value_) {
@@ -280,6 +294,21 @@ class Expected<void> {
   const class Error& Error() const& {
     CheckNoVal();
     return unexpected_.Error();
+  }
+
+  class Error& Error() & {
+    CheckNoVal();
+    return unexpected_.Error();
+  }
+
+  const class Error&& Error() const&& {
+    CheckNoVal();
+    return std::move(unexpected_.Error());
+  }
+
+  class Error&& Error() && {
+    CheckNoVal();
+    return std::move(unexpected_.Error());
   }
 
   // Does this expected contain a T Value. It contains an unexpected if not.

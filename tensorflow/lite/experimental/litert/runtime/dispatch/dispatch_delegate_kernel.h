@@ -21,11 +21,11 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
@@ -43,8 +43,8 @@ class DispatchDelegateKernel
 
   ~DispatchDelegateKernel() override;
 
-  static absl::StatusOr<Ptr> Create(
-      std::string&& graph_name, const LiteRtDispatchDelegateOptions& options);
+  static Expected<Ptr> Create(std::string&& graph_name,
+                              const LiteRtDispatchDelegateOptions& options);
 
   TfLiteStatus Init(TfLiteOpaqueContext* context,
                     const TfLiteOpaqueDelegateParams* params) override;
@@ -63,7 +63,7 @@ class DispatchDelegateKernel
         graph_name_(std::move(graph_name)),
         device_context_(device_context) {}
 
-  absl::StatusOr<TensorBufferRequirements> GetBufferRequirements(
+  Expected<TensorBufferRequirements> GetBufferRequirements(
       const RankedTensorType& tensor_type, int io_tensor_index,
       bool is_input) const;
 

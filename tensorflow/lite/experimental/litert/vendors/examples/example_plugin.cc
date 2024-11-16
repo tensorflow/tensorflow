@@ -134,8 +134,8 @@ LiteRtStatus LiteRtCompilerPluginPartitionModel(
     LiteRtOpList selected_ops) {
   auto main_subgraph =
       litert::Model::CreateFromNonOwnedHandle(model).MainSubgraph();
-  if (!main_subgraph.ok()) {
-    return kLiteRtStatusErrorInvalidArgument;
+  if (!main_subgraph) {
+    return main_subgraph.Error().Status();
   }
 
   for (const auto& op : main_subgraph->Ops()) {

@@ -135,8 +135,6 @@ cc_library(
         ":litert_logging",
         ":litert_model",
         "//tensorflow/lite/experimental/litert/runtime:tensor_buffer",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
 )

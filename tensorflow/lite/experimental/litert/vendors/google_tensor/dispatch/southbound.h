@@ -19,15 +19,15 @@
 #include <optional>
 #include <string>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "third_party/odml/infra/southbound/sb_api.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 namespace litert {
 namespace google_tensor {
 
 class Southbound {
  public:
+  using Ptr = std::unique_ptr<Southbound>;
   struct ThrFunctions;
 
   Southbound(Southbound&) = delete;
@@ -37,14 +37,13 @@ class Southbound {
 
   ~Southbound();
 
-  static absl::StatusOr<std::unique_ptr<Southbound>> Create(
-      std::optional<std::string> shared_library_dir);
+  static Expected<Ptr> Create(std::optional<std::string> shared_library_dir);
 
   const ThrFunctions& thr_functions() const { return *thr_functions_; }
 
  private:
   Southbound();
-  absl::Status LoadSymbols(std::optional<std::string> shared_library_dir);
+  Expected<void> LoadSymbols(std::optional<std::string> shared_library_dir);
 
   void* dlib_handle_ = nullptr;
   std::unique_ptr<ThrFunctions> thr_functions_;

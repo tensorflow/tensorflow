@@ -16,14 +16,14 @@
 
 #include <cstddef>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 namespace litert {
 namespace internal {
 
-absl::StatusOr<Ratio> GetElementSize(LiteRtElementType element_type) {
+Expected<Ratio> GetElementSize(LiteRtElementType element_type) {
   switch (element_type) {
     case kLiteRtElementTypeInt4:
       return Ratio{1, 2};
@@ -50,35 +50,36 @@ absl::StatusOr<Ratio> GetElementSize(LiteRtElementType element_type) {
     case kLiteRtElementTypeComplex128:
       return Ratio{32, 1};
     default:
-      return absl::InvalidArgumentError("Unexpected element type");
+      return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                        "Unexpected element type");
   }
 }
 
-absl::StatusOr<size_t> GetNumPackedBytes(const LiteRtRankedTensorType& type) {
+Expected<size_t> GetNumPackedBytes(const LiteRtRankedTensorType& type) {
   auto element_size = GetElementSize(type.element_type);
-  if (!element_size.ok()) {
-    return element_size.status();
+  if (!element_size) {
+    return element_size.Error();
   }
 
   auto num_elements = GetNumElements(type);
-  if (!num_elements.ok()) {
-    return num_elements.status();
+  if (!num_elements) {
+    return num_elements.Error();
   }
 
   return ((*num_elements * element_size->num) + (element_size->denom - 1)) /
          element_size->denom;
 }
 
-absl::StatusOr<size_t> GetNumElements(
-    const LiteRtRankedTensorType& tensor_type) {
+Expected<size_t> GetNumElements(const LiteRtRankedTensorType& tensor_type) {
   size_t num_elements = 1;
   for (auto i = 0; i < tensor_type.layout.rank; ++i) {
     auto dim = tensor_type.layout.dimensions[i];
     if (dim < 0) {
-      return absl::InvalidArgumentError(
-          "Unexpected dynamic tensor passed as input");
+      return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                        "Unexpected dynamic tensor passed as input");
     } else if (dim == 0) {
-      return absl::InvalidArgumentError("Unexpected 0 tensor dimension");
+      return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                        "Unexpected 0 tensor dimension");
     }
     num_elements *= dim;
   }

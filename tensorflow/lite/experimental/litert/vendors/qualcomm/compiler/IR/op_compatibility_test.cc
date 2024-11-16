@@ -30,6 +30,7 @@ struct OpInfo {
   std::string op_name;
   std::string expected_type_name;
 };
+
 // TODOL: b/365299994 - Add "stablehlo_scatter" once muti subgraphs is
 // supported.
 // clang-format off
@@ -59,7 +60,7 @@ TEST_P(OpCompatibilityTest, SupportedOpsTest) {
   std::string model_path = absl::StrFormat(kOpTpl, test_params.op_name);
   auto model = litert::testing::LoadTestFileModel(model_path);
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
   auto ops = subgraph->Ops();
 
   Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();

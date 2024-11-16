@@ -16,14 +16,16 @@
 
 #include <cstddef>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/core/util/tensor_type_util.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
+
+using litert::Expected;
+using litert::Unexpected;
 
 namespace {
 
@@ -33,12 +35,12 @@ inline constexpr auto Pad(auto x, auto align) {
   return ((x + align - 1) / align) * align;
 }
 
-absl::StatusOr<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
+Expected<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
     const LiteRtRankedTensorType& tensor_type) {
   auto* tensor_strides = tensor_type.layout.strides;
   if (tensor_strides != nullptr) {
-    return absl::InternalError(
-        "Tensor strides are not supported on GoogleTensor");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Tensor strides are not supported on GoogleTensor");
   }
 
   LiteRtTensorBufferType supported_tensor_buffer_types[] = {
@@ -49,8 +51,8 @@ absl::StatusOr<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
       sizeof(supported_tensor_buffer_types[0]);
 
   auto buffer_size = litert::internal::GetNumPackedBytes(tensor_type);
-  if (!buffer_size.ok()) {
-    return buffer_size.status();
+  if (!buffer_size) {
+    return Unexpected(buffer_size.Error());
   }
 
   size_t padded_buffer_size = Pad(*buffer_size, kEdgeTpuPadding);
@@ -61,20 +63,20 @@ absl::StatusOr<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
           padded_buffer_size, /*num_strides=*/0, /*strides=*/nullptr,
           &requirements);
       status != kLiteRtStatusOk) {
-    return absl::InternalError("Not implemented");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure, "Not implemented");
   }
 
   return requirements;
 }
 }  // namespace
 
-absl::StatusOr<LiteRtTensorBufferRequirements>
+Expected<LiteRtTensorBufferRequirements>
 LiteRtDispatchInvocationContextT::GetInputRequirements(
     int input_index, const LiteRtRankedTensorType& tensor_type) {
   return GetTensorBufferRequirements(tensor_type);
 }
 
-absl::StatusOr<LiteRtTensorBufferRequirements>
+Expected<LiteRtTensorBufferRequirements>
 LiteRtDispatchInvocationContextT::GetOutputRequirements(
     int output_index, const LiteRtRankedTensorType& tensor_type) {
   return GetTensorBufferRequirements(tensor_type);

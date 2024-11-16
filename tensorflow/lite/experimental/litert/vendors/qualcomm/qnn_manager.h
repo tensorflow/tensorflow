@@ -24,7 +24,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
@@ -35,6 +34,7 @@
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemContext.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemInterface.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 
 //===----------------------------------------------------------------------===//
@@ -78,7 +78,7 @@ class QnnManager {
 
   ~QnnManager();
 
-  static absl::StatusOr<Ptr> Create(
+  static Expected<Ptr> Create(
       absl::Span<const QnnBackend_Config_t*> configs,
       std::optional<std::string> shared_library_dir = std::nullopt,
       std::optional<QnnHtpDevice_Arch_t> soc_model = std::nullopt);
@@ -99,14 +99,14 @@ class QnnManager {
   //
 
   // Create system context handle.
-  absl::StatusOr<SystemContextHandle> CreateSystemContextHandle();
+  Expected<SystemContextHandle> CreateSystemContextHandle();
 
   // Create a context handle for compilation.
-  absl::StatusOr<ContextHandle> CreateContextHandle(
+  Expected<ContextHandle> CreateContextHandle(
       absl::Span<const QnnContext_Config_t*> configs);
 
   // Create a context handle for inference, from a given bytecode.
-  absl::StatusOr<ContextHandle> CreateContextHandle(
+  Expected<ContextHandle> CreateContextHandle(
       absl::Span<const QnnContext_Config_t*> configs,
       absl::Span<const uint8_t> bytecode, Qnn_ProfileHandle_t profile_handle);
 

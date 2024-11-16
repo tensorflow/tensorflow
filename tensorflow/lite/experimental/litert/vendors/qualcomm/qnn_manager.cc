@@ -18,8 +18,6 @@
 #include <iostream>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -31,6 +29,7 @@
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemContext.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_log.h"
@@ -318,32 +317,34 @@ LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
   return kLiteRtStatusOk;
 }
 
-absl::StatusOr<QnnManager::SystemContextHandle>
+Expected<QnnManager::SystemContextHandle>
 QnnManager::CreateSystemContextHandle() {
   QnnSystemContext_Handle_t system_context_handle;
   if (auto status = SystemApi()->systemContextCreate(&system_context_handle);
       status != QNN_SUCCESS) {
     LITERT_LOG(LITERT_ERROR, "Failed to create QNN system context: %d", status);
-    return absl::InternalError("Failed to create QNN system context");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to create QNN system context");
   }
   auto deleter = SystemApi()->systemContextFree;
   return SystemContextHandle{system_context_handle, deleter};
 }
 
-absl::StatusOr<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
+Expected<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
     absl::Span<const QnnContext_Config_t*> configs) {
   Qnn_ContextHandle_t context_handle;
   if (auto status = Api()->contextCreate(BackendHandle(), DeviceHandle(),
                                          configs.data(), &context_handle);
       status != QNN_SUCCESS) {
     LITERT_LOG(LITERT_ERROR, "Failed to create QNN context: %d", status);
-    return absl::InternalError("Failed to create QNN context");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to create QNN context");
   }
   auto deleter = Api()->contextFree;
   return ContextHandle{context_handle, /*profile_handle=*/nullptr, deleter};
 }
 
-absl::StatusOr<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
+Expected<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
     absl::Span<const QnnContext_Config_t*> configs,
     absl::Span<const uint8_t> bytecode, Qnn_ProfileHandle_t profile_handle) {
   Qnn_ContextHandle_t context_handle;
@@ -352,20 +353,21 @@ absl::StatusOr<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
           bytecode.size(), &context_handle, profile_handle);
       status != QNN_SUCCESS) {
     LITERT_LOG(LITERT_ERROR, "Failed to create QNN context: %d", status);
-    return absl::InternalError("Failed to create QNN context");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to create QNN context");
   }
   auto deleter = Api()->contextFree;
   return ContextHandle{context_handle, profile_handle, deleter};
 }
 
-absl::StatusOr<QnnManager::Ptr> QnnManager::Create(
+Expected<QnnManager::Ptr> QnnManager::Create(
     absl::Span<const QnnBackend_Config_t*> configs,
     std::optional<std::string> shared_library_dir,
     std::optional<QnnHtpDevice_Arch_t> soc_model) {
   Ptr qnn_manager(new QnnManager);
-  if (qnn_manager->Init(configs, shared_library_dir, soc_model) !=
-      kLiteRtStatusOk) {
-    return absl::InternalError("Failed to set up QNN manager");
+  if (auto status = qnn_manager->Init(configs, shared_library_dir, soc_model);
+      status != kLiteRtStatusOk) {
+    return Unexpected(status, "Failed to set up QNN manager");
   }
   return qnn_manager;
 }

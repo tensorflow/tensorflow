@@ -20,10 +20,10 @@
 #include <optional>
 #include <string>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "third_party/odml/infra/southbound/sb_api.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 #define Load(H, S)                                                 \
   H = reinterpret_cast<decltype(&S)>(::dlsym(dlib_handle_, #S));   \
@@ -49,24 +49,25 @@ Southbound::~Southbound() {
   }
 }
 
-absl::StatusOr<std::unique_ptr<Southbound>> Southbound::Create(
+Expected<Southbound::Ptr> Southbound::Create(
     std::optional<std::string> shared_library_dir) {
-  std::unique_ptr<Southbound> southbound(new Southbound);
-  if (auto status = southbound->LoadSymbols(shared_library_dir); !status.ok()) {
-    return status;
+  Ptr southbound(new Southbound);
+  if (auto status = southbound->LoadSymbols(shared_library_dir); !status) {
+    return Unexpected(status.Error());
   }
 
   return southbound;
 }
 
-absl::Status Southbound::LoadSymbols(
+Expected<void> Southbound::LoadSymbols(
     std::optional<std::string> shared_library_dir) {
   // Always load the Southbound API library from the vendor partition.
   (void)shared_library_dir;
 
   dlib_handle_ = ::dlopen(kSouthBoundLibPath, RTLD_NOW | RTLD_LOCAL);
   if (!dlib_handle_) {
-    return absl::InternalError("Failed to load Southbound shared library");
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Failed to load Southbound shared library");
   }
 
   // Binds all supported symbols from the shared library to the function

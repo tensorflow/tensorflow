@@ -182,8 +182,8 @@ LiteRtStatus LiteRtCompilerPluginPartitionModel(
     LiteRtOpList selected_ops) {
   auto m = litert::Model::CreateFromNonOwnedHandle(model);
   auto subgraph = m.MainSubgraph();
-  if (!subgraph.ok()) {
-    return kLiteRtStatusErrorNotFound;
+  if (!subgraph) {
+    return subgraph.Error().Status();
   }
 
   for (const auto& op : subgraph->Ops()) {
@@ -214,9 +214,9 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   auto backend_configs = QnnManager::DefaultBackendConfigs();
   auto qnn_manager = QnnManager::Create(
       backend_configs, /*shared_library_dir=*/std::nullopt, opt_soc_model);
-  if (!qnn_manager.ok()) {
-    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.status().message().data());
-    return kLiteRtStatusErrorRuntimeFailure;
+  if (!qnn_manager) {
+    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().data());
+    return qnn_manager.Error().Status();
   }
   LITERT_LOG(LITERT_INFO, "%s", "QNN manager created");
 
@@ -225,9 +225,9 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   LITERT_LOG(LITERT_INFO, "%s", "Creating context handle");
   auto context_configs = QnnManager::DefaultContextConfigs();
   auto context_handle = (*qnn_manager)->CreateContextHandle(context_configs);
-  if (!context_handle.ok()) {
-    LITERT_LOG(LITERT_ERROR, "%s", context_handle.status().message().data());
-    return kLiteRtStatusErrorRuntimeFailure;
+  if (!context_handle) {
+    LITERT_LOG(LITERT_ERROR, "%s", context_handle.Error().Message().data());
+    return context_handle.Error().Status();
   }
   LITERT_LOG(LITERT_INFO, "%s", "Context handle created");
 

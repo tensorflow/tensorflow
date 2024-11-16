@@ -30,13 +30,13 @@ using ::testing::HasSubstr;
 TEST(QnnManagerTest, SetupQnnManager) {
   auto configs = QnnManager::DefaultBackendConfigs();
   auto qnn = QnnManager::Create(configs);
-  ASSERT_TRUE(qnn.ok());
+  ASSERT_TRUE(qnn);
 }
 
 TEST(QnnManagerTest, Dump) {
   auto configs = QnnManager::DefaultBackendConfigs();
   auto qnn = QnnManager::Create(configs);
-  ASSERT_TRUE(qnn.ok());
+  ASSERT_TRUE(qnn);
 
   std::ostringstream dump;
   Dump(**qnn, dump);

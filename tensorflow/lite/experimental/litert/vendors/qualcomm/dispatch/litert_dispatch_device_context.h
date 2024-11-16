@@ -15,11 +15,10 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_DISPATCH_LITERT_DISPATCH_DEVICE_CONTEXT_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_DISPATCH_LITERT_DISPATCH_DEVICE_CONTEXT_H_
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "third_party/qairt/latest/include/QNN/QnnInterface.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/dispatch/registry.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
@@ -30,23 +29,23 @@ class LiteRtDispatchDeviceContextT {
 
   ~LiteRtDispatchDeviceContextT() = default;
 
-  static absl::StatusOr<Ptr> Create(litert::qnn::QnnManager& qnn_manager);
+  static litert::Expected<Ptr> Create(litert::qnn::QnnManager& qnn_manager);
 
-  absl::StatusOr<LiteRtTensorBufferHandle> RegisterTensorBuffer(
+  litert::Expected<LiteRtTensorBufferHandle> RegisterTensorBuffer(
       LiteRtTensorBuffer tensor_buffer) {
     return tensor_buffer_registry_.Register(
         TensorBufferRegistryEntry(tensor_buffer));
   }
 
-  absl::Status UnregisterTensorBuffer(
+  litert::Expected<void> UnregisterTensorBuffer(
       LiteRtTensorBufferHandle tensor_buffer_handle) {
     return tensor_buffer_registry_.Unregister(tensor_buffer_handle);
   }
 
-  absl::StatusOr<LiteRtTensorBuffer> GetTensorBuffer(
+  litert::Expected<LiteRtTensorBuffer> GetTensorBuffer(
       LiteRtTensorBufferHandle tensor_buffer_handle);
 
-  absl::StatusOr<Qnn_MemHandle_t> GetMemHandle(
+  litert::Expected<Qnn_MemHandle_t> GetMemHandle(
       LiteRtTensorBufferHandle tensor_buffer_handle,
       const Qnn_Tensor_t& tensor);
 
@@ -69,7 +68,7 @@ class LiteRtDispatchDeviceContextT {
   LiteRtDispatchDeviceContextT(litert::qnn::QnnManager& qnn_manager)
       : qnn_manager_(qnn_manager) {}
 
-  absl::StatusOr<Qnn_MemHandle_t> RegisterTensorBuffer(
+  litert::Expected<Qnn_MemHandle_t> RegisterTensorBuffer(
       LiteRtTensorBuffer tensor_buffer, const Qnn_Tensor_t& tensor);
 
   litert::qnn::QnnManager& qnn_manager_;

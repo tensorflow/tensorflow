@@ -75,7 +75,7 @@ TEST(CcModelTest, SimpleModel) {
             kLiteRtStatusOk);
 
   auto subgraph_0 = model.Subgraph(0);
-  ASSERT_TRUE(subgraph_0.ok());
+  ASSERT_TRUE(subgraph_0);
   EXPECT_EQ(subgraph_0->Get(), litert_subgraph_0);
 
   auto main_subgraph = model.MainSubgraph();

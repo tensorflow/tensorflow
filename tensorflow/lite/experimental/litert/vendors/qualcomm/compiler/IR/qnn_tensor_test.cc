@@ -86,7 +86,7 @@ TEST(TestInitQnnTensor, MoveToId) {
 TEST(TestLegalizeTensor, SimpleSupportedTensorSubgraphInput) {
   auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
   auto outputs = subgraph->Outputs();
 
   auto qnn_tensor = litert::qnn::BuildDefaultTensor();
@@ -110,7 +110,7 @@ TEST(TestLegalizeTensor, SimpleSupportedTensor) {
   auto model = litert::testing::LoadTestFileModel("simple_multi_op.tflite");
 
   auto subgraph = model.MainSubgraph();
-  EXPECT_TRUE(subgraph.ok());
+  EXPECT_TRUE(subgraph);
   auto ops = subgraph->Ops();
   auto op_outs = ops.at(1).Outputs();
 
