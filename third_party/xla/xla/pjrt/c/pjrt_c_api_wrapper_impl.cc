@@ -2471,7 +2471,6 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       /*PJRT_Buffer_Memory=*/pjrt::PJRT_Buffer_Memory,
       /*PJRT_Buffer_Delete=*/pjrt::PJRT_Buffer_Delete,
       /*PJRT_Buffer_IsDeleted=*/pjrt::PJRT_Buffer_IsDeleted,
-      /*PJRT_Buffer_CopyRawToHost=*/pjrt::PJRT_Buffer_CopyRawToHost,
       /*PJRT_Buffer_CopyToDevice=*/pjrt::PJRT_Buffer_CopyToDevice,
       /*PJRT_Buffer_ToHostBuffer=*/pjrt::PJRT_Buffer_ToHostBuffer,
       /*PJRT_Buffer_IsOnCpu=*/pjrt::PJRT_Buffer_IsOnCpu,
@@ -2530,6 +2529,7 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
 
       /*PJRT_ExecuteContext_Create=*/execute_context_create_fn,
       /*PJRT_ExecuteContext_Destroy=*/pjrt::PJRT_ExecuteContext_Destroy,
+      /*PJRT_Buffer_CopyRawToHost=*/pjrt::PJRT_Buffer_CopyRawToHost,
   };
 }
 

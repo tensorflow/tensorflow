@@ -79,7 +79,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 56
+#define PJRT_API_MINOR 57
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -2220,7 +2220,6 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Memory);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);
-  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyRawToHost);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToDevice);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ToHostBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
@@ -2265,11 +2264,11 @@ typedef struct PJRT_Api {
 
   _PJRT_API_STRUCT_FIELD(PJRT_ExecuteContext_Create);
   _PJRT_API_STRUCT_FIELD(PJRT_ExecuteContext_Destroy);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyRawToHost);
 } PJRT_Api;
 
 enum {
-  PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_TopologyDescription)
+  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_CopyRawToHost)
 };
 
 #undef _PJRT_API_STRUCT_FIELD
