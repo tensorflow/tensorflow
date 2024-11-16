@@ -89,4 +89,8 @@ inline To down_cast(From& f) {
 
 }  // namespace tensorflow
 
+namespace tsl {
+using ::tensorflow::down_cast;
+}
+
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_CASTS_H_
