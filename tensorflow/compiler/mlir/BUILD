@@ -123,6 +123,7 @@ cc_library(
     hdrs = ["mlir_graph_optimization_pass.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:import_model",

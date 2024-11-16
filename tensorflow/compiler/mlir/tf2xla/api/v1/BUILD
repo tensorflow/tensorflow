@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -301,4 +302,11 @@ tf_cc_test(
         "@local_tsl//tsl/platform:status",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
+)
+
+tf_proto_library(
+    name = "mlir_bridge_config_v1_proto",
+    srcs = ["mlir_bridge_config_v1.proto"],
+    protodeps = tf_additional_all_protos(),
+    visibility = ["//visibility:public"],
 )
