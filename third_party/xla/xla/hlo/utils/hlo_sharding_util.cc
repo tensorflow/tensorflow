@@ -1681,6 +1681,8 @@ std::optional<HloSharding> GatherOperandShardingFromOutputParallelDimensions(
   GatherScatterParallelDims parallel_dims;
 
   const GatherDimensionNumbers& dnums = gather.gather_dimension_numbers();
+  std::optional<GatherScatterParallelDims> implicit_parallel_dims =
+      GetGatherParallelBatchDims(gather, call_graph);
   if (!dnums.operand_batching_dims().empty()) {
     parallel_dims.operand_parallel_dims.assign(
         dnums.operand_batching_dims().begin(),
@@ -1688,21 +1690,20 @@ std::optional<HloSharding> GatherOperandShardingFromOutputParallelDimensions(
     parallel_dims.indices_parallel_dims.assign(
         dnums.start_indices_batching_dims().begin(),
         dnums.start_indices_batching_dims().end());
-  }
-  if (std::optional<GatherScatterParallelDims> implicit_parallel_dims =
-          GetGatherParallelBatchDims(gather, call_graph)) {
-    parallel_dims.operand_parallel_dims.insert(
-        parallel_dims.operand_parallel_dims.end(),
-        implicit_parallel_dims->operand_parallel_dims.begin(),
-        implicit_parallel_dims->operand_parallel_dims.end());
-    parallel_dims.indices_parallel_dims.insert(
-        parallel_dims.indices_parallel_dims.end(),
-        implicit_parallel_dims->indices_parallel_dims.begin(),
-        implicit_parallel_dims->indices_parallel_dims.end());
+  } else if (implicit_parallel_dims.has_value()) {
+    parallel_dims = *implicit_parallel_dims;
+  } else {
+    return std::nullopt;
   }
 
-  if (parallel_dims.operand_parallel_dims.empty()) {
-    return std::nullopt;
+  if (implicit_parallel_dims.has_value() &&
+      absl::c_any_of(
+          implicit_parallel_dims->operand_parallel_dims, [&dnums](int64_t i) {
+            return !absl::c_linear_search(dnums.operand_batching_dims(), i);
+          })) {
+    LOG(WARNING) << "There are implicit batching dimensions for gather "
+                    "operations. Please consider using explicit batching "
+                    "dimensions or file a bug against Shardy or XLA.";
   }
 
   return PropagateShardingAlongDimsAndReplicateOthers(
@@ -1864,27 +1865,28 @@ std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
   GatherScatterParallelDims parallel_dims;
 
   const ScatterDimensionNumbers& dnums = scatter.scatter_dimension_numbers();
+  std::optional<GatherScatterParallelDims> implicit_parallel_dims =
+      GetScatterParallelBatchDims(scatter, call_graph);
   if (!dnums.input_batching_dims().empty()) {
     parallel_dims.operand_parallel_dims.assign(
         dnums.input_batching_dims().begin(), dnums.input_batching_dims().end());
     parallel_dims.indices_parallel_dims.assign(
         dnums.scatter_indices_batching_dims().begin(),
         dnums.scatter_indices_batching_dims().end());
-  }
-  if (std::optional<GatherScatterParallelDims> implicit_parallel_dims =
-          GetScatterParallelBatchDims(scatter, call_graph)) {
-    parallel_dims.operand_parallel_dims.insert(
-        parallel_dims.operand_parallel_dims.end(),
-        implicit_parallel_dims->operand_parallel_dims.begin(),
-        implicit_parallel_dims->operand_parallel_dims.end());
-    parallel_dims.indices_parallel_dims.insert(
-        parallel_dims.indices_parallel_dims.end(),
-        implicit_parallel_dims->indices_parallel_dims.begin(),
-        implicit_parallel_dims->indices_parallel_dims.end());
+  } else if (implicit_parallel_dims.has_value()) {
+    parallel_dims = *implicit_parallel_dims;
+  } else {
+    return std::nullopt;
   }
 
-  if (parallel_dims.operand_parallel_dims.empty()) {
-    return std::nullopt;
+  if (implicit_parallel_dims.has_value() &&
+      absl::c_any_of(
+          implicit_parallel_dims->operand_parallel_dims, [&dnums](int64_t i) {
+            return !absl::c_linear_search(dnums.input_batching_dims(), i);
+          })) {
+    LOG(WARNING) << "There are implicit batching dimensions for scatter "
+                    "operations. Please consider using explicit batching "
+                    "dimensions or file a bug against Shardy or XLA.";
   }
 
   return PropagateShardingAlongDimsAndReplicateOthers(

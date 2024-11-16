@@ -75,8 +75,10 @@ class SpmdPartitioningTest
       bool unroll_windowed_einsum = false,
       bool bidirectional_windowed_einsum = false,
       int64_t threshold_for_windowed_einsum_mib = -1,
-      PartitioningMethod gather_method = PartitioningMethod::kIndexParallel,
-      PartitioningMethod scatter_method = PartitioningMethod::kIndexParallel,
+      PartitioningMethod gather_method =
+          PartitioningMethod::kExplicitBatchOrIndexParallel,
+      PartitioningMethod scatter_method =
+          PartitioningMethod::kExplicitBatchOrIndexParallel,
       std::optional<int64_t> total_bytes_windowed_einsum_threshold =
           std::nullopt) {
     // Some tests (BackpropFilter convs) set this flag false to test two
@@ -4941,8 +4943,8 @@ ENTRY entry {
                            /*unroll_windowed_einsum=*/false,
                            /*bidirectional_windowed_einsum=*/false,
                            /*threshold_for_windowed_einsum_mib=*/5,
-                           PartitioningMethod::kIndexParallel,
-                           PartitioningMethod::kIndexParallel,
+                           PartitioningMethod::kExplicitBatchOrIndexParallel,
+                           PartitioningMethod::kExplicitBatchOrIndexParallel,
                            /*total_bytes_windowed_einsum_threshold=*/1 << 30));
   VLOG(1) << module->ToString();
   // Total bytes threshold overrides threshold_for_windowed_einsum_mib,
@@ -7819,7 +7821,7 @@ ENTRY entry {
   EXPECT_THAT(module->entry_computation()->root_instruction(), gather);
 }
 
-TEST_P(SpmdPartitioningTest, GatherExplicitBatchAndIndexPassthroughDims) {
+TEST_P(SpmdPartitioningTest, GatherExplicitBatchAndIndexPassthroughDims1) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -7838,6 +7840,28 @@ ENTRY entry {
   auto input = AllOf(op::Shape("f32[10,3,7,4]"), op::Parameter(0));
   auto indices = AllOf(op::Shape("s32[7,10,3,2]"), op::Parameter(1));
   auto gather = AllOf(op::Shape("f32[7,10,3,2]"), op::Gather(input, indices));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), gather);
+}
+
+TEST_P(SpmdPartitioningTest, GatherExplicitBatchAndIndexPassthroughDims2) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[4,7,32] parameter(0), sharding={devices=[4,1,1,4]<=[16] last_tile_dim_replicate}
+  %indices = s32[4,16,3,1] parameter(1), sharding={devices=[4,4,1,1]<=[16]}
+  ROOT gather.0 = f32[4,16,3,32] gather(%input, %indices),
+    offset_dims={3}, collapsed_slice_dims={1}, start_index_map={1},
+    operand_batching_dims={0}, start_indices_batching_dims={0},
+    index_vector_dim=3, slice_sizes={1,1,32}, sharding={devices=[4,4,1,1]<=[16]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+  VLOG(1) << module->ToString();
+
+  auto input = AllOf(op::Shape("f32[1,7,32]"), op::Parameter(0));
+  auto indices = AllOf(op::Shape("s32[1,4,3,1]"), op::Parameter(1));
+  auto gather = AllOf(op::Shape("f32[1,4,3,32]"), op::Gather(input, indices));
   EXPECT_THAT(module->entry_computation()->root_instruction(), gather);
 }
 
@@ -11805,9 +11829,8 @@ ENTRY entry {
     slice_sizes={1,16}, sharding={devices=[4,1,1,8]<=[32] last_tile_dim_replicate}
 })";
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/32, true, false, false,
-                           false, -1, PartitioningMethod::kIndexParallel));
+      auto module, PartitionComputation(hlo_string, /*num_devices=*/32, true,
+                                        false, false, false, -1));
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
@@ -12786,9 +12809,8 @@ ENTRY entry {
       index_vector_dim=2, sharding={devices=[8,1,4]<=[4,8]T(1,0) last_tile_dim_replicate}
 })";
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      PartitionComputation(hlo_string, /*num_devices=*/32, true, false, false,
-                           false, -1, PartitioningMethod::kIndexParallel));
+      auto module, PartitionComputation(hlo_string, /*num_devices=*/32, true,
+                                        false, false, false, -1));
   VLOG(1) << module->ToString();
   auto all_to_all = FindInstruction(module.get(), HloOpcode::kAllToAll);
   EXPECT_NE(all_to_all, nullptr);

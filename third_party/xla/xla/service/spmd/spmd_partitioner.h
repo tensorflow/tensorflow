@@ -54,8 +54,7 @@ namespace spmd {
 
 // Enum representing the partitioning methods for gather and scatter.
 enum class PartitioningMethod {
-  kExplicitBatch,
-  kIndexParallel,
+  kExplicitBatchOrIndexParallel,
   kOperandPassthrough,
   kTrivialSlicedOperand,
   kIndexPassthrough,
@@ -112,11 +111,11 @@ struct SpmdPartitionerOptions {
 
   // Partitioning method to prioritize for gather operations.
   PartitioningMethod gather_partition_method =
-      PartitioningMethod::kIndexParallel;
+      PartitioningMethod::kExplicitBatchOrIndexParallel;
 
   // Partitioning method to prioritize for scatter operations.
   PartitioningMethod scatter_partition_method =
-      PartitioningMethod::kIndexParallel;
+      PartitioningMethod::kExplicitBatchOrIndexParallel;
 
   // The minimum size to enable windowed einsum in total bytes.
   // This combines sizes in bytes of both operands.

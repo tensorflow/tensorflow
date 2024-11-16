@@ -49,9 +49,10 @@ namespace xla {
 namespace spmd {
 namespace {
 using hlo_sharding_util::GroupedSharding;
-PartitioningMethod gather_partition_method = PartitioningMethod::kIndexParallel;
+PartitioningMethod gather_partition_method =
+    PartitioningMethod::kExplicitBatchOrIndexParallel;
 PartitioningMethod scatter_partition_method =
-    PartitioningMethod::kIndexParallel;
+    PartitioningMethod::kExplicitBatchOrIndexParallel;
 
 // Generates per-group partitioned hlo based on given grouped sharding.
 PartitionedHlo PerGroupPartitionedHlo(
@@ -719,62 +720,59 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
       .hlo();
 }
 
-// Partition a gather over indices dimensions that are considered parallel
-// (which means that the indices access the operand in a monotonically
-// increasing way across the respective operand dimension referenced by the
-// index).
-absl::StatusOr<HloInstruction*> PartitionGatherIndexParallelDimensions(
-    const HloGatherInstruction* gather, PartitionedHlo operand,
-    PartitionedHlo indices, const Shape& output_shape,
-    const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
-    absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor,
-    bool allow_recursive) {
-  std::optional<hlo_sharding_util::GatherScatterParallelDims> parallel_dims =
-      hlo_sharding_util::GetGatherParallelBatchDims(*gather,
-                                                    visitor->call_graph());
-  if (!parallel_dims.has_value()) {
-    return nullptr;
-  }
-  return PartitionGatherParallelDimensions(
-      gather, operand, indices, output_shape, output_sharding, batch_dims,
-      slice_sizes, visitor, allow_recursive, *parallel_dims,
-      /*need_offset=*/true);
-}
-
-// Partition a gather over explicit batch dimensions defined in
-// operand_batching_dims and start_indices_batching_dims.
-absl::StatusOr<HloInstruction*> PartitionGatherExplicitBatchDimensions(
+// Partition a gather over two kinds of dimensions.
+// 1. Explicit batch dimensions are defined in operand_batching_dims and
+// start_indices_batching_dims.
+// 2. Index parallel dimensions satisfy that the indices access the operand in a
+// monotonically increasing way across the respective operand dimension
+// referenced by the index.
+// We do not expect both to be defined at the same time.
+absl::StatusOr<HloInstruction*>
+PartitionGatherExplicitBatchOrIndexParallelDimensions(
     const HloGatherInstruction* gather, PartitionedHlo operand,
     PartitionedHlo indices, const Shape& output_shape,
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor,
     bool allow_recursive) {
   const GatherDimensionNumbers& dnums = gather->gather_dimension_numbers();
-  if (dnums.operand_batching_dims().empty()) {
+  hlo_sharding_util::GatherScatterParallelDims parallel_dims;
+  std::optional<hlo_sharding_util::GatherScatterParallelDims>
+      index_parallel_dims = hlo_sharding_util::GetGatherParallelBatchDims(
+          *gather, visitor->call_graph());
+  if (!dnums.operand_batching_dims().empty()) {
+    parallel_dims.operand_parallel_dims.assign(
+        dnums.operand_batching_dims().begin(),
+        dnums.operand_batching_dims().end());
+    parallel_dims.indices_parallel_dims.assign(
+        dnums.start_indices_batching_dims().begin(),
+        dnums.start_indices_batching_dims().end());
+  } else if (index_parallel_dims.has_value()) {
+    parallel_dims = *index_parallel_dims;
+  } else {
     return nullptr;
   }
 
-  hlo_sharding_util::GatherScatterParallelDims parallel_dims;
-  parallel_dims.operand_parallel_dims.assign(
-      dnums.operand_batching_dims().begin(),
-      dnums.operand_batching_dims().end());
-  parallel_dims.indices_parallel_dims.assign(
-      dnums.start_indices_batching_dims().begin(),
-      dnums.start_indices_batching_dims().end());
+  if (index_parallel_dims.has_value() &&
+      absl::c_any_of(
+          index_parallel_dims->operand_parallel_dims, [&dnums](int64_t i) {
+            return !absl::c_linear_search(dnums.operand_batching_dims(), i);
+          })) {
+    LOG(WARNING) << "There are implicit batching dimensions for gather "
+                    "operations. Please consider using explicit batching "
+                    "dimensions or file a bug against Shardy or XLA.";
+  }
 
   return PartitionGatherParallelDimensions(
       gather, operand, indices, output_shape, output_sharding, batch_dims,
       slice_sizes, visitor, allow_recursive, parallel_dims,
-      /*need_offset=*/false);
+      /*need_offset=*/dnums.operand_batching_dims().empty());
 }
 
 // Returns a full list of partitioning methods used for gather.
 std::vector<std::pair<decltype(PartitionGather)*, absl::string_view>>
 GatherPartitionMethods() {
-  return {{PartitionGatherExplicitBatchDimensions,
-           "PartitionGatherExplicitBatchDimensions"},
-          {PartitionGatherIndexParallelDimensions,
-           "PartitionGatherIndexParallelDimensions"},
+  return {{PartitionGatherExplicitBatchOrIndexParallelDimensions,
+           "PartitionGatherExplicitBatchOrIndexParallelDimensions"},
           {PartitionGatherOperandPassthroughDimensions,
            "PartitionGatherOperandPassthroughDimensions"},
           {PartitionGatherTrivialSlicedOperandDimensions,
@@ -786,10 +784,8 @@ GatherPartitionMethods() {
 // Helper function to get the gather partitioning method.
 decltype(PartitionGather)* GetGatherPartitionMethod(PartitioningMethod method) {
   switch (method) {
-    case PartitioningMethod::kExplicitBatch:
-      return PartitionGatherExplicitBatchDimensions;
-    case PartitioningMethod::kIndexParallel:
-      return PartitionGatherIndexParallelDimensions;
+    case PartitioningMethod::kExplicitBatchOrIndexParallel:
+      return PartitionGatherExplicitBatchOrIndexParallelDimensions;
     case PartitioningMethod::kOperandPassthrough:
       return PartitionGatherOperandPassthroughDimensions;
     case PartitioningMethod::kTrivialSlicedOperand:
@@ -797,7 +793,7 @@ decltype(PartitionGather)* GetGatherPartitionMethod(PartitioningMethod method) {
     case PartitioningMethod::kIndexPassthrough:
       return PartitionGatherIndexPassthroughDimensions;
     default:
-      return PartitionGatherExplicitBatchDimensions;
+      return PartitionGatherExplicitBatchOrIndexParallelDimensions;
   }
 }
 
@@ -813,8 +809,7 @@ std::pair<int64_t, int64_t> GatherPartitionMethodCostModel(
       GetGatherPartitionMethod(gather_partition_method);
   if (partition_method == zero_cost_method) {
     // Always prioritize the user's chosen partitioning, and assume it has zero
-    // cost.
-    // This defaults to IndexParallel.
+    // cost. This defaults to ExplicitBatchOrIndexParallel.
     return {0, 0};
   }
   return EvaluatePartitionCost(gather, partition_method, gather, operand,
@@ -849,13 +844,7 @@ std::vector<decltype(PartitionGather)*> GatherPartitionMethodsOrderedByCost(
   }
   absl::c_sort(ordered_partition_methods, [&](decltype(PartitionGather)* lhs,
                                               decltype(PartitionGather)* rhs) {
-    auto [lhs_memory_cost, lhs_communication_cost] =
-        partition_method_costs[lhs];
-    auto [rhs_memory_cost, rhs_communication_cost] =
-        partition_method_costs[rhs];
-    return lhs_memory_cost != rhs_memory_cost
-               ? lhs_memory_cost < rhs_memory_cost
-               : lhs_communication_cost < rhs_communication_cost;
+    return partition_method_costs[lhs] < partition_method_costs[rhs];
   });
   VLOG(5) << "Gather partitioning methods(ordered by cost):";
   for (auto partition_method : ordered_partition_methods) {
@@ -1230,53 +1219,51 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
       .hlo();
 }
 
-// Partition a scatter over a indices dimensions that are cosidered parallel
-// (which means that the indices access the operand in a monotonically
-// increasing way across the respective operand dimension referenced by the
-// index).
-absl::StatusOr<HloInstruction*> PartitionScatterIndexParallelDimensions(
-    const HloScatterInstruction* scatter, std::vector<PartitionedHlo> operands,
-    PartitionedHlo indices, std::vector<PartitionedHlo> updates,
-    const Shape& output_shape, const HloSharding& output_sharding,
-    absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor,
-    bool allow_recursive) {
-  std::optional<hlo_sharding_util::GatherScatterParallelDims> parallel_dims =
-      hlo_sharding_util::GetScatterParallelBatchDims(*scatter,
-                                                     visitor->call_graph());
-  if (!parallel_dims) {
-    return nullptr;
-  }
-
-  return PartitionScatterParallelDimensions(
-      scatter, operands, indices, updates, output_shape, output_sharding,
-      slice_sizes, visitor, allow_recursive, *parallel_dims, true);
-}
-
-// Partition a scatter over a indices dimensions that are cosidered parallel
-// (which means that the indices access the operand in a monotonically
-// increasing way across the respective operand dimension referenced by the
-// index).
-absl::StatusOr<HloInstruction*> PartitionScatterExplicitBatchDimensions(
+// Partition a scatter over two kinds of dimensions:
+// 1. Explicit batch dimensions are defined in input_batching_dims and
+// scatter_indices_batching_dims.
+// 2. Index parallel dimensions satisfy that the indices access the operand in a
+// monotonically increasing way across the respective operand dimension
+// referenced by the index.
+// We do not expect both to be defined at the same time.
+absl::StatusOr<HloInstruction*>
+PartitionScatterExplicitBatchOrIndexParallelDimensions(
     const HloScatterInstruction* scatter, std::vector<PartitionedHlo> operands,
     PartitionedHlo indices, std::vector<PartitionedHlo> updates,
     const Shape& output_shape, const HloSharding& output_sharding,
     absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor,
     bool allow_recursive) {
   const ScatterDimensionNumbers& dnums = scatter->scatter_dimension_numbers();
-  if (dnums.input_batching_dims().empty()) {
+  hlo_sharding_util::GatherScatterParallelDims parallel_dims;
+  std::optional<hlo_sharding_util::GatherScatterParallelDims>
+      index_parallel_dims = hlo_sharding_util::GetScatterParallelBatchDims(
+          *scatter, visitor->call_graph());
+  if (!dnums.input_batching_dims().empty()) {
+    parallel_dims.operand_parallel_dims.assign(
+        dnums.input_batching_dims().begin(), dnums.input_batching_dims().end());
+    parallel_dims.indices_parallel_dims.assign(
+        dnums.scatter_indices_batching_dims().begin(),
+        dnums.scatter_indices_batching_dims().end());
+  } else if (index_parallel_dims.has_value()) {
+    parallel_dims = *index_parallel_dims;
+  } else {
     return nullptr;
   }
 
-  hlo_sharding_util::GatherScatterParallelDims parallel_dims;
-  parallel_dims.operand_parallel_dims.assign(
-      dnums.input_batching_dims().begin(), dnums.input_batching_dims().end());
-  parallel_dims.indices_parallel_dims.assign(
-      dnums.scatter_indices_batching_dims().begin(),
-      dnums.scatter_indices_batching_dims().end());
+  if (index_parallel_dims.has_value() &&
+      absl::c_any_of(
+          index_parallel_dims->operand_parallel_dims, [&dnums](int64_t i) {
+            return !absl::c_linear_search(dnums.input_batching_dims(), i);
+          })) {
+    LOG(WARNING) << "There are implicit batching dimensions for scatter "
+                    "operations. Please consider using explicit batching "
+                    "dimensions or file a bug against Shardy or XLA.";
+  }
 
   return PartitionScatterParallelDimensions(
       scatter, operands, indices, updates, output_shape, output_sharding,
-      slice_sizes, visitor, allow_recursive, parallel_dims, false);
+      slice_sizes, visitor, allow_recursive, parallel_dims,
+      dnums.input_batching_dims().empty());
 }
 
 // Perform partitioning of Scatter when the operand is split in a update window
@@ -1621,10 +1608,8 @@ absl::StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
 // Returns a full list of partitioning methods used for scatter.
 std::vector<std::pair<decltype(PartitionScatter)*, absl::string_view>>
 ScatterPartitionMethods() {
-  return {{PartitionScatterExplicitBatchDimensions,
-           "PartitionScatterExplicitBatchDimensions"},
-          {PartitionScatterIndexParallelDimensions,
-           "PartitionScatterIndexParallelDimensions"},
+  return {{PartitionScatterExplicitBatchOrIndexParallelDimensions,
+           "PartitionScatterExplicitBatchOrIndexParallelDimensions"},
           {PartitionScatterOperandPassthroughDimensions,
            "PartitionScatterOperandPassthroughDimensions"},
           {PartitionScatterTrivialSlicedOperandDimensions,
@@ -1637,10 +1622,8 @@ ScatterPartitionMethods() {
 decltype(PartitionScatter)* GetScatterPartitionMethod(
     PartitioningMethod method) {
   switch (method) {
-    case PartitioningMethod::kExplicitBatch:
-      return PartitionScatterExplicitBatchDimensions;
-    case PartitioningMethod::kIndexParallel:
-      return PartitionScatterIndexParallelDimensions;
+    case PartitioningMethod::kExplicitBatchOrIndexParallel:
+      return PartitionScatterExplicitBatchOrIndexParallelDimensions;
     case PartitioningMethod::kOperandPassthrough:
       return PartitionScatterOperandPassthroughDimensions;
     case PartitioningMethod::kTrivialSlicedOperand:
@@ -1648,7 +1631,7 @@ decltype(PartitionScatter)* GetScatterPartitionMethod(
     case PartitioningMethod::kIndexPassthrough:
       return PartitionScatterIndexPassthroughDimensions;
     default:
-      return PartitionScatterIndexParallelDimensions;
+      return PartitionScatterExplicitBatchOrIndexParallelDimensions;
   }
 }
 
@@ -1704,13 +1687,7 @@ std::vector<decltype(PartitionScatter)*> ScatterPartitionMethodsOrderedByCost(
   }
   absl::c_sort(ordered_partition_methods, [&](decltype(PartitionScatter)* lhs,
                                               decltype(PartitionScatter)* rhs) {
-    auto [lhs_memory_cost, lhs_communication_cost] =
-        partition_method_costs[lhs];
-    auto [rhs_memory_cost, rhs_communication_cost] =
-        partition_method_costs[rhs];
-    return lhs_memory_cost != rhs_memory_cost
-               ? lhs_memory_cost < rhs_memory_cost
-               : lhs_communication_cost < rhs_communication_cost;
+    return partition_method_costs[lhs] < partition_method_costs[rhs];
   });
   VLOG(5) << "Scatter partitioning methods(ordered by cost):";
   for (auto partition_method : ordered_partition_methods) {
