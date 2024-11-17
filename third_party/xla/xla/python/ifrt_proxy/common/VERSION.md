@@ -53,3 +53,9 @@
 *   Added date: 2024-10-31.
 *   Changes:
     *   Added support for string Arrays (i.e., arrays with dtype `DType::kString`).
+
+## Version 10
+
+*   Added date: 2024-11-08.
+*   Changes:
+    *   MakeArrayFromHostBuffer uses client-manufactured array handles and sends data asynchronously.

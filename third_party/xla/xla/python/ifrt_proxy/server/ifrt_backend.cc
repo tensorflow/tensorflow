@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -39,6 +40,7 @@
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout.h"
@@ -102,6 +104,95 @@ MakeStringArrayFromHostBuffer(
 
 }  // namespace
 
+class IfrtBackend::InOrderRequestsProcessor {
+  struct Entry {
+    std::unique_ptr<IfrtRequest> req;
+    Future<Response>::Promise promise;
+  };
+
+ public:
+  explicit InOrderRequestsProcessor(IfrtBackend* parent)
+      : parent_(parent),
+        thread_(tsl::Env::Default()->StartThread(
+            tsl::ThreadOptions(), "ifrt_backend_reqs_processor",
+            absl::bind_front(&InOrderRequestsProcessor::Loop, this))) {}
+
+  void Shutdown(std::string reason) {
+    {
+      absl::MutexLock l(&mu_);
+      if (shutdown_msg_.has_value()) {
+        return;
+      }
+      shutdown_msg_ = reason;
+    }
+
+    LOG(INFO) << "IfrtBackend::InOrderRequestsProcessor being destroyed, "
+                 "waiting for currently processed request to finish.";
+    thread_.reset();
+    std::deque<Entry> should_cancel;
+
+    {
+      absl::MutexLock l(&mu_);
+      entries_.swap(should_cancel);
+    }
+
+    LOG(INFO) << "IfrtBackend::InOrderRequestsProcessor being destroyed, "
+                 "cancelling remaining requests.";
+    for (auto& entry : should_cancel) {
+      entry.promise.Set(absl::CancelledError(reason));
+    }
+    LOG(INFO) << "IfrtBackend::InOrderRequestsProcessor has been destroyed.";
+  }
+
+  Future<Response> Push(std::unique_ptr<IfrtRequest> request) {
+    auto promise = Future<Response>::CreatePromise();
+    Future<Response> result(promise);
+    absl::MutexLock l(&mu_);
+    if (shutdown_msg_.has_value()) {
+      promise.Set(absl::InternalError(absl::StrCat(
+          "InOrderRequestsProcessor already stopped: ", *shutdown_msg_)));
+      return result;
+    }
+    Entry entry;
+    entry.req = std::move(request);
+    entry.promise = std::move(promise);
+    entries_.push_back(std::move(entry));
+    return result;
+  }
+
+  ~InOrderRequestsProcessor() {
+    Shutdown("InOrderRequestsProcessor is being destroyed");
+  }
+
+ private:
+  std::optional<Entry> Pop() {
+    absl::MutexLock l(&mu_);
+    auto cond = [&]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
+      return shutdown_msg_.has_value() || !entries_.empty();
+    };
+    mu_.Await(absl::Condition(&cond));
+    if (shutdown_msg_.has_value()) return std::nullopt;
+    auto result = std::move(entries_.front());
+    entries_.pop_front();
+    return result;
+  }
+
+  void Loop() {
+    while (auto entry = Pop()) {
+      parent_->ProcessInternal(std::move(entry->req))
+          .OnReady(
+              [p = std::move(entry->promise)](
+                  absl::StatusOr<Response> r) mutable { p.Set(std::move(r)); });
+    }
+  }
+
+  absl::Mutex mu_;
+  std::deque<Entry> entries_ ABSL_GUARDED_BY(mu_);
+  std::optional<std::string> shutdown_msg_ ABSL_GUARDED_BY(mu_);
+  IfrtBackend* const parent_;
+  std::unique_ptr<tsl::Thread> thread_;
+};
+
 IfrtBackend::IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
                          std::shared_ptr<xla::ifrt::Client> ifrt_client,
                          std::shared_ptr<HostBufferStore> host_buffer_store)
@@ -120,7 +211,9 @@ IfrtBackend::IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
           }(),
           "IfrtBackend",
           // TODO(b/282757875): Consider making this configurable.
-          /*num_threads=*/32) {}
+          /*num_threads=*/32),
+      in_order_requests_processor_(
+          std::make_unique<InOrderRequestsProcessor>(this)) {}
 
 absl::StatusOr<std::unique_ptr<IfrtBackend>> IfrtBackend::Create(
     IfrtProxyVersion version, uint64_t session_id,
@@ -142,6 +235,11 @@ absl::StatusOr<std::unique_ptr<IfrtBackend>> IfrtBackend::Create(
 }
 
 IfrtBackend::~IfrtBackend() {
+  // The requests processor may be processing a request that is blocked on a
+  // `HostBufferStore::Lookup()`. Shutdown the buffer store first so that any
+  // blocked `Lookup`s return with an error.
+  host_buffer_store_->Shutdown("IFRT backend has shut down");
+
   // Cancel all in-flight host callback executions.
   {
     absl::MutexLock lock(&host_callback_queues_mutex_);
@@ -160,6 +258,9 @@ IfrtBackend::~IfrtBackend() {
         .status.Set(absl::CancelledError("IFRT backend has shut down"));
   }
 
+  // Shutdown the requests processor.
+  in_order_requests_processor_->Shutdown("IFRT backend has shut down");
+
   // Wait until all async work from `AsyncExecute` finishes execution.
   {
     auto done = [this]() ABSL_SHARED_LOCKS_REQUIRED(in_flight_count_mutex_) {
@@ -170,6 +271,11 @@ IfrtBackend::~IfrtBackend() {
 }
 
 Future<BackendInterface::Response> IfrtBackend::Process(
+    std::unique_ptr<IfrtRequest> request) {
+  return in_order_requests_processor_->Push(std::move(request));
+}
+
+Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
     std::unique_ptr<IfrtRequest> request) {
   switch (request->request_case()) {
     case IfrtRequest::RequestCase::kInitRequest:
@@ -236,15 +342,21 @@ Future<BackendInterface::Response> IfrtBackend::Process(
   }
 }
 
+IfrtBackend::HandleGenerator::HandleGenerator()
+    : current_(kServerGeneratedHandlesMinValue) {}
+
 uint64_t IfrtBackend::HandleGenerator::New() {
   absl::MutexLock lock(&mu_);
-  return current_++;
+  uint64_t result = current_++;
+  CHECK_GE(result, kServerGeneratedHandlesMinValue);
+  return result;
 }
 
 void IfrtBackend::HandleGenerator::BulkNew(absl::Span<uint64_t> handles) {
   absl::MutexLock lock(&mu_);
   std::iota(handles.begin(), handles.end(), current_);
   current_ += handles.size();
+  CHECK_GE(current_, kServerGeneratedHandlesMinValue);
 }
 
 Future<BackendInterface::Response> IfrtBackend::AsyncExecute(
@@ -424,11 +536,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCheckValueReadyRequest(
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleMakeArrayFromHostBufferRequest(
     std::unique_ptr<IfrtRequest> request) {
-  if (!request->has_make_array_from_host_buffer_request()) {
-    return absl::InternalError(
-        "MakeArrayFromHostBuffer got an IfrtRequest with no "
-        "MakeArrayFromHostBufferRequest in it.");
-  }
+  CHECK(request->has_make_array_from_host_buffer_request());
   auto* make_array_request =
       request->mutable_make_array_from_host_buffer_request();
 
@@ -448,10 +556,12 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
 
   const uint64_t host_buffer_handle = make_array_request->host_buffer_handle();
   absl::Cleanup cleanup = [&] {
-    CHECK_OK(host_buffer_store_->Delete(host_buffer_handle));
+    host_buffer_store_->Delete(host_buffer_handle).IgnoreError();
   };
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<const std::string> host_buffer,
-                      host_buffer_store_->Lookup(host_buffer_handle));
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const std::string> host_buffer,
+      host_buffer_store_->Lookup(host_buffer_handle,
+                                 /*timeout=*/absl::InfiniteDuration()));
   std::move(cleanup).Invoke();
 
   tsl::RCReference<xla::ifrt::Array> array;
@@ -476,10 +586,18 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
 
   // TODO(b/282757875): Consider merging the handle_generator with the
   // arrays_.
-  uint64_t handle = handle_generator_.New();
+  uint64_t handle = make_array_request->has_array_handle()
+                        ? make_array_request->array_handle()
+                        : handle_generator_.New();
   {
     absl::MutexLock lock(&arrays_mutex_);
-    arrays_.insert({handle, std::move(array)});
+    const bool inserted = arrays_.insert({handle, std::move(array)}).second;
+    if (!inserted) {
+      CHECK(make_array_request->has_array_handle()) << handle;
+      return absl::InvalidArgumentError(absl::StrCat(
+          "IFRT proxy: MakeArrayFromHostBuffer with client-supplied handle ",
+          handle, " that already exists at the server."));
+    }
   }
 
   std::unique_ptr<IfrtResponse> response =
@@ -628,7 +746,7 @@ IfrtBackend::HandleCopyToStringHostBufferRequest(
     TF_ASSIGN_OR_RETURN(auto serialized_string_host_buffer,
                         SerializeStringHostBuffer(*host_buffer));
     TF_RETURN_IF_ERROR(host_buffer_store_->Store(
-        host_buffer_handle, std::move(serialized_string_host_buffer)));
+        host_buffer_handle, std::move(*serialized_string_host_buffer)));
 
     std::unique_ptr<IfrtResponse> response = NewIfrtResponse(op_id);
     response->mutable_copy_to_host_buffer_response();
@@ -1404,9 +1522,10 @@ IfrtBackend::HandleLoadedHostCallbackReturnRequest(
   if (ret.has_result_host_buffer_handle()) {
     TF_ASSIGN_OR_RETURN(
         std::shared_ptr<const std::string> buffer,
-        host_buffer_store_->Lookup(ret.result_host_buffer_handle()));
+        host_buffer_store_->Lookup(ret.result_host_buffer_handle(),
+                                   /*timeout=*/absl::InfiniteDuration()));
     absl::Cleanup cleanup = [&] {
-      CHECK_OK(host_buffer_store_->Delete(ret.result_host_buffer_handle()));
+      host_buffer_store_->Delete(ret.result_host_buffer_handle()).IgnoreError();
     };
 
     int64_t offset = 0;

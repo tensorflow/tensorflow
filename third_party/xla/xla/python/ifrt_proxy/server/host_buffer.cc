@@ -14,15 +14,19 @@
 
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace ifrt {
@@ -30,6 +34,9 @@ namespace proxy {
 
 absl::Status HostBufferStore::Store(uint64_t handle, std::string data) {
   absl::MutexLock lock(&mu_);
+  if (shutdown_msg_.has_value()) {
+    return absl::CancelledError(*shutdown_msg_);
+  }
   const bool inserted =
       buffers_.insert({handle, std::make_shared<std::string>(std::move(data))})
           .second;
@@ -41,8 +48,18 @@ absl::Status HostBufferStore::Store(uint64_t handle, std::string data) {
 }
 
 absl::StatusOr<std::shared_ptr<const std::string>> HostBufferStore::Lookup(
-    uint64_t handle) {
+    uint64_t handle, absl::Duration timeout) {
   absl::MutexLock lock(&mu_);
+  auto cond = [&]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
+    return shutdown_msg_.has_value() || buffers_.contains(handle);
+  };
+  if (!cond()) {
+    tsl::profiler::TraceMe traceme("HostBufferStore::Lookup.Wait");
+    mu_.AwaitWithTimeout(absl::Condition(&cond), timeout);
+  }
+  if (shutdown_msg_) {
+    return absl::CancelledError(shutdown_msg_.value());
+  }
   const auto it = buffers_.find(handle);
   if (it == buffers_.end()) {
     return absl::NotFoundError(
@@ -58,6 +75,14 @@ absl::Status HostBufferStore::Delete(uint64_t handle) {
         absl::StrCat("Host buffer handle ", handle, " not found"));
   }
   return absl::OkStatus();
+}
+
+void HostBufferStore::Shutdown(std::string reason) {
+  absl::MutexLock lock(&mu_);
+  if (!shutdown_msg_.has_value()) {
+    shutdown_msg_ = std::move(reason);
+  }
+  buffers_.clear();
 }
 
 }  // namespace proxy

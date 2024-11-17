@@ -17,11 +17,9 @@
 #ifndef XLA_PYTHON_IFRT_PROXY_CLIENT_GRPC_HOST_BUFFER_H_
 #define XLA_PYTHON_IFRT_PROXY_CLIENT_GRPC_HOST_BUFFER_H_
 
-#include <atomic>
 #include <cstdint>
 #include <memory>
 
-#include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "xla/python/ifrt/future.h"
@@ -43,7 +41,6 @@ class GrpcClientHostBufferStore : public ClientHostBufferStore {
 
   // Implements ClientHostBufferStore.
 
-  uint64_t NextHandle() override;
   Future<> Store(uint64_t handle, absl::string_view data) override;
   Future<> Store(uint64_t handle, const absl::Cord& data) override;
   Future<absl::Cord> Lookup(uint64_t handle) override;
@@ -53,14 +50,13 @@ class GrpcClientHostBufferStore : public ClientHostBufferStore {
   const std::shared_ptr<grpc::GrpcIfrtService::StubInterface> stub_;
   const IfrtProxyVersion version_;
   const uint64_t session_id_;
-  std::atomic<uint64_t> next_handle_ = 0;
 
-  // Implementation note: `lookup_work_queue_` may have closures that invoke
-  // user-defined code. Each `Lookup()` call is associated with a scheduled
-  // closure, and the closure is used to first perform synchronous reads of the
-  // streaming RPC, and then to do `promise.Set()` for the Future returned to
-  // the caller.
-  std::unique_ptr<tsl::UnboundedWorkQueue> lookup_work_queue_;
+  // Implementation note: `work_queue_` may have closures that invoke
+  // user-defined code. Each `Store()` and `Lookup()` call is associated with a
+  // scheduled closure, and the closure is used to first perform synchronous
+  // RPC reads or writes, and then to do `promise.Set()` for the Future returned
+  // to the caller.
+  std::unique_ptr<tsl::UnboundedWorkQueue> work_queue_;
 };
 
 }  // namespace proxy

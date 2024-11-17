@@ -78,10 +78,13 @@ class IfrtBackend final : public BackendInterface {
   Future<Response> Process(std::unique_ptr<IfrtRequest> request) override;
 
  private:
-  // Generates unique handles for returning to the client. All object types
-  // currently use this single "handle space".
+  // Generates unique handles for returning to the client. Guaranteed to return
+  // handles that do not conflict with client-generated handles (via client-side
+  // RpcHelper). All object types currently use this single "handle space".
   class HandleGenerator {
    public:
+    HandleGenerator();
+
     uint64_t New();
 
     // Bulk allocates a given number of handles and saves them into the provided
@@ -90,7 +93,7 @@ class IfrtBackend final : public BackendInterface {
 
    private:
     absl::Mutex mu_;
-    uint64_t current_ ABSL_GUARDED_BY(mu_) = 1;
+    uint64_t current_ ABSL_GUARDED_BY(mu_);
   };
 
   IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
@@ -104,6 +107,8 @@ class IfrtBackend final : public BackendInterface {
   Future<Response> AsyncExecute(
       std::function<absl::StatusOr<Response>()> handle_fn,
       tsl::thread::ThreadPool* thread_pool = nullptr);
+
+  Future<Response> ProcessInternal(std::unique_ptr<IfrtRequest> request);
 
   //////////////////////////////////////////////////////////////////////
   // Handlers for individual requests
@@ -214,6 +219,9 @@ class IfrtBackend final : public BackendInterface {
   // Use a separate thread pool for compilation as XLA compilation often
   // requires a bigger stack.
   tsl::thread::ThreadPool compile_thread_pool_;
+
+  class InOrderRequestsProcessor;
+  std::unique_ptr<InOrderRequestsProcessor> in_order_requests_processor_;
 };
 
 }  // namespace proxy

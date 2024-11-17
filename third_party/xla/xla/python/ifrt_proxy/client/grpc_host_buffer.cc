@@ -14,7 +14,6 @@
 
 #include "xla/python/ifrt_proxy/client/grpc_host_buffer.h"
 
-#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -33,8 +32,8 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/prof_util.h"
 #include "xla/tsl/protobuf/status.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/unbounded_work_queue.h"
 
 namespace xla {
@@ -43,59 +42,68 @@ namespace proxy {
 
 static constexpr int64_t kChunkSize = 1024 * 1024;
 
+static void SetDataFromStringView(GrpcHostBufferStoreRequest& req,
+                                  absl::string_view data) {
+#if defined(PLATFORM_GOOGLE)
+  req.set_alias_data(data);
+#else
+  // TODO(b/325306748): Find a way to not do a memory-copy.
+  req.set_data(std::string(data));
+#endif
+}
+
 GrpcClientHostBufferStore::GrpcClientHostBufferStore(
     std::shared_ptr<grpc::GrpcIfrtService::StubInterface> stub,
     IfrtProxyVersion version, uint64_t session_id)
     : stub_(std::move(stub)),
       version_(std::move(version)),
       session_id_(session_id),
-      lookup_work_queue_(std::make_unique<tsl::UnboundedWorkQueue>(
+      work_queue_(std::make_unique<tsl::UnboundedWorkQueue>(
           tsl::Env::Default(), "HostBufferStoreLookupsWorkQueue")) {}
 
 GrpcClientHostBufferStore::~GrpcClientHostBufferStore() {
   LOG(INFO) << "Waiting for destruction of HostBufferStoreLookupsWorkQueue...";
-  lookup_work_queue_.reset();
+  work_queue_.reset();
   LOG(INFO) << "Destructed HostBufferStoreLookupsWorkQueue.";
-}
-
-uint64_t GrpcClientHostBufferStore::NextHandle() {
-  return next_handle_.fetch_add(1, std::memory_order_relaxed);
 }
 
 Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
                                           absl::string_view data) {
-  // The current implementation synchronously sends host buffer chunks. We may
-  // consider making it asynchronous if the caller can leverage such asynchrony.
+  auto promise = Future<>::CreatePromise();
 
-  GrpcHostBufferStoreMetadata metadata;
-  metadata.set_session_id(session_id_);
-  metadata.set_handle(handle);
-  metadata.set_buffer_size(data.size());
+  XFlowHelper flow("GrpcClientHostBufferStore::Store");
+  flow.InstantActivity<XFlowHelper::kSend>();
 
-  ::grpc::ClientContext context;
-  context.AddMetadata("ifrt-proxy-grpc-host-buffer-store-metadata-bin",
-                      metadata.SerializeAsString());
+  std::unique_ptr<std::string> buffered_data;
 
-  GrpcHostBufferStoreResponse response;
-  auto writer = stub_->HostBufferStore(&context, &response);
+  work_queue_->Schedule([this, handle, promise, data, flow]() mutable -> void {
+    auto span = flow.Span<XFlowHelper::kRecv>();
+    GrpcHostBufferStoreMetadata metadata;
+    metadata.set_session_id(session_id_);
+    metadata.set_handle(handle);
+    metadata.set_buffer_size(data.size());
 
-  for (int64_t offset = 0; offset < data.size(); offset += kChunkSize) {
-    GrpcHostBufferStoreRequest request;
-#if defined(PLATFORM_GOOGLE)
-    request.set_alias_data(data.substr(offset, kChunkSize));
-#else
-    // TODO(b/325306748): Find a way to not do a memory-copy.
-    request.set_data(std::string(data.substr(offset, kChunkSize)));
-#endif
-    writer->Write(request);
-  }
+    ::grpc::ClientContext context;
+    context.AddMetadata("ifrt-proxy-grpc-host-buffer-store-metadata-bin",
+                        metadata.SerializeAsString());
 
-  if (!writer->WritesDone()) {
-    return Future<>(
-        absl::InternalError("Failed to write all host buffer chunks"));
-  }
+    GrpcHostBufferStoreResponse response;
+    auto writer = stub_->HostBufferStore(&context, &response);
 
-  return Future<>(xla::FromGrpcStatus(writer->Finish()));
+    for (int64_t offset = 0; offset < data.size(); offset += kChunkSize) {
+      GrpcHostBufferStoreRequest request;
+      SetDataFromStringView(request, data.substr(offset, kChunkSize));
+      writer->Write(request);
+    }
+
+    if (!writer->WritesDone()) {
+      promise.Set(
+          absl::InternalError("Failed to write all host buffer chunks"));
+    }
+
+    promise.Set(xla::FromGrpcStatus(writer->Finish()));
+  });
+  return Future<>(promise);
 }
 
 Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
@@ -118,12 +126,7 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
   for (absl::string_view chunk : data.Chunks()) {
     for (int64_t offset = 0; offset < chunk.size(); offset += kChunkSize) {
       GrpcHostBufferStoreRequest request;
-#if defined(PLATFORM_GOOGLE)
-      request.set_alias_data(chunk.substr(offset, kChunkSize));
-#else
-      // TODO(b/325306748): Find a way to not do a memory-copy.
-      request.set_data(std::string(chunk.substr(offset, kChunkSize)));
-#endif
+      SetDataFromStringView(request, chunk.substr(offset, kChunkSize));
       writer->Write(request);
     }
   }
@@ -138,7 +141,7 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
 Future<absl::Cord> GrpcClientHostBufferStore::Lookup(uint64_t handle) {
   auto promise = Future<absl::Cord>::CreatePromise();
 
-  lookup_work_queue_->Schedule([this, handle, promise]() mutable -> void {
+  work_queue_->Schedule([this, handle, promise]() mutable -> void {
     GrpcHostBufferLookupRequest request;
     request.set_handle(handle);
     request.set_session_id(session_id_);

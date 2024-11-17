@@ -15,6 +15,7 @@
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -36,15 +37,13 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/prof_util.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
-#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/random.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/profiler/lib/traceme_encode.h"
 
 namespace xla {
 namespace ifrt {
@@ -52,66 +51,7 @@ namespace proxy {
 
 namespace {
 
-using ::tsl::profiler::XFlow;
-
 constexpr absl::Duration kPeriodicFlushInterval = absl::Microseconds(50);
-
-// XFlowHelper makes it easier to create trace spans with a flow between them.
-// Typical usage:
-//
-// XFlowHelper flow("my_request");
-// ...
-//
-// auto response_handler = [flow](ResponseMsg msg) {
-//   flow.InstantActivity<kRecv>();
-//   LOG(INFO) << "Received response: " << msg;
-// }
-//
-// {
-//   auto request_span = flow.Span<kSend>();
-//   auto request_protobuf = CreateRequestProtobuf();
-//   transport.Send(request_protobuf, response_handler);
-// }
-//
-//
-class XFlowHelper {
- public:
-  explicit XFlowHelper(absl::string_view name)
-      : xflow_id_(tsl::random::New64() >> 8 /*XFlow IDs are 56 bits*/),
-        name_(name) {}
-
-  typedef enum { kSend, kRecv, kRecvSend } Direction;
-
-  template <Direction D>
-  tsl::profiler::TraceMe Span() const {
-    return tsl::profiler::TraceMe([xflow_id = xflow_id_, name = name_] {
-      return Encode<D>(xflow_id, name);
-    });
-  }
-
-  template <Direction D>
-  void InstantActivity() const {
-    return tsl::profiler::TraceMe::InstantActivity(
-        [xflow_id = xflow_id_, name = name_] {
-          return Encode<D>(xflow_id, name);
-        });
-  }
-
- private:
-  template <Direction D>
-  static std::string Encode(uint64_t xflow_id, absl::string_view name) {
-    static constexpr absl::string_view flow_dir_str =
-        D == kSend ? "send" : (D == kRecv ? "recv" : "recv_send");
-    const XFlow flow(xflow_id, D == kRecvSend ? XFlow::kFlowInOut
-                                              : (D == kRecv ? XFlow::kFlowIn
-                                                            : XFlow::kFlowOut));
-    return tsl::profiler::TraceMeEncode(
-        name, {{"dir", flow_dir_str}, {"flow", flow.ToStatValue()}});
-  };
-
-  const uint64_t xflow_id_;
-  const absl::string_view name_;
-};
 
 // Thread-safe data structure for holding batched operations.
 class BatchedOps {
@@ -419,6 +359,12 @@ void RpcHelper::Batch(BatchOperation op, ArrayHandle handle) {
 
 void RpcHelper::Disconnect() {
   batcher_->Finish(absl::CancelledError("Disconnected by client"));
+}
+
+uint64_t RpcHelper::NextHandle() {
+  uint64_t result = next_handle_.fetch_add(1, std::memory_order_relaxed);
+  CHECK_LT(result, kServerGeneratedHandlesMinValue);
+  return result;
 }
 
 }  // namespace proxy

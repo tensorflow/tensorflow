@@ -662,12 +662,12 @@ TEST_P(IfrtBackendHandlerTest, MakeStringArrayFromHostBufferSuccess) {
   // Make a string host buffer.
   const std::vector<absl::Cord> input_strings = {absl::Cord("ab"),
                                                  absl::Cord("cd")};
-  TF_ASSERT_OK_AND_ASSIGN(const std::string serialized_string_buffer,
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized_string_buffer,
                           SerializeStringHostBuffer(input_strings));
 
   const uint64_t kHostBufferHandle = 1234;
   ASSERT_THAT(
-      host_buffer_store_->Store(kHostBufferHandle, serialized_string_buffer),
+      host_buffer_store_->Store(kHostBufferHandle, *serialized_string_buffer),
       IsOk());
 
   auto ifrt_request = NewIfrtRequest(NewOpId());
@@ -805,12 +805,12 @@ TEST_P(IfrtBackendHandlerTest, CopyToHostSuccessWithStringArray) {
   // Make a string host buffer.
   const std::vector<absl::Cord> input_strings = {absl::Cord("ab"),
                                                  absl::Cord("cd")};
-  TF_ASSERT_OK_AND_ASSIGN(const std::string serialized_string_buffer,
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized_string_buffer,
                           SerializeStringHostBuffer(input_strings));
 
   const uint64_t kHostBufferHandle = 1234;
   ASSERT_THAT(
-      host_buffer_store_->Store(kHostBufferHandle, serialized_string_buffer),
+      host_buffer_store_->Store(kHostBufferHandle, *serialized_string_buffer),
       IsOk());
 
   auto ifrt_request = NewIfrtRequest(NewOpId());

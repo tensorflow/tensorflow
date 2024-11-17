@@ -202,6 +202,19 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "prof_util",
+    hdrs = ["prof_util.h"],
+    deps = [
+        ":ifrt_service_proto_cc",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:random",
+        "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/lib:traceme_encode",
+    ],
+)
+
 # copybara:uncomment_begin
 # bzl_library(
 #     name = "ifrt_proxy_bzl",

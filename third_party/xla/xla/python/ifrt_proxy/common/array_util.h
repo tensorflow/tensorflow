@@ -79,7 +79,7 @@ class ArrayMemRegion {
 
 // Utilities for serializing and deserializing a host buffer of dtype
 // `DType::kString` (represented as arrays of absl::Cords).
-absl::StatusOr<const std::string> SerializeStringHostBuffer(
+absl::StatusOr<std::unique_ptr<std::string>> SerializeStringHostBuffer(
     absl::Span<const absl::Cord> cords);
 
 absl::StatusOr<std::vector<absl::Cord>> DeserializeStringHostBufferFromString(

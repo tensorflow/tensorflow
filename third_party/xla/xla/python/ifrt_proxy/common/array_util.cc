@@ -14,6 +14,7 @@
 
 #include "xla/python/ifrt_proxy/common/array_util.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -154,13 +155,13 @@ void* ArrayMemRegion::zeroth_element() const {
   return mem_region_start_;
 }
 
-absl::StatusOr<const std::string> SerializeStringHostBuffer(
+absl::StatusOr<std::unique_ptr<std::string>> SerializeStringHostBuffer(
     absl::Span<const absl::Cord> cords) {
   proto::StringArrayContents string_array_proto;
   for (const auto& c : cords) {
     string_array_proto.add_strings(std::string(c));
   }
-  return string_array_proto.SerializeAsString();
+  return std::make_unique<std::string>(string_array_proto.SerializeAsString());
 }
 
 absl::StatusOr<std::vector<absl::Cord>> DeserializeStringHostBufferFromString(

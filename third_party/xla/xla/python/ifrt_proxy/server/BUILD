@@ -148,6 +148,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:env",
@@ -235,6 +236,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -290,8 +293,12 @@ ifrt_proxy_cc_test(
     srcs = ["host_buffer_test.cc"],
     deps = [
         ":host_buffer",
+        "//xla/python/ifrt",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:status_matchers",
     ],
 )

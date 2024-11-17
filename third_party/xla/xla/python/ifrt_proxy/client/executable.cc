@@ -155,9 +155,10 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
 // Same as `ExecuteLoadedHostCallback`, except that it uses host buffer store to
 // retrieve operands and store results.
 absl::StatusOr<uint64_t> PrepareAndExecuteLoadedHostCallback(
-    ClientHostBufferStore* host_buffer_store,
-    xla::ifrt::LoadedHostCallback* loaded_host_callback,
+    RpcHelper* rpc_helper, xla::ifrt::LoadedHostCallback* loaded_host_callback,
     uint64_t operand_handle) {
+  ClientHostBufferStore* host_buffer_store =
+      rpc_helper->host_buffer_store().get();
   TF_ASSIGN_OR_RETURN(absl::Cord operands,
                       host_buffer_store->Lookup(operand_handle).Await());
   absl::Cleanup cleanup = [&]() {
@@ -172,7 +173,7 @@ absl::StatusOr<uint64_t> PrepareAndExecuteLoadedHostCallback(
       absl::Cord results,
       ExecuteLoadedHostCallback(loaded_host_callback, std::move(operands)));
 
-  const uint64_t result_handle = host_buffer_store->NextHandle();
+  const uint64_t result_handle = rpc_helper->NextHandle();
   TF_RETURN_IF_ERROR(host_buffer_store->Store(result_handle, results).Await());
   return result_handle;
 }
@@ -517,8 +518,7 @@ void LoadedExecutable::PollLoadedHostCallback(
   auto f = [rpc_helper = rpc_helper_, handle,
             loaded_host_callback = std::move(loaded_host_callback)]() {
     while (true) {
-      const uint64_t operand_handle =
-          rpc_helper->host_buffer_store()->NextHandle();
+      const uint64_t operand_handle = rpc_helper->NextHandle();
 
       auto poll_req = std::make_unique<LoadedHostCallbackPollRequest>();
       poll_req->set_loaded_host_callback_handle(handle);
@@ -543,8 +543,7 @@ void LoadedExecutable::PollLoadedHostCallback(
 
       absl::StatusOr<uint64_t> result_handle =
           PrepareAndExecuteLoadedHostCallback(
-              rpc_helper->host_buffer_store().get(), loaded_host_callback.get(),
-              operand_handle);
+              rpc_helper.get(), loaded_host_callback.get(), operand_handle);
       if (result_handle.ok()) {
         ret_req->set_result_host_buffer_handle(*result_handle);
       } else {

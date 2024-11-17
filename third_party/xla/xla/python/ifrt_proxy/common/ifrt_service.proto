@@ -257,6 +257,9 @@ message MakeArrayFromHostBufferRequest {
   ShardingProto sharding = 3;
   fixed64 host_buffer_handle = 4;
   optional proto.ByteStrides byte_strides = 5;
+  // If array_handle is provided, the server will either respond with the same
+  // handle in `MakeArrayFromHostBufferResponse` or return an error.
+  optional fixed64 array_handle = 6;
 }
 message MakeArrayFromHostBufferResponse {
   fixed64 array_handle = 1;

@@ -26,7 +26,7 @@ namespace proxy {
 // LINT.IfChange
 // TODO(b/296144873): Document the version upgrade policy.
 inline constexpr int kServerMinVersion = 1;
-inline constexpr int kServerMaxVersion = 9;
+inline constexpr int kServerMaxVersion = 10;
 // LINT.ThenChange(//tensorflow/compiler/xla/python/ifrt_proxy/common/VERSION.md)
 
 // Returns a version that both the client and the server support, or an error if
