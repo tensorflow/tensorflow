@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/push_transpose_through_ewise_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/analyze_variables_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 
@@ -226,7 +227,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass();
 
 // Creates a pass which analyze the model whether it is safe to use
 // native TFLite variables or not.
-std::unique_ptr<OperationPass<ModuleOp>> CreateAnalyzeVariablesPass();
+inline std::unique_ptr<mlir::Pass> CreateAnalyzeVariablesPass() {
+  return Create<AnalyzeVariablesPass>();
+}
 
 // Creates a pass which is responsible for legalizing TensorFlow static hash
 // tables to TensorFlow Lite hash tables.
@@ -311,11 +314,16 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass(
 inline void registerTensorFlowLitePasses() {
   registerTensorFlowLiteTdPasses();
   // Register TFLite Converter Passes
-  Register<OptimizePass, OptimizePassOptions>();
   Register<UnfreezeMutableGlobalTensorsPass>();
+
+  // TF Legalization Passes
+  Register<AnalyzeVariablesPass>();
+
+  // TFL Optimization Passes
+  Register<OptimizePass, OptimizePassOptions>();
+  Register<OptimizeBatchMatmulPass>();
   Register<PushTransposeThroughEwisePass>();
   Register<CanonicalizeBoundaryValuePass>();
-  Register<OptimizeBatchMatmulPass>();
 }
 
 }  // namespace TFL
