@@ -246,7 +246,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_bf16_3way_gemm(false);
   opts.set_xla_gpu_nccl_collective_max_nchannels(0);
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
-  opts.set_xla_gpu_multi_streamed_windowed_einsum(false);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
 
   opts.set_xla_gpu_experimental_stream_annotation(false);
   // Minimum combined size of matrices in matrix multiplication to

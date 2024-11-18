@@ -140,6 +140,18 @@ class CubSortPairsTest
           std::tuple<std::shared_ptr<Literal>, PrimitiveType, bool>> {};
 
 TEST_P(CubSortPairsTest, SortPairs) {
+  // TODO(b/380814507): Remove the disabling part once fixed.
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+  if (cc.IsAtLeastHopper() &&
+      std::get<0>(GetParam())->shape().element_type() == U16 &&
+      std::get<1>(GetParam()) == F64) {
+    GTEST_SKIP()
+        << "CUB sort does not work for pair sorting (U16, F64) on Hopper.";
+  }
+
   constexpr char kHloTemplate[] = R"(
 HloModule TestModule
 
