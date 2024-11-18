@@ -33,6 +33,9 @@ struct GlobalClientFlags {
   // TODO(madthanu): Remove flag once there is confidence that the asynchronous
   // codepath works well.
   bool synchronous_host_buffer_store;
+
+  // TODO(b/375021159): Implement faster is_delete without needing a hack.
+  bool array_is_deleted_hack;
 };
 
 GlobalClientFlags* GetGlobalClientFlags();
@@ -40,7 +43,8 @@ GlobalClientFlags* GetGlobalClientFlags();
 inline std::ostream& operator<<(std::ostream& os, GlobalClientFlags flags) {
   return os << "xla::ifrt::proxy::GlobalClientFlags{"
             << "synchronous_host_buffer_store="
-            << flags.synchronous_host_buffer_store << "}";
+            << flags.synchronous_host_buffer_store << ","
+            << "array_is_deleted_hack=" << flags.array_is_deleted_hack << "}";
 }
 
 }  // namespace proxy

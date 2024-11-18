@@ -240,6 +240,9 @@ Future<> Array::Delete() {
 }
 
 bool Array::IsDeleted() const {
+  if (GetGlobalClientFlags()->array_is_deleted_hack) {
+    return false;
+  }
   auto req = std::make_unique<IsArrayDeletedRequest>();
   req->set_array_handle(handle_.handle);
 

@@ -593,7 +593,11 @@ cc_library(
         "global_flags_oss.cc",
     ],
     visibility = ["//visibility:private"],
-    deps = ["@com_google_absl//absl/debugging:leak_check"],
+    deps = [
+        "@com_google_absl//absl/debugging:leak_check",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
