@@ -114,8 +114,8 @@ static void BM_Conv1DStrided(benchmark::State& state) {
 // this operation can be thought of as reverse of regular strided convolution,
 // that's why input and output shapes are swapped (so we can directly compare
 // performance of this function with BM_Conv1DStrided).
-// Currently, the performance is orders of magnitude worse than regular conv
-// when they should be similar.
+// Currently, the performance is few times worse than regular conv when they
+// should be similar.
 static void BM_Conv1DTransposedStrided(benchmark::State& state) {
   std::string hlo_module = R"(
     HloModule jit_jconvt
