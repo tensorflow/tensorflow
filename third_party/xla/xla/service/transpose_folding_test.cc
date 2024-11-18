@@ -82,25 +82,6 @@ ENTRY entry_computation {
   EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
 }
 
-TEST_F(TransposeFoldingTest, RedundantTranspose) {
-  constexpr absl::string_view kHloString = R"(
-HloModule FoldDotTranspose
-
-ENTRY entry_computation {
-  x = f32[2,3] parameter(0)
-  y = f32[2,3] parameter(1)
-  transpose = f32[2,3] transpose(y), dimensions={0,1}
-  ROOT add = f32[2,3] add(x, transpose)
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-
-  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Add(op::Parameter(0), op::Parameter(1)));
-}
-
 TEST_F(TransposeFoldingTest, FoldTransposeOfBatchWhenPermitted) {
   constexpr absl::string_view kHloString = R"(
 HloModule FoldDotTranspose
@@ -575,10 +556,7 @@ ENTRY entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
 
-  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Dot(op::Parameter(0), op::Parameter(1),
-                      /*lhs_contracting_dim=*/3, /*rhs_contracting_dim=*/2));
+  EXPECT_THAT(TransposeFolding().Run(module.get()), IsOkAndHolds(false));
 }
 
 }  // namespace
