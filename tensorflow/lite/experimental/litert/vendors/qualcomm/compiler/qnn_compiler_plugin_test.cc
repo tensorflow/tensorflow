@@ -16,21 +16,21 @@
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/log/absl_check.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 
+namespace litert {
 namespace {
+
 // clang-format off
 const auto kSupportedOps =
-    testing::Values(
+    ::testing::Values(
                     "simple_add_op.tflite",
                     "simple_div_op.tflite",
                     "simple_mul_op.tflite",
@@ -51,17 +51,10 @@ const auto kSupportedOps =
                     );
 // clang-format on
 
-UniqueLiteRtCompilerPlugin GetQnnPlugin() {
-  LiteRtCompilerPlugin qnn_plugin;
-  LITERT_CHECK_STATUS_OK(LiteRtCreateCompilerPlugin(&qnn_plugin));
-  ABSL_CHECK_NE(qnn_plugin, nullptr);
-  return UniqueLiteRtCompilerPlugin(qnn_plugin);
-}
-
-TEST(TestQnnPlugin, GetConfigInfo) {
+TEST(QnnPluginTest, GetConfigInfo) {
   EXPECT_STREQ(LiteRtGetCompilerPluginSocManufacturer(), "Qualcomm");
 
-  auto plugin = GetQnnPlugin();
+  auto plugin = CreatePlugin();
 
   LiteRtParamIndex num_supported_soc_models;
   LITERT_ASSERT_STATUS_OK(LiteRtGetNumCompilerPluginSupportedSocModels(
@@ -74,9 +67,9 @@ TEST(TestQnnPlugin, GetConfigInfo) {
   EXPECT_STREQ(config_id, "V68");
 }
 
-TEST(TestQnnPlugin, PartitionMulOps) {
-  auto plugin = GetQnnPlugin();
-  auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
+TEST(QnnPluginTest, PartitionMulOps) {
+  auto plugin = CreatePlugin();
+  auto model = testing::LoadTestFileModel("one_mul.tflite");
 
   LiteRtOpListT selected_op_list;
   LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginPartitionModel(
@@ -87,9 +80,9 @@ TEST(TestQnnPlugin, PartitionMulOps) {
   EXPECT_EQ(selected_ops[0]->op_code, kLiteRtOpCodeTflMul);
 }
 
-TEST(TestQnnPlugin, CompileMulSubgraph) {
-  auto plugin = GetQnnPlugin();
-  auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
+TEST(QnnPluginTest, CompileMulSubgraph) {
+  auto plugin = CreatePlugin();
+  auto model = testing::LoadTestFileModel("one_mul.tflite");
 
   const auto subgraph = model.MainSubgraph();
   LiteRtSubgraph litert_subgraph = subgraph->Get();
@@ -126,8 +119,8 @@ class QnnPluginOpCompatibilityTest
 
 TEST_P(QnnPluginOpCompatibilityTest, SupportedOpsTest) {
   LITERT_LOG(LITERT_INFO, "Testing TFLite model: %s", GetParam().c_str());
-  auto plugin = GetQnnPlugin();
-  auto model = litert::testing::LoadTestFileModel(GetParam());
+  auto plugin = CreatePlugin();
+  auto model = testing::LoadTestFileModel(GetParam());
 
   const auto subgraph = model.MainSubgraph();
   LiteRtSubgraph litert_subgraph = subgraph->Get();
@@ -163,3 +156,4 @@ INSTANTIATE_TEST_SUITE_P(SupportedOpsTest, QnnPluginOpCompatibilityTest,
                          kSupportedOps);
 
 }  // namespace
+}  // namespace litert

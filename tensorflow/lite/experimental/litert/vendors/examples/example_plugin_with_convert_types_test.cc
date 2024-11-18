@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <cstddef>
+// #include <cstddef>
 #include <memory>
-#include <string>
+// #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_format.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
@@ -26,10 +28,11 @@
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 
 namespace litert {
-
 namespace {
 
-TEST(ExamplePluginTest, GetConfigInfo) {
+using ::testing::HasSubstr;
+
+TEST(ExamplePluginWithConvertTypesTest, GetConfigInfo) {
   ASSERT_STREQ(LiteRtGetCompilerPluginSocManufacturer(),
                "ExampleSocManufacturer");
 
@@ -46,7 +49,7 @@ TEST(ExamplePluginTest, GetConfigInfo) {
   ASSERT_STREQ(soc_model_name, "ExampleSocModel");
 }
 
-TEST(ExamplePluginTest, PartitionSimpleMultiAdd) {
+TEST(ExamplePluginWithConvertTypesTest, PartitionSimpleMultiAdd) {
   auto plugin = CreatePlugin();
   auto model = litert::testing::LoadTestFileModel("simple_multi_op.tflite");
 
@@ -60,7 +63,7 @@ TEST(ExamplePluginTest, PartitionSimpleMultiAdd) {
   ASSERT_EQ(selected_ops[1]->op_code, kLiteRtOpCodeTflMul);
 }
 
-TEST(ExamplePluginTest, CompileMulSubgraph) {
+TEST(ExamplePluginWithConvertTypesTest, CompileMulSubgraph) {
   auto plugin = CreatePlugin();
   auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
 
@@ -69,27 +72,33 @@ TEST(ExamplePluginTest, CompileMulSubgraph) {
 
   LiteRtCompiledResult compiled;
   LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(
-      plugin.get(), /*soc_model=*/nullptr, &litert_subgraph, 1, &compiled));
+      plugin.get(), /*soc_model=*/nullptr, &litert_subgraph,
+      /*num_partitions*/ 1, &compiled));
 
   const void* byte_code;
   size_t byte_code_size;
-
   LITERT_ASSERT_STATUS_OK(
       LiteRtGetCompiledResultByteCode(compiled, &byte_code, &byte_code_size));
 
-  std::string byte_code_string(reinterpret_cast<const char*>(byte_code),
-                               byte_code_size);
-  ASSERT_EQ(byte_code_string, "Partition_0_with_2_muls:");
+  EXPECT_THAT(absl::string_view(reinterpret_cast<const char*>(byte_code),
+                                byte_code_size),
+              HasSubstr(absl::StrFormat(
+                  "op_code[%d]", static_cast<int>(kLiteRtOpCodeTflMul))));
+
+  LiteRtParamIndex num_call_infos;
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetNumCompiledResultCalls(compiled, &num_call_infos));
+
+  ASSERT_EQ(num_call_infos, 1);
 
   const void* op_data;
   size_t op_data_size;
-
   LITERT_ASSERT_STATUS_OK(
       LiteRtGetCompiledResultCallInfo(compiled, 0, &op_data, &op_data_size));
 
-  std::string op_data_string(reinterpret_cast<const char*>(op_data),
-                             op_data_size);
-  ASSERT_EQ(op_data_string, "Partition_0");
+  EXPECT_EQ(
+      absl::string_view(reinterpret_cast<const char*>(op_data), op_data_size),
+      "partition_0");
 
   LiteRtDestroyCompiledResult(compiled);
 }

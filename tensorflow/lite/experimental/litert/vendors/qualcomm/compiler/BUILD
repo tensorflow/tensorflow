@@ -153,3 +153,17 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_tensor",
     ],
 )
+
+cc_library(
+    name = "qualcomm_convert_types_impl",
+    hdrs = ["qualcomm_convert_types_impl.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_model",
+        "//tensorflow/lite/experimental/litert/vendors/cc:litert_convert",
+        "//tensorflow/lite/experimental/litert/vendors/cc:litert_convert_types",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
+    ],
+)

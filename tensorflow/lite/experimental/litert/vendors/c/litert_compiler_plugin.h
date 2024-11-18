@@ -100,7 +100,11 @@ LiteRtStatus LiteRtGetNumCompiledResultCalls(
 
 #include <memory>
 
-// TODO find a home for this
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+
+namespace litert {
+
+// Deleter for incomplete compiler plugin type.
 struct LiteRtCompilerPluginDeleter {
   void operator()(LiteRtCompilerPlugin plugin) {
     if (plugin != nullptr) {
@@ -109,8 +113,18 @@ struct LiteRtCompilerPluginDeleter {
   }
 };
 
-using UniqueLiteRtCompilerPlugin =
+// Smart pointer wrapper for incomplete plugin type.
+using PluginPtr =
     std::unique_ptr<LiteRtCompilerPluginT, LiteRtCompilerPluginDeleter>;
+
+// Initialize a plugin via c-api and wrap result in smart pointer.
+inline PluginPtr CreatePlugin() {
+  LiteRtCompilerPlugin plugin;
+  LITERT_CHECK_STATUS_OK(LiteRtCreateCompilerPlugin(&plugin));
+  return PluginPtr(plugin);
+}
+
+}  // namespace litert
 #endif  // __cplusplus
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_C_LITERT_COMPILER_PLUGIN_H_
