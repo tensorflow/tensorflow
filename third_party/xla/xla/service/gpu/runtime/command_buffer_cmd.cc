@@ -2141,20 +2141,6 @@ absl::Status DynamicSliceFusionCmd::Record(
                 << "]: constant offset = " << *const_offset;
         offset_value(argument_idx, offset_idx) = *const_offset;
 
-      } else if (std::holds_alternative<DynamicSliceThunk::LoopIter>(offset)) {
-        // Get slice offset from the current loop iteration.
-        TF_ASSIGN_OR_RETURN(int64_t iter, WhileThunk::CurrentLoopIteration());
-        VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
-                << "]: loop iteration offset = " << iter;
-        offset_value(argument_idx, offset_idx) = iter;
-
-      } else if (DynamicSliceThunk::OffsetArray* offset_array =
-                     std::get_if<DynamicSliceThunk::OffsetArray>(&offset)) {
-        TF_ASSIGN_OR_RETURN(int64_t iter, WhileThunk::CurrentLoopIteration());
-        VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
-                << "]: offset array offset = " << offset_array->values[iter];
-        offset_value(argument_idx, offset_idx) = offset_array->values[iter];
-
       } else {
         // Transfer slice offset value from device to host.
         auto alloc_slice = std::get<BufferAllocation::Slice>(offset);
