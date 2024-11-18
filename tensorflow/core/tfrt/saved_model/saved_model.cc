@@ -516,6 +516,15 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
 
   tfrt::metrics::AddTFRTVersionMetric();
 
+  if (options.emit_model_type_metric) {
+    inferred_model_type_count
+        ->GetCell(options.graph_execution_options.model_metadata.name(),
+                  absl::StrCat(
+                      options.graph_execution_options.model_metadata.version()),
+                  GetInferredModelType(meta_graph_def))
+        ->IncrementBy(1);
+  }
+
   UpdateTpuTargetByBridgeCompatibility(options.graph_execution_options,
                                        meta_graph_def.graph_def());
   UpdateCompileOptions(options);
@@ -781,15 +790,6 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
         ->tf_xla_persistent_cache_read_only = true;
     LOG(INFO) << "Set persistent cache directory to "
               << persistent_cache_directory << ", and set it to read-only.";
-  }
-
-  if (options.emit_model_type_metric) {
-    inferred_model_type_count
-        ->GetCell(options.graph_execution_options.model_metadata.name(),
-                  absl::StrCat(
-                      options.graph_execution_options.model_metadata.version()),
-                  GetInferredModelType(meta_graph_def))
-        ->IncrementBy(1);
   }
 
   if (options.graph_execution_options.use_ifrt) {
