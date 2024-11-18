@@ -360,35 +360,3 @@ alias(
     actual = if_cuda_libs("@cuda_nccl//:nccl", ":nccl"),
     visibility = ["//visibility:public"],
 )
-
-cuda_stub(
-    name = "nvjitlink",
-    srcs = ["nvjitlink.symbols"],
-)
-
-cc_library(
-    name = "nvjitlink_stub",
-    srcs = if_cuda_is_configured([
-        "nvjitlink_stub.cc",
-        "nvjitlink.tramp.S",
-    ]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/nvjitlink/lib")),
-    local_defines = [
-        "IMPLIB_EXPORT_SHIMS=1",
-    ],
-    textual_hdrs = ["nvjitlink.inc"],
-    visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:load_library",
-    ]),
-)
-
-alias(
-    name = "nvjitlink",  # buildifier: disable=duplicated-name
-    actual = if_cuda_libs("@cuda_nvjitlink//:nvjitlink", ":nvjitlink_stub"),
-    visibility = ["//visibility:public"],
-)
