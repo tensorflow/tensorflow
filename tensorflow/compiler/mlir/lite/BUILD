@@ -553,6 +553,7 @@ cc_library(
     hdrs = [
         "ir/tfl_ops.h",
         "transforms/canonicalize_boundary_value_pass.h",
+        "transforms/optimize_batch_matmul_pass.h",
         "transforms/optimize_pass.h",
         "transforms/pass_registry_utils.h",
         "transforms/passes.h",
@@ -1049,16 +1050,19 @@ cc_library(
     name = "tensorflow_lite_optimize_batch_matmul",
     srcs = [
         "transforms/generated_optimize_batch_matmul.inc",
-        "transforms/optimize_batch_matmul.cc",
+        "transforms/optimize_batch_matmul_pass.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/optimize_batch_matmul_pass.h",
     ],
     deps = [
         ":convert_type",
-        ":tensorflow_lite",
+        ":pass",
+        ":pass_options",
+        ":tensorflow_lite_ops",
         ":tensorflow_lite_optimize_batch_matmul_inc_gen",
         ":tensorflow_lite_passes_inc_gen",
+        ":utils",
         ":validators",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow",

@@ -151,12 +151,6 @@ def ModifyIONodesPass : Pass<"tfl-modify-io-nodes", "mlir::func::FuncOp"> {
   ];
 }
 
-def OptimizeBatchMatmulPass : Pass<"tfl-optimize-batch-matmul", "mlir::func::FuncOp"> {
-  let summary = "Optimize FC with BatchMatmul within the TensorFlow Lite dialect";
-  let constructor = "CreateOptimizeBatchMatmulPass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
-}
-
 def OptimizeFunctionalOpsPass : Pass<"tfl-optimize-functional-ops", "mlir::ModuleOp"> {
   let summary = "Optimize TensorFlow functional op";
   let constructor = "CreateOptimizeFunctionalOpsPass()";

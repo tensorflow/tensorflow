@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/push_transpose_through_ewise_pass.h"
@@ -81,7 +82,9 @@ inline std::unique_ptr<mlir::Pass> CreateOptimizePass() {
 }
 
 // Creates an instance of the Tensorflow Lite batch matmul Optimize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizeBatchMatmulPass();
+inline std::unique_ptr<mlir::Pass> CreateOptimizeBatchMatmulPass() {
+  return Create<OptimizeBatchMatmulPass>();
+}
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
@@ -312,6 +315,7 @@ inline void registerTensorFlowLitePasses() {
   Register<UnfreezeMutableGlobalTensorsPass>();
   Register<PushTransposeThroughEwisePass>();
   Register<CanonicalizeBoundaryValuePass>();
+  Register<OptimizeBatchMatmulPass>();
 }
 
 }  // namespace TFL
