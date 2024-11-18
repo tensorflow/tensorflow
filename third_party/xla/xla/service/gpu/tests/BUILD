@@ -792,7 +792,6 @@ cc_library(
     tags = tf_cuda_tests_tags(),
     deps = [
         "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings",
     ],
@@ -810,7 +809,10 @@ xla_test(
     data = ["test_autotune_cache.textproto"],
     env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=" +
                         "$(execpath test_autotune_cache.textproto)"},
-    deps = [":simple_optimization_test"],
+    deps = [
+        ":simple_optimization_test",
+        "//xla/tests:xla_internal_test_main",
+    ],
 )
 
 # This shows that tests can load an autotune cache using the TEST_WORKSPACE prefix.
@@ -829,7 +831,10 @@ xla_test(
     env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=TEST_WORKSPACE/" +
                         package_name() +
                         "/test_autotune_cache.textproto"},
-    deps = [":simple_optimization_test"],
+    deps = [
+        ":simple_optimization_test",
+        "//xla/tests:xla_internal_test_main",
+    ],
 )
 
 # This shows that tests can dump an autotune cache into their output directory.
@@ -845,7 +850,10 @@ xla_test(
                         "TEST_UNDECLARED_OUTPUTS_DIR/autotune_cache.textproto"},
     # Sharding must be disabled to correctly dump the autotune cache for all test.
     shard_count = 1,
-    deps = [":simple_optimization_test"],
+    deps = [
+        ":simple_optimization_test",
+        "//xla/tests:xla_internal_test_main",
+    ],
 )
 
 xla_test(
