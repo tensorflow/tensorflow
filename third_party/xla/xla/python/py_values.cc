@@ -21,21 +21,28 @@ limitations under the License.
 #include <exception>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/complex.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "third_party/py/numpy/_core/include/numpy/arrayobject.h"
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
@@ -57,6 +64,7 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "third_party/tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -247,10 +255,82 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyScalar(
   };
 }
 
+absl::StatusOr<DevicePutResultFn> HandleStringNumpyArray(
+    nb::handle h, ifrt::Client* client, ifrt::Device* to_device,
+    const DevicePutOptions& options, ifrt::MemoryKind to_memory_kind) {
+  xla::nb_numpy_ndarray array = nb::cast<xla::nb_numpy_ndarray>(h);
+  auto py_array_obj = reinterpret_cast<PyArrayObject*>(array.ptr());
+
+  // Iterate over the array and convert each element to a Cord.
+  auto num_elements = PyArray_SIZE(py_array_obj);
+  std::vector<absl::Cord> cords;
+  cords.reserve(num_elements);
+  std::vector<nb::object> py_objs;
+  py_objs.reserve(num_elements);
+  auto iter = tensorflow::make_safe(
+      PyArray_IterNew(reinterpret_cast<PyObject*>(py_array_obj)));
+  while (PyArray_ITER_NOTDONE(iter.get())) {
+    auto* iter_data = PyArray_ITER_DATA(iter.get());
+    auto* item = PyArray_GETITEM(py_array_obj, static_cast<char*>(iter_data));
+    if (!item) {
+      return absl::InternalError("Failed to get item out of the ndarray iter.");
+    }
+    Py_ssize_t len;
+    char* ptr;
+    if (PyBytes_AsStringAndSize(item, &ptr, &len) < 0) {
+      return absl::InternalError("Cannot get bytes from ndarray element.");
+    }
+    cords.push_back(
+        absl::MakeCordFromExternal(absl::string_view(ptr, len),
+                                   /*releaser=*/[](absl::string_view) {}));
+    py_objs.push_back(nb::steal<nb::object>(item));
+
+    PyArray_ITER_NEXT(iter.get());
+  }
+
+  // Assemble all the parameters of MakeArrayFromHostBuffer
+  void* data = cords.data();
+  ifrt::Shape shape(
+      absl::MakeSpan(static_cast<const int64_t*>(array.shape()), array.ndim()));
+  std::shared_ptr<xla::ifrt::Sharding> sharding =
+      xla::ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind);
+
+  // Make sure the Python objects live as long as the `Cord`s do.
+  py_objs.push_back(std::move(array));
+  auto managed_refs =
+      GlobalPyRefManager()->ManageReferences(absl::MakeSpan(py_objs));
+  auto on_done_with_host_buffer = [cords = std::move(cords),
+                                   managed_refs = std::move(managed_refs)]() {};
+
+  return [client, data = data, shape = std::move(shape),
+          sharding = std::move(sharding),
+          on_done_with_host_buffer =
+              std::move(on_done_with_host_buffer)]() mutable
+             -> absl::StatusOr<DevicePutResult> {
+    TF_ASSIGN_OR_RETURN(
+        auto ifrt_array,
+        client->MakeArrayFromHostBuffer(
+            data, ifrt::DType(ifrt::DType::kString), std::move(shape),
+            /*byte_strides=*/std::nullopt, std::move(sharding),
+            ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
+            std::move(on_done_with_host_buffer)));
+
+    return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
+  };
+}
+
 absl::StatusOr<DevicePutResultFn> HandleNumpyArray(
     nb::handle h, ifrt::Client* client, ifrt::Device* to_device,
     const DevicePutOptions& options, ifrt::MemoryKind to_memory_kind) {
   xla::nb_numpy_ndarray array = nb::cast<xla::nb_numpy_ndarray>(h);
+
+  // String numpy arrays require substantially different processing.
+  if (array.dtype().char_() == 'S' || array.dtype().char_() == 'T' ||
+      array.dtype().char_() == 'O') {
+    return HandleStringNumpyArray(h, client, to_device, options,
+                                  to_memory_kind);
+  }
+
   TF_ASSIGN_OR_RETURN(PrimitiveType type, DtypeToPrimitiveType(array.dtype()));
 
   PrimitiveType squashed_type;

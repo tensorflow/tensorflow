@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
+
 #include <algorithm>
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -28,21 +28,15 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_DEF_OPTIMIZEBATCHMATMULPASS
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Checks whether the producer of `value` is TFL_DequantizeOp. This function
 // iteratively finds the defining op if the direct defining op is TFL_SplitOp.
@@ -57,18 +51,6 @@ bool NotFromDequant(mlir::Value value) {
   }
   return !split_op.getValue().getDefiningOp<DequantizeOp>();
 }
-
-// Optimize TFLite operations in functions.
-class OptimizeBatchMatmulPass
-    : public impl::OptimizeBatchMatmulPassBase<OptimizeBatchMatmulPass> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeBatchMatmulPass)
-
-  OptimizeBatchMatmulPass() = default;
-  OptimizeBatchMatmulPass(const OptimizeBatchMatmulPass &) {}
-
-  void runOnOperation() override;
-};
 
 // Converts batch_matmul operation to fully_connected if rhs is a
 // constant tensor with rank 2
@@ -221,6 +203,7 @@ struct ConvertBatchMatMulOpToReduceSum
     return false;
   }
 };
+}  // namespace
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize_batch_matmul.inc"
 
@@ -234,13 +217,6 @@ void OptimizeBatchMatmulPass::runOnOperation() {
   TFL::populateWithGenerated(patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
-}  // namespace
-
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizeBatchMatmulPass() {
-  return std::make_unique<OptimizeBatchMatmulPass>();
-}
-
-static PassRegistration<OptimizeBatchMatmulPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

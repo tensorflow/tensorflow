@@ -360,6 +360,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -370,6 +371,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@nanobind",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "//third_party/py/numpy:headers",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:comparison_util",
         "//xla:literal",
@@ -418,6 +420,7 @@ cc_library(
         "//xla/tsl/framework:allocator",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/python/lib/core:numpy",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
