@@ -326,6 +326,17 @@ class QueueBase:
     `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
+    >>> q = tf.queue.FIFOQueue(capacity=3, dtypes=tf.int32)
+    >>> q.enqueue(1)
+    >>> q.enqueue(2)
+    >>> q.size()
+    <tf.Tensor: shape=(), dtype=int32, numpy=2>
+
+    >>> q = tf.queue.FIFOQueue(2, tf.int32, shapes=tf.TensorShape(4))
+    >>> q.enqueue(tf.constant([1, 2, 3, 4], dtype=tf.int32))
+    >>> q.size()
+    <tf.Tensor: shape=(), dtype=int32, numpy=1>
+
     Args:
       vals: A tensor, a list or tuple of tensors, or a dictionary containing
         the values to enqueue.
@@ -368,6 +379,11 @@ class QueueBase:
     with `cancel_pending_enqueues=True`, or (ii) the session is
     `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
+
+    >>> q = tf.queue.FIFOQueue(capacity=10, dtypes=tf.int32)
+    >>> q.enqueue_many(tf.constant([1, 2, 3, 4, 5], dtype=tf.int32))
+    >>> q.size()
+    <tf.Tensor: shape=(), dtype=int32, numpy=5>
 
     Args:
       vals: A tensor, a list or tuple of tensors, or a dictionary
@@ -435,6 +451,14 @@ class QueueBase:
     `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
 
+    >>> q = tf.queue.FIFOQueue(capacity=2, dtypes=tf.int32)
+    >>> q.enqueue(1)
+    >>> q.enqueue(2)
+    >>> q.dequeue()
+    <tf.Tensor: shape=(), dtype=int32, numpy=1>
+    >>> q.dequeue()
+    <tf.Tensor: shape=(), dtype=int32, numpy=2>
+
     Args:
       name: A name for the operation (optional).
 
@@ -476,6 +500,17 @@ class QueueBase:
     request, `tf.errors.OutOfRangeError` will be raised. If the
     session is `tf.Session.close`,
     `tf.errors.CancelledError` will be raised.
+
+    >>> q = tf.queue.FIFOQueue(10, tf.int32, shapes=tf.TensorShape(2))
+    >>> q.enqueue(tf.constant([1, 2], dtype=tf.int32, shape=(2)))
+    >>> q.enqueue(tf.constant([3, 4], dtype=tf.int32, shape=(2)))
+    >>> q.enqueue(tf.constant([5, 6], dtype=tf.int32, shape=(2)))
+    >>> q.enqueue(tf.constant([7, 8], dtype=tf.int32, shape=(2)))
+    >>> q.dequeue_many(3)
+    <tf.Tensor: shape=(3, 2), dtype=int32, numpy=
+    array([[1, 2],
+       [3, 4],
+       [5, 6]], dtype=int32)>
 
     Args:
       n: A scalar `Tensor` containing the number of elements to dequeue.
@@ -521,6 +556,15 @@ class QueueBase:
     `tf.errors.OutOfRangeError` is raised just like in `dequeue_many`.
     Otherwise the behavior is identical to `dequeue_many`.
 
+    >>> q = tf.queue.FIFOQueue(10, tf.int32, shapes=tf.TensorShape(2))
+    >>> q.enqueue(tf.constant([1, 2], dtype=tf.int32, shape=(2)))
+    >>> q.enqueue(tf.constant([3, 4], dtype=tf.int32, shape=(2)))
+    >>> q.close()
+    >>> q.dequeue_up_to(5)
+    <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+    array([[1, 2],
+       [3, 4]], dtype=int32)>
+
     Args:
       n: A scalar `Tensor` containing the number of elements to dequeue.
       name: A name for the operation (optional).
@@ -557,6 +601,15 @@ class QueueBase:
     If `cancel_pending_enqueues` is `True`, all pending requests will also
     be canceled.
 
+    >>> q = tf.queue.FIFOQueue(capacity=3, dtypes=tf.int32)
+    >>> q.is_closed()
+    <tf.Tensor: shape=(), dtype=bool, numpy=False>
+    >>> q.close()
+    >>> q.is_closed()
+    <tf.Tensor: shape=(), dtype=bool, numpy=True>
+    >>> q.enqueue(1)
+    CancelledError: {{function_node __wrapped__QueueEnqueueV2_Tcomponents_1_device_/job:localhost/replica:0/task:0/device:CPU:0}} FIFOQueue '0' is closed.
+
     Args:
       cancel_pending_enqueues: (Optional.) A boolean, defaulting to `False`
         (described above).
@@ -584,6 +637,10 @@ class QueueBase:
     This operation returns true if the queue is closed and false if the queue
     is open.
 
+    >>> q = tf.queue.FIFOQueue(capacity=3, dtypes=tf.int32)
+    >>> q.is_closed()
+    <tf.Tensor: shape=(), dtype=bool, numpy=False>
+
     Args:
       name: A name for the operation (optional).
 
@@ -599,6 +656,11 @@ class QueueBase:
 
   def size(self, name=None):
     """Compute the number of elements in this queue.
+
+    >>> q = tf.queue.FIFOQueue(capacity=10, dtypes=tf.int32)
+    >>> q.enqueue_many(tf.constant([1, 2, 3, 4], dtype=tf.int32))
+    >>> q.size()
+    <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
     Args:
       name: A name for the operation (optional).
@@ -753,6 +815,9 @@ class FIFOQueue(QueueBase):
       shared_name: (Optional.) If non-empty, this queue will be shared under
         the given name across multiple sessions.
       name: Optional name for the queue operation.
+
+    >>> tf.queue.FIFOQueue(capacity=10, dtypes=tf.int32)
+    <tensorflow.python.ops.data_flow_ops.FIFOQueue at 0x7b98d25dee30>
     """
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
