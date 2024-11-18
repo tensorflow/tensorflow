@@ -17,7 +17,10 @@ limitations under the License.
 #define XLA_TSL_CONCURRENCY_ASYNC_VALUE_REF_H_
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <new>
 #include <string_view>
 #include <type_traits>
@@ -25,10 +28,12 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -178,14 +183,10 @@ class AsyncValueRef {
   // Allow implicit conversion to type-erased RCReference<AsyncValue>
   operator RCReference<AsyncValue>() && { return std::move(value_); }  // NOLINT
 
-  // Return true if the AsyncValue is resolved to a concrete value or error.
   bool IsAvailable() const { return value_->IsAvailable(); }
   bool IsUnavailable() const { return value_->IsUnavailable(); }
-
-  // Return true if the AsyncValue contains a concrete value.
   bool IsConcrete() const { return value_->IsConcrete(); }
-
-  // Return true if state is `kUnconstructed`.
+  bool IsConstructed() const { return value_->IsConstructed(); }
   bool IsUnconstructed() const { return value_->IsUnconstructed(); }
 
   // Return the stored value. The AsyncValueRef must be available.
@@ -815,6 +816,82 @@ class AsyncValuePtr {
   }
 
   AsyncValue* value_;  // doesn't own the async value
+};
+
+//===----------------------------------------------------------------------===//
+// Count down AsyncValueRef.
+//===----------------------------------------------------------------------===//
+
+// Count down async value ref is used to set the async value available when the
+// count reaches zero, or to an error state if any of the count down operations
+// fails.
+//
+// Sample usage:
+//
+//   AsyncValueRef<Chain> done = MakeConstructedAsyncValueRef<Chain>();
+//   CountDownAsyncValueRef<Chain> count_down(done, num_tasks);
+//
+//   for (size_t i = 0; i < num_tasks; ++i) {
+//     thread_pool.Schedule([count_down] {
+//       count_down.CountDown();
+//     });
+//   }
+//
+//   return done;
+//
+//  When the counter reaches zero, the async value will be set to available
+//  state (or an error state if any of the count down operations got an error).
+template <typename T>
+class CountDownAsyncValueRef {
+ public:
+  CountDownAsyncValueRef(AsyncValueRef<T> ref, int64_t cnt)
+      : ref_(ref), state_(std::make_shared<State>(cnt)) {
+    DCHECK(ref.IsConstructed()) << "AsyncValue must be in constructed state";
+    DCHECK(ref.IsUnavailable()) << "AsyncValue must be in unavailable state";
+    DCHECK_GT(cnt, 0) << "Count must be positive";
+  }
+
+  // Drops the count by one and returns true if async value became available.
+  bool CountDown(const absl::Status& status = absl::OkStatus()) {
+    DCHECK(ref_.IsUnavailable()) << "AsyncValue must be in unavailable state";
+    DCHECK_GT(state_->cnt.load(), 0) << "Count must be positive";
+
+    if (ABSL_PREDICT_FALSE(!status.ok())) {
+      absl::MutexLock lock(&state_->mutex);
+      state_->is_error.store(true, std::memory_order_relaxed);
+      state_->status = status;
+    }
+
+    // If this was the last count down, we have to decide if we set async value
+    // to concrete or error state.
+    bool is_complete = state_->cnt.fetch_sub(1, std::memory_order_relaxed) == 1;
+    if (ABSL_PREDICT_FALSE(is_complete)) {
+      bool is_error = state_->is_error.load(std::memory_order_relaxed);
+      if (ABSL_PREDICT_FALSE(is_error)) {
+        absl::MutexLock lock(&state_->mutex);
+        ref_.SetError(state_->status);
+        return true;
+      } else {
+        ref_.SetStateConcrete();
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+ private:
+  struct State {
+    explicit State(int64_t cnt) : cnt(cnt), is_error(false) {}
+
+    std::atomic<int64_t> cnt;
+    std::atomic<bool> is_error;
+    absl::Mutex mutex;
+    absl::Status status ABSL_GUARDED_BY(mutex);
+  };
+
+  AsyncValueRef<T> ref_;
+  std::shared_ptr<State> state_;
 };
 
 //===----------------------------------------------------------------------===//

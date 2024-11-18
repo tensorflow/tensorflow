@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -909,6 +908,38 @@ TEST(AsyncValueRefTest, RecursiveOwnership) {
   EXPECT_EQ(counter, 1 + 2 + 3);
 }
 
+TEST(AsyncValueRefTest, CountDownSuccess) {
+  AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
+
+  CountDownAsyncValueRef<int32_t> count_down_ref(ref, 2);
+  CountDownAsyncValueRef<int32_t> count_down_ref_copy = count_down_ref;
+
+  EXPECT_FALSE(ref.IsAvailable());
+
+  EXPECT_FALSE(count_down_ref.CountDown());
+  EXPECT_FALSE(ref.IsAvailable());
+
+  EXPECT_TRUE(count_down_ref_copy.CountDown());
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
+TEST(AsyncValueRefTest, CountDownError) {
+  AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
+
+  CountDownAsyncValueRef<int32_t> count_down_ref(ref, 2);
+  CountDownAsyncValueRef<int32_t> count_down_ref_copy = count_down_ref;
+
+  EXPECT_FALSE(ref.IsAvailable());
+
+  EXPECT_FALSE(count_down_ref.CountDown(absl::InternalError("error")));
+  EXPECT_FALSE(ref.IsAvailable());
+
+  EXPECT_TRUE(count_down_ref_copy.CountDown());
+  EXPECT_TRUE(ref.IsError());
+  EXPECT_EQ(ref.GetError(), absl::InternalError("error"));
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
@@ -929,5 +960,35 @@ BENCHMARK(BM_MakeConstructed<32>);
 BENCHMARK(BM_MakeConstructed<64>);
 BENCHMARK(BM_MakeConstructed<128>);
 BENCHMARK(BM_MakeConstructed<256>);
+
+static void BM_CountDownSuccess(benchmark::State& state) {
+  size_t n = state.range(0);
+
+  for (auto _ : state) {
+    auto ref = MakeConstructedAsyncValueRef<int32_t>(42);
+    CountDownAsyncValueRef<int32_t> count_down_ref(ref, n);
+    for (size_t i = 0; i < n; ++i) {
+      count_down_ref.CountDown();
+    }
+  }
+}
+
+BENCHMARK(BM_CountDownSuccess)->Arg(4)->Arg(8)->Arg(16)->Arg(32);
+
+static void BM_CountDownError(benchmark::State& state) {
+  size_t n = state.range(0);
+
+  absl::Status error = absl::InternalError("error");
+
+  for (auto _ : state) {
+    auto ref = MakeConstructedAsyncValueRef<int32_t>(42);
+    CountDownAsyncValueRef<int32_t> count_down_ref(ref, n);
+    for (size_t i = 0; i < n; ++i) {
+      count_down_ref.CountDown(error);
+    }
+  }
+}
+
+BENCHMARK(BM_CountDownError)->Arg(4)->Arg(8)->Arg(16)->Arg(32);
 
 }  // namespace tsl
