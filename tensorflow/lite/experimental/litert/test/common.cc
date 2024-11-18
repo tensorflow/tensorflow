@@ -27,15 +27,12 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
-#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
-#include "tensorflow/lite/experimental/litert/core/model/model.h"
+#include "tensorflow/lite/experimental/litert/core/model/model_buffer.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_load.h"
-#include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/stderr_reporter.h"
@@ -43,13 +40,6 @@
 
 namespace litert {
 namespace testing {
-
-using ::litert::internal::FinishByteCodePlaceholders;
-using ::litert::internal::kByteCodeMetadataKey;
-using ::litert::internal::kLiteRtDispatchOpCustomCode;
-using ::litert::internal::MakeByteCodePlaceholder;
-using ::litert::internal::MakeExecInfo;
-using ::litert::internal::SerializeModel;
 
 std::string GetTestFilePath(absl::string_view filename) {
   static constexpr std::string_view kTestDataDir =
@@ -119,52 +109,8 @@ bool ValidateTopology(const std::vector<Op>& ops) {
 
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     absl::string_view tfl_file, absl::string_view npu_file) {
-  auto model = LoadTestFileModel(tfl_file);
-
-  auto npu_code = LoadBinaryFile(npu_file);
-  if (!npu_code) {
-    return Unexpected(npu_code.Error());
-  }
-
-  LiteRtModelT& internal_model = *model.Get();
-  if (auto stat = internal_model.PushMetadata(kByteCodeMetadataKey,
-                                              MakeByteCodePlaceholder());
-      stat != kLiteRtStatusOk) {
-    return Unexpected(stat);
-  }
-
-  for (auto& op : internal_model.subgraphs.at(0).ops) {
-    if (op->op_code != kLiteRtOpCodeTflCustom) {
-      continue;
-    }
-    auto exec_info =
-        MakeExecInfo(op->custom_options.StrView(), kByteCodeMetadataKey);
-    if (!exec_info) {
-      return exec_info.Error();
-    }
-    op->custom_options = std::move(*exec_info);
-  }
-
-  internal_model.custom_op_code = kLiteRtDispatchOpCustomCode;
-
-  auto serialized = SerializeModel(std::move(model));
-  if (!serialized) {
-    return serialized;
-  }
-
-  if (auto stat = FinishByteCodePlaceholders(*serialized, npu_code->size());
-      stat != kLiteRtStatusOk) {
-    return Unexpected(stat);
-  }
-
-  OwningBufferRef<uint8_t> with_append(serialized->Size() + npu_code->size());
-
-  uint8_t* write = with_append.Data();
-  std::memcpy(write, serialized->Data(), serialized->Size());
-  write += serialized->Size();
-  std::memcpy(write, npu_code->data(), npu_code->size());
-
-  return with_append;
+  return internal::GetModelBufWithByteCode(GetTestFilePath(tfl_file),
+                                           GetTestFilePath(npu_file));
 }
 
 Expected<TflRuntime::Ptr> TflRuntime::CreateFromTflFile(

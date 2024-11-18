@@ -131,3 +131,46 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
+
+cc_library(
+    name = "model_buffer",
+    srcs = ["model_buffer.cc"],
+    hdrs = ["model_buffer.h"],
+    deps = [
+        ":model",
+        ":model_load",
+        ":model_serialize",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_model",
+        "//tensorflow/lite/experimental/litert/core:byte_code_util",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_test(
+    name = "model_buffer_test",
+    srcs = ["model_buffer_test.cc"],
+    deps = [
+        ":model",
+        ":model_buffer",
+        ":model_load",
+        "//tensorflow/compiler/mlir/lite:allocation",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite/c:c_api_opaque",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:cc_api_stable",
+        "//tensorflow/lite/experimental/litert/core:byte_code_util",
+        "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:simple_model_npu",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
