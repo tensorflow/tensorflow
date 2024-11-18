@@ -1794,46 +1794,61 @@ absl::Status IrEmitterUnnested::EmitReplicaOrPartitionId(
 
 absl::Status IrEmitterUnnested::EmitCollectivePermute(
     const HloCollectivePermuteInstruction* instr) {
-  TF_RET_CHECK(instr->operand_count() == 1);
-  auto* operand = instr->operand(0);
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
-                      GetAllocationSliceForHlo(operand));
   // First output is aliased.
   TF_RET_CHECK(
       instr->shape().IsTuple() && instr->shape().tuple_shapes_size() == 2 &&
       Shape::Equal().IgnoreMemorySpaceInLayout()(
           instr->shape().tuple_shapes(0), instr->shape().tuple_shapes(1)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
-                      GetAllocationSliceForHlo(instr, {1}));
 
-  const Shape shape = operand->shape();
   const auto& hlo_config = ir_emitter_context_->hlo_module().config();
   const int64_t replica_count = hlo_config.replica_count();
   const int64_t partition_count = hlo_config.num_partitions();
-  const int64_t src_memory_space = shape.layout().memory_space();
-  const int64_t dst_memory_space =
-      instr->shape().tuple_shapes(1).layout().memory_space();
 
-  if (NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
-                                                    partition_count)) {
-    // For a degenerate collective permute, just generate a copy thunk.
-    AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr),
-        /*source_buffer=*/source_slice,
-        /*destination_buffer=*/result_slice,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
-    // Signal that start thunk not created with nullptr.
-    GetCollectivesAsyncEvents().try_emplace(instr, nullptr);
-  } else {
-    const NcclCollectiveThunk::Buffer buffer = {
-        /*element_count=*/ShapeUtil::ElementsIn(shape),
-        /*source_buffer=*/source_slice,
-        /*destination_buffer=*/result_slice,
-        /*source_memory_space=*/src_memory_space,
-        /*destination_memory_space=*/dst_memory_space};
+  auto operands = instr->operands();
+  std::vector<NcclCollectiveThunk::Buffer> buffers;
+  for (int oprd_idx = 0; oprd_idx < operands.size(); ++oprd_idx) {
+    const auto operand = operands.at(oprd_idx);
+    const ShapeIndex nested_shape_idx = {1, oprd_idx}, normal_shape_idx = {1};
+    const Shape operand_shape = operand->shape();
+    const Shape result_shape = instr->shape().tuple_shapes(1);
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                        GetAllocationSliceForHlo(
+                            instr, result_shape.IsTuple() ? nested_shape_idx
+                                                          : normal_shape_idx));
+
+    const int64_t src_memory_space = operand_shape.layout().memory_space();
+    const int64_t dst_memory_space =
+        (result_shape.IsTuple())
+            ? result_shape.tuple_shapes(0).layout().memory_space()
+            : result_shape.layout().memory_space();
+
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
+                        GetAllocationSliceForHlo(operand));
+    if (NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
+                                                      partition_count)) {
+      // For a degenerate collective permute, just generate a copy thunk.
+      AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
+          Thunk::ThunkInfo::WithProfileAnnotation(instr),
+          /*source_buffer=*/source_slice,
+          /*destination_buffer=*/result_slice,
+          /*mem_size=*/ShapeUtil::ByteSizeOf(operand_shape)));
+      // Signal that start thunk not created with nullptr.
+      GetCollectivesAsyncEvents().try_emplace(instr, nullptr);
+    } else {
+      const NcclCollectiveThunk::Buffer buffer = {
+          /*element_count=*/ShapeUtil::ElementsIn(operand_shape),
+          /*source_buffer=*/source_slice,
+          /*destination_buffer=*/result_slice,
+          /*source_memory_space=*/src_memory_space,
+          /*destination_memory_space=*/dst_memory_space};
+      buffers.push_back(buffer);
+    }
+  }
+  if (!NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
+                                                     partition_count)) {
     auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), NcclApi::Default(),
-        instr, replica_count, partition_count, buffer,
+        instr, replica_count, partition_count, buffers,
         ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
     GetCollectivesAsyncEvents().try_emplace(instr, thunk->async_events());
     AddThunkToThunkSequence(std::move(thunk));

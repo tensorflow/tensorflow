@@ -2538,6 +2538,25 @@ TEST_F(HloVerifierTestLayoutSensitive, CollectivePermuteStartAndDone) {
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTestLayoutSensitive, CombinedCollectivePermuteStartAndDone) {
+  const char* const kModuleStr = R"(
+  HloModule Module
+
+  ENTRY CollectivePermuteStartAndDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    p1 = f32[2,3]{1,0:S(1)} parameter(1)
+    collective-permute-start.1 = ((f32[2,3]{1,0:S(1)}, f32[2,3]{1,0:S(1)}), (f32[2,3]{1,0:S(1)}, f32[2,3]{1,0:S(1)})) collective-permute-start(p0, p1), source_target_pairs={{0,1},{1,0}}, channel_id=1
+    collective-permute-done.1 = (f32[2,3]{1,0:S(1)}, f32[2,3]{1,0:S(1)}) collective-permute-done(collective-permute-start.1)
+    ROOT get-tuple-element.1 = f32[2,3]{1,0:S(1)} get-tuple-element((f32[2,3]{1,0:S(1)}, f32[2,3]{1,0:S(1)}) collective-permute-done.1), index=1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
 TEST_F(HloVerifierTest, CollectivePermuteStartAndDoneWrongType) {
   const char* const kModuleStr = R"(
   HloModule Module
