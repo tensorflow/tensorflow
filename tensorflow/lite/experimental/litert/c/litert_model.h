@@ -149,6 +149,10 @@ LiteRtStatus LiteRtGetTensorDefiningOp(LiteRtTensor tensor,
                                        bool* has_defining_op,
                                        LiteRtTensorDefiningOp* defining_op);
 
+// Get the string name associated with this tensor. This is an optional
+// attribute and if not set will return a zero-length string.
+LiteRtStatus LiteRtGetTensorName(LiteRtTensor tensor, const char** name);
+
 //
 // LiteRtOp
 //

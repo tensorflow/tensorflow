@@ -22,6 +22,9 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -176,6 +179,12 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
     LiteRtWeights weights;
     internal::AssertOk(LiteRtGetTensorWeights, Get(), &weights);
     return litert::Weights(weights);
+  }
+
+  absl::string_view Name() const {
+    const char* name;
+    internal::AssertOk(LiteRtGetTensorName, Get(), &name);
+    return absl::string_view(name);
   }
 
   struct TensorUse;

@@ -191,3 +191,8 @@ LiteRtStatus LiteRtGetRankedTensorType(
   *ranked_tensor_type = tensor->type_detail.ranked_tensor_type;
   return kLiteRtStatusOk;
 }
+
+LiteRtStatus LiteRtGetTensorName(LiteRtTensor tensor, const char** name) {
+  *name = tensor->name.data();
+  return kLiteRtStatusOk;
+}

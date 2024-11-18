@@ -159,6 +159,16 @@ TEST(LiteRtTensorTest, NoDefiningOp) {
   ASSERT_FALSE(has_defining_op);
 }
 
+TEST(LiteRtTensorTest, Name) {
+  static constexpr absl::string_view kName = "foo";
+  LiteRtTensorT tensor;
+  tensor.name = kName;
+
+  const char* name;
+  LITERT_ASSERT_STATUS_OK(LiteRtGetTensorName(&tensor, &name));
+  EXPECT_STREQ(name, kName.data());
+}
+
 TEST(LiteRtOpTest, GetOpCode) {
   LiteRtOpT op;
   op.op_code = kLiteRtOpCodeTflCustom;

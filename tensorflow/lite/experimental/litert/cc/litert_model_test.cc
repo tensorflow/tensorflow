@@ -25,6 +25,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
+#include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
 // Tests for CC Wrapper classes around public C api.
@@ -233,6 +234,15 @@ TEST(CcTensorTest, WeightsData) {
   auto data = subgraph->Ops().front().Inputs().back().WeightsData<float>();
   ASSERT_TRUE(data.HasValue());
   EXPECT_THAT(data.Value(), ::testing::ElementsAreArray({1.0, 2.0, 3.0, 4.0}));
+}
+
+TEST(CcTensorTest, Name) {
+  static constexpr absl::string_view kName = "foo";
+  LiteRtTensorT tensor;
+  tensor.name = kName;
+
+  Tensor cc_tensor(&tensor);
+  EXPECT_EQ(cc_tensor.Name(), kName);
 }
 
 //===----------------------------------------------------------------------===//
