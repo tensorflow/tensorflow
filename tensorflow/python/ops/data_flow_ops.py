@@ -608,7 +608,7 @@ class QueueBase:
     >>> q.is_closed()
     <tf.Tensor: shape=(), dtype=bool, numpy=True>
     >>> q.enqueue(1)
-    CancelledError: {{function_node __wrapped__QueueEnqueueV2_Tcomponents_1_device_/job:localhost/replica:0/task:0/device:CPU:0}} FIFOQueue '0' is closed.
+    CancelledError: ... FIFOQueue '0' is closed.
 
     Args:
       cancel_pending_enqueues: (Optional.) A boolean, defaulting to `False`
