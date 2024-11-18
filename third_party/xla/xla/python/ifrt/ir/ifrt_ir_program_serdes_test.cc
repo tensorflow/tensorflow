@@ -125,7 +125,8 @@ module @multiple_calls_of_same_module {
       Serialize(*initial_program,
                 std::make_unique<SerializeIfrtIRProgramOptions>(
                     Version::getCurrentVersion().toString(),
-                    ::mlir::vhlo::Version::getCurrentVersion().toString())));
+                    ::mlir::vhlo::Version::getCurrentVersion().toString(),
+                    /*version_in_place=*/false)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<IfrtIRProgram> deserialized_program,

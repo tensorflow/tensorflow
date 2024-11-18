@@ -83,7 +83,6 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
   mlir::MLIRContext& context = getContext();
   mlir::OpBuilder builder(&context);
   mlir::ModuleOp module = getOperation();
-  mlir::func::FuncOp main_func = GetMainFunction(module);
 
   // Create a new context and register the dialects that are loaded in the
   // current context. This context will be used to temporarily clone atom
@@ -93,16 +92,28 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
   mlir::OpBuilder tmp_builder(&tmp_context);
   // Keeps track of the atom programs that have already been serialized.
   absl::flat_hash_set<std::string> converted_atom_program_names;
-  auto result = main_func.walk([&](CallOp call_op) -> mlir::WalkResult {
+
+  // Walk the module and convert each atom program to VHLO.
+  auto result = module.walk([&](CallOp call_op) -> mlir::WalkResult {
     mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
     if (callee == nullptr) {
       return call_op->emitOpError()
              << "can't find callee `" << call_op.getCalleeAttr() << "`";
     }
     auto stablehlo_module = llvm::cast<mlir::ModuleOp>(callee->getParentOp());
-    // Note: this assumes that the atom program modules are all in the
-    // top-level IFRT IR module, which is what it is currently supported.
-    // The name would have to include if nesting support is added.
+    // Verify that the atom program is a top-level IFRT IR module. Nested atom
+    // programs are not supported in IFRT IR. Moreover, it would difficult
+    // to exactly reconstruct the IFRT IR program post atom program DCE.
+    // For example, in the example below, DCE would remove the entire module
+    // @outer, which would not be possible to reconstruct on deserialization.
+    // module @outer {
+    //  module @atom_program1 {}
+    //  module @atom_program2 {}
+    // }
+    if (call_op.getCalleeAttr().getNestedReferences().size() > 1) {
+      return call_op->emitOpError() << "nested atom programs are not supported "
+                                    << call_op.getCalleeAttr();
+    }
     std::string atom_program_name = stablehlo_module.getSymNameAttr().str();
     if (!converted_atom_program_names.insert(atom_program_name).second) {
       // Skip if the atom program has already been serialized.

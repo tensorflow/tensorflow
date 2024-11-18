@@ -28,6 +28,7 @@ limitations under the License.
 #include "stablehlo/dialect/Serialization.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
+#include "xla/python/ifrt/ir/transforms/utils.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -82,10 +83,8 @@ void IfrtAtomProgramsFromVhloPass::runOnOperation() {
     // Add the module at the end of the IFRT IR module.
     // Note: this assumes that the atom program modules are all in the top-level
     // IFRT IR module, which is what it is currently supported.
-    // TODO(icgog): Insert the atom program modules once they are actually
-    // removed by DCE upon serialization.
-    // builder.setInsertionPointToEnd(module->getBlock());
-    // CloneModuleUsingBuilder(atom_program_module.get(), builder);
+    builder.setInsertionPointToEnd(module.getBody());
+    CloneModuleUsingBuilder(atom_program_module.get(), builder);
   }
 }
 

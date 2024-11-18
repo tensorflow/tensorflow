@@ -1,4 +1,7 @@
 // RUN: ifrt-opt %s --ifrt-legalize-to-vifrt --symbol-dce --mlir-print-op-generic -split-input-file | FileCheck %s
+// RUN: ifrt-translate --serialize --ifrt_version=current --atom_program_version=current %s | ifrt-translate --deserialize | ifrt-opt > %t.0
+// RUN: ifrt-opt %s > %t.1
+// RUN: diff %t.0 %t.1
 
 // ============ Types and attributes ============
 
@@ -144,79 +147,6 @@ func.func @op_after(%arg0: !array_cp0, %arg1: !array_cp1)
   return %1, %2: !array_cp0, !array_cp0
 }
 
-!array_op_call = !ifrt.array<tensor<2x2xi32>,
-                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
-// CHECK-LABEL: "op_call"
-// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}}):
-func.func @op_call(
-    %arg0: !array_op_call {ifrt.donated}, %arg1: !array_op_call {ifrt.donated})
-    -> !array_op_call attributes {ifrt.function} {
-  // CHECK: %[[OUT0:.+]]:2 = "vifrt.CallV1"(%[[ARG0]])
-  // CHECK-SAME: <{
-  // CHECK-DAG: callee = "@add_one::@main"
-  // CHECK-DAG: devices = #vifrt<devices_v1[0, 1]>
-  // CHECK-DAG: donated_input_indices = array<i32>
-  // CHECK-DAG: io_aliases = []
-  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
-  // CHECK-SAME: }>
-  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1)
-  %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
-      : (!array_op_call) -> !array_op_call
-
-  // Verifies that the control value is passed to the next call.
-
-  // CHECK: %[[OUT1:.+]]:2 = "vifrt.CallV1"(%[[OUT0]]#0, %[[OUT0]]#1)
-  // CHECK-SAME: <{
-  // CHECK-DAG: callee = "@add_one::@main"
-  // CHECK-DAG: devices = #vifrt<devices_v1[0, 1]>
-  // CHECK-DAG: donated_input_indices = array<i32>
-  // CHECK-DAG: io_aliases = []
-  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 1>
-  // CHECK-SAME: }>
-  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1)
-  %1, %ctrl_1 = ifrt.Call @add_one::@main(%0) after %ctrl_0 on devices [0,1]
-      : (!array_op_call) -> !array_op_call
-
-  // Verifies that the donated input indices attribute is converted.
-
-  // CHECK: "vifrt.CallV1"(%[[ARG0]])
-  // CHECK-SAME: <{
-  // CHECK-DAG: callee = "@add_one::@main"
-  // CHECK-DAG: devices = #vifrt<devices_v1[0, 1]>
-  // CHECK-DAG: donated_input_indices = array<i32: 0>
-  // CHECK-DAG: io_aliases = []
-  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
-  // CHECK-SAME: }>
-  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1)
-  %2, %ctrl_2 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
-      {donated_input_indices=array<i32: 0>} : (!array_op_call) -> !array_op_call
-
-  // Verifies that the io_aliases attribute is converted.
-
-  // CHECK: "vifrt.CallV1"(%[[ARG1]])
-  // CHECK-SAME: <{
-  // CHECK-DAG: callee = "@add_one::@main"
-  // CHECK-DAG: devices = #vifrt<devices_v1[0, 1]>
-  // CHECK-DAG: donated_input_indices = array<i32>,
-  // CHECK-DAG: io_aliases = [array<i32: 0, 0>]
-  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
-  // CHECK-SAME: }>
-  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1)
-  %3, %ctrl_3 = ifrt.Call @add_one::@main(%arg1) on devices [0,1]
-      {io_aliases=[array<i32: 0, 0>]} : (!array_op_call) -> !array_op_call
-
-  return %1 : !array_op_call
-}
-
-// CHECK-NOT @add_one
-module @add_one attributes {sym_visibility = "private"} {
-  func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
-    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
-    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
-    return %1 : tensor<2x2xi32>
-  }
-}
-
 !array_le_in = !ifrt.array<tensor<2x2xi32>,
                            #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
 !array_le_out = !ifrt.array<tensor<4x4xi32>,
@@ -346,4 +276,130 @@ func.func @donated_arguments(
       : (!array_r0, !array_r0) -> (!array_r1, !array_r2)
   // CHECK: "vifrt.ReturnV1"(%[[OUT]]#0, %[[OUT]]#1) : (!vifrt.array_v1<tensor<2xi32>, #vifrt.sharding_param_v1<1 to [0] on 1>, [2], memory_kind = "vifrt.default">, !vifrt.array_v1<tensor<2xi32>, #vifrt.sharding_param_v1<1 to [0] on 1>, [3], memory_kind = "vifrt.default">)
   return %0, %1 : !array_r1, !array_r2
+}
+
+// CHECK-LABEL: "op_func_call"
+// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
+func.func @op_func_call(%arg0: !array_cp0) -> !array_cp1
+    attributes {ifrt.function} {
+  // CHECK: %[[OUT0:.+]]:2 = "vifrt.CopyArraysV1"(%[[ARG0]])
+  // CHECK-SAME: <{
+  // CHECK-DAG: donated = false
+  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
+  // CHECK-SAME: }>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default">, !vifrt.control_v1)
+  %0, %ctrl = ifrt.CopyArrays(%arg0) : (!array_cp0) -> !array_cp1
+  // CHECK: %[[OUT1:.+]] = "vifrt.CallFuncV1"(%[[OUT0]]#0)
+  // CHECK-SAME: <{callee = @copy_back}>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default">) -> !vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">
+  %1 = func.call @copy_back(%0) : (!array_cp1) -> !array_cp0
+  return %0: !array_cp1
+}
+
+// CHECK: "vifrt.FuncV1"()
+// CHECK-SAME: <{
+// CHECK-DAG: arg_attrs = []
+// CHECK-DAG: function_type = #vifrt.type_v1<!vifrt.func_v1<(!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default">) -> !vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">>>
+// CHECK-DAG: res_attrs = []
+// CHECK-DAG: sym_name = "copy_back"
+// CHECK-DAG: sym_visibility = "vifrt.default"
+// CHECK-SAME: }>
+// CHECK-NEXT: (%[[ARG1:.*]]: {{.*}}):
+func.func @copy_back(%arg1: !array_cp1) -> !array_cp0
+    attributes {ifrt.function} {
+  // CHECK: "vifrt.CopyArraysV1"(%[[ARG1]])
+  // CHECK-SAME: <{
+  // CHECK-DAG: donated = false
+  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
+  // CHECK-SAME: }>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 2>, [2, 3], memory_kind = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1)
+  %0, %ctrl = ifrt.CopyArrays(%arg1) : (!array_cp1) -> !array_cp0
+  return %0: !array_cp0
+}
+
+// Important: The test verifying CallOps must be last. This is necessary because
+// in order to test serialization roundtrip the tests in this file are not split
+// into per file tests. However, during deserialization we do not know where to
+// re-introduce the atom program modules within the module, and thus we append
+// them at the end.
+!array_op_call = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+// CHECK-LABEL: "op_call"
+// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}}):
+func.func @op_call(
+    %arg0: !array_op_call {ifrt.donated}, %arg1: !array_op_call {ifrt.donated})
+    -> !array_op_call attributes {ifrt.function} {
+  // CHECK: %[[OUT0:.+]]:2 = "vifrt.CallV1"(%[[ARG0]])
+  // CHECK-SAME: <{
+  // CHECK-DAG: callee = "@add_one::@main"
+  // CHECK-DAG: devices = #vifrt<devices_v1[0, 1]>
+  // CHECK-DAG: donated_input_indices = array<i32>
+  // CHECK-DAG: io_aliases = []
+  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
+  // CHECK-SAME: }>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1)
+  %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
+      : (!array_op_call) -> !array_op_call
+
+  // Verifies that the control value is passed to the next call.
+
+  // CHECK: %[[OUT1:.+]]:2 = "vifrt.CallV1"(%[[OUT0]]#0, %[[OUT0]]#1)
+  // CHECK-SAME: <{
+  // CHECK-DAG: callee = "@add_one::@main"
+  // CHECK-DAG: devices = #vifrt<devices_v1[0, 1]>
+  // CHECK-DAG: donated_input_indices = array<i32>
+  // CHECK-DAG: io_aliases = []
+  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 1>
+  // CHECK-SAME: }>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1)
+  %1, %ctrl_1 = ifrt.Call @add_one::@main(%0) after %ctrl_0 on devices [0,1]
+      : (!array_op_call) -> !array_op_call
+
+  // Verifies that the donated input indices attribute is converted.
+
+  // CHECK: "vifrt.CallV1"(%[[ARG0]])
+  // CHECK-SAME: <{
+  // CHECK-DAG: callee = "@add_one::@main"
+  // CHECK-DAG: devices = #vifrt<devices_v1[0, 1]>
+  // CHECK-DAG: donated_input_indices = array<i32: 0>
+  // CHECK-DAG: io_aliases = []
+  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
+  // CHECK-SAME: }>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1)
+  %2, %ctrl_2 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
+      {donated_input_indices=array<i32: 0>} : (!array_op_call) -> !array_op_call
+
+  // Verifies that the io_aliases attribute is converted.
+
+  // CHECK: "vifrt.CallV1"(%[[ARG1]])
+  // CHECK-SAME: <{
+  // CHECK-DAG: callee = "@add_two::@main"
+  // CHECK-DAG: devices = #vifrt<devices_v1[0, 1]>
+  // CHECK-DAG: donated_input_indices = array<i32>,
+  // CHECK-DAG: io_aliases = [array<i32: 0, 0>]
+  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
+  // CHECK-SAME: }>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1)
+  %3, %ctrl_3 = ifrt.Call @add_two::@main(%arg1) on devices [0,1]
+      {io_aliases=[array<i32: 0, 0>]} : (!array_op_call) -> !array_op_call
+
+  return %1 : !array_op_call
+}
+
+// CHECK-NOT @add_one
+module @add_one attributes {sym_visibility = "private"} {
+  func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
+}
+
+// CHECK-NOT @add_two
+module @add_two attributes {sym_visibility = "private"} {
+  func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    %0 = stablehlo.constant dense<2> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
 }

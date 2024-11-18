@@ -16,7 +16,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -80,6 +82,8 @@ mlir::TranslateFromMLIRRegistration serializeRegistration(
         os << serialized_or->SerializeAsString();
         return mlir::success();
       } else {
+        module.emitError(absl::StrCat("failed to serialize: ",
+                                      serialized_or.status().message()));
         return mlir::failure();
       }
     },
@@ -105,6 +109,8 @@ mlir::TranslateToMLIRRegistration deserializeRegistration(
         return mlir::OwningOpRef<mlir::ModuleOp>(
             deserialized_program_or.value()->mlir_module);
       } else {
+        llvm::dbgs() << "failed to deserialize: "
+                     << deserialized_program_or.status().message() << "\n";
         return nullptr;
       }
     },

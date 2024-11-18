@@ -60,9 +60,11 @@ struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
 struct SerializeIfrtIRProgramOptions
     : llvm::RTTIExtends<SerializeIfrtIRProgramOptions, SerializeOptions> {
   explicit SerializeIfrtIRProgramOptions(std::string ifrt_version,
-                                         std::string atom_program_version)
+                                         std::string atom_program_version,
+                                         bool version_in_place = true)
       : ifrt_version(std::move(ifrt_version)),
-        atom_program_version(std::move(atom_program_version)) {}
+        atom_program_version(std::move(atom_program_version)),
+        version_in_place(version_in_place) {}
 
   static char ID;  // NOLINT
 
@@ -71,6 +73,8 @@ struct SerializeIfrtIRProgramOptions
   // String of the form "major.minor.patch", representing the atom program
   // version (currently VHLO version).
   std::string atom_program_version;
+  // Whether to version the IFRT IR ModuleOp in-place.
+  bool version_in_place;
 };
 
 // Options for deserializing IFRT IR programs.
