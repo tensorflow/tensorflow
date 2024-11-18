@@ -180,10 +180,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "cpuinfo",
-        sha256 = "a57f2b93704fe49ad37fa3ef5ce8208443d6b589b89653341332bcf51aa6dde3",
-        strip_prefix = "cpuinfo-dff2616ddd49122b63abcf44d2c097483b77f861",
+        sha256 = "52e0ffd7998d8cb3a927d8a6e1145763744d866d2be09c4eccea27fc157b6bb0",
+        strip_prefix = "cpuinfo-cebb0933058d7f181c979afd50601dc311e1bf8c",
         patch_file = ["//third_party/cpuinfo:cpuinfo_ppc64le_support.patch"],
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/dff2616ddd49122b63abcf44d2c097483b77f861.zip"),
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/cebb0933058d7f181c979afd50601dc311e1bf8c.zip"),
     )
 
     tf_http_archive(
