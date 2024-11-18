@@ -385,9 +385,19 @@ absl::StatusOr<std::vector<Literal>> NewHloTestBase::ExecuteReplicated(
       /*treat_gte_as_data_formatting=*/false,
       /*max_bits_of_precision=*/std::nullopt);
   CHECK_OK(fake_arguments);
+
+  return RunAndCompareTwoModulesReplicated(std::move(module_0),
+                                           std::move(module_1), *fake_arguments,
+                                           run_hlo_passes, use_threads, error);
+}
+
+::testing::AssertionResult NewHloTestBase::RunAndCompareTwoModulesReplicated(
+    std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+    const std::vector<Literal>& fake_arguments, const bool run_hlo_passes,
+    const bool use_threads, const std::optional<ErrorSpec>& error) {
   std::vector<const Literal*> fake_argument_ptrs;
   absl::c_transform(
-      /*input=*/*fake_arguments,
+      /*input=*/fake_arguments,
       /*output=*/std::back_inserter(fake_argument_ptrs),
       /*unary_op=*/[](const Literal& literal) -> Literal* {
         return const_cast<Literal*>(&literal);

@@ -21,6 +21,7 @@ cc_library(
     srcs = ["dot_algorithm_rewriter.cc"],
     hdrs = ["dot_algorithm_rewriter.h"],
     deps = [
+        "//xla:comparison_util",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
@@ -30,6 +31,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
