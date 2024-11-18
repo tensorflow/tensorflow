@@ -247,6 +247,11 @@ class NewHloTestBase : public HloHardwareIndependentTestBase {
       bool run_hlo_passes, bool use_threads,
       const std::optional<ErrorSpec>& error);
 
+  ::testing::AssertionResult RunAndCompareTwoModulesReplicated(
+      std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+      const std::vector<Literal>& fake_arguments, bool run_hlo_passes,
+      bool use_threads, const std::optional<ErrorSpec>& error);
+
   // Parses the modules, and executes them based on `run_hlo_passes` and
   // `use_threads` flags. The replica count should be mentioned in the module
   // itself.

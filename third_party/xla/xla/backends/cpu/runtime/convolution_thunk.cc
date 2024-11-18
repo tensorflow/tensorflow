@@ -349,14 +349,30 @@ ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
   };
 
   if (options_.multi_threaded) {
-    auto state = std::make_shared<ExecuteState>(feature_group_count_);
-    auto done_callback = [state] { state->Notify(); };
+    std::shared_ptr<ExecuteState> state;
+    std::function<void()> done_callback = nullptr;
+    if (!internal::CanUseCustomTransposedConv(
+            input_dims_.x, input_channels_, kernel_dims_.x, kernel_filters_,
+            base_dilation_.x, base_dilation_.y, window_dilation_.x,
+            window_dilation_.y, feature_group_count_)) {
+      // Currently only support async mode for regular convolutions.
+      state = std::make_shared<ExecuteState>(feature_group_count_);
+      done_callback = [state] { state->Notify(); };
+    }
+
     if (input_shape_.element_type() == PrimitiveType::F16) {
       dispatch(Eigen::half(), *params.intra_op_threadpool, done_callback);
     } else {
       dispatch(float(), *params.intra_op_threadpool, done_callback);
     }
-    return state->event;
+
+    if (done_callback) {
+      return state->event;
+    } else {
+      // TODO(adambanas): Remove this branch once we support async mode for
+      // custom transposed convolutions.
+      return OkExecuteEvent();
+    }
   } else {
     if (input_shape_.element_type() == PrimitiveType::F16) {
       dispatch(Eigen::half(), Eigen::DefaultDevice());

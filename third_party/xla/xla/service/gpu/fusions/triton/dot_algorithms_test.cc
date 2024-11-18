@@ -29,6 +29,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/substitute.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -993,42 +993,93 @@ class CanHandleArguments {
     InitNaNArguments();
     InitLargeExponentArguments();
   }
-  std::vector<Literal*> infinity_arguments() {
+  std::vector<Literal*> infinity_arguments_ptrs() {
     return to_pointers(infinity_arguments_);
   }
-  std::vector<Literal*> nan_arguments() { return to_pointers(nan_arguments_); }
-  std::vector<Literal*> large_exponent_arguments() {
+  const std::vector<Literal>& infinity_arguments() {
+    return infinity_arguments_;
+  }
+  std::vector<Literal*> nan_arguments_ptrs() {
+    return to_pointers(nan_arguments_);
+  }
+  const std::vector<Literal>& nan_arguments() { return nan_arguments_; }
+  std::vector<Literal*> large_exponent_arguments_ptr() {
     return to_pointers(large_exponent_arguments_);
+  }
+  const std::vector<Literal>& large_exponent_arguments() {
+    return large_exponent_arguments_;
   }
 
   static constexpr float kLargeExponentFloat = 0x1.0103p72f;
 
  private:
   void InitInfinityArguments() {
+    auto inf = +std::numeric_limits<float>::infinity();
     infinity_arguments_.push_back(LiteralUtil::CreateR2<float>(
-        {{+std::numeric_limits<float>::infinity(),
-          +std::numeric_limits<float>::infinity()},
-         {+std::numeric_limits<float>::infinity(),
-          +std::numeric_limits<float>::infinity()}}));
-    infinity_arguments_.push_back(
-        LiteralUtil::CreateR2<float>({{1.0f, 1.0f}, {1.0f, 1.0f}}));
+        {{inf, inf, inf, inf, inf, inf, inf, inf},
+         {inf, inf, inf, inf, inf, inf, inf, inf},
+         {inf, inf, inf, inf, inf, inf, inf, inf},
+         {inf, inf, inf, inf, inf, inf, inf, inf},
+         {inf, inf, inf, inf, inf, inf, inf, inf},
+         {inf, inf, inf, inf, inf, inf, inf, inf},
+         {inf, inf, inf, inf, inf, inf, inf, inf},
+         {inf, inf, inf, inf, inf, inf, inf, inf}}));
+    auto one = 1.0f;
+    infinity_arguments_.push_back(LiteralUtil::CreateR2<float>(
+        {{one, one, one, one, one, one, one, one},
+         {one, one, one, one, one, one, one, one},
+         {one, one, one, one, one, one, one, one},
+         {one, one, one, one, one, one, one, one},
+         {one, one, one, one, one, one, one, one},
+         {one, one, one, one, one, one, one, one},
+         {one, one, one, one, one, one, one, one},
+         {one, one, one, one, one, one, one, one}}));
   }
   void InitNaNArguments() {
+    auto nan = std::numeric_limits<float>::quiet_NaN();
+    auto inf = +std::numeric_limits<float>::infinity();
+    auto one = 1.0f;
     nan_arguments_.push_back(LiteralUtil::CreateR2<float>(
-        {{std::numeric_limits<float>::quiet_NaN(),
-          std::numeric_limits<float>::quiet_NaN()},
-         {std::numeric_limits<float>::quiet_NaN(),
-          std::numeric_limits<float>::quiet_NaN()}}));
+        {{nan, nan, nan, nan, nan, nan, nan, nan},
+         {nan, nan, nan, nan, nan, nan, nan, nan},
+         {nan, nan, nan, nan, nan, nan, nan, nan},
+         {nan, nan, nan, nan, nan, nan, nan, nan},
+         {nan, nan, nan, nan, nan, nan, nan, nan},
+         {nan, nan, nan, nan, nan, nan, nan, nan},
+         {nan, nan, nan, nan, nan, nan, nan, nan},
+         {nan, nan, nan, nan, nan, nan, nan, nan}}));
     nan_arguments_.push_back(LiteralUtil::CreateR2<float>(
-        {{1.0f, +std::numeric_limits<float>::infinity()},
-         {1.0f, +std::numeric_limits<float>::infinity()}}));
+        {{one, inf, inf, inf, inf, inf, inf, inf},
+         {one, inf, inf, inf, inf, inf, inf, inf},
+         {one, inf, inf, inf, inf, inf, inf, inf},
+         {one, inf, inf, inf, inf, inf, inf, inf},
+         {one, inf, inf, inf, inf, inf, inf, inf},
+         {one, inf, inf, inf, inf, inf, inf, inf},
+         {one, inf, inf, inf, inf, inf, inf, inf},
+         {one, inf, inf, inf, inf, inf, inf, inf}}));
   }
 
   void InitLargeExponentArguments() {
+    auto le = kLargeExponentFloat;
+    auto one = 1.0f;
     large_exponent_arguments_.push_back(LiteralUtil::CreateR2<float>(
-        {{kLargeExponentFloat, 1.0f}, {-kLargeExponentFloat, 1.0f}}));
+        {{le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one}}));
     large_exponent_arguments_.push_back(LiteralUtil::CreateR2<float>(
-        {{kLargeExponentFloat, 1.0f}, {-kLargeExponentFloat, 1.0f}}));
+        {{le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one},
+         {-le, one, one, one, one, one, one, one}}));
   }
 
   std::vector<Literal*> to_pointers(const std::vector<Literal>& literals) {
@@ -1057,17 +1108,52 @@ class BlasCanHandle
     return absl::StrFormat(kHloTextTemplate, HloModuleTestName(), algorithm_);
   }
 
-  static constexpr std::string_view kPattern = R"(CHECK-NOT: __triton_gemm)";
+  static constexpr std::string_view kPattern = R"(CHECK: __cublas$gemm)";
+
+  static constexpr std::string_view kReferenceHloText = R"(
+    HloModule %s
+
+    ENTRY e {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      ROOT dot = f32[8,8] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+
+  // Takes the reference hlo and compiles it for cublas.
+  std::unique_ptr<HloModule> GetReferenceModuleForCublas() {
+    auto reference_options = GetDebugOptionsForTest();
+    reference_options.set_xla_gpu_triton_gemm_any(false);
+    reference_options.set_xla_gpu_enable_triton_gemm(false);
+    reference_options.set_xla_gpu_cublas_fallback(true);
+
+    HloModuleConfig config;
+    config.set_debug_options(reference_options);
+    config.set_replica_count(1);
+    config.set_num_partitions(1);
+
+    auto reference_module =
+        ParseAndReturnVerifiedModule(kReferenceHloText, config);
+    CHECK_OK(reference_module.status());
+
+    auto optimized_module =
+        GetOptimizedModule(std::move(reference_module.value()));
+    CHECK_OK(optimized_module.status());
+    return std::move(optimized_module.value());
+  }
 
  private:
   static constexpr std::string_view kHloTextTemplate = R"(
     HloModule %s
 
     ENTRY e {
-      p0 = f32[2,2] parameter(0)
-      p1 = f32[2,2] parameter(1)
-      ROOT dot = f32[2,2] dot(p0, p1),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0},
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      ROOT dot = f32[8,8] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0},
         algorithm=%s
     }
   )";
@@ -1096,17 +1182,17 @@ class TritonCanHandle
     HloModule %s
 
     triton_dot {
-      p0 = f32[2,2] parameter(0)
-      p1 = f32[2,2] parameter(1)
-      ROOT dot = f32[2,2] dot(p0, p1),
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      ROOT dot = f32[8,8] dot(p0, p1),
         lhs_contracting_dims={1}, rhs_contracting_dims={0},
         algorithm=%s
     }
 
     ENTRY e {
-      p0 = f32[2,2]{1, 0} parameter(0)
-      p1 = f32[2,2]{1, 0} parameter(1)
-      ROOT _ = f32[2,2] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+      p0 = f32[8,8]{1, 0} parameter(0)
+      p1 = f32[8,8]{1, 0} parameter(1)
+      ROOT _ = f32[8,8] fusion(p0, p1), kind=kCustom, calls=triton_dot,
         backend_config={"fusion_backend_config": {kind: "__triton_gemm",
         triton_gemm_config:
         {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1, "num_ctas":1}}}
@@ -1122,8 +1208,13 @@ TEST_P(BlasCanHandle, Infinity) {
   auto module_text = module->ToString();
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module_text, kPattern));
   ASSERT_TRUE(ok);
-  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), infinity_arguments(),
-                                       ErrorSpec{/*aabs=*/0, /*arel=*/0}))
+
+  auto reference_module = GetReferenceModuleForCublas();
+
+  EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
+      std::move(reference_module), std::move(module), infinity_arguments(),
+      /*run_hlo_passes=*/false,
+      /*use_threads=*/false, ErrorSpec{/*aabs=*/0, /*arel=*/0}))
       << " failed for module hlo: \n"
       << module_text;
 }
@@ -1135,8 +1226,13 @@ TEST_P(BlasCanHandle, NaN) {
   auto module_text = module->ToString();
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module_text, kPattern));
   ASSERT_TRUE(ok);
-  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), nan_arguments(),
-                                       ErrorSpec{/*aabs=*/0, /*arel=*/0}))
+
+  auto reference_module = GetReferenceModuleForCublas();
+
+  EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
+      std::move(reference_module), std::move(module), nan_arguments(),
+      /*run_hlo_passes=*/false,
+      /*use_threads=*/false, ErrorSpec{/*aabs=*/0, /*arel=*/0}))
       << " failed for module hlo: \n"
       << module_text;
 }
@@ -1148,9 +1244,34 @@ TEST_P(BlasCanHandle, InputsWithLargeExponent) {
   auto module_text = module->ToString();
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module_text, kPattern));
   ASSERT_TRUE(ok);
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      std::move(module), large_exponent_arguments(),
+
+  auto reference_module = GetReferenceModuleForCublas();
+
+  EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
+      std::move(reference_module), std::move(module),
+      large_exponent_arguments(),
+      /*run_hlo_passes=*/false,
+      /*use_threads=*/false,
       ErrorSpec{/*aabs=*/kLargeExponentFloat * 1e-4, /*arel=*/1e-6}))
+      << " failed for module hlo: \n"
+      << module_text;
+}
+
+TEST_P(BlasCanHandle, PrecisionCheck) {
+  std::string hlo_text = HloText();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(hlo_text));
+  auto module_text = module->ToString();
+  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module_text, kPattern));
+  ASSERT_TRUE(ok);
+
+  auto reference_module = GetReferenceModuleForCublas();
+
+  // No specific inputs are needed for this test.
+  EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
+      std::move(reference_module), std::move(module),
+      /*run_hlo_passes=*/false,
+      /*use_threads=*/false, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}))
       << " failed for module hlo: \n"
       << module_text;
 }
@@ -1162,7 +1283,8 @@ TEST_P(TritonCanHandle, Infinity) {
   auto module_text = module->ToString();
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module_text, kPattern));
   ASSERT_TRUE(ok);
-  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), infinity_arguments(),
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module),
+                                       infinity_arguments_ptrs(),
                                        ErrorSpec{/*aabs=*/0, /*arel=*/0}))
       << " failed for module hlo: \n"
       << module_text;
@@ -1176,7 +1298,7 @@ TEST_P(TritonCanHandle, NaN) {
   auto module_text = module->ToString();
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module_text, kPattern));
   ASSERT_TRUE(ok);
-  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), nan_arguments(),
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), nan_arguments_ptrs(),
                                        ErrorSpec{/*aabs=*/0, /*arel=*/0}))
       << " failed for module hlo: \n"
       << module_text;
@@ -1191,7 +1313,7 @@ TEST_P(TritonCanHandle, InputsWithLargeExponent) {
   ASSERT_TRUE(ok);
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
-      std::move(module), large_exponent_arguments(),
+      std::move(module), large_exponent_arguments_ptr(),
       ErrorSpec{/*aabs=*/kLargeExponentFloat * 1e-4, /*arel=*/1e-6}))
       << " failed for module hlo: \n"
       << module_text;
