@@ -1839,7 +1839,7 @@ class ConvertMatrixDiagPartV3Op
     // Boradcasted constants, of the same shape as iotaM and iotaN.
     Value b_zero = BroadcastConstant(loc, indices_shape, 0, 32, rewriter);
     Value b_false = BroadcastConstant(loc, indices_shape, 0, 1, rewriter);
-    Value b_true = BroadcastConstant(loc, indices_shape, 1, 1, rewriter);
+    Value b_true = BroadcastConstant(loc, indices_shape, -1, 1, rewriter);
     Value b_k1 = BroadcastConstant(loc, indices_shape, k[1], 32, rewriter);
     Value b_rows = BroadcastConstant(loc, indices_shape, rows, 32, rewriter);
     Value b_cols = BroadcastConstant(loc, indices_shape, cols, 32, rewriter);
