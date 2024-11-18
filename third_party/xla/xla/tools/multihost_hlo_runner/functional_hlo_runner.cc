@@ -1026,7 +1026,7 @@ FunctionalHloRunner::RunInternal(
         running_options.profiler->CreateSession();
       }
     }
-    execute_options.launch_id = repeat;
+    execute_options.launch_id = repeat + 1;
     futures->clear();
     TF_ASSIGN_OR_RETURN(
         output_buffers,
