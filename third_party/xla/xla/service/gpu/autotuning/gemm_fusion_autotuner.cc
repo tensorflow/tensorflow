@@ -226,7 +226,7 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
   GemmFusionAutotunerImpl* impl_;
   BackendConfigs gemm_config_sets_;
   AutoTuneCacheKeyCount fusion_count_map_;
-  absl::flat_hash_set<AutotuneCacheKey> handled_fusions_;
+  AutotuneCacheKeySet handled_fusions_;
 };
 
 struct TileSizeLimit {
@@ -1300,7 +1300,7 @@ absl::Status DumpAutotuningLogs(const DebugOptions& debug_opts,
   return absl::OkStatus();
 }
 
-absl::Status GemmFusionAutotunerImpl::Autotune(
+absl::StatusOr<AutotuneCacheKeySet> GemmFusionAutotunerImpl::Autotune(
     AutotunerCompileUtil& compile_util, const BackendConfigs& gemm_config_sets,
     AutoTuneCacheKeyCount fusion_count_map) {
   TF_ASSIGN_OR_RETURN(auto executable_sets,
@@ -1315,6 +1315,7 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
   }
 
   AutotuningLogs autotuning_logs;
+  AutotuneCacheKeySet added_keys;
   int fusion_id = 0;
   for (const auto& [fusion, candidates] : executable_sets) {
     TF_ASSIGN_OR_RETURN(std::vector<AutotuneResult> results,
@@ -1344,7 +1345,9 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
     const AutotuneCacheKey key = AutotunerUtil::GetKey(fusion, config_);
     TF_ASSIGN_OR_RETURN(
         bool added, AutotunerUtil::AddResult(key, std::move(best), config_));
-    if (!added) {
+    if (added) {
+      added_keys.insert(key);
+    } else {
       // In the context of model server, concurrent autotuning is expected and
       // insertion of identical autotuning keys is accepted.
       LOG(WARNING) << "AutotunerUtil::AddResult already existed: "
@@ -1371,7 +1374,7 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
 
   TF_RETURN_IF_ERROR(DumpAutotuningLogs(debug_options_, autotuning_logs));
 
-  return absl::OkStatus();
+  return added_keys;
 }
 
 // Trim the set of configs to what one rank has to run.
@@ -1391,10 +1394,12 @@ static BackendConfigs TrimConfigs(const BackendConfigs& gemm_config_sets,
 
 // Exchange the results with the other ranks.
 absl::Status ExchangeResults(KeyValueStoreInterface& key_value_store,
+                             const AutotuneCacheKeySet& keys_to_send,
                              absl::string_view fusion_set_fingerprint,
                              const int shard_index, const int shard_count) {
   AutotuneResults results;
-  TF_RETURN_IF_ERROR(AutotunerUtil::SerializeAutotuneResults(&results));
+  TF_RETURN_IF_ERROR(
+      AutotunerUtil::SerializeAutotuneResults(&results, &keys_to_send));
   TF_ASSIGN_OR_RETURN(std::string results_str,
                       AutotuneResultsToString(results, true));
   constexpr absl::string_view kKeyPrefix = "gemm_fusion_autotuning_results";
@@ -1500,13 +1505,14 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
         key_value_store_.process_index + 1, key_value_store_.process_count,
         gemm_config_sets.size(), total_fusion_count, module->name(),
         correctness_check_str);
-    TF_RETURN_IF_ERROR(autotuner.Autotune(*opt_compile_util, gemm_config_sets,
-                                          std::move(fusion_count_map)));
+    TF_ASSIGN_OR_RETURN(const AutotuneCacheKeySet added_keys,
+                        autotuner.Autotune(*opt_compile_util, gemm_config_sets,
+                                           std::move(fusion_count_map)));
     VLOG(1) << "Done autotuning.";
 
     if (shard_autotuning) {
       TF_RETURN_IF_ERROR(ExchangeResults(
-          *key_value_store_.key_value_store, fusion_set_fingerprint,
+          *key_value_store_.key_value_store, added_keys, fusion_set_fingerprint,
           key_value_store_.process_index, key_value_store_.process_count));
     }
   }

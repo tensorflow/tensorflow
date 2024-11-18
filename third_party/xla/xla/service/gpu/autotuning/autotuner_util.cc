@@ -262,10 +262,12 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
 }  // namespace
 
 /*static*/ absl::Status AutotunerUtil::SerializeAutotuneResults(
-    AutotuneResults* results) {
+    AutotuneResults* results, std::optional<const AutotuneCacheKeySet*> keys) {
   absl::MutexLock lock(&autotune_cache_mu);
   for (const auto& [k, result] : autotune_cache) {
-    SerializeAutotuneEntry(results, k, &result);
+    if (!keys.has_value() || keys.value()->contains(k)) {
+      SerializeAutotuneEntry(results, k, &result);
+    }
   }
 
   results->set_version(kVersion);
