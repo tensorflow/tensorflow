@@ -61,10 +61,7 @@ config_setting(
 
 bool_flag(
     name = "enable_libnvjitlink_support",
-    build_setting_default = if_google(
-        True,
-        oss_value = False,
-    ),
+    build_setting_default = True,
 )
 
 config_setting(
@@ -842,6 +839,7 @@ cc_library(
         ":ptx_compiler_helpers",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:gpu_asm_opts",
+        "//xla/tsl/cuda:nvjitlink",  # buildcleaner: keep
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
@@ -853,7 +851,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:nvjitlink",  # buildcleaner: keep
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
