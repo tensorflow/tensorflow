@@ -401,12 +401,6 @@ def IfOutlinePass : Pass<"tfl-if-outline", "mlir::ModuleOp"> {
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
 
-def LegalizeTensorListPass : Pass<"tfl-legalize-tensorlist", "mlir::ModuleOp"> {
-  let summary = "Legalize TensorFlow tensorlist ops to TensorFlow Lite custom.";
-  let constructor = "CreateLegalizeTensorListPass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
-}
-
 def ReduceTypePrecisionPass : Pass<"tfl-reduce-type-precision", "mlir::ModuleOp"> {
   let summary = "Reduce some tensor types' precision if all values are within range.";
   let constructor = "CreateReduceTypePrecisionPass()";

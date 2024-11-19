@@ -12,8 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/legalize_tensorlist_pass.h"
+
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -27,22 +28,21 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -129,9 +129,7 @@ bool IsNonTensorListVariantOp(Operation* op) {
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_DEF_LEGALIZETENSORLISTPASS
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tensorlist.inc"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 struct ConvertTensorListPopBack
     : public OpRewritePattern<TF::TensorListPopBackOp> {
@@ -237,41 +235,30 @@ bool IsOpSupported(mlir::Operation* op) {
   return element_type->isF32() || element_type->isInteger(64) ||
          element_type->isInteger(32) || element_type->isInteger(1);
 }
+}  // namespace
 
 // Only legalize TensorFlow TensorList ops if all TensorList ops are supported
 // natively.
-class LegalizeTensorListPass
-    : public impl::LegalizeTensorListPassBase<LegalizeTensorListPass> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeTensorListPass)
-
-  void runOnOperation() override {
-    mlir::ModuleOp module = getOperation();
-    auto walk_res = module->walk([&](Operation* op) -> WalkResult {
-      if (!IsOpSupported(op) || IsNonTensorListVariantOp(op)) {
-        return WalkResult::interrupt();
-      }
-      return WalkResult::advance();
-    });
-    if (walk_res.wasInterrupted()) {
-      llvm::errs() << "Tried legalizing to tfl custom tensorlist ops, but not "
-                      "all can be supported."
-                   << "\n";
-      return;
+void LegalizeTensorListPass::runOnOperation() {
+  mlir::ModuleOp module = getOperation();
+  auto walk_res = module->walk([&](Operation* op) -> WalkResult {
+    if (!IsOpSupported(op) || IsNonTensorListVariantOp(op)) {
+      return WalkResult::interrupt();
     }
-    RewritePatternSet patterns(&getContext());
-    populateWithGenerated(patterns);
-    patterns.add<ConvertTensorListPopBack>(&getContext());
-    patterns.add<ConvertTensorListPushBack>(&getContext());
-    patterns.add<ConvertVariantAddNOp>(&getContext());
-    (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
+    return WalkResult::advance();
+  });
+  if (walk_res.wasInterrupted()) {
+    llvm::errs() << "Tried legalizing to tfl custom tensorlist ops, but not "
+                    "all can be supported."
+                 << "\n";
+    return;
   }
-};
-
-}  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTensorListPass() {
-  return std::make_unique<LegalizeTensorListPass>();
+  RewritePatternSet patterns(&getContext());
+  populateWithGenerated(patterns);
+  patterns.add<ConvertTensorListPopBack>(&getContext());
+  patterns.add<ConvertTensorListPushBack>(&getContext());
+  patterns.add<ConvertVariantAddNOp>(&getContext());
+  (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
 }
 
 }  // namespace TFL

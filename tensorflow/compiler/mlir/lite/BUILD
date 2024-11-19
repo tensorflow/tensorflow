@@ -560,6 +560,7 @@ cc_library(
         "transforms/passes.h",
         "transforms/push_transpose_through_ewise_pass.h",
         "transforms/tf_legalizations/analyze_variables_pass.h",
+        "transforms/tf_legalizations/legalize_tensorlist_pass.h",
         "transforms/unfreeze_global_constants.h",
         "utils/attribute_utils.h",
         "utils/utils.h",
@@ -578,6 +579,7 @@ cc_library(
         ":size_utils",
         ":tensorflow_lite_canonicalize_inc_gen",
         ":tensorflow_lite_legalize_tf_analyze_variables",
+        ":tensorflow_lite_legalize_tf_legalize_tensorlist",
         ":tensorflow_lite_op_enums_inc_gen",
         ":tensorflow_lite_op_interfaces_inc_gen",
         ":tensorflow_lite_ops",
@@ -916,10 +918,34 @@ cc_library(
 )
 
 cc_library(
+    name = "tensorflow_lite_legalize_tf_legalize_tensorlist",
+    srcs = [
+        "transforms/tf_legalizations/legalize_tensorlist_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tf_legalizations/legalize_tensorlist_pass.h",
+    ],
+    deps = [
+        ":convert_type",
+        ":pass",
+        ":tensorflow_lite_legalize_tensorlist_inc_gen",
+        ":tensorflow_lite_ops",
+        ":utils",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
         "transforms/dilated_conv.cc",
-        "transforms/generated_legalize_tensorlist.inc",
         "transforms/generated_legalize_tf.inc",
         "transforms/generated_legalize_variables.inc",
         "transforms/generated_lower_static_tensor_list.inc",
@@ -929,7 +955,6 @@ cc_library(
         "transforms/insert_call_once_op.cc",
         "transforms/legalize_hashtables.cc",
         "transforms/legalize_jax_random.cc",
-        "transforms/legalize_tensorlist.cc",
         "transforms/legalize_tf.cc",
         "transforms/legalize_tf_while.cc",
         "transforms/legalize_variables.cc",
@@ -965,9 +990,9 @@ cc_library(
         ":size_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
-        ":tensorflow_lite_legalize_tensorlist_inc_gen",
         ":tensorflow_lite_legalize_tf_analyze_variables",
         ":tensorflow_lite_legalize_tf_inc_gen",
+        ":tensorflow_lite_legalize_tf_legalize_tensorlist",
         ":tensorflow_lite_legalize_variables_inc_gen",
         ":tensorflow_lite_lower_static_tensor_list_inc_gen",
         ":tensorflow_lite_passes_inc_gen",
