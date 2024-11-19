@@ -86,6 +86,8 @@ if (TFLITE_C_BUILD_SHARED_LIBS)
 endif()
 
 target_link_libraries(tensorflowlite_c
-  -Wl,--whole-archive,--allow-multiple-definition
-  tensorflow-lite
+  PUBLIC
+    -Wl,--whole-archive,--allow-multiple-definition
+    tensorflow-lite
+    -Wl,--no-whole-archive
 )
