@@ -195,6 +195,12 @@ HloInstruction* FindInstruction(const HloComputation* computation,
 HloInstruction* FindInstruction(const HloComputation* computation,
                                 HloOpcode opcode);
 
+// Returns compile time optimization effort in range [-1.0, 1.0] where values <
+// 0.0 indicate skipping passes which might optimize the final runtime (thus
+// improving compile time), and values > 0.0 indicate running additional passes
+// which may improve runtime at the cost of compilation time.
+float ExecTimeOptimizationEffort(const HloModule& module);
+
 }  // namespace hlo_query
 }  // namespace xla
 

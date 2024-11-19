@@ -81,6 +81,8 @@ namespace {
 namespace m = ::xla::match;
 
 using ::testing::IsEmpty;
+using ::testing::IsSupersetOf;
+using ::testing::Matches;
 using ::testing::Not;
 using ::testing::TempDir;
 
@@ -1327,6 +1329,12 @@ class PassOrderTest : public GpuCompilerTest {
     CompileModule(config);
   }
 
+  void SetAndCompileEfficiencyEffort(float exec_effort) {
+    HloModuleConfig config = GetModuleConfigForTest();
+    config.set_exec_time_optimization_effort(exec_effort);
+    CompileModule(config);
+  }
+
   // Fails if any of the passes with names matching the regular expression
   // `first_pass_regex` run after any of the passes matching `last_pass_regex`
   // or if none of the executed passes matches `first_pass_regex` or
@@ -1384,7 +1392,9 @@ class PassOrderTest : public GpuCompilerTest {
     }
   }
 
- private:
+ protected:
+  absl::Status ScheduleModule() { return Schedule(optimized_module_.get()); }
+
   void CompileModule(const HloModuleConfig& config) {
     constexpr absl::string_view constant_module = R"(
 ENTRY main {
@@ -1447,6 +1457,38 @@ TEST_F(PassOrderTest, StableSortExpanderRunsAfterDynamicPadder) {
   VerifyPassOrder(
       /*first_pass_regex=*/"dynamic_padder",
       /*last_pass_regex=*/"stable-sort-expander");
+}
+
+MATCHER_P(HasExpectedPasses, expected_pass_names, "") {
+  std::vector<absl::string_view> run_pass_names;
+  auto metadata = arg->metadata()->proto();
+  run_pass_names.reserve(metadata.pass_metadata_size());
+  for (auto& pass_metadata : metadata.pass_metadata()) {
+    run_pass_names.push_back(pass_metadata.pass_name());
+  }
+  return Matches(IsSupersetOf(expected_pass_names))(run_pass_names);
+}
+
+TEST_F(PassOrderTest, ExecEffortAt0point2RunsSpecifiedPasses) {
+  HloModuleConfig config = GetModuleConfigForTest();
+  CompileModule(config);
+  TF_ASSERT_OK(ScheduleModule());
+
+  // Make sure passes are not enabled by default.
+  std::vector<std::string> kExpectedPasses = {
+      "loop-double-buffer-transformer",
+      "collective-pipeliner-forward",
+      "collective-pipeliner-backward",
+      "latency-hiding-scheduler",
+  };
+  EXPECT_THAT(optimized_module_, Not(HasExpectedPasses(kExpectedPasses)));
+
+  // Make sure only after setting the correct optimization effort they are
+  // enabled.
+  config.set_exec_time_optimization_effort(0.2);
+  CompileModule(config);
+  TF_ASSERT_OK(ScheduleModule());
+  EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
 }
 
 TEST_F(PassOrderTest, GemmFusionRunsAfterDotNormalizer) {

@@ -304,5 +304,16 @@ HloInstruction* FindInstruction(const HloComputation* computation,
   return nullptr;
 }
 
+float ExecTimeOptimizationEffort(const HloModule& module) {
+  float flag_exec_effort =
+      module.config()
+          .debug_options()
+          .xla_experimental_exec_time_optimization_effort();
+  if (flag_exec_effort != 0.0) {
+    return flag_exec_effort;
+  }
+  return module.config().exec_time_optimization_effort();
+}
+
 }  // namespace hlo_query
 }  // namespace xla
