@@ -29,7 +29,7 @@ if [[ -n $1 ]]; then
     ROCM_INSTALL_DIR=$1
 else
     if [[ -z "${ROCM_PATH}" ]]; then
-        ROCM_INSTALL_DIR=/opt/rocm-6.2.0
+        ROCM_INSTALL_DIR=/opt/rocm-6.0.0
     else
         ROCM_INSTALL_DIR=$ROCM_PATH
     fi
@@ -45,17 +45,11 @@ export ROCM_PATH=$ROCM_INSTALL_DIR
 
 if [ -f /usertools/rocm.bazelrc ]; then
 	 # Use the bazelrc files in /usertools if available
-  	if [ ! -d /tf ];then
-	   # The bazelrc files in /usertools expect /tf to exist
-           mkdir /tf
-	fi
 	bazel \
            --bazelrc=/usertools/rocm.bazelrc \
            test \
            --local_test_jobs=${N_TEST_JOBS} \
-           --jobs=30 \
-           --local_ram_resources=60000 \
-           --local_cpu_resources=15 \
+           --jobs=${N_BUILD_JOBS} \
            --config=sigbuild_local_cache \
            --config=rocm \
            --config=nonpip_multi_gpu \
