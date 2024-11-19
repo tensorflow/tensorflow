@@ -43,7 +43,7 @@ cc_library(
 #     name = "compiler_plugin_test",
 #     srcs = ["compiler_plugin_test.cc"],
 #     data = [
-#         "//tensorflow/lite/experimental/litert/test:tflite_test_data",
+#         "//tensorflow/lite/experimental/litert/test:mlir_test_data",
 #         "//tensorflow/lite/experimental/litert/vendors/examples:example_plugin_so",
 #     ],
 #     tags = [
@@ -82,7 +82,7 @@ cc_test(
     name = "algo_test",
     srcs = ["algo_test.cc"],
     data = [
-        "//tensorflow/lite/experimental/litert/test:tflite_test_data",
+        "//tensorflow/lite/experimental/litert/test:mlir_test_data",
     ],
     deps = [
         ":algo",

@@ -79,7 +79,7 @@ cc_library(
 cc_test(
     name = "model_file_test",
     srcs = ["model_file_test.cc"],
-    data = ["//tensorflow/lite/experimental/litert/test:tflite_test_data"],
+    data = ["//tensorflow/lite/experimental/litert/test:mlir_test_data"],
     deps = [
         ":model",
         ":model_load",

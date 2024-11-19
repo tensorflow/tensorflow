@@ -52,7 +52,10 @@ litert_test(
     srcs = [
         "qnn_compiler_plugin_test.cc",
     ],
-    data = ["//tensorflow/lite/experimental/litert/test:tflite_test_data"],
+    data = [
+        "//tensorflow/lite/experimental/litert/test:mlir_test_data",
+        "//tensorflow/lite/experimental/litert/test:tflite_test_data",
+    ],
     linkstatic = True,
     tags = [
         # Tests with ungrte deps do not currently work on forge.
@@ -76,6 +79,7 @@ litert_test(
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:test_models",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
     ],
 )

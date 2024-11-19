@@ -32,11 +32,16 @@ done
 )
 
 genrule(
-    name = "tflite_test_data",
+    name = "mlir_test_data",
     srcs = glob(["testdata/*.mlir"]),
     outs = [s.removesuffix(".mlir") + ".tflite" for s in glob(["testdata/*.mlir"])],
     cmd = CMD,
     tools = [CONVERTER],
+)
+
+filegroup(
+    name = "tflite_test_data",
+    srcs = glob(["testdata/*.tflite"]),
 )
 
 cc_library(
@@ -101,4 +106,10 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_model",
     ],
+)
+
+cc_library(
+    name = "test_models",
+    hdrs = ["test_models.h"],
+    deps = ["@com_google_absl//absl/strings:string_view"],
 )

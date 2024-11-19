@@ -106,7 +106,7 @@ cc_test(
     name = "litert_options_test",
     srcs = ["litert_options_test.cc"],
     data = [
-        "//tensorflow/lite/experimental/litert/test:tflite_test_data",
+        "//tensorflow/lite/experimental/litert/test:mlir_test_data",
     ],
     tags = ["no_oss"],
     deps = [

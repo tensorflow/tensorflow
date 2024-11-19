@@ -116,11 +116,11 @@ LiteRtStatus GraphMapper::LegalizeAndRegister(LiteRtTensor litert_tensor,
   return kLiteRtStatusOk;
 }
 
-
 LiteRtStatus GraphMapper::IsLiteRtSubgraphSupported() {
+  LITERT_LOG(LITERT_INFO, "Subgraph has %d inputs", Graph().Inputs().size())
   LITERT_ENSURE_SUPPORTED(
-      Graph().Inputs().size() < 4,
-      "Only subgraphs with less than 4 inputs currently supported.");
+      Graph().Inputs().size() <= 5,
+      "Only subgraphs with less than 5 inputs currently supported");
 
   return kLiteRtStatusOk;
 }

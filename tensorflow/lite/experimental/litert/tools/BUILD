@@ -52,7 +52,7 @@ cc_test(
     name = "apply_plugin_test",
     srcs = ["apply_plugin_test.cc"],
     data = [
-        "//tensorflow/lite/experimental/litert/test:tflite_test_data",
+        "//tensorflow/lite/experimental/litert/test:mlir_test_data",
         "//tensorflow/lite/experimental/litert/vendors/examples:example_plugin_so",
     ],
     tags = [
@@ -143,7 +143,7 @@ cc_library(
 cc_test(
     name = "tool_display_test",
     srcs = ["tool_display_test.cc"],
-    data = ["//tensorflow/lite/experimental/litert/test:tflite_test_data"],
+    data = ["//tensorflow/lite/experimental/litert/test:mlir_test_data"],
     deps = [
         ":tool_display",
         "@com_google_absl//absl/strings:str_format",
@@ -169,7 +169,7 @@ cc_library(
 cc_test(
     name = "dump_test",
     srcs = ["dump_test.cc"],
-    data = ["//tensorflow/lite/experimental/litert/test:tflite_test_data"],
+    data = ["//tensorflow/lite/experimental/litert/test:mlir_test_data"],
     deps = [
         ":dump",
         "//tensorflow/lite/experimental/litert/core/model",

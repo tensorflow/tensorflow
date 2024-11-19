@@ -25,6 +25,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/test_models.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 
 namespace {
@@ -51,7 +52,17 @@ const auto kSupportedOps =
                     "simple_select_op.tflite",
                     "simple_select_v2_op.tflite",
                     "simple_fully_connected_op.tflite",
-                    "fully_connected_3d.tflite"
+                    "fully_connected_3d.tflite",
+                    kFeedForwardModel,
+                    kKeyEinsumModel,
+                    kQueryEinsumModel,
+                    kValueEinsumModel,
+                    kAttnVecEinsumModel,
+                    kROPEModel,
+                    kRMSNormModel,
+                    kSDPAModel,
+                    kAttentionModel,
+                    kTransformerBlockModel
                     );
 // clang-format on
 

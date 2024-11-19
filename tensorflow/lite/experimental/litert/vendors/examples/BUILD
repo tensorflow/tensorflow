@@ -44,7 +44,7 @@ cc_test(
     srcs = [
         "example_plugin_test.cc",
     ],
-    data = ["//tensorflow/lite/experimental/litert/test:tflite_test_data"],
+    data = ["//tensorflow/lite/experimental/litert/test:mlir_test_data"],
     deps = [
         ":example_plugin",  # buildcleaner: keep
         "//tensorflow/lite/experimental/litert/c:litert_model",
