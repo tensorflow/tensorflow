@@ -25,9 +25,7 @@ RUN wget https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.1
 
 RUN curl https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-arm.tar.gz | \
     tar zxf - google-cloud-sdk && \
-    google-cloud-sdk/install.sh --quiet && \
-    ln -s /google-cloud-sdk/bin/gcloud /usr/bin/gcloud
-
+    google-cloud-sdk/install.sh --quiet
 ENV PATH="$PATH:/google-cloud-sdk/bin/"
 
 # Install various tools.
@@ -64,10 +62,10 @@ COPY setup.python.sh /setup.python.sh
 RUN /setup.python.sh python3.9 requirements.txt
 RUN /setup.python.sh python3.10 requirements.txt
 RUN /setup.python.sh python3.11 requirements.txt
-RUN /setup.python.sh python3.13 requirements.txt
 RUN /setup.python.sh python3.12 requirements.txt
+RUN /setup.python.sh python3.13 requirements.txt
 
-# "python3" commands by default run under 3.12
-RUN ln -sf /usr/bin/python3.12 /usr/bin/python3
-RUN ln -sf /usr/bin/python3.12 /usr/bin/python
-RUN ln -sf /usr/lib/python3.12 /usr/lib/tf_python
+# Python commands by default run under 3.11
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python3
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python
+RUN ln -sf /usr/lib/python3.11 /usr/lib/tf_python
