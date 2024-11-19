@@ -561,6 +561,7 @@ cc_library(
         "transforms/push_transpose_through_ewise_pass.h",
         "transforms/tf_legalizations/analyze_variables_pass.h",
         "transforms/tf_legalizations/legalize_tensorlist_pass.h",
+        "transforms/tf_legalizations/while_loop_outline_pass.h",
         "transforms/unfreeze_global_constants.h",
         "utils/attribute_utils.h",
         "utils/utils.h",
@@ -580,6 +581,7 @@ cc_library(
         ":tensorflow_lite_canonicalize_inc_gen",
         ":tensorflow_lite_legalize_tf_analyze_variables",
         ":tensorflow_lite_legalize_tf_legalize_tensorlist",
+        ":tensorflow_lite_legalize_tf_while_loop_outline",
         ":tensorflow_lite_op_enums_inc_gen",
         ":tensorflow_lite_op_interfaces_inc_gen",
         ":tensorflow_lite_ops",
@@ -588,6 +590,7 @@ cc_library(
         ":tensorflow_lite_passes_inc_gen",
         ":tensorflow_lite_push_transpose_through_ewise_pass",
         ":tensorflow_lite_tf_unfreeze_global_tensors",
+        "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
@@ -943,6 +946,28 @@ cc_library(
 )
 
 cc_library(
+    name = "tensorflow_lite_legalize_tf_while_loop_outline",
+    srcs = [
+        "transforms/tf_legalizations/while_loop_outline_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tf_legalizations/while_loop_outline_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":tensorflow_lite_ops",
+        "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
         "transforms/dilated_conv.cc",
@@ -971,7 +996,6 @@ cc_library(
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
         "transforms/unfold_large_splat_constant.cc",
-        "transforms/while_loop_outline.cc",
     ],
     hdrs = [
         "ir/tfl_ops_interface.h.inc",

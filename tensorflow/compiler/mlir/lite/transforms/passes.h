@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/push_transpose_through_ewise_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/analyze_variables_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/legalize_tensorlist_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/while_loop_outline_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 
@@ -196,7 +197,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLiftTfliteFlexOpsPass();
 
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
+inline std::unique_ptr<mlir::Pass> CreateWhileOutlinePass() {
+  return Create<WhileOutlinePass>();
+}
 
 // Creates an instance of the TensorFlow Lite dialect IfOp outline pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateIfOutlinePass();
@@ -323,6 +326,7 @@ inline void registerTensorFlowLitePasses() {
   // TF Legalization Passes
   Register<AnalyzeVariablesPass>();
   Register<LegalizeTensorListPass>();
+  Register<WhileOutlinePass>();
 
   // TFL Optimization Passes
   Register<OptimizePass, OptimizePassOptions>();
