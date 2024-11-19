@@ -592,11 +592,10 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   se::dnn::ProfileResult profile_result;
   VLOG(4) << "Trying algorithm " << alg.ToString() << " for " << instr_str;
 
-  SlowOperationAlarm alarm(absl::Seconds(1), [&] {
-    return absl::StrFormat(
-        "Trying algorithm %s for conv %s is taking a while...", alg.ToString(),
-        instr_str);
-  });
+  SlowOperationAlarm alarm(
+      absl::Seconds(1),
+      absl::StrFormat("Trying algorithm %s for conv %s is taking a while...",
+                      alg.ToString(), instr_str));
 
   std::optional<size_t> workspace_size =
       runner->ToAlgorithmDesc().workspace_size();
