@@ -46,10 +46,12 @@ limitations under the License.
 
 namespace xla::gpu {
 
+class NcclCollectives;
+
 // XLA collectives communicator wrapping an NCCL communicator.
 class NcclCommunicator : public Communicator {
  public:
-  explicit NcclCommunicator(ncclComm_t comm);
+  explicit NcclCommunicator(NcclCollectives* collectives, ncclComm_t comm);
   ~NcclCommunicator() override;
 
   // NcclCommunicator is not copyable or movable.
@@ -113,8 +115,9 @@ class NcclCommunicator : public Communicator {
  private:
   static absl::StatusOr<se::Stream*> ToStream(const Executor& executor);
 
-  ncclComm_t comm_;
-  bool aborted_ = false;  // Has Abort() been called?
+  NcclCollectives* collectives_;  // Parent NcclCollectives instance
+  ncclComm_t comm_;               // Underlying NCCL communicator
+  bool aborted_ = false;          // Has Abort() been called?
 };
 
 }  // namespace xla::gpu
