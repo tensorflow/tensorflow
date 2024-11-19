@@ -445,12 +445,6 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest,
 
 TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatsToFloat) {
   auto tname = this->TypeName();
-  if (std::is_same<TypeParam, tsl::float8_e4m3>() ||
-      std::is_same<TypeParam, tsl::float8_e4m3fn>() ||
-      std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>() ||
-      std::is_same<TypeParam, tsl::float8_e3m4>()) {
-    GTEST_SKIP() << "Skipping test for type " << tname;
-  }
   const auto hlo_text = absl::StrReplaceAll(R"(
   HloModule m
   ENTRY main {
@@ -590,9 +584,6 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatToComplex) {
 
 TYPED_TEST(ElementalIrEmitterExecutionTypedTest, CompareFloat) {
   auto tname = this->TypeName();
-  if (std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>()) {
-    GTEST_SKIP() << "Skipping test for type " << tname;
-  }
   const auto hlo_text = absl::StrReplaceAll(R"(
   HloModule m
   ENTRY main {
@@ -610,13 +601,6 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, CompareFloat) {
 
 TYPED_TEST(ElementalIrEmitterExecutionTypedTest, IotaFloat) {
   auto tname = this->TypeName();
-  if (std::is_same<TypeParam, tsl::float8_e5m2>() ||
-      std::is_same<TypeParam, tsl::float8_e4m3>() ||
-      std::is_same<TypeParam, tsl::float8_e4m3fn>() ||
-      std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>() ||
-      std::is_same<TypeParam, tsl::float8_e3m4>()) {
-    GTEST_SKIP() << "Skipping test for type " << tname;
-  }
   const auto hlo_text = absl::StrReplaceAll(R"(
   HloModule m
   ENTRY main {
