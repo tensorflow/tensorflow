@@ -944,5 +944,34 @@ TEST_F(ScatterDeterminismExpanderTest, NonScalarScatterAddReproducibilityTest) {
   }
 }
 
+TEST_F(ScatterDeterminismExpanderTest, ScalarUpdateChangesVectorDim) {
+  const char* const kModuleStr = R"(
+    HloModule scatter_determinism_expander
+
+    scatter_computation {
+      arg1.173 = f32[] parameter(1)
+      arg0.172 = f32[] parameter(0)
+      ROOT add.48 = f32[] add(arg0.172, arg1.173)
+    }
+
+    ENTRY fused_computation {
+      operand = f32[2,128,128] parameter(0)
+      indices = s32[2,128,3] parameter(1)
+      updates = f32[2,128] parameter(2)
+      ROOT %scatter.33751 = f32[2,128,128] scatter(operand, indices, updates),
+        update_window_dims={}, inserted_window_dims={0,1,2},
+        scatter_dims_to_operand_dims={0,1,2}, index_vector_dim=2,
+        to_apply=scatter_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  ScatterDeterminismExpander scatter_determinism_expander;
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+  EXPECT_TRUE(result);
+}
+
 }  // namespace
 }  // namespace xla
