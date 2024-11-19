@@ -4384,10 +4384,6 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
                    *use.instruction, use.operand_number, use.operand_index);
   }
 
-  if (request.only_extend_existing_allocation &&
-      !allocation_sequence->empty()) {
-    allocation_sequence->back()->Extend(request.inclusive_start_time);
-  }
   // There could be a requirement to pin this buffer to default memory either
   // because it is a parameter or an output.  If the buffer is a parameter, then
   // we're allowed to prefetch. If the use expects the output to be in default
