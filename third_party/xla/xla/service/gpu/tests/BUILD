@@ -189,6 +189,7 @@ xla_test(
         "gpu_too_many_blocks_test.cc",
     ],
     backends = ["gpu"],
+    tags = ["cuda-only"],
     deps = [
         ":gpu_codegen_test",
         "//xla/hlo/ir:hlo",
