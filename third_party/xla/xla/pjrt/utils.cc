@@ -683,14 +683,10 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
 
   // Assign a default layout based on `sharded_shape` to any array subshapes in
   // `dst_shape` that are missing layouts.
-  const bool allow_auto_layout =
-      build_options && build_options->has_debug_options() &&
-      build_options->debug_options().xla_pjrt_allow_auto_layout_in_hlo();
   auto assign_layouts = [&](const Shape& sharded_shape, Shape* dst_shape) {
     return ShapeUtil::ForEachMutableSubshapeWithStatus(
         dst_shape, [&](Shape* subshape, const ShapeIndex& idx) {
-          if (subshape->IsArray() && !subshape->has_layout() &&
-              !allow_auto_layout) {
+          if (subshape->IsArray() && !subshape->has_layout()) {
             CHECK(ShapeUtil::IndexIsValid(sharded_shape, idx));
             const Shape& sharded_subshape =
                 ShapeUtil::GetSubshape(sharded_shape, idx);
@@ -698,7 +694,11 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
             TF_ASSIGN_OR_RETURN(
                 Shape layout,
                 choose_compact_layout_for_shape_function(sharded_subshape));
-            *subshape->mutable_layout() = layout.layout();
+            if (layout.has_layout()) {
+              *subshape->mutable_layout() = layout.layout();
+            } else {
+              subshape->clear_layout();
+            }
           }
           return absl::OkStatus();
         });
