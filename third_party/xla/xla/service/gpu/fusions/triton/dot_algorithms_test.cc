@@ -140,7 +140,7 @@ class Triton6xBF16GemmTest : public AlgorithmTest {
 
 // In these tests, we depend on debug option flags for selecting the 6XBF16
 // algorithm.
-// TODO(b/316147294): Remove this class and the --xla_gpu_enable_bf16_6way_gemm
+// TODO(b/379905071): Remove this class and the --xla_gpu_enable_bf16_6way_gemm
 // flag after we will support the algorithm values through the entire stack.
 class Triton6xBF16GemmTestWithFlag : public AlgorithmTest {
  public:
@@ -607,7 +607,7 @@ class Triton3xBF16GemmTest : public AlgorithmTest {
 
 // In these tests, we depend on debug option flags for selecting the 3XBF16
 // algorithm.
-// TODO(b/316147294): Remove this class and the --xla_gpu_enable_bf16_3way_gemm
+// TODO(b/379905071): Remove this class and the --xla_gpu_enable_bf16_3way_gemm
 // flag after we will support the algorithm values through the entire stack.
 class Triton3xBF16GemmTestWithFlag : public AlgorithmTest {
  public:
