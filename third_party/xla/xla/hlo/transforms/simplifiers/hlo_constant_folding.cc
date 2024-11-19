@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -70,6 +71,33 @@ static bool IsOrContainsIllegalInstr(const HloInstruction* instr) {
 
 /*static*/ std::atomic<int64_t> HloConstantFolding::slow_op_counter_{0};
 
+absl::Status RecursivelyRemoveDeadInstructionAndDeadOperands(
+    HloComputation& computation, HloInstruction* instruction) {
+  absl::flat_hash_set<HloInstruction*> already_removed;
+  std::vector<HloInstruction*> dead_instructions = {instruction};
+  while (!dead_instructions.empty()) {
+    auto dead_instruction = dead_instructions.back();
+    dead_instructions.pop_back();
+    if (already_removed.insert(dead_instruction).second == false) {
+      continue;
+    }
+
+    // Save the operands before calling RemoveInstruction which clears them.
+    auto operands = dead_instruction->operands();
+
+    // First remove the instruction itself.
+    TF_RETURN_IF_ERROR(computation.RemoveInstruction(dead_instruction));
+
+    // Now check if some of its operands are dead as a result of the removal.
+    for (auto operand : operands) {
+      if (operand->IsDead()) {
+        dead_instructions.push_back(operand);
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> HloConstantFolding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -80,9 +108,7 @@ absl::StatusOr<bool> HloConstantFolding::Run(
   // fast-path lets us e.g. use Eigen for matmuls.
   evaluator->set_use_fast_path(true);
 
-  // We delay deleting dead instructions so that we can print them out if we are
-  // taking too long without use-after-free or other sorts of races.
-  std::vector<HloInstruction*> dead_instructions;
+  bool changed = false;
 
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
@@ -246,7 +272,7 @@ absl::StatusOr<bool> HloConstantFolding::Run(
       }
 
       VLOG(4) << "Constant folded: " << instruction->ToString();
-      dead_instructions.push_back(instruction);
+      changed = true;
       HloInstruction* new_constant = instruction->AddInstruction(
           HloInstruction::CreateConstant(std::move(result)));
       if (new_constant->shape().has_layout()) {
@@ -260,13 +286,9 @@ absl::StatusOr<bool> HloConstantFolding::Run(
                 instruction->shape().layout().element_size_in_bits());
       }
       TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_constant));
+      TF_RETURN_IF_ERROR(RecursivelyRemoveDeadInstructionAndDeadOperands(
+          *computation, instruction));
     }
-  }
-  const bool changed = !dead_instructions.empty();
-  for (HloInstruction* dead_instruction : dead_instructions) {
-    CHECK(dead_instruction->IsDead());
-    HloComputation* computation = dead_instruction->parent();
-    TF_RETURN_IF_ERROR(computation->RemoveInstruction(dead_instruction));
   }
   return changed;
 }

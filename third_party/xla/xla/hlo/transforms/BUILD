@@ -1462,6 +1462,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
@@ -1493,6 +1494,22 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test_main",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# xla_cc_test(
+#     name = "hlo_constant_folding_peak_heap_test",
+#     srcs = ["simplifiers/hlo_constant_folding_peak_heap_test.cc"],
+#     deps = [
+#         ":hlo_constant_folding",
+#         "@com_google_googletest//:gtest",
+#         "@com_google_absl//absl/strings:str_format",
+#         "//xla:test",
+#         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+#         "@local_tsl//tsl/platform:statusor",
+#         "@local_tsl//tsl/platform:test_main",
+#     ],
+# )
+# copybara:uncomment_end
 
 cc_library(
     name = "hlo_element_type_converter",
