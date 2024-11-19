@@ -26,6 +26,10 @@ load(
     "onednn_v3_define",
 )
 
+# copybara:comment_begin(oss-only)
+load("@tf_wheel_version//:wheel_version.bzl", "WHEEL_VERSION")
+# copybara:comment_end
+
 #
 # Returns the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
@@ -95,8 +99,14 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-WHEEL_VERSION = "2.19.0"
-VERSION = "2.19.0"
+
+# copybara:uncomment_begin(different value in OSS)
+# VERSION = "2.19.0"
+#
+# copybara:uncomment_end_and_comment_begin
+VERSION = WHEEL_VERSION
+
+# copybara:comment_end
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 

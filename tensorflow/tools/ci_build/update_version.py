@@ -232,13 +232,8 @@ def update_tensorflow_bzl(old_version, new_version):
                           old_version.patch)
   new_mmp = "%s.%s.%s" % (new_version.major, new_version.minor,
                           new_version.patch)
-  replace_string_in_line('VERSION = "%s"' % old_mmp,
-                         'VERSION = "%s"' % new_mmp, TENSORFLOW_BZL)
-  replace_string_in_line(
-      'WHEEL_VERSION = "%s"' % old_version.string,
-      'WHEEL_VERSION = "%s"' % new_version.string,
-      TENSORFLOW_BZL,
-  )
+  replace_string_in_line('# VERSION = "%s"' % old_mmp,
+                         '# VERSION = "%s"' % new_mmp, TENSORFLOW_BZL)
 
 
 def update_m1_builds(old_version, new_version):

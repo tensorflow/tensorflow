@@ -49,6 +49,8 @@ from setuptools.dist import Distribution
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
 _VERSION = '2.19.0'
+_VERSION_SUFFIX = os.environ.get('WHEEL_VERSION_SUFFIX', '')
+_FULL_VERSION = _VERSION + _VERSION_SUFFIX
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -125,7 +127,7 @@ FAKE_REQUIRED_PACKAGES = [
     # The entries here should be a simple duplicate of those in the collaborator
     # build section.
     standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
-    _VERSION + ';platform_system=="Windows"',
+    _FULL_VERSION + ';platform_system=="Windows"',
 ]
 
 if platform.system() == 'Linux' and platform.machine() == 'x86_64':
@@ -139,7 +141,7 @@ if collaborator_build:
       # Windows machine.
       standard_or_nightly('tensorflow-intel', 'tf-nightly-intel')
       + '=='
-      + _VERSION
+      + _FULL_VERSION
       + ';platform_system=="Windows"',
   ]
 
@@ -310,7 +312,7 @@ if '_tpu' in project_name:
   # timing of these tests, the UTC date from eight hours ago is expected to be a
   # valid version.
   _libtpu_version = standard_or_nightly(
-      _VERSION.replace('-', ''),
+      _FULL_VERSION.replace('-', ''),
       '0.1.dev'
       + (
           datetime.datetime.now(tz=datetime.timezone.utc)
@@ -395,7 +397,7 @@ else:
 
 setup(
     name=project_name,
-    version=_VERSION.replace('-', ''),
+    version=_FULL_VERSION.replace('-', ''),
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
     long_description_content_type='text/markdown',
