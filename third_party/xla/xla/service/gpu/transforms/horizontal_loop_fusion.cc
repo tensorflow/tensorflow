@@ -141,6 +141,11 @@ class HorizontalLoopFusionImpl {
   std::string prefix_;
 };  // HorizontalLoopFusionImpl
 
+bool IsConcatenationInputFusion(const HloInstruction& instr) {
+  return instr.IsInputFusion() &&
+         instr.fused_expression_root()->opcode() == HloOpcode::kConcatenate;
+}
+
 bool IsFusibleCandidate(const HloInstruction& instr) {
   // For now, we do not support fusing instruction with control flow.
   if (!instr.control_successors().empty() ||
@@ -158,8 +163,7 @@ bool IsFusibleCandidate(const HloInstruction& instr) {
     return true;
   }
 
-  // Exclude fusions other than kLoop.
-  if (!instr.IsLoopFusion()) {
+  if (!(instr.IsLoopFusion() || IsConcatenationInputFusion(instr))) {
     return false;
   }
 
@@ -196,7 +200,8 @@ bool IsProfitableFusionCandidate(const HloInstruction& instr,
   // GPU thread can only process 1 element. From experience, we enable larger
   // tensor size threshold for kLoop fusion.
   const int64_t kShapeThreshold =
-      sliced_input_fusion ? 128 * 2048 : 8192 * 8192;
+      (sliced_input_fusion || IsConcatenationInputFusion(instr)) ? 128 * 2048
+                                                                 : 8192 * 8192;
   const int64_t kInstrCountThreshold = sliced_input_fusion ? 30 : 128;
   const HloInstruction* root = (instr.opcode() == HloOpcode::kFusion)
                                    ? instr.fused_expression_root()
@@ -253,8 +258,6 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
   std::vector<HloInstruction*> ordered_fusible_candidates;
   for (HloInstruction* opnd : consumer->operands()) {
     HloInstruction* predecessor = opnd->LatestNonGteAncestor();
-    // We support kLoop fusion and element-wise HLOs now. We may extend the
-    // support list if needs arise.
     if (IsFusibleCandidate(*predecessor)) {
       if (fusible_candidates.insert(predecessor).second) {
         // Add unseen fusion to ordered list.

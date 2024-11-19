@@ -624,6 +624,60 @@ e {
   EXPECT_FALSE(HorizontalLoopFusion().Run(module.get()).value());
 }
 
+TEST_F(HorizontalLoopFusionTest, FuseSmallConcatenationInputFusions) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+a {
+  p = s4[1] parameter(0)
+  q = s4[2] parameter(1)
+  c = s4[3] concatenate(p, q), dimensions={0}
+}
+
+b {
+  p = s4[4] parameter(0)
+  q = s4[5] parameter(1)
+  c = s4[9] concatenate(p, q), dimensions={0}
+}
+
+e {
+  p = s4[1] constant({...})
+  q = s4[2] constant({...})
+  x = s4[3] fusion(p, q), kind=kInput, calls=a
+  r = s4[4] constant({...})
+  s = s4[5] constant({...})
+  y = s4[9] fusion(r, s), kind=kInput, calls=b
+  t = tuple(x, y)
+})"));
+
+  EXPECT_TRUE(HorizontalLoopFusion().Run(module.get()).value());
+}
+
+TEST_F(HorizontalLoopFusionTest, DoNotFuseLargerConcatenationInputFusions) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+a {
+  p = s4[100000] parameter(0)
+  q = s4[200000] parameter(1)
+  c = s4[300000] concatenate(p, q), dimensions={0}
+}
+
+b {
+  p = s4[200000] parameter(0)
+  q = s4[100000] parameter(1)
+  c = s4[300000] concatenate(p, q), dimensions={0}
+}
+
+e {
+  p = s4[100000] constant({...})
+  q = s4[200000] constant({...})
+  x = s4[300000] fusion(p, q), kind=kInput, calls=a
+  r = s4[200000] constant({...})
+  s = s4[100000] constant({...})
+  y = s4[300000] fusion(r, s), kind=kInput, calls=b
+  t = tuple(x, y)
+})"));
+
+  EXPECT_FALSE(HorizontalLoopFusion().Run(module.get()).value());
+}
+
 TEST_F(HorizontalLoopFusionTest, IterativeHorizontalFusion) {
   auto module = ParseAndReturnVerifiedModule(R"(
  HloModule NonfusionInstrs
