@@ -1,8 +1,19 @@
 load("//xla:lit.bzl", "lit_test_suite")
 load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+
+package_group(
+    name = "internal",
+    packages = [
+        "//xla/python/ifrt/ir/tests/...",
+    ],
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        ":internal",
+    ]),
     licenses = ["notice"],
 )
 

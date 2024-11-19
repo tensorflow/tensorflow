@@ -132,4 +132,35 @@ def Vifrt_AfterOpV1 : Vifrt_Op<"AfterV1", "0.1.0", "current", []> {
   let results = (outs Vifrt_AnyType:$control_output);
 }
 
+//===---------------------------------------------------------------------------
+// Ops for the subset of `func` dialect used by IFRT.
+//===---------------------------------------------------------------------------
+
+// Each used op from the `func` dialect is versioned because of the following
+// two reasons:
+// 1) To avoid breaking stable serialization if the `func` dialect changes.
+// 2) To avoid custom conversion logic and type checking for these ops. By
+//    verioning them we can use the same generic conversion logic as for other
+//    VIFRT ops.
+
+def Vifrt_FuncOpV1 : Vifrt_Op<"FuncV1", "0.1.0", "current"> {
+  let arguments = (ins
+    Vifrt_AnyAttr:$sym_name,
+    Vifrt_AnyAttr:$function_type,
+    Vifrt_AnyAttr:$sym_visibility,
+    Vifrt_AnyAttr:$arg_attrs,
+    Vifrt_AnyAttr:$res_attrs);
+  let regions = (region Vifrt_AnyRegion:$body);
+  let assemblyFormat = "custom<FunctionBody>($sym_name, $body, $function_type) attr-dict";
+}
+
+def VIfrt_ReturnOpV1 : Vifrt_Op<"ReturnV1", "0.1.0", "current", [Terminator]> {
+  let arguments = (ins Variadic<Vifrt_AnyType>:$results);
+}
+
+def Vifrt_CallFuncOpV1 : Vifrt_Op<"CallFuncV1", "0.1.0", "current"> {
+  let arguments = (ins Vifrt_AnyAttr:$callee, Variadic<Vifrt_AnyType>:$operands);
+  let results = (outs Variadic<Vifrt_AnyType>:$results);
+}
+
 #endif  // XLA_PYTHON_IFRT_IR_VIFRT_OPS_TD_
