@@ -1141,6 +1141,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
     case kTfLiteBuiltinLogicalNot:
     case kTfLiteBuiltinLogistic:  // Sigmoid
     case kTfLiteBuiltinNeg:
+    case kTfLiteBuiltinRound:
     case kTfLiteBuiltinRsqrt:
     case kTfLiteBuiltinSign:
     case kTfLiteBuiltinSin:
