@@ -23,8 +23,11 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassOptions.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
@@ -132,6 +135,10 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtAtomProgramsFromVhloPass(
     const tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>&
         atom_programs);
+
+void populateIfrtToVifrtPatterns(mlir::RewritePatternSet* patterns,
+                                 mlir::TypeConverter* converter,
+                                 mlir::MLIRContext* context);
 
 // Generated definitions. This should be placed after all Pass creations.
 #define GEN_PASS_REGISTRATION

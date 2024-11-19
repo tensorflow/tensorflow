@@ -20,7 +20,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/test_util.h"
-#include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -254,7 +255,7 @@ TEST_F(XlaPlatformInfoTest,
   options.asynchronous = true;
   options.cpu_device_count = 1;
   TF_CHECK_OK(SetPjRtClientInTFGlobalResourceManager(
-      device_type, xla::GetTfrtCpuClient(options).value()));
+      device_type, xla::GetXlaPjrtCpuClient(options).value()));
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetOrCreatePjRtClient(device_type));
 
   // Instead of creating/initializing a TPU device, create a dummy platform_info

@@ -103,34 +103,43 @@ def Vifrt_MappingAttrV1 : Vifrt_AttrDef<"VifrtMappingV1", "0.1.0", "current"> {
   let assemblyFormat = "`<` $from_shards `to` $to_shards `>`";
 }
 
-// Equivalent to `mlir::ArrayAttr`, but with VIFRT verification.
-// This can be used to represent `Ifrt_MappingAttrArrayAttr`,
-// `Ifrt_ArrayMappingAttrArrayAttr` and `Ifrt_IoAliasesAttr`, which are just
-// arrays.
-def Vifrt_GenericArrayAttrV1 : Vifrt_AttrDef<"VifrtGenericArrayAttrV1",
-      "0.1.0", "current"> {
-  let mnemonic = "generic_array_attr_v1";
-  let parameters = (ins ArrayRefParameter<"mlir::Attribute">:$value);
-  let genVerifyDecl = 1;
-  let extraClassDefinition = [{
-    mlir::LogicalResult VifrtGenericArrayAttrV1Attr::verify(
-        llvm::function_ref<mlir::InFlightDiagnostic ()> err_fn,
-        llvm::ArrayRef<mlir::Attribute> value) {
-      if (!allFromVifrt(value)) return err_fn() << "expected array of VIFRT attributes";
-      return mlir::success();
-    }
-  }];
-  let assemblyFormat = "`<` custom<AttributeArray>($value) `>`";
-}
-
 def Vifrt_ArrayMappingAttrV1 : Vifrt_AttrDef<"VifrtArrayMappingV1", "0.1.0",
     "current"> {
   let mnemonic = "array_mapping_v1";
   let parameters = (ins
     "int32_t":$in_array_index,
     "int32_t":$out_array_index,
-    Vifrt_GenericArrayAttrV1:$mappings);
+    "::mlir::ArrayAttr":$mappings);
+  let genVerifyDecl = 1;
+  let extraClassDefinition = [{
+    mlir::LogicalResult VifrtArrayMappingV1Attr::verify(
+        llvm::function_ref<mlir::InFlightDiagnostic ()> err_fn,
+        int32_t in_array_index, int32_t out_array_index,
+        ::mlir::ArrayAttr mappings) {
+      if (!allFromBuiltinOrVifrt(mappings.getValue()))
+        return err_fn() << "expected VIFRT or builtin type";
+      return mlir::success();
+    }
+  }];
   let assemblyFormat = "`<`$in_array_index`,` $out_array_index`,` $mappings`>`";
+}
+
+// Equivalent of `mlir::TypeAttr`. This was added to support stronger type
+// checking for VIFRT IR (i.e., only builtin and VIFRT types are allowed).
+def Vifrt_TypeAttrV1 : Vifrt_AttrDef<"VifrtTypeV1", "0.1.0", "current"> {
+  let mnemonic = "type_v1";
+  let parameters = (ins "::mlir::Type":$value);
+  let genVerifyDecl = 1;
+  let extraClassDefinition = [{
+    mlir::LogicalResult VifrtTypeV1Attr::verify(
+        llvm::function_ref<mlir::InFlightDiagnostic ()> err_fn,
+        mlir::Type value) {
+      if (!isFromBuiltinOrVifrt(value))
+        return err_fn() << "expected VIFRT or builtin type";
+      return mlir::success();
+    }
+  }];
+  let assemblyFormat = "`<` $value `>`";
 }
 
 //===---------------------------------------------------------------------------
@@ -160,7 +169,17 @@ def Vifrt_Array : Vifrt_TypeDef<"VifrtArrayV1", "array_v1", "0.1.0", "current"> 
     "::mlir::Attribute":$sharding_attr,
     Vifrt_DevicesAttrV1:$devices_attr,
     "::mlir::StringAttr":$memory_kind_attr);
-
+  let genVerifyDecl = 1;
+  let extraClassDefinition = [{
+    mlir::LogicalResult VifrtArrayV1Type::verify(
+        llvm::function_ref<mlir::InFlightDiagnostic ()> err_fn,
+        mlir::RankedTensorType shape, mlir::Attribute sharding_attr,
+        VifrtDevicesV1Attr devices_attr, mlir::StringAttr memory_kind_attr) {
+      if (!isFromVifrt(sharding_attr))
+          err_fn() << "expected VIFRT sharding attribute";
+      return mlir::success();
+    }
+  }];
   let assemblyFormat = [{
     `<` $shape`,` $sharding_attr `,` $devices_attr `,` `memory_kind` `=`
         $memory_kind_attr `>`
@@ -168,5 +187,24 @@ def Vifrt_Array : Vifrt_TypeDef<"VifrtArrayV1", "array_v1", "0.1.0", "current"> 
 }
 
 def Vifrt_Control : Vifrt_TypeDef<"VifrtControlV1", "control_v1", "0.1.0", "current">;
+
+// Equivalent of `mlir::FunctionType`, but with stronger type checking.
+def Vifrt_FunctionV1 : Vifrt_TypeDef<"VifrtFunctionV1", "func_v1", "0.1.0", "current"> {
+  let parameters = (ins
+    ArrayRefParameter<"::mlir::Type">:$inputs,
+    ArrayRefParameter<"::mlir::Type">:$outputs
+  );
+  let genVerifyDecl = 1;
+  let extraClassDefinition = [{
+    mlir::LogicalResult VifrtFunctionV1Type::verify(
+        llvm::function_ref<mlir::InFlightDiagnostic ()> err_fn,
+        llvm::ArrayRef<mlir::Type> inputs, llvm::ArrayRef<mlir::Type> outputs) {
+      if (!allFromBuiltinOrVifrt(inputs) || !allFromBuiltinOrVifrt(outputs))
+        return err_fn() << "expected VIFRT or builtin types";
+      return mlir::success();
+    }
+  }];
+  let assemblyFormat = "`<` `(` custom<TypeArray>($inputs) `)` `->` custom<TypeArray>($outputs) `>`";
+}
 
 #endif  // XLA_PYTHON_IFRT_IR_VIFRT_DIALECT_TD_

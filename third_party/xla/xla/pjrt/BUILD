@@ -697,7 +697,7 @@ cc_library(
     ],
 )
 
-# Transitional forwarding target. Use cpu:cpu_client instead.
+# Transitional forwarding target. Use pjrt/plugin/xla_cpu:xla_cpu_pjrt_client instead.
 cc_library(
     name = "tfrt_cpu_pjrt_client",
     hdrs = ["tfrt_cpu_pjrt_client.h"],
@@ -705,7 +705,7 @@ cc_library(
         "//xla:friends",
     ]),
     deps = [
-        "//xla/pjrt/cpu:cpu_client",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
     ],
 )
 
