@@ -661,8 +661,6 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_pair(PrimitiveType::F8E5M2, PrimitiveType::F8E5M2)));
 
 TEST_P(FloatNormalizationTest, Fp8Normalization) {
-  // TODO(b/344573710) Make this test not require a GPU when AutotuneCacheKey is
-  // more stable.
   const PrimitiveType lhs_type = GetParam().first;
   const PrimitiveType rhs_type = GetParam().second;
   const std::string lhs_name =
