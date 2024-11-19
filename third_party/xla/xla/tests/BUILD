@@ -567,6 +567,7 @@ xla_test(
 xla_test(
     name = "while_test",
     srcs = ["while_test.cc"],
+    # placeholder for extra args for while_test
     tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
@@ -1773,6 +1774,7 @@ xla_test(
     name = "reduce_window_test",
     timeout = "long",
     srcs = [],
+    # placeholder for extra args for reduce_window_test
     shard_count = 40,
     tags = [
         "optonly",
@@ -3367,6 +3369,7 @@ bzl_library(
         ":plugin_bzl",
         "//xla:xla_bzl",
         "//xla/stream_executor:build_defs_bzl",
+        "//xla/tsl:tsl_bzl",
         "@local_tsl//tsl/platform:build_config_root_bzl",
     ] + tests_build_defs_bzl_deps(),
 )

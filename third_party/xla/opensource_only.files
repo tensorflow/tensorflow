@@ -30,12 +30,14 @@ third_party/py/BUILD:
 third_party/py/ml_dtypes/BUILD:
 third_party/py/ml_dtypes/LICENSE:
 third_party/py/numpy/BUILD:
+third_party/py/py_import.bzl:
 third_party/py/python_configure.bzl:
 third_party/py/python_init_pip.bzl:
 third_party/py/python_init_repositories.bzl:
 third_party/py/python_init_rules.bzl:
 third_party/py/python_init_toolchains.bzl:
 third_party/py/python_repo.bzl:
+third_party/py/verify_manylinux_compliance.py:
 third_party/python_runtime/BUILD:
 third_party/repo.bzl:
 third_party/spirv_llvm_translator/spirv_llvm_translator.BUILD:
