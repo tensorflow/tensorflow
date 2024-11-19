@@ -62,6 +62,7 @@ bazel test \
       --local_test_jobs=${N_TEST_JOBS} \
       --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
       --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
+      --test_env=MIOPEN_DEBUG_CONV_WINOGRAD=0 \
       --test_timeout 600,900,2400,7200 \
       --build_tests_only \
       --test_output=errors \
