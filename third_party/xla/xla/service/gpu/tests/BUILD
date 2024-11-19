@@ -540,6 +540,7 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",

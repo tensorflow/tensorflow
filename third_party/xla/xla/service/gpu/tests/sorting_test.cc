@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
@@ -62,6 +63,27 @@ ENTRY TestComputation {
   tr = f32[2, 3]{1, 0} transpose(x), dimensions={1,0}
   b = f32[3, 2]{0, 1} bitcast(tr)
   ROOT sort = f32[3, 2]{0, 1} sort(b), dimensions={1}, to_apply=compare
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(SortingTest, SortSupportsBf16) {
+  const char* hlo_text = R"(
+HloModule TestModule
+
+compare {
+  p.0.lhs = bf16[] parameter(0)
+  p.0.rhs = bf16[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+
+ENTRY test {
+  p0 = bf16[1024]{0} parameter(0)
+  ROOT sort = bf16[1024]{0} sort(p0), dimensions={0}, is_stable=true, to_apply=compare
 }
 
 )";

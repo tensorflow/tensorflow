@@ -117,6 +117,9 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
                               return hlo->opcode() == HloOpcode::kParameter ||
                                      this->IsSupported(*hlo);
                             });
+    // Sort
+    case HloOpcode::kSort:
+      return LowPrecisionType() == BF16;
     default:
       return false;
   }
