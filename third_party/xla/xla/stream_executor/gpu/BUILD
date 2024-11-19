@@ -208,36 +208,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "mock_gpu_executor",
-    testonly = True,
-    hdrs = ["mock_gpu_executor.h"],
-    tags = ["gpu"],
-    deps = [
-        ":gpu_executor_header",
-        "//xla:test",
-        "//xla/stream_executor:allocator_stats",
-        "//xla/stream_executor:blas",
-        "//xla/stream_executor:command_buffer",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:dnn",
-        "//xla/stream_executor:event",
-        "//xla/stream_executor:event_based_timer",
-        "//xla/stream_executor:fft",
-        "//xla/stream_executor:kernel",
-        "//xla/stream_executor:kernel_spec",
-        "//xla/stream_executor:memory_allocation",
-        "//xla/stream_executor:module_spec",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_executor_h",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
 gpu_only_cc_library(
     name = "gpu_helpers_header",
     hdrs = ["gpu_helpers.h"],

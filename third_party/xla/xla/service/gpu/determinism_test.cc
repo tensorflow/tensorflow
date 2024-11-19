@@ -26,16 +26,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/literal.h"
 #include "xla/service/backend.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/gpu/mock_gpu_executor.h"
+#include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
@@ -110,7 +110,10 @@ class DeterminismTest : public GpuCodegenTest {
     // prevents timer creation.
     TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * default_platform,
                             PlatformUtil::GetDefaultPlatform());
-    stream_executor::gpu::MockGpuExecutor executor(default_platform, 0);
+    stream_executor::MockStreamExecutor executor;
+    EXPECT_CALL(executor, GetPlatform).WillRepeatedly([&] {
+      return default_platform;
+    });
     EXPECT_CALL(executor, CreateEventBasedTimer).Times(0);
     EXPECT_CALL(executor, GetDeviceDescription)
         .WillRepeatedly([this]() -> const se::DeviceDescription& {
