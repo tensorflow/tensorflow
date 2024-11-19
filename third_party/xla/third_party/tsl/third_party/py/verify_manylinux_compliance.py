@@ -32,9 +32,9 @@ def parse_args() -> argparse.Namespace:
       "--compliance-tag", help="ManyLinux compliance tag", required=False
   )
   parser.add_argument(
-      "--compliance-verification-log-path",
-      help="Path to file with compliance verification results",
-      required=False,
+      "--auditwheel-show-log-path",
+      help="Path to file with auditwheel show results, mandatory",
+      required=True,
   )
   return parser.parse_args()
 
@@ -67,41 +67,32 @@ def get_auditwheel_output(wheel_path: str) -> None:
   return stringio.getvalue()
 
 
-def verify_wheel_compliance(
+def verify_manylinux_compliance(
     auditwheel_log: str,
     compliance_tag: str,
-    verification_log_path: str,
+    auditwheel_show_log_path: str,
 ) -> None:
-  """Verify wheel compliance.
+  """Verify manylinux compliance.
 
   Args:
     auditwheel_log: "auditwheel show" execution results
     compliance_tag: manyLinux compliance tag
-    verification_log_path: path to file with compliance verification results
+    auditwheel_show_log_path: path to file with auditwheel show results
 
   Raises:
     RuntimeError: if the wheel is not manyLinux compliant.
   """
+  with open(auditwheel_show_log_path, "w") as auditwheel_show_log:
+    auditwheel_show_log.write(auditwheel_log)
+  if not compliance_tag:
+    return
   regex = 'following platform tag: "{}"'.format(compliance_tag)
-  if re.search(regex, auditwheel_log):
-    with open(verification_log_path, "w") as verification_log:
-      verification_log.write(
-          "The wheel is {tag} compliant:\n{log}".format(
-              tag=compliance_tag, log=auditwheel_log
-          )
-      )
-  else:
-    with open(verification_log_path, "w") as verification_log:
-      verification_log.write(
-          "The wheel is not {tag} compliant:\n{log}".format(
-              tag=compliance_tag, log=auditwheel_log
-          )
-      )
+  if not re.search(regex, auditwheel_log):
     raise RuntimeError(
         (
             "The wheel is not compliant with tag {tag}."
             + " If you want to disable this check, please provide"
-            + " `--@local_tsl//third_party/py:wheel_compliance=false`."
+            + " `--@local_tsl//third_party/py:verify_manylinux=false`."
             + "\n{result}"
         ).format(tag=compliance_tag, result=auditwheel_log)
     )
@@ -110,8 +101,8 @@ def verify_wheel_compliance(
 if __name__ == "__main__":
   args = parse_args()
   auditwheel_output = get_auditwheel_output(args.wheel_path)
-  verify_wheel_compliance(
+  verify_manylinux_compliance(
       auditwheel_output,
       args.compliance_tag,
-      args.compliance_verification_log_path,
+      args.auditwheel_show_log_path,
   )

@@ -3,7 +3,7 @@
 def _unpacked_wheel_impl(ctx):
     output_dir = ctx.actions.declare_directory(ctx.label.name)
     libs = []
-    for dep in ctx.attr.deps:
+    for dep in ctx.attr.cc_deps:
         linker_inputs = dep[CcInfo].linking_context.linker_inputs.to_list()
         for linker_input in linker_inputs:
             if linker_input.libraries and linker_input.libraries[0].dynamic_library:
@@ -45,16 +45,16 @@ _unpacked_wheel = rule(
             cfg = "exec",
             executable = True,
         ),
-        "deps": attr.label_list(providers = [CcInfo]),
+        "cc_deps": attr.label_list(providers = [CcInfo]),
     },
 )
 
-def wheel_library(name, wheel, deps = [], wheel_deps = []):
+def py_import(name, wheel, deps = [], cc_deps = []):
     unpacked_wheel_name = name + "_unpacked_wheel"
     _unpacked_wheel(
         name = unpacked_wheel_name,
         wheel_rule_outputs = wheel,
-        deps = wheel_deps,
+        cc_deps = cc_deps,
     )
     native.py_library(
         name = name,
@@ -63,3 +63,11 @@ def wheel_library(name, wheel, deps = [], wheel_deps = []):
         deps = deps,
         visibility = ["//visibility:public"],
     )
+
+"""Unpacks the wheel and uses its content as a py_library.
+Args:
+  wheel: wheel file to unpack.
+  deps: dependencies of the py_library.
+  cc_deps: dependencies that will be copied in the folder
+           with the unpacked wheel content.
+"""  # buildifier: disable=no-effect
