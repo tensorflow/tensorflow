@@ -57,7 +57,7 @@ def LegalizeTorchUpsampleBlinear2dComposite: Pat<
         (TFL_TransposeOp $input,
           (Arith_ConstantOp
             ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 2, 3, 1}">)),
-        (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"output"> $attrs))),
+        (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
         (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
         ConstBoolAttrTrue,
         (returnType (GetNhwcReturnTypeFromNchw $old_val))),
