@@ -50,4 +50,17 @@ cc_library(
     ],
 )
 
+# This test verifies that the C API header files can build via C compiler.
+cc_test(
+    name = "litert_vendor_c_api_common_test",
+    srcs = ["litert_vendor_c_api_common_test.c"],
+    copts = ["--std=c11"],
+    linkopts = ["-ldl"],
+    deps = [
+        ":litert_compiler_plugin",
+        ":litert_compiler_plugin_api",
+        ":litert_dispatch_c_api",
+    ],
+)
+
 exports_files(srcs = glob(["litert_*.h"]))

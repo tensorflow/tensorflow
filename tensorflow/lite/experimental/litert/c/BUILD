@@ -201,4 +201,20 @@ filegroup(
     visibility = ["//tensorflow/lite/experimental/litert/core/model:__pkg__"],
 )
 
+# This test verifies that the C API header files can build via C compiler.
+cc_test(
+    name = "litert_c_api_common_test",
+    srcs = ["litert_c_api_common_test.c"],
+    copts = ["--std=c11"],
+    linkopts = ["-ldl"],
+    deps = [
+        ":litert_common",
+        ":litert_logging",
+        ":litert_model",
+        ":litert_op_code",
+        ":litert_options",
+        ":litert_tensor_buffer",
+    ],
+)
+
 exports_files(srcs = glob(["litert_*.h"]))
