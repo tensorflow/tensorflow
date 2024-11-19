@@ -35,11 +35,12 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu.h"
-#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
@@ -129,7 +130,7 @@ TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
   xla::CpuClientOptions options;
   options.cpu_device_count = 4;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          xla::GetTfrtCpuClient(std::move(options)));
+                          xla::GetXlaPjrtCpuClient(options));
 
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> program,
                           CreateStableHloProgram(GetTestProgramPath()));
