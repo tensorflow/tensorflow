@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_tf_graph.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/compilation_timer.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_to_hlo.h"
@@ -78,6 +79,13 @@ bool ShouldFallbackToGraphCompiler(
          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
 }
 
+std::string ComputationToString(const MlirToHloArgs computation) {
+  if (computation.mlir_module_op.has_value()) {
+    return SerializeMlirModule(computation.mlir_module_op.value());
+  }
+  return std::string(computation.mlir_module);
+}
+
 void DumpComputationInput(
     const tpu::TPUCompileMetadataProto& metadata,
     const std::vector<tensorflow::TensorShape>& arg_shapes,
@@ -95,8 +103,7 @@ void DumpComputationInput(
 
   switch (computation.index()) {
     case 0:
-      reproducer.set_mlir_module(
-          std::string(std::get<0>(computation).mlir_module));
+      reproducer.set_mlir_module(ComputationToString(std::get<0>(computation)));
       break;
     case 1: {
       auto input = std::get<1>(computation);

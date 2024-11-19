@@ -342,17 +342,16 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
       custom_legalization_passes{};
   XlaCompilationResult compilation_result;
   auto compilation_status =
-      via_builder
-          ? CompileMlirToXlaHloViaBuilder(module_op, arg_shapes, device_type,
-                                          &compilation_result,
-                                          custom_legalization_passes)
-          : CompileMlirToXlaHlo(module_op, arg_shapes, device_type,
-                                emit_use_tuple_arg,
-                                /*analyse_graph=*/false, emit_return_tuple,
-                                /*use_resource_updates_for_aliases=*/true,
-                                /*shape_determination_fns=*/{},
-                                &compilation_result, custom_legalization_passes)
-                .status();
+      via_builder ? CompileMlirToXlaHloViaBuilder(
+                        module_op, arg_shapes, device_type, &compilation_result,
+                        custom_legalization_passes)
+                  : CompileMlirToXlaHloAndSerialize(
+                        module_op, arg_shapes, device_type, emit_use_tuple_arg,
+                        /*enable_op_fallback=*/false, emit_return_tuple,
+                        /*use_resource_updates_for_aliases=*/true,
+                        /*shape_determination_fns=*/{}, &compilation_result,
+                        custom_legalization_passes)
+                        .status();
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: " << compilation_status;
     return mlir::failure();

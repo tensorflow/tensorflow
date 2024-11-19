@@ -24,6 +24,7 @@ cc_library(
     deps = [
         ":device_type_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:compile_tf_graph",
         "//tensorflow/compiler/mlir/tf2xla/internal:compilation_timer",
         "//tensorflow/compiler/mlir/tf2xla/internal:legalize_tf_to_hlo",
