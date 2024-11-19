@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/add_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/select_op_legalization.h"
 
 #include <string>
 
@@ -29,22 +29,26 @@
 
 namespace litert::qnn {
 
-static constexpr absl::string_view kQnnAddOpTypeName = "ElementWiseAdd";
+static constexpr absl::string_view kQnnSelectOpTypeName = "ElementWiseSelect";
 static constexpr absl::string_view kDefaultQnnOpPackageName = "qti.aisw";
-static constexpr absl::string_view kAddOpFmt = "add_%d";
+static constexpr absl::string_view kSelectOpFmt = "select_%d";
 
-LiteRtStatus AddOpLegalization::LegalizeOp(const litert::Op& src,
-                                           Qnn_OpConfig_t& dest,
-                                           GraphMapper& graph_mapper) {
-  if (src.Code() != kLiteRtOpCodeTflAdd) {
+LiteRtStatus SelectOpLegalization::LegalizeOp(const Op& src,
+                                              Qnn_OpConfig_t& dest,
+                                              GraphMapper& graph_mapper) {
+  if (src.Code() != kLiteRtOpCodeTflSelect &&
+      src.Code() != kLiteRtOpCodeTflSelectV2) {
     return kLiteRtStatusLegalizeNoMatch;
   }
-  std::string op_name = absl::StrFormat(kAddOpFmt, op_counter_++);
+  std::string op_name = absl::StrFormat(kSelectOpFmt, op_counter_++);
   LITERT_RETURN_STATUS_IF_NOT_OK(SetOpInfo(op_name.c_str(),
                                            kDefaultQnnOpPackageName.data(),
-                                           kQnnAddOpTypeName.data(), dest));
+                                           kQnnSelectOpTypeName.data(), dest));
   LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeSimpleOp(src, dest, graph_mapper));
-  LITERT_LOG(LITERT_INFO, "Legalized add op", "");
+
+  return kLiteRtStatusOk;
+  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeSimpleOp(src, dest, graph_mapper));
+  LITERT_LOG(LITERT_INFO, "Legalized select op", "");
   return kLiteRtStatusOk;
 }
 

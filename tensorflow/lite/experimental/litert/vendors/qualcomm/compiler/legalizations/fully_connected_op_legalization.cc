@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/add_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/fully_connected_op_legalization.h"
 
+#include <cstdint>
 #include <string>
 
 #include "absl/strings/str_format.h"
@@ -23,28 +24,28 @@
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/util.h"
 
 namespace litert::qnn {
 
-static constexpr absl::string_view kQnnAddOpTypeName = "ElementWiseAdd";
+static constexpr absl::string_view kQnnFullyConnectedOpTypeName =
+    "FullyConnected";
 static constexpr absl::string_view kDefaultQnnOpPackageName = "qti.aisw";
-static constexpr absl::string_view kAddOpFmt = "add_%d";
+static constexpr absl::string_view kFullyConnectedOpFmt = "fully_connected_%d";
 
-LiteRtStatus AddOpLegalization::LegalizeOp(const litert::Op& src,
-                                           Qnn_OpConfig_t& dest,
-                                           GraphMapper& graph_mapper) {
-  if (src.Code() != kLiteRtOpCodeTflAdd) {
+LiteRtStatus FullyConnectedOpLegalization::LegalizeOp(
+    const Op& src, Qnn_OpConfig_t& dest, GraphMapper& graph_mapper) {
+  if (src.Code() != kLiteRtOpCodeTflFullyConnected) {
     return kLiteRtStatusLegalizeNoMatch;
   }
-  std::string op_name = absl::StrFormat(kAddOpFmt, op_counter_++);
-  LITERT_RETURN_STATUS_IF_NOT_OK(SetOpInfo(op_name.c_str(),
-                                           kDefaultQnnOpPackageName.data(),
-                                           kQnnAddOpTypeName.data(), dest));
+  std::string op_name = absl::StrFormat(kFullyConnectedOpFmt, op_counter_++);
+  LITERT_RETURN_STATUS_IF_NOT_OK(
+      SetOpInfo(op_name.c_str(), kDefaultQnnOpPackageName.data(),
+                kQnnFullyConnectedOpTypeName.data(), dest));
   LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeSimpleOp(src, dest, graph_mapper));
-  LITERT_LOG(LITERT_INFO, "Legalized add op", "");
+
+  LITERT_LOG(LITERT_INFO, "Legalized fully_connected op", "");
   return kLiteRtStatusOk;
 }
 

@@ -133,6 +133,15 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflCos:
       out << "TFL_COS";
       break;
+    case kLiteRtOpCodeTflSelect:
+      out << "TFL_SELECT";
+      break;
+    case kLiteRtOpCodeTflSelectV2:
+      out << "TFL_SELECT_V2";
+      break;
+    case kLiteRtOpCodeTflFullyConnected:
+      out << "TFL_FULLY_CONNECTED";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;
@@ -324,9 +333,6 @@ void DumpOptions(const LiteRtOpT& op, std::ostream& out) {
           << op.option.AsDivOptions()->fused_activation_function << "\n";
       break;
     case kLiteRtOpCodeTflFullyConnected:
-      out << "fused_activation_function: "
-          << op.option.AsFullyConnectedOptions()->fused_activation_function
-          << "\n";
       out << "weights_format: "
           << op.option.AsFullyConnectedOptions()->weights_format << "\n";
       out << "keep_num_dims: "
@@ -335,6 +341,9 @@ void DumpOptions(const LiteRtOpT& op, std::ostream& out) {
           << op.option.AsFullyConnectedOptions()->quantized_bias_type << "\n";
       out << "asymmetric_quantize_input: "
           << op.option.AsFullyConnectedOptions()->asymmetric_quantize_inputs
+          << "\n";
+      out << "fused_activation_function: "
+          << op.option.AsFullyConnectedOptions()->fused_activation_function
           << "\n";
       break;
     case kLiteRtOpCodeTflSoftmax:

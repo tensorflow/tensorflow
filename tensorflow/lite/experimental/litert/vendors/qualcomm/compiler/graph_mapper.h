@@ -64,7 +64,7 @@ class GraphMapper {
   QnnManager& Qnn();
   Qnn_GraphHandle_t& QnnGraph();
 
-  // CC Convienence Accessors
+  // CC Convenience Accessors
   const Subgraph& Graph() const { return subgraph_; }
 
   // Accessor for current scope.

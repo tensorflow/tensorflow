@@ -23,12 +23,9 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/c/litert_options.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_op.h"
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_tensor.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/util.h"
 
@@ -40,7 +37,6 @@ static constexpr absl::string_view kConcatenationOpFmt = "concatenation_%d";
 
 static constexpr int kReduceConcatenationOpOutputSize = 1;
 static constexpr int kReduceConcatenationOpParamSize = 1;
-static constexpr int kReduceConcatenationOpParamRank = 1;
 
 LiteRtStatus ConcatenationOpLegalization::LegalizeOp(
     const Op& src, Qnn_OpConfig_t& dest, GraphMapper& graph_mapper) {
@@ -83,7 +79,7 @@ LiteRtStatus ConcatenationOpLegalization::LegalizeOp(
   axis_param.paramType = QNN_PARAMTYPE_SCALAR;
   axis_param.name = "axis";
   Qnn_Scalar_t axis_scalar = QNN_SCALAR_INIT;
-  axis_scalar.dataType = QNN_DATATYPE_INT_32;
+  axis_scalar.dataType = QNN_DATATYPE_UINT_32;
   axis_scalar.int32Value = axis;
   axis_param.scalarParam = axis_scalar;
 

@@ -47,7 +47,11 @@ const auto kSupportedOps =
                     "simple_cast_op.tflite",
                     "simple_transpose_op.tflite",
                     "simple_sin_op.tflite",
-                    "simple_cos_op.tflite"
+                    "simple_cos_op.tflite",
+                    "simple_select_op.tflite",
+                    "simple_select_v2_op.tflite",
+                    "simple_fully_connected_op.tflite",
+                    "fully_connected_3d.tflite"
                     );
 // clang-format on
 
