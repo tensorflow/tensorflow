@@ -88,6 +88,9 @@ Value GetBroadcastLikeOpInput(Operation* op) {
   if (auto broadcast_to_op = llvm::dyn_cast<TFL::BroadcastToOp>(op)) {
     return broadcast_to_op.getInput();
   }
+  if (auto fill_op = llvm::dyn_cast<TFL::FillOp>(op)) {
+    return fill_op.getInput();
+  }
   return nullptr;
 }
 
@@ -152,15 +155,16 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
     operand_shapes[i] = broadcast_arg_type.getShape();
     operand_shapes[1 - i] = other_arg_type.getShape();
 
-    // Check that the input of the broadcast and the other operand is broadcast
-    // compatible.
+    // Check that the input of the broadcast and the other operand is
+    // broadcast compatible.
     llvm::SmallVector<int64_t, 4> broadcasted_shape;
     if (!get_broadcasted_shape(operand_shapes[0], operand_shapes[1],
                                broadcasted_shape))
       continue;
 
-    // Check that an implicit broadcast between the operand of the broadcast and
-    // the other argument would result in the same type as the result type.
+    // Check that an implicit broadcast between the operand of the broadcast
+    // and the other argument would result in the same type as the result
+    // type.
     if (broadcasted_shape != result_type.getShape()) continue;
 
     // Update the operand of the op to be the operand of the broadcast.
