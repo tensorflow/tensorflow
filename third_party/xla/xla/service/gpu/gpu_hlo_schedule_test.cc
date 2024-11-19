@@ -86,7 +86,7 @@ class GpuHloScheduleTest : public HloTestBase {
     debug_options.set_xla_gpu_lhs_enable_gpu_async_tracker(
         enable_gpu_async_tracker);
     config.set_debug_options(debug_options);
-    *config.mutable_fdo_profile() = fdo_profile;
+    config.set_fdo_profile(fdo_profile);
     return config;
   }
 

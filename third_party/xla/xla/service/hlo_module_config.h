@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_MODULE_CONFIG_H_
 #define XLA_SERVICE_HLO_MODULE_CONFIG_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,11 +26,15 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -325,8 +330,11 @@ class HloModuleConfig {
   const std::vector<std::vector<bool>>& fusion_config() const {
     return fusion_config_;
   }
-  std::vector<std::vector<bool>>* mutable_fusion_config() {
-    return &fusion_config_;
+  void set_fusion_config(std::vector<std::vector<bool>> fusion_config) {
+    fusion_config_ = std::move(fusion_config);
+  }
+  std::vector<std::vector<bool>>& mutable_fusion_config() {
+    return fusion_config_;
   }
 
   const absl::flat_hash_map<std::string, std::vector<int64_t>>& dot_config()
@@ -347,8 +355,12 @@ class HloModuleConfig {
   const std::vector<std::vector<bool>>& phase_ordering_config() const {
     return phase_ordering_config_;
   }
-  std::vector<std::vector<bool>>* mutable_phase_ordering_config() {
-    return &phase_ordering_config_;
+  void set_phase_ordering_config(
+      std::vector<std::vector<bool>> phase_ordering_config) {
+    phase_ordering_config_ = std::move(phase_ordering_config);
+  }
+  std::vector<std::vector<bool>>& mutable_phase_ordering_config() {
+    return phase_ordering_config_;
   }
 
   int phase_index() const { return phase_index_; }
@@ -398,7 +410,9 @@ class HloModuleConfig {
   }
 
   absl::string_view fdo_profile() const { return fdo_profile_; }
-  std::string* mutable_fdo_profile() { return &fdo_profile_; }
+  void set_fdo_profile(absl::string_view fdo_profile) {
+    fdo_profile_ = fdo_profile;
+  }
 
   int64_t device_memory_size() const { return device_memory_size_; }
   void set_device_memory_size(int64_t device_memory_size) {

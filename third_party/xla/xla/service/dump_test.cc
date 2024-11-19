@@ -154,7 +154,7 @@ TEST(DumpTest, DumpProtobufToFileWhenDisabled) {
 TEST(DumpTest, DumpFdoProfileToFileWhenEnabled) {
   std::string fdo_profile = "fdo_profile";
   HloModuleConfig config;
-  *config.mutable_fdo_profile() = fdo_profile;
+  config.set_fdo_profile(fdo_profile);
   DebugOptions options = config.debug_options();
   auto env = tsl::Env::Default();
   std::string dump_dir;
