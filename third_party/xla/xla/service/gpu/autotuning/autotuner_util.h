@@ -97,6 +97,8 @@ class AutotuneCacheKey {
   std::string hlo_canonical_;
 };
 
+using AutotuneCacheKeySet = absl::flat_hash_set<AutotuneCacheKey>;
+
 class AutotuneConfig {
  public:
   bool should_init_buffers() const { return autotune_level_ >= 2; }
@@ -279,8 +281,11 @@ struct AutotunerUtil {
   static absl::StatusOr<std::string> SerializeAutotuneResults(
       bool as_textproto = false);
 
-  // Serializes autotune results into the given proto.
-  static absl::Status SerializeAutotuneResults(AutotuneResults* results);
+  // Serializes autotune results into the given proto. If optional keys are
+  // provided, serializes results only for these keys.
+  static absl::Status SerializeAutotuneResults(
+      AutotuneResults* results,
+      std::optional<const AutotuneCacheKeySet*> keys = {});
 
   // Loads autotune results from the given string of bytes.
   //

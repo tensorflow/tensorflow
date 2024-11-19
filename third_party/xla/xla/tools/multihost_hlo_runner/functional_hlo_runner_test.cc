@@ -326,6 +326,13 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
     // The nodes autotune different fusions.
     CHECK_NE(results0, results1);
   }
+  // Compile another module to test that the autotuner doesn't fail trying to
+  // exchange again cached results for the previous module.
+  TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
+      *env.client, GetDebugOptionsFromFlags(),
+      FunctionalHloRunner::PreprocessingOptions{},
+      FunctionalHloRunner::RawCompileOptions{},
+      GetHloPath("single_gemm_fusion.hlo"), InputFormat::kText));
   return absl::OkStatus();
 }
 
