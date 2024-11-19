@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/service/collective_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -70,10 +70,10 @@ int64_t ComputeSuggestedCombinerThreshold(
 }
 
 absl::Status AppendPipelinedInstruction(HloInstruction* instr) {
-  auto config = instr->backend_config<gpu::GpuBackendConfig>();
-  config->mutable_collective_backend_config()->set_is_pipelined(true);
-  TF_RETURN_IF_ERROR(instr->set_backend_config(*config));
-  return absl::OkStatus();
+  TF_ASSIGN_OR_RETURN(auto config,
+                      instr->backend_config<gpu::GpuBackendConfig>());
+  config.mutable_collective_backend_config()->set_is_pipelined(true);
+  return instr->set_backend_config(config);
 }
 
 }  // namespace xla::gpu

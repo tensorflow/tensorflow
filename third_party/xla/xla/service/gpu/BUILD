@@ -1435,6 +1435,7 @@ cc_library(
         ":fusion_pipeline",
         ":gpu_all_gather_combiner",
         ":gpu_all_reduce_combiner",
+        ":gpu_collective_combiner_utils",
         ":gpu_constants",
         ":gpu_executable",
         ":gpu_float_support",
@@ -1695,6 +1696,7 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
+        "//xla/hlo/testlib:filecheck",
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
@@ -3141,7 +3143,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
