@@ -22,7 +22,6 @@ load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_additional_core_deps",
     "tf_protos_all",
     "tf_protos_grappler",
 )
@@ -2100,7 +2099,7 @@ tf_cuda_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
-    ] + tf_additional_core_deps() + if_static([
+    ] + if_static([
         ":core_cpu_impl",
         "//tensorflow/core:function_ops_op_lib",
         "//tensorflow/core:functional_grad",

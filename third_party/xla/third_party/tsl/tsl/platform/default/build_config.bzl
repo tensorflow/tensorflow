@@ -745,16 +745,6 @@ def tf_additional_lib_deps():
         [clean_dep("@nsync//:nsync_headers")],
     )
 
-def tf_additional_core_deps():
-    return select({
-        clean_dep("@local_xla//xla/tsl:android"): [],
-        clean_dep("@local_xla//xla/tsl:ios"): [],
-        clean_dep("@local_xla//xla/tsl:linux_s390x"): [],
-        "//conditions:default": [
-            clean_dep("//tsl/platform/cloud:gcs_file_system"),
-        ],
-    })
-
 def tf_lib_proto_parsing_deps():
     return [
         ":protos_all_cc",

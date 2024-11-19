@@ -4,7 +4,6 @@ load(
     "@local_tsl//tsl/platform:build_config.bzl",
     _pyx_library = "pyx_library",
     _tf_additional_all_protos = "tf_additional_all_protos",
-    _tf_additional_core_deps = "tf_additional_core_deps",
     _tf_additional_device_tracer_srcs = "tf_additional_device_tracer_srcs",
     _tf_additional_lib_deps = "tf_additional_lib_deps",
     _tf_additional_lib_hdrs = "tf_additional_lib_hdrs",
@@ -46,7 +45,6 @@ load(
 pyx_library = _pyx_library
 tf_additional_all_protos = _tf_additional_all_protos
 tf_additional_binary_deps = _tf_additional_binary_deps
-tf_additional_core_deps = _tf_additional_core_deps
 tf_additional_device_tracer_srcs = _tf_additional_device_tracer_srcs
 tf_additional_lib_deps = _tf_additional_lib_deps
 tf_additional_lib_hdrs = _tf_additional_lib_hdrs
