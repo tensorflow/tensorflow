@@ -150,7 +150,7 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
   if (fusion_config_collection != nullptr && fusion_config != nullptr &&
       *fusion_config_collection != xla::FusionConfigCollection::kOff) {
     config->set_fusion_config_collection(*fusion_config_collection);
-    *config->mutable_fusion_config() = *fusion_config;
+    config->set_fusion_config(*fusion_config);
   }
 
   return std::move(config);

@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 
+#include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
@@ -78,7 +82,7 @@ class GpuLatencyHidingSchedulerBaseTest : public HloTestBase {
     debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
     debug_options.set_xla_gpu_lhs_enable_gpu_async_tracker(true);
     config.set_debug_options(debug_options);
-    *config.mutable_fdo_profile() = fdo_profile;
+    config.set_fdo_profile(fdo_profile);
     return config;
   }
 };

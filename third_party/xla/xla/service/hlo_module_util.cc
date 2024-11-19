@@ -15,18 +15,27 @@ limitations under the License.
 
 #include "xla/service/hlo_module_util.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -134,7 +143,7 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     }
     config->set_alias_passthrough_params(
         execution_options->alias_passthrough_params());
-    *config->mutable_fdo_profile() = execution_options->fdo_profile();
+    config->set_fdo_profile(execution_options->fdo_profile());
     config->set_device_memory_size(execution_options->device_memory_size());
     config->set_use_shardy_partitioner(
         execution_options->use_shardy_partitioner());
@@ -154,7 +163,7 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
         FusionConfigCollection::kOff) {
       config->set_fusion_config_collection(
           aot_options->fusion_config_collection());
-      *config->mutable_fusion_config() = aot_options->fusion_config();
+      config->set_fusion_config(aot_options->fusion_config());
     }
   }
 

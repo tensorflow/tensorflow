@@ -700,8 +700,7 @@ absl::StatusOr<bool> InstructionFusion::Run(
       VLOG(1) << "There are " << fused_count << " fused bits that cause "
               << fuse_count << " fusion actions.";
     }
-    *module->mutable_config().mutable_fusion_config() =
-        std::move(fusion_config);
+    module->mutable_config().set_fusion_config(std::move(fusion_config));
   }
 
   VLOG(1) << "Fusion count: " << fuse_count;

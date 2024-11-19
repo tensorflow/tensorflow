@@ -793,7 +793,6 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
     // Create a new dimension numbers for the new scatter operation
     // As we have scalar updates, there is no update_window_dims
     new_dim_numbers.clear_update_window_dims();
-    new_dim_numbers.set_index_vector_dim(1);
     // Mitigate the missed dimensions
     for (int i = 0; i < operand_shape.dimensions_size() -
                             dim_numbers.input_batching_dims_size();
@@ -807,6 +806,9 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
   } else {
     new_dim_numbers = dim_numbers;
   }
+
+  // `CanonicalizeScatterIndices` collapses index dimensions.
+  new_dim_numbers.set_index_vector_dim(1);
 
   // Sort the scatter indices and updates together based on the scatter indices.
   int64_t num_indices = ShapeUtil::ElementsIn(scatter_updates[0]->shape());
