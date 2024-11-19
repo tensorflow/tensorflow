@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/push_transpose_through_ewise_pass.h"
@@ -322,6 +323,8 @@ inline void registerTensorFlowLitePasses() {
   // TFL Optimization Passes
   Register<OptimizePass, OptimizePassOptions>();
   Register<OptimizeBatchMatmulPass>();
+  Register<UnfreezeMutableGlobalTensorsPass>();
+  Register<OptimizeBroadcastLikePass>();
   Register<PushTransposeThroughEwisePass>();
   Register<CanonicalizeBoundaryValuePass>();
 }

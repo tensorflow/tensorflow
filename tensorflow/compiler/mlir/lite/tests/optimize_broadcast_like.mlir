@@ -1,4 +1,4 @@
-// RUN: odml-to-stablehlo-opt %s -fold-broadcast-to-pass -cse -verify-diagnostics | FileCheck %s
+// RUN: tf-opt -tfl-optimize-broadcast-like -split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: @broadcast_mul0
 func.func @broadcast_mul0(%arg0: tensor<5x7xf32>, %arg1: tensor<7xf32>) -> tensor<5x7xf32> {

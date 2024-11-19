@@ -441,32 +441,6 @@ cc_library(
 )
 
 cc_library(
-    name = "fold_broadcast_to_pass",
-    srcs = [
-        "transforms/fold_broadcast_to_pass.cc",
-    ],
-    hdrs = [
-        "transforms/stablehlo_passes.h",
-    ],
-    copts = [
-        "-Ithird_party",
-    ],
-    deps = [
-        ":passes_inc_gen",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Dialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "fuse_convolution_pass",
     srcs = [
         "transforms/fuse_convolution_pass.cc",
@@ -1089,7 +1063,6 @@ tf_cc_binary(
     deps = [
         ":compose_uniform_quantized_type_pass",
         ":fold_broadcast_pass",
-        ":fold_broadcast_to_pass",
         ":fuse_convolution_pass",
         ":legalize_stablehlo_composite_to_tfl_custom",
         ":legalize_stablehlo_custom_call_to_composite",

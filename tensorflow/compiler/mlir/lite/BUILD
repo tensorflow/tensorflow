@@ -554,6 +554,7 @@ cc_library(
         "ir/tfl_ops.h",
         "transforms/canonicalize_boundary_value_pass.h",
         "transforms/optimize_batch_matmul_pass.h",
+        "transforms/optimize_broadcast_like_pass.h",
         "transforms/optimize_pass.h",
         "transforms/pass_registry_utils.h",
         "transforms/passes.h",
@@ -568,6 +569,7 @@ cc_library(
         ":canonicalize_boundary_value",
         ":converter_inc",
         ":cost_estimators",
+        ":optimize_broadcast_like_pass",
         ":optimize_pass_options",
         ":pass",
         ":pass_options",
@@ -1095,6 +1097,27 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "optimize_broadcast_like_pass",
+    srcs = [
+        "transforms/optimize_broadcast_like_pass.cc",
+    ],
+    hdrs = [
+        "transforms/optimize_broadcast_like_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":pass_options",
+        ":tensorflow_lite_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -1696,6 +1719,7 @@ cc_library(
         ":converter_flags_proto_cc",
         ":converter_pass_options_setter",
         ":fake_quant_utils",
+        ":optimize_broadcast_like_pass",
         ":pass",
         ":pass_registry_utils",
         ":tensorflow_lite_d2s",  # buildcleaner: keep
@@ -1712,7 +1736,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo:build_stablehlo_composite",
         "//tensorflow/compiler/mlir/lite/stablehlo:compose_uniform_quantized_type_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:composite_lowering",
-        "//tensorflow/compiler/mlir/lite/stablehlo:fold_broadcast_to_pass",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_stablehlo_composite_to_tfl_custom",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_tf_xla_call_module_to_stablehlo_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:lift_callsite_loc_caller",
