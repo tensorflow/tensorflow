@@ -17,23 +17,24 @@
 #include <alloca.h>
 #include <stdio.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/qairt/latest/include/QNN/HTP/QnnHtpGraph.h"
 #include "third_party/qairt/latest/include/QNN/QnnCommon.h"
 #include "third_party/qairt/latest/include/QNN/QnnGraph.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_tensor.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
@@ -42,7 +43,16 @@ namespace litert::qnn {
 
 // Get empty configurations for graph building.
 inline absl::Span<const QnnGraph_Config_t*> GetDefaultGraphConfigs() {
-  static const QnnGraph_Config_t* configs[] = {nullptr};
+  QnnHtpGraph_CustomConfig_t htp_graph_config =
+      QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT;
+  htp_graph_config.option = QNN_HTP_GRAPH_CONFIG_OPTION_PRECISION;
+  htp_graph_config.precision = QNN_PRECISION_FLOAT16;
+
+  QnnGraph_Config_t graph_config = QNN_GRAPH_CONFIG_INIT;
+  graph_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+  graph_config.customConfig = &htp_graph_config;
+
+  static const QnnGraph_Config_t* configs[2] = {&graph_config, nullptr};
   return absl::MakeSpan(configs);
 }
 

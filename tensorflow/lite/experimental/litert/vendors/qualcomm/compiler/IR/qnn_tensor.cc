@@ -35,6 +35,15 @@ LiteRtStatus LegalizeShapeInfo(const litert::Layout& src, Qnn_Tensor_t& dest) {
   LITERT_ENSURE_SUPPORTED(!src.HasStrides(), "Strides not yet supported");
 
   dest.v2.rank = src.Rank();
+  // Ad-hoc fix: rank 0 tensor needs to be single element 1D tensor in QNN.
+  if (dest.v2.rank == 0) {
+    LITERT_LOG(LITERT_INFO, "Setting rank 0 tensor to single element tensor");
+    dest.v2.rank = 1;
+    dest.v2.dimensions = new uint32_t[1];
+    dest.v2.dimensions[0] = 1;
+    return kLiteRtStatusOk;
+  }
+
   dest.v2.dimensions = new uint32_t[dest.v2.rank];
   for (int i = 0; i < dest.v2.rank; ++i) {
     const auto src_dim = src.Dimensions()[i];
@@ -153,12 +162,15 @@ LiteRtStatus LegalizeTensor(const litert::Tensor& src, Qnn_Tensor_t& dest) {
   }
 
   if (is_subgraph_in) {
+    LITERT_LOG(LITERT_INFO, "Adding subgraph input tensor to qnn graph");
     SetInputTensorAttrs(dest);
   }
   if (is_subgraph_out) {
+    LITERT_LOG(LITERT_INFO, "Adding subgraph output tensor to qnn graph");
     SetOutputTensorAttrs(dest);
   }
   if (!is_constant && !is_subgraph_in && !is_subgraph_out) {
+    LITERT_LOG(LITERT_INFO, "Adding result tensor to qnn graph");
     SetResultTensorAttrs(dest);
   }
 
