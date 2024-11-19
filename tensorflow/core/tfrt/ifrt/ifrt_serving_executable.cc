@@ -659,9 +659,14 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
         " but got ", dtypes_and_shapes.size(), " arguments"));
   }
 
-  // Asynchronously load the restored variable tensors to Ifrt array.
-  TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
-                                        *executable_bundle, device_list));
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    if (!is_frozen_) {
+      // Asynchronously load the restored variable tensors to Ifrt array.
+      TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
+                                            *executable_bundle, device_list));
+    }
+  }
 
   VLOG(2) << "Completed AsyncLoadIfrtArray";
 
