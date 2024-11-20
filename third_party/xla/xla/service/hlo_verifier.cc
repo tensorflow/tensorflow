@@ -2267,18 +2267,6 @@ absl::Status VerifyHloStructure(HloModule* module) {
 
 namespace {
 
-// Returns true if the given Shape has a TOKEN shape as any subshape.
-bool ShapeContainsToken(const Shape& shape) {
-  bool contains_token = false;
-  ShapeUtil::ForEachSubshape(
-      shape, [&contains_token](const Shape& subshape, const ShapeIndex&) {
-        if (subshape.IsToken()) {
-          contains_token = true;
-        }
-      });
-  return contains_token;
-}
-
 // Checks if the given two instructions share the same channel id.
 absl::Status CheckSameChannel(const HloInstruction* instr1,
                               const HloInstruction* instr2) {
