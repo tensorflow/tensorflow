@@ -15,14 +15,27 @@ limitations under the License.
 
 #include "xla/service/memory_space_assignment/utils.h"
 
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <string>
+
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+#include "re2/re2.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -103,5 +116,187 @@ bool MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
                         });
 }
 
+bool MemorySpaceAssignmentUtils::DoesUseMatchFilter(
+    const HloOperandFilter& filter, const HloUse& hlo_use,
+    int64_t operand_size) {
+  // The order of checks is such that the most expensive checks are done last.
+  if (filter.has_size_gte() && operand_size < filter.size_gte()) {
+    return false;
+  }
+  if (filter.has_size_lte() && operand_size > filter.size_lte()) {
+    return false;
+  }
+  if (filter.has_operand_number() &&
+      hlo_use.operand_number != filter.operand_number()) {
+    return false;
+  }
+  if (filter.has_tuple_index() &&
+      hlo_use.operand_index != ShapeIndex(filter.tuple_index().index().begin(),
+                                          filter.tuple_index().index().end())) {
+    return false;
+  }
+  if (filter.has_instruction_name_regex() &&
+      !RE2::FullMatch(hlo_use.instruction->name(),
+                      filter.instruction_name_regex())) {
+    return false;
+  }
+  return true;
+}
+
+bool MemorySpaceAssignmentUtils::DoesPositionMatchFilter(
+    const HloPositionMatcher& filter,
+    const MsaBufferInterval& buffer_interval) {
+  // The order of checks is such that the most expensive checks are done last.
+  HloInstruction* instruction = buffer_interval.buffer->instruction();
+  if (filter.has_size_gte() && filter.size_gte() > buffer_interval.size) {
+    return false;
+  }
+  if (filter.has_size_lte() && filter.size_lte() < buffer_interval.size) {
+    return false;
+  }
+  if (filter.has_tuple_index() &&
+      buffer_interval.buffer->index() !=
+          ShapeIndex(filter.tuple_index().index().begin(),
+                     filter.tuple_index().index().end())) {
+    return false;
+  }
+  if (filter.has_instruction_name_regex() &&
+      !RE2::FullMatch(instruction->name(), filter.instruction_name_regex())) {
+    return false;
+  }
+  if (filter.has_instruction_regex() &&
+      !RE2::FullMatch(instruction->ToString(), filter.instruction_regex())) {
+    return false;
+  }
+  return true;
+}
+
+absl::StatusOr<xla::HloLiveRange::LogicalTime>
+MemorySpaceAssignmentUtils::GetScheduleTimeFromInstructionName(
+    absl::string_view name,
+    const absl::flat_hash_map<const xla::HloInstruction*,
+                              xla::HloLiveRange::LogicalTime>& schedule) {
+  for (auto schedule_entry : schedule) {
+    if (schedule_entry.first->name() == name) {
+      return schedule_entry.second;
+    }
+  }
+  return NotFound("Reference instruction %s was not found in the schedule.",
+                  name);
+}
+
+absl::StatusOr<std::optional<int64_t>>
+MemorySpaceAssignmentUtils::GetPrefetchTimeByEagerness(
+    float prefetch_eagerness, int64_t earliest_prefetch_time,
+    int64_t latest_prefetch_time) {
+  CHECK_GE(prefetch_eagerness, 0.0);
+  CHECK_LE(prefetch_eagerness, 1.0);
+  if (earliest_prefetch_time > latest_prefetch_time) {
+    return static_cast<std::optional<int64_t>>(std::nullopt);
+  }
+  return static_cast<std::optional<int64_t>>(
+      earliest_prefetch_time +
+      (latest_prefetch_time - earliest_prefetch_time) * prefetch_eagerness);
+}
+
+absl::StatusOr<std::optional<int64_t>>
+MemorySpaceAssignmentUtils::GetPrefetchTimeAfterInstruction(
+    const std::string& after_instruction_name,
+    const absl::flat_hash_map<const xla::HloInstruction*,
+                              xla::HloLiveRange::LogicalTime>& schedule) {
+  TF_ASSIGN_OR_RETURN(
+      auto reference_instruction_time,
+      GetScheduleTimeFromInstructionName(after_instruction_name, schedule));
+  return static_cast<std::optional<int64_t>>(reference_instruction_time);
+}
+
+absl::StatusOr<std::optional<int64_t>>
+MemorySpaceAssignmentUtils::GetPrefetchTimeBeforeInstruction(
+    const std::string& before_instruction_name,
+    const absl::flat_hash_map<const xla::HloInstruction*,
+                              xla::HloLiveRange::LogicalTime>& schedule) {
+  TF_ASSIGN_OR_RETURN(
+      auto reference_instruction_time,
+      GetScheduleTimeFromInstructionName(before_instruction_name, schedule));
+  return static_cast<std::optional<int64_t>>(reference_instruction_time - 1);
+}
+absl::StatusOr<std::optional<int64_t>>
+MemorySpaceAssignmentUtils::GetPrefetchTime(
+    const PreferredPrefetchOverrideOptions& override_options,
+    int64_t earliest_prefetch_time, int64_t latest_prefetch_time,
+    const absl::flat_hash_map<const HloInstruction*, HloLiveRange::LogicalTime>&
+        instruction_schedule) {
+  switch (override_options.options_case()) {
+    case PreferredPrefetchOverrideOptions::kPrefetchEagerness:
+      return GetPrefetchTimeByEagerness(override_options.prefetch_eagerness(),
+                                        earliest_prefetch_time,
+                                        latest_prefetch_time);
+    case PreferredPrefetchOverrideOptions::kAfterInstructionName:
+      return GetPrefetchTimeAfterInstruction(
+          override_options.after_instruction_name(), instruction_schedule);
+    case PreferredPrefetchOverrideOptions::kBeforeInstructionName:
+      return GetPrefetchTimeBeforeInstruction(
+          override_options.before_instruction_name(), instruction_schedule);
+    case PreferredPrefetchOverrideOptions::OPTIONS_NOT_SET:
+      break;
+  }
+  return static_cast<absl::StatusOr<std::optional<int64_t>>>(std::nullopt);
+}
+
+absl::StatusOr<std::optional<int64_t>>
+MemorySpaceAssignmentUtils::GetOverriddenPreferredPrefetchTime(
+    const PreferredPrefetchOverrides& preferred_prefetch_overrides,
+    int64_t operand_size, const HloUse& hlo_use,
+    const absl::flat_hash_map<const HloInstruction*, HloLiveRange::LogicalTime>&
+        instruction_schedule,
+    int64_t earliest_prefetch_time, int64_t latest_prefetch_time) {
+  for (const auto& override : preferred_prefetch_overrides.overrides()) {
+    if (!MemorySpaceAssignmentUtils::DoesUseMatchFilter(
+            override.hlo_operand_filter(), hlo_use, operand_size)) {
+      continue;
+    }
+    VLOG(3) << "Config match for instruction " << hlo_use.instruction->name()
+            << " operand number " << hlo_use.operand_number << " operand index "
+            << hlo_use.operand_index.ToString() << " size " << operand_size
+            << " live range (" << earliest_prefetch_time << ", "
+            << latest_prefetch_time << ")";
+    TF_ASSIGN_OR_RETURN(
+        auto prefetch_time,
+        GetPrefetchTime(override.override_options(), earliest_prefetch_time,
+                        latest_prefetch_time, instruction_schedule));
+    if (prefetch_time.has_value() &&
+        prefetch_time.value() >= earliest_prefetch_time &&
+        prefetch_time.value() <= latest_prefetch_time) {
+      return prefetch_time;
+    }
+  }
+  return static_cast<absl::StatusOr<std::optional<int64_t>>>(std::nullopt);
+}
+
+int64_t MemorySpaceAssignmentUtils::GetBufferIntervalOverridePriority(
+    const MsaSortOrderOverrides& msa_sort_order_overrides,
+    const MsaBufferInterval& buffer_interval) {
+  if (msa_sort_order_overrides.overrides_size() == 0) {
+    return 0;
+  }
+  for (int64_t i = 0; i < msa_sort_order_overrides.overrides_size(); ++i) {
+    const auto& override = msa_sort_order_overrides.overrides(i);
+    if (!MemorySpaceAssignmentUtils::DoesPositionMatchFilter(
+            override.hlo_position_matcher(), buffer_interval)) {
+      continue;
+    }
+    VLOG(3) << "Override Sort Order Config " << i << " matches "
+            << buffer_interval.buffer->instruction()->ToString();
+    switch (override.override_options().options_case()) {
+      case MsaSortOrderOverrideOptions::kAssignFirst:
+        return std::numeric_limits<int64_t>::lowest() + i;
+      case MsaSortOrderOverrideOptions::kAssignLast:
+        return std::numeric_limits<int64_t>::max() - i;
+      case MsaSortOrderOverrideOptions::OPTIONS_NOT_SET:
+        continue;
+    }
+  }
+  return 0;
+}
 }  // namespace memory_space_assignment
 }  // namespace xla

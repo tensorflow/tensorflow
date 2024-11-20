@@ -27,12 +27,11 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
+#include "xla/service/memory_space_assignment/utils.h"
 
 namespace xla {
 namespace memory_space_assignment {
 
-using MsaBufferInterval =
-    GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval;
 using MsaBufferIntervalCompare =
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare;
 

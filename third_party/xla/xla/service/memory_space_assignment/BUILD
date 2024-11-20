@@ -165,12 +165,21 @@ cc_library(
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
     deps = [
+        ":memory_space_assignment_proto_cc",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_live_range",
         "//xla/service:hlo_value",
         "//xla/service/heap_simulator",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_googlesource_code_re2//:re2",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -548,7 +557,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@com_googlesource_code_re2//:re2",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
@@ -562,6 +570,7 @@ cc_library(
     deps = [
         ":cost_analysis",
         ":memory_space_assignment_proto_cc",
+        ":utils",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
@@ -572,10 +581,8 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@com_googlesource_code_re2//:re2",
     ],
 )
 

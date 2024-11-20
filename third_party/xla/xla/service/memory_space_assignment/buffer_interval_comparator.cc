@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <limits>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -25,78 +24,20 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "re2/re2.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
+#include "xla/service/memory_space_assignment/utils.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
 namespace xla {
 namespace memory_space_assignment {
-namespace {
-
-bool DoesResultMatchFilter(const HloPositionMatcher& filter,
-                           const MsaBufferInterval& buffer_interval) {
-  HloInstruction* instruction = buffer_interval.buffer->instruction();
-  if (filter.has_instruction_regex() &&
-      !RE2::FullMatch(instruction->ToString(), filter.instruction_regex())) {
-    return false;
-  }
-  if (filter.has_instruction_name_regex() &&
-      !RE2::FullMatch(instruction->name(), filter.instruction_name_regex())) {
-    return false;
-  }
-  if (filter.has_tuple_index() &&
-      buffer_interval.buffer->index() !=
-          ShapeIndex(filter.tuple_index().index().begin(),
-                     filter.tuple_index().index().end())) {
-    return false;
-  }
-  if (filter.has_size_gte() && filter.size_gte() > buffer_interval.size) {
-    return false;
-  }
-  if (filter.has_size_lte() && filter.size_lte() < buffer_interval.size) {
-    return false;
-  }
-  return true;
-}
-
-// Returns an integer representing the priority of a MsaBufferInterval during
-// assignment, a smaller number indicates a higher priority.
-int64_t GetBufferIntervalOverridePriority(
-    const MsaSortOrderOverrides& msa_sort_order_overrides,
-    const MsaBufferInterval& buffer_interval) {
-  if (msa_sort_order_overrides.overrides_size() == 0) {
-    return 0;
-  }
-  for (int64_t i = 0; i < msa_sort_order_overrides.overrides_size(); ++i) {
-    const auto& override = msa_sort_order_overrides.overrides(i);
-    if (!DoesResultMatchFilter(override.hlo_position_matcher(),
-                               buffer_interval)) {
-      continue;
-    }
-    LOG(INFO) << "Override Sort Order Config " << i << " matches "
-              << buffer_interval.buffer->instruction()->ToString();
-    switch (override.override_options().options_case()) {
-      case MsaSortOrderOverrideOptions::kAssignFirst:
-        return std::numeric_limits<int64_t>::lowest() + i;
-      case MsaSortOrderOverrideOptions::kAssignLast:
-        return std::numeric_limits<int64_t>::max() - i;
-      case MsaSortOrderOverrideOptions::OPTIONS_NOT_SET:
-        continue;
-    }
-  }
-  return 0;
-}
-
-}  // namespace
 
 MemoryBoundednessBufferIntervalComparator::
     MemoryBoundednessBufferIntervalComparator(
@@ -156,8 +97,9 @@ int64_t MemoryBoundednessBufferIntervalComparator::GetLatestUseTime(
 MemoryBoundednessBufferIntervalComparator::ComparisonTuple
 MemoryBoundednessBufferIntervalComparator::GetTuple(
     const MsaBufferInterval& buffer_interval) {
-  int64_t priority = GetBufferIntervalOverridePriority(
-      msa_sort_order_overrides_, buffer_interval);
+  int64_t priority =
+      MemorySpaceAssignmentUtils::GetBufferIntervalOverridePriority(
+          msa_sort_order_overrides_, buffer_interval);
   float inverse_memory_boundedness =
       -1.0 * cost_analysis_.GetMemoryBoundedness(buffer_interval,
                                                  cost_analysis_cache_);
