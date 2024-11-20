@@ -90,11 +90,24 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "exhaustive_test_main",
+    testonly = True,
+    srcs = ["exhaustive_test_main.cc"],
+    deps = [
+        ":exhaustive_op_test_utils",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:test",
+    ],
+    alwayslink = True,
+)
+
 exhaustive_xla_test(
     name = "exhaustive_unary_test",
     timeout = "long",
     srcs = [
-        "exhaustive_test_main.cc",
         "exhaustive_unary_test_definitions.h",
         "exhaustive_unary_test_functions.cc",
     ],
@@ -130,18 +143,16 @@ exhaustive_xla_test(
     ],
     deps = [
         ":exhaustive_op_test_utils",
+        ":exhaustive_test_main",
         ":exhaustive_unary_test_textual_hdrs",
         "//xla:literal",
         "//xla:types",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder/lib:constants",
         "//xla/hlo/builder/lib:math",
-        "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -150,7 +161,6 @@ xla_test(
     name = "exhaustive_unary_complex_test",
     timeout = "long",
     srcs = [
-        "exhaustive_test_main.cc",
         "exhaustive_unary_complex_test.cc",
     ],
     # Nvidia close-sourced libraries are not TSAN friendly, but are doing their own synchronization.
@@ -171,16 +181,13 @@ xla_test(
     ],
     deps = [
         ":exhaustive_op_test_utils",
+        ":exhaustive_test_main",
         "//xla:literal",
         "//xla:types",
         "//xla/hlo/builder:xla_builder",
         "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -202,7 +209,6 @@ exhaustive_xla_test(
     srcs = [
         "exhaustive_binary_test_definitions.h",
         "exhaustive_binary_test_functions.cc",
-        "exhaustive_test_main.cc",
     ],
     # Nvidia close-sourced libraries are not TSAN friendly, but are doing their own synchronization.
     # This can lead to TSAN false positives that are hard to track down.
@@ -239,16 +245,13 @@ exhaustive_xla_test(
     deps = [
         ":exhaustive_binary_test_textual_hdrs",
         ":exhaustive_op_test_utils",
+        ":exhaustive_test_main",
         "//xla:literal",
         "//xla:types",
         "//xla/hlo/builder:xla_builder",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
     ],
 )
