@@ -26,17 +26,26 @@
 extern "C" {
 #endif  // __cplusplus
 
+//
+// Handles + Common
+//
+
+// Constant data behind a tensor stored in the model.
 LITERT_DEFINE_HANDLE(LiteRtWeights);
 
+// Values/edges of the models graph.
 LITERT_DEFINE_HANDLE(LiteRtTensor);
 LITERT_DEFINE_HANDLE_ARRAY(LiteRtTensor);
 
+// Operations/nodes of the models graph.
 LITERT_DEFINE_HANDLE(LiteRtOp);
 LITERT_DEFINE_HANDLE_ARRAY(LiteRtOp);
 
+// Fundamental block of program, i.e. a function body.
 LITERT_DEFINE_HANDLE(LiteRtSubgraph);
 LITERT_DEFINE_HANDLE_ARRAY(LiteRtSubgraph);
 
+// A collection of subgraph + metadata.
 LITERT_DEFINE_HANDLE(LiteRtModel);
 
 // Append only list of ops.
@@ -46,9 +55,16 @@ LITERT_DEFINE_HANDLE(LiteRtOpList);
 typedef uint64_t LiteRtParamIndex;
 
 //
-// Tensors
+// LiteRtTensor + Types
 //
 
+// Get the string name associated with this tensor. This is an optional
+// attribute and if not set will return a zero-length string.
+LiteRtStatus LiteRtGetTensorName(LiteRtTensor tensor, const char** name);
+
+// TENSOR TYPES
+
+// Primitive types for elements in a tensor.
 typedef enum {
   kLiteRtElementTypeNone = kTfLiteNoType,
   kLiteRtElementTypeBool = kTfLiteBool,
@@ -72,53 +88,42 @@ typedef enum {
   kLiteRtElementTypeTfVariant = kTfLiteVariant,
 } LiteRtElementType;
 
+// The shape information for tensor types of fixed rank.
 typedef struct {
+  // The number of dimensions.
   uint32_t rank;
-  // TODO: b/365299994 - Decide on canonical type(s) for indices({s}32/64). Also
-  // representation of dynamic dim.
+
+  // Dimension sizes, array of length `rank`. Dynamic dimensions are anything
+  // less than 0.
   const int32_t* dimensions;
+
   // Strides for a nomimal NWHC layout. NULL if unused.
   const uint32_t* strides;
 } LiteRtLayout;
 
 // Tensor whose rank is dynamic.
 typedef struct {
+  // The primitive element type of the constituent data.
   LiteRtElementType element_type;
 } LiteRtUnrankedTensorType;
 
 // Tensor whose rank is static but dimenions may be dynamic.
 typedef struct {
+  // The primitive element type of the constituent data.
   LiteRtElementType element_type;
+
+  // Shape information.
   LiteRtLayout layout;
 } LiteRtRankedTensorType;
 
+// The identifier for tensor type union.
 typedef enum {
+  // Type with fix ranked and possibly dynamic dimensions.
   kLiteRtRankedTensorType = 0,
+
+  // Type with dynamic rank.
   kLiteRtUnrankedTensorType = 1,
-  // TODO: b/365299994 - q types.
 } LiteRtTensorTypeId;
-
-typedef struct LiteRtTensorDefiningOp {
-  LiteRtOp op;
-  LiteRtParamIndex op_output_index;
-} LiteRtTensorDefiningOp;
-
-typedef struct LiteRtTensorUserOp {
-  LiteRtOp op;
-  LiteRtParamIndex op_input_index;
-} LiteRtTensorUserOp;
-
-//
-// LiteRtWeights
-//
-
-// Get opaque array from given tensor weights.
-LiteRtStatus LiteRtGetWeightsBytes(LiteRtWeights weights, const void** addr,
-                                   size_t* size);
-
-//
-// LiteRtTensor
-//
 
 // Get type identifier from tensor.
 LiteRtStatus LiteRtGetTensorTypeId(LiteRtTensor tensor,
@@ -132,10 +137,51 @@ LiteRtStatus LiteRtGetUnrankedTensorType(
 LiteRtStatus LiteRtGetRankedTensorType(
     LiteRtTensor tensor, LiteRtRankedTensorType* ranked_tensor_type);
 
-// Get static weights associated with a given tensor. All tensors have weights,
-// null weights have size = 0;
-LiteRtStatus LiteRtGetTensorWeights(LiteRtTensor tensor,
-                                    LiteRtWeights* weights);
+// QUANTIZATION
+
+// Schema for tensors quantized with one set of q-params.
+typedef struct {
+  // Scaling factor.
+  float scale;
+
+  // The value that float:0 maps to in q-space.
+  size_t zero_point;
+} LiteRtQuantizationPerTensor;
+
+// The identifier for quantization scheme type union.
+typedef enum {
+  // Tag for tensors without quantization.
+  kLiteRtQuantizationNone = 0,
+
+  // [NOT IMPLEMENTED YET] Basic quantization, one set of q-params per tensor.
+  kLiteRtQuantizationPerTensor = 1,
+
+  // [NOT IMPLEMENTED YET] Q-params for each element accross a single dimension.
+  kLiteRtQuantizationPerChannel = 2,
+
+  // [NOT IMPLEMENTED YET] Q-params accross blocks of fixed size (e.g. 2048).
+  kLiteRtQuantizationBlockWise = 3,
+} LiteRtQuantizationTypeId;
+
+// EDGES
+
+// Information about the about that defines a tensor.
+typedef struct LiteRtTensorDefiningOp {
+  // The defining op itself.
+  LiteRtOp op;
+
+  // The op output index that defines the specific tensor.
+  LiteRtParamIndex op_output_index;
+} LiteRtTensorDefiningOp;
+
+// Information about a reference to a tensor in the graph.
+typedef struct LiteRtTensorUserOp {
+  // The referring op itself.
+  LiteRtOp op;
+
+  // Index of which operand the op refers to a specific tensor on.
+  LiteRtParamIndex op_input_index;
+} LiteRtTensorUserOp;
 
 // Get all the ops that reference given tensor, and at what operand index.
 LiteRtStatus LiteRtGetTensorUses(LiteRtTensor tensor,
@@ -149,9 +195,20 @@ LiteRtStatus LiteRtGetTensorDefiningOp(LiteRtTensor tensor,
                                        bool* has_defining_op,
                                        LiteRtTensorDefiningOp* defining_op);
 
-// Get the string name associated with this tensor. This is an optional
-// attribute and if not set will return a zero-length string.
-LiteRtStatus LiteRtGetTensorName(LiteRtTensor tensor, const char** name);
+// WEIGHTS (constant data)
+
+// Get static weights associated with a given tensor. All tensors have weights,
+// null weights have size = 0;
+LiteRtStatus LiteRtGetTensorWeights(LiteRtTensor tensor,
+                                    LiteRtWeights* weights);
+
+//
+// LiteRtWeights
+//
+
+// Get opaque array from given tensor weights.
+LiteRtStatus LiteRtGetWeightsBytes(LiteRtWeights weights, const void** addr,
+                                   size_t* size);
 
 //
 // LiteRtOp
@@ -217,6 +274,7 @@ void LiteRtModelDestroy(LiteRtModel model);
 // Utility Types
 //
 
+// An append only list of ops.
 LiteRtStatus LiteRtPushOp(LiteRtOpList op_list, LiteRtOp op);
 
 #ifdef __cplusplus
