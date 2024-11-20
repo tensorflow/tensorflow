@@ -54,7 +54,7 @@ CreateIfrtMergeReshardsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtOutlineAtomProgramToModulePass();
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateIfrtVerifyDonationPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 
 namespace xla {
