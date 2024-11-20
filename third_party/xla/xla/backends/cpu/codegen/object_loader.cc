@@ -45,65 +45,27 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "xla/backends/cpu/codegen/compiled_function_library.h"
 #include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
+#include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/service/cpu/orc_jit_memory_mapper.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
-static std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer>
-CreateObjectLinkingLayer(llvm::orc::ExecutionSession& execution_session) {
-  return std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
-      execution_session, [] {
-        return std::make_unique<ContiguousSectionMemoryManager>(
-            orc_jit_memory_mapper::GetInstance());
-      });
+static std::unique_ptr<ExecutionEngine> CreateExecutionEngine() {
+  return std::make_unique<ExecutionEngine>(
+      std::make_unique<llvm::orc::ExecutionSession>(
+          std::make_unique<llvm::orc::UnsupportedExecutorProcessControl>(
+              /*SSP=*/nullptr, /*D=*/nullptr)));
 }
 
 ObjectLoader::ObjectLoader(size_t num_dylibs)
-/*: target_machine_(std::move(target_machine))*/ {
-  // LLVM execution session that holds jit-compiled functions.
-  execution_session_ = std::make_unique<llvm::orc::ExecutionSession>(
-      std::make_unique<llvm::orc::UnsupportedExecutorProcessControl>(
-          /*SSP=*/nullptr, /*D=*/nullptr));
-
-  execution_session_->setErrorReporter([](llvm::Error err) {
-    LOG(ERROR) << "LLVM compilation error: " << llvm::toString(std::move(err));
-  });
-
-  // Create at least one dynamic library for the given jit compiler.
-  dylibs_.resize(std::max<size_t>(1, num_dylibs));
-  for (size_t i = 0; i < dylibs_.size(); ++i) {
-    dylibs_[i] = &execution_session_->createBareJITDylib(
-        absl::StrCat("<xla_jit_dylib_", i, ">"));
-    // TODO using target machine might bring some deps we don't need.
-    // as a first attempt fully remove it, consider pruning the reqs
-    // if (definition_generator) {
-    //   dylibs_[i]->addGenerator(definition_generator(target_machine_.get()));
-    // }
-  }
-
-  object_layer_ = CreateObjectLinkingLayer(*execution_session_);
+    : execution_engine_(CreateExecutionEngine()) {
+  execution_engine_->AllocateDylibs(std::max<size_t>(1, num_dylibs));
 }
 
-ObjectLoader::ObjectLoader(
-    std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
-    size_t num_dylibs)
-    : execution_session_(std::move(execution_session)),
-      object_layer_(CreateObjectLinkingLayer(*execution_session_)) {
-  // TODO(basioli) avoid code duplication with the other constructor.
-  //  Create at least one dynamic library for the given jit compiler.
-  dylibs_.resize(std::max<size_t>(1, num_dylibs));
-  for (size_t i = 0; i < dylibs_.size(); ++i) {
-    dylibs_[i] = &execution_session_->createBareJITDylib(
-        absl::StrCat("<xla_jit_dylib_", i, ">"));
-    // TODO using target machine might bring some deps we don't need.
-    // as a first attempt fully remove it, consider pruning the reqs
-    // if (definition_generator) {
-    //   dylibs_[i]->addGenerator(definition_generator(target_machine_.get()));
-    // }
-  }
-}
+ObjectLoader::ObjectLoader(std::unique_ptr<ExecutionEngine> execution_engine)
+    : execution_engine_(std::move(execution_engine)) {}
 
 absl::Status ObjectLoader::AddObjFile(const std::string& obj_file,
                                       const std::string& memory_buffer_name,
@@ -118,11 +80,11 @@ absl::Status ObjectLoader::AddObjFile(const std::string& obj_file,
 
 absl::Status ObjectLoader::AddObjFile(
     std::unique_ptr<llvm::MemoryBuffer> obj_file, size_t dylib_index) {
-  if (dylib_index >= dylibs_.size()) {
+  if (dylib_index >= num_dylibs()) {
     return absl::Status(
         absl::StatusCode::kInvalidArgument,
         absl::StrFormat("Invalid dylib index %d (num dylibs: %d))", dylib_index,
-                        dylibs_.size()));
+                        num_dylibs()));
   }
 
   if (!obj_file) {
@@ -130,8 +92,10 @@ absl::Status ObjectLoader::AddObjFile(
                         "Failed to create memory buffer");
   }
 
-  llvm::orc::JITDylib* dylib = dylibs_[dylib_index];
-  if (auto err = object_layer_->add(*dylib, std::move(obj_file))) {
+  TF_ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib,
+                      execution_engine_->dylib(dylib_index));
+  if (auto err =
+          execution_engine_->object_layer()->add(*dylib, std::move(obj_file))) {
     return absl::Status(
         absl::StatusCode::kInvalidArgument,
         absl::StrFormat("Failed to add object file to dylib %d: %s",
@@ -161,19 +125,22 @@ absl::StatusOr<llvm::orc::SymbolMap> ObjectLoader::LookupSymbols(
   llvm::orc::SymbolLookupSet lookup_set;
   for (const auto& symbol : symbols) {
     VLOG(5) << absl::StreamFormat(" - look up symbol: %s", symbol.name);
-    lookup_set.add(execution_session_->intern(mangle(symbol.name)));
+    lookup_set.add(
+        execution_engine_->execution_session()->intern(mangle(symbol.name)));
   }
 
   // Build a search order for the dynamic libraries.
-  llvm::orc::JITDylibSearchOrder search_order(dylibs_.size());
-  for (size_t i = 0; i < dylibs_.size(); ++i) {
+  llvm::orc::JITDylibSearchOrder search_order(num_dylibs());
+  for (size_t i = 0; i < num_dylibs(); ++i) {
+    TF_ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib,
+                        execution_engine_->dylib(i));
     search_order[i] = std::make_pair(
-        dylibs_[i], llvm::orc::JITDylibLookupFlags::MatchExportedSymbolsOnly);
+        dylib, llvm::orc::JITDylibLookupFlags::MatchExportedSymbolsOnly);
   }
 
   // Look up all requested symbols in the execution session.
-  auto symbol_map = execution_session_->lookup(std::move(search_order),
-                                               std::move(lookup_set));
+  auto symbol_map = execution_session()->lookup(std::move(search_order),
+                                                std::move(lookup_set));
 
   if (auto err = symbol_map.takeError()) {
     return absl::Status(absl::StatusCode::kInternal,
@@ -194,16 +161,15 @@ ObjectLoader::CreateFunctionLibrary(absl::Span<const Symbol> symbols,
   absl::flat_hash_map<std::string, ResolvedSymbol> resolved_map;
 
   for (const auto& symbol : symbols) {
-    auto symbol_name = execution_session_->intern(mangle(symbol.name));
+    auto symbol_name = execution_session()->intern(mangle(symbol.name));
     llvm::orc::ExecutorSymbolDef symbol_def = symbol_map.at(symbol_name);
     llvm::orc::ExecutorAddr symbol_addr = symbol_def.getAddress();
     void* ptr = reinterpret_cast<void*>(symbol_addr.getValue());
     resolved_map[symbol.name] = ResolvedSymbol{symbol.type_id, ptr};
   }
 
-  return std::make_unique<CompiledFunctionLibrary>(
-      std::move(execution_session_), std::move(object_layer_),
-      std::move(resolved_map));
+  return std::make_unique<CompiledFunctionLibrary>(std::move(execution_engine_),
+                                                   std::move(resolved_map));
 }
 
 absl::StatusOr<std::unique_ptr<FunctionLibrary>> ObjectLoader::Load(
@@ -211,14 +177,6 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> ObjectLoader::Load(
   TF_ASSIGN_OR_RETURN(auto symbol_map, LookupSymbols(symbols, data_layout));
   return std::move(*this).CreateFunctionLibrary(symbols, data_layout,
                                                 symbol_map);
-}
-
-ObjectLoader::~ObjectLoader() {
-  if (execution_session_) {
-    if (auto err = execution_session_->endSession()) {
-      execution_session_->reportError(std::move(err));
-    }
-  }
 }
 
 }  // namespace xla::cpu

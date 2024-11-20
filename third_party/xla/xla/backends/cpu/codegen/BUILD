@@ -87,6 +87,7 @@ cc_library(
         ":compiled_function_library",
         ":contiguous_section_memory_manager",
         ":cpu_features",
+        ":execution_engine",
         ":ir_compiler",
         ":object_loader",
         "//xla:util",
@@ -272,6 +273,7 @@ cc_library(
     srcs = ["compiled_function_library.cc"],
     hdrs = ["compiled_function_library.h"],
     deps = [
+        ":execution_engine",
         "//xla/backends/cpu/runtime:function_library",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
@@ -333,6 +335,7 @@ cc_library(
     deps = [
         ":compiled_function_library",
         ":contiguous_section_memory_manager",
+        ":execution_engine",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/service/cpu:orc_jit_memory_mapper",
         "//xla/tsl/platform:statusor",
@@ -348,6 +351,25 @@ cc_library(
         "@llvm-project//llvm:OrcShared",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
+    name = "execution_engine",
+    srcs = ["execution_engine.cc"],
+    hdrs = ["execution_engine.h"],
+    deps = [
+        ":contiguous_section_memory_manager",
+        "//xla/service/cpu:orc_jit_memory_mapper",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:ExecutionEngine",
+        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:Support",
     ],
 )
 
