@@ -648,6 +648,7 @@ cc_library(
         ":ifrt_restore_tensor_registry",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:function",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:node_def_util",
