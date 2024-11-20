@@ -97,20 +97,6 @@ LiteRtStatus LiteRtGetNumCompiledResultCalls(
 
 #ifdef __cplusplus
 }
-
-#include <memory>
-
-// TODO find a home for this
-struct LiteRtCompilerPluginDeleter {
-  void operator()(LiteRtCompilerPlugin plugin) {
-    if (plugin != nullptr) {
-      LiteRtDestroyCompilerPlugin(plugin);
-    }
-  }
-};
-
-using UniqueLiteRtCompilerPlugin =
-    std::unique_ptr<LiteRtCompilerPluginT, LiteRtCompilerPluginDeleter>;
 #endif  // __cplusplus
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_C_LITERT_COMPILER_PLUGIN_H_

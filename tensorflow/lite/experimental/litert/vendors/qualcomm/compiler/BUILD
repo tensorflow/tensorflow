@@ -71,6 +71,7 @@ litert_test(
     deps = [
         ":qnn_compiler_plugin",  # buildcleaner: keep
         "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings:string_view",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
@@ -80,6 +81,7 @@ litert_test(
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:test_models",
+        "//tensorflow/lite/experimental/litert/vendors/cc:litert_compiler_plugin",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
     ],
 )

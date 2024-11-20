@@ -13,34 +13,26 @@
 // limitations under the License.
 
 #include <cstddef>
-#include <memory>
-#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/log/absl_check.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
+#include "tensorflow/lite/experimental/litert/vendors/cc/litert_compiler_plugin.h"
 
+namespace litert {
 namespace {
-
-UniqueLiteRtCompilerPlugin GetDummyPlugin() {
-  LiteRtCompilerPlugin dummy_plugin;
-  LITERT_CHECK_STATUS_OK(LiteRtCreateCompilerPlugin(&dummy_plugin));
-  ABSL_CHECK_NE(dummy_plugin, nullptr);
-  return UniqueLiteRtCompilerPlugin(dummy_plugin);
-}
 
 TEST(TestDummyPlugin, GetConfigInfo) {
   ASSERT_STREQ(LiteRtGetCompilerPluginSocManufacturer(),
                "ExampleSocManufacturer");
 
-  auto plugin = GetDummyPlugin();
+  auto plugin = CreatePlugin();
 
   LiteRtParamIndex num_supported_soc_models;
   LITERT_ASSERT_STATUS_OK(LiteRtGetNumCompilerPluginSupportedSocModels(
@@ -54,8 +46,8 @@ TEST(TestDummyPlugin, GetConfigInfo) {
 }
 
 TEST(TestCallDummyPlugin, PartitionSimpleMultiAdd) {
-  auto plugin = GetDummyPlugin();
-  auto model = litert::testing::LoadTestFileModel("simple_multi_op.tflite");
+  auto plugin = CreatePlugin();
+  auto model = testing::LoadTestFileModel("simple_multi_op.tflite");
 
   LiteRtOpListT selected_op_list;
   LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginPartitionModel(
@@ -68,8 +60,8 @@ TEST(TestCallDummyPlugin, PartitionSimpleMultiAdd) {
 }
 
 TEST(TestCallDummyPlugin, CompileMulSubgraph) {
-  auto plugin = GetDummyPlugin();
-  auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
+  auto plugin = CreatePlugin();
+  auto model = testing::LoadTestFileModel("mul_simple.tflite");
 
   auto main_subgraph = model.MainSubgraph();
   LiteRtSubgraph litert_subgraph = main_subgraph->Get();
@@ -84,8 +76,8 @@ TEST(TestCallDummyPlugin, CompileMulSubgraph) {
   LITERT_ASSERT_STATUS_OK(
       LiteRtGetCompiledResultByteCode(compiled, &byte_code, &byte_code_size));
 
-  std::string byte_code_string(reinterpret_cast<const char*>(byte_code),
-                               byte_code_size);
+  absl::string_view byte_code_string(reinterpret_cast<const char*>(byte_code),
+                                     byte_code_size);
   ASSERT_EQ(byte_code_string, "Partition_0_with_2_muls:");
 
   const void* op_data;
@@ -94,11 +86,12 @@ TEST(TestCallDummyPlugin, CompileMulSubgraph) {
   LITERT_ASSERT_STATUS_OK(
       LiteRtGetCompiledResultCallInfo(compiled, 0, &op_data, &op_data_size));
 
-  std::string op_data_string(reinterpret_cast<const char*>(op_data),
-                             op_data_size);
+  absl::string_view op_data_string(reinterpret_cast<const char*>(op_data),
+                                   op_data_size);
   ASSERT_EQ(op_data_string, "Partition_0");
 
   LiteRtDestroyCompiledResult(compiled);
 }
 
 }  // namespace
+}  // namespace litert
