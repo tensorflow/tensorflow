@@ -131,8 +131,6 @@ HloInstruction* ChooseOperandForFusionProcessing(HloInstruction* instr) {
   CHECK_GT(instr->operand_count(), 0);
   CHECK_LE(instr->operand_count(), 2);
 
-  // TODO(b/326217416): Extend the broadcast of splat constants/parameters to a
-  // broadcast of any op.
   if (instr->operand_count() > 1 &&
       (IsBroadcastOfScalarConstant(*instr->operand(0)) ||
        IsBroadcastOfParameter(*instr->operand(0)))) {
@@ -178,8 +176,6 @@ bool IsTriviallyFusible(HloInstruction* instr,
 
     // For simplicity we only fuse elementwise binary ops with splat operands
     // if they contain one non-splat operand.
-    // TODO(b/326217416): Extend the broadcast of splat constants/parameters to
-    // a broadcast of any op.
     if ((IsBroadcastOfScalarConstant(*operand_0) ||
          IsBroadcastOfParameter(*operand_0)) ^
         (IsBroadcastOfScalarConstant(*operand_1) ||
