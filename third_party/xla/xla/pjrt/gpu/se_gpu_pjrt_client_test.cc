@@ -44,6 +44,8 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/distributed/client.h"
+#include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -73,6 +75,7 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/subprocess.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
@@ -1786,5 +1789,141 @@ TEST(StreamExecutorGpuClientTest, AutoLayoutIsSupported) {
   EXPECT_NE(layouts[1]->ToString(), "{2,1,0}");
 }
 
+class ShardedAutotuningTest : public ::testing::TestWithParam<bool> {
+ public:
+  static constexpr int kNumNodes = 2;
+};
+
+static const char* test_binary_name;
+
+TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
+  tsl::SubProcess child[ShardedAutotuningTest::kNumNodes];
+  for (int node_id = 0; node_id < ShardedAutotuningTest::kNumNodes; ++node_id) {
+    std::vector<std::string> argv;
+    argv.push_back(test_binary_name);
+    argv.push_back(absl::StrFormat("--node_id=%d", node_id));
+    argv.push_back(absl::StrFormat("--use_xla_computation=%d", GetParam()));
+    child[node_id].SetProgram(test_binary_name, argv);
+    child[node_id].SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
+    child[node_id].SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
+    ASSERT_TRUE(child[node_id].Start()) << "node " << node_id;
+  }
+  for (int node_id = 0; node_id < ShardedAutotuningTest::kNumNodes; ++node_id) {
+    std::string stdout_str;
+    std::string stderr_str;
+    int child_status =
+        child[node_id].Communicate(nullptr, &stdout_str, &stderr_str);
+    if (WIFEXITED(child_status) &&
+        WEXITSTATUS(child_status) ==
+            static_cast<int>(absl::StatusCode::kFailedPrecondition)) {
+      GTEST_SKIP() << "Requires Ampere+ GPU.";
+    }
+    EXPECT_EQ(child_status, 0) << " node " << node_id << "\nstdout:\n"
+                               << stdout_str << "\nstderr:\n"
+                               << stderr_str;
+  }
+}
+
+absl::Status ShardedAutotuningWorksTestBody(const int node_id,
+                                            bool use_xla_computation) {
+  std::unique_ptr<xla::DistributedRuntimeService> service;
+  if (node_id == 0) {
+    TF_ASSIGN_OR_RETURN(
+        service,
+        xla::GetDistributedRuntimeService(
+            "[::]:12345", xla::CoordinationServiceImpl::Options{
+                              .num_nodes = ShardedAutotuningTest::kNumNodes}));
+  }
+
+  xla::DistributedRuntimeClient::Options distributed_options;
+  distributed_options.node_id = node_id;
+  distributed_options.init_timeout = absl::Seconds(120);
+  auto distributed_client =
+      GetDistributedRuntimeClient("127.0.0.1:12345", distributed_options);
+  TF_QCHECK_OK(distributed_client->Connect());
+  GpuClientOptions options;
+  options.node_id = node_id;
+  options.allowed_devices = {node_id};
+  options.num_nodes = ShardedAutotuningTest::kNumNodes;
+  options.kv_store = GetDistributedKeyValueStore(distributed_client,
+                                                 /*key_prefix=*/"gpu:");
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+                      GetStreamExecutorGpuClient(options));
+  TF_RET_CHECK(client->platform_name() == "cuda");
+  if (!se::CudaComputeCapability(
+           std::get<std::string>(
+               client->addressable_devices().front()->Attributes().at(
+                   "compute_capability")))
+           .IsAtLeastAmpere()) {
+    return absl::FailedPreconditionError("Ampere+ GPU required");
+  }
+  TF_RET_CHECK(client->addressable_device_count() == 1);
+  TF_RET_CHECK(client->device_count() == ShardedAutotuningTest::kNumNodes);
+
+  CompileOptions compile_options;
+  DebugOptions* debug_options =
+      compile_options.executable_build_options.mutable_debug_options();
+  debug_options->set_xla_gpu_shard_autotuning(true);
+  debug_options->set_xla_gpu_triton_gemm_any(true);
+  debug_options->set_xla_gpu_cublas_fallback(false);
+
+  mlir::MLIRContext context;
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ParseMlirModuleString(R"mlir(
+      func.func public @main(%arg0: tensor<2x2048x2048xf32>) ->
+      (tensor<2x2048x2048xf32> {jax.result_info = ""}) {
+        %0 = stablehlo.dot_general %arg0, %arg0, batching_dims = [0] x [0],
+        contracting_dims = [2] x [1]
+          : (tensor<2x2048x2048xf32>, tensor<2x2048x2048xf32>) ->
+          tensor<2x2048x2048xf32>
+        return %0 : tensor<2x2048x2048xf32>
+      })mlir",
+                                            context));
+  std::unique_ptr<PjRtLoadedExecutable> executable;
+  if (use_xla_computation) {
+    XlaComputation computation;
+    TF_RETURN_IF_ERROR(MlirToXlaComputation(*module, computation,
+                                            /*use_tuple_args=*/false,
+                                            /*return_tuple=*/false,
+                                            /*use_shardy=*/false));
+    TF_ASSIGN_OR_RETURN(executable,
+                        client->Compile(computation, compile_options));
+  } else {
+    TF_ASSIGN_OR_RETURN(executable, client->Compile(*module, compile_options));
+  }
+
+  const std::string optimized_hlo =
+      executable->GetHloModules()->front()->ToString();
+  TF_RET_CHECK(absl::StrContains(optimized_hlo, "triton_gemm"))
+      << optimized_hlo;
+
+  return absl::OkStatus();
+}
+
+INSTANTIATE_TEST_SUITE_P(ShardedAutotuningTest, ShardedAutotuningTest,
+                         ::testing::Values(false, true));
+
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char* argv[]) {
+  // Save name of binary so that it may invoke itself.
+  xla::test_binary_name = argv[0];
+  int node_id = -1;
+  bool use_xla_computation = false;
+  std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("node_id", &node_id,
+                "Node ID for ShardedAutotuningWorks test."),
+      tsl::Flag("use_xla_computation", &use_xla_computation,
+                "Test parameter for ShardedAutotuningWorks."),
+  };
+  xla::AppendDebugOptionsFlags(&flag_list);
+  std::string usage = tsl::Flags::Usage(argv[0], flag_list);
+  tsl::Flags::Parse(&argc, argv, flag_list);
+  testing::InitGoogleTest(&argc, argv);
+  if (node_id >= 0) {
+    return xla::ShardedAutotuningWorksTestBody(node_id, use_xla_computation)
+        .raw_code();
+  }
+  return RUN_ALL_TESTS();
+}

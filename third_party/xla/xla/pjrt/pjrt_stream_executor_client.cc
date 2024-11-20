@@ -3521,6 +3521,10 @@ PjRtStreamExecutorClient::CompileInternal(
     CompileOptions options) {
   tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::Compile");
   VLOG(1) << "PjRtStreamExecutorClient::Compile";
+  if (key_value_store().has_value() &&
+      !options.executable_build_options.key_value_store()) {
+    options.executable_build_options.set_key_value_store(*key_value_store());
+  }
   options.executable_build_options.set_process_index(process_index());
   TF_RET_CHECK(device_count() % addressable_device_count() == 0)
       << "Each process is expected to have the same number of devices";

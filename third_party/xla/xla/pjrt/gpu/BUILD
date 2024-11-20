@@ -179,6 +179,8 @@ xla_cc_test(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_stream_executor_client",
+        "//xla/pjrt/distributed",
+        "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:gpu_plugin",
@@ -187,6 +189,7 @@ xla_cc_test(
         "//xla/stream_executor:stream",
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -194,6 +197,7 @@ xla_cc_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:env",
@@ -202,7 +206,7 @@ xla_cc_test(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
+        "@local_tsl//tsl/platform:subprocess",
     ],
 )
 
