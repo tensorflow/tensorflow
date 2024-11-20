@@ -2816,6 +2816,7 @@ XLA_COMMUTATIVE_BINOP_PATTERN(Xor)
         .WithOperand(2, std::forward<Arg2>(arg2));                     \
   }
 XLA_TERNOP_PATTERN(Clamp);
+XLA_TERNOP_PATTERN(RaggedDot);
 XLA_TERNOP_PATTERN(Select);
 XLA_TERNOP_PATTERN(SelectAndScatter);
 #undef XLA_TERNOP_PATTERN
