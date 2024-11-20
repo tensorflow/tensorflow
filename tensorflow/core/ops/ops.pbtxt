@@ -4100,6 +4100,7 @@ op {
         s: "low_priority_padding_with_max_batch_size"
         s: "low_priority_padding_with_next_allowed_batch_size"
         s: "priority_isolation"
+        s: "priority_merge"
       }
     }
   }
