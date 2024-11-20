@@ -127,13 +127,12 @@ diff --git a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp b/lib/Dia
 index fb0e7f6fd..37795c20c 100644
 --- a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
-@@ -44,7 +44,8 @@ public:
+@@ -44,7 +44,7 @@ public:
        return;
      ModuleOp mod = getOperation();
      mod.walk([&](Operation *op) {
 -      if (!isa<ttng::WarpGroupDotOp>(op))
-+      if (!isa<ttng::WarpGroupDotOp>(op) &&
-+          op->getName().getStringRef() != "triton_xla.sparse_dot")
++      if (!op->hasTrait<OpTrait::DotLike>())
          return WalkResult::advance();
        OpBuilder builder(op);
        auto a = op->getOperand(0);
