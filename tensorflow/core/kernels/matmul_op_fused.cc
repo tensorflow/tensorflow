@@ -200,6 +200,10 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
 namespace {
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
+/*
+  hipBLASLt support Epilogue:
+  https://rocm.docs.amd.com/projects/hipBLASLt/en/latest/datatypes.html#hipblasltepilogue-t
+*/ 
 StatusOr<se::gpu::BlasLt::Epilogue> GetBlasLtEpilogOp(
     FusedComputationType fusion) {
   if (fusion == FusedComputationType::kBiasAdd) {
@@ -263,7 +267,7 @@ se::blas::AlgorithmConfig AutotuneMatmul(
   }
   return algorithm_config;
 }
-#endif
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 template <typename LaunchFunc, typename Sig>
 StatusOr<std::vector<xla::AutotuneResult>> AutotuneMatMulImpl(
@@ -478,6 +482,17 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
 
     se::dnn::ActivationMode matmul_activation_mode;
     bool use_cudnn = false;
+
+#if !(GOOGLE_CUDA || TF_HIPBLASLT)
+    use_cudnn = true;
+#endif
+    const auto& cc = stream->parent()->GetDeviceDescription().
+                      gpu_compute_capability();
+    if (auto *procm = std::get_if< se::RocmComputeCapability >(&cc)) {
+      use_cudnn = !procm->gfx9_mi200_or_later();
+    }
+ 
+    // use_cudnn is for hipblaslt doesn't support yet
     switch (fusion) {
       case FusedComputationType::kBiasAddWithGeluExact:
         matmul_activation_mode = se::dnn::ActivationMode::kGeluExact;
@@ -512,15 +527,7 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
       default:
         use_cudnn = false;
     }
-#if !(GOOGLE_CUDA || TF_HIPBLASLT)
-    use_cudnn = true;
-#endif
 
-    const auto& cc = stream->parent()->GetDeviceDescription().
-                      gpu_compute_capability();
-    if(auto *procm = std::get_if< se::RocmComputeCapability >(&cc)) {
-      use_cudnn = !procm->gfx9_mi200_or_later();
-    }
     BlasScratchAllocator scratch_allocator(context);
 
     // The Gelu exact fusion is supported by the cuDNN.
