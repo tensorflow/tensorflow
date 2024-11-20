@@ -822,8 +822,8 @@ message DebugOptions {
   bool xla_gpu_enable_libnvptxcompiler = 269;
 
   bool xla_gpu_enable_dot_strength_reduction = 270;
-  // Whether to use multiple compute streams to run windowed einsum.
-  bool xla_gpu_multi_streamed_windowed_einsum = 280;
+
+  reserved 280;  // xla_gpu_multi_streamed_windowed_einsum
 
   bool xla_gpu_experimental_stream_annotation = 342;
 

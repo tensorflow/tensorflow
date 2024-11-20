@@ -667,9 +667,7 @@ absl::Status RunOptimizationPasses(
   HloPassPipeline pipeline("optimization");
   AddHloVerifier(&pipeline,
                  !debug_options.xla_experimental_ignore_channel_id());
-  if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
-    pipeline.AddPass<WindowedEinsumHandler>();
-  }
+  pipeline.AddPass<WindowedEinsumHandler>();
   pipeline.AddPass<TopKSplitter>();
   pipeline.AddPass<TopkSpecializer>();
   pipeline.AddPass<TopkDecomposer>();
@@ -1232,12 +1230,8 @@ absl::Status RunPostFusionSimplificationPasses(
   pipeline.AddPass<HloComputationDeduplicator>(
       /*mark_fusion_duplications=*/true);
 
-  if (hlo_module->config()
-          .debug_options()
-          .xla_gpu_multi_streamed_windowed_einsum()) {
-    pipeline.AddPass<StreamAttributeAnnotator>();
-    pipeline.AddPass<StreamAttributeAsyncWrapper>();
-  }
+  pipeline.AddPass<StreamAttributeAnnotator>();
+  pipeline.AddPass<StreamAttributeAsyncWrapper>();
 
   return pipeline.Run(hlo_module).status();
 }

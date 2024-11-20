@@ -778,7 +778,6 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
         GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
     auto opts = GetDebugOptionsForTest();
     opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
-    opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
     opts.set_xla_gpu_graph_min_graph_size(200);
     opts.set_xla_gpu_enable_triton_gemm(false);
     if (disable_dot_merger) {
@@ -892,7 +891,6 @@ ENTRY main {
   // architectures.
   DebugOptions opts = GetDebugOptionsForTest();
   opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
-  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
   opts.set_xla_gpu_graph_min_graph_size(200);
   opts.set_xla_gpu_enable_triton_gemm(false);
   opts.add_xla_disable_hlo_passes("dot-merger");
@@ -931,7 +929,6 @@ ENTRY main {
   // architectures.
   DebugOptions opts = GetDebugOptionsForTest();
   opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
-  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
   opts.set_xla_gpu_graph_min_graph_size(200);
   opts.set_xla_gpu_enable_triton_gemm(false);
   opts.add_xla_disable_hlo_passes("dot-merger");
@@ -975,7 +972,6 @@ ENTRY main {
   // architectures.
   DebugOptions opts = GetDebugOptionsForTest();
   opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
-  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
   opts.set_xla_gpu_graph_min_graph_size(200);
   opts.set_xla_gpu_enable_triton_gemm(false);
   opts.add_xla_disable_hlo_passes("dot-merger");
@@ -1012,7 +1008,6 @@ ENTRY main {
   // architectures.
   DebugOptions opts = GetDebugOptionsForTest();
   opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
-  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
   opts.set_xla_gpu_graph_min_graph_size(200);
   opts.set_xla_gpu_enable_triton_gemm(false);
   opts.add_xla_disable_hlo_passes("dot-merger");

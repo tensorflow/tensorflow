@@ -246,7 +246,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_bf16_3way_gemm(false);
   opts.set_xla_gpu_nccl_collective_max_nchannels(0);
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
-  opts.set_xla_gpu_multi_streamed_windowed_einsum(false);
 
   opts.set_xla_gpu_experimental_stream_annotation(false);
   // Minimum combined size of matrices in matrix multiplication to
@@ -1894,12 +1893,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Specify the maximum number of channels(SMs) NCCL will use "
       "for p2p operations. Default is 0 which is to let "
       "NCCL decide."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_multi_streamed_windowed_einsum",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_multi_streamed_windowed_einsum),
-      debug_options->xla_gpu_multi_streamed_windowed_einsum(),
-      "Whether to run windowed einsum using multiple compute streams."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_gemm_rewrite_size_threshold",
       int64_setter_for(&DebugOptions::set_xla_gpu_gemm_rewrite_size_threshold),

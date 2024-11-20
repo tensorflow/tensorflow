@@ -116,9 +116,7 @@ void AddSPMDPasses(
       hlo_module->config()
           .debug_options()
           .xla_gpu_threshold_for_windowed_einsum_mib(),
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_multi_streamed_windowed_einsum(),
+      /*windowed_einsum_use_multiple_streams=*/true,
       /*skip_checking_windowed_einsum_users=*/true,
       /*disable_ag_rewrite_for_multiple_consumers=*/true, oper_size_threshold);
   spmd_pipeline.AddPass<CollectivePermuteMotion>();

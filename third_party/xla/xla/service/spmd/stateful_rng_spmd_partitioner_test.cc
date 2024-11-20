@@ -75,7 +75,7 @@ class StatefulRngSpmdPartitionerTest : public HloTestBase {
         num_partitions,
         /*num_replicas=*/1,
         debug_options.xla_gpu_threshold_for_windowed_einsum_mib(),
-        debug_options.xla_gpu_multi_streamed_windowed_einsum(),
+        /*windowed_einsum_use_multiple_streams=*/true,
         skip_checking_windowed_einsum_users,
         disable_ag_rewrite_for_multiple_consumers,
         debug_options.xla_gpu_operand_bytes_threshold_for_windowed_einsum());
@@ -96,7 +96,6 @@ class StatefulRngSpmdPartitionerTest : public HloTestBase {
   DebugOptions GetDefaultDebugOptions() {
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(1000000);
-    debug_options.set_xla_gpu_multi_streamed_windowed_einsum(false);
     debug_options.set_xla_gpu_unsafe_pipelined_loop_annotator(false);
     return debug_options;
   }
@@ -173,7 +172,6 @@ ENTRY main {
   // the loop will remain as is.
   DebugOptions debug_options = GetDefaultDebugOptions();
   debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
-  debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options,
@@ -194,12 +192,11 @@ TEST_F(StatefulRngSpmdPartitionerTest, VerifyThresholdSetCorrectly) {
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
   int64_t threshold = 400;
   debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(threshold);
-  debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
 
   StatefulRngSpmdPartitioner rng_spmd_partitioner(
       /*num_partitions=*/2, /*num_replicas*/ 1,
       debug_options.xla_gpu_threshold_for_windowed_einsum_mib(),
-      debug_options.xla_gpu_multi_streamed_windowed_einsum());
+      /*windowed_einsum_use_multiple_streams=*/true);
   EXPECT_EQ(rng_spmd_partitioner.options().threshold_for_windowed_einsum_mib,
             threshold);
   EXPECT_EQ(rng_spmd_partitioner.options().unroll_windowed_einsum, true);
@@ -278,7 +275,6 @@ ENTRY main {
 )";
   DebugOptions debug_options = GetDefaultDebugOptions();
   debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
-  debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
   int64_t oper_bytes_threshold = 1 << 20;
   debug_options.set_xla_gpu_operand_bytes_threshold_for_windowed_einsum(
       oper_bytes_threshold);
@@ -312,7 +308,6 @@ ENTRY main {
 
 )";
   DebugOptions debug_options = GetDefaultDebugOptions();
-  debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
   int64_t oper_bytes_threshold = 1 << 8;
   debug_options.set_xla_gpu_operand_bytes_threshold_for_windowed_einsum(
       oper_bytes_threshold);
