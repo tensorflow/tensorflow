@@ -25,7 +25,6 @@
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -50,6 +49,7 @@
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
@@ -60,6 +60,36 @@ namespace ifrt {
 namespace proxy {
 
 char Array::ID = 0;
+
+template <typename T>
+void CheckResponseAfterAsyncCall(const Future<std::shared_ptr<T>>& f,
+                                 ArrayHandle handle) {
+  f.OnReady([handle](absl::StatusOr<std::shared_ptr<T>> r) {
+    if (r.ok()) {
+      CHECK_EQ(r.value()->array_handle(), handle.handle);
+    } else {
+      LOG(ERROR) << "Received error response for background call of type "
+                 << T::GetDescriptor()->full_name() << " relating to handle "
+                 << handle.handle << ": " << r.status();
+    }
+  });
+}
+
+template <typename T>
+void CheckResponseAfterAsyncCall(const Future<std::shared_ptr<T>>& f,
+                                 const std::vector<ArrayHandle>& handles) {
+  f.OnReady([handles = handles](absl::StatusOr<std::shared_ptr<T>> r) {
+    if (r.ok()) {
+      for (int i = 0; i < handles.size(); ++i) {
+        CHECK_EQ(r.value()->array_handles(i), handles[i].handle);
+      }
+    } else {
+      LOG(ERROR) << "Received error response for background call of type "
+                 << T::GetDescriptor()->full_name() << "relating to handles "
+                 << absl::StrJoin(handles, ",") << ": " << r.status();
+    }
+  });
+}
 
 using HostBufferSemantics = ::xla::ifrt::Client::HostBufferSemantics;
 
@@ -150,7 +180,7 @@ Array::MakeArrayFromHostBuffer(
 
   auto req = std::make_unique<MakeArrayFromHostBufferRequest>();
   req->set_host_buffer_handle(host_buffer_handle);
-  // Reuse the host_buffer_handle as also the client-manufactured
+  // Reuse the host_buffer_handle as also the client-generated
   // array_handle.
   req->set_array_handle(host_buffer_handle);
   *req->mutable_dtype() = dtype.ToProto();
@@ -167,19 +197,9 @@ Array::MakeArrayFromHostBuffer(
         auto resp, rpc_helper->MakeArrayFromHostBuffer(std::move(req)).Await());
     arr_handle.handle = resp->array_handle();
   } else {
-    rpc_helper->MakeArrayFromHostBuffer(std::move(req))
-        .OnReady(
-            [host_buffer_handle](
-                absl::StatusOr<std::shared_ptr<MakeArrayFromHostBufferResponse>>
-                    resp) {
-              if (resp.ok()) {
-                CHECK_EQ(resp.value()->array_handle(), host_buffer_handle);
-              } else {
-                LOG(ERROR) << "In background MakeArrayFromHostBuffer: "
-                           << resp.status();
-              }
-            });
     arr_handle.handle = host_buffer_handle;
+    CheckResponseAfterAsyncCall(
+        rpc_helper->MakeArrayFromHostBuffer(std::move(req)), arr_handle);
   }
   return tsl::RCReference<xla::ifrt::Array>(
       tsl::MakeRef<Array>(client, std::move(rpc_helper), dtype,
@@ -292,14 +312,25 @@ Array::AssembleArrayFromSingleDeviceArrays(
     req->add_single_device_array_handles(array->handle_.handle);
   }
 
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<AssembleArrayFromSingleDeviceArraysResponse> response,
-      rpc_helper->AssembleArrayFromSingleDeviceArrays(std::move(req)).Await());
-  ArrayHandle handle{response->array_handle()};
+  ArrayHandle result_handle;
+  if (rpc_helper->version().protocol_version() <
+      protocol_version::kClientHandlesOptimization2) {
+    TF_ASSIGN_OR_RETURN(
+        std::shared_ptr<AssembleArrayFromSingleDeviceArraysResponse> response,
+        rpc_helper->AssembleArrayFromSingleDeviceArrays(std::move(req))
+            .Await());
 
-  return tsl::RCReference<xla::ifrt::Array>(
-      tsl::MakeRef<Array>(client, std::move(rpc_helper), arrays[0]->dtype(),
-                          std::move(shape), std::move(sharding), handle));
+  } else {
+    result_handle.handle = rpc_helper->NextHandle();
+    req->set_result_handle(result_handle.handle);
+    CheckResponseAfterAsyncCall(
+        rpc_helper->AssembleArrayFromSingleDeviceArrays(std::move(req)),
+        result_handle);
+  }
+
+  return tsl::RCReference<xla::ifrt::Array>(tsl::MakeRef<Array>(
+      client, std::move(rpc_helper), arrays[0]->dtype(), std::move(shape),
+      std::move(sharding), result_handle));
 }
 
 absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
@@ -322,22 +353,32 @@ Array::RemapArrays(xla::ifrt::Client* client,
     req->add_array_handles(array->handle_.handle);
   }
 
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<RemapArraysResponse> response,
-                      rpc_helper->RemapArrays(std::move(req)).Await());
-
-  std::vector<ArrayHandle> handles;
-  for (auto& handle : response->array_handles()) {
-    handles.push_back(ArrayHandle{handle});
+  std::vector<ArrayHandle> result_handles;
+  if (rpc_helper->version().protocol_version() <
+      protocol_version::kClientHandlesOptimization2) {
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<RemapArraysResponse> response,
+                        rpc_helper->RemapArrays(std::move(req)).Await());
+    TF_RET_CHECK(result_handles.size() == plan.output_specs.size());
+    for (auto& handle : response->array_handles()) {
+      result_handles.push_back(ArrayHandle{handle});
+    }
+  } else {
+    for (int i = 0; i < plan.output_specs.size(); ++i) {
+      uint64_t h = rpc_helper->NextHandle();
+      result_handles.push_back(ArrayHandle{h});
+      req->add_result_handles(h);
+    }
+    CheckResponseAfterAsyncCall(rpc_helper->RemapArrays(std::move(req)),
+                                result_handles);
   }
-  TF_RET_CHECK(handles.size() == plan.output_specs.size());
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> result;
-  result.reserve(handles.size());
-  for (int i = 0; i < handles.size(); ++i) {
+  result.reserve(result_handles.size());
+  for (int i = 0; i < result_handles.size(); ++i) {
     result.push_back(tsl::RCReference<xla::ifrt::Array>(
         tsl::MakeRef<Array>(client, rpc_helper, plan.output_specs[i].dtype,
                             plan.output_specs[i].shape,
-                            plan.output_specs[i].sharding, handles[i])));
+                            plan.output_specs[i].sharding, result_handles[i])));
   }
   return result;
 }
@@ -365,25 +406,39 @@ Array::DisassembleIntoSingleDeviceArrays(
   req->set_single_device_shard_semantics(
       ToSingleDeviceShardSemanticsProto(single_device_shard_semantics));
 
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<DisassembleIntoSingleDeviceArraysResponse> response,
-      rpc_helper_->DisassembleIntoSingleDeviceArrays(std::move(req)).Await());
-  std::vector<ArrayHandle> handles;
-  for (auto& handle : response->single_device_array_handles()) {
-    handles.push_back(ArrayHandle{handle});
+  std::vector<ArrayHandle> result_handles;
+  TF_ASSIGN_OR_RETURN(auto shape_and_shardings, sharding_->Disassemble(shape_));
+  result_handles.reserve(shape_and_shardings.size());
+
+  if (rpc_helper_->version().protocol_version() <
+      protocol_version::kClientHandlesOptimization2) {
+    TF_ASSIGN_OR_RETURN(
+        std::shared_ptr<DisassembleIntoSingleDeviceArraysResponse> response,
+        rpc_helper_->DisassembleIntoSingleDeviceArrays(std::move(req)).Await());
+    for (auto& handle : response->array_handles()) {
+      result_handles.push_back(ArrayHandle{handle});
+    }
+  } else {
+    for (int i = 0; i < shape_and_shardings.size(); ++i) {
+      uint64_t h = rpc_helper_->NextHandle();
+      result_handles.push_back(ArrayHandle{h});
+      req->add_result_handles(h);
+    }
+    CheckResponseAfterAsyncCall(
+        rpc_helper_->DisassembleIntoSingleDeviceArrays(std::move(req)),
+        result_handles);
   }
 
-  TF_ASSIGN_OR_RETURN(auto shape_and_shardings, sharding_->Disassemble(shape_));
-  CHECK_EQ(handles.size(), shape_and_shardings.size())
-      << " " << absl::StrJoin(handles, ",") << " " << shape_ << " "
+  CHECK_EQ(result_handles.size(), shape_and_shardings.size())
+      << " " << absl::StrJoin(result_handles, ",") << " " << shape_ << " "
       << *sharding_ << " ";
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> result;
-  result.reserve(handles.size());
-  for (int i = 0; i < handles.size(); ++i) {
+  result.reserve(result_handles.size());
+  for (int i = 0; i < result_handles.size(); ++i) {
     result.push_back(tsl::RCReference<xla::ifrt::Array>(tsl::MakeRef<Array>(
         client_, rpc_helper_, dtype_, std::move(shape_and_shardings[i].first),
-        std::move(shape_and_shardings[i].second), handles[i])));
+        std::move(shape_and_shardings[i].second), result_handles[i])));
   }
 
   return result;
@@ -395,11 +450,19 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Array::FullyReplicatedShard(
   req->set_array_handle(handle_.handle);
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
 
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<FullyReplicatedShardResponse> response,
-      rpc_helper_->FullyReplicatedShard(std::move(req)).Await());
-
-  ArrayHandle handle{response->array_handle()};
+  ArrayHandle result_handle;
+  if (rpc_helper_->version().protocol_version() <
+      protocol_version::kClientHandlesOptimization2) {
+    TF_ASSIGN_OR_RETURN(
+        std::shared_ptr<FullyReplicatedShardResponse> response,
+        rpc_helper_->FullyReplicatedShard(std::move(req)).Await());
+    result_handle.handle = response->array_handle();
+  } else {
+    result_handle.handle = rpc_helper_->NextHandle();
+    req->set_result_handle(result_handle.handle);
+    CheckResponseAfterAsyncCall(
+        rpc_helper_->FullyReplicatedShard(std::move(req)), result_handle);
+  }
 
   // We are making the assumption the Array returned by the server corresponds
   // to the first device. Revisit this when IFRT supports: (1) an inexpensive
@@ -412,7 +475,7 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Array::FullyReplicatedShard(
 
   return tsl::RCReference<xla::ifrt::Array>(
       tsl::MakeRef<Array>(client_, rpc_helper_, dtype_, shape_,
-                          std::move(single_device_sharding), handle));
+                          std::move(single_device_sharding), result_handle));
 }
 
 Future<> Array::CopyToStringHostBuffer(

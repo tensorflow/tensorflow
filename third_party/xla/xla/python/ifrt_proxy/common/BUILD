@@ -215,6 +215,11 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "versions",
+    hdrs = ["versions.h"],
+)
+
 # copybara:uncomment_begin
 # bzl_library(
 #     name = "ifrt_proxy_bzl",

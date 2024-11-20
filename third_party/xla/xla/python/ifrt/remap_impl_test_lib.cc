@@ -199,7 +199,53 @@ TEST(RemapImplTest, ExtractSingleShard) {
   }
 }
 
-TEST(RemapImplTest, InterleaveArrays) {
+TEST(RemapImplTest, InterleaveArraysDonate) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  RemapPlan plan;
+  plan.input_specs.push_back(
+      CreateArraySpec(client.get(), /*device_indices=*/{0, 1}).value());
+  plan.input_specs.push_back(
+      CreateArraySpec(client.get(), /*device_indices=*/{2, 3}).value());
+  plan.output_specs.push_back(
+      CreateArraySpec(client.get(), /*device_indices=*/{0, 2, 1, 3}).value());
+  // arrays[0].shards[0:2:1] is mapped into out_arrays[0].shards[0:4:2].
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->reserve(2);
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 4, 2}}});
+  // arrays[1].shards[0:2:1] is mapped into out_arrays[0].shards[1:4:2].
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/1, /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                         /*to=*/{RemapPlan::Interval{1, 4, 2}}});
+  TF_ASSERT_OK(plan.Validate());
+
+  std::vector<tsl::RCReference<Array>> arrays;
+  TF_ASSERT_OK_AND_ASSIGN(arrays.emplace_back(),
+                          CreateArray(client.get(), /*base_values=*/{0, 6},
+                                      /*device_indices=*/{0, 1}));
+  TF_ASSERT_OK_AND_ASSIGN(arrays.emplace_back(),
+                          CreateArray(client.get(), /*base_values=*/{100, 106},
+                                      /*device_indices=*/{2, 3}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto out_arrays, client->RemapArrays(plan, absl::MakeSpan(arrays),
+                                           ArrayCopySemantics::kDonateInput));
+
+  ASSERT_THAT(out_arrays, SizeIs(1));
+  // `out_arrays[0].shards[0] == arrays[0].shards[0]`
+  // `out_arrays[0].shards[1] == arrays[1].shards[0]`
+  // `out_arrays[0].shards[2] == arrays[0].shards[1]`
+  // `out_arrays[0].shards[3] == arrays[1].shards[1]`
+  AssertArrayContent(client.get(), out_arrays[0].get(),
+                     /*base_values=*/{0, 100, 6, 106},
+                     /*device_indices=*/{0, 2, 1, 3});
+}
+
+TEST(RemapImplTest, InterleaveArraysReuse) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
   RemapPlan plan;
@@ -236,19 +282,6 @@ TEST(RemapImplTest, InterleaveArrays) {
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("kDonateInput is required if multiple inputs "
                                  "are mapped to one output")));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto out_arrays, client->RemapArrays(plan, absl::MakeSpan(arrays),
-                                           ArrayCopySemantics::kDonateInput));
-
-  ASSERT_THAT(out_arrays, SizeIs(1));
-  // `out_arrays[0].shards[0] == arrays[0].shards[0]`
-  // `out_arrays[0].shards[1] == arrays[1].shards[0]`
-  // `out_arrays[0].shards[2] == arrays[0].shards[1]`
-  // `out_arrays[0].shards[3] == arrays[1].shards[1]`
-  AssertArrayContent(client.get(), out_arrays[0].get(),
-                     /*base_values=*/{0, 100, 6, 106},
-                     /*device_indices=*/{0, 2, 1, 3});
 }
 
 TEST(RemapImplTest, DeinterleaveArrays) {

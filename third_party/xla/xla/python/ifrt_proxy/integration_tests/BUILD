@@ -78,11 +78,14 @@ ifrt_proxy_cc_test(
 ifrt_proxy_cc_test(
     name = "remap_impl_test_tfrt_cpu",
     size = "small",
-    srcs = [],
+    srcs = ["remap_impl_test_tfrt_cpu.cc"],
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
         "//xla/python/ifrt:remap_impl_test_lib",
-        "@com_google_googletest//:gtest_main",
+        "//xla/python/ifrt:test_util",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
     ],
 )
 

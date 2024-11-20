@@ -161,11 +161,13 @@ cc_library(
         "//xla/python/ifrt_proxy/common:common_serdes",
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
         "//xla/python/ifrt_proxy/common:types",
+        "//xla/python/ifrt_proxy/common:versions",
         "//xla/python/pjrt_ifrt:pjrt_attribute_map_util",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -237,10 +239,10 @@ cc_library(
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
         "//xla/python/ifrt_proxy/common:types",
         "//xla/python/ifrt_proxy/common:types_proto_cc",
+        "//xla/python/ifrt_proxy/common:versions",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -510,6 +512,7 @@ cc_library(
 cc_library(
     name = "version",
     hdrs = ["version.h"],
+    deps = ["//xla/python/ifrt_proxy/common:versions"],
 )
 
 ifrt_proxy_cc_test(

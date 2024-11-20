@@ -17,14 +17,19 @@
 #ifndef XLA_PYTHON_IFRT_PROXY_CLIENT_VERSION_H_
 #define XLA_PYTHON_IFRT_PROXY_CLIENT_VERSION_H_
 
+#include "xla/python/ifrt_proxy/common/versions.h"
+
+// TODO(madthanu): Delete this file and use ifrt_proxy/common/versions.h
+// directly.
+
 namespace xla {
 namespace ifrt {
 namespace proxy {
 
 // LINT.IfChange
 // TODO(b/296144873): Document the version upgrade policy.
-inline constexpr int kClientMinVersion = 3;
-inline constexpr int kClientMaxVersion = 10;
+inline constexpr int kClientMinVersion = protocol_version::kClientMin;
+inline constexpr int kClientMaxVersion = protocol_version::kCurrent;
 // LINT.ThenChange(//tensorflow/compiler/xla/python/ifrt_proxy/common/VERSION.md)
 
 }  // namespace proxy

@@ -66,6 +66,7 @@
 #include "xla/python/ifrt_proxy/common/proto_util.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/host_callback.h"
 #include "xla/python/ifrt_proxy/server/version.h"
@@ -76,7 +77,6 @@
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_to_from_proto.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
@@ -196,7 +196,8 @@ class IfrtBackend::InOrderRequestsProcessor {
 IfrtBackend::IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
                          std::shared_ptr<xla::ifrt::Client> ifrt_client,
                          std::shared_ptr<HostBufferStore> host_buffer_store)
-    : version_(std::move(version)),
+    : handle_generator_(this),
+      version_(std::move(version)),
       session_id_(session_id),
       client_(std::move(ifrt_client)),
       host_buffer_store_(std::move(host_buffer_store)),
@@ -342,21 +343,61 @@ Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
   }
 }
 
-IfrtBackend::HandleGenerator::HandleGenerator()
-    : current_(kServerGeneratedHandlesMinValue) {}
+IfrtBackend::HandleGenerator::HandleGenerator(IfrtBackend* parent)
+    : parent_(parent), current_(kServerGeneratedHandlesMinValue) {}
 
-uint64_t IfrtBackend::HandleGenerator::New() {
+uint64_t IfrtBackend::HandleGenerator::GenerateAtServer() {
   absl::MutexLock lock(&mu_);
   uint64_t result = current_++;
   CHECK_GE(result, kServerGeneratedHandlesMinValue);
   return result;
 }
 
-void IfrtBackend::HandleGenerator::BulkNew(absl::Span<uint64_t> handles) {
+absl::StatusOr<uint64_t> IfrtBackend::HandleGenerator::FromClientGenerated(
+    uint64_t from_client) {
+  if (parent_->version().protocol_version() >=
+      protocol_version::kClientHandlesOptimization2) {
+    absl::MutexLock l(&parent_->arrays_mutex_);
+    if (parent_->arrays_.contains(from_client)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Handle ", from_client, " already used at the IFRT proxy server."));
+    }
+    return from_client;
+  }
+  return GenerateAtServer();
+}
+
+void IfrtBackend::HandleGenerator::GenerateAtServerBulk(
+    absl::Span<uint64_t> result_handles) {
   absl::MutexLock lock(&mu_);
-  std::iota(handles.begin(), handles.end(), current_);
-  current_ += handles.size();
+  std::iota(result_handles.begin(), result_handles.end(), current_);
+  current_ += result_handles.size();
   CHECK_GE(current_, kServerGeneratedHandlesMinValue);
+}
+
+absl::Status IfrtBackend::HandleGenerator::FromClientGeneratedBulk(
+    const tsl::protobuf::RepeatedField<uint64_t>& from_client,
+    absl::Span<uint64_t> result_handles) {
+  if (parent_->version().protocol_version() >=
+      protocol_version::kClientHandlesOptimization2) {
+    if (result_handles.size() != from_client.size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("IFRT proxy server expected ", result_handles.size(),
+                       " handles but got ", from_client.size()));
+    }
+    absl::MutexLock l(&parent_->arrays_mutex_);
+    for (int i = 0; i < from_client.size(); ++i) {
+      if (parent_->arrays_.contains(from_client[i])) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Handle ", from_client[i],
+                         " already used at the IFRT proxy server."));
+      }
+      result_handles[i] = from_client[i];
+    }
+    return absl::OkStatus();
+  }
+  GenerateAtServerBulk(result_handles);
+  return absl::OkStatus();
 }
 
 Future<BackendInterface::Response> IfrtBackend::AsyncExecute(
@@ -588,7 +629,7 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
   // arrays_.
   uint64_t handle = make_array_request->has_array_handle()
                         ? make_array_request->array_handle()
-                        : handle_generator_.New();
+                        : handle_generator_.GenerateAtServer();
   {
     absl::MutexLock lock(&arrays_mutex_);
     const bool inserted = arrays_.insert({handle, std::move(array)}).second;
@@ -649,7 +690,8 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
 
-  uint64_t handle = handle_generator_.New();
+  TF_ASSIGN_OR_RETURN(uint64_t handle, handle_generator_.FromClientGenerated(
+                                           assemble_request.result_handle()));
   ifrt_resp->mutable_assemble_array_from_single_device_arrays_response()
       ->set_array_handle(handle);
   {
@@ -695,7 +737,8 @@ IfrtBackend::HandleRemapArraysRequest(std::unique_ptr<IfrtRequest> request) {
       response->mutable_remap_arrays_response()->mutable_array_handles();
   handles->Reserve(num_arrays);
   uint64_t* handles_buf = handles->AddNAlreadyReserved(num_arrays);
-  handle_generator_.BulkNew(absl::MakeSpan(handles_buf, num_arrays));
+  TF_RETURN_IF_ERROR(handle_generator_.FromClientGeneratedBulk(
+      remap_request.result_handles(), absl::MakeSpan(handles_buf, num_arrays)));
 
   // Install the newly created arrays into the arrays_.
   {
@@ -861,10 +904,12 @@ IfrtBackend::HandleDisassembleIntoSingleDeviceArraysRequest(
   // new handles.
   auto* handles =
       response->mutable_disassemble_into_single_device_arrays_response()
-          ->mutable_single_device_array_handles();
+          ->mutable_array_handles();
   handles->Reserve(num_arrays);
   uint64_t* handles_buf = handles->AddNAlreadyReserved(num_arrays);
-  handle_generator_.BulkNew(absl::MakeSpan(handles_buf, num_arrays));
+  TF_RETURN_IF_ERROR(handle_generator_.FromClientGeneratedBulk(
+      disassemble_request.result_handles(),
+      absl::MakeSpan(handles_buf, num_arrays)));
 
   // Install the newly created arrays into the arrays_.
   {
@@ -918,7 +963,8 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleCopyArraysRequest(
   auto* const copy_arrays_resp = ifrt_resp->mutable_copy_arrays_response();
 
   std::vector<uint64_t> new_handles(new_arrays.size());
-  handle_generator_.BulkNew(absl::MakeSpan(new_handles));
+  TF_RETURN_IF_ERROR(handle_generator_.FromClientGeneratedBulk(
+      copy_arrays_request.result_handles(), absl::MakeSpan(new_handles)));
   {
     absl::MutexLock lock(&arrays_mutex_);
     for (int i = 0; i < new_arrays.size(); ++i) {
@@ -956,7 +1002,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleReshardRequest(
       client_->CopyArrays(absl::MakeSpan(&array, 1), sharding->devices(),
                           sharding->memory_kind(), semantics));
 
-  uint64_t resharded_array_handle = handle_generator_.New();
+  uint64_t resharded_array_handle = handle_generator_.GenerateAtServer();
   {
     absl::MutexLock lock(&arrays_mutex_);
     arrays_.insert({resharded_array_handle, std::move(copied_arrays[0])});
@@ -988,7 +1034,9 @@ IfrtBackend::HandleFullyReplicatedShardRequest(
   // an Array to be made out of a specific single shard.
   TF_ASSIGN_OR_RETURN(auto new_array, array->FullyReplicatedShard(semantics));
 
-  uint64_t new_array_handle = handle_generator_.New();
+  TF_ASSIGN_OR_RETURN(uint64_t new_array_handle,
+                      handle_generator_.FromClientGenerated(
+                          fully_replicated_shard_request.result_handle()));
   {
     absl::MutexLock lock(&arrays_mutex_);
     arrays_.insert({new_array_handle, std::move(new_array)});
@@ -1023,7 +1071,7 @@ IfrtBackend::HandleDeleteArrayRequest(std::unique_ptr<IfrtRequest> request) {
     delete_handle(array_handle);
   }
 
-  uint64_t future_handle = handle_generator_.New();
+  uint64_t future_handle = handle_generator_.GenerateAtServer();
   {
     absl::MutexLock lock(&futures_mutex_);
     futures_.insert({future_handle, JoinFutures(deletion_futures)});
@@ -1137,11 +1185,12 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
         NewIfrtResponse(request->request_metadata().op_id());
     auto* compile_resp = ifrt_resp->mutable_compile_response();
 
-    uint64_t handle = handle_generator_.New();
+    uint64_t handle = handle_generator_.GenerateAtServer();
     compile_resp->set_loaded_executable_handle(handle);
 
     std::vector<uint64_t> host_callback_handles(host_callback_queues.size());
-    handle_generator_.BulkNew(absl::MakeSpan(host_callback_handles));
+    handle_generator_.GenerateAtServerBulk(
+        absl::MakeSpan(host_callback_handles));
     compile_resp->mutable_loaded_host_callback_handles()->Add(
         host_callback_handles.begin(), host_callback_handles.end());
 
@@ -1167,7 +1216,8 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     // not used.
     {
       absl::MutexLock lock(&futures_mutex_);
-      compile_resp->set_ready_future_handle(handle_generator_.New());
+      compile_resp->set_ready_future_handle(
+          handle_generator_.GenerateAtServer());
       futures_.insert(
           {compile_resp->ready_future_handle(), executable->GetReadyFuture()});
     }
@@ -1327,7 +1377,7 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   // future needs to be populated or not.
   if (version_.protocol_version() < 6 || execute_options.fill_status) {
     absl::MutexLock lock(&futures_mutex_);
-    execute_response->set_status_handle(handle_generator_.New());
+    execute_response->set_status_handle(handle_generator_.GenerateAtServer());
     futures_.insert(
         {execute_response->status_handle(), std::move(result.status)});
   }
@@ -1335,7 +1385,7 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   // Register output arrays. At this point, we should never early return because
   // doing so will leak futures or output arrays registered so far.
   std::vector<uint64_t> output_handles(result.outputs.size());
-  handle_generator_.BulkNew(absl::MakeSpan(output_handles));
+  handle_generator_.GenerateAtServerBulk(absl::MakeSpan(output_handles));
   {
     absl::MutexLock lock(&arrays_mutex_);
     for (int i = 0; i < result.outputs.size(); ++i) {
@@ -1370,7 +1420,7 @@ IfrtBackend::HandleLoadedExecutableDeleteRequest(
 
   {
     absl::MutexLock lock(&futures_mutex_);
-    del_response->set_future_handle(handle_generator_.New());
+    del_response->set_future_handle(handle_generator_.GenerateAtServer());
     futures_.insert({del_response->future_handle(), std::move(future)});
   }
 
@@ -1475,7 +1525,7 @@ IfrtBackend::HandleLoadedHostCallbackPollRequest(
           poll.operand_host_buffer_handle(), std::move(buffer)));
     }
 
-    const uint64_t execution_handle = handle_generator_.New();
+    const uint64_t execution_handle = handle_generator_.GenerateAtServer();
     {
       absl::MutexLock lock(&host_callback_executions_mutex_);
       host_callback_executions_.insert(

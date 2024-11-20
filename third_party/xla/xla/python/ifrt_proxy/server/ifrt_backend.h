@@ -23,6 +23,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -83,15 +84,26 @@ class IfrtBackend final : public BackendInterface {
   // RpcHelper). All object types currently use this single "handle space".
   class HandleGenerator {
    public:
-    HandleGenerator();
+    explicit HandleGenerator(IfrtBackend* parent);
 
-    uint64_t New();
+    // Returns the client-generated handle after performing some convenience
+    // checks, provided that the client is of a protocol_version capable of
+    // doing this. If the client has old protocol versions, generate a handle at
+    // the server.
+    absl::StatusOr<uint64_t> FromClientGenerated(uint64_t from_client);
 
-    // Bulk allocates a given number of handles and saves them into the provided
-    // Span.
-    void BulkNew(absl::Span<uint64_t> handles);
+    // Performs the same function as `FromClientGenerated` but in bulk, and
+    // saves them into the provided Span.
+    absl::Status FromClientGeneratedBulk(
+        const tsl::protobuf::RepeatedField<uint64_t>& from_client,
+        absl::Span<uint64_t> result_handles);
+
+    uint64_t GenerateAtServer();
+
+    void GenerateAtServerBulk(absl::Span<uint64_t> result_handles);
 
    private:
+    IfrtBackend* const parent_;
     absl::Mutex mu_;
     uint64_t current_ ABSL_GUARDED_BY(mu_);
   };

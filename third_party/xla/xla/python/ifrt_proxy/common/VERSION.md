@@ -58,4 +58,12 @@
 
 *   Added date: 2024-11-08.
 *   Changes:
-    *   MakeArrayFromHostBuffer uses client-manufactured array handles and sends data asynchronously.
+    *   MakeArrayFromHostBuffer uses client-generated array handles and sends data asynchronously.
+
+
+## Version kClientHandlesOptimization2
+
+*   Added date: 2024-11-19
+*   Changes:
+    *   Introduces a set of performance optimizations where the client generates array handles.
+

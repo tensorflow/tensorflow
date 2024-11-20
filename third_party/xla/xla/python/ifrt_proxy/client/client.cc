@@ -25,6 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -50,6 +51,7 @@
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
@@ -287,18 +289,38 @@ Client::CopyArrays(
   }
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
 
-  auto future = rpc_helper_->CopyArrays(std::move(req));
-  TF_ASSIGN_OR_RETURN(auto response, future.Await());
+  std::vector<uint64_t> result_handles;
+  if (rpc_helper_->version().protocol_version() <
+      protocol_version::kClientHandlesOptimization2) {
+    TF_ASSIGN_OR_RETURN(auto response,
+                        rpc_helper_->CopyArrays(std::move(req)).Await());
+    result_handles.assign(response->array_handles().begin(),
+                          response->array_handles().end());
+  } else {
+    for (int i = 0; i < arrays.size(); ++i) {
+      result_handles.push_back(rpc_helper_->NextHandle());
+      req->add_result_handles(result_handles.back());
+    }
+    rpc_helper_->CopyArrays(std::move(req))
+        .OnReady([result_handles](
+                     absl::StatusOr<std::shared_ptr<CopyArraysResponse>> r) {
+          if (r.ok()) {
+            for (int i = 0; i < result_handles.size(); ++i) {
+              CHECK_EQ((*r)->array_handles(i), result_handles[i]);
+            }
+          }
+        });
+  }
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> new_arrays;
   new_arrays.reserve(arrays.size());
-  for (int i = 0; i < response->array_handles_size(); ++i) {
+  for (int i = 0; i < result_handles.size(); ++i) {
     TF_ASSIGN_OR_RETURN(
         auto new_sharding,
         arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
     new_arrays.push_back(tsl::MakeRef<Array>(
         this, rpc_helper_, arrays[i]->dtype(), arrays[i]->shape(),
-        std::move(new_sharding), ArrayHandle{response->array_handles(i)}));
+        std::move(new_sharding), ArrayHandle{result_handles[i]}));
   }
   return new_arrays;
 }
