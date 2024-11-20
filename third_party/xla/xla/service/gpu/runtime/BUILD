@@ -422,24 +422,25 @@ cc_library(
     srcs = if_gpu_is_configured(["cholesky_thunk.cc"]),
     hdrs = if_gpu_is_configured(["cholesky_thunk.h"]),
     deps = if_gpu_is_configured([
+        # keep sorted
+        "//xla:types",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:cusolver_context",
         "//xla/service/gpu:make_batch_pointers",
         "//xla/service/gpu/runtime:thunk",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/service:buffer_assignment",
-        "//xla/hlo/ir:hlo",
-        "@local_tsl//tsl/platform:logging",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory",
-        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "//xla/stream_executor:stream",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
-    ]) + ["//xla/stream_executor:stream_executor_h"],
+    ]),
 )
 
 cc_library(
@@ -1236,8 +1237,8 @@ cc_library(
     srcs = if_gpu_is_configured(["triangular_solve_thunk.cc"]),
     hdrs = if_gpu_is_configured(["triangular_solve_thunk.h"]),
     deps = if_gpu_is_configured([
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:str_format",
+        # keep sorted
+        "//xla:status_macros",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -1248,14 +1249,14 @@ cc_library(
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory",
-        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
-    ]) + [
-        "//xla:status_macros",
-        "//xla/stream_executor:stream_executor_h",
-    ],
+    ]),
 )
 
 cc_library(

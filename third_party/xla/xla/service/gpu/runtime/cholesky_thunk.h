@@ -23,8 +23,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -40,7 +39,7 @@ namespace gpu {
 class CholeskyThunk : public Thunk {
  public:
   CholeskyThunk(ThunkInfo thunk_info, const CholeskyOptions& options,
-                se::GpuAsmOpts asm_opts, BufferAllocation::Slice a_buffer,
+                BufferAllocation::Slice a_buffer,
                 BufferAllocation::Slice workspace_buffer,
                 BufferAllocation::Slice info_buffer, PrimitiveType type,
                 int64_t batch_size, int64_t n);
@@ -51,7 +50,6 @@ class CholeskyThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  se::GpuAsmOpts asm_opts_;
   se::blas::UpperLower uplo_;
 
   const BufferAllocation::Slice a_buffer_;
@@ -71,8 +69,9 @@ struct CholeskyParams {
   se::DeviceMemoryBase workspace_buffer;
   se::DeviceMemoryBase info_buffer;
 };
-absl::Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
-                         CholeskyParams* params, se::Stream* stream);
+
+absl::Status RunCholesky(PrimitiveType type, CholeskyParams* params,
+                         se::Stream* stream);
 
 }  // namespace gpu
 }  // namespace xla

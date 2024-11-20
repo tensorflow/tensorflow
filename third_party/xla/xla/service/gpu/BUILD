@@ -316,7 +316,6 @@ cc_library(
         ":backend_configs_cc",
         ":cublas_cudnn",
         ":execution_stream_assignment",
-        ":gpu_asm_opts_util",
         ":gpu_conv_runner",
         ":gpu_norm_runner",
         ":hlo_fusion_analysis",

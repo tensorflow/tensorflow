@@ -17,18 +17,16 @@ limitations under the License.
 
 #include <complex>
 #include <cstdint>
-#include <memory>
-#include <string>
-#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/cusolver_context.h"
 #include "xla/service/gpu/make_batch_pointers.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -40,8 +38,7 @@ namespace gpu {
 namespace {
 
 template <typename T>
-absl::Status DoPotrfBatched(const se::GpuAsmOpts& asm_opts,
-                            CholeskyParams* params, se::Stream* stream,
+absl::Status DoPotrfBatched(CholeskyParams* params, se::Stream* stream,
                             GpuSolverContext& context) {
   T* a_base = static_cast<T*>(params->a_buffer.opaque());
   se::DeviceMemory<int> infos(params->info_buffer);
@@ -69,8 +66,7 @@ absl::Status DoPotrfBatched(const se::GpuAsmOpts& asm_opts,
 }
 
 template <typename T>
-absl::Status DoPotrfUnbatched(const se::GpuAsmOpts& asm_opts,
-                              CholeskyParams* params, se::Stream* stream,
+absl::Status DoPotrfUnbatched(CholeskyParams* params, se::Stream* stream,
                               GpuSolverContext& context) {
   T* a_base = static_cast<T*>(params->a_buffer.opaque());
   int* info_base = static_cast<int*>(params->info_buffer.opaque());
@@ -92,13 +88,11 @@ absl::Status DoPotrfUnbatched(const se::GpuAsmOpts& asm_opts,
 
 CholeskyThunk::CholeskyThunk(ThunkInfo thunk_info,
                              const CholeskyOptions& options,
-                             const se::GpuAsmOpts asm_opts,
                              BufferAllocation::Slice a_buffer,
                              BufferAllocation::Slice workspace_buffer,
                              BufferAllocation::Slice info_buffer,
                              PrimitiveType type, int64_t batch_size, int64_t n)
     : Thunk(Kind::kCholesky, thunk_info),
-      asm_opts_(asm_opts),
       uplo_(options.lower() ? se::blas::UpperLower::kLower
                             : se::blas::UpperLower::kUpper),
       a_buffer_(a_buffer),
@@ -124,11 +118,11 @@ absl::Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.buffer_allocations->GetDeviceAddress(workspace_buffer_);
   CholeskyParams cholesky_params{n_,       batch_size_,      uplo_,
                                  a_buffer, workspace_buffer, info_buffer};
-  return RunCholesky(asm_opts_, type_, &cholesky_params, params.stream);
+  return RunCholesky(type_, &cholesky_params, params.stream);
 }
 
-absl::Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
-                         CholeskyParams* cholesky_params, se::Stream* stream) {
+absl::Status RunCholesky(PrimitiveType type, CholeskyParams* cholesky_params,
+                         se::Stream* stream) {
   thread_local absl::StatusOr<GpuSolverContext> context =
       GpuSolverContext::Create();
   TF_RETURN_IF_ERROR(context.status());
@@ -137,17 +131,15 @@ absl::Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
   if (cholesky_params->batch_size > 1) {
     switch (type) {
       case F32:
-        return DoPotrfBatched<float>(asm_opts, cholesky_params, stream,
-                                     *context);
+        return DoPotrfBatched<float>(cholesky_params, stream, *context);
       case F64:
-        return DoPotrfBatched<double>(asm_opts, cholesky_params, stream,
-                                      *context);
+        return DoPotrfBatched<double>(cholesky_params, stream, *context);
       case C64:
-        return DoPotrfBatched<std::complex<float>>(asm_opts, cholesky_params,
-                                                   stream, *context);
+        return DoPotrfBatched<std::complex<float>>(cholesky_params, stream,
+                                                   *context);
       case C128:
-        return DoPotrfBatched<std::complex<double>>(asm_opts, cholesky_params,
-                                                    stream, *context);
+        return DoPotrfBatched<std::complex<double>>(cholesky_params, stream,
+                                                    *context);
       default:
         return InvalidArgument("Invalid type for cholesky %s",
                                PrimitiveType_Name(type));
@@ -155,17 +147,15 @@ absl::Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
   } else {
     switch (type) {
       case F32:
-        return DoPotrfUnbatched<float>(asm_opts, cholesky_params, stream,
-                                       *context);
+        return DoPotrfUnbatched<float>(cholesky_params, stream, *context);
       case F64:
-        return DoPotrfUnbatched<double>(asm_opts, cholesky_params, stream,
-                                        *context);
+        return DoPotrfUnbatched<double>(cholesky_params, stream, *context);
       case C64:
-        return DoPotrfUnbatched<std::complex<float>>(asm_opts, cholesky_params,
-                                                     stream, *context);
+        return DoPotrfUnbatched<std::complex<float>>(cholesky_params, stream,
+                                                     *context);
       case C128:
-        return DoPotrfUnbatched<std::complex<double>>(asm_opts, cholesky_params,
-                                                      stream, *context);
+        return DoPotrfUnbatched<std::complex<double>>(cholesky_params, stream,
+                                                      *context);
       default:
         return InvalidArgument("Invalid type for cholesky %s",
                                PrimitiveType_Name(type));

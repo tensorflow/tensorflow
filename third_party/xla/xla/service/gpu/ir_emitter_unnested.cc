@@ -94,7 +94,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/fusions/thunk_util.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
-#include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -1051,8 +1050,7 @@ absl::Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
   }
 
   thunks.push_back(std::make_unique<CholeskyThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(instr), options,
-      PtxOptsFromDebugOptions(ir_emitter_context_->debug_options()), a_buffer,
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), options, a_buffer,
       workspace_buffer, info_buffer, shape.element_type(), batch_size, n));
 
   // Elide the sequential thunk if there's no copy.
@@ -1309,7 +1307,6 @@ absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
   int64_t b_batch_stride = m * n * elem_size;
   thunks.push_back(std::make_unique<TriangularSolveThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), backend_config,
-      PtxOptsFromDebugOptions(ir_emitter_context_->debug_options()),
       /*a_buffer=*/a_slice, /*b_buffer=*/result_slice, temp_slice, elem_ty,
       batch_size, m, n, a_batch_stride, b_batch_stride));
 
