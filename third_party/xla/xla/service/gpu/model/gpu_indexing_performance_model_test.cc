@@ -330,7 +330,7 @@ ENTRY main {
 
   EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes,
               ElementsAre(4, 911));
-  EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 16);
+  EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 4);
 
   EXPECT_EQ(tiled_runtime_data.runtime_data.bytes_read, kExpectedBytesRead);
   EXPECT_EQ(tiled_runtime_data.runtime_data.bytes_written, kOutputSizeBytes);
@@ -649,8 +649,8 @@ ENTRY main {
 
   // Tile size is 9 * 9 * 9 = 729 that corresponds to 2 warps. But we estimate
   // the number of warps for padded tile that has size of 16 * 16 * 16 = 4096
-  // and corresponds to 16 warps.
-  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 16 * WarpSize());
+  // and corresponds to 4 warps.
+  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 4 * WarpSize());
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
@@ -696,8 +696,8 @@ ENTRY main {
   EXPECT_EQ(launch_dimensions.num_blocks(), 1);
 
   // The largest tile size is 1 * 4096, for which our implementation recommends
-  // using 16 warps.
-  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 16 * WarpSize());
+  // using 4 warps.
+  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 4 * WarpSize());
 }
 
 class FlopsPerElementTest : public GpuIndexingPerformanceModelTest {
