@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -42,7 +41,6 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using se::gpu::GpuStreamHandle;
 using ::testing::Combine;
 using ::testing::Values;
 
