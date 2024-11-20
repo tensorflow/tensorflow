@@ -844,11 +844,19 @@ class AsyncValuePtr {
 template <typename T>
 class CountDownAsyncValueRef {
  public:
+  CountDownAsyncValueRef() = default;
+
   CountDownAsyncValueRef(AsyncValueRef<T> ref, int64_t cnt)
       : state_(std::make_shared<State>(std::move(ref), cnt)) {
     DCHECK(state_->ref.IsConstructed()) << "AsyncValue must be constructed";
     DCHECK(state_->ref.IsUnavailable()) << "AsyncValue must be unavailable";
     DCHECK_GT(cnt, 0) << "Count must be positive";
+  }
+
+  template <typename... Args>
+  explicit CountDownAsyncValueRef(Args&&... args, int64_t cnt)
+      : CountDownAsyncValueRef(
+            MakeConstructedAsyncValueRef<T>(std::forward<Args>(args)...), cnt) {
   }
 
   // Drops the count by one and returns true if async value became available.
@@ -891,6 +899,9 @@ class CountDownAsyncValueRef {
 
     return false;
   }
+
+  AsyncValueRef<T> AsRef() const { return state_->ref; }
+  AsyncValuePtr<T> AsPtr() const { return state_->ref.AsPtr(); }
 
  private:
   struct State {

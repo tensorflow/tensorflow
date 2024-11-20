@@ -349,25 +349,25 @@ ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
   };
 
   if (options_.multi_threaded) {
-    std::shared_ptr<ExecuteState> state;
+    ExecuteState state;
     std::function<void()> done_callback = nullptr;
     if (!internal::CanUseCustomTransposedConv(
             input_dims_.x, input_channels_, kernel_dims_.x, kernel_filters_,
             base_dilation_.x, base_dilation_.y, window_dilation_.x,
             window_dilation_.y, feature_group_count_)) {
       // Currently only support async mode for regular convolutions.
-      state = std::make_shared<ExecuteState>(feature_group_count_);
-      done_callback = [state] { state->Notify(); };
+      state = ExecuteState(feature_group_count_);
+      done_callback = [state]() mutable { state.CountDown(); };
     }
 
     if (input_shape_.element_type() == PrimitiveType::F16) {
-      dispatch(Eigen::half(), *params.intra_op_threadpool, done_callback);
+      dispatch(Eigen::half{}, *params.intra_op_threadpool, done_callback);
     } else {
       dispatch(float(), *params.intra_op_threadpool, done_callback);
     }
 
     if (done_callback) {
-      return state->event;
+      return state.AsRef();
     } else {
       // TODO(adambanas): Remove this branch once we support async mode for
       // custom transposed convolutions.
@@ -375,9 +375,9 @@ ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
     }
   } else {
     if (input_shape_.element_type() == PrimitiveType::F16) {
-      dispatch(Eigen::half(), Eigen::DefaultDevice());
+      dispatch(Eigen::half{}, Eigen::DefaultDevice());
     } else {
-      dispatch(float(), Eigen::DefaultDevice());
+      dispatch(float{}, Eigen::DefaultDevice());
     }
     return OkExecuteEvent();
   }
@@ -406,19 +406,19 @@ ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
   };
 
   if (options_.multi_threaded) {
-    auto state = std::make_shared<ExecuteState>(feature_group_count_);
-    auto done_callback = [state] { state->Notify(); };
+    ExecuteState state(feature_group_count_);
+    auto done_callback = [state]() mutable { state.CountDown(); };
     if (input_shape_.element_type() == PrimitiveType::F16) {
-      dispatch(Eigen::half(), *params.intra_op_threadpool, done_callback);
+      dispatch(Eigen::half{}, *params.intra_op_threadpool, done_callback);
     } else {
-      dispatch(float(), *params.intra_op_threadpool, done_callback);
+      dispatch(float{}, *params.intra_op_threadpool, done_callback);
     }
-    return state->event;
+    return state.AsRef();
   } else {
     if (input_shape_.element_type() == PrimitiveType::F16) {
-      dispatch(Eigen::half(), Eigen::DefaultDevice());
+      dispatch(Eigen::half{}, Eigen::DefaultDevice());
     } else {
-      dispatch(float(), Eigen::DefaultDevice());
+      dispatch(float{}, Eigen::DefaultDevice());
     }
     return OkExecuteEvent();
   }
