@@ -108,20 +108,6 @@ bool IsSliceWithUnitStrides(const HloInstruction* instr);
 // operates on a contiguous slice of the input buffer.
 bool IsContiguousSlice(const HloInstruction& instr);
 
-// Emits code to shuffle data between threads of a warp. This has the same
-// semantics as the PTX "shfl.sync.down" instruction but works for values that
-// aren't 32 bits in size. The last operand of the emitted "shfl" is
-// `WarpSize() - 1`.
-//
-// This function emits a "full-warp" shuffle, which all threads of a warp
-// participate in.  *Do not use this function from a divergent context:* You
-// can't correctly do so on both Volta and earlier GPUs.
-//
-// https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
-llvm::Value* EmitFullWarpShuffleDown(
-    llvm::Value* value, llvm::Value* offset, llvm::IRBuilderBase* builder,
-    const se::DeviceDescription& gpu_device_info);
-
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b);
@@ -211,9 +197,6 @@ void VerifyModule(const llvm::Module& module);
 // Otherwise, the return type is i64.
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
                                   int64_t launch_size, llvm::IRBuilderBase* b);
-
-// Whether the module's target is an AMD GPU.
-bool IsAMDGPU(const llvm::Module* module);
 
 // This class stores either a non-owning reference or owns data that represents
 // a dense array in XLA format. It is used for intermediate storage during IR
