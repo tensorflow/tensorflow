@@ -39,14 +39,14 @@ class Southbound {
 
   static Expected<Ptr> Create(std::optional<std::string> shared_library_dir);
 
-  const ThrFunctions& thr_functions() const { return *thr_functions_; }
+  const ThrFunctions& api() const { return *api_; }
 
  private:
   Southbound();
   Expected<void> LoadSymbols(std::optional<std::string> shared_library_dir);
 
   void* dlib_handle_ = nullptr;
-  std::unique_ptr<ThrFunctions> thr_functions_;
+  std::unique_ptr<ThrFunctions> api_;
 };
 
 // A convenient struct for holding function pointers to SouthBound symbols.

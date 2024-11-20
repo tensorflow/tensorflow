@@ -79,6 +79,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

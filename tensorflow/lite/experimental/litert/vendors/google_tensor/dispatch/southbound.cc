@@ -41,7 +41,7 @@ namespace {
 constexpr const char* kSouthBoundLibPath = "/vendor/lib64/libedgetpu_util.so";
 }  // namespace
 
-Southbound::Southbound() : thr_functions_(new ThrFunctions) {}
+Southbound::Southbound() : api_(new ThrFunctions) {}
 
 Southbound::~Southbound() {
   if (dlib_handle_) {
@@ -72,74 +72,70 @@ Expected<void> Southbound::LoadSymbols(
 
   // Binds all supported symbols from the shared library to the function
   // pointers.
-  Load(thr_functions_->thr_initialize, thrInitialize);
+  Load(api_->thr_initialize, thrInitialize);
 
-  Load(thr_functions_->thr_get_vendor_api_version, thrGetVendorApiVersion);
-  Load(thr_functions_->thr_get_vendor_id, thrGetVendorId);
+  Load(api_->thr_get_vendor_api_version, thrGetVendorApiVersion);
+  Load(api_->thr_get_vendor_id, thrGetVendorId);
 
-  Load(thr_functions_->thr_context_create, thrContextCreate);
-  Load(thr_functions_->thr_context_delete, thrContextDelete);
+  Load(api_->thr_context_create, thrContextCreate);
+  Load(api_->thr_context_delete, thrContextDelete);
 
-  Load(thr_functions_->thr_graph_create, thrGraphCreate);
-  Load(thr_functions_->thr_graph_delete, thrGraphDelete);
+  Load(api_->thr_graph_create, thrGraphCreate);
+  Load(api_->thr_graph_delete, thrGraphDelete);
 
-  Load(thr_functions_->thr_graph_add_edge, thrGraphAddEdge);
-  Load(thr_functions_->thr_graph_add_sq_node, thrGraphAddSqNode);
+  Load(api_->thr_graph_add_edge, thrGraphAddEdge);
+  Load(api_->thr_graph_add_sq_node, thrGraphAddSqNode);
 
-  Load(thr_functions_->thr_graph_connect_node_input, thrGraphConnectNodeInput);
-  Load(thr_functions_->thr_graph_connect_node_output,
-       thrGraphConnectNodeOutput);
+  Load(api_->thr_graph_connect_node_input, thrGraphConnectNodeInput);
+  Load(api_->thr_graph_connect_node_output, thrGraphConnectNodeOutput);
 
-  Load(thr_functions_->thr_graph_set_input_edge, thrGraphSetInputEdge);
-  Load(thr_functions_->thr_graph_set_output_edge, thrGraphSetOutputEdge);
+  Load(api_->thr_graph_set_input_edge, thrGraphSetInputEdge);
+  Load(api_->thr_graph_set_output_edge, thrGraphSetOutputEdge);
 
-  Load(thr_functions_->thr_graph_annotate_graph, thrGraphAnnotateGraph);
-  Load(thr_functions_->thr_graph_annotate_edge, thrGraphAnnotateEdge);
-  Load(thr_functions_->thr_graph_annotate_node, thrGraphAnnotateNode);
+  Load(api_->thr_graph_annotate_graph, thrGraphAnnotateGraph);
+  Load(api_->thr_graph_annotate_edge, thrGraphAnnotateEdge);
+  Load(api_->thr_graph_annotate_node, thrGraphAnnotateNode);
 
-  Load(thr_functions_->thr_load_sq_container, thrLoadSqContainer);
-  Load(thr_functions_->thr_load_sq_container_fd, thrLoadSqContainerFd);
-  Load(thr_functions_->thr_load_sq_container_file, thrLoadSqContainerFile);
-  Load(thr_functions_->thr_unload_sq_container, thrUnloadSqContainer);
+  Load(api_->thr_load_sq_container, thrLoadSqContainer);
+  Load(api_->thr_load_sq_container_fd, thrLoadSqContainerFd);
+  Load(api_->thr_load_sq_container_file, thrLoadSqContainerFile);
+  Load(api_->thr_unload_sq_container, thrUnloadSqContainer);
 
-  Load(thr_functions_->thr_graph_assign_sq, thrGraphAssignSq);
-  Load(thr_functions_->thr_sq_query_scratch_pad, thrSqQueryScratchPad);
-  Load(thr_functions_->thr_sq_attach_scratch_pad_buffer,
-       thrSqAttachScratchPadBuffer);
+  Load(api_->thr_graph_assign_sq, thrGraphAssignSq);
+  Load(api_->thr_sq_query_scratch_pad, thrSqQueryScratchPad);
+  Load(api_->thr_sq_attach_scratch_pad_buffer, thrSqAttachScratchPadBuffer);
 
-  Load(thr_functions_->thr_register_buffer, thrRegisterBuffer);
-  Load(thr_functions_->thr_register_buffer_with_offset,
-       thrRegisterBufferWithOffset);
-  Load(thr_functions_->thr_unregister_buffer, thrUnregisterBuffer);
+  Load(api_->thr_register_buffer, thrRegisterBuffer);
+  Load(api_->thr_register_buffer_with_offset, thrRegisterBufferWithOffset);
+  Load(api_->thr_unregister_buffer, thrUnregisterBuffer);
 
-  Load(thr_functions_->thr_invocation_context_get, thrInvocationContextGet);
-  Load(thr_functions_->thr_invocation_context_delete,
-       thrInvocationContextDelete);
+  Load(api_->thr_invocation_context_get, thrInvocationContextGet);
+  Load(api_->thr_invocation_context_delete, thrInvocationContextDelete);
 
-  Load(thr_functions_->thr_invocation_context_attach_buffer,
+  Load(api_->thr_invocation_context_attach_buffer,
        thrInvocationContextAttachBuffer);
-  Load(thr_functions_->thr_invocation_context_detach_buffer,
+  Load(api_->thr_invocation_context_detach_buffer,
        thrInvocationContextDetachBuffer);
 
-  Load(thr_functions_->thr_invocation_context_prepare_for_invoke,
+  Load(api_->thr_invocation_context_prepare_for_invoke,
        thrInvocationContextPrepareForInvoke);
-  Load(thr_functions_->thr_invocation_context_invoke_once,
+  Load(api_->thr_invocation_context_invoke_once,
        thrInvocationContextInvokeOnce);
-  Load(thr_functions_->thr_invocation_context_wait, thrInvocationContextWait);
+  Load(api_->thr_invocation_context_wait, thrInvocationContextWait);
 
-  Load(thr_functions_->thr_invocation_context_attach_input_buffer_sync_fence,
+  Load(api_->thr_invocation_context_attach_input_buffer_sync_fence,
        thrInvocationContextAttachInputBufferSyncFence);
-  Load(thr_functions_->thr_invocation_context_get_output_buffer_sync_fence,
+  Load(api_->thr_invocation_context_get_output_buffer_sync_fence,
        thrInvocationContextGetOutputBufferSyncFence);
 
-  Load(thr_functions_->thr_invocation_context_query_node_scratch_pad,
+  Load(api_->thr_invocation_context_query_node_scratch_pad,
        thrInvocationContextQueryNodeScratchPad);
-  Load(thr_functions_->thr_invocation_context_attach_scratch_pad_buffer,
+  Load(api_->thr_invocation_context_attach_scratch_pad_buffer,
        thrInvocationContextAttachScratchPadBuffer);
 
-  Load(thr_functions_->thr_vendor_set_system_attribute_str,
+  Load(api_->thr_vendor_set_system_attribute_str,
        thrVendorSetSystemAttributeStr);
-  Load(thr_functions_->thr_vendor_set_system_attribute_int64,
+  Load(api_->thr_vendor_set_system_attribute_int64,
        thrVendorSetSystemAttributeInt64);
 
   LITERT_LOG(LITERT_INFO, "SouthBound symbols loaded");

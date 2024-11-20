@@ -25,7 +25,7 @@ using litert::Unexpected;
 
 LiteRtDispatchDeviceContextT::~LiteRtDispatchDeviceContextT() {
   if (!thr_graphs_.empty()) {
-    auto thr_graph_delete = southbound_.thr_functions().thr_graph_delete;
+    auto thr_graph_delete = southbound_.api().thr_graph_delete;
     if (!thr_graph_delete) {
       LITERT_LOG(LITERT_ERROR, "thr_graph_delete not found");
     } else {
@@ -36,7 +36,7 @@ LiteRtDispatchDeviceContextT::~LiteRtDispatchDeviceContextT() {
   }
 
   if (thr_context_) {
-    auto thr_context_delete = southbound_.thr_functions().thr_context_delete;
+    auto thr_context_delete = southbound_.api().thr_context_delete;
     if (!thr_context_delete) {
       LITERT_LOG(LITERT_ERROR, "thr_context_delete not found");
     } else {
@@ -50,7 +50,7 @@ LiteRtDispatchDeviceContextT::Create(
     const litert::google_tensor::Southbound& southbound) {
   Ptr device_context(new LiteRtDispatchDeviceContextT(southbound));
 
-  auto thr_context_create = southbound.thr_functions().thr_context_create;
+  auto thr_context_create = southbound.api().thr_context_create;
   if (!thr_context_create) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                       "thr_context_create not found");
