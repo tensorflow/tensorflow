@@ -15,14 +15,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
@@ -152,14 +149,8 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
   const int buffer_size_bytes = n_elements * sizeof(data_type);
   VLOG(1) << "Using " << buffer_size_bytes << " bytes of shared memory";
 
-  std::vector<uint8_t> compiled_ptx =
-      se::CompileGpuAsm(
-          executor->GetDeviceDescription().cuda_compute_capability(),
-          std::string{kPTX}, PtxOptsFromDebugOptions(DebugOptions{}))
-          .value();
   std::unique_ptr<stream_executor::Kernel> kernel =
-      CreateKernel("dyn_shmem_kernel", /*num_args=*/3,
-                   reinterpret_cast<char*>(compiled_ptx.data()),
+      CreateKernel("dyn_shmem_kernel", /*num_args=*/3, kPTX,
                    /*cubin_data=*/{}, executor,
                    /*shared_mem_bytes=*/buffer_size_bytes)
           .value();
