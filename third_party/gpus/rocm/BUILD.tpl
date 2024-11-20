@@ -31,7 +31,6 @@ cc_library(
     srcs = ["rocm/lib/%{hip_lib}"],
     data = ["rocm/lib/%{hip_lib}"],
     includes = [
-        ".",
         "rocm/include",
     ],
     linkstatic = 1,
