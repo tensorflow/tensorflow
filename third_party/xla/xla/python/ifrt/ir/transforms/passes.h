@@ -140,6 +140,10 @@ void populateIfrtToVifrtPatterns(mlir::RewritePatternSet* patterns,
                                  mlir::TypeConverter* converter,
                                  mlir::MLIRContext* context);
 
+void populateVifrtToIfrtPatterns(mlir::RewritePatternSet* patterns,
+                                 mlir::TypeConverter* converter,
+                                 mlir::MLIRContext* context);
+
 // Generated definitions. This should be placed after all Pass creations.
 #define GEN_PASS_REGISTRATION
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"  // IWYU pragma: export

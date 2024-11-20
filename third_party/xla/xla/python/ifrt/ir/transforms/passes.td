@@ -469,4 +469,9 @@ def IfrtLegalizeToVifrtPass : Pass<"ifrt-legalize-to-vifrt", "mlir::ModuleOp"> {
   let dependentDialects = ["xla::ifrt::VifrtDialect"];
 }
 
+def VifrtLegalizeToIfrtPass : Pass<"vifrt-legalize-to-ifrt", "mlir::ModuleOp"> {
+  let summary = "Legalize VIFRT to IFRT.";
+  let dependentDialects = ["xla::ifrt::IfrtDialect"];
+}
+
 #endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_

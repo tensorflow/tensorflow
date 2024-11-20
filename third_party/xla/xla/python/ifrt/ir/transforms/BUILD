@@ -51,6 +51,7 @@ cc_library(
         "passes.cc",
         "spmd_expandable_interface_verification_pass.cc",
         "spmd_expansion_pass.cc",
+        "vifrt_legalize_to_ifrt_pass.cc",
     ],
     hdrs = [
         "map_ifrt_to_vifrt.h",
