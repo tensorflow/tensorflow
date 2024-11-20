@@ -68,6 +68,8 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
     mlir::arith::populateArithExpandOpsPatterns(patterns);
     mlir::arith::populateArithToLLVMConversionPatterns(type_converter,
                                                        patterns);
+    mlir::populateMathToLLVMConversionPatterns(type_converter, patterns,
+                                               /* approximateLog1p */ false);
     if (!this->is_amd_gpu_) {
       mlir::populateGpuToNVVMConversionPatterns(type_converter, patterns);
     } else {
@@ -79,7 +81,6 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
     mlir::cf::populateControlFlowToLLVMConversionPatterns(type_converter,
                                                           patterns);
     mlir::populateComplexToLLVMConversionPatterns(type_converter, patterns);
-    mlir::populateMathToLLVMConversionPatterns(type_converter, patterns);
 
     //  Setup target.
     if (!this->is_amd_gpu_) {
