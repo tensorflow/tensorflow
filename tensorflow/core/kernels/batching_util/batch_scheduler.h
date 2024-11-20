@@ -27,6 +27,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_SCHEDULER_H_
 
 #include <stddef.h>
+#include <sys/types.h>
 
 #include <algorithm>
 #include <atomic>
@@ -57,11 +58,13 @@ const absl::string_view kLowPriorityPaddingWithMaxBatchSizeAttrValue =
 const absl::string_view kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue =
     "low_priority_padding_with_next_allowed_batch_size";
 const absl::string_view kPriorityIsolationAttrValue = "priority_isolation";
+const absl::string_view kPriorityMergeAttrValue = "priority_merge";
 
 enum class MixedPriorityBatchingPolicy {
   kLowPriorityPaddingWithMaxBatchSize,
   kLowPriorityPaddingWithNextAllowedBatchSize,
-  kPriorityIsolation
+  kPriorityIsolation,
+  kPriorityMerge,
 };
 
 absl::StatusOr<MixedPriorityBatchingPolicy> GetMixedPriorityBatchingPolicy(
@@ -115,6 +118,9 @@ class TaskQueue {
   // Appends a task to the end of the queue with the given start time.
   void AddTask(std::unique_ptr<TaskType> task, uint64 start_time_micros);
 
+  // Adds a task to the front of the queue with the given start time.
+  void PrependTask(std::unique_ptr<TaskType> task, uint64 start_time_micros);
+
   // Removes a task from the front of the queue, i.e., the oldest task in the
   // queue.
   std::unique_ptr<TaskType> RemoveTask();
@@ -161,6 +167,17 @@ void TaskQueue<TaskType>::AddTask(std::unique_ptr<TaskType> task,
     mutex_lock l(mu_);
     size_ += task->size();
     tasks_.emplace_back(std::move(task), start_time_micros);
+    empty_.store(false);
+  }
+}
+
+template <typename TaskType>
+void TaskQueue<TaskType>::PrependTask(std::unique_ptr<TaskType> task,
+                                      uint64 start_time_micros) {
+  {
+    mutex_lock l(mu_);
+    size_ += task->size();
+    tasks_.emplace_front(std::move(task), start_time_micros);
     empty_.store(false);
   }
 }

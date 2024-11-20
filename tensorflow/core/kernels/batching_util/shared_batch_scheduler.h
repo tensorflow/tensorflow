@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_stats.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
@@ -48,12 +48,13 @@ limitations under the License.
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
-#include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tsl/platform/criticality.h"
 #include "tsl/platform/errors.h"
+#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace serving {
@@ -443,6 +444,9 @@ class Queue {
   absl::Status ScheduleWithoutOrEagerSplitImpl(std::unique_ptr<TaskType>* task)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Pads the open batch until it is full with low priority tasks.
+  void PadOpenBatchWithLowPriorityTasks() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // Closes the open batch residing at the back of std::deque, and inserts a
   // fresh open batch behind it.
   void StartNewBatch() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -534,7 +538,6 @@ class Queue {
   // Each element corresponds to a task to be dequeued. These tasks to be
   // consumed by `Queue<TaskType>::ProcessBatch` to either pad the high priority
   // batches below or form their own batch to be executed.
-  //
   TaskQueue<TaskType> low_priority_tasks_ TF_GUARDED_BY(mu_);
 
   // The enqueued batches for high priority input.
@@ -896,6 +899,80 @@ absl::Status Queue<TaskType>::ScheduleWithoutOrEagerSplitImpl(
 }
 
 template <typename TaskType>
+void Queue<TaskType>::PadOpenBatchWithLowPriorityTasks() {
+  std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
+
+  const bool should_pad = options_.enable_priority_queue &&
+                          options_.mixed_priority_batching_policy ==
+                              MixedPriorityBatchingPolicy::kPriorityMerge &&
+                          batches.size() == 1 && IsOpenBatchSchedulable();
+  if (!should_pad) {
+    return;
+  }
+
+  // If true, the next low priority task couldn't fit in the remaining space of
+  // the open batch.
+  bool out_of_space = false;
+
+  while (!low_priority_tasks_.empty() && !out_of_space) {
+    const int64_t open_batch_remaining_slot =
+        max_execution_batch_size() - batches.back()->size();
+    if (open_batch_remaining_slot <= 0) {
+      // Terminate early if the open batch is full. Remaining low priority tasks
+      // will be re-checked during the next batch formation opportunity.
+      return;
+    }
+
+    uint64 task_time = low_priority_tasks_.EarliestTaskStartTime().value();
+    std::unique_ptr<TaskType> task = low_priority_tasks_.RemoveTask();
+
+    const int64_t input_task_size = task->size();
+
+    std::vector<std::unique_ptr<TaskType>> output_tasks;
+
+    if (input_task_size <= open_batch_remaining_slot ||
+        !options_.enable_large_batch_splitting) {
+      // This is the fast path when input doesn't need to be split.
+      output_tasks.push_back(std::move(task));
+    } else {
+      absl::Status status = SplitInputBatchIntoSubtasks(&task, &output_tasks);
+      if (!status.ok()) {
+        LOG(ERROR) << "Failed to split low priority task: " << status;
+        continue;
+      }
+    }
+
+    for (int i = 0; i < output_tasks.size(); ++i) {
+      if (batches.back()->size() + output_tasks[i]->size() >
+          max_execution_batch_size()) {
+        low_priority_tasks_.PrependTask(std::move(output_tasks[i]), task_time);
+        out_of_space = true;
+        // NOTE: Future iterations of this loop will also hit this case but are
+        // needed to re-add all the unused tasks to the low priority queue.
+        continue;
+      }
+
+      if (batches.back()->empty()) {
+        open_batch_start_time_micros_ = task_time;
+      } else {
+        open_batch_start_time_micros_ =
+            std::min(open_batch_start_time_micros_, task_time);
+      }
+
+      tsl::profiler::TraceMeProducer trace_me(
+          [&output_tasks, i] {
+            return profiler::TraceMeEncode("ScheduleOutputTask",
+                                           {{"size", output_tasks[i]->size()}});
+          },
+          tsl::profiler::ContextType::kSharedBatchScheduler,
+          batches.back()->traceme_context_id());
+
+      batches.back()->AddTask(std::move(output_tasks[i]));
+    }
+  }
+}
+
+template <typename TaskType>
 absl::Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   const bool large_batch_splitting = options_.enable_large_batch_splitting;
   tsl::profiler::TraceMe trace_me([task, large_batch_splitting] {
@@ -1055,6 +1132,10 @@ Queue<TaskType>::ScheduleBatch() {
     mutex_lock l(mu_);
 
     std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
+
+    // Just in time merging of low priority tasks into the open batch.
+    PadOpenBatchWithLowPriorityTasks();
+
     // Consider closing the open batch at this time, to schedule it.
     if (batches.size() == 1 && IsOpenBatchSchedulable()) {
       // Support BatchPaddingPolicy::kBatchDown and
@@ -1245,20 +1326,51 @@ absl::Status Queue<TaskType>::SplitInputBatchIntoSubtasks(
 template <typename TaskType>
 bool Queue<TaskType>::IsOpenBatchSchedulable() const {
   Batch<TaskType>* open_batch = GetBatches().back().get();
-  if (open_batch->empty()) {
+
+  size_t effective_batch_size = open_batch->size();
+  uint64 effective_start_time_micros = open_batch_start_time_micros_;
+  int64_t effective_batch_timeout_micros = options_.batch_timeout_micros;
+  if (effective_batch_size == 0) {
+    // open_batch_start_time_micros_ is not valid for an empty batch.
+    effective_start_time_micros = env_->NowMicros();
+  }
+
+  if (options_.enable_priority_queue &&
+      options_.mixed_priority_batching_policy ==
+          MixedPriorityBatchingPolicy::kPriorityMerge) {
+    if (effective_batch_size == 0) {
+      effective_batch_timeout_micros =
+          options_.low_priority_queue_options.batch_timeout_micros;
+    }
+
+    effective_batch_size += low_priority_tasks_.size();
+
+    auto low_priority_earliest_start_time =
+        low_priority_tasks_.EarliestTaskStartTime();
+    if (low_priority_earliest_start_time.has_value()) {
+      effective_start_time_micros = std::min(effective_start_time_micros,
+                                             *low_priority_earliest_start_time);
+    }
+  }
+
+  if (effective_batch_size == 0) {
     return false;
   }
-  return closed_ || open_batch->size() >= max_execution_batch_size() ||
+
+  return closed_ || effective_batch_size >= max_execution_batch_size() ||
          env_->NowMicros() >=
-             open_batch_start_time_micros_ + options_.batch_timeout_micros;
+             effective_start_time_micros + effective_batch_timeout_micros;
 }
 
 template <typename TaskType>
 std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleLowPriorityBatch() {
   std::unique_ptr<Batch<TaskType>> batch_to_schedule;
-  if (!options_.enable_priority_queue || low_priority_tasks_.empty()) {
+  if (!options_.enable_priority_queue || low_priority_tasks_.empty() ||
+      options_.mixed_priority_batching_policy ==
+          MixedPriorityBatchingPolicy::kPriorityMerge) {
     // Return early if priority queue is disabled or there is no low priority
-    // task.
+    // task. Note that the priority_merge policy does all scheduling in
+    // ScheduleBatch().
     return batch_to_schedule;
   }
   if (env_->NowMicros() <

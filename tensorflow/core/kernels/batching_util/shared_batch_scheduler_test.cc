@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 #include "tensorflow/core/kernels/batching_util/fake_clock_env.h"
+#include "tensorflow/core/kernels/batching_util/input_split_metadata.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/cpu_info.h"
@@ -1355,7 +1356,11 @@ INSTANTIATE_TEST_SUITE_P(
             /*enable_input_batch_split=*/false,
             MixedPriorityBatchingPolicy::kPriorityIsolation),
         std::make_tuple(/*enable_input_batch_split=*/false,
-                        MixedPriorityBatchingPolicy::kPriorityIsolation)));
+                        MixedPriorityBatchingPolicy::kPriorityIsolation),
+        std::make_tuple(/*enable_input_batch_split=*/false,
+                        MixedPriorityBatchingPolicy::kPriorityMerge),
+        std::make_tuple(/*enable_input_batch_split=*/true,
+                        MixedPriorityBatchingPolicy::kPriorityMerge)));
 
 using SharedBatchSchedulerPriorityPolicyTest = SharedBatchSchedulerTest;
 
@@ -1624,6 +1629,484 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
                               tsl::criticality::Criticality::kSheddable));
   }
   EXPECT_EQ(queue_callback_counter, 2);
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       PriorityMergedLowPriorityTimeout) {
+  // With the kPriorityMerge strategy, a pure low priority batch can be
+  // scheduled after the timeout has elapsed.
+
+  test_util::FakeClockEnv env(Env::Default());
+  Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  int queue_callback_counter = 0;
+  auto queue_callback = [&queue_callback_counter](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_counter++;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(1, batch->num_tasks());
+    EXPECT_EQ(1, batch->task(0).size());
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env);
+
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kPriorityMerge;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+
+    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    EXPECT_EQ(queue_callback_counter, 0);
+
+    env.AdvanceByMicroseconds(2 * 1000 * 1000);
+    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    EXPECT_EQ(queue_callback_counter, 1);
+
+    start_teardown.Notify();
+  }
+
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       PriorityMergedHighPriorityTimeout) {
+  // With the kPriorityMerge strategy, a pure high priority batch can be
+  // scheduled after the timeout has elapsed.
+
+  test_util::FakeClockEnv env(Env::Default());
+  Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  int queue_callback_counter = 0;
+  auto queue_callback = [&queue_callback_counter](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_counter++;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(1, batch->num_tasks());
+    EXPECT_EQ(1, batch->task(0).size());
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env);
+
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kPriorityMerge;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+
+    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    EXPECT_EQ(queue_callback_counter, 0);
+
+    env.AdvanceByMicroseconds(2 * 1000 * 1000);
+    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    EXPECT_EQ(queue_callback_counter, 1);
+
+    start_teardown.Notify();
+  }
+
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       PriorityMergedLowPriorityCompleteBatch) {
+  // With the kPriorityMerge strategy, a pure low priority batch can be
+  // scheduled immediately if the max_execution_batch_size is hit.
+
+  test_util::FakeClockEnv env(Env::Default());
+  Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  int queue_callback_counter = 0;
+  auto queue_callback = [&queue_callback_counter](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_counter++;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(1, batch->num_tasks());
+    EXPECT_EQ(10, batch->task(0).size());
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env);
+
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kPriorityMerge;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+
+    // NOTE: The fake env clock is not advanced.
+    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+
+    EXPECT_EQ(queue_callback_counter, 1);
+
+    start_teardown.Notify();
+  }
+
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       PriorityMergedHighPriorityCompleteBatch) {
+  // With the kPriorityMerge strategy, a pure high priority batch can be
+  // scheduled immediately if the max_execution_batch_size is hit.
+
+  test_util::FakeClockEnv env(Env::Default());
+  Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  int queue_callback_counter = 0;
+  auto queue_callback = [&queue_callback_counter](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_counter++;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(1, batch->num_tasks());
+    EXPECT_EQ(10, batch->task(0).size());
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env);
+
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kPriorityMerge;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+
+    // NOTE: The fake env clock is not advanced.
+    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+
+    EXPECT_EQ(queue_callback_counter, 1);
+
+    start_teardown.Notify();
+  }
+
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       PriorityMergedMixedPriorityBatchAfterHighPriorityTimeout) {
+  // With the kPriorityMerge strategy, if there are both low and high priority
+  // tasks, the timeout will be measured from the earliest task (in this case a
+  // low priority task). After the timeout elapsed the high and low pri tasks
+  // will be concatenated together.
+
+  test_util::FakeClockEnv env(Env::Default());
+  Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  int queue_callback_counter = 0;
+  auto queue_callback = [&queue_callback_counter](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_counter++;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(2, batch->num_tasks());
+    EXPECT_EQ(3, batch->task(0).size());  // High pri task
+    EXPECT_EQ(2, batch->task(1).size());  // Low pri task
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env);
+
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kPriorityMerge;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+    env.AdvanceByMicroseconds(500 * 1000);
+    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+
+    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    EXPECT_EQ(queue_callback_counter, 0);
+
+    env.AdvanceByMicroseconds(501 * 1000);
+    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    EXPECT_EQ(queue_callback_counter, 1);
+
+    start_teardown.Notify();
+  }
+
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       PriorityMergedMixedPriorityBatchAfterLowPriorityTimeout) {
+  // With the kPriorityMerge strategy, if there are both low and high priority
+  // tasks, the timeout will be measured from the earliest task (in this case a
+  // low priority task). After the timeout elapsed the high and low pri tasks
+  // will be concatenated together.
+
+  test_util::FakeClockEnv env(Env::Default());
+  Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  int queue_callback_counter = 0;
+  auto queue_callback = [&queue_callback_counter](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_counter++;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(2, batch->num_tasks());
+    EXPECT_EQ(3, batch->task(0).size());  // High pri task
+    EXPECT_EQ(2, batch->task(1).size());  // Low pri task
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env);
+
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kPriorityMerge;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    env.AdvanceByMicroseconds(500 * 1000);
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+
+    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    EXPECT_EQ(queue_callback_counter, 0);
+
+    env.AdvanceByMicroseconds(501 * 1000);
+    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    EXPECT_EQ(queue_callback_counter, 1);
+
+    start_teardown.Notify();
+  }
+
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       PriorityMergedMixedPriorityCompleteBatch) {
+  // With the kPriorityMerge strategy, if there are enough of low + high
+  // priority inputs to form a complete batch, it will be scheduled immediately.
+
+  test_util::FakeClockEnv env(Env::Default());
+  Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  int queue_callback_counter = 0;
+  auto queue_callback = [&queue_callback_counter](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_counter++;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(3, batch->num_tasks());
+    EXPECT_EQ(5, batch->task(0).size());  // High pri task
+    EXPECT_EQ(2, batch->task(1).size());  // Low pri task
+    EXPECT_EQ(3, batch->task(2).size());  // Low pri task
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env);
+
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kPriorityMerge;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    env.AdvanceByMicroseconds(1 * 1000);
+    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    env.AdvanceByMicroseconds(1 * 1000);
+    TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+
+    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    EXPECT_EQ(queue_callback_counter, 1);
+
+    start_teardown.Notify();
+  }
+
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       PriorityMergedMixedPriorityBatchSplitting) {
+  // With the kPriorityMerge strategy, if there are too many low and high
+  // priority inputs, the high priority tasks and part of the low pri tasks will
+  // be scheduled immediately and the remaining low pri tasks overflowing the
+  // max execution batch size will be scheduled later.
+
+  test_util::FakeClockEnv env(Env::Default());
+  Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  int queue_callback_counter = 0;
+  auto queue_callback = [this, &queue_callback_counter](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_counter++;
+    ASSERT_TRUE(batch->IsClosed());
+
+    if (enable_input_batch_split()) {
+      if (queue_callback_counter == 1) {
+        ASSERT_EQ(2, batch->num_tasks());
+        EXPECT_EQ(6, batch->task(0).size());  // High pri task
+        EXPECT_EQ(4, batch->task(1).size());  // Low pri task (batch split)
+      }
+
+      if (queue_callback_counter == 2) {
+        ASSERT_EQ(1, batch->num_tasks());
+        EXPECT_EQ(3, batch->task(0).size());  // Low pri remainder
+      }
+    } else {
+      if (queue_callback_counter == 1) {
+        ASSERT_EQ(1, batch->num_tasks());
+        EXPECT_EQ(6, batch->task(0).size());  // High pri task
+      }
+
+      if (queue_callback_counter == 2) {
+        ASSERT_EQ(1, batch->num_tasks());
+        EXPECT_EQ(7, batch->task(0).size());  // Low pri remainder
+      }
+    }
+  };
+
+  {
+    std::shared_ptr<Scheduler> scheduler =
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env);
+
+    // Create a queue with the priority queue enabled.
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kPriorityMerge;
+    std::unique_ptr<Queue> queue =
+        CreateQueue(scheduler, queue_options, queue_callback);
+
+    TF_ASSERT_OK(ScheduleTask(7, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    env.AdvanceByMicroseconds(1 * 1000);
+    TF_ASSERT_OK(ScheduleTask(6, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+
+    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    EXPECT_EQ(queue_callback_counter, 1);
+
+    env.AdvanceByMicroseconds(2 * 1000 * 1000);
+    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    EXPECT_EQ(queue_callback_counter, 2);
+
+    start_teardown.Notify();
+  }
+
+  stop_teardown.Notify();
 }
 
 // Lazy split is to be removed. The mixed priority batching is only supported
