@@ -862,9 +862,21 @@ class CountDownAsyncValueRef {
       state_->status = status;
     }
 
+    // Note on the acq_rel barrier below:
+    // 1. It is an acquire barrier because we want to make sure that, if the
+    // current thread sets is_error above, then another thread who might set
+    // cnt to 0 will read an up-to-date is_error. An acquire barrier achieves
+    // this by forcing ordering between the is_error load and the fetch_sub.
+    // Note that there is a control dependence between the two, not a data
+    // dependence; we therefore need an acquire ("read") barrier to enforce
+    // ordering, otherwise the compiler or CPU might speculatively perform
+    // the second load before the first.
+    // 2. It is also a release barrier because all prior writes in the thread
+    // should be visible to other threads after the fetch_sub -- otherwise other
+    // threads might not see updated values.
+    bool is_complete = state_->cnt.fetch_sub(1, std::memory_order_acq_rel) == 1;
     // If this was the last count down, we have to decide if we set async value
     // to concrete or error state.
-    bool is_complete = state_->cnt.fetch_sub(1, std::memory_order_relaxed) == 1;
     if (ABSL_PREDICT_FALSE(is_complete)) {
       bool is_error = state_->is_error.load(std::memory_order_relaxed);
       if (ABSL_PREDICT_FALSE(is_error)) {
