@@ -66,13 +66,6 @@ absl::StatusOr<bool> GpuReduceScatterCombiner::Run(
     return ReduceScatterCombiner::Run(module, execution_threads);
   }
 
-  // Pass configuration heuristics are not enabled. Running parent pass code.
-  if (!module->config()
-           .debug_options()
-           .xla_gpu_enable_heuristic_pass_configuration()) {
-    return ReduceScatterCombiner::Run(module, execution_threads);
-  }
-
   // Combine as much as possible for pipelined collectives.
   int previous_combiner_threshold = combine_threshold_in_bytes_;
   combine_threshold_in_bytes_ = ComputeSuggestedCombinerThreshold(
