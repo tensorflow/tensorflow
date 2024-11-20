@@ -2274,15 +2274,14 @@ absl::Status CheckSameChannel(const HloInstruction* instr1,
     return Internal(
         "Expected to have the same channel id, actual channel ids are: %s "
         "(%d), %s (%d)",
-        instr1->ToString(), *instr1->channel_id(), instr2->ToString(),
-        *instr2->channel_id());
+        instr1->ToString(), instr1->channel_id().value_or(-1),
+        instr2->ToString(), instr2->channel_id().value_or(-1));
   }
   return absl::OkStatus();
 }
 
-// Checks if the given two instructions have the same is_host_transfer
-// attribute value. Instructions must be send/recv instructions or their
-// 'done' variant.
+// Checks if the given two instructions have the same is_host_transfer attribute
+// value. Instructions must be send/recv instructions or their 'done' variant.
 absl::Status CheckSameIsHostTransfer(const HloInstruction* instr1,
                                      const HloInstruction* instr2) {
   const HloSendRecvInstruction* send_recv1 =
