@@ -283,6 +283,8 @@ struct Options {
   // and gives MSA more flexibility in choosing the prefetch time and how much
   // data to prefetch.
   bool enable_window_prefetch = false;
+
+  MsaSortOrderOverrides msa_sort_order_overrides;
 };
 }  // namespace memory_space_assignment
 }  // namespace xla

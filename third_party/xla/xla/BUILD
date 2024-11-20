@@ -1363,8 +1363,8 @@ bzl_library(
     srcs = ["lit.bzl"],
     deps = [
         "//xla/tsl:tsl_bzl",
+        "//xla/tsl/platform/default:cuda_build_defs_bzl",
         "@bazel_skylib//lib:paths",
-        "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
     ],
 )
 

@@ -78,9 +78,9 @@ limitations under the License.
 
 // Include appropriate platform-dependent `TF_ASSIGN_OR_RETURN`.
 #if defined(PLATFORM_GOOGLE)
-#include "tsl/platform/google/statusor.h"  // IWYU pragma: export
+#include "xla/tsl/platform/google/statusor.h"  // IWYU pragma: export
 #else
-#include "tsl/platform/default/statusor.h"  // IWYU pragma: export
+#include "xla/tsl/platform/default/statusor.h"  // IWYU pragma: export
 #endif
 
 // TODO: b/323943471 - This macro should eventually be provided by Abseil.

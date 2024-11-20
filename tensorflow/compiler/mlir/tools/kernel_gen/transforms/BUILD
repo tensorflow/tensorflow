@@ -4,7 +4,7 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")

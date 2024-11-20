@@ -1,7 +1,7 @@
 """Provides a redirection point for platform specific implementations of starlark utilities."""
 
 load(
-    "@local_tsl//tsl/platform/default:build_config_root.bzl",
+    "@local_xla//xla/tsl/platform/default:build_config_root.bzl",
     _if_llvm_aarch32_available = "if_llvm_aarch32_available",
     _if_llvm_aarch64_available = "if_llvm_aarch64_available",
     _if_llvm_arm_available = "if_llvm_arm_available",

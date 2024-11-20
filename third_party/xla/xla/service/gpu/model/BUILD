@@ -1,13 +1,13 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
-load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//xla:xla.bzl", "xla_cc_test")
 
 # Libraries for performance modeling of HLO.
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

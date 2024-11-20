@@ -1489,7 +1489,7 @@ tf_cc_shared_library(
 
 # To avoid duplication, check that the C++ or python library does not depend on
 # the stream executor cuda plugins. Targets that want to use cuda APIs should
-# instead depend on the dummy plugins in @local_tsl//tsl/platform/default/build_config
+# instead depend on the dummy plugins in //tensorflow/compiler/xla/tsl/platform/default/build_config
 # and use header only targets.
 # TODO(ddunleavy): This seems completely broken. :tensorflow_cc depends on
 # cuda_platform from tf_additional_binary_deps and this doesn't break.

@@ -5,13 +5,13 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 # copybara:uncomment_end
 
 load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 load("@local_xla//xla:xla.bzl", "xla_py_proto_library")
 load("@local_xla//xla/service/cpu:build_defs.bzl", "runtime_copts")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
+load(
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_gen_op_wrapper_py", "tf_openmp_copts")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "filegroup", "get_compatible_with_portable")
@@ -351,17 +351,17 @@ cc_library(
 #         "@local_tsl//tsl/platform:thread_annotations",
 #         "@local_tsl//tsl/platform:tstring",
 #         "@local_tsl//tsl/platform:types",
-#         "@local_tsl//tsl/platform/default:cord",
-#         "@local_tsl//tsl/platform/default:env_time",
-#         "@local_tsl//tsl/platform/default:logging",
-#         "@local_tsl//tsl/platform/default:mutex",
-#         "@local_tsl//tsl/platform/default:types",
-#         "@local_tsl//tsl/platform/google:cord",
-#         "@local_tsl//tsl/platform/google:env_time",
-#         "@local_tsl//tsl/platform/google:logging",
-#         "@local_tsl//tsl/platform/google:mutex",
-#         "@local_tsl//tsl/platform/google:types",
-#         "@local_tsl//tsl/platform/windows:env_time",
+#         "@local_xla//xla/tsl/platform/default:cord",
+#         "@local_xla//xla/tsl/platform/default:env_time",
+#         "@local_xla//xla/tsl/platform/default:logging",
+#         "@local_xla//xla/tsl/platform/default:mutex",
+#         "@local_xla//xla/tsl/platform/default:types",
+#         "@local_xla//xla/tsl/platform/google:cord",
+#         "@local_xla//xla/tsl/platform/google:env_time",
+#         "@local_xla//xla/tsl/platform/google:logging",
+#         "@local_xla//xla/tsl/platform/google:mutex",
+#         "@local_xla//xla/tsl/platform/google:types",
+#         "@local_xla//xla/tsl/platform/windows:env_time",
 #         "//tensorflow/core/platform:bfloat16",
 #         "//tensorflow/core/platform:blocking_counter",
 #         "//tensorflow/core/platform:byte_order",

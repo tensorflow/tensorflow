@@ -115,8 +115,11 @@ MemoryBoundednessBufferIntervalComparator::GetTuple(
 
 DefaultCrossProgramPrefetchBufferIntervalComparator::
     DefaultCrossProgramPrefetchBufferIntervalComparator(
-        const HloLiveRange& hlo_live_range)
-    : BufferIntervalComparator(), hlo_live_range_(hlo_live_range) {}
+        const HloLiveRange& hlo_live_range,
+        const MsaSortOrderOverrides& msa_sort_order_overrides)
+    : BufferIntervalComparator(),
+      hlo_live_range_(hlo_live_range),
+      msa_sort_order_overrides_(msa_sort_order_overrides) {}
 
 std::string DefaultCrossProgramPrefetchBufferIntervalComparator::
     DescribeComparisonCriteria() const {
@@ -138,6 +141,10 @@ bool DefaultCrossProgramPrefetchBufferIntervalComparator::LessThan(
 DefaultCrossProgramPrefetchBufferIntervalComparator::ComparisonTuple
 DefaultCrossProgramPrefetchBufferIntervalComparator::GetTuple(
     const MsaBufferInterval& buffer_interval) {
+  int64_t priority =
+      MemorySpaceAssignmentUtils::GetBufferIntervalOverridePriority(
+          msa_sort_order_overrides_, buffer_interval,
+          /*is_cross_program_prefetch=*/true);
   auto sort_data_it = additional_sort_data_.find(buffer_interval.buffer);
   if (sort_data_it == additional_sort_data_.end()) {
     AdditionalSortData sort_data;
@@ -155,9 +162,10 @@ DefaultCrossProgramPrefetchBufferIntervalComparator::GetTuple(
             .first;
   }
 
-  return std::make_tuple(
-      -1 * buffer_interval.size, -1 * sort_data_it->second.cumulative_use_size,
-      sort_data_it->second.latest_use, buffer_interval.buffer->id());
+  return std::make_tuple(priority, -1 * buffer_interval.size,
+                         -1 * sort_data_it->second.cumulative_use_size,
+                         sort_data_it->second.latest_use,
+                         buffer_interval.buffer->id());
 }
 
 }  // namespace memory_space_assignment

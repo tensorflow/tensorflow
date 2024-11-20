@@ -3,12 +3,12 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
-load(
     "@local_xla//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
+)
+load(
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
 )
 load(
     "//tensorflow:tensorflow.bzl",

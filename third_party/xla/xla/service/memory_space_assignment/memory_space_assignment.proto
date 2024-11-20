@@ -105,6 +105,11 @@ message HloOperandFilter {
   // If operand of an instruction is a tuple and indexing into the tuple is
   // required.
   optional TupleShapeIndex tuple_index = 5;
+  // Regex to match the entire instruction HLO. The HLO string is constructed
+  // using default HloPrintOptions. Refer to the HloPrintOptions class in
+  // hlo_instruction.h to know more about the format of the HLO string used for
+  // matching.
+  optional string instruction_regex = 6;
 }
 
 // Options to override preferred prefetch time for an operand.
@@ -154,6 +159,8 @@ message HloPositionMatcher {
   optional int64 size_gte = 4;
   // Filters instructions with output size in bytes less or equal to a value.
   optional int64 size_lte = 5;
+  // Filters instructions that have a use that matches the filter.
+  optional HloOperandFilter hlo_use_filter = 6;
 }
 
 // Options to override preferred prefetch time for an operand.
@@ -176,6 +183,7 @@ message MsaSortOrderOverride {
   optional HloPositionMatcher hlo_position_matcher = 1;
   optional xla.memory_space_assignment.MsaSortOrderOverrideOptions
       override_options = 2;
+  optional bool apply_to_cross_program_prefetches = 3;
 }
 
 // Encloses chained override configs. The first config has highest precedence

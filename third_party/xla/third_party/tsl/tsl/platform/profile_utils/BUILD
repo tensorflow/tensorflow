@@ -14,7 +14,7 @@ package(
         "@local_xla//xla/stream_executor:__subpackages__",
         "//tensorflow/core/platform:__subpackages__",
         "//tsl:__pkg__",
-        "//tsl/platform/default:__pkg__",
+        "@local_xla//xla/tsl/platform/default:__pkg__",
     ]),
     licenses = ["notice"],
 )

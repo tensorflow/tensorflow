@@ -1315,12 +1315,12 @@ tsl_pybind_extension(
         "//xla/service/cpu:collectives_interface",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/distributed_runtime/preemption:preemption_sync_manager",
+        "//xla/tsl/platform/cloud:gcs_file_system",
         "//xla/tsl/python/lib/core:numpy",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform/cloud:gcs_file_system",
     ] + select({
         # gloo tcp transport only builds on linux
         "//xla/tsl:macos": [

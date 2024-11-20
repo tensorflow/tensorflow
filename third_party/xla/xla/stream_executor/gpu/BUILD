@@ -22,10 +22,6 @@ load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 load("//xla:xla.bzl", "xla_cc_test")
 load(
     "//xla/service/gpu:build_defs.bzl",
@@ -45,6 +41,10 @@ load(
     "internal_visibility",
     "tsl_copts",
     "tsl_gpu_library",
+)
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
 )
 
 package(

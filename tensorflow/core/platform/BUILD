@@ -14,7 +14,7 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load("//tensorflow:strict.default.bzl", "py_strict_test")
@@ -454,7 +454,7 @@ filegroup(
         "types.h",
         ":ctstring",
     ] + if_windows([
-        "@local_tsl//tsl/platform/windows:xla_cpu_runtime_srcs",
+        "@local_xla//xla/tsl/platform/windows:xla_cpu_runtime_srcs",
     ]),
 )
 
@@ -1400,13 +1400,13 @@ filegroup(
         "subprocess.h",
         "thread_annotations.h",
         ":base_hdrs",
+        # copybara:uncomment(GoogleFileSystem) "@local_xla//xla/tsl/platform/google:env.h",
         "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
         "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.h",
         "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
         "@local_tsl//tsl/platform:base_hdrs",
         "@local_tsl//tsl/platform:lib_hdrs",
-        # copybara:uncomment(GoogleFileSystem) "@local_tsl//tsl/platform/google:env.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -1669,7 +1669,7 @@ filegroup(
         "//tensorflow/core/platform/profile_utils:cpu_utils.h",
         "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
         "@local_tsl//tsl/platform:mobile_srcs_only_runtime",
-        "@local_tsl//tsl/platform/default:mobile_srcs_only_runtime",
+        "@local_xla//xla/tsl/platform/default:mobile_srcs_only_runtime",
     ] + if_not_fuchsia([
         "subprocess.h",
     ]) + tf_google_mobile_srcs_only_runtime(),

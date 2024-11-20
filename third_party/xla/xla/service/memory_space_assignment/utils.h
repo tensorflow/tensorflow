@@ -91,10 +91,20 @@ class MemorySpaceAssignmentUtils {
           instruction_schedule,
       int64_t earliest_prefetch_time, int64_t latest_prefetch_time);
 
+  static bool DoesCrossProgramPrefetchBufferMatchAnyFilter(
+      const MsaSortOrderOverrides& sort_order_overrides,
+      const MsaBufferInterval& buffer_interval);
+
   // Returns an integer representing the priority of a MsaBufferInterval during
   // assignment, a smaller number indicates a higher priority.
   static int64_t GetBufferIntervalOverridePriority(
       const MsaSortOrderOverrides& msa_sort_order_overrides,
+      const MsaBufferInterval& buffer_interval,
+      bool is_cross_program_prefetch = false);
+
+ private:
+  static bool DoesBufferIntervalMatchHloUseFilter(
+      const HloPositionMatcher& filter,
       const MsaBufferInterval& buffer_interval);
 };
 
