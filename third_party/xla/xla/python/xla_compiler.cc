@@ -1330,7 +1330,9 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
           })
       .def_prop_rw("use_shardy_partitioner",
                    &ExecutableBuildOptions::use_shardy_partitioner,
-                   &ExecutableBuildOptions::set_use_shardy_partitioner);
+                   &ExecutableBuildOptions::set_use_shardy_partitioner)
+      .def_prop_rw("process_index", &ExecutableBuildOptions::process_index,
+                   &ExecutableBuildOptions::set_process_index);
 
   nb::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type",
                                                nb::is_arithmetic());
