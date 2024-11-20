@@ -779,7 +779,6 @@ xla_cc_test(
     srcs = ["ptx_compiler_test.cc"],
     tags = [
         "cuda-only",
-        # TODO(b/343996893): Figure out whether msan reports a false positive or not.
         "nomsan",
     ],
     deps = [
