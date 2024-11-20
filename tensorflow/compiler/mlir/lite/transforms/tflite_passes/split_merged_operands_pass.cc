@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,68 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/split_merged_operands_pass.h"
+
 #include <vector>
 
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/StringMap.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
-
-// Background info:
-// Currently the model taken to MLIRConverter is frozen (all the variables have
-// been converted to constants, all the assign ops are gone, etc.). However,
-// TFLite has these variable tensors semantics. So the variable mapping from TF
-// to TFLite is actually broken here, we sort of hard-code the variable tensors
-// based on the actual ops using them, such as unidirectional_sequence_lstm.
-//
-// MLIRConverter also benefits from lots of typical compiler optimization like
-// merging same input values if they're identical. These optimizations are
-// desirable but not for those TFLite ops which have variable tensors as inputs.
-// Yes, they have identical input values, but those identical values are
-// "stateful", their values can change during invocations.
-//
-// A typical example is unidirectional_sequence_lstm have two variable tensor
-// inputs: activation state & cell state. They may have same initial values
-// (typical zero-initialized), but their values will be changed. So we cannot
-// just merge those values.
-//
-// This pass is more like short-term workaround since we don't have a good
-// variable representation right now.
-//
-// This pass will duplicate input values for those variable tensor inputs.
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_DEF_SPLITMERGEDOPERANDSPASS
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
-
-struct SplitMergedOperandsPass
-    : public impl::SplitMergedOperandsPassBase<SplitMergedOperandsPass> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SplitMergedOperandsPass)
-
-  void runOnOperation() override;
-};
-
 LogicalResult DuplicateValueIfNeeded(Operation* op,
                                      llvm::DenseSet<Value>* values,
                                      OpBuilder* builder) {
@@ -118,6 +77,7 @@ LogicalResult DuplicateValueIfNeeded(Operation* op,
   }
   return success();
 }
+}  // namespace
 
 void SplitMergedOperandsPass::runOnOperation() {
   llvm::DenseSet<Value> stateful_values;
@@ -133,13 +93,6 @@ void SplitMergedOperandsPass::runOnOperation() {
   }
 }
 
-}  // namespace
-
-/// Creates an instance of the TensorFlow Lite dialect SplitMergedOperands
-/// pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitMergedOperandsPass() {
-  return std::make_unique<SplitMergedOperandsPass>();
-}
 
 }  // namespace TFL
 }  // namespace mlir

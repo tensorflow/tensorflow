@@ -368,11 +368,6 @@ def RuntimeVerifyPass : Pass<"tfl-runtime-verify", "mlir::func::FuncOp"> {
   let constructor = "CreateRuntimeVerifyPass()";
 }
 
-def SplitMergedOperandsPass : Pass<"tfl-split-merged-operands", "mlir::func::FuncOp"> {
-  let summary = "Split merged stateful operands for tfl operations.";
-  let constructor = "CreateSplitMergedOperandsPass()";
-}
-
 def TrimFunctionsPass : Pass<"tfl-trim-funcs-tf", "mlir::ModuleOp"> {
   let summary = "Trim functions to restrict them to a specified allowlist prior to legalization to TensorFlow lite dialect";
   let constructor = "CreateTrimFunctionsPass()";

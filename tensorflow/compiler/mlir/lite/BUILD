@@ -562,6 +562,7 @@ cc_library(
         "transforms/tf_legalizations/analyze_variables_pass.h",
         "transforms/tf_legalizations/legalize_tensorlist_pass.h",
         "transforms/tf_legalizations/while_loop_outline_pass.h",
+        "transforms/tflite_passes/split_merged_operands_pass.h",
         "transforms/tflite_passes/unfold_large_splat_constants_pass.h",
         "transforms/unfreeze_global_constants.h",
         "utils/attribute_utils.h",
@@ -590,6 +591,7 @@ cc_library(
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_passes_inc_gen",
         ":tensorflow_lite_push_transpose_through_ewise_pass",
+        ":tensorflow_lite_split_merged_operands",
         ":tensorflow_lite_tf_unfreeze_global_tensors",
         ":tensorflow_lite_unfold_large_splat_constants",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
@@ -838,7 +840,8 @@ cc_library(
         "utils/stateful_ops_utils.h",
     ],
     deps = [
-        ":tensorflow_lite",
+        ":tensorflow_lite_ops",
+        ":utils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -993,6 +996,27 @@ cc_library(
 )
 
 cc_library(
+    name = "tensorflow_lite_split_merged_operands",
+    srcs = [
+        "transforms/tflite_passes/split_merged_operands_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tflite_passes/split_merged_operands_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":pass_options",
+        ":stateful_ops_utils",
+        ":tensorflow_lite_ops",
+        ":utils",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
         "transforms/dilated_conv.cc",
@@ -1018,7 +1042,6 @@ cc_library(
         "transforms/reduce_type_precision.cc",
         "transforms/reduce_while_operands.cc",
         "transforms/runtime_verify.cc",
-        "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
     ],
     hdrs = [

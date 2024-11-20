@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/analyze_variables_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/legalize_tensorlist_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/while_loop_outline_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/split_merged_operands_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/unfold_large_splat_constants_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
@@ -167,7 +168,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(
 std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareCompositeFunctionsPass();
 
 // Creates an instance of the TensorFlow Lite dialect SplitMergedOperandsPass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitMergedOperandsPass();
+inline std::unique_ptr<mlir::Pass> CreateSplitMergedOperandsPass() {
+  return Create<SplitMergedOperandsPass>();
+}
 
 // Creates an instance of the TensorFlow Lite dialect OptimizeFunctionalOpsPass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass();
@@ -341,6 +344,7 @@ inline void registerTensorFlowLitePasses() {
 
   // Other TFLite Passes
   Register<UnfoldLargeSplatConstantPass>();
+  Register<SplitMergedOperandsPass>();
 }
 
 }  // namespace TFL
