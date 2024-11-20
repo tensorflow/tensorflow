@@ -562,6 +562,7 @@ cc_library(
         "transforms/tf_legalizations/analyze_variables_pass.h",
         "transforms/tf_legalizations/legalize_tensorlist_pass.h",
         "transforms/tf_legalizations/while_loop_outline_pass.h",
+        "transforms/tflite_passes/unfold_large_splat_constants_pass.h",
         "transforms/unfreeze_global_constants.h",
         "utils/attribute_utils.h",
         "utils/utils.h",
@@ -590,6 +591,7 @@ cc_library(
         ":tensorflow_lite_passes_inc_gen",
         ":tensorflow_lite_push_transpose_through_ewise_pass",
         ":tensorflow_lite_tf_unfreeze_global_tensors",
+        ":tensorflow_lite_unfold_large_splat_constants",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
@@ -968,6 +970,29 @@ cc_library(
 )
 
 cc_library(
+    name = "tensorflow_lite_unfold_large_splat_constants",
+    srcs = [
+        "transforms/tflite_passes/unfold_large_splat_constants_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tflite_passes/unfold_large_splat_constants_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":tensorflow_lite_ops",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
         "transforms/dilated_conv.cc",
@@ -995,7 +1020,6 @@ cc_library(
         "transforms/runtime_verify.cc",
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
-        "transforms/unfold_large_splat_constant.cc",
     ],
     hdrs = [
         "ir/tfl_ops_interface.h.inc",

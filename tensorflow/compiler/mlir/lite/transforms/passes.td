@@ -383,12 +383,6 @@ def TrimFunctionsPass : Pass<"tfl-trim-funcs-tf", "mlir::ModuleOp"> {
   ];
 }
 
-def UnfoldLargeSplatConstantPass : Pass<"unfold-large-splat-constant", "mlir::ModuleOp"> {
-  let summary = "Unfold large splat constant tensors.";
-  let constructor = "CreateUnfoldLargeSplatConstantPass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
-}
-
 def IfOutlinePass : Pass<"tfl-if-outline", "mlir::ModuleOp"> {
   let summary = "Hoist if op regions into functions";
   let constructor = "CreateIfOutlinePass()";

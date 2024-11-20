@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/analyze_variables_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/legalize_tensorlist_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/while_loop_outline_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/unfold_large_splat_constants_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 
@@ -246,7 +247,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateGetArithmeticCountPass();
 
 // Creates unfold large constant pass, which will replace large splat constant
 // tensors with fill op.
-std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldLargeSplatConstantPass();
+inline std::unique_ptr<mlir::Pass> CreateUnfoldLargeSplatConstantPass() {
+  return Create<UnfoldLargeSplatConstantPass>();
+}
 
 // Creates a pass which is responsible for unfreezing mutable global tensors.
 inline std::unique_ptr<mlir::Pass> CreateUnfreezeMutableGlobalTensorsPass() {
@@ -335,6 +338,9 @@ inline void registerTensorFlowLitePasses() {
   Register<OptimizeBroadcastLikePass>();
   Register<PushTransposeThroughEwisePass>();
   Register<CanonicalizeBoundaryValuePass>();
+
+  // Other TFLite Passes
+  Register<UnfoldLargeSplatConstantPass>();
 }
 
 }  // namespace TFL
