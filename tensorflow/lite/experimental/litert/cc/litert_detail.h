@@ -37,11 +37,18 @@ inline T* ConstructAt(T* p, Args&&... args) {
 
 namespace internal {
 
-// Call function "get" and assert it returns an OK LiteRtStatus.
-template <typename... Args>
-void AssertOk(LiteRtStatus (*get)(Args...), Args... args) {
+// Call function "get" and assert it returns value equal to given expected
+// value.
+template <class F, class Expected, typename... Args>
+void AssertEq(F get, Expected expected, Args... args) {
   auto status = get(args...);
-  ABSL_CHECK_EQ(status, kLiteRtStatusOk);
+  ABSL_CHECK_EQ(status, expected);
+}
+
+// Call function "get" and assert it returns an OK LiteRtStatus.
+template <class F, typename... Args>
+void AssertOk(F get, Args... args) {
+  AssertEq(get, kLiteRtStatusOk, args...);
 }
 
 }  // namespace internal

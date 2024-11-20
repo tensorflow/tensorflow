@@ -158,6 +158,7 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
   }
 
   LiteRtUnrankedTensorType UnrankedTensorType() const {
+    internal::AssertEq([&]() { return TypeId(); }, kLiteRtUnrankedTensorType);
     LiteRtUnrankedTensorType unranked_tensor_type;
     internal::AssertOk(LiteRtGetUnrankedTensorType, Get(),
                        &unranked_tensor_type);
@@ -165,6 +166,7 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
   }
 
   class RankedTensorType RankedTensorType() const {
+    internal::AssertEq([&]() { return TypeId(); }, kLiteRtRankedTensorType);
     LiteRtRankedTensorType ranked_tensor_type;
     internal::AssertOk(LiteRtGetRankedTensorType, Get(), &ranked_tensor_type);
     return litert::RankedTensorType(ranked_tensor_type);
