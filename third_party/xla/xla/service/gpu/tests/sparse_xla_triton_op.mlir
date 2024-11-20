@@ -5,7 +5,7 @@
   instrShape = [16, 8]}>
 #dot_operand_a = #triton_gpu.dot_op<{opIdx=0, parent=#mma, kWidth=2}>
 #dot_operand_b = #triton_gpu.dot_op<{opIdx=1, parent=#mma, kWidth=2}>
-#dot_meta_enc = #triton_gpu.sparse_dot_meta<{parent=#mma}>
+#dot_meta_enc = #triton_xla.sparse_dot_meta<{parent=#mma}>
 
 module attributes {"triton_gpu.num-warps" = 4 : i32} {
   // CHECK-LABEL: sparse_xla_triton_op

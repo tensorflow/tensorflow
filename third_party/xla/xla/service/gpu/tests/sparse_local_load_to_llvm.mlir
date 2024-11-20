@@ -4,7 +4,7 @@
 #mma = #triton_gpu.nvidia_mma<{versionMajor = 2, warpsPerCTA = [2, 2], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [0, 1], instrShape = [16, 8]}>
 #dot_operand_a = #triton_gpu.dot_op<{opIdx=0, parent=#mma, kWidth=2}>
 #dot_operand_b = #triton_gpu.dot_op<{opIdx=1, parent=#mma, kWidth=2}>
-#dot_meta_enc = #triton_gpu.sparse_dot_meta<{parent=#mma}>
+#dot_meta_enc = #triton_xla.sparse_dot_meta<{parent=#mma}>
 
 module attributes {"triton_gpu.num-warps" = 4 : i32, "triton_gpu.target" = "cuda:80"} {
   // CHECK-LABEL: sparse_local_load_ampere
@@ -25,7 +25,7 @@ module attributes {"triton_gpu.num-warps" = 4 : i32, "triton_gpu.target" = "cuda
 
 #shared = #triton_gpu.shared<{vec = 1, perPhase=2, maxPhase=4, order = [1, 0], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [1, 0]}>
 #mma = #triton_gpu.nvidia_mma<{versionMajor = 3, warpsPerCTA = [4, 1], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [0, 1], instrShape = [16, 64, 16]}>
-#dot_meta_enc = #triton_gpu.sparse_dot_meta<{parent=#mma}>
+#dot_meta_enc = #triton_xla.sparse_dot_meta<{parent=#mma}>
 
 module attributes {"triton_gpu.num-warps" = 4 : i32, "triton_gpu.target" = "cuda:80"} {
   // CHECK-LABEL: sparse_local_load_hopper

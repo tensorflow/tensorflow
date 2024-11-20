@@ -8,9 +8,9 @@ module attributes {"triton_gpu.num-warps" = 4 : i32} {
   tt.func public @sparse_dot_fence(%A: tensor<64x32xf16, #lhs>, %B: !tt.memdesc<64x64xf16, #shared>, %meta: tensor<64x4xi16, #blocked>) {
     %C = arith.constant dense<0.000000e+00> : tensor<64x64xf32, #mma>
     %0 = triton_gpu.local_alloc %A : (tensor<64x32xf16, #lhs>) -> !tt.memdesc<64x32xf16, #shared>
-    %2 = triton_gpu.convert_layout %meta : tensor<64x4xi16, #blocked> -> tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #mma}>>
+    %2 = triton_gpu.convert_layout %meta : tensor<64x4xi16, #blocked> -> tensor<64x4xi16, #triton_xla.sparse_dot_meta<{parent = #mma}>>
     // CHECK: triton_nvidia_gpu.fence_async_shared
-    %3 = triton_xla.sparse_dot %0, %B, %C, %2 : !tt.memdesc<64x32xf16, #shared> meta tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #mma}>> * !tt.memdesc<64x64xf16, #shared> -> tensor<64x64xf32, #mma>
+    %3 = triton_xla.sparse_dot %0, %B, %C, %2 : !tt.memdesc<64x32xf16, #shared> meta tensor<64x4xi16, #triton_xla.sparse_dot_meta<{parent = #mma}>> * !tt.memdesc<64x64xf16, #shared> -> tensor<64x64xf32, #mma>
     tt.return
   }
 }

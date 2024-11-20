@@ -5,7 +5,7 @@
 #mma = #triton_gpu.nvidia_mma<{versionMajor = 2, warpsPerCTA = [4, 1]}>
 #dot_operand_a = #triton_gpu.dot_op<{opIdx = 0, parent = #mma, kWidth=2}>
 #dot_operand_b = #triton_gpu.dot_op<{opIdx = 1, parent = #mma, kWidth=2}>
-#dot_meta_enc = #triton_gpu.sparse_dot_meta<{parent=#mma}>
+#dot_meta_enc = #triton_xla.sparse_dot_meta<{parent=#mma}>
 
 module attributes {"triton_gpu.num-warps" = 4 : i32} {
   tt.func @sparse_dot_loop(%lb : index, %ub : index, %step : index,

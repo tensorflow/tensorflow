@@ -187,9 +187,9 @@ struct SparseAddEncoding
     Attribute a_meta_encoding = a_meta_type.getEncoding();
     if (!a_meta_encoding) return failure();
     Value a_meta = adaptor.getAMeta();
-    if (!isa<triton::gpu::SparseDotMetaEncodingAttr>(a_meta_encoding)) {
+    if (!isa<triton::xla::SparseDotMetaEncodingAttr>(a_meta_encoding)) {
       Attribute new_encoding =
-          triton::gpu::SparseDotMetaEncodingAttr::get(getContext(), d_encoding);
+          triton::xla::SparseDotMetaEncodingAttr::get(getContext(), d_encoding);
       auto tensor_type = RankedTensorType::get(
           a_meta_type.getShape(), a_meta_type.getElementType(), new_encoding);
       a_meta = rewriter.create<triton::gpu::ConvertLayoutOp>(
@@ -316,7 +316,7 @@ class SparseBlockedToMMA : public RewritePattern {
     auto meta_type = cast<RankedTensorType>(meta.getType());
     meta_type = RankedTensorType::get(
         meta_type.getShape(), meta_type.getElementType(),
-        triton::gpu::SparseDotMetaEncodingAttr::get(context, mma_enc));
+        triton::xla::SparseDotMetaEncodingAttr::get(context, mma_enc));
     meta = rewriter.create<ConvertLayoutOp>(meta.getLoc(), meta_type, meta);
 
     // convert dot instruction
@@ -362,7 +362,7 @@ struct SparseRemoveLayoutConversionPass
       }
       auto dst_type = cast<RankedTensorType>(op.getType());
       // Skip if the destination is not a sparse dot meta.
-      if (!isa<triton::gpu::SparseDotMetaEncodingAttr>(
+      if (!isa<triton::xla::SparseDotMetaEncodingAttr>(
               dst_type.getEncoding())) {
         return;
       }
@@ -397,7 +397,7 @@ class SparseLocalLoadToLLVM
     if (!isa<triton::gpu::SharedEncodingAttr>(src_ty.getEncoding()))
       return failure();
     RankedTensorType dst_ty = op.getType();
-    if (!isa<triton::gpu::SparseDotMetaEncodingAttr>(dst_ty.getEncoding()))
+    if (!isa<triton::xla::SparseDotMetaEncodingAttr>(dst_ty.getEncoding()))
       return failure();
     return lowerSharedToSparseMeta(op, adaptor, rewriter);
   }
@@ -408,7 +408,7 @@ class SparseLocalLoadToLLVM
       triton::gpu::LocalLoadOp op, triton::gpu::LocalLoadOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const {
     auto loc = op.getLoc();
-    auto load_sparse_encoding = cast<triton::gpu::SparseDotMetaEncodingAttr>(
+    auto load_sparse_encoding = cast<triton::xla::SparseDotMetaEncodingAttr>(
         cast<RankedTensorType>(op.getResult().getType()).getEncoding());
 
     // Calculate tile size as number of mask elements (4xi4).
@@ -493,7 +493,7 @@ class SparseLocalLoadToLLVM
 bool IsLocalLoadWithSparseEncoding(Operation *op) {
   auto local_load = mlir::dyn_cast<triton::gpu::LocalLoadOp>(op);
   if (!local_load) return false;
-  return isa<triton::gpu::SparseDotMetaEncodingAttr>(
+  return isa<triton::xla::SparseDotMetaEncodingAttr>(
       local_load.getType().getEncoding());
 }
 
@@ -518,7 +518,7 @@ struct SparseLocalLoadToLLVMPass
                            arith::ArithDialect>();
     target.addDynamicallyLegalOp<triton::gpu::LocalLoadOp>(
         [](triton::gpu::LocalLoadOp op) {
-          return !isa<triton::gpu::SparseDotMetaEncodingAttr>(
+          return !isa<triton::xla::SparseDotMetaEncodingAttr>(
               op.getType().getEncoding());
         });
     LowerToLLVMOptions option(context);

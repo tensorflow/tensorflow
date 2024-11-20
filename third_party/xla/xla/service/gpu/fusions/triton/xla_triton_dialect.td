@@ -27,6 +27,7 @@ def XlaTritonDialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::triton::xla";
+  let useDefaultAttributePrinterParser = 1;
 }
 
 #endif // XLA_SERVICE_GPU_FUSIONS_TRITON_XLA_TRITON_DIALECT_TD_

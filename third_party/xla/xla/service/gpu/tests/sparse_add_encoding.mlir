@@ -18,7 +18,7 @@ module {
     // CHECK-NEXT: %[[C:.*]] = arith.constant dense<0.000000e+00>
     // CHECK-SAME:   : tensor<64x64xf32, #[[BLOCKED4x4]]> 
     // CHECK-NEXT: %[[META:.*]] = arith.constant dense<13107>
-    // CHECK-SAME:   : tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #[[BLOCKED4x4]]}>> 
+    // CHECK-SAME:   : tensor<64x4xi16, #triton_xla.sparse_dot_meta<{parent = #[[BLOCKED4x4]]}>> 
     %a = arith.constant dense<1.00e+00> : tensor<64x32xf16>
     %b = arith.constant dense<2.00e+00> : tensor<64x64xf16>
     %c = arith.constant dense<0.00e+00> : tensor<64x64xf32>
@@ -26,7 +26,7 @@ module {
 
     // CHECK-NEXT: %[[D:.*]] = triton_xla.sparse_dot %[[A]], %[[B]], %[[C]], %[[META]]
     // CHECK-SAME:   : tensor<64x32xf16, #triton_gpu.dot_op<{opIdx = 0, parent = #[[BLOCKED4x4]]}>>
-    // CHECK-SAME:     meta tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #[[BLOCKED4x4]]}>>
+    // CHECK-SAME:     meta tensor<64x4xi16, #triton_xla.sparse_dot_meta<{parent = #[[BLOCKED4x4]]}>>
     // CHECK-SAME:     * tensor<64x64xf16, #triton_gpu.dot_op<{opIdx = 1, parent = #[[BLOCKED4x4]]}>>
     // CHECK-SAME:     -> tensor<64x64xf32, #[[BLOCKED4x4]]>
     %d = triton_xla.sparse_dot %a, %b, %c, %meta
