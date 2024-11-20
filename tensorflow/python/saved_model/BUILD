@@ -2,7 +2,7 @@
 # TensorFlow SavedModel.
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 
 package(
@@ -1076,33 +1076,3 @@ tf_py_strict_test(
         "//tensorflow/python/trackable:base",
     ],
 )
-
-# copybara:uncomment_begin(google-only)
-#
-# tf_cc_test(
-#     name = "lineage_logging_test",
-#     srcs = ["lineage_logging_test.cc"],
-#     deps = [
-#         "//learning/brain/contrib/hub/public:client",
-#         "//learning/brain/contrib/hub/public:handle",
-#         "//learning/brain/contrib/hub/public/testing:in_process_tfhub_env",
-#         "//learning/brain/contrib/hub/public/testing:testdata_util",
-#         "//learning/metadata/cataline/proto:ml_data_processes_cc_proto",
-#         "//learning/metadata/lineage_log/cc:lineage_log",
-#         "//learning/metadata/lineage_log/cc:mock_process_client",
-#         "//learning/metadata/lineage_log/cc:test_util",
-#         "//tensorflow/core/platform:protobuf",
-#         "//tensorflow/core/protobuf:for_core_protos_cc",
-#         "@local_tsl//tsl/platform:env",
-#         "@local_tsl//tsl/platform:path",
-#         "//third_party/protobuf",
-#         "@com_google_absl//absl/log:check",
-#         "@com_google_absl//absl/memory",
-#         "@com_google_absl//absl/status",
-#         "@com_google_absl//absl/strings",
-#         "@com_google_absl//absl/strings:string_view",
-#         "@com_google_googletest//:gtest_main",
-#     ],
-# )
-#
-# copybara:uncomment_end

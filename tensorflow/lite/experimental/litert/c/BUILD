@@ -57,7 +57,6 @@ cc_library(
         ":litert_op_code",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
-        "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/schema:schema_fbs",
