@@ -2227,7 +2227,9 @@ std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota,
 std::optional<GatherScatterParallelDims> GetGatherScatterBatchParallelDims(
     const HloInstruction* operand, const HloInstruction* indices,
     absl::Span<const int64_t> slice_sizes, int64_t index_vector_dim,
-    absl::Span<const int64_t> index_map, const CallGraph& call_graph) {
+    absl::Span<const int64_t> index_map,
+    absl::Span<const int64_t> indices_batching_dims,
+    const CallGraph& call_graph) {
   // Try to identify if there's a dimension in the indices that is monotonically
   // increasing with a Iota across a certain dimension. This would mean that the
   // access in the relative dimension indexed by this index in the operand is
@@ -2299,8 +2301,11 @@ std::optional<GatherScatterParallelDims> GetGatherScatterBatchParallelDims(
     if (absl::c_linear_search(indices_parallel_dims, indices_parallel_dim)) {
       return std::nullopt;
     }
-    // Considered parallel only if the slice is of size 1 over the operand.
-    if (slice_sizes[operand_parallel_dim] == 1) {
+    // Considered parallel if (1) the slice size is 1 over the operand, (2) it
+    // is not explicit batching dimension, and (3) the dimension size is the
+    // same in the operand and the indices.
+    if (slice_sizes[operand_parallel_dim] == 1 &&
+        !absl::c_linear_search(indices_batching_dims, indices_parallel_dim)) {
       if (operand->shape().dimensions(operand_parallel_dim) !=
           indices->shape().dimensions(indices_parallel_dim)) {
         return std::nullopt;
@@ -2324,10 +2329,9 @@ std::optional<GatherScatterParallelDims> GetGatherParallelBatchDims(
   const HloInstruction* indices = hlo.operand(1);
   absl::Span<const int64_t> slice_sizes = hlo.gather_slice_sizes();
   const auto& dnums = hlo.gather_dimension_numbers();
-  int64_t index_vector_dim = dnums.index_vector_dim();
-  const auto& index_map = dnums.start_index_map();
   return GetGatherScatterBatchParallelDims(
-      operand, indices, slice_sizes, index_vector_dim, index_map, call_graph);
+      operand, indices, slice_sizes, dnums.index_vector_dim(),
+      dnums.start_index_map(), dnums.start_indices_batching_dims(), call_graph);
 }
 
 std::optional<GatherScatterParallelDims> GetScatterParallelBatchDims(
@@ -2340,10 +2344,10 @@ std::optional<GatherScatterParallelDims> GetScatterParallelBatchDims(
   std::vector<int64_t> slice_sizes =
       GetScatterSliceSize(scatter->scatter_operands()[0]->shape(),
                           scatter->scatter_updates()[0]->shape(), dnums);
-  int64_t index_vector_dim = dnums.index_vector_dim();
-  const auto& index_map = dnums.scatter_dims_to_operand_dims();
   return GetGatherScatterBatchParallelDims(
-      operand, indices, slice_sizes, index_vector_dim, index_map, call_graph);
+      operand, indices, slice_sizes, dnums.index_vector_dim(),
+      dnums.scatter_dims_to_operand_dims(),
+      dnums.scatter_indices_batching_dims(), call_graph);
 }
 
 static absl::InlinedVector<int64_t, 1>

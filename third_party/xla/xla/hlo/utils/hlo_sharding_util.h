@@ -489,7 +489,9 @@ std::optional<int64_t> GetFirstMergeableDimForSortOperand(
 std::optional<GatherScatterParallelDims> GetGatherScatterBatchParallelDims(
     const HloInstruction* operand, const HloInstruction* indices,
     absl::Span<const int64_t> slice_sizes, int64_t index_vector_dim,
-    absl::Span<const int64_t> index_map, const CallGraph& call_graph);
+    absl::Span<const int64_t> index_map,
+    absl::Span<const int64_t> indices_batching_dims,
+    const CallGraph& call_graph);
 
 // Returns the sharding of an output of an instruction. Some instructions have
 // special handling like Outfeed and this function takes care of those.
