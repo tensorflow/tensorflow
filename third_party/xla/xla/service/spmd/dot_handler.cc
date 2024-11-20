@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -1905,8 +1906,12 @@ absl::StatusOr<HloInstruction*> PartitionBaseCase(
            hlo.hlo()->opcode() == HloOpcode::kBitcast ||
            hlo.hlo()->opcode() == HloOpcode::kTranspose;
   };
-  bool should_skip_windowed_einsum = false;
-  if (options.disable_ag_rewrite_for_multiple_consumers) {
+  const auto& attrs = original_hlo->frontend_attributes().map();
+  bool should_skip_windowed_einsum =
+      attrs.contains(kXlaCollectiveMatmulAttr) &&
+      attrs.at(kXlaCollectiveMatmulAttr) == kXlaCollectiveMatmulNone;
+  if (!should_skip_windowed_einsum &&
+      options.disable_ag_rewrite_for_multiple_consumers) {
     auto lhs_operand =
         has_reshape_operand(lhs) ? lhs.hlo()->operand(0) : lhs.hlo();
     auto rhs_operand =

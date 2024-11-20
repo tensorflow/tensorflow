@@ -77,6 +77,7 @@ extern const char kXlaCollectiveMatmulAttr[];
 extern const char kXlaCollectiveMatmulLhsAg[];
 extern const char kXlaCollectiveMatmulRhsAg[];
 extern const char kXlaCollectiveMatmulRs[];
+extern const char kXlaCollectiveMatmulNone[];
 
 // XLA frontend attribute for specifying the number of sends this recv should
 // match.

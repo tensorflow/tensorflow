@@ -69,6 +69,8 @@ const char kXlaCollectiveMatmulRhsAg[] = "rhs_ag";
 
 const char kXlaCollectiveMatmulRs[] = "rs";
 
+const char kXlaCollectiveMatmulNone[] = "none";
+
 const char kXlaMultiRecvCountAttr[] = "_xla_multi_recv_count";
 
 }  // namespace xla
