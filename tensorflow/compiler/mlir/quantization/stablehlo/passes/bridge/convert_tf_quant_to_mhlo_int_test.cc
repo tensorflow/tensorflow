@@ -48,9 +48,10 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
@@ -77,7 +78,7 @@ class ConvertTfQuantToMhloIntTest : public Test {
     xla::CpuClientOptions options;
     options.asynchronous = false;
     options.cpu_device_count = 1;
-    TF_ASSERT_OK_AND_ASSIGN(pjrt_client_, xla::GetTfrtCpuClient(options));
+    TF_ASSERT_OK_AND_ASSIGN(pjrt_client_, xla::GetXlaPjrtCpuClient(options));
     device_ = pjrt_client_->addressable_devices().front();
     CHECK(device_);
   }
