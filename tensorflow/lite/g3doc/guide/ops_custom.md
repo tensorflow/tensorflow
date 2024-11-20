@@ -305,13 +305,6 @@ namespace my_namespace::my_custom_op {
       };
     return my_custom_op;
   }
-
-  const TfLiteRegistration* MyCustomOpRegistration() {
-    static const TfLiteRegistration my_custom_op {
-      .registration_external = MyCustomOpRegistrationExternal();
-    };
-    return my_custom_op;
-  }
 }  // namespace my_namespace
       </pre></p>
     </section>
@@ -340,13 +333,6 @@ static TfLiteOperator* MyCustomOpCreate() {
 const TfLiteOperator* MyCustomOpRegistrationExternal() {
   // Singleton instance, intentionally never destroyed.
   static const TfLiteOperator* my_custom_op = MyCustomOpCreate();
-  return my_custom_op;
-}
-
-const TfLiteRegistration MyCustomOpRegistration() {
-  static const TfLiteRegistration my_custom_op {
-    .registration_external = MyCustomOpRegistrationExternal();
-  };
   return my_custom_op;
 }
       </pre></p>
@@ -420,13 +406,6 @@ namespace atan_op {
       };
     return atan_op;
   }
-
-  const TfLiteRegistration AtanOpRegistration() {
-    static const TfLiteRegistration atan_op {
-      .registration_external = AtanOpRegistrationExternal();
-    };
-    return atan_op;
-  }
 }  // namespace atan_op
       </pre></p>
     </section>
@@ -482,13 +461,6 @@ const TfLiteOperator* AtanOpRegistrationExternal() {
   static const TfLiteOperator* atan_op = AtanOpCreate();
   return atan_op;
 }
-
-const TfLiteRegistration AtanOpRegistration() {
-  static const TfLiteRegistration atan_op {
-    .registration_external = AtanOpRegistrationExternal();
-  };
-  return atan_op;
-}
       </pre></p>
     </section>
   </devsite-selector>
@@ -535,8 +507,6 @@ The `MutableOpResolver` and `BuiltinOpResolver` classes are derived from
 class MutableOpResolver : public OpResolver {
  public:
   MutableOpResolver();  // Constructs an initially empty op resolver.
-  void AddBuiltin(tflite::BuiltinOperator op, const TfLiteRegistration* registration) = 0;
-  void AddCustom(const char* op, const TfLiteRegistration* registration) = 0;
   void AddAll(const MutableOpResolver& other);
   ...
 };
@@ -561,7 +531,7 @@ and call `AddCustom` (before you pass the resolver to the
 ```c++
 tflite::ops::builtin::MutableOpResolver resolver;
 resolver.AddAll(tflite::ops::builtin::BuiltinOpResolver());
-resolver.AddCustom("Atan", AtanOpRegistration());
+tflite::AddOp(&resolver, AtanOpRegistration());
 ```
 
 If the set of builtin ops is deemed to be too large, a new `OpResolver` could be
