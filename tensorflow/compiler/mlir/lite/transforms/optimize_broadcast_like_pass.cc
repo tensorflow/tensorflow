@@ -243,6 +243,7 @@ LogicalResult ConvertResultsBroadcastableBatchMatMulShapeOp::RewriteOp(
                                                        get_broadcasted_shape);
 }
 
+#include "tensorflow/compiler/mlir/lite/transforms/generated_optimize_broadcast_like.inc"
 }  // namespace
 
 void OptimizeBroadcastLikePass::runOnOperation() {
@@ -252,10 +253,8 @@ void OptimizeBroadcastLikePass::runOnOperation() {
   patterns.add<ConvertResultsBroadcastableShapeOp>(func.getContext());
   patterns.add<ConvertResultsBroadcastableBatchMatMulShapeOp>(
       func.getContext());
-  if (failed(
-          applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
-    return signalPassFailure();
-  }
+  TFL::populateWithGenerated(patterns);
+  (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
 }
 
 }  // namespace TFL

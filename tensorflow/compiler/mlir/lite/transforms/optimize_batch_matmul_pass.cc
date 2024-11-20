@@ -203,9 +203,8 @@ struct ConvertBatchMatMulOpToReduceSum
     return false;
   }
 };
-}  // namespace
-
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize_batch_matmul.inc"
+}  // namespace
 
 void OptimizeBatchMatmulPass::runOnOperation() {
   auto func = getOperation();

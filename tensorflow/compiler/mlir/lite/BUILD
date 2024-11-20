@@ -76,6 +76,7 @@ td_library(
         "transforms/legalize_patterns.td",
         "transforms/legalize_variables.td",
         "transforms/optimize_batch_matmul.td",
+        "transforms/optimize_broadcast_like_patterns.td",
         "transforms/optimize_patterns.td",
         "transforms/post_quantize_patterns.td",
         "transforms/prepare_patterns.td",
@@ -281,6 +282,20 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "optimize_broadcast_like_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "transforms/generated_optimize_broadcast_like.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/optimize_broadcast_like_patterns.td",
+    deps = [":tensorflow_lite_patterns_td_files"],
+)
+
+gentbl_cc_library(
     name = "tensorflow_lite_quantize_inc_gen",
     compatible_with = get_compatible_with_portable(),
     tbl_outs = [
@@ -364,6 +379,7 @@ cc_library(
     hdrs = ["utils/utils.h"],
     deps = [
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -1205,6 +1221,7 @@ cc_library(
         "transforms/optimize_broadcast_like_pass.h",
     ],
     deps = [
+        ":optimize_broadcast_like_inc_gen",
         ":pass",
         ":pass_options",
         ":tensorflow_lite_ops",
