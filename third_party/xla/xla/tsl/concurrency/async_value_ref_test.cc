@@ -925,9 +925,9 @@ TEST(AsyncValueRefTest, CountDownSuccess) {
 }
 
 TEST(AsyncValueRefTest, CountDownError) {
-  AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
+  CountDownAsyncValueRef<int32_t> count_down_ref(2);
+  AsyncValueRef<int32_t> ref = count_down_ref.AsRef();
 
-  CountDownAsyncValueRef<int32_t> count_down_ref(ref, 2);
   CountDownAsyncValueRef<int32_t> count_down_ref_copy = count_down_ref;
 
   EXPECT_FALSE(ref.IsAvailable());

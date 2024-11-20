@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/dot_thunk.h"
 
-#include <atomic>
 #include <complex>
 #include <cstdint>
 #include <functional>
@@ -284,7 +283,7 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
     return static_cast<uint8_t*>(ptr) + stride * index;
   };
 
-  auto state = std::make_shared<ExecuteState>(batch_size_);
+  ExecuteState state(batch_size_);
 
   auto dispatch = [&](auto type_tag) {
     for (int64_t i = 0; i < batch_size_; ++i) {
@@ -292,7 +291,7 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
           params.intra_op_threadpool, batch_ptr(out, out_stride, i),
           batch_ptr(lhs, lhs_stride, i), batch_ptr(rhs, rhs_stride, i),
           matmul_dims.m, matmul_dims.n, matmul_dims.k, transpose_lhs,
-          transpose_rhs, [state] { state->Notify(); });
+          transpose_rhs, [state]() mutable { state.CountDown(); });
     }
   };
 
@@ -321,7 +320,7 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
           primitive_util::LowercasePrimitiveTypeName(element_type));
   }
 
-  return state->event;
+  return state.AsRef();
 }
 
 }  // namespace xla::cpu

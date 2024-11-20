@@ -844,16 +844,24 @@ class AsyncValuePtr {
 template <typename T>
 class CountDownAsyncValueRef {
  public:
+  CountDownAsyncValueRef() = default;
+
   CountDownAsyncValueRef(AsyncValueRef<T> ref, int64_t cnt)
-      : ref_(ref), state_(std::make_shared<State>(cnt)) {
-    DCHECK(ref.IsConstructed()) << "AsyncValue must be in constructed state";
-    DCHECK(ref.IsUnavailable()) << "AsyncValue must be in unavailable state";
+      : state_(std::make_shared<State>(std::move(ref), cnt)) {
+    DCHECK(state_->ref.IsConstructed()) << "AsyncValue must be constructed";
+    DCHECK(state_->ref.IsUnavailable()) << "AsyncValue must be unavailable";
     DCHECK_GT(cnt, 0) << "Count must be positive";
+  }
+
+  template <typename... Args>
+  explicit CountDownAsyncValueRef(Args&&... args, int64_t cnt)
+      : CountDownAsyncValueRef(
+            MakeConstructedAsyncValueRef<T>(std::forward<Args>(args)...), cnt) {
   }
 
   // Drops the count by one and returns true if async value became available.
   bool CountDown(const absl::Status& status = absl::OkStatus()) {
-    DCHECK(ref_.IsUnavailable()) << "AsyncValue must be in unavailable state";
+    DCHECK(state_->ref.IsUnavailable()) << "AsyncValue must be unavailable";
     DCHECK_GT(state_->cnt.load(), 0) << "Count must be positive";
 
     if (ABSL_PREDICT_FALSE(!status.ok())) {
@@ -869,10 +877,10 @@ class CountDownAsyncValueRef {
       bool is_error = state_->is_error.load(std::memory_order_relaxed);
       if (ABSL_PREDICT_FALSE(is_error)) {
         absl::MutexLock lock(&state_->mutex);
-        ref_.SetError(state_->status);
+        state_->ref.SetError(state_->status);
         return true;
       } else {
-        ref_.SetStateConcrete();
+        state_->ref.SetStateConcrete();
         return true;
       }
     }
@@ -880,17 +888,37 @@ class CountDownAsyncValueRef {
     return false;
   }
 
- private:
-  struct State {
-    explicit State(int64_t cnt) : cnt(cnt), is_error(false) {}
+  AsyncValueRef<T> AsRef() const { return state_->ref; }
+  AsyncValuePtr<T> AsPtr() const { return state_->ref.AsPtr(); }
 
-    std::atomic<int64_t> cnt;
-    std::atomic<bool> is_error;
+  // Returns true if count down was called with an error.
+  bool is_error() const {
+    return state_->is_error.load(std::memory_order_relaxed);
+  }
+
+ private:
+  // Align all atomic counters to a cache line boundary to avoid false
+  // sharing between multiple worker threads.
+  static constexpr size_t kAtomicAlignment =
+#if defined(__cpp_lib_hardware_interference_size)
+      std::hardware_destructive_interference_size;
+#else
+      64;
+#endif
+
+  struct State {
+    State(AsyncValueRef<T> ref, int64_t cnt)
+        : ref(std::move(ref)), cnt(cnt), is_error(false) {}
+
+    AsyncValueRef<T> ref;
+
+    alignas(kAtomicAlignment) std::atomic<int64_t> cnt;
+    alignas(kAtomicAlignment) std::atomic<bool> is_error;
+
     absl::Mutex mutex;
     absl::Status status ABSL_GUARDED_BY(mutex);
   };
 
-  AsyncValueRef<T> ref_;
   std::shared_ptr<State> state_;
 };
 
