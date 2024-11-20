@@ -1641,14 +1641,17 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
+  Notification first_batch_processed;
   int queue_callback_counter = 0;
-  auto queue_callback = [&queue_callback_counter](
+  auto queue_callback = [&queue_callback_counter, &first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
     queue_callback_counter++;
     ASSERT_TRUE(batch->IsClosed());
     ASSERT_EQ(1, batch->num_tasks());
     EXPECT_EQ(1, batch->task(0).size());
+    EXPECT_EQ(queue_callback_counter, 1);
+    first_batch_processed.Notify();
   };
 
   {
@@ -1677,7 +1680,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     EXPECT_EQ(queue_callback_counter, 0);
 
     env.AdvanceByMicroseconds(2 * 1000 * 1000);
-    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    first_batch_processed.WaitForNotification();
     EXPECT_EQ(queue_callback_counter, 1);
 
     start_teardown.Notify();
@@ -1696,14 +1699,17 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
+  Notification first_batch_processed;
   int queue_callback_counter = 0;
-  auto queue_callback = [&queue_callback_counter](
+  auto queue_callback = [&queue_callback_counter, &first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
     queue_callback_counter++;
     ASSERT_TRUE(batch->IsClosed());
     ASSERT_EQ(1, batch->num_tasks());
     EXPECT_EQ(1, batch->task(0).size());
+    EXPECT_EQ(queue_callback_counter, 1);
+    first_batch_processed.Notify();
   };
 
   {
@@ -1732,7 +1738,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     EXPECT_EQ(queue_callback_counter, 0);
 
     env.AdvanceByMicroseconds(2 * 1000 * 1000);
-    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    first_batch_processed.WaitForNotification();
     EXPECT_EQ(queue_callback_counter, 1);
 
     start_teardown.Notify();
@@ -1751,14 +1757,15 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
-  int queue_callback_counter = 0;
-  auto queue_callback = [&queue_callback_counter](
+  Notification first_batch_processed;
+  auto queue_callback = [&first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
-    queue_callback_counter++;
     ASSERT_TRUE(batch->IsClosed());
     ASSERT_EQ(1, batch->num_tasks());
     EXPECT_EQ(10, batch->task(0).size());
+    EXPECT_FALSE(first_batch_processed.HasBeenNotified());
+    first_batch_processed.Notify();
   };
 
   {
@@ -1784,9 +1791,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
                               tsl::criticality::Criticality::kSheddable));
 
     // NOTE: The fake env clock is not advanced.
-    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
-
-    EXPECT_EQ(queue_callback_counter, 1);
+    first_batch_processed.WaitForNotification();
 
     start_teardown.Notify();
   }
@@ -1804,14 +1809,15 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
-  int queue_callback_counter = 0;
-  auto queue_callback = [&queue_callback_counter](
+  Notification first_batch_processed;
+  auto queue_callback = [&first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
-    queue_callback_counter++;
     ASSERT_TRUE(batch->IsClosed());
     ASSERT_EQ(1, batch->num_tasks());
     EXPECT_EQ(10, batch->task(0).size());
+    EXPECT_FALSE(first_batch_processed.HasBeenNotified());
+    first_batch_processed.Notify();
   };
 
   {
@@ -1837,9 +1843,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
                               tsl::criticality::Criticality::kCriticalPlus));
 
     // NOTE: The fake env clock is not advanced.
-    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
-
-    EXPECT_EQ(queue_callback_counter, 1);
+    first_batch_processed.WaitForNotification();
 
     start_teardown.Notify();
   }
@@ -1859,8 +1863,9 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
+  Notification first_batch_processed;
   int queue_callback_counter = 0;
-  auto queue_callback = [&queue_callback_counter](
+  auto queue_callback = [&queue_callback_counter, &first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
     queue_callback_counter++;
@@ -1868,6 +1873,8 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     ASSERT_EQ(2, batch->num_tasks());
     EXPECT_EQ(3, batch->task(0).size());  // High pri task
     EXPECT_EQ(2, batch->task(1).size());  // Low pri task
+    EXPECT_FALSE(first_batch_processed.HasBeenNotified());
+    first_batch_processed.Notify();
   };
 
   {
@@ -1899,7 +1906,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     EXPECT_EQ(queue_callback_counter, 0);
 
     env.AdvanceByMicroseconds(501 * 1000);
-    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    first_batch_processed.WaitForNotification();
     EXPECT_EQ(queue_callback_counter, 1);
 
     start_teardown.Notify();
@@ -1920,8 +1927,9 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
+  Notification first_batch_processed;
   int queue_callback_counter = 0;
-  auto queue_callback = [&queue_callback_counter](
+  auto queue_callback = [&queue_callback_counter, &first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
     queue_callback_counter++;
@@ -1929,6 +1937,8 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     ASSERT_EQ(2, batch->num_tasks());
     EXPECT_EQ(3, batch->task(0).size());  // High pri task
     EXPECT_EQ(2, batch->task(1).size());  // Low pri task
+    EXPECT_FALSE(first_batch_processed.HasBeenNotified());
+    first_batch_processed.Notify();
   };
 
   {
@@ -1960,7 +1970,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     EXPECT_EQ(queue_callback_counter, 0);
 
     env.AdvanceByMicroseconds(501 * 1000);
-    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    first_batch_processed.WaitForNotification();
     EXPECT_EQ(queue_callback_counter, 1);
 
     start_teardown.Notify();
@@ -1979,16 +1989,17 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
-  int queue_callback_counter = 0;
-  auto queue_callback = [&queue_callback_counter](
+  Notification first_batch_processed;
+  auto queue_callback = [&first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
-    queue_callback_counter++;
     ASSERT_TRUE(batch->IsClosed());
     ASSERT_EQ(3, batch->num_tasks());
     EXPECT_EQ(5, batch->task(0).size());  // High pri task
     EXPECT_EQ(2, batch->task(1).size());  // Low pri task
     EXPECT_EQ(3, batch->task(2).size());  // Low pri task
+    EXPECT_FALSE(first_batch_processed.HasBeenNotified());
+    first_batch_processed.Notify();
   };
 
   {
@@ -2019,8 +2030,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     TF_ASSERT_OK(ScheduleTask(5, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
 
-    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
-    EXPECT_EQ(queue_callback_counter, 1);
+    first_batch_processed.WaitForNotification();
 
     start_teardown.Notify();
   }
@@ -2040,33 +2050,40 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
 
+  Notification first_batch_processed, second_batch_processed;
   int queue_callback_counter = 0;
-  auto queue_callback = [this, &queue_callback_counter](
+  auto queue_callback = [this, &queue_callback_counter, &first_batch_processed,
+                         &second_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
     queue_callback_counter++;
     ASSERT_TRUE(batch->IsClosed());
+    EXPECT_LE(queue_callback_counter, 2);
 
     if (enable_input_batch_split()) {
       if (queue_callback_counter == 1) {
         ASSERT_EQ(2, batch->num_tasks());
         EXPECT_EQ(6, batch->task(0).size());  // High pri task
         EXPECT_EQ(4, batch->task(1).size());  // Low pri task (batch split)
+        first_batch_processed.Notify();
       }
 
       if (queue_callback_counter == 2) {
         ASSERT_EQ(1, batch->num_tasks());
         EXPECT_EQ(3, batch->task(0).size());  // Low pri remainder
+        second_batch_processed.Notify();
       }
     } else {
       if (queue_callback_counter == 1) {
         ASSERT_EQ(1, batch->num_tasks());
         EXPECT_EQ(6, batch->task(0).size());  // High pri task
+        first_batch_processed.Notify();
       }
 
       if (queue_callback_counter == 2) {
         ASSERT_EQ(1, batch->num_tasks());
         EXPECT_EQ(7, batch->task(0).size());  // Low pri remainder
+        second_batch_processed.Notify();
       }
     }
   };
@@ -2097,10 +2114,11 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
                               tsl::criticality::Criticality::kCriticalPlus));
 
     Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    first_batch_processed.WaitForNotification();
     EXPECT_EQ(queue_callback_counter, 1);
 
     env.AdvanceByMicroseconds(2 * 1000 * 1000);
-    Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
+    second_batch_processed.WaitForNotification();
     EXPECT_EQ(queue_callback_counter, 2);
 
     start_teardown.Notify();
