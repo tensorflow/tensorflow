@@ -189,6 +189,7 @@ def xla_test(
         data = [],
         backend_tags = {},
         backend_args = {},
+        backend_kwargs = {},
         **kwargs):
     """Generates cc_test targets for the given XLA backends.
 
@@ -251,6 +252,9 @@ def xla_test(
         use for that target.
       backend_args: A dict mapping backend name to list of additional args to
         use for that target.
+      backend_kwargs: A dict mapping backend name to list of additional keyword
+        arguments to pass to native.cc_test. Only use for kwargs that don't have a
+        dedicated argument, like setting per-backend flaky or timeout attributes.
       **kwargs: Additional keyword arguments to pass to native.cc_test.
     """
 
@@ -273,6 +277,7 @@ def xla_test(
         this_backend_tags = ["xla_%s" % backend]
         this_backend_copts = []
         this_backend_args = backend_args.get(backend, [])
+        this_backend_kwargs = dict(kwargs) | backend_kwargs.get(backend, {})
         this_backend_data = []
         backend_deps = []
         if backend == "cpu":
@@ -317,7 +322,7 @@ def xla_test(
             args = args + this_backend_args,
             deps = deps + backend_deps,
             data = data + this_backend_data,
-            **kwargs
+            **this_backend_kwargs
         )
 
         test_names.append(test_name)

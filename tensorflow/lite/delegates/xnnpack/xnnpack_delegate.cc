@@ -1137,6 +1137,9 @@ class Subgraph {
          delegate.f16_input_tensor_for_dequant_f32_tensor_) {
       const uint32_t f16_xnnpack_id = tflite_tensor_to_xnnpack[f16_input_id];
       tflite_tensor_to_xnnpack[f32_output_id] = f16_xnnpack_id;
+      TFLITE_LOG(tflite::TFLITE_LOG_INFO,
+                 "Rewiring f32_tflite_id=%i, f16_tflite_id=%i (xnnpack_id=%i).",
+                 f32_output_id, f16_input_id, f16_xnnpack_id);
     }
 
     // Create a set of quasi-static tensors for VisitNode function
@@ -7182,7 +7185,6 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
   static_unpacked_data_map_[subgraph_index].clear();
   static_unpack_nodes_.clear();
   static_sparse_weights_.clear();
-  f16_input_tensor_for_dequant_f32_tensor_.clear();
   variable_holder_.ClearTensorIdToGlobalId();
 
   TfLiteIntArray* execution_plan = nullptr;

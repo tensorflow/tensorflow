@@ -57,10 +57,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
-#if GOOGLE_CUDA
-#include "xla/stream_executor/gpu/gpu_types.h"
-#endif  // GOOGLE_CUDA
-
 namespace xla {
 namespace gpu {
 namespace {
