@@ -2507,15 +2507,15 @@ bool ShardingPropagation::InferShardingFromOperands(
       const GatherDimensionNumbers& dnums =
           instruction->gather_dimension_numbers();
       if (!dnums.operand_batching_dims().empty()) {
-        hlo_sharding_util::GatherScatterParallelDims explict_batch_dims;
-        explict_batch_dims.operand_parallel_dims.assign(
+        hlo_sharding_util::GatherScatterParallelDims explicit_batch_dims;
+        explicit_batch_dims.operand_parallel_dims.assign(
             dnums.operand_batching_dims().begin(),
             dnums.operand_batching_dims().end());
-        explict_batch_dims.indices_parallel_dims.assign(
+        explicit_batch_dims.indices_parallel_dims.assign(
             dnums.start_indices_batching_dims().begin(),
             dnums.start_indices_batching_dims().end());
         changed |= InferGatherParallelShardingFromOperands(
-            instruction, explict_batch_dims, may_combine_partial_sharding);
+            instruction, explicit_batch_dims, may_combine_partial_sharding);
       }
 
       if (hlo_sharding_util::IsSpatiallyPartitioned(instruction->operand(1))) {
@@ -2562,15 +2562,15 @@ bool ShardingPropagation::InferShardingFromOperands(
       const ScatterDimensionNumbers& dnums =
           instruction->scatter_dimension_numbers();
       if (!dnums.input_batching_dims().empty()) {
-        hlo_sharding_util::GatherScatterParallelDims explict_batch_dims;
-        explict_batch_dims.operand_parallel_dims.assign(
+        hlo_sharding_util::GatherScatterParallelDims explicit_batch_dims;
+        explicit_batch_dims.operand_parallel_dims.assign(
             dnums.input_batching_dims().begin(),
             dnums.input_batching_dims().end());
-        explict_batch_dims.indices_parallel_dims.assign(
+        explicit_batch_dims.indices_parallel_dims.assign(
             dnums.scatter_indices_batching_dims().begin(),
             dnums.scatter_indices_batching_dims().end());
         changed |= InferScatterParallelShardingFromOperands(
-            instruction, explict_batch_dims, may_combine_partial_sharding);
+            instruction, explicit_batch_dims, may_combine_partial_sharding);
       }
 
       const int64_t operand_count = scatter.scatter_operand_count();
