@@ -325,8 +325,13 @@ cc_library(
     hdrs = ["value_range.h"],
     deps = [
         ":constant_value",
+        "//xla:comparison_util",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -334,12 +339,17 @@ xla_cc_test(
     name = "value_range_test",
     srcs = ["value_range_test.cc"],
     deps = [
+        ":constant_value",
         ":hlo_module_config",
         ":value_range",
+        "//xla/hlo/analysis:hlo_alias_analysis",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
