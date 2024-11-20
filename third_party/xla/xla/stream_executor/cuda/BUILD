@@ -400,7 +400,6 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/platform:initialize",
         "//xla/tsl/cuda:cublas",
         "//xla/tsl/cuda:cublas_lt",
