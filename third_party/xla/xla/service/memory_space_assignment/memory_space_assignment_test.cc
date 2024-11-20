@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
 
+#include <stdbool.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -1307,6 +1309,64 @@ ENTRY entry {
   int negate4_index = find_index(negate4);
   int copy_done_index = find_index(add0->operand(0));
   EXPECT_LT(copy_done_index, negate4_index);
+}
+
+// Added for b/372277844#comment15 that was introduced when the allocation
+// failed while trying to convert a sync slice to an async one, but not due to
+// the conversion itself. In this case, associated buffer with the slice
+// (p0_copy) is too large to fit in alternate memory. Hence, the
+// allocation_values will be empty in retries, previously causing a crash in
+// MsaAlgorithm::GetInefficientAllocationSites().
+TEST_F(MemorySpaceAssignmentTest, SyncReplacementLargeBuffers) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[10,2,3]{2,1,0} parameter(0)
+  p1 = f32[10,2,3]{2,1,0} parameter(1)
+  p0_copy = f32[10,2,3]{2,1,0} copy(p0)
+  negate0 = negate(p1)
+  negate1 = negate(negate0)
+  negate2 = negate(negate1)
+  negate3 = negate(negate2)
+  negate4 = negate(negate3)
+  negate5 = negate(negate4)
+  slice = f32[1,2,3] slice(p0_copy), slice={[0:1], [0:2], [0:3]}
+  ROOT concat = f32[11,2,3] concatenate(negate5, slice), dimensions={0}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 64;
+  options.max_retries = 2;
+  options.enable_sync_copy_replacement = false;
+  options.enable_sync_slice_replacement = true;
+  options.is_async_slice_implemented_fn =
+      [](const HloInstruction* instruction) { return true; };
+  // Force the allocation of p0_copy to fail for the concat use with only
+  // AllocationResult::kFailRequiresUncommit. This means that while the slice
+  // replacement was successful, the algorithm must retry one more time without
+  // sync slice conversion target, so that maybe other constraints of the
+  // allocation can be satisfied.
+  options.allocation_result_modifier_testing_fn =
+      [](const AllocationRequest& request, AllocationResult& result) {
+        if (request.allocation_value->defining_instruction()->name() ==
+                "p0_copy" &&
+            request.use->hlo_use.instruction->name() == "concat") {
+          result = AllocationResult::kFailRequiresUncommit;
+        }
+      };
+  // options.inefficient_use_to_copy_ratio must be greater than 0 and the cost
+  // model must be set to trigger the inefficient allocation site logic.
+  options.inefficient_use_to_copy_ratio = 1.0;
+  AssignMemorySpaceUsingCostAnalysis(module.get(), options);
+
+  HloInstruction* p0_copy = FindInstruction(module.get(), "p0_copy");
+  ASSERT_NE(p0_copy, nullptr);
+  HloInstruction* concat = FindInstruction(module.get(), "concat");
+  ASSERT_NE(concat, nullptr);
+  EXPECT_THAT(concat->operand(1), op::Slice(p0_copy));
 }
 
 // Added for b/376869021, which surfaced when we tried to convert a sync slice

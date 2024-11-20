@@ -2006,7 +2006,10 @@ MsaAlgorithm::GetInefficientAllocationSites(
     return {};
   }
 
-  int64_t size = allocation_values.at(0).size();
+  int64_t size = 0;
+  if (!allocation_values.empty()) {
+    size = allocation_values.at(0).size();
+  }
 
   if (VLOG_IS_ON(3)) {
     for (const AllocationValue& allocation_value : allocation_values) {
