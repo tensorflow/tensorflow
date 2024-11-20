@@ -25,9 +25,10 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
-#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -84,7 +85,7 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorIncoorectType) {
   options.asynchronous = true;
   options.cpu_device_count = 1;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetTfrtCpuClient(options));
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetXlaPjrtCpuClient(options));
   std::vector<int32_t> data(1, 0);
   xla::Shape shape = xla::ShapeUtil::MakeShape(xla::S32, {1});
   TF_ASSERT_OK_AND_ASSIGN(
@@ -163,7 +164,8 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientIncorrectType) {
   xla::CpuClientOptions options;
   options.asynchronous = true;
   options.cpu_device_count = 1;
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetTfrtCpuClient(options));
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetXlaPjrtCpuClient(options));
+
   TF_ASSERT_OK(SetPjRtClientInTFGlobalResourceManager(DEVICE_CPU,
                                                       std::move(pjrt_client)));
 
