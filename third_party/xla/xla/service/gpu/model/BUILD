@@ -980,13 +980,7 @@ xla_test(
     name = "hlo_op_profiler_test",
     srcs = ["hlo_op_profiler_test.cc"],
     # TODO(b/372714955): Fix the memory leak!
-    backend_args = if_google(
-        {
-            "gpu_h100": ["--heap_check="],
-            "gpu_a100": ["--heap_check="],
-        },
-        {},
-    ),
+    args = if_google(["--heap_check="]),
     backends = ["gpu"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     deps = [
