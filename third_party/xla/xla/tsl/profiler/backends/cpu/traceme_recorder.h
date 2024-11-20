@@ -35,7 +35,7 @@ namespace internal {
 // Static atomic so TraceMeRecorder::Active can be fast and non-blocking.
 // Modified by TraceMeRecorder singleton when tracing starts/stops.
 TF_EXPORT extern std::atomic<int> g_trace_level;
-TF_EXPORT extern uint64_t g_trace_filter_bitmap;
+TF_EXPORT extern std::atomic<uint64_t> g_trace_filter_bitmap;
 
 }  // namespace internal
 
