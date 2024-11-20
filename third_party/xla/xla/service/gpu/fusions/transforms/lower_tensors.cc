@@ -264,14 +264,15 @@ Value PermutePairsInVector(Value vector, mlir::ImplicitLocOpBuilder& b) {
   // it actually requires the strides to be 1.
   auto ty = mlir::cast<mlir::VectorType>(vector.getType());
   int size = ty.getNumElements();
-  Value result = vector;
-  for (int i = 0; i < size; i += 2) {
-    auto v0 = b.create<mlir::vector::ExtractOp>(vector, i);
-    auto v1 = b.create<mlir::vector::ExtractOp>(vector, i + 1);
-    result = b.create<mlir::vector::InsertOp>(v1, result, i);
-    result = b.create<mlir::vector::InsertOp>(v0, result, i + 1);
+  mlir::SmallVector<int64_t> shuffle_mask;
+  shuffle_mask.reserve(size);
+  constexpr int kElementsPerByte = 2;
+  for (int i = 0; i < size; i += kElementsPerByte) {
+    for (int j = 0; j < kElementsPerByte; ++j) {
+      shuffle_mask.push_back(kElementsPerByte - j - 1);
+    }
   }
-  return result;
+  return b.create<mlir::vector::ShuffleOp>(ty, vector, vector, shuffle_mask);
 }
 
 struct RewriteTransferRead
