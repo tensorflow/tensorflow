@@ -152,10 +152,10 @@ absl::Status DecomposeCollectivePermute(
   send->add_frontend_attributes(attributes);
   send->set_metadata(metadata);
 
-  HloInstruction* recv_done =
-      computation->AddInstruction(HloInstruction::CreateRecvDone(recv));
-  HloInstruction* send_done =
-      computation->AddInstruction(HloInstruction::CreateSendDone(send));
+  HloInstruction* recv_done = computation->AddInstruction(
+      HloInstruction::CreateRecvDone(recv, channel_id));
+  HloInstruction* send_done = computation->AddInstruction(
+      HloInstruction::CreateSendDone(send, channel_id));
 
   // We will add control dependence to represent how we want to order Send/Recv
   // and other collective operations. Here we only add the necessary control

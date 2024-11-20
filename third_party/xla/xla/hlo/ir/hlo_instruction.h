@@ -1191,16 +1191,13 @@ class HloInstruction {
   // another computation that has the same channel id. If is_host_transfer is
   // true, then this Send operation transfers data to the host.
   static std::unique_ptr<HloInstruction> CreateSend(
-      HloInstruction* operand, HloInstruction* token, int64_t channel_id,
-      bool is_host_transfer = false);
+      HloInstruction* operand, HloInstruction* token,
+      std::optional<int64_t> channel_id, bool is_host_transfer = false);
 
   // Blocks until data transfer for the Send instruction (operand) is complete.
   // The operand must be kSend.
   static std::unique_ptr<HloInstruction> CreateSendDone(
-      HloInstruction* operand, bool is_host_transfer = false);
-  // Similar to the above, but the operand doesn't have to be a kSend.
-  static std::unique_ptr<HloInstruction> CreateSendDone(
-      HloInstruction* operand, int64_t channel_id,
+      HloInstruction* operand, std::optional<int64_t> channel_id,
       bool is_host_transfer = false);
 
   // Creates an asynchronous receive instruction with the given channel id,
@@ -1209,16 +1206,13 @@ class HloInstruction {
   // is_host_transfer is true, then this Recv operation transfers data from the
   // host.
   static std::unique_ptr<HloInstruction> CreateRecv(
-      const Shape& shape, HloInstruction* token, int64_t channel_id,
-      bool is_host_transfer = false);
+      const Shape& shape, HloInstruction* token,
+      std::optional<int64_t> channel_id, bool is_host_transfer = false);
 
   // Blocks until data transfer for the Recv instruction (operand) is complete
   // and returns the receive buffer. The operand must be kRecv.
   static std::unique_ptr<HloInstruction> CreateRecvDone(
-      HloInstruction* operand, bool is_host_transfer = false);
-  // Similar to the above, but the operand doesn't have to be a kRecv.
-  static std::unique_ptr<HloInstruction> CreateRecvDone(
-      HloInstruction* operand, int64_t channel_id,
+      HloInstruction* operand, std::optional<int64_t> channel_id,
       bool is_host_transfer = false);
 
   // Creates a slice instruction, where the operand is sliced by the given

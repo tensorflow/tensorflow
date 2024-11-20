@@ -777,10 +777,9 @@ bool HloTopKInstruction::IdenticalSlowPath(
   return k() == casted_other.k() && largest() == casted_other.largest();
 }
 
-HloSendRecvInstruction::HloSendRecvInstruction(HloOpcode opcode,
-                                               const Shape& shape,
-                                               int64_t channel_id,
-                                               bool is_host_transfer)
+HloSendRecvInstruction::HloSendRecvInstruction(
+    HloOpcode opcode, const Shape& shape, std::optional<int64_t> channel_id,
+    bool is_host_transfer)
     : HloChannelInstruction(opcode, shape, channel_id),
       is_host_transfer_(is_host_transfer) {}
 
@@ -810,7 +809,7 @@ bool HloSendRecvInstruction::IdenticalSlowPathIgnoringChannelIdValues(
 // Send instruction produces a tuple of {aliased operand, U32 context}.
 HloSendInstruction::HloSendInstruction(HloInstruction* operand,
                                        HloInstruction* token,
-                                       int64_t channel_id,
+                                       std::optional<int64_t> channel_id,
                                        bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kSend,
@@ -826,21 +825,20 @@ std::unique_ptr<HloInstruction> HloSendInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
-  return std::make_unique<HloSendInstruction>(
-      new_operands[0], new_operands[1], *channel_id(), is_host_transfer());
+  return std::make_unique<HloSendInstruction>(new_operands[0], new_operands[1],
+                                              channel_id(), is_host_transfer());
 }
 
 HloSendDoneInstruction::HloSendDoneInstruction(HloSendInstruction* operand,
                                                bool is_host_transfer)
     : HloSendRecvInstruction(HloOpcode::kSendDone, ShapeUtil::MakeTokenShape(),
-                             CHECK_NOTNULL(operand)->channel_id().value(),
-                             is_host_transfer) {
+                             operand->channel_id(), is_host_transfer) {
   AppendOperand(operand);
 }
 
-HloSendDoneInstruction::HloSendDoneInstruction(HloInstruction* operand,
-                                               int64_t channel_id,
-                                               bool is_host_transfer)
+HloSendDoneInstruction::HloSendDoneInstruction(
+    HloInstruction* operand, std::optional<int64_t> channel_id,
+    bool is_host_transfer)
     : HloSendRecvInstruction(HloOpcode::kSendDone, ShapeUtil::MakeTokenShape(),
                              channel_id, is_host_transfer) {
   AppendOperand(operand);
@@ -856,14 +854,14 @@ HloSendDoneInstruction::CloneWithNewOperandsImpl(
     return std::make_unique<HloSendDoneInstruction>(send, is_host_transfer());
   }
 
-  return std::make_unique<HloSendDoneInstruction>(
-      new_operands[0], channel_id().value(), is_host_transfer());
+  return std::make_unique<HloSendDoneInstruction>(new_operands[0], channel_id(),
+                                                  is_host_transfer());
 }
 
 // Recv instruction produces a tuple of {receive buffer, U32 context}.
 HloRecvInstruction::HloRecvInstruction(const Shape& shape,
                                        HloInstruction* token,
-                                       int64_t channel_id,
+                                       std::optional<int64_t> channel_id,
                                        bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kRecv,
@@ -878,7 +876,7 @@ std::unique_ptr<HloInstruction> HloRecvInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return std::make_unique<HloRecvInstruction>(
-      ShapeUtil::GetTupleElementShape(shape, 0), new_operands[0], *channel_id(),
+      ShapeUtil::GetTupleElementShape(shape, 0), new_operands[0], channel_id(),
       is_host_transfer());
 }
 
@@ -889,13 +887,13 @@ HloRecvDoneInstruction::HloRecvDoneInstruction(HloRecvInstruction* operand,
           ShapeUtil::MakeTupleShape(
               {ShapeUtil::GetTupleElementShape(operand->shape(), 0),
                ShapeUtil::MakeTokenShape()}),
-          CHECK_NOTNULL(operand)->channel_id().value(), is_host_transfer) {
+          operand->channel_id(), is_host_transfer) {
   AppendOperand(operand);
 }
 
-HloRecvDoneInstruction::HloRecvDoneInstruction(HloInstruction* operand,
-                                               int64_t channel_id,
-                                               bool is_host_transfer)
+HloRecvDoneInstruction::HloRecvDoneInstruction(
+    HloInstruction* operand, std::optional<int64_t> channel_id,
+    bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kRecvDone,
           ShapeUtil::MakeTupleShape(
@@ -915,8 +913,8 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
     return std::make_unique<HloRecvDoneInstruction>(recv, is_host_transfer());
   }
 
-  return std::make_unique<HloRecvDoneInstruction>(
-      new_operands[0], channel_id().value(), is_host_transfer());
+  return std::make_unique<HloRecvDoneInstruction>(new_operands[0], channel_id(),
+                                                  is_host_transfer());
 }
 
 HloCollectiveInstruction::HloCollectiveInstruction(

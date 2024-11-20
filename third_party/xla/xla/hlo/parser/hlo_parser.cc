@@ -2224,7 +2224,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<int64_t> channel_id;
       // If the is_host_transfer attribute is not present then default to false.
       optional<bool> is_host_transfer = false;
-      attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
+      attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
       attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
                                    &is_host_transfer};
       if ((!preset_operands &&
@@ -2234,13 +2234,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       // If the is_host_transfer attribute is not present then default to false.
       return builder->AddInstruction(HloInstruction::CreateRecv(
-          shape->tuple_shapes(0), operands[0], *channel_id, *is_host_transfer));
+          shape->tuple_shapes(0), operands[0], channel_id, *is_host_transfer));
     }
     case HloOpcode::kRecvDone: {
       optional<int64_t> channel_id;
       // If the is_host_transfer attribute is not present then default to false.
       optional<bool> is_host_transfer = false;
-      attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
+      attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
       attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
                                    &is_host_transfer};
       if ((!preset_operands &&
@@ -2256,13 +2256,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
 
       return builder->AddInstruction(HloInstruction::CreateRecvDone(
-          operands[0], channel_id.value(), *is_host_transfer));
+          operands[0], channel_id, *is_host_transfer));
     }
     case HloOpcode::kSend: {
       optional<int64_t> channel_id;
       // If the is_host_transfer attribute is not present then default to false.
       optional<bool> is_host_transfer = false;
-      attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
+      attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
       attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
                                    &is_host_transfer};
       if ((!preset_operands &&
@@ -2271,13 +2271,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateSend(
-          operands[0], operands[1], *channel_id, *is_host_transfer));
+          operands[0], operands[1], channel_id, *is_host_transfer));
     }
     case HloOpcode::kSendDone: {
       optional<int64_t> channel_id;
       // If the is_host_transfer attribute is not present then default to false.
       optional<bool> is_host_transfer = false;
-      attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
+      attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
       attrs["is_host_transfer"] = {/*required=*/false, AttrTy::kBool,
                                    &is_host_transfer};
       if ((!preset_operands &&
@@ -2293,7 +2293,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
 
       return builder->AddInstruction(HloInstruction::CreateSendDone(
-          operands[0], channel_id.value(), *is_host_transfer));
+          operands[0], channel_id, *is_host_transfer));
     }
     case HloOpcode::kGetTupleElement: {
       optional<int64_t> index;

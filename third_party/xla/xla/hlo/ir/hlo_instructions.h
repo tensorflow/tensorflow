@@ -555,7 +555,8 @@ class HloSendRecvInstruction : public HloChannelInstruction {
 
  protected:
   explicit HloSendRecvInstruction(HloOpcode opcode, const Shape& shape,
-                                  int64_t channel_id, bool is_host_transfer);
+                                  std::optional<int64_t> channel_id,
+                                  bool is_host_transfer);
 
  private:
   void PrintExtraAttributesImpl(AttributePrinter& printer,
@@ -571,7 +572,8 @@ class HloSendRecvInstruction : public HloChannelInstruction {
 class HloSendInstruction : public HloSendRecvInstruction {
  public:
   explicit HloSendInstruction(HloInstruction* operand, HloInstruction* token,
-                              int64_t channel_id, bool is_host_transfer);
+                              std::optional<int64_t> channel_id,
+                              bool is_host_transfer);
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kSend;
@@ -588,7 +590,8 @@ class HloSendDoneInstruction : public HloSendRecvInstruction {
  public:
   explicit HloSendDoneInstruction(HloSendInstruction* operand,
                                   bool is_host_transfer);
-  explicit HloSendDoneInstruction(HloInstruction* operand, int64_t channel_id,
+  explicit HloSendDoneInstruction(HloInstruction* operand,
+                                  std::optional<int64_t> channel_id,
                                   bool is_host_transfer);
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kSendDone;
@@ -604,7 +607,8 @@ class HloSendDoneInstruction : public HloSendRecvInstruction {
 class HloRecvInstruction : public HloSendRecvInstruction {
  public:
   explicit HloRecvInstruction(const Shape& shape, HloInstruction* token,
-                              int64_t channel_id, bool is_host_transfer);
+                              std::optional<int64_t> channel_id,
+                              bool is_host_transfer);
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kRecv;
@@ -621,7 +625,8 @@ class HloRecvDoneInstruction : public HloSendRecvInstruction {
  public:
   explicit HloRecvDoneInstruction(HloRecvInstruction* operand,
                                   bool is_host_transfer);
-  explicit HloRecvDoneInstruction(HloInstruction* operand, int64_t channel_id,
+  explicit HloRecvDoneInstruction(HloInstruction* operand,
+                                  std::optional<int64_t> channel_id,
                                   bool is_host_transfer);
 
   static bool ClassOf(const HloInstruction* hlo) {
