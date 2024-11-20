@@ -57,14 +57,6 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     const CudaComputeCapability& cc, const std::string& ptx_contents,
     GpuAsmOpts options, bool cancel_if_reg_spill = false);
 
-// Same as CompileGpuAsm, but caches the result, and returns unowned view of
-// the compiled binary.
-//
-// A copy of the string provided in ptx will be made.
-absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
-    const CudaComputeCapability& cc, const std::string& ptx_contents,
-    GpuAsmOpts compilation_options);
-
 struct CubinOrPTXImage {
   std::string profile;
   std::vector<uint8_t> bytes;
