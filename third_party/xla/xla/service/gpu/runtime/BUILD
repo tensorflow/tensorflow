@@ -925,9 +925,6 @@ cc_library(
     name = "nccl_collective_thunk",
     srcs = ["nccl_collective_thunk.cc"],
     hdrs = ["nccl_collective_thunk.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW=1",
-    ]),
     deps = [
         ":nccl_api",
         ":nccl_clique",
@@ -952,7 +949,6 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_stream",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
