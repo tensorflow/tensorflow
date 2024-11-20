@@ -479,7 +479,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tpu_embedding_ops_registry",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -490,19 +489,14 @@ tf_cc_test(
     deps = [
         ":legalization_op_config",
         ":legalize_tf",
-        ":test_utils",
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
