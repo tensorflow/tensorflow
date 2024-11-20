@@ -843,13 +843,19 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
       HloBfsFindAll({&dot}, [&](const HloInstruction* node) {
         return node->opcode() == HloOpcode::kConvert;
       });
-  int minBitWidth = std::min(
-      {primitive_util::BitWidth(dot.shape().element_type()),
-       primitive_util::BitWidth(dot.operand(0)->shape().element_type()),
-       primitive_util::BitWidth(dot.operand(1)->shape().element_type())});
+  PrimitiveType out = dot.shape().element_type();
+  PrimitiveType in0 = dot.operand(0)->shape().element_type();
+  PrimitiveType in1 = dot.operand(1)->shape().element_type();
+  int minBitWidth =
+      std::min({primitive_util::BitWidth(out), primitive_util::BitWidth(in0),
+                primitive_util::BitWidth(in1)});
+  bool isF8Dot = primitive_util::IsF8Type(out) ||
+                 primitive_util::IsF8Type(in0) || primitive_util::IsF8Type(in1);
   for (auto convert : converts) {
     auto in_type = convert->operand(0)->shape().element_type();
     auto out_type = convert->shape().element_type();
+    isF8Dot |=
+        primitive_util::IsF8Type(in_type) || primitive_util::IsF8Type(out_type);
     minBitWidth = std::min({minBitWidth, primitive_util::BitWidth(in_type),
                             primitive_util::BitWidth(out_type)});
   }
@@ -904,8 +910,17 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
     // on small block_k values depending on the bit-width of the inputs to the
     // dot. The logic below accounts for this limitation.
     constexpr int kLdmatrixGranularity = 256;
-    config.block_k =
-        std::max(config.block_k, kLdmatrixGranularity / minBitWidth);
+    if (config.block_k < kLdmatrixGranularity / minBitWidth) {
+      config.block_k = kLdmatrixGranularity / minBitWidth;
+
+      // Additionally, there are further issues happening on FP8 types that
+      // require additional restriction on block_m to avoid failures similar to
+      // b/378660935.
+      if (isF8Dot) {
+        config.block_m =
+            std::max(config.block_m, kLdmatrixGranularity / minBitWidth);
+      }
+    }
 
     // Sparse meta should have at least one element per thread.
     // Note: only 2:4 structured sparsity is currently supported.
