@@ -251,6 +251,14 @@ bool AnyOpndIsParamSharedAmongFusions(
   });
 }
 
+HloInstruction* LatestNonTrivialAncestor(HloInstruction* hlo) {
+  if (hlo->opcode() == HloOpcode::kGetTupleElement ||
+      hlo->opcode() == HloOpcode::kBitcast) {
+    return LatestNonTrivialAncestor(hlo->mutable_operand(0));
+  }
+  return hlo;
+}
+
 void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
     HloInstruction* consumer) {
   // First, find out all potential target candidates. We will filter out
@@ -258,7 +266,7 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
   absl::flat_hash_set<HloInstruction*> fusible_candidates;
   std::vector<HloInstruction*> ordered_fusible_candidates;
   for (HloInstruction* opnd : consumer->operands()) {
-    HloInstruction* predecessor = opnd->LatestNonGteAncestor();
+    HloInstruction* predecessor = LatestNonTrivialAncestor(opnd);
     if (IsFusibleCandidate(*predecessor)) {
       if (fusible_candidates.insert(predecessor).second) {
         // Add unseen fusion to ordered list.

@@ -1013,6 +1013,30 @@ CHECK: s32[12]{0} concatenate(%[[r0]], %[[r1]]), dimensions={0}
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0}));
 }
+
+TEST_F(HorizontalLoopFusionTest, PassBitcastsLookingForFusionCandidates) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+a {
+  p = s4[1] parameter(0)
+}
+
+b {
+  p = s4[2] parameter(0)
+}
+
+e {
+  p = s4[1] constant({...})
+  x = s4[1] fusion(p), kind=kLoop, calls=a
+  xb = s4[1,3] bitcast(x)
+  q = s4[2] constant({...})
+  y = s4[2] fusion(q), kind=kLoop, calls=b
+  yb = s4[9,1] bitcast(y)
+  t = tuple(xb, yb)
+})"));
+
+  EXPECT_TRUE(HorizontalLoopFusion().Run(module.get()).value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
