@@ -693,6 +693,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
