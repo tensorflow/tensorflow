@@ -1221,6 +1221,18 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyTautologicalCompare(
   return false;
 }
 
+absl::Status AlgebraicSimplifierVisitor::HandleAllGather(
+    HloInstruction* all_gather) {
+  if (all_gather->shape().IsArray() &&
+      Match(all_gather->mutable_operand(0),
+            m::Broadcast(m::ConstantScalar()))) {
+    return ReplaceWithNewInstruction(
+        all_gather,
+        all_gather->mutable_operand(0)->CloneWithNewShape(all_gather->shape()));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status AlgebraicSimplifierVisitor::HandleAllToAll(
     HloInstruction* all_to_all) {
   if (all_to_all->shape().IsArray() &&
