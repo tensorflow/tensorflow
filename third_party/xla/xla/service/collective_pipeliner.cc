@@ -2825,7 +2825,9 @@ static absl::Status TransformLoopBackward(
               [new_root_operands[*loop_analysis.GetLoopIterationIdx()]],
           body_builder.AddInstruction(
               HloInstruction::CreateConstant(*CreateLiteralOfShape(
-                  loop_index_shape, next_loop_iteration.GetSignedValue())))));
+                  loop_index_shape,
+                  loop_analysis.GetLoopIncrement()->GetSignedValue())))));
+
   HloInstruction* new_loop_root =
       body_builder.AddInstruction(HloInstruction::CreateTuple(
           MapNewOperands(new_root_operands, while_body_replacement_map,

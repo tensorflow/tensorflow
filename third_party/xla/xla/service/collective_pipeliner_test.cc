@@ -1349,6 +1349,65 @@ ENTRY entry {
 }
 
 TEST_F(CollectivePipelinerTest,
+       TransformIncrementIndexByOneStartFromOneBackwards) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+while_cond {
+  param = (s32[], bf16[5,8,128], bf16[5,1,2,128]) parameter(0)
+  loop_index = s32[] get-tuple-element(param), index=0
+  c4 = s32[] constant(4)
+  ROOT cmp = pred[] compare(loop_index, c4), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[5,8,128], bf16[5,1,2,128]) parameter(0)
+  loop_index = s32[] get-tuple-element(param), index=0
+  partial_output = bf16[5,8,128] get-tuple-element(param), index=1
+  slice_input = bf16[5,1,2,128] get-tuple-element(param), index=2
+  c0 = s32[] constant(0)
+  c1 = s32[] constant(1)
+  next_loop_index = s32[] add(loop_index, c1)
+  c3 = s32[] constant(3)
+  three_minus_loop_index = s32[] subtract(c3, loop_index)
+  dynamic_slice = bf16[1,1,2,128] dynamic-slice(slice_input, three_minus_loop_index, c0, c0, c0), dynamic_slice_sizes={1,1,2,128}
+  dynamic_slice_reshape = bf16[1,2,128] reshape(dynamic_slice)
+  add = bf16[1,2,128] add(dynamic_slice_reshape, dynamic_slice_reshape), control-predecessors={c3}
+  all_gather = bf16[1,8,128] all-gather(add), dimensions={1}, replica_groups={}
+  updated_partial_output = bf16[5,8,128] dynamic-update-slice(partial_output, all_gather, three_minus_loop_index, c0, c0)
+  ROOT tuple = (s32[], bf16[5,8,128], bf16[5,1,2,128]) tuple(next_loop_index, updated_partial_output, slice_input), control-predecessors={add}
+}
+
+ENTRY entry {
+  c1 = s32[] constant(1)
+  p0 = bf16[5,8,128] parameter(0)
+  p1 = bf16[5,1,2,128] parameter(1)
+  tuple = (s32[], bf16[5,8,128], bf16[5,1,2,128]) tuple(c1, p0, p1)
+  while = (s32[], bf16[5,8,128], bf16[5,1,2,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte = bf16[5,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
+                           /*pipeline_use_tree=*/false,
+                           /*process_different_sized_ops=*/false,
+                           CollectivePipeliner::PipeliningDirection::kBackward,
+                           IsAllGather)
+                  .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  const HloComputation* comp = while_instr->while_body();
+  const HloInstruction* root_loop = comp->root_instruction();
+
+  const HloInstruction* shifted_loop_counter = root_loop->operand(4);
+  EXPECT_EQ(shifted_loop_counter->opcode(), HloOpcode::kAdd);
+  const HloInstruction* loop_increment = shifted_loop_counter->operand(1);
+  EXPECT_EQ(loop_increment->opcode(), HloOpcode::kConstant);
+  EXPECT_TRUE(loop_increment->literal().IsEqualAt({}, 1));
+}
+
+TEST_F(CollectivePipelinerTest,
        TransformIncrementIndexByOneBackwardsWithTwoDependentClones) {
   constexpr absl::string_view hlo_string = R"(
 HloModule module
