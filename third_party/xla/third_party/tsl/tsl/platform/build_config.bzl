@@ -1,7 +1,7 @@
 """Provides a redirection point for platform specific implementations of starlark utilities."""
 
 load(
-    "//tsl/platform/default:build_config.bzl",
+    "@local_xla//xla/tsl/platform/default:build_config.bzl",
     _pyx_library = "pyx_library",
     _tf_additional_all_protos = "tf_additional_all_protos",
     _tf_additional_core_deps = "tf_additional_core_deps",

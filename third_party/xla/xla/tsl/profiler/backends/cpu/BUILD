@@ -35,7 +35,8 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "//tensorflow/python:__pkg__",
-        "@local_tsl//tsl/platform/cloud:__pkg__",
+        "//xla/tsl/platform/cloud:__pkg__",
+        "//xla/tsl/platform/cloud:__pkg__",
         "//xla/tsl/profiler:__pkg__",
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler:xla_internal",
@@ -136,7 +137,8 @@ cc_library(
     hdrs = ["threadpool_listener.h"],
     visibility = internal_visibility([
         "//tensorflow/python:__pkg__",
-        "@local_tsl//tsl/platform/cloud:__pkg__",
+        "//xla/tsl/platform/cloud:__pkg__",
+        "//xla/tsl/platform/cloud:__pkg__",
         "//xla/tsl/profiler:__pkg__",
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler:xla_internal",
@@ -164,5 +166,6 @@ cc_library(
     hdrs = ["threadpool_listener_state.h"],
     visibility = internal_visibility([
         "@local_tsl//tsl/platform:__subpackages__",
+        "//xla/tsl/platform:__subpackages__",
     ]),
 )

@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")

@@ -17,10 +17,6 @@ load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
 )
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 load("//xla:xla.bzl", "xla_cc_test", "xla_internal")
 load(
     "//xla/service/gpu:build_defs.bzl",
@@ -42,6 +38,10 @@ load(
     "tsl_gpu_library",
 )
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

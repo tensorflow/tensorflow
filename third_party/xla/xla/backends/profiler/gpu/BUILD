@@ -4,10 +4,6 @@ load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_additional_device_tracer_srcs",
 )
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
@@ -16,6 +12,10 @@ load(
     "internal_visibility",
     "tsl_copts",
     "tsl_gpu_library",
+)
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
 )
 load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 

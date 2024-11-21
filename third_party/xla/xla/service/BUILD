@@ -14,10 +14,6 @@ load(
     "tf_pyclif_proto_library",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 load("//xla:strict.default.bzl", "py_strict_library", "py_strict_test")
 load(
     "//xla:xla.bzl",
@@ -32,6 +28,10 @@ load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_libtpu", "internal_visibility", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable", "internal_hlo_deps")
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

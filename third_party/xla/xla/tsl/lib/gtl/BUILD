@@ -20,7 +20,7 @@ package(
         # tensorflow/core/framework uses map_util, and flatmap
         "//tensorflow/core/framework:__pkg__",
         "//xla/tsl/framework:__pkg__",
-        "@local_tsl//tsl/platform/cloud:__pkg__",
+        "//xla/tsl/platform/cloud:__pkg__",
         # tensorflow/core/util uses inlined_vector
         "//tensorflow/core/util:__pkg__",
         # tensorflow/core/tfrt/utils uses inlined_vector

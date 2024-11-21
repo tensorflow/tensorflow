@@ -64,8 +64,6 @@
 # Placeholder: load py_proto_library
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
-#  load("//tools/build_defs/go:go_library.bzl", "go_library")
-
 load(
     "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
@@ -123,6 +121,7 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
+#  load("//tools/build_defs/go:go_library.bzl", "go_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -490,10 +489,10 @@ cc_library(
         "//tensorflow/core/framework:type_traits.h",
         "//tensorflow/core/platform:framework_lite_hdrs",
         "@local_tsl//tsl/platform:framework_lite_hdrs",
-        "@local_tsl//tsl/platform/default:integral_types.h",
-        "@local_tsl//tsl/platform/default:logging.h",
         "@local_xla//xla/tsl/framework:numeric_types.h",
         "@local_xla//xla/tsl/framework:type_traits.h",
+        "@local_xla//xla/tsl/platform/default:integral_types.h",
+        "@local_xla//xla/tsl/platform/default:logging.h",
     ],
     visibility = ["//visibility:public"],
     deps =
@@ -1521,8 +1520,8 @@ cc_library(
     hdrs = [
         "//tensorflow/core/platform:tflite_portable_logging_hdrs",
         "@local_tsl//tsl/platform:tflite_portable_logging_hdrs",
-        "@local_tsl//tsl/platform/default:integral_types.h",
-        "@local_tsl//tsl/platform/default:logging.h",
+        "@local_xla//xla/tsl/platform/default:integral_types.h",
+        "@local_xla//xla/tsl/platform/default:logging.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),

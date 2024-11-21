@@ -41,9 +41,9 @@ limitations under the License.
 
 // Include appropriate platform-dependent parts of status.
 #if defined(PLATFORM_GOOGLE)
-#include "tsl/platform/google/status.h"  // IWYU pragma: export
+#include "xla/tsl/platform/google/status.h"  // IWYU pragma: export
 #else
-#include "tsl/platform/default/status.h"  // IWYU pragma: export
+#include "xla/tsl/platform/default/status.h"  // IWYU pragma: export
 #endif
 
 // TODO: b/323943471 - This macro should eventually be provided by Abseil.
