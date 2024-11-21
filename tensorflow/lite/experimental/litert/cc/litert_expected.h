@@ -263,8 +263,15 @@ class Expected<void> {
   // "return {};"
   Expected() : has_value_(true) {}
 
+  // Construct from Unexpected inplace.
+
+  // Allow for implicit conversion from Error.
+  // NOLINTNEXTLINE
+  Expected(const Unexpected& err) : has_value_(false), unexpected_(err) {}
   // NOLINTNEXTLINE
   Expected(Unexpected&& err) : has_value_(false), unexpected_(std::move(err)) {}
+  // NOLINTNEXTLINE
+  Expected(const Error& e) : has_value_(false), unexpected_(e) {}
 
   ~Expected() {
     if (!has_value_) {

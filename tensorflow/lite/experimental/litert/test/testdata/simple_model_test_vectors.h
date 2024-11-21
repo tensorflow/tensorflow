@@ -24,6 +24,7 @@ constexpr const char* kModelFileName = "simple_model.tflite";
 constexpr const char* kQualcommModelFileName = "simple_model_qualcomm.bin";
 constexpr const char* kGoogleTensorModelFileName =
     "simple_model_google_tensor.bin";
+constexpr const char* kMediaTekModelFileName = "simple_model_mtk.bin";
 
 constexpr const int32_t kTestInput0Dimensions[] = {2};
 constexpr const int32_t kNumTestInput0Dimensions =
@@ -38,6 +39,10 @@ constexpr const int32_t kNumTestOutputDimensions =
 constexpr const float kTestInput0Tensor[] = {1, 2};
 constexpr const float kTestInput1Tensor[] = {10, 20};
 constexpr const float kTestOutputTensor[] = {11, 22};
+
+constexpr const float kTestInput0Tensor_2[] = {10, 20};
+constexpr const float kTestInput1Tensor_2[] = {100, 200};
+constexpr const float kTestOutputTensor_2[] = {110, 220};
 
 constexpr const size_t kTestInput0Size =
     sizeof(kTestInput0Tensor) / sizeof(kTestInput0Tensor[0]);

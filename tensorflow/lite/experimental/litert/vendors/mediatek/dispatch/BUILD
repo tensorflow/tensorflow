@@ -29,7 +29,6 @@ litert_dynamic_lib(
     hdrs = [
         "litert_dispatch_device_context.h",
         "litert_dispatch_invocation_context.h",
-        "registry.h",
     ],
     export_litert_only = True,
     linkopts = select({
@@ -39,32 +38,31 @@ litert_dynamic_lib(
     linkstatic = 1,
     shared_lib_name = "dispatch_api_so",
     so_name = "libLiteRtDispatch.so",
-    tags = [
-        # Don't build/test in OS until qnn is available.
-        "nobuilder",
-    ],
     visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
     deps = [
-        "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/strings:string_view",
-        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/core:dynamic_loading",
         "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
-        "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
-        "//tensorflow/lite/experimental/litert/vendors/qualcomm:context_binary_info",
-        "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_set",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
 cc_test(
-    name = "dispatch_api_qualcomm_test",
+    name = "dispatch_api_mediatek_test",
     srcs = [
-        "dispatch_api_qualcomm_test.cc",
+        "dispatch_api_mediatek_test.cc",
     ],
     data = [
         ":dispatch_api_so",
@@ -73,15 +71,10 @@ cc_test(
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
     }),
-    linkstatic = 1,
-    tags = [
-        "no-remote-exec",
-        "no_oss",
-        "notap",
-    ],
     deps = [
         ":dispatch_api",
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:simple_model_npu",

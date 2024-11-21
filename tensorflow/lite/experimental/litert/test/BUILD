@@ -83,8 +83,6 @@ cc_library(
     ],
     data = [
         "testdata/simple_model.tflite",
-        "testdata/simple_model_google_tensor.bin",
-        "testdata/simple_model_qualcomm.bin",
     ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_model",
@@ -100,6 +98,7 @@ cc_library(
     ],
     data = [
         "testdata/simple_model_google_tensor.bin",
+        "testdata/simple_model_mtk.bin",
         "testdata/simple_model_npu.tflite",
         "testdata/simple_model_qualcomm.bin",
     ],

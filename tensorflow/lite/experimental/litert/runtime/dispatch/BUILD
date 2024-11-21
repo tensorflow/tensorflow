@@ -130,3 +130,32 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "dispatch_delegate_mediatek_test",
+    srcs = ["dispatch_delegate_mediatek_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/litert/vendors/mediatek/dispatch:dispatch_api_so",
+    ],
+    linkopts = select({
+        "//tensorflow:android": ["-landroid"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_opaque",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate",
+        "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/runtime:external_litert_buffer_context",
+        "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:simple_model_npu",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

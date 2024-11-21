@@ -68,6 +68,23 @@ class TensorBuffer
     return TensorBuffer(tensor_buffer);
   }
 
+  litert::Expected<AHardwareBuffer*> GetAhwb() const {
+#if LITERT_HAS_AHWB_SUPPORT
+    AHardwareBuffer* ahwb;
+    if (LiteRtGetTensorBufferAhwb(Get(), &ahwb) == kLiteRtStatusOk) {
+      return ahwb;
+    } else {
+      return litert::Unexpected(
+          kLiteRtStatusErrorRuntimeFailure,
+          "Failed to get AHardwareBuffer from tensor buffer");
+    }
+#else
+    return litert::Unexpected(
+        kLiteRtStatusErrorRuntimeFailure,
+        "AHardwareBuffer is not supported on this platform");
+#endif
+  }
+
   Expected<LiteRtTensorBufferType> BufferType() const {
     LiteRtTensorBufferType tensor_buffer_type;
     if (auto status = LiteRtGetTensorBufferType(Get(), &tensor_buffer_type);

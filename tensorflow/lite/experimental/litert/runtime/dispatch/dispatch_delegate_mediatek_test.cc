@@ -36,10 +36,10 @@
 namespace litert {
 namespace {
 
-static constexpr absl::string_view kNpuFile = kGoogleTensorModelFileName;
+static constexpr absl::string_view kNpuFile = kMediaTekModelFileName;
 static constexpr absl::string_view kTfliteFile = "simple_model_npu.tflite";
 
-TEST(DispatchDelegate, GoogleTensorCpuBuffer) {
+TEST(DispatchDelegate, MediaTekCpuBuffer) {
   auto runtime =
       testing::TflRuntime::CreateFromTflFileWithByteCode(kTfliteFile, kNpuFile);
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
@@ -62,7 +62,7 @@ TEST(DispatchDelegate, GoogleTensorCpuBuffer) {
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
-                  "GoogleTensor eTPU";
+                  "MediaTek NPU";
 #endif
 
   ASSERT_EQ(interpreter.ModifyGraphWithDelegate(dispatch_delegate.get()),
@@ -106,7 +106,7 @@ TEST(DispatchDelegate, GoogleTensorCpuBuffer) {
   }
 }
 
-TEST(DispatchDelegate, GoogleTensorHwBuffer) {
+TEST(DispatchDelegate, MediaTekHwBuffer) {
   auto runtime =
       testing::TflRuntime::CreateFromTflFileWithByteCode(kTfliteFile, kNpuFile);
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
@@ -129,7 +129,7 @@ TEST(DispatchDelegate, GoogleTensorHwBuffer) {
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
-                  "GoogleTensor eTPU";
+                  "MediaTek NPU";
 #endif
 
   ASSERT_EQ(interpreter.ModifyGraphWithDelegate(dispatch_delegate.get()),
