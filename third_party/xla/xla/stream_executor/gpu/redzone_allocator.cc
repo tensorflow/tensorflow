@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
@@ -59,7 +58,6 @@ using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
 RedzoneAllocator::RedzoneAllocator(Stream* stream,
                                    DeviceMemoryAllocator* memory_allocator,
-                                   const GpuAsmOpts& gpu_compilation_opts,
                                    int64_t memory_limit, int64_t redzone_size,
                                    uint8_t redzone_pattern)
     : device_ordinal_(stream->parent()->device_ordinal()),
@@ -69,8 +67,7 @@ RedzoneAllocator::RedzoneAllocator(Stream* stream,
           redzone_size,
           static_cast<int64_t>(tsl::Allocator::kAllocatorAlignment))),
       redzone_pattern_(redzone_pattern),
-      memory_allocator_(memory_allocator),
-      gpu_compilation_opts_(gpu_compilation_opts) {}
+      memory_allocator_(memory_allocator) {}
 
 absl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
     int64_t byte_size) {

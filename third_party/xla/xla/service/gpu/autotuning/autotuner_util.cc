@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/autotuning/autotuner_status_key.h"
-#include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -582,7 +581,7 @@ AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
                                       const DebugOptions& opts) {
   TF_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
   return se::RedzoneAllocator(
-      stream, config.GetAllocator(), PtxOptsFromDebugOptions(opts),
+      stream, config.GetAllocator(),
       /*memory_limit=*/std::numeric_limits<int64_t>::max(),
       /*redzone_size=*/config.should_check_correctness()
           ? opts.xla_gpu_redzone_padding_bytes()

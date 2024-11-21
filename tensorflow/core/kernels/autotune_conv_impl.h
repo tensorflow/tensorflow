@@ -44,7 +44,7 @@ StatusOr<std::vector<xla::AutotuneResult>> AutotuneConvImpl(
     // TODO(zhengxq): profile each algorithm multiple times to better
     // accuracy.
     se::RedzoneAllocator rz_scratch_allocator(
-        stream, &tf_allocator_adapter, se::GpuAsmOpts(),
+        stream, &tf_allocator_adapter,
         /*memory_limit=*/scratch_size_limit);
     DnnScratchAllocator scratch_allocator(scratch_size_limit, ctx);
     se::ScratchAllocator* allocator_used =

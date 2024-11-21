@@ -235,7 +235,6 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:dump",
-        "//xla/service/gpu:gpu_asm_opts_util",
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
