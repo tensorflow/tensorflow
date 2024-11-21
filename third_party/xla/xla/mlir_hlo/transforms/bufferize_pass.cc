@@ -258,6 +258,37 @@ struct OneShotBufferizePass
   }
 };
 
+namespace {
+// In a finalizing bufferize conversion, we know that all tensors have been
+// converted to memrefs, thus, this op becomes an identity.
+class BufferizeToTensorOp
+    : public OpConversionPattern<bufferization::ToTensorOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      bufferization::ToTensorOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    rewriter.replaceOp(op, adaptor.getMemref());
+    return success();
+  }
+};
+
+// In a finalizing bufferize conversion, we know that all tensors have been
+// converted to memrefs, thus, this op becomes an identity.
+class BufferizeToMemrefOp
+    : public OpConversionPattern<bufferization::ToMemrefOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      bufferization::ToMemrefOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    rewriter.replaceOp(op, adaptor.getTensor());
+    return success();
+  }
+};
+
+}  // namespace
+
 struct FinalBufferizePass
     : public impl::FinalBufferizePassBase<FinalBufferizePass> {
  private:
@@ -338,7 +369,8 @@ struct FinalBufferizePass
         typesAreLegal);
 
     RewritePatternSet patterns(&getContext());
-    populateEliminateBufferizeMaterializationsPatterns(converter, patterns);
+    patterns.add<BufferizeToTensorOp, BufferizeToMemrefOp>(converter,
+                                                           &getContext());
     populateExtraBufferizePatterns(&getContext(), &converter, &patterns);
     scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
                                                          target);
