@@ -225,7 +225,7 @@ absl::StatusOr<bool> CollectivePermuteCycleDecomposer::Run(
   int64_t next_channel_id;
   for (auto comp : module->computations(execution_threads)) {
     for (auto hlo : comp->MakeInstructionPostOrder()) {
-      if (hlo->opcode() != HloOpcode::kCollectivePermute) {
+      if (HloPredicateIsNotOp<HloOpcode::kCollectivePermute>(hlo)) {
         continue;
       }
       auto collective_permute = Cast<HloCollectivePermuteInstruction>(hlo);
