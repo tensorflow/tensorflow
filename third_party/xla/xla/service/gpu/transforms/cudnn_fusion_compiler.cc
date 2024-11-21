@@ -480,10 +480,10 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       VLOG(3) << "Unimplemented data type: " << hlo->shape().element_type();
       return std::nullopt;
     }
-    if (hlo->opcode() == HloOpcode::kParameter) {
+    if (HloPredicateIsOp<HloOpcode::kParameter>(hlo)) {
       CHECK(hlo_to_cudnn.contains(hlo));
       continue;
-    } else if (hlo->opcode() == HloOpcode::kCustomCall) {
+    } else if (HloPredicateIsOp<HloOpcode::kCustomCall>(hlo)) {
       if (hlo->user_count() != 1 ||
           !IsWorkspaceAllocationRoot(*hlo->users()[0])) {
         VLOG(3) << "Custom calls are only expected to be used for workspace "
@@ -491,7 +491,7 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
         return std::nullopt;
       }
       continue;
-    } else if (hlo->opcode() == HloOpcode::kTuple) {
+    } else if (HloPredicateIsOp<HloOpcode::kTuple>(hlo)) {
       if (!IsWorkspaceAllocationRoot(*hlo)) {
         VLOG(3) << "Tuples are only expected at outputs for workspace "
                    "allocation.";
@@ -499,20 +499,18 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       }
       continue;
     } else if (FusionLevel(fusion) >= 2 &&
-               hlo->opcode() == HloOpcode::kConstant) {
+               HloPredicateIsOp<HloOpcode::kConstant>(hlo)) {
       if (const auto const_tensor = HandleConstantHloToCudnnGraph(*hlo, graph);
           const_tensor.has_value()) {
         hlo_to_cudnn[hlo] = const_tensor.value();
       } else {
         return std::nullopt;
       }
-    } else if (hlo->opcode() == HloOpcode::kReshape ||
-               hlo->opcode() == HloOpcode::kBitcast ||
-               hlo->opcode() == HloOpcode::kTranspose ||
-               hlo->opcode() == HloOpcode::kCopy ||
+    } else if (HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kBitcast,
+                                HloOpcode::kTranspose, HloOpcode::kCopy>(hlo) ||
                (FusionLevel(fusion) >= 2 &&
-                (hlo->opcode() == HloOpcode::kBroadcast ||
-                 hlo->opcode() == HloOpcode::kSlice))) {
+                (HloPredicateIsOp<HloOpcode::kBroadcast, HloOpcode::kSlice>(
+                    hlo)))) {
       // All these are accounted for separately as transformations of strides.
       hlo_to_cudnn[hlo] = operand(0);
     } else if (hlo->IsElementwise()) {
@@ -521,7 +519,7 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       if (!compute_dtype.has_value()) {
         return std::nullopt;
       }
-      if (hlo->opcode() == HloOpcode::kClamp) {
+      if (HloPredicateIsOp<HloOpcode::kClamp>(hlo)) {
         const auto clamp =
             HandleClampToCudnnGraph(*hlo, graph, hlo_to_cudnn,
                                     data_type.value(), compute_dtype.value());
@@ -564,7 +562,7 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
         } else if (hlo->operand_count() == 2) {
           hlo_to_cudnn[hlo] = graph.pointwise(operand(0), operand(1), attrs);
         } else if (hlo->operand_count() == 3) {
-          if (hlo->opcode() != HloOpcode::kSelect) {
+          if (HloPredicateIsNotOp<HloOpcode::kSelect>(hlo)) {
             VLOG(3) << "Unexpected ternary operation: " << hlo->ToString();
             return std::nullopt;
           }
@@ -576,7 +574,7 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
           return std::nullopt;
         }
       }
-    } else if (hlo->opcode() == HloOpcode::kDot) {
+    } else if (HloPredicateIsOp<HloOpcode::kDot>(hlo)) {
       const auto compute_dtype =
           GetComputeDataType(hlo->shape().element_type());
       if (!compute_dtype.has_value()) {
