@@ -18,13 +18,10 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <optional>
-#include <string>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/string_view.h"
 #include "re2/re2.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -165,15 +162,21 @@ bool MemorySpaceAssignmentUtils::DoesPositionMatchFilter(
                      filter.tuple_index().index().end())) {
     return false;
   }
+  return DoesInstructionMatchFilter(filter, *instruction) &&
+         DoesBufferIntervalMatchHloUseFilter(filter, buffer_interval);
+}
+
+bool MemorySpaceAssignmentUtils::DoesInstructionMatchFilter(
+    const HloPositionMatcher& filter, const HloInstruction& instruction) {
   if (filter.has_instruction_name_regex() &&
-      !RE2::FullMatch(instruction->name(), filter.instruction_name_regex())) {
+      !RE2::FullMatch(instruction.name(), filter.instruction_name_regex())) {
     return false;
   }
   if (filter.has_instruction_regex() &&
-      !RE2::FullMatch(instruction->ToString(), filter.instruction_regex())) {
+      !RE2::FullMatch(instruction.ToString(), filter.instruction_regex())) {
     return false;
   }
-  return DoesBufferIntervalMatchHloUseFilter(filter, buffer_interval);
+  return true;
 }
 
 bool MemorySpaceAssignmentUtils::DoesBufferIntervalMatchHloUseFilter(
@@ -192,17 +195,17 @@ bool MemorySpaceAssignmentUtils::DoesBufferIntervalMatchHloUseFilter(
 }
 
 absl::StatusOr<xla::HloLiveRange::LogicalTime>
-MemorySpaceAssignmentUtils::GetScheduleTimeFromInstructionName(
-    absl::string_view name,
+MemorySpaceAssignmentUtils::GetScheduleTimeFromInstructionMatcher(
+    const HloPositionMatcher& position_matcher,
     const absl::flat_hash_map<const xla::HloInstruction*,
                               xla::HloLiveRange::LogicalTime>& schedule) {
   for (auto schedule_entry : schedule) {
-    if (schedule_entry.first->name() == name) {
+    if (DoesInstructionMatchFilter(position_matcher, *schedule_entry.first)) {
       return schedule_entry.second;
     }
   }
   return NotFound("Reference instruction %s was not found in the schedule.",
-                  name);
+                  position_matcher.DebugString());
 }
 
 absl::StatusOr<std::optional<int64_t>>
@@ -221,23 +224,23 @@ MemorySpaceAssignmentUtils::GetPrefetchTimeByEagerness(
 
 absl::StatusOr<std::optional<int64_t>>
 MemorySpaceAssignmentUtils::GetPrefetchTimeAfterInstruction(
-    const std::string& after_instruction_name,
+    const HloPositionMatcher& after_instruction,
     const absl::flat_hash_map<const xla::HloInstruction*,
                               xla::HloLiveRange::LogicalTime>& schedule) {
   TF_ASSIGN_OR_RETURN(
       auto reference_instruction_time,
-      GetScheduleTimeFromInstructionName(after_instruction_name, schedule));
+      GetScheduleTimeFromInstructionMatcher(after_instruction, schedule));
   return static_cast<std::optional<int64_t>>(reference_instruction_time);
 }
 
 absl::StatusOr<std::optional<int64_t>>
 MemorySpaceAssignmentUtils::GetPrefetchTimeBeforeInstruction(
-    const std::string& before_instruction_name,
+    const HloPositionMatcher& before_instruction,
     const absl::flat_hash_map<const xla::HloInstruction*,
                               xla::HloLiveRange::LogicalTime>& schedule) {
   TF_ASSIGN_OR_RETURN(
       auto reference_instruction_time,
-      GetScheduleTimeFromInstructionName(before_instruction_name, schedule));
+      GetScheduleTimeFromInstructionMatcher(before_instruction, schedule));
   return static_cast<std::optional<int64_t>>(reference_instruction_time - 1);
 }
 absl::StatusOr<std::optional<int64_t>>
@@ -251,12 +254,12 @@ MemorySpaceAssignmentUtils::GetPrefetchTime(
       return GetPrefetchTimeByEagerness(override_options.prefetch_eagerness(),
                                         earliest_prefetch_time,
                                         latest_prefetch_time);
-    case PreferredPrefetchOverrideOptions::kAfterInstructionName:
+    case PreferredPrefetchOverrideOptions::kAfterInstruction:
       return GetPrefetchTimeAfterInstruction(
-          override_options.after_instruction_name(), instruction_schedule);
-    case PreferredPrefetchOverrideOptions::kBeforeInstructionName:
+          override_options.after_instruction(), instruction_schedule);
+    case PreferredPrefetchOverrideOptions::kBeforeInstruction:
       return GetPrefetchTimeBeforeInstruction(
-          override_options.before_instruction_name(), instruction_schedule);
+          override_options.before_instruction(), instruction_schedule);
     case PreferredPrefetchOverrideOptions::OPTIONS_NOT_SET:
       break;
   }

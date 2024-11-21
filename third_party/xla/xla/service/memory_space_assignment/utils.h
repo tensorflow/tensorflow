@@ -51,12 +51,15 @@ class MemorySpaceAssignmentUtils {
   static bool DoesUseMatchFilter(const HloOperandFilter& filter,
                                  const HloUse& hlo_use, int64_t operand_size);
 
+  static bool DoesInstructionMatchFilter(const HloPositionMatcher& filter,
+                                         const HloInstruction& instruction);
+
   static bool DoesPositionMatchFilter(const HloPositionMatcher& filter,
                                       const MsaBufferInterval& buffer_interval);
 
   static absl::StatusOr<xla::HloLiveRange::LogicalTime>
-  GetScheduleTimeFromInstructionName(
-      absl::string_view name,
+  GetScheduleTimeFromInstructionMatcher(
+      const HloPositionMatcher& position_matcher,
       const absl::flat_hash_map<const xla::HloInstruction*,
                                 xla::HloLiveRange::LogicalTime>& schedule);
 
@@ -65,13 +68,13 @@ class MemorySpaceAssignmentUtils {
       int64_t latest_prefetch_time);
 
   static absl::StatusOr<std::optional<int64_t>> GetPrefetchTimeAfterInstruction(
-      const std::string& after_instruction_name,
+      const HloPositionMatcher& after_instruction,
       const absl::flat_hash_map<const xla::HloInstruction*,
                                 xla::HloLiveRange::LogicalTime>& schedule);
 
   static absl::StatusOr<std::optional<int64_t>>
   GetPrefetchTimeBeforeInstruction(
-      const std::string& before_instruction_name,
+      const HloPositionMatcher& before_instruction,
       const absl::flat_hash_map<const xla::HloInstruction*,
                                 xla::HloLiveRange::LogicalTime>& schedule);
 

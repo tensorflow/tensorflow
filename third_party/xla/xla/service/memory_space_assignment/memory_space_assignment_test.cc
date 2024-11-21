@@ -1762,7 +1762,9 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchBeforeTest) {
   const std::string text_proto = R"pb(
     overrides {
       hlo_operand_filter { instruction_name_regex: "add" operand_number: 1 }
-      override_options { before_instruction_name: "negate.3" }
+      override_options {
+        before_instruction: { instruction_regex: "%?negate.3 =.*" }
+      }
     })pb";
   TF_ASSERT_OK_AND_ASSIGN(
       options.preferred_prefetch_overrides,
@@ -1838,7 +1840,9 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchAfterTest) {
   const std::string text_proto = R"pb(
     overrides {
       hlo_operand_filter { instruction_name_regex: "add" operand_number: 1 }
-      override_options { after_instruction_name: "negate.1" }
+      override_options {
+        after_instruction: { instruction_regex: "%?negate.1 =.*" }
+      }
     })pb";
   TF_ASSERT_OK_AND_ASSIGN(
       options.preferred_prefetch_overrides,
@@ -1914,7 +1918,9 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchTooLateTest) {
   const std::string text_proto = R"pb(
     overrides {
       hlo_operand_filter { instruction_name_regex: "add" operand_number: 1 }
-      override_options { after_instruction_name: "negate.5" }
+      override_options {
+        after_instruction: { instruction_name_regex: "%?negate.5" }
+      }
     })pb";
   TF_ASSERT_OK_AND_ASSIGN(
       options.preferred_prefetch_overrides,
@@ -1986,7 +1992,9 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigPrecedenceTest) {
     }
     overrides {
       hlo_operand_filter { instruction_name_regex: "add" operand_number: 1 }
-      override_options { after_instruction_name: "negate.1" }
+      override_options {
+        after_instruction: { instruction_name_regex: "%?negate.1" }
+      }
     })pb";
   TF_ASSERT_OK_AND_ASSIGN(
       options.preferred_prefetch_overrides,
@@ -2062,7 +2070,9 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchPrecedenceTest) {
   const std::string text_proto = R"pb(
     overrides {
       hlo_operand_filter { instruction_name_regex: "add" operand_number: 1 }
-      override_options { after_instruction_name: "negate.1" }
+      override_options {
+        after_instruction: { instruction_name_regex: "%?negate.1" }
+      }
     }
     overrides {
       hlo_operand_filter { size_lte: 24 size_gte: 24 }

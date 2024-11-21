@@ -114,17 +114,20 @@ message HloOperandFilter {
 
 // Options to override preferred prefetch time for an operand.
 message PreferredPrefetchOverrideOptions {
+  reserved "after_instruction_name",  // 2
+      "before_instruction_name";      // 3
+  reserved 2, 3;
   oneof options {
     // A value X in [0, 1] that tells us the preferred prefetch time is the
     // fraction X through the live range. For example, .5 will set the
     // preferred prefetch time to the middle of live range.
     float prefetch_eagerness = 1;
-    // Preferred prefetch time is set to after the instruction with instruction
-    // name.
-    string after_instruction_name = 2;
-    // Preferred prefetch time is set to before the instruction with instruction
-    // name.
-    string before_instruction_name = 3;
+    // Preferred prefetch time is set to after the first instruction that
+    // matches the filter.
+    HloPositionMatcher after_instruction = 4;
+    // Preferred prefetch time is set to before the first instruction that
+    // matches the filter.
+    HloPositionMatcher before_instruction = 5;
   }
 }
 
