@@ -1809,7 +1809,7 @@ cc_library(
         "//xla/stream_executor:semantic_version",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:test",
+        "@com_google_googletest//:gtest",
     ],
 )
 
