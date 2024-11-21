@@ -98,6 +98,7 @@ class GpuCommandBuffer : public CommandBuffer {
 
   GpuCommandBuffer(Mode mode, StreamExecutor* parent);
 
+  using CommandBuffer::Barrier;
   absl::Status Barrier(ExecutionScopeId execution_scope_id) override;
 
   absl::Status Barrier(
@@ -150,14 +151,6 @@ class GpuCommandBuffer : public CommandBuffer {
   Mode mode() const override { return mode_; }
   State state() const override { return state_; }
 
-  static GpuCommandBuffer* Cast(CommandBuffer* command_buffer) {
-    return static_cast<GpuCommandBuffer*>(command_buffer);
-  }
-
-  static const GpuCommandBuffer* Cast(const CommandBuffer* command_buffer) {
-    return static_cast<const GpuCommandBuffer*>(command_buffer);
-  }
-
   absl::Span<const GpuGraphNodeInfo> nodes(ExecutionScopeId id) const;
   absl::Span<const GpuGraphBarrierInfo> barriers(ExecutionScopeId id) const;
 
@@ -197,7 +190,7 @@ class GpuCommandBuffer : public CommandBuffer {
   // An extension of `Builder` for building conditional command buffers tied to
   // conditional handles.
   using ConditionBuilder =
-      std::function<absl::Status(CommandBuffer*, GraphConditionalHandle)>;
+      std::function<absl::Status(GpuCommandBuffer*, GraphConditionalHandle)>;
 
   // Wraps a regular command buffer builder into condition builder.
   static ConditionBuilder ToConditionBuilder(Builder builder);
