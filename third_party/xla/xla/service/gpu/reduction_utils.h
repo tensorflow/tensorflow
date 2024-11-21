@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -29,7 +28,7 @@ namespace gpu {
 
 // Need at least 1024 threads/block for reasonable tree reduction
 // performance (assuming all data fits).
-int64_t MinThreadsXRowReduction(const HloModuleConfig& hlo_module_config);
+inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
 
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
@@ -99,13 +98,11 @@ Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions);
 
 // How big the reduction dimension can be to be race free.
 int64_t ReductionDimensionRaceFreeBound(
-    const HloModuleConfig& hlo_module_config,
     const ReductionDimensions& reduction_dimensions);
 
 // Returns whether the given reduction can be safely generated without atomics :
 // that is, at most one block will write to every output element.
-bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
-                         const ReductionDimensions& reduction_dimensions);
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions);
 
 // Whether the instruction is a reduction hero for the given root.
 bool IsRealReductionHero(const HloInstruction& root,

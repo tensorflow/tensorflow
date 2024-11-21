@@ -697,25 +697,17 @@ cc_library(
     srcs = ["reduction_utils.cc"],
     hdrs = ["reduction_utils.h"],
     compatible_with = get_compatible_with_portable(),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":ir_emission_utils",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/stream_executor:semantic_version",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
-    ] + if_cuda_is_configured([
-        ":gpu_asm_opts_util",
-        "//xla/stream_executor/cuda:cuda_asm_compiler",
-    ]),
+    ],
 )
 
 xla_cc_test(

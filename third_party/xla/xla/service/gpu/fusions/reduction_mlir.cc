@@ -361,8 +361,7 @@ MlirReductionFusion::MlirReductionFusion(const HloFusionAnalysis& analysis)
       GetReductionKindAndContiguousComponents(*hero_reduction);
   VLOG(10) << reduction_dimensions_;
 
-  CHECK(ReductionIsRaceFree(hero_reduction->GetModule()->config(),
-                            reduction_dimensions_))
+  CHECK(ReductionIsRaceFree(reduction_dimensions_))
       << "Non-race-free reductions should have been decomposed. Did "
          "tree_reduction_rewriter run?";
 
@@ -777,8 +776,7 @@ MlirRowReductionFusion::MlirRowReductionFusion(
 
   int64_t num_threads_kept = 1;
   int64_t num_threads_reduced = [&] {
-    int64_t max_block_size =
-        MinThreadsXRowReduction(first_reduce_->GetModule()->config());
+    int64_t max_block_size = MinThreadsXRowReduction();
     return std::min(max_block_size,
                     RoundUpTo(CeilOfRatio(shape[kRowMinorReduced],
                                           kMinorReducedElementsPerThread),
