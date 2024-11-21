@@ -100,7 +100,7 @@ HloInstruction* FindUniqueGTEUserWithIndex(const HloInstruction* op,
 
   HloInstruction* gte = nullptr;
   for (auto user : op->users()) {
-    if (user->opcode() != HloOpcode::kGetTupleElement) {
+    if (HloPredicateIsNotOp<HloOpcode::kGetTupleElement>(user)) {
       continue;
     }
     if (user->tuple_index() == idx) {
@@ -119,7 +119,7 @@ bool HasGTEUserWithIndex(const HloInstruction* op, int64_t idx) {
   CHECK(op->shape().IsTuple());
 
   for (auto user : op->users()) {
-    if (user->opcode() != HloOpcode::kGetTupleElement) {
+    if (HloPredicateIsNotOp<HloOpcode::kGetTupleElement>(user)) {
       continue;
     }
     if (user->tuple_index() == idx) {
@@ -139,12 +139,12 @@ bool HasGTEUserWithIndex(const HloInstruction* op, int64_t idx) {
 // TODO(bixia): investigate the possible of implementing
 // m::TrivialTuple(m::RecvDone(&instr)) as suggested by code review.
 HloInstruction* MaySkipTrivialTuple(HloInstruction* op) {
-  if (op->opcode() != HloOpcode::kTuple) {
+  if (HloPredicateIsNotOp<HloOpcode::kTuple>(op)) {
     return op;
   }
   HloInstruction* hidden_op = nullptr;
   for (auto opnd : op->mutable_operands()) {
-    if (opnd->opcode() != HloOpcode::kGetTupleElement) {
+    if (HloPredicateIsNotOp<HloOpcode::kGetTupleElement>(opnd)) {
       return op;
     }
     if (hidden_op == nullptr) {
@@ -182,10 +182,9 @@ FindConsecutiveAndBalanceBlockOfSendDoneRecvDone(
   // tuple, find such block.
   for (int64_t i = 0; i < while_init->operand_count(); ++i) {
     const HloInstruction* op = while_init->operand(i);
-    if ((op->opcode() == HloOpcode::kRecvDone ||
-         op->opcode() == HloOpcode::kSendDone) &&
+    if ((HloPredicateIsOp<HloOpcode::kRecvDone, HloOpcode::kSendDone>(op)) &&
         op->frontend_attributes().map().count(kSendRecvPipelineAttr) > 0) {
-      if (op->opcode() == HloOpcode::kRecvDone) {
+      if (HloPredicateIsOp<HloOpcode::kRecvDone>(op)) {
         difference++;
       } else {
         difference--;
@@ -212,8 +211,7 @@ FindConsecutiveAndBalanceBlockOfSendDoneRecvDone(
     for (int64_t i = pipelined_p2p_info.opnd_end;
          i < while_init->operand_count(); ++i) {
       const HloInstruction* op = while_init->operand(i);
-      if (op->opcode() == HloOpcode::kRecvDone ||
-          op->opcode() == HloOpcode::kSendDone) {
+      if (HloPredicateIsOp<HloOpcode::kRecvDone, HloOpcode::kSendDone>(op)) {
         VLOG(10) << "SendDone/RecvDone outside the consecutive block";
         return std::nullopt;
         break;
@@ -258,7 +256,7 @@ std::optional<PipelinedP2PInfo> FindPipelinedP2P(
     const HloInstruction* while_op) {
   VLOG(10) << "while_op: " << while_op->ToString();
   const HloInstruction* while_init = while_op->while_init();
-  if (while_init->opcode() != HloOpcode::kTuple ||
+  if (HloPredicateIsNotOp<HloOpcode::kTuple>(while_init) ||
       while_init->user_count() != 1) {
     return std::nullopt;
   }
@@ -287,7 +285,7 @@ std::optional<PipelinedP2PInfo> FindPipelinedP2P(
   for (int64_t i = pipelined_p2p_info->opnd_start;
        i < pipelined_p2p_info->opnd_end; ++i) {
     const HloInstruction* op = while_init->operand(i);
-    if (op->opcode() == HloOpcode::kRecvDone) {
+    if (HloPredicateIsOp<HloOpcode::kRecvDone>(op)) {
       if (!FindUniqueGTEUserWithIndex(while_op, i)) {
         VLOG(10) << "While result get-tuple-element user with index " << i
                  << " not unique";
@@ -300,7 +298,7 @@ std::optional<PipelinedP2PInfo> FindPipelinedP2P(
         return std::nullopt;
       }
     } else {
-      CHECK(op->opcode() == HloOpcode::kSendDone);
+      CHECK(HloPredicateIsOp<HloOpcode::kSendDone>(op));
       if (HasGTEUserWithIndex(while_op, i) ||
           HasGTEUserWithIndex(while_body->parameter_instruction(0), i)) {
         VLOG(10) << "SendDone with index " << i << " has unexpected users";
@@ -375,7 +373,7 @@ absl::Status RemoveDoneOpsAndUpdateSequence(
     return absl::OkStatus();
   };
   for (auto op : ops) {
-    if (op->opcode() == HloOpcode::kTuple) {
+    if (HloPredicateIsOp<HloOpcode::kTuple>(op)) {
       InstructionVector to_remove;
       HloInstruction* tuple_op = op;
       op = MaySkipTrivialTuple(tuple_op);
@@ -460,7 +458,7 @@ absl::Status RewritePipelinedP2PWhileBody(
   for (int64_t i = opnd_start; i < opnd_end; ++i) {
     const HloInstruction* op = root->operand(i);
     op = MaySkipTrivialTuple(op);
-    if (op->opcode() == HloOpcode::kRecvDone) {
+    if (HloPredicateIsOp<HloOpcode::kRecvDone>(op)) {
       HloInstruction* gte = FindUniqueGTEUserWithIndex(param, i);
       CHECK(gte != nullptr);
       recv_dones.push_back(gte);
@@ -473,7 +471,7 @@ absl::Status RewritePipelinedP2PWhileBody(
       new_recv_dones.push_back(recv_done);
       continue;
     }
-    CHECK(op->opcode() == HloOpcode::kSendDone);
+    CHECK(HloPredicateIsOp<HloOpcode::kSendDone>(op));
     //  Create the new SendDone using the new while-op result.
     HloInstruction* send = computation->AddInstruction(
         HloInstruction::CreateGetTupleElement(param, i));
@@ -575,7 +573,7 @@ absl::Status TransformLoop(
   for (int64_t i = opnd_start; i < opnd_end; ++i) {
     HloInstruction* op = while_init->mutable_operand(i);
     done_ops.push_back(op);
-    if (op->opcode() == HloOpcode::kRecvDone) {
+    if (HloPredicateIsOp<HloOpcode::kRecvDone>(op)) {
       HloInstruction* gte = FindUniqueGTEUserWithIndex(while_op, i);
       CHECK(gte != nullptr);
       recv_dones.push_back(gte);
@@ -589,7 +587,7 @@ absl::Status TransformLoop(
       CopyInstructionInfo(op, recv_done);
       continue;
     }
-    CHECK(op->opcode() == HloOpcode::kSendDone);
+    CHECK(HloPredicateIsOp<HloOpcode::kSendDone>(op));
     //  Create the new SendDone using the new while-op result.
     HloInstruction* send = computation->AddInstruction(
         HloInstruction::CreateGetTupleElement(new_while_op, i));
@@ -652,7 +650,7 @@ absl::StatusOr<bool> ProcessComputation(
       collective_in_computation[computation] = true;
     }
 
-    if (hlo->opcode() != HloOpcode::kWhile) {
+    if (HloPredicateIsNotOp<HloOpcode::kWhile>(hlo)) {
       idx++;
       continue;
     }
