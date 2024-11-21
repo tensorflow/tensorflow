@@ -47,6 +47,8 @@ class KernelSpec {
              BufferUses buffer_uses,
              std::shared_ptr<KernelSource> kernel_source);
 
+  virtual ~KernelSpec() = default;
+
   // Kernel launch dimensions define how the kernel execution must be
   // parallelized. The meaning of these dimensions is backend specific, i.e.
   // on GPU these are CUDA block and thread dimensions, and on CPU these

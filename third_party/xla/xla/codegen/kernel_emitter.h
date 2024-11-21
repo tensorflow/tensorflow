@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/codegen/kernel_spec.h"
 
 namespace xla {
@@ -27,9 +28,10 @@ namespace xla {
 // KernelEmitter is an API that emits kernel specification from a given input
 // (i.e. it emits kernels compiled from HLO fusions).
 class KernelEmitter {
+ public:
   virtual ~KernelEmitter() = default;
 
-  virtual std::unique_ptr<KernelSpec> EmitKernelSpec() = 0;
+  virtual absl::StatusOr<std::unique_ptr<KernelSpec>> EmitKernelSpec() = 0;
 };
 
 // A base class for backend-specific kernel emitters.

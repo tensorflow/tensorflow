@@ -18,6 +18,7 @@ cc_library(
     hdrs = ["kernel_emitter.h"],
     deps = [
         ":kernel_spec",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -29,5 +30,14 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/stream_executor:launch_dim",
         "@com_google_absl//absl/container:inlined_vector",
+    ],
+)
+
+cc_library(
+    name = "llvm_ir_kernel_source",
+    hdrs = ["llvm_ir_kernel_source.h"],
+    deps = [
+        ":kernel_spec",
+        "@llvm-project//llvm:Core",
     ],
 )
