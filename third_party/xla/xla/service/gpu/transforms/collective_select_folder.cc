@@ -70,7 +70,7 @@ struct FoldableSelect {
 //     false_operand)
 // ```
 std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
-  if (select->opcode() != HloOpcode::kSelect) {
+  if (HloPredicateIsNotOp<HloOpcode::kSelect>(select)) {
     return std::nullopt;
   }
 

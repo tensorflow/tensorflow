@@ -131,7 +131,7 @@ auto OptionalBroadcast(Pattern pattern) {
 }
 
 bool IsBatchedMatmul(const HloInstruction* instr) {
-  if (instr->opcode() != HloOpcode::kDot) return false;
+  if (HloPredicateIsNotOp<HloOpcode::kDot>(instr)) return false;
   if (Cast<HloDotInstruction>(instr)->sparse_operands()) return false;
   const DotDimensionNumbers& dot_dims = instr->dot_dimension_numbers();
   bool is_batch_dot = !dot_dims.lhs_batch_dimensions().empty() ||
@@ -201,12 +201,12 @@ bool IsScalar(const HloInstruction* instr) {
 }
 
 bool IsReduceMax(const HloInstruction* instr) {
-  return instr->opcode() == HloOpcode::kReduce &&
+  return HloPredicateIsOp<HloOpcode::kReduce>(instr) &&
          instr->to_apply()->root_instruction()->opcode() == HloOpcode::kMaximum;
 }
 
 bool IsReduceSum(const HloInstruction* instr) {
-  return instr->opcode() == HloOpcode::kReduce &&
+  return HloPredicateIsOp<HloOpcode::kReduce>(instr) &&
          instr->to_apply()->root_instruction()->opcode() == HloOpcode::kAdd;
 }
 
@@ -619,7 +619,7 @@ MatchFwdResult MatchBmm1UnfusedBiasSoftmaxBmm2(MatchFwdResult previous_result,
                     : kCudnnfMHAScaleBiasSoftmaxCallTarget;
     match_result.is_causal_mask |= IsCausalMaskPattern(bias);
     if (!match_result.is_causal_mask &&
-        bias->opcode() == HloOpcode::kBroadcast) {
+        HloPredicateIsOp<HloOpcode::kBroadcast>(bias)) {
       // we can take the bias before broadcast
       auto dims = Cast<HloBroadcastInstruction>(bias)->dimensions();
       if (dims == std::vector<int64_t>{2, 3} ||
@@ -722,14 +722,14 @@ MatchBwdResult MatchBmm1GradGemm2(MatchBwdResult previous_result,
   HloInstruction* d_s_user_0 = match_result.matched_bmm_1_grad_1;
 
   HloInstruction* d_s = d_s_user_0->mutable_operand(d_s_index);
-  if (d_s->opcode() == HloOpcode::kBitcast && d_s->user_count() == 1) {
+  if (HloPredicateIsOp<HloOpcode::kBitcast>(d_s) && d_s->user_count() == 1) {
     d_s = d_s->mutable_operand(0);
   }
 
   auto bmm_1_grad_2_it = std::find_if(
       d_s->users().begin(), d_s->users().end(), [&](HloInstruction* instr) {
         return instr != match_result.matched_bmm_1_grad_1 &&
-               instr->opcode() == HloOpcode::kDot;
+               HloPredicateIsOp<HloOpcode::kDot>(instr);
       });
   if (bmm_1_grad_2_it != d_s->users().end()) {
     bmm_1_grad_2 = *bmm_1_grad_2_it;
@@ -1285,7 +1285,7 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
     // Sometimes activation output is bitcast, the actual activation is the
     // other user of the producer of bmm_2's first operand.
     if (activation_output->user_count() < 2 &&
-        activation_output->opcode() == HloOpcode::kBitcast) {
+        HloPredicateIsOp<HloOpcode::kBitcast>(activation_output)) {
       HloInstruction* producer = activation_output->mutable_operand(0);
       TF_RET_CHECK(producer->user_count() == 2);
       HloInstruction* bmm2_grad2_user =
@@ -1294,7 +1294,7 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
       // might be (transpose) - bmm2_grad2
       if (IsBatchedMatmul(bmm2_grad2_user)) {
         activation_output = producer;
-      } else if (bmm2_grad2_user->opcode() == HloOpcode::kTranspose) {
+      } else if (HloPredicateIsOp<HloOpcode::kTranspose>(bmm2_grad2_user)) {
         activation_output = bmm2_grad2_user;
       } else {
         return Internal("Unexpected activation patterns");
@@ -1459,7 +1459,7 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   }
   HloInstruction* fwd_output;
   for (auto user : fwd_fmha_call->users()) {
-    if (user->opcode() == HloOpcode::kGetTupleElement &&
+    if (HloPredicateIsOp<HloOpcode::kGetTupleElement>(user) &&
         user->tuple_index() == 0) {
       fwd_output = user;
     }
