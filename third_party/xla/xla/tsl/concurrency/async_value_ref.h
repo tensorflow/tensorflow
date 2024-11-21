@@ -891,8 +891,15 @@ class CountDownAsyncValueRef {
     if (ABSL_PREDICT_FALSE(is_complete)) {
       bool is_error = state_->is_error.load(std::memory_order_acquire);
       if (ABSL_PREDICT_FALSE(is_error)) {
-        absl::MutexLock lock(&state_->mutex);
-        state_->ref.SetError(state_->status);
+        // Ownership of the CountDownAsyncValueRef can be transferred to
+        // AsyncValueRef itself (via the `AndThen` callback), and `ref.SetError`
+        // call can destroy the `state_` and the `mutex`. We take the error
+        // status by copy to avoid using memory after it was freed.
+        auto take_error = [&] {
+          absl::MutexLock lock(&state_->mutex);
+          return state_->status;
+        };
+        state_->ref.SetError(take_error());
         return true;
       } else {
         state_->ref.SetStateConcrete();
