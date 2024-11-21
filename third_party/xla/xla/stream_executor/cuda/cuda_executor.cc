@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_collectives.h"
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
-#include "xla/stream_executor/cuda/cuda_driver_version.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -1161,10 +1160,11 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   TF_RETURN_IF_ERROR(GetComputeCapability(&cc_major, &cc_minor, device));
 
   DeviceDescription desc;
-  TF_ASSIGN_OR_RETURN(int32_t version, CudaDriverVersion());
-
+  int32_t driver_version;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuDriverGetVersion(&driver_version),
+                                    "Could not get driver version"));
   desc.set_driver_version(
-      ParseCudaVersion(version).value_or(SemanticVersion{0, 0, 0}));
+      ParseCudaVersion(driver_version).value_or(SemanticVersion{0, 0, 0}));
 
   int32_t runtime_version;
   TF_RETURN_IF_ERROR(cuda::ToStatus(cudaRuntimeGetVersion(&runtime_version),

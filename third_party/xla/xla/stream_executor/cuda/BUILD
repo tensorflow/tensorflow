@@ -184,24 +184,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cuda_driver_version",
-    srcs = ["cuda_driver_version.cc"],
-    hdrs = ["cuda_driver_version.h"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        ":cuda_status",
-        "//xla/tsl/cuda",
-        "//xla/tsl/cuda:cudart",
-        "@com_google_absl//absl/status:statusor",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:errors",
-    ],
-)
-
-cc_library(
     name = "cuda_status",
     srcs = ["cuda_status.cc"],
     hdrs = ["cuda_status.h"],
@@ -1001,7 +983,6 @@ cc_library(
         ":cuda_collectives",
         ":cuda_command_buffer",
         ":cuda_context",
-        ":cuda_driver_version",
         ":cuda_event",
         ":cuda_kernel",
         ":cuda_platform_id",
@@ -1033,6 +1014,8 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:read_numa_node",
         "//xla/stream_executor/gpu:scoped_activate_context",
+        "//xla/tsl/cuda",  # buildcleaner: keep
+        "//xla/tsl/cuda:cudart",  # buildcleaner: keep
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
