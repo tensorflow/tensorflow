@@ -114,7 +114,8 @@ class DefaultCrossProgramPrefetchBufferIntervalComparator
     : public BufferIntervalComparator {
  public:
   explicit DefaultCrossProgramPrefetchBufferIntervalComparator(
-      const HloLiveRange& hlo_live_range);
+      const HloLiveRange& hlo_live_range,
+      const MsaSortOrderOverrides& msa_sort_order_overrides);
 
   ~DefaultCrossProgramPrefetchBufferIntervalComparator() override = default;
 
@@ -128,7 +129,7 @@ class DefaultCrossProgramPrefetchBufferIntervalComparator
   // See the value returned by DescribeComparisonCriteria() for the meaning of
   // each tuple element.
   using ComparisonTuple =
-      std::tuple<int64_t, int64_t, int64_t, BufferValue::Id>;
+      std::tuple<int64_t, int64_t, int64_t, int64_t, BufferValue::Id>;
 
   struct AdditionalSortData {
     int64_t latest_use = 0;
@@ -140,6 +141,7 @@ class DefaultCrossProgramPrefetchBufferIntervalComparator
   absl::flat_hash_map<const HloValue*, AdditionalSortData>
       additional_sort_data_;
   const HloLiveRange& hlo_live_range_;
+  const MsaSortOrderOverrides& msa_sort_order_overrides_;
 };
 
 }  // namespace memory_space_assignment

@@ -282,20 +282,24 @@ std::vector<MsaBufferInterval> FindCrossProgramPrefetchCandidates(
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     CHECK_GE(buffer.values().size(), 1);
     const HloValue* value = buffer.values().at(0);
+    MsaBufferInterval interval;
+    interval.buffer = value;
+    interval.size = options.size_fn(*value);
+    interval.start = 0;
+    interval.end = hlo_live_range.schedule_end_time();
+    interval.need_allocation = true;
+    interval.colocations = {++buffer.values().begin(), buffer.values().end()};
     if (IsCrossProgramPrefetchCandidate(*value, alias_analysis, options)) {
-      MsaBufferInterval interval;
-      interval.buffer = value;
-      interval.size = options.size_fn(*value);
-      interval.start = 0;
-      interval.end = hlo_live_range.schedule_end_time();
-      interval.need_allocation = true;
-      interval.colocations = {++buffer.values().begin(), buffer.values().end()};
+      candidates.emplace_back(interval);
+    } else if (MemorySpaceAssignmentUtils::
+                   DoesCrossProgramPrefetchBufferMatchAnyFilter(
+                       options.msa_sort_order_overrides, interval)) {
       candidates.emplace_back(interval);
     }
   }
 
   DefaultCrossProgramPrefetchBufferIntervalComparator default_comparator(
-      hlo_live_range);
+      hlo_live_range, options.msa_sort_order_overrides);
   BufferIntervalComparator* comparator =
       (options.default_cross_program_prefetch_heuristic &&
                options.buffer_interval_comparator

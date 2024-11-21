@@ -140,6 +140,11 @@ bool MemorySpaceAssignmentUtils::DoesUseMatchFilter(
                       filter.instruction_name_regex())) {
     return false;
   }
+  if (filter.has_instruction_regex() &&
+      !RE2::FullMatch(hlo_use.instruction->ToString(),
+                      filter.instruction_regex())) {
+    return false;
+  }
   return true;
 }
 
@@ -168,7 +173,22 @@ bool MemorySpaceAssignmentUtils::DoesPositionMatchFilter(
       !RE2::FullMatch(instruction->ToString(), filter.instruction_regex())) {
     return false;
   }
-  return true;
+  return DoesBufferIntervalMatchHloUseFilter(filter, buffer_interval);
+}
+
+bool MemorySpaceAssignmentUtils::DoesBufferIntervalMatchHloUseFilter(
+    const HloPositionMatcher& filter,
+    const MsaBufferInterval& buffer_interval) {
+  if (!filter.has_hlo_use_filter()) {
+    return true;
+  }
+  for (const HloUse& use : buffer_interval.buffer->GetUses()) {
+    if (DoesUseMatchFilter(filter.hlo_use_filter(), use,
+                           buffer_interval.size)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 absl::StatusOr<xla::HloLiveRange::LogicalTime>
@@ -273,14 +293,39 @@ MemorySpaceAssignmentUtils::GetOverriddenPreferredPrefetchTime(
   return static_cast<absl::StatusOr<std::optional<int64_t>>>(std::nullopt);
 }
 
+bool MemorySpaceAssignmentUtils::DoesCrossProgramPrefetchBufferMatchAnyFilter(
+    const MsaSortOrderOverrides& sort_order_overrides,
+    const MsaBufferInterval& buffer_interval) {
+  for (const MsaSortOrderOverride& override :
+       sort_order_overrides.overrides()) {
+    if (override.has_apply_to_cross_program_prefetches() &&
+        override.apply_to_cross_program_prefetches() &&
+        MemorySpaceAssignmentUtils::DoesPositionMatchFilter(
+            override.hlo_position_matcher(), buffer_interval) &&
+        override.override_options().has_assign_first() &&
+        override.override_options().assign_first()) {
+      VLOG(3) << "Cross program prefetch buffer "
+              << buffer_interval.buffer->ToString()
+              << " matches sort order override " << override.DebugString();
+      return true;
+    }
+  }
+  return false;
+}
+
 int64_t MemorySpaceAssignmentUtils::GetBufferIntervalOverridePriority(
     const MsaSortOrderOverrides& msa_sort_order_overrides,
-    const MsaBufferInterval& buffer_interval) {
+    const MsaBufferInterval& buffer_interval, bool is_cross_program_prefetch) {
   if (msa_sort_order_overrides.overrides_size() == 0) {
     return 0;
   }
   for (int64_t i = 0; i < msa_sort_order_overrides.overrides_size(); ++i) {
     const auto& override = msa_sort_order_overrides.overrides(i);
+    if (is_cross_program_prefetch &&
+        (!override.has_apply_to_cross_program_prefetches() ||
+         !override.apply_to_cross_program_prefetches())) {
+      continue;
+    }
     if (!MemorySpaceAssignmentUtils::DoesPositionMatchFilter(
             override.hlo_position_matcher(), buffer_interval)) {
       continue;
