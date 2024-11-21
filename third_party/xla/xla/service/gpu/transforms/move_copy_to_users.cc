@@ -39,7 +39,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   absl::Status HandlePad(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
     HloInstruction* c = hlo->mutable_operand(1);
-    if (operand->opcode() == HloOpcode::kCopy) {
+    if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
       TF_ASSIGN_OR_RETURN(
           HloInstruction * earlier_pad,
@@ -56,7 +56,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   // Turn copy->slice into slice->copy, as slice is layout-preserving.
   absl::Status HandleSlice(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
-    if (operand->opcode() == HloOpcode::kCopy) {
+    if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
       TF_ASSIGN_OR_RETURN(
           HloInstruction * earlier_slice,
@@ -74,7 +74,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   // layout-preserving.
   absl::Status HandleDynamicSlice(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
-    if (operand->opcode() == HloOpcode::kCopy) {
+    if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
       TF_ASSIGN_OR_RETURN(
           HloInstruction * earlier_slice,
@@ -94,7 +94,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   // layout-preserving.
   absl::Status HandleReduceWindow(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
-    if (operand->opcode() == HloOpcode::kCopy) {
+    if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
       TF_ASSIGN_OR_RETURN(
           HloInstruction * earlier_reduce_window,
@@ -112,7 +112,8 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   absl::Status HandleReduce(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
     // Reductions can handle transposes, e.g. via column reduction.
-    if (operand->opcode() == HloOpcode::kCopy && !hlo->shape().IsTuple()) {
+    if (HloPredicateIsOp<HloOpcode::kCopy>(operand) &&
+        !hlo->shape().IsTuple()) {
       HloInstruction* new_reduce = hlo->AddInstruction(
           hlo->CloneWithNewOperands(hlo->shape(), {operand->mutable_operand(0),
                                                    hlo->mutable_operand(1)}));
@@ -128,10 +129,10 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   // Sink kCopy across elementwise unary.
   absl::Status HandleElementwiseUnary(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
-    if (hlo->opcode() == HloOpcode::kReducePrecision) {
+    if (HloPredicateIsOp<HloOpcode::kReducePrecision>(hlo)) {
       return absl::OkStatus();
     }
-    if (operand->opcode() == HloOpcode::kCopy) {
+    if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
       TF_ASSIGN_OR_RETURN(
           HloInstruction * earlier_elementwise,
@@ -146,7 +147,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   // Sink kCopy across reverse
   absl::Status HandleReverse(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
-    if (operand->opcode() == HloOpcode::kCopy) {
+    if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
       TF_ASSIGN_OR_RETURN(
           HloInstruction * earlier_reverse,
@@ -160,7 +161,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   // Sink kCopy across convert.
   absl::Status HandleConvert(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
-    if (operand->opcode() == HloOpcode::kCopy) {
+    if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
       HloInstruction* earlier_convert = MakeConvertToHlo(
           copied, hlo->shape().element_type(), &hlo->metadata());
@@ -174,12 +175,13 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   absl::Status HandleElementwiseBinary(HloInstruction* hlo) override {
     HloInstruction* a = hlo->mutable_operand(0);
     HloInstruction* b = hlo->mutable_operand(1);
-    if (a->opcode() == HloOpcode::kCopy && b->opcode() == HloOpcode::kCopy) {
+    if (HloPredicateIsOp<HloOpcode::kCopy>(a) &&
+        HloPredicateIsOp<HloOpcode::kCopy>(b)) {
       HloInstruction* copied_a = a->mutable_operand(0);
       HloInstruction* copied_b = b->mutable_operand(0);
       if (copied_a->shape() == copied_b->shape()) {
         HloInstruction* earlier_elementwise;
-        if (hlo->opcode() == HloOpcode::kCompare) {
+        if (HloPredicateIsOp<HloOpcode::kCompare>(hlo)) {
           TF_ASSIGN_OR_RETURN(
               earlier_elementwise,
               MakeCompareHlo(hlo->comparison_direction(), copied_a, copied_b,
@@ -200,7 +202,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   // Move copy across kConcat if it occurs on all operands.
   absl::Status HandleConcatenate(HloInstruction* hlo) override {
     const HloInstruction* first = hlo->operand(0);
-    if (first->opcode() != HloOpcode::kCopy) {
+    if (HloPredicateIsNotOp<HloOpcode::kCopy>(first)) {
       return absl::OkStatus();
     }
     const HloInstruction* inner_op = first->operand(0);
@@ -209,7 +211,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
     std::vector<HloInstruction*> new_operands;
     new_operands.reserve(hlo->operand_count());
     for (HloInstruction* op : hlo->mutable_operands()) {
-      if (op->opcode() != HloOpcode::kCopy ||
+      if (HloPredicateIsNotOp<HloOpcode::kCopy>(op) ||
           op->operand(0)->shape().layout() != inner_op_layout) {
         VLOG(3) << "Mismatch between " << op->ToString()
                 << " and expected op layout " << inner_op_layout.ToString();

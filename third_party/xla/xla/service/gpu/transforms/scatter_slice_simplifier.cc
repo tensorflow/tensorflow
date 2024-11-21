@@ -48,7 +48,7 @@ bool IsValidIntermediaryUser(const HloInstruction* instruction) {
   // Allow elementwise instructions, as they don't depend on the truncated
   // elements. In case of multi-output scatters, the resulting shape is a tuple.
   return instruction->IsElementwise() ||
-         instruction->opcode() == HloOpcode::kGetTupleElement;
+         HloPredicateIsOp<HloOpcode::kGetTupleElement>(instruction);
 }
 
 // Matches the "Scatter -> Elementwise (zero or more) -> Slice" pattern.
@@ -218,7 +218,7 @@ class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
   absl::Status ReplaceUserRecursive(HloInstruction* user,
                                     HloInstruction* operand) {
     VLOG(3) << "Replacing scatter user " << user->name();
-    if (user->opcode() == HloOpcode::kSlice) {
+    if (HloPredicateIsOp<HloOpcode::kSlice>(user)) {
       return ReplaceInstruction(user, operand);
     }
 
