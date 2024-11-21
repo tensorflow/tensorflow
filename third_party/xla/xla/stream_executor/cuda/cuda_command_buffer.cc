@@ -580,15 +580,13 @@ absl::Status CudaCommandBuffer::Trace(
 }
 
 absl::Status CudaCommandBuffer::SetNodeExecutionEnabled(
-    GraphNodeHandle node_handle, CommandBuffer& root_command_buffer,
-    bool enabled) {
+    GraphNodeHandle node_handle, bool enabled) {
   // Node is enabled if value != 0, otherwise the node is disabled.
   unsigned value = enabled ? 1 : 0;
-  CUgraphExec exec = static_cast<CudaCommandBuffer&>(root_command_buffer).exec_;
-  VLOG(2) << "Set CUDA executable graph " << exec << " node " << node_handle
+  VLOG(2) << "Set CUDA executable graph " << exec_ << " node " << node_handle
           << " enabled flag to " << value;
   return cuda::ToStatus(
-      cuGraphNodeSetEnabled(exec, ToCudaGraphHandle(node_handle), value),
+      cuGraphNodeSetEnabled(exec_, ToCudaGraphHandle(node_handle), value),
       "Failed to set CUDA graph node enabled flag");
 }
 

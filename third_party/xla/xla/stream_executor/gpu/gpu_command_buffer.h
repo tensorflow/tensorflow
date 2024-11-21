@@ -291,7 +291,7 @@ class GpuCommandBuffer : public CommandBuffer {
   // kernel nodes, however large number of no-op kernels impacts performance.
   // The function needs access to the root command buffer which holds the
   // executable graph.
-  absl::Status DisableBarriersExecution(CommandBuffer& root_command_buffer);
+  absl::Status DisableBarriersExecution(GpuCommandBuffer& root_command_buffer);
 
   // Launches CUDA kernels with packed arguments.
   absl::Status LaunchWithPackedArgs(
@@ -425,12 +425,8 @@ class GpuCommandBuffer : public CommandBuffer {
       const Dependencies& dependencies) = 0;
 
   // Enables or disables the execution of the given node in the graph.
-  // `root_command_buffer` is the root command buffer that holds the executable
-  // graph. Note that `this` must either by the same as the
-  // `root_command_buffer` or be a nested command buffer.
-  virtual absl::Status SetNodeExecutionEnabled(
-      GraphNodeHandle node_handle, CommandBuffer& root_command_buffer,
-      bool enabled) = 0;
+  virtual absl::Status SetNodeExecutionEnabled(GraphNodeHandle node_handle,
+                                               bool enabled) = 0;
 
   // Launches an instantiated graph. Only supported on primary command buffers.
   virtual absl::Status LaunchGraph(Stream* stream) = 0;

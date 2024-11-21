@@ -398,16 +398,13 @@ absl::Status RocmCommandBuffer::Trace(
 }
 
 absl::Status RocmCommandBuffer::SetNodeExecutionEnabled(
-    GraphNodeHandle node_handle, CommandBuffer& root_command_buffer,
-    bool enabled) {
+    GraphNodeHandle node_handle, bool enabled) {
   // Node is enabled if value != 0, otherwise the node is disabled.
   unsigned value = enabled ? 1 : 0;
-  hipGraphExec_t exec =
-      static_cast<RocmCommandBuffer&>(root_command_buffer).exec_;
-  VLOG(2) << "Set HIP executable graph " << exec << " node " << node_handle
+  VLOG(2) << "Set HIP executable graph " << exec_ << " node " << node_handle
           << " enabled flag to " << value;
   return ToStatus(
-      wrap::hipGraphNodeSetEnabled(exec, ToHipGraphHandle(node_handle), value),
+      wrap::hipGraphNodeSetEnabled(exec_, ToHipGraphHandle(node_handle), value),
       "Failed to set HIP graph node enabled flag");
 }
 

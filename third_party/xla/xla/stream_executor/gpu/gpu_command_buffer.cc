@@ -118,13 +118,13 @@ GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
 }
 
 absl::Status GpuCommandBuffer::DisableBarriersExecution(
-    CommandBuffer& root_command_buffer) {
+    GpuCommandBuffer& root_command_buffer) {
   ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
 
   for (GpuGraphBarrierInfo& barrier : execution_scope.barriers) {
     if (barrier.is_barrier_node) {
       TF_RETURN_IF_ERROR(
-          SetNodeExecutionEnabled(barrier.handle, root_command_buffer, false));
+          root_command_buffer.SetNodeExecutionEnabled(barrier.handle, false));
     }
   }
   for (ConditionalCommandBuffers& cmd_buffers :
