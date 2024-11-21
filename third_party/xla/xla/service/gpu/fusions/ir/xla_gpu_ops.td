@@ -458,36 +458,4 @@ def XLAGPU_ReduceOp : XLAGPU_Op<"reduce", [
   let hasVerifier = 1;
 }
 
-def XLAGPU_ReindexOp : XLAGPU_Op<"reindex", [
-    Pure,
-    OptionalTypesMatchWith<
-        "scalar padding type matches element type operand",
-        "operand", "padding",
-        "::llvm::cast<::mlir::ShapedType>($_self).getElementType()">
-  ]> {
-  let summary = "Reindexes a tensor.";
-  let description = [{
-    The `xla_gpu.reindex` op models a general index transformation on a tensor.
-    Examples are transposes, broadcasts and reshapes. However, any index
-    transformation that is expressible as an indexing map is allowed.
-  }];
-  let arguments = (ins
-    AnyRankedTensor:$operand,
-    Optional<AnyTypeOf<[AnySignlessInteger, AnyFloat, AnyComplex]>>:$padding,
-    XLAGPU_IndexingMapAttr:$map);
-  let results = (outs AnyRankedTensor:$result);
-
-  let builders = [
-    OpBuilder<(ins "mlir::Type":$type, "mlir::Value":$operand,
-                   "mlir::Value":$padding,
-                   "const IndexingMap&":$indexing_map)>,
-  ];
-
-  // TODO(jreiffers): Add a verifier.
-  let assemblyFormat = [{
-    $operand `at` $map (`default` $padding^)? attr-dict
-      `:` type($operand) `->` type($result)
-  }];
-}
-
 #endif // XLA_SERVICE_GPU_FUSIONS_MLIR_OPS
