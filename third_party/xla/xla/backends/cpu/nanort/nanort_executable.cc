@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -36,7 +35,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
@@ -270,21 +268,18 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
   }
 
   // Prepare buffer allocations for arguments, results, and temp.
-  absl::InlinedVector<MaybeOwningDeviceMemory, 8> buffers(num_allocations_);
+  cpu::BufferAllocations::Buffers buffers(num_allocations_);
 
   for (size_t i = 0; i < num_arguments; ++i) {
-    buffers[argument_to_allocation_index_[i]] =
-        MaybeOwningDeviceMemory(ToDeviceMemory(arguments[i]));
+    buffers[argument_to_allocation_index_[i]] = ToDeviceMemory(arguments[i]);
   }
 
   for (size_t i = 0; i < num_results; ++i) {
-    buffers[result_to_allocation_index_[i]] =
-        MaybeOwningDeviceMemory(ToDeviceMemory(results[i]));
+    buffers[result_to_allocation_index_[i]] = ToDeviceMemory(results[i]);
   }
 
   if (temp_allocation_index_) {
-    buffers[*temp_allocation_index_] =
-        MaybeOwningDeviceMemory(ToDeviceMemory(temp));
+    buffers[*temp_allocation_index_] = ToDeviceMemory(temp);
   }
 
   for (const auto& constant : executable->constants()) {
@@ -297,7 +292,7 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
     }
   }
 
-  cpu::BufferAllocations allocations(buffers);
+  cpu::BufferAllocations allocations(std::move(buffers));
   cpu::Thunk::ExecuteParams execute_params = {
       &executable->function_registry(),
       &allocations,
