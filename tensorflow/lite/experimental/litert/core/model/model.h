@@ -92,6 +92,20 @@ struct LiteRtOpT {
   litert::OwningBufferRef<uint8_t> custom_options;
 
   tflite::BuiltinOptionsUnion option;
+
+  // Add a new input to this op and updating given tensors users.
+  void AddInput(LiteRtTensorT& input_tensor) {
+    input_tensor.users.push_back(this);
+    input_tensor.user_arg_inds.push_back(inputs.size());
+    inputs.push_back(&input_tensor);
+  }
+
+  // Add a new output to this op and update given tensors defining op.
+  void AddOutput(LiteRtTensorT& output_tensor) {
+    output_tensor.defining_op_out_ind = outputs.size();
+    output_tensor.defining_op = this;
+    outputs.push_back(&output_tensor);
+  }
 };
 
 //

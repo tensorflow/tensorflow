@@ -67,6 +67,7 @@ namespace {
 using absl::StrCat;
 using primitive_util::NativeTypeOf;
 
+// Test comment
 constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 
 // Converts between little and big endian.

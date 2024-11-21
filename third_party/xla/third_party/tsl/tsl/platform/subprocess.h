@@ -59,13 +59,13 @@ std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv);
 #include "tsl/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE)
-#include "tsl/platform/google/subprocess.h"
+#include "xla/tsl/platform/google/subprocess.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
     defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
     defined(PLATFORM_GOOGLE_IOS)
-#include "tsl/platform/default/subprocess.h"  // IWYU pragma: export
+#include "xla/tsl/platform/default/subprocess.h"  // IWYU pragma: export
 #elif defined(PLATFORM_WINDOWS)
-#include "tsl/platform/windows/subprocess.h"  // IWYU pragma: export
+#include "xla/tsl/platform/windows/subprocess.h"  // IWYU pragma: export
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif

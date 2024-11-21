@@ -55,6 +55,7 @@ exports_files(
     visibility = internal_visibility([
         "//tensorflow/core/platform:__subpackages__",
         "//tsl:__subpackages__",
+        "@local_xla//xla/tsl:__subpackages__",
     ]),
 )
 
@@ -619,7 +620,7 @@ filegroup(
         "//conditions:default": [
             "file_system_helper.cc",
             "tracing.cc",
-            "//tsl/platform/default:mobile_srcs_no_runtime",
+            "@local_xla//xla/tsl/platform/default:mobile_srcs_no_runtime",
         ],
     }),
     compatible_with = get_compatible_with_portable(),

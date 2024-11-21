@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
@@ -24,8 +25,9 @@
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace litert::internal {
-
 namespace {
+
+using ::testing::ElementsAreArray;
 
 TEST(ModelTest, GetMetadata) {
   LiteRtModelT model;
@@ -47,6 +49,30 @@ TEST(ModelTest, MetadataDNE) {
 
   auto res = model.FindMetadata("FOO");
   ASSERT_FALSE(res.HasValue());
+}
+
+TEST(ModelOpTest, AddInput) {
+  LiteRtOpT op;
+  LiteRtTensorT tensor;
+
+  op.AddInput(tensor);
+
+  EXPECT_THAT(tensor.users, ElementsAreArray({&op}));
+  EXPECT_THAT(tensor.user_arg_inds, ElementsAreArray({0}));
+
+  EXPECT_THAT(op.inputs, ElementsAreArray({&tensor}));
+}
+
+TEST(ModelOpTest, AddOutput) {
+  LiteRtOpT op;
+  LiteRtTensorT tensor;
+
+  op.AddOutput(tensor);
+
+  EXPECT_EQ(tensor.defining_op, &op);
+  EXPECT_EQ(tensor.defining_op_out_ind, 0);
+
+  EXPECT_THAT(op.outputs, ElementsAreArray({&tensor}));
 }
 
 }  // namespace

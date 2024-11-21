@@ -54,7 +54,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "//xla:__subpackages__",
-        "@local_tsl//tsl/platform/cloud:__pkg__",
+        "//xla/tsl/platform/cloud:__pkg__",
         "//xla/tsl/profiler:internal",
     ]),
     deps = [

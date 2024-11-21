@@ -6,15 +6,15 @@ load(
     "@local_config_sycl//sycl:build_defs.bzl",
     "if_sycl_is_configured",
 )
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 load("//xla:xla.bzl", "xla_cc_test")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
     "internal_visibility",
+)
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
 )
 
 package(

@@ -1,4 +1,4 @@
-load("@local_tsl//tsl/platform/default:build_config.bzl", "py_proto_library")
+load("@local_xla//xla/tsl/platform/default:build_config.bzl", "py_proto_library")
 
 package(
     default_visibility = ["//visibility:public"],

@@ -189,6 +189,7 @@ class IfOp : public AsyncOpKernel {
           lib_(CHECK_NOTNULL(ctx_->function_library())),
           opts_(ctx->step_id()) {
       SetRunOptions(ctx_, &opts_, true /* always_collect_stats */);
+      args_.reserve(ctx_->num_inputs() - 1);
       for (int i = 1; i < ctx_->num_inputs(); ++i) {
         args_.push_back(ctx_->input(i));
       }

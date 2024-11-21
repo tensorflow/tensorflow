@@ -9,10 +9,6 @@ load(
     "cc_library",
 )
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_newer_than",
-)
-load(
     "//xla:xla.bzl",
     "xla_cc_test",
 )
@@ -31,6 +27,10 @@ load(
     "if_nccl",
     "internal_visibility",
     "tsl_copts",
+)
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_newer_than",
 )
 
 package(
