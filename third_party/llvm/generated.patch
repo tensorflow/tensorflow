@@ -1,1 +1,173 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/unittests/Sema/SemaNoloadLookupTest.cpp b/clang/unittests/Sema/SemaNoloadLookupTest.cpp
+--- a/clang/unittests/Sema/SemaNoloadLookupTest.cpp
++++ b/clang/unittests/Sema/SemaNoloadLookupTest.cpp
+@@ -58,7 +58,7 @@
+     addFile(FileName, Contents);
+ 
+     CreateInvocationOptions CIOpts;
+-    CIOpts.VFS = llvm::vfs::getRealFileSystem();
++    CIOpts.VFS = llvm::vfs::createPhysicalFileSystem();
+     IntrusiveRefCntPtr<DiagnosticsEngine> Diags =
+         CompilerInstance::createDiagnostics(*CIOpts.VFS,
+                                             new DiagnosticOptions());
+diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/MemoryDependenceAnalysis.cpp b/llvm/lib/Analysis/MemoryDependenceAnalysis.cpp
+--- a/llvm/lib/Analysis/MemoryDependenceAnalysis.cpp
++++ b/llvm/lib/Analysis/MemoryDependenceAnalysis.cpp
+@@ -1066,40 +1066,18 @@
+   // Invariant loads don't participate in caching. Thus no need to reconcile.
+   if (!isInvariantLoad && !Pair.second) {
+     if (CacheInfo->Size != Loc.Size) {
+-      bool ThrowOutEverything;
+-      if (CacheInfo->Size.hasValue() && Loc.Size.hasValue()) {
+-        // FIXME: We may be able to do better in the face of results with mixed
+-        // precision. We don't appear to get them in practice, though, so just
+-        // be conservative.
+-        ThrowOutEverything =
+-            CacheInfo->Size.isPrecise() != Loc.Size.isPrecise() ||
+-            !TypeSize::isKnownGE(CacheInfo->Size.getValue(),
+-                                 Loc.Size.getValue());
+-      } else {
+-        // For our purposes, unknown size > all others.
+-        ThrowOutEverything = !Loc.Size.hasValue();
+-      }
+-
+-      if (ThrowOutEverything) {
+-        // The query's Size is greater than the cached one. Throw out the
+-        // cached data and proceed with the query at the greater size.
+-        CacheInfo->Pair = BBSkipFirstBlockPair();
+-        CacheInfo->Size = Loc.Size;
+-        for (auto &Entry : CacheInfo->NonLocalDeps)
+-          if (Instruction *Inst = Entry.getResult().getInst())
+-            RemoveFromReverseMap(ReverseNonLocalPtrDeps, Inst, CacheKey);
+-        CacheInfo->NonLocalDeps.clear();
+-        // The cache is cleared (in the above line) so we will have lost
+-        // information about blocks we have already visited. We therefore must
+-        // assume that the cache information is incomplete.
+-        IsIncomplete = true;
+-      } else {
+-        // This query's Size is less than the cached one. Conservatively restart
+-        // the query using the greater size.
+-        return getNonLocalPointerDepFromBB(
+-            QueryInst, Pointer, Loc.getWithNewSize(CacheInfo->Size), isLoad,
+-            StartBB, Result, Visited, SkipFirstBlock, IsIncomplete);
+-      }
++      // The query's Size is not equal to the cached one. Throw out the cached
++      // data and proceed with the query with the new size.
++      CacheInfo->Pair = BBSkipFirstBlockPair();
++      CacheInfo->Size = Loc.Size;
++      for (auto &Entry : CacheInfo->NonLocalDeps)
++        if (Instruction *Inst = Entry.getResult().getInst())
++          RemoveFromReverseMap(ReverseNonLocalPtrDeps, Inst, CacheKey);
++      CacheInfo->NonLocalDeps.clear();
++      // The cache is cleared (in the above line) so we will have lost
++      // information about blocks we have already visited. We therefore must
++      // assume that the cache information is incomplete.
++      IsIncomplete = true;
+     }
+ 
+     // If the query's AATags are inconsistent with the cached one,
+diff -ruN --strip-trailing-cr a/llvm/test/Analysis/MemoryDependenceAnalysis/load-size-cache.ll b/llvm/test/Analysis/MemoryDependenceAnalysis/load-size-cache.ll
+--- a/llvm/test/Analysis/MemoryDependenceAnalysis/load-size-cache.ll
++++ b/llvm/test/Analysis/MemoryDependenceAnalysis/load-size-cache.ll
+@@ -22,9 +22,11 @@
+ ; CHECK-NEXT:    call void @use(i64 undef)
+ ; CHECK-NEXT:    br label %[[BB9:.*]]
+ ; CHECK:       [[BB7]]:
++; CHECK-NEXT:    [[LOAD8:%.*]] = load i8, ptr [[CALL]], align 4
+ ; CHECK-NEXT:    br label %[[BB9]]
+ ; CHECK:       [[BB9]]:
+-; CHECK-NEXT:    ret i8 4
++; CHECK-NEXT:    [[PHI10:%.*]] = phi i8 [ [[LOAD8]], %[[BB7]] ], [ 4, %[[BB6]] ]
++; CHECK-NEXT:    ret i8 [[PHI10]]
+ ;
+ bb:
+   br i1 %arg2, label %bb2, label %bb11
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/GVN/PRE/rle.ll b/llvm/test/Transforms/GVN/PRE/rle.ll
+--- a/llvm/test/Transforms/GVN/PRE/rle.ll
++++ b/llvm/test/Transforms/GVN/PRE/rle.ll
+@@ -673,15 +673,15 @@
+ ; CHECK-NEXT:    [[X3:%.*]] = getelementptr i8, ptr [[P:%.*]], i32 192
+ ; CHECK-NEXT:    store i8 -64, ptr [[X3]], align 1
+ ; CHECK-NEXT:    [[X:%.*]] = getelementptr i8, ptr [[P]], i32 4
+-; CHECK-NEXT:    [[Y:%.*]] = load i8, ptr [[X]], align 1
++; CHECK-NEXT:    [[Y2_PRE:%.*]] = load i8, ptr [[X]], align 1
+ ; CHECK-NEXT:    br label [[LOOP:%.*]]
+ ; CHECK:       loop:
+-; CHECK-NEXT:    [[Y2:%.*]] = phi i8 [ [[Y]], [[ENTRY:%.*]] ], [ 0, [[LOOP]] ]
++; CHECK-NEXT:    [[Y2:%.*]] = phi i8 [ [[Y2_PRE]], [[ENTRY:%.*]] ], [ 0, [[LOOP]] ]
+ ; CHECK-NEXT:    [[COND:%.*]] = call i1 @cond2()
+ ; CHECK-NEXT:    store i32 0, ptr [[X3]], align 4
+ ; CHECK-NEXT:    br i1 [[COND]], label [[LOOP]], label [[OUT:%.*]]
+ ; CHECK:       out:
+-; CHECK-NEXT:    [[R:%.*]] = add i8 [[Y]], [[Y2]]
++; CHECK-NEXT:    [[R:%.*]] = add i8 [[Y2_PRE]], [[Y2]]
+ ; CHECK-NEXT:    ret i8 [[R]]
+ ;
+ entry:
+@@ -772,7 +772,7 @@
+ ; CHECK-NEXT:    call void @use_i32(i32 [[L0]])
+ ; CHECK-NEXT:    br label [[HEADER:%.*]]
+ ; CHECK:       header:
+-; CHECK-NEXT:    [[L1:%.*]] = phi i32 [ [[L0]], [[ENTRY:%.*]] ], [ [[L1_PRE:%.*]], [[LATCH_HEADER_CRIT_EDGE:%.*]] ]
++; CHECK-NEXT:    [[L1_PRE:%.*]] = phi i32 [ [[L0]], [[ENTRY:%.*]] ], [ [[L1_PRE1:%.*]], [[LATCH_HEADER_CRIT_EDGE:%.*]] ]
+ ; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ 0, [[ENTRY]] ], [ [[IV_NEXT:%.*]], [[LATCH_HEADER_CRIT_EDGE]] ]
+ ; CHECK-NEXT:    indirectbr ptr blockaddress(@phi_trans6, [[LATCH:%.*]]), [label %latch]
+ ; CHECK:       latch:
+@@ -780,10 +780,10 @@
+ ; CHECK-NEXT:    br i1 [[COND:%.*]], label [[EXIT:%.*]], label [[LATCH_HEADER_CRIT_EDGE]]
+ ; CHECK:       latch.header_crit_edge:
+ ; CHECK-NEXT:    [[GEP_1_PHI_TRANS_INSERT_PHI_TRANS_INSERT:%.*]] = getelementptr i32, ptr [[X]], i32 [[IV_NEXT]]
+-; CHECK-NEXT:    [[L1_PRE]] = load i32, ptr [[GEP_1_PHI_TRANS_INSERT_PHI_TRANS_INSERT]], align 4
++; CHECK-NEXT:    [[L1_PRE1]] = load i32, ptr [[GEP_1_PHI_TRANS_INSERT_PHI_TRANS_INSERT]], align 4
+ ; CHECK-NEXT:    br label [[HEADER]]
+ ; CHECK:       exit:
+-; CHECK-NEXT:    ret i32 [[L1]]
++; CHECK-NEXT:    ret i32 [[L1_PRE]]
+ ;
+ entry:
+   %l0 = load i32, ptr %x
+@@ -1057,7 +1057,7 @@
+ ; LE-NEXT:    [[TMP0:%.*]] = trunc i32 [[V_1_32]] to i8
+ ; LE-NEXT:    br label [[LOOP:%.*]]
+ ; LE:       loop:
+-; LE-NEXT:    [[V_I:%.*]] = phi i8 [ [[TMP0]], [[ENTRY:%.*]] ], [ [[V_I_PRE:%.*]], [[LOOP_LOOP_CRIT_EDGE:%.*]] ]
++; LE-NEXT:    [[V_I:%.*]] = phi i8 [ [[TMP0]], [[ENTRY:%.*]] ], [ [[TMP2:%.*]], [[LOOP_LOOP_CRIT_EDGE:%.*]] ]
+ ; LE-NEXT:    [[I:%.*]] = phi i64 [ 1, [[ENTRY]] ], [ [[I_INC:%.*]], [[LOOP_LOOP_CRIT_EDGE]] ]
+ ; LE-NEXT:    [[P_I:%.*]] = getelementptr i8, ptr [[P]], i64 [[I]]
+ ; LE-NEXT:    call void @use.i8(i8 [[V_I]])
+@@ -1065,10 +1065,10 @@
+ ; LE-NEXT:    call void @use.i32(i32 [[V_I_32]])
+ ; LE-NEXT:    [[I_INC]] = add i64 [[I]], 1
+ ; LE-NEXT:    [[CMP:%.*]] = icmp ne i64 [[I_INC]], 64
++; LE-NEXT:    [[TMP1:%.*]] = lshr i32 [[V_I_32]], 8
++; LE-NEXT:    [[TMP2]] = trunc i32 [[TMP1]] to i8
+ ; LE-NEXT:    br i1 [[CMP]], label [[LOOP_LOOP_CRIT_EDGE]], label [[EXIT:%.*]]
+ ; LE:       loop.loop_crit_edge:
+-; LE-NEXT:    [[P_I_PHI_TRANS_INSERT:%.*]] = getelementptr i8, ptr [[P]], i64 [[I_INC]]
+-; LE-NEXT:    [[V_I_PRE]] = load i8, ptr [[P_I_PHI_TRANS_INSERT]], align 1
+ ; LE-NEXT:    br label [[LOOP]]
+ ; LE:       exit:
+ ; LE-NEXT:    ret void
+@@ -1084,7 +1084,7 @@
+ ; BE-NEXT:    [[TMP1:%.*]] = trunc i32 [[TMP0]] to i8
+ ; BE-NEXT:    br label [[LOOP:%.*]]
+ ; BE:       loop:
+-; BE-NEXT:    [[V_I:%.*]] = phi i8 [ [[TMP1]], [[ENTRY:%.*]] ], [ [[V_I_PRE:%.*]], [[LOOP_LOOP_CRIT_EDGE:%.*]] ]
++; BE-NEXT:    [[V_I:%.*]] = phi i8 [ [[TMP1]], [[ENTRY:%.*]] ], [ [[TMP3:%.*]], [[LOOP_LOOP_CRIT_EDGE:%.*]] ]
+ ; BE-NEXT:    [[I:%.*]] = phi i64 [ 1, [[ENTRY]] ], [ [[I_INC:%.*]], [[LOOP_LOOP_CRIT_EDGE]] ]
+ ; BE-NEXT:    [[P_I:%.*]] = getelementptr i8, ptr [[P]], i64 [[I]]
+ ; BE-NEXT:    call void @use.i8(i8 [[V_I]])
+@@ -1092,10 +1092,10 @@
+ ; BE-NEXT:    call void @use.i32(i32 [[V_I_32]])
+ ; BE-NEXT:    [[I_INC]] = add i64 [[I]], 1
+ ; BE-NEXT:    [[CMP:%.*]] = icmp ne i64 [[I_INC]], 64
++; BE-NEXT:    [[TMP2:%.*]] = lshr i32 [[V_I_32]], 16
++; BE-NEXT:    [[TMP3]] = trunc i32 [[TMP2]] to i8
+ ; BE-NEXT:    br i1 [[CMP]], label [[LOOP_LOOP_CRIT_EDGE]], label [[EXIT:%.*]]
+ ; BE:       loop.loop_crit_edge:
+-; BE-NEXT:    [[P_I_PHI_TRANS_INSERT:%.*]] = getelementptr i8, ptr [[P]], i64 [[I_INC]]
+-; BE-NEXT:    [[V_I_PRE]] = load i8, ptr [[P_I_PHI_TRANS_INSERT]], align 1
+ ; BE-NEXT:    br label [[LOOP]]
+ ; BE:       exit:
+ ; BE-NEXT:    ret void
