@@ -28,7 +28,7 @@ toc:
   - title: Indexing Analysis
     path: /xla/indexing
   - title: Multi-host HLO runner
-    path: /xla/tools_multi_host_hlo_runner
+    path: /xla/tools_multihost_hlo_runner
   - title: Persisted autotuning
     path: /xla/persisted_autotuning
   - title: Shapes and layout
