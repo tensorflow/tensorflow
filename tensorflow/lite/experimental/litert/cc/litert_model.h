@@ -172,6 +172,23 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
     return litert::RankedTensorType(ranked_tensor_type);
   }
 
+  LiteRtQuantizationTypeId QTypeId() const {
+    LiteRtQuantizationTypeId q_type_id;
+    internal::AssertOk(LiteRtGetQuantizationTypeId, Get(), &q_type_id);
+    return q_type_id;
+  }
+
+  bool HasQuantization() const { return QTypeId() != kLiteRtQuantizationNone; }
+
+  LiteRtQuantizationPerTensor PerTensorQuantization() const {
+    internal::AssertEq([&]() { return QTypeId(); },
+                       kLiteRtQuantizationPerTensor);
+    LiteRtQuantizationPerTensor per_tensor_quantization;
+    internal::AssertOk(LiteRtGetPerTensorQuantization, Get(),
+                       &per_tensor_quantization);
+    return per_tensor_quantization;
+  }
+
   bool HasWeights() const {
     auto weights = Weights();
     return !weights.Bytes().empty();

@@ -25,7 +25,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 //
@@ -40,6 +39,10 @@ typedef union {
   LiteRtUnrankedTensorType unranked_tensor_type;
   LiteRtRankedTensorType ranked_tensor_type;
 } LiteRtTypeDetail;
+
+typedef union {
+  LiteRtQuantizationPerTensor per_tensor;
+} LiteRtQuantizationTypeDetail;
 
 struct LiteRtTensorT {
   // Empty if subgraph output. This is a reference.
@@ -62,6 +65,12 @@ struct LiteRtTensorT {
 
   // Union tensor type.
   LiteRtTypeDetail type_detail;
+
+  // Id for union quantization type.
+  LiteRtQuantizationTypeId q_type_id = kLiteRtQuantizationNone;
+
+  // Union quantization type.
+  LiteRtQuantizationTypeDetail q_type_detail;
 
   // Authored name of tensor, may be empty.
   std::string name;

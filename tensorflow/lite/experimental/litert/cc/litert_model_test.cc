@@ -245,6 +245,32 @@ TEST(CcTensorTest, Name) {
   EXPECT_EQ(cc_tensor.Name(), kName);
 }
 
+TEST(CcTensorTest, QuantizationNone) {
+  LiteRtTensorT litert_tensor;
+  litert_tensor.q_type_id = kLiteRtQuantizationNone;
+
+  Tensor tensor(&litert_tensor);
+  EXPECT_EQ(tensor.QTypeId(), kLiteRtQuantizationNone);
+  EXPECT_FALSE(tensor.HasQuantization());
+}
+
+TEST(CcTensorTest, QuantizationPerTensor) {
+  static constexpr auto kScale = 1.0;
+  static constexpr auto kZeroPoint = 1;
+
+  LiteRtTensorT litert_tensor;
+  litert_tensor.q_type_id = kLiteRtQuantizationPerTensor;
+  litert_tensor.q_type_detail.per_tensor = {kScale, kZeroPoint};
+
+  Tensor tensor(&litert_tensor);
+  ASSERT_EQ(tensor.QTypeId(), kLiteRtQuantizationPerTensor);
+  ASSERT_TRUE(tensor.HasQuantization());
+
+  const auto per_tensor_quantization = tensor.PerTensorQuantization();
+  EXPECT_EQ(per_tensor_quantization.scale, kScale);
+  EXPECT_EQ(per_tensor_quantization.zero_point, kZeroPoint);
+}
+
 //===----------------------------------------------------------------------===//
 //                               CC Subgraph                                  //
 //===----------------------------------------------------------------------===//

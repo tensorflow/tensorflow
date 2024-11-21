@@ -169,6 +169,39 @@ TEST(LiteRtTensorTest, Name) {
   EXPECT_STREQ(name, kName.data());
 }
 
+TEST(LiteRtTensorTest, QuantizationNone) {
+  LiteRtTensorT tensor;
+  tensor.q_type_id = kLiteRtQuantizationNone;
+
+  LiteRtQuantizationTypeId q_type_id;
+  LITERT_ASSERT_STATUS_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
+  EXPECT_EQ(q_type_id, kLiteRtQuantizationNone);
+
+  LiteRtQuantizationPerTensor per_tensor_quantization;
+  EXPECT_NE(LiteRtGetPerTensorQuantization(&tensor, &per_tensor_quantization),
+            kLiteRtStatusOk);
+}
+
+TEST(LiteRtTensorTest, QuantizationPerTensor) {
+  static constexpr auto kScale = 1.0;
+  static constexpr auto kZeroPoint = 1;
+
+  LiteRtTensorT tensor;
+  tensor.q_type_id = kLiteRtQuantizationPerTensor;
+  tensor.q_type_detail.per_tensor = {kScale, kZeroPoint};
+
+  LiteRtQuantizationTypeId q_type_id;
+  LITERT_ASSERT_STATUS_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
+  ASSERT_EQ(q_type_id, kLiteRtQuantizationPerTensor);
+
+  LiteRtQuantizationPerTensor per_tensor_quantization;
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetPerTensorQuantization(&tensor, &per_tensor_quantization));
+
+  EXPECT_EQ(per_tensor_quantization.scale, kScale);
+  EXPECT_EQ(per_tensor_quantization.zero_point, kZeroPoint);
+}
+
 TEST(LiteRtOpTest, GetOpCode) {
   LiteRtOpT op;
   op.op_code = kLiteRtOpCodeTflCustom;

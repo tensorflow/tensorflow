@@ -196,3 +196,18 @@ LiteRtStatus LiteRtGetTensorName(LiteRtTensor tensor, const char** name) {
   *name = tensor->name.data();
   return kLiteRtStatusOk;
 }
+
+LiteRtStatus LiteRtGetQuantizationTypeId(LiteRtTensor tensor,
+                                         LiteRtQuantizationTypeId* q_type_id) {
+  *q_type_id = tensor->q_type_id;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetPerTensorQuantization(
+    LiteRtTensor tensor, LiteRtQuantizationPerTensor* per_tensor_quantization) {
+  if (tensor->q_type_id != kLiteRtQuantizationPerTensor) {
+    return kLiteRtStatusErrorInvalidIrType;
+  }
+  *per_tensor_quantization = tensor->q_type_detail.per_tensor;
+  return kLiteRtStatusOk;
+}

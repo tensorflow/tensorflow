@@ -153,7 +153,7 @@ typedef enum {
   // Tag for tensors without quantization.
   kLiteRtQuantizationNone = 0,
 
-  // [NOT IMPLEMENTED YET] Basic quantization, one set of q-params per tensor.
+  // Basic quantization, one set of q-params per tensor.
   kLiteRtQuantizationPerTensor = 1,
 
   // [NOT IMPLEMENTED YET] Q-params for each element accross a single dimension.
@@ -162,6 +162,14 @@ typedef enum {
   // [NOT IMPLEMENTED YET] Q-params accross blocks of fixed size (e.g. 2048).
   kLiteRtQuantizationBlockWise = 3,
 } LiteRtQuantizationTypeId;
+
+// Get the identifier for the type of quantization for a given tensor.
+LiteRtStatus LiteRtGetQuantizationTypeId(LiteRtTensor tensor,
+                                         LiteRtQuantizationTypeId* q_type_id);
+
+// Get the per-tensor quantization information for a given tensor if it has it.
+LiteRtStatus LiteRtGetPerTensorQuantization(
+    LiteRtTensor tensor, LiteRtQuantizationPerTensor* per_tensor_quantization);
 
 // EDGES
 
