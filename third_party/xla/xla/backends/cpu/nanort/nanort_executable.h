@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/container/fixed_array.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/executable.h"
@@ -79,14 +80,28 @@ class NanoRtExecutable {
   // buffer that is used by the executable to store intermediate results).
   using PreallocatedTemp = absl::Span<std::byte>;
 
+  // An owning writable byte buffer that can be used as a temporary buffer.
+  template <size_t n>
+  using ManagedTemp = absl::FixedArray<std::byte, n>;
+
   tsl::AsyncValueRef<ExecuteEvent> Execute(absl::Span<const Argument> arguments,
                                            absl::Span<const Result> results,
-                                           const PreallocatedTemp& temp);
+                                           PreallocatedTemp temp = {});
+
+  template <size_t n>
+  tsl::AsyncValueRef<ExecuteEvent> Execute(absl::Span<const Argument> arguments,
+                                           absl::Span<const Result> results,
+                                           ManagedTemp<n>& temp) {
+    return Execute(arguments, results, absl::MakeSpan(temp));
+  }
+
+  // Returns the size of the temp buffer required to run the executable.
+  size_t temp_buffer_size() const;
 
  private:
   NanoRtExecutable(std::unique_ptr<Executable> executable,
                    std::shared_ptr<tsl::thread::ThreadPool> thread_pool,
-                   size_t num_allocations,
+                   std::vector<size_t> allocation_sizes,
                    std::vector<size_t> argument_to_allocation_index,
                    std::vector<size_t> result_to_allocation_index,
                    std::optional<size_t> temp_allocation_index);
@@ -94,7 +109,7 @@ class NanoRtExecutable {
   std::unique_ptr<Executable> executable_;
   std::shared_ptr<tsl::thread::ThreadPool> thread_pool_;
 
-  size_t num_allocations_;
+  std::vector<size_t> allocation_sizes_;
 
   // A mapping from the argument/result index to the index of the corresponding
   // allocation (defined by the executable's buffer assignment).

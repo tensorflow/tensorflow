@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/nanort/nanort_client.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -70,9 +71,8 @@ TEST(NanoRtClientTest, CompileAndRunScalarComputation) {
   // Prepare executable parameters, results and temp storage.
   Arguments arguments = {{&p0_value, 1}, {&p1_value, 1}};
   Results results = {{&r0_value, 1}};
-  NanoRtExecutable::PreallocatedTemp temp = {};
 
-  auto event = executable->Execute(arguments, results, temp);
+  auto event = executable->Execute(arguments, results);
   tsl::BlockUntilReady(event);
 
   ASSERT_TRUE(event.IsConcrete());
@@ -109,9 +109,8 @@ TEST(NanoRtClientTest, CompileAndRunTupledComputation) {
   // Prepare executable parameters, results and temp storage.
   Arguments arguments = {{&p0_value, 1}, {&p1_value, 1}};
   Results results = {{&r0_value, 1}, {&r1_value, 1}};
-  NanoRtExecutable::PreallocatedTemp temp = {};
 
-  auto event = executable->Execute(arguments, results, temp);
+  auto event = executable->Execute(arguments, results);
   tsl::BlockUntilReady(event);
 
   ASSERT_TRUE(event.IsConcrete());
@@ -141,13 +140,58 @@ TEST(NanoRtClientTest, CompileAndRunConstantComputation) {
   // Prepare executable parameters, results and temp storage.
   Arguments arguments;
   Results results = {{&r0_value, 1}};
-  NanoRtExecutable::PreallocatedTemp temp = {};
+
+  auto event = executable->Execute(arguments, results);
+  tsl::BlockUntilReady(event);
+
+  ASSERT_TRUE(event.IsConcrete());
+  EXPECT_EQ(r0_value, 42.0f);
+}
+
+TEST(NanoRtClientTest, CompileAndRunConditionalComputation) {
+  std::string_view hlo = R"(
+    HloModule conditional
+
+    %add (x: f32[]) -> f32[] {
+      %p = f32[] parameter(0)
+      ROOT %add = f32[] add(%p, %p)
+    }
+
+    %mul (x: f32[]) -> f32[] {
+      %p = f32[] parameter(0)
+      ROOT %mul = f32[] multiply(%p, %p)
+    }
+
+    ENTRY e {
+      p0 = s32[] parameter(0)
+      p1 = f32[] parameter(1)
+      c0 = f32[] conditional(p0, p1, p1), branch_computations={%add, %mul}
+      ROOT add = f32[] add(c0, c0)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  XlaComputation computation(module->ToProto());
+
+  NanoRtClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                          client.Compile(computation));
+
+  // Storage for executable parameters and results.
+  alignas(32) int32_t p0_value = 0;
+  alignas(32) float p1_value = 2.0f;
+  alignas(32) float r0_value = 0.0f;
+
+  // Prepare executable parameters, results and temp storage.
+  Arguments arguments = {{&p0_value, 1}, {&p1_value, 1}};
+  Results results = {{&r0_value, 1}};
+  NanoRtExecutable::ManagedTemp<32> temp(executable->temp_buffer_size());
 
   auto event = executable->Execute(arguments, results, temp);
   tsl::BlockUntilReady(event);
 
   ASSERT_TRUE(event.IsConcrete());
-  EXPECT_EQ(r0_value, 42.0f);
+  EXPECT_EQ(r0_value, 8.0f);
 }
 
 //===----------------------------------------------------------------------===//
@@ -194,9 +238,8 @@ static void BM_NanoRtAddScalars(benchmark::State& state) {
   for (auto _ : state) {
     Arguments arguments = {{&p0_value, 1}, {&p1_value, 1}};
     Results results = {{&r0_value, 1}};
-    NanoRtExecutable::PreallocatedTemp temp = {};
 
-    auto event = (*executable)->Execute(arguments, results, temp);
+    auto event = (*executable)->Execute(arguments, results);
     tsl::BlockUntilReady(event);
   }
 }
@@ -217,9 +260,8 @@ static void BM_NanoRtFibonacci(benchmark::State& state) {
   for (auto _ : state) {
     Arguments arguments = {{&p0_value, 1}, {&p1_value, 1}};
     Results results = {{&r0_value, 1}};
-    NanoRtExecutable::PreallocatedTemp temp = {};
 
-    auto event = (*executable)->Execute(arguments, results, temp);
+    auto event = (*executable)->Execute(arguments, results);
     tsl::BlockUntilReady(event);
   }
 }

@@ -241,13 +241,6 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
   return OkExecuteEvent();
 }
 
-static void VlogInvariantBuffers(
-    const absl::flat_hash_set<int64_t>& invariant_arguments) {
-  for (auto index : invariant_arguments) {
-    VLOG(3) << absl::StreamFormat("  invariant arg id: %d", index);
-  }
-}
-
 static bool Contains(absl::Span<const SE_HOST_KernelArg> container,
                      const SE_HOST_KernelArg& memory) {
   return absl::c_any_of(container, [&](const SE_HOST_KernelArg& element) {
@@ -259,8 +252,11 @@ template <int64_t num_arguments, int64_t num_results>
 absl::Status
 KernelThunk<num_arguments, num_results>::CheckInvariantBuffersMemory(
     const KernelArgs& kernel_args) const {
-  if (ABSL_PREDICT_FALSE(VLOG_IS_ON(3))) {
-    VlogInvariantBuffers(invariant_arguments_);
+  if (ABSL_PREDICT_FALSE(VLOG_IS_ON(10))) {
+    VLOG(10) << "Verify invariant buffers: ";
+    for (auto index : invariant_arguments_) {
+      VLOG(10) << absl::StreamFormat("  invariant arg id: %d", index);
+    }
   }
 
   auto arguments = absl::Span<const SE_HOST_KernelArg>(

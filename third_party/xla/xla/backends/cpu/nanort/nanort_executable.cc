@@ -206,21 +206,27 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
   const auto& buffer_assignment = cpu_executable->buffer_assignment();
   size_t num_allocations = buffer_assignment.Allocations().size();
 
+  std::vector<size_t> allocation_sizes(num_allocations);
+  for (const BufferAllocation& allocation : buffer_assignment.Allocations()) {
+    allocation_sizes[allocation.index()] = allocation.size();
+  }
+
   return absl::WrapUnique(new NanoRtExecutable(
-      std::move(executable), std::move(thread_pool), num_allocations,
-      std::move(argument_to_allocation_index),
+      std::move(executable), std::move(thread_pool),
+      std::move(allocation_sizes), std::move(argument_to_allocation_index),
       std::move(result_to_allocation_index), temp_allocation_index));
 }
 
 NanoRtExecutable::NanoRtExecutable(
     std::unique_ptr<Executable> executable,
     std::shared_ptr<tsl::thread::ThreadPool> thread_pool,
-    size_t num_allocations, std::vector<size_t> argument_to_allocation_index,
+    std::vector<size_t> allocation_sizes,
+    std::vector<size_t> argument_to_allocation_index,
     std::vector<size_t> result_to_allocation_index,
     std::optional<size_t> temp_allocation_index)
     : executable_(std::move(executable)),
       thread_pool_(std::move(thread_pool)),
-      num_allocations_(num_allocations),
+      allocation_sizes_(std::move(allocation_sizes)),
       argument_to_allocation_index_(std::move(argument_to_allocation_index)),
       result_to_allocation_index_(std::move(result_to_allocation_index)),
       temp_allocation_index_(temp_allocation_index) {}
@@ -246,7 +252,7 @@ static se::DeviceMemoryBase ToDeviceMemory(
 
 tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
     absl::Span<const Argument> arguments, absl::Span<const Result> results,
-    const PreallocatedTemp& temp) {
+    PreallocatedTemp temp) {
   TraceMe trace([&] {
     return TraceMeEncode("NanoRtExecutable::Execute",
                          {{"name", executable_->module().name()}});
@@ -268,18 +274,36 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
   }
 
   // Prepare buffer allocations for arguments, results, and temp.
-  cpu::BufferAllocations::Buffers buffers(num_allocations_);
+  cpu::BufferAllocations::Buffers buffers(allocation_sizes_.size());
 
   for (size_t i = 0; i < num_arguments; ++i) {
-    buffers[argument_to_allocation_index_[i]] = ToDeviceMemory(arguments[i]);
+    size_t idx = argument_to_allocation_index_[i];
+    buffers[idx] = ToDeviceMemory(arguments[i]);
+
+    if (ABSL_PREDICT_FALSE(buffers[idx].size() != allocation_sizes_[idx])) {
+      return InvalidArgument("Argument %d size mismatch: expected %d, got %d",
+                             i, allocation_sizes_[idx], buffers[idx].size());
+    }
   }
 
   for (size_t i = 0; i < num_results; ++i) {
-    buffers[result_to_allocation_index_[i]] = ToDeviceMemory(results[i]);
+    size_t idx = result_to_allocation_index_[i];
+    buffers[idx] = ToDeviceMemory(results[i]);
+
+    if (ABSL_PREDICT_FALSE(buffers[idx].size() != allocation_sizes_[idx])) {
+      return InvalidArgument("Result %d size mismatch: expected %d, got %d", i,
+                             allocation_sizes_[idx], buffers[idx].size());
+    }
   }
 
   if (temp_allocation_index_) {
-    buffers[*temp_allocation_index_] = ToDeviceMemory(temp);
+    size_t idx = *temp_allocation_index_;
+    buffers[idx] = ToDeviceMemory(temp);
+
+    if (ABSL_PREDICT_FALSE(buffers[idx].size() != allocation_sizes_[idx])) {
+      return InvalidArgument("Temp size mismatch: expected %d, got %d",
+                             allocation_sizes_[idx], buffers[idx].size());
+    }
   }
 
   for (const auto& constant : executable->constants()) {
@@ -299,6 +323,13 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
   };
 
   return executable->thunks().Execute(execute_params);
+}
+
+size_t NanoRtExecutable::temp_buffer_size() const {
+  if (temp_allocation_index_.has_value()) {
+    return allocation_sizes_[*temp_allocation_index_];
+  }
+  return 0;
 }
 
 }  // namespace xla::cpu
