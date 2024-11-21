@@ -1,4 +1,5 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl:tsl.bzl", "if_windows")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -15,16 +16,29 @@ package_group(
 
 cc_library(
     name = "dialects",
-    srcs = glob(
-        [
-            "*.cc",
-        ],
-        exclude = ["util.cc"],
-    ),
+    srcs = [
+        "affine.cc",
+        "arith.cc",
+        "bufferization.cc",
+        "builtin.cc",
+        "complex.cc",
+        "func.cc",
+        "linalg.cc",
+        "math.cc",
+        "memref.cc",
+        "mhlo.cc",
+        "mhlo_binary_cwise.cc",
+        "mhlo_unary_cwise.cc",
+        "scf.cc",
+        "tensor.cc",
+        "vector.cc",
+    ],
     deps = [
         ":dialect_utils",
+        ":find_symbol",
         "//xla/mlir/tools/mlir_interpreter/framework",
         "//xla/mlir_hlo",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineUtils",
@@ -60,4 +74,43 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:ViewLikeInterface",
     ],
+)
+
+cc_library(
+    name = "symbol_finder_linux",
+    srcs = [
+        "symbol_finder.h",
+        "symbol_finder_linux.cc",
+    ],
+    tags = ["manual"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "symbol_finder_windows",
+    srcs = [
+        "symbol_finder.h",
+        "symbol_finder_windows.cc",
+    ],
+    tags = [
+        "manual",
+        "nobuilder",
+    ],
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "find_symbol",
+    hdrs = ["symbol_finder.h"],
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+    ] + if_windows(
+        [":symbol_finder_windows"],
+        [":symbol_finder_linux"],
+    ),
 )
