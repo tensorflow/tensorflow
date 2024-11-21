@@ -212,6 +212,58 @@ TEST(DerivedTimelineTest, TfOpNameScopeTest) {
   });
 }
 
+// Checks only derived events from line with most events for gpu trace.
+TEST(DerivedTimelineTest, OnlyDerivedEventsFromLineWithMostEvents) {
+  const absl::string_view kTfOpName = "scope1/scope2/mul:Mul";
+  const absl::string_view kKernelDetails = "kernel_details";
+  XSpace space;
+  tsl::profiler::GroupMetadataMap group_metadata_map;
+  XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
+  XPlaneBuilder plane_builder(plane);
+  auto line_builder = plane_builder.GetOrCreateLine(0);
+  // Add first line with two events.
+  CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
+               {{StatType::kTfOp, kTfOpName},
+                {StatType::kKernelDetails, kKernelDetails}});
+  CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
+               {{StatType::kTfOp, kTfOpName},
+                {StatType::kKernelDetails, kKernelDetails}});
+  // Add second line with only one event.
+  auto line_builder_2 = plane_builder.GetOrCreateLine(1);
+  CreateXEvent(&plane_builder, &line_builder_2, "op3", 50, 850,
+               {{StatType::kTfOp, kTfOpName},
+                {StatType::kKernelDetails, kKernelDetails}});
+  // Derive lines for the plane.
+  GenerateDerivedTimeLines(group_metadata_map, &space);
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
+  // The TF name scope line and the TF op line are added.
+  EXPECT_EQ(plane_visitor.NumLines(), 4);
+  plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
+    int64_t line_id = line_visitor.Id();
+    if (line_id == 0 || line_id == 1) {
+      return;
+    } else if (line_id == kThreadIdTfNameScope) {
+      EXPECT_EQ(line_visitor.NumEvents(), 2);
+      line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
+        EXPECT_EQ(event_visitor.OffsetPs(), 0);
+        // When derived from first line only, we should get single event which
+        // starts from op1' start (0), end at op2's end (200 + 300),
+        // duration is 500.
+        // If derived from both lines, the derived event duration will be
+        // (50 + 850) - 0 = 900.
+        EXPECT_EQ(event_visitor.DurationPs(), 500);
+      });
+    } else if (line_id == kThreadIdTfOp) {
+      EXPECT_EQ(line_visitor.NumEvents(), 1);
+      line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
+        EXPECT_EQ(event_visitor.Name(), kTfOpName);
+        EXPECT_EQ(event_visitor.OffsetPs(), 0);
+        EXPECT_EQ(event_visitor.DurationPs(), 500);
+      });
+    }
+  });
+}
+
 // Checks that the TF op events are expanded.
 TEST(DerivedTimelineTest, TfOpNameScopeShrinkTest) {
   {
