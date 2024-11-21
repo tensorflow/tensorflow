@@ -617,8 +617,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
 
   const auto& indices_parallel_dims = parallel_dims.indices_dims;
   const auto& operand_parallel_dims = parallel_dims.operand_dims;
-  const auto output_parallel_dims =
-      hlo_sharding_util::GetGatherParallelOutputDims(*gather, parallel_dims);
+  const auto output_parallel_dims = parallel_dims.output_dims;
   operand = operand.Reshard(gather_sharding->operand_sharding);
   indices = indices.Reshard(gather_sharding->indices_sharding);
   HloSharding gather_output_sharding = hlo_sharding_util::
@@ -767,6 +766,8 @@ absl::StatusOr<HloInstruction*> PartitionGatherExplicitBatchDimensions(
                                     dnums.operand_batching_dims().end());
   parallel_dims.indices_dims.assign(dnums.start_indices_batching_dims().begin(),
                                     dnums.start_indices_batching_dims().end());
+  parallel_dims.FillOutputDimsWithIndicesDims(dnums.index_vector_dim(),
+                                              dnums.offset_dims());
 
   return PartitionGatherParallelDimensions(
       gather, operand, indices, output_shape, output_sharding, batch_dims,
@@ -1096,8 +1097,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
 
   const auto operand_parallel_dims = parallel_dims.operand_dims;
   const auto indices_parallel_dims = parallel_dims.indices_dims;
-  const auto update_parallel_dims =
-      hlo_sharding_util::GetScatterParallelUpdateDims(*scatter, parallel_dims);
+  const auto update_parallel_dims = parallel_dims.output_dims;
   for (auto& operand : operands) {
     operand = operand.Reshard(scatter_sharding->operand_sharding);
   }
@@ -1262,6 +1262,8 @@ absl::StatusOr<HloInstruction*> PartitionScatterExplicitBatchDimensions(
   parallel_dims.indices_dims.assign(
       dnums.scatter_indices_batching_dims().begin(),
       dnums.scatter_indices_batching_dims().end());
+  parallel_dims.FillOutputDimsWithIndicesDims(dnums.index_vector_dim(),
+                                              dnums.update_window_dims());
 
   return PartitionScatterParallelDimensions(
       scatter, operands, indices, updates, output_shape, output_sharding,

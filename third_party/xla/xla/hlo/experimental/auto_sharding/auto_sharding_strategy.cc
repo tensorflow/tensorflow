@@ -176,9 +176,6 @@ void GenerateScatterShardingFromOperands(
 
   absl::InlinedVector<int64_t, 1> output_parallel_dims =
       scatter_parallel_dims->operand_dims;
-  absl::InlinedVector<int64_t, 1> update_parallel_dims =
-      hlo_sharding_util::GetScatterParallelUpdateDims(*scatter,
-                                                      *scatter_parallel_dims);
   // Infer output sharding from scatter operand sharding.
   const Shape& shape = scatter->shape();
   scatter_shardings_insert(
@@ -196,7 +193,8 @@ void GenerateScatterShardingFromOperands(
   // Infer output sharding from scatter update sharding.
   scatter_shardings_insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
-          update_sharding, shape, absl::MakeConstSpan(update_parallel_dims),
+          update_sharding, shape,
+          absl::MakeConstSpan(scatter_parallel_dims->output_dims),
           absl::MakeConstSpan(output_parallel_dims)));
 
   for (const HloSharding& scatter_sharding : scatter_shardings) {
@@ -430,16 +428,13 @@ BuildStrategyAndCost(
                 hlo_sharding_util::GetGatherParallelBatchDims(*ins, call_graph);
             HloSharding output_spec = indices_to_combine_spec;
             if (gather_parallel_dims) {
-              auto output_parallel_dims =
-                  hlo_sharding_util::GetGatherParallelOutputDims(
-                      *ins, *gather_parallel_dims);
               // Infer output sharding from scatter operand sharding.
               if (hlo_sharding_util::IsSpatiallyPartitioned(data_spec)) {
                 const HloSharding to_merge = hlo_sharding_util::
                     InferGatherScatterParallelShardingFromOperandSharding(
                         data_spec, gather_shape,
                         absl::MakeConstSpan(gather_parallel_dims->operand_dims),
-                        absl::MakeConstSpan(output_parallel_dims));
+                        absl::MakeConstSpan(gather_parallel_dims->output_dims));
                 if (std::optional<HloSharding> improved_spec =
                         ConstructImprovedSharding(
                             to_merge, output_spec, gather_shape,
@@ -455,7 +450,7 @@ BuildStrategyAndCost(
                     InferGatherScatterParallelShardingFromOperandSharding(
                         indices_spec, gather_shape,
                         absl::MakeConstSpan(gather_parallel_dims->indices_dims),
-                        absl::MakeConstSpan(output_parallel_dims));
+                        absl::MakeConstSpan(gather_parallel_dims->output_dims));
                 if (std::optional<HloSharding> improved_spec =
                         ConstructImprovedSharding(
                             to_merge, output_spec, gather_shape,

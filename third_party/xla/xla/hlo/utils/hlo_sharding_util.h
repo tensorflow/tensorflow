@@ -48,6 +48,13 @@ struct GatherScatterDims {
   absl::InlinedVector<int64_t, 1> output_dims;
 
   void append(const GatherScatterDims& other);
+
+  // Fills the output dimensions with the given indices dimensions. Other than
+  // index_vector_dim, each dimension in indices corresponds to one output
+  // dimension.
+  void FillOutputDimsWithIndicesDims(
+      int64_t index_vector_dim,
+      absl::Span<const int64_t> offset_or_window_dims);
 };
 
 // Determines if the first operand 'potential_subsharding' is a subsharding of
@@ -328,6 +335,7 @@ std::optional<GatherScatterDims> GetGatherScatterBatchParallelDims(
     absl::Span<const int64_t> slice_sizes, int64_t index_vector_dim,
     absl::Span<const int64_t> index_map,
     absl::Span<const int64_t> indices_batching_dims,
+    absl::Span<const int64_t> offset_or_window_dims,
     const CallGraph& call_graph);
 
 // Returns identified parallel dimensions of operands and indices for Gather.
@@ -337,16 +345,6 @@ std::optional<GatherScatterDims> GetGatherParallelBatchDims(
 // Returns identified parallel dimensions of operands and indices for Scatter.
 std::optional<GatherScatterDims> GetScatterParallelBatchDims(
     const HloInstruction& hlo, const CallGraph& call_graph);
-
-// Returns the parallel dimensions of the output of a gather based on the
-// parallel dimensions of the operands and indices.
-absl::InlinedVector<int64_t, 1> GetGatherParallelOutputDims(
-    const HloInstruction& hlo, const GatherScatterDims& parallel_dim);
-
-// Returns the parallel dimensions of the update of a scatter based on the
-// parallel dimensions of the operands and indices.
-absl::InlinedVector<int64_t, 1> GetScatterParallelUpdateDims(
-    const HloInstruction& hlo, const GatherScatterDims& parallel_dim);
 
 // Returns the operand pass-through dimensions for gather operand.
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOperandDims(

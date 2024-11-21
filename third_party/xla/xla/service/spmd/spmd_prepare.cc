@@ -80,7 +80,8 @@ absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
     return hlo_sharding_util::GetGatherScatterBatchParallelDims(
         operand, indices, slice_sizes, dnums.index_vector_dim(),
         dnums.scatter_dims_to_operand_dims(),
-        dnums.scatter_indices_batching_dims(), call_graph);
+        dnums.scatter_indices_batching_dims(), dnums.update_window_dims(),
+        call_graph);
   };
   // Parallel dim already detected. Assume everything is good.
   if (get_parallel_dims_for_scatter(operand, indices, updates).has_value()) {
