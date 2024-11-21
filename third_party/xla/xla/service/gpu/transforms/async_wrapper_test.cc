@@ -70,9 +70,7 @@ TEST_F(AsyncWrapperTest, BasicFusion) {
   std::unique_ptr<VerifiedHloModule> module =
       ParseAndReturnVerifiedModule(hlo_text).value();
 
-  AsyncWrapper wrapper([](const HloInstruction* instruction) {
-    return instruction->opcode() == HloOpcode::kFusion;
-  });
+  AsyncWrapper wrapper(HloPredicateIsOp<HloOpcode::kFusion>);
   EXPECT_THAT(wrapper.HloModulePass::Run(module.get()), IsOkAndHolds(true));
   EXPECT_EQ(CountAsyncInstructions(module->entry_computation()), 4);
 
