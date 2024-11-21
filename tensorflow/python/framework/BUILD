@@ -2293,7 +2293,6 @@ py_strict_library(
     visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":_python_memory_checker_helper",
-        # copybara:uncomment "//tensorflow/python/platform:cpp_memory_checker",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/util:tf_inspect",
@@ -3070,7 +3069,6 @@ tf_py_strict_test(
         "noasan",  # TODO(b/149948895): Re-enable.
         "nomsan",  # TODO(b/149948895): Re-enable.
         "not_run:arm",
-        "notap",
         "notsan",  # TODO(b/149948895): Re-enable.
         "nozapfhahn",
     ],
@@ -3082,20 +3080,7 @@ tf_py_strict_test(
         # Adding directly to `test_lib` caused a Colab binary size
         # regression b/149433910 .
         ":memory_checker",
-        ":_memory_checker_test_helper",
         "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_memory_checker_test_helper",
-    srcs = ["memory_checker_test_helper.cc"],
-    enable_stub_generation = True,
-    pytype_srcs = [
-        "_memory_checker_test_helper.pyi",
-    ],
-    deps = [
-        "@pybind11",
     ],
 )
 
