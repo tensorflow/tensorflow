@@ -24,12 +24,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
@@ -205,8 +207,16 @@ absl::Status VerifyTritonFusion(AutotunerCompileUtil& util,
 
   if (!status.ok()) {
     LOG(ERROR) << "Triton numerics verification failed with: "
-               << status.message() << "\n The failing HLO is: \n\n"
-               << ExtractInstructionIntoNewModule(fusion)->ToString();
+               << status.message();
+
+    DumpToFileInDirOrStdout(
+        *fusion.GetModule(),
+        /*file_prefix=*/"",
+        /*file_suffix=*/
+        absl::StrCat("triton_fusion_numerics_verifier_failed_",
+                     fusion.unique_id(), ".hlo"),
+        /*contents=*/
+        ExtractInstructionIntoNewModule(fusion)->ToString());
   }
 
   return status;
