@@ -143,7 +143,9 @@ ScalarOrTensor CreateConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
   if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(type)) {
     auto result =
         b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
-            tensor_type, mlir::APInt(int_type.getIntOrFloatBitWidth(), value)));
+            tensor_type,
+            mlir::APInt(int_type.getIntOrFloatBitWidth(), value,
+                        /*isSigned=*/false, /*implicitTrunc=*/true)));
     return ScalarOrTensor(result);
   }
   if (auto float_type = mlir::dyn_cast<mlir::FloatType>(type)) {
