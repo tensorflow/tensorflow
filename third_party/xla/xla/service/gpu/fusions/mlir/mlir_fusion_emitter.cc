@@ -608,6 +608,8 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addNestedPass<FuncOp>(CreateVectorizeLoadsAndStoresPass());
   pm.addNestedPass<FuncOp>(CreateOptimizeLoopsPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createCSEPass());
 }
 
 void AddLoweringPasses(mlir::OpPassManager& pm,
