@@ -98,6 +98,7 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
       return true;
     // Elementwise ops.
     case HloOpcode::kExp:
+    case HloOpcode::kLog:
       return LowPrecisionType() == BF16;
     case HloOpcode::kAdd:
     case HloOpcode::kMultiply:

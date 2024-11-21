@@ -898,6 +898,18 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReducePrecision(
       /*attributes=*/std::nullopt, builder, nullptr, properties);
 }
 
+namespace {
+// Return a named attribute that can be used to annotate an op to be eligible
+// for lowering to an approximation function in GPUToNVVM conversion.
+mlir::NamedAttribute GetFastMathFlagsForApproximationFunctions(
+    ImplicitLocOpBuilder& builder) {
+  return mlir::NamedAttribute(
+      mlir::StringAttr::get(builder.getContext(), "fastmath"),
+      mlir::arith::FastMathFlagsAttr::get(builder.getContext(),
+                                          mlir::arith::FastMathFlags::afn));
+}
+}  // namespace
+
 absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     const HloInstruction* instr, mlir::func::FuncOp this_fn, ValueRange indices,
     const OperandProvider& operand_provider,
@@ -999,9 +1011,7 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kExp:
       if (element_type == F16 || element_type == BF16) {
         attributes.emplace_back(
-            mlir::StringAttr::get(builder.getContext(), "fastmath"),
-            mlir::arith::FastMathFlagsAttr::get(
-                builder.getContext(), mlir::arith::FastMathFlags::afn));
+            GetFastMathFlagsForApproximationFunctions(builder));
       }
       return MapElementwiseOp<mhlo::ExpOp>(arg_types, operands, builder,
                                            attributes);
@@ -1018,7 +1028,12 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
           /*attributes=*/std::nullopt, builder);
     case HloOpcode::kLog:
-      return MapElementwiseOp<mhlo::LogOp>(arg_types, operands, builder);
+      if (element_type == F16 || element_type == BF16) {
+        attributes.emplace_back(
+            GetFastMathFlagsForApproximationFunctions(builder));
+      }
+      return MapElementwiseOp<mhlo::LogOp>(arg_types, operands, builder,
+                                           attributes);
     case HloOpcode::kLog1p:
       return MapElementwiseOp<mhlo::Log1pOp>(arg_types, operands, builder);
     case HloOpcode::kLogistic:
