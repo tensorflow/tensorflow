@@ -49,6 +49,29 @@ constexpr std::pair<const char*, QnnHtpDevice_Arch_t> kPluginSocModels[] = {
     {"V73", QNN_HTP_DEVICE_ARCH_V73},
     {"V75", QNN_HTP_DEVICE_ARCH_V75},
 };
+// clang-format off
+constexpr LiteRtOpCode kSupportedOps[] = {
+  kLiteRtOpCodeTflAdd,
+  kLiteRtOpCodeTflDiv,
+  kLiteRtOpCodeTflMul,
+  kLiteRtOpCodeTflRsqrt,
+  kLiteRtOpCodeTflSlice,
+  kLiteRtOpCodeTflSelect,
+  kLiteRtOpCodeTflSelectV2,
+  kLiteRtOpCodeTflSub,
+  kLiteRtOpCodeTflTanh,
+  kLiteRtOpCodeTflBatchMatmul,
+  kLiteRtOpCodeTflReshape,
+  kLiteRtOpCodeTflSum,
+  kLiteRtOpCodeTflConcatenation,
+  kLiteRtOpCodeTflSoftmax,
+  kLiteRtOpCodeTflCast,
+  kLiteRtOpCodeTflTranspose,
+  kLiteRtOpCodeTflSin,
+  kLiteRtOpCodeTflCos,
+  kLiteRtOpCodeTflFullyConnected,
+};
+// clang-format on
 
 constexpr auto kNumPluginSocModels =
     sizeof(kPluginSocModels) / sizeof(kPluginSocModels[0]);
@@ -167,12 +190,14 @@ bool IsOpSupported(const litert::Op& op) {
   // NOTE: Currently we are demoing by just mapping simple f32 mul ops.
   // In the limit this function withh want to leverage QNN SDK's getSuportedOps
   // feature (along with our op/type mappings).
+  // Use a very loose guard for now -- only checking if op code is supported.
 
-  static const litert::TensorTypeInfo supported_op_type(
-      litert::ElementType::Float32, {2, 2});
-  return litert::MatchOpType(op, {supported_op_type, supported_op_type},
-                             {supported_op_type}) &&
-         op.Code() == kLiteRtOpCodeTflMul;
+  for (auto supported_op : kSupportedOps) {
+    if (op.Code() == supported_op) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace
