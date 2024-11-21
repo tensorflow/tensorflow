@@ -15,18 +15,9 @@ cc_library(
     hdrs = ["xla_tpu_pjrt_client.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
-        "//xla/pjrt:pjrt_api",
         "//xla/pjrt:pjrt_c_api_client",
         "//xla/pjrt:pjrt_client",
-        "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_tpu_hdrs",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
