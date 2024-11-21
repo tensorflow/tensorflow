@@ -47,7 +47,7 @@ namespace {
 using ::tsl::testing::IsOkAndHolds;
 
 bool HasTritonBlockLevelFusionConfig(const HloInstruction* fusion) {
-  return fusion->opcode() == HloOpcode::kFusion &&
+  return HloPredicateIsOp<HloOpcode::kFusion>(fusion) &&
          fusion->has_backend_config() &&
          fusion->backend_config<GpuBackendConfig>().ok() &&
          fusion->backend_config<GpuBackendConfig>()
