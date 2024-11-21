@@ -46,12 +46,8 @@ struct GatherScatterDims {
   absl::InlinedVector<int64_t, 1> operand_dims;
   absl::InlinedVector<int64_t, 1> indices_dims;
   absl::InlinedVector<int64_t, 1> output_dims;
-};
 
-// TODO(zixuanjiang). Merge this with GatherScatterDims.
-struct GatherScatterParallelDims {
-  absl::InlinedVector<int64_t, 1> indices_parallel_dims;
-  absl::InlinedVector<int64_t, 1> operand_parallel_dims;
+  void append(const GatherScatterDims& other);
 };
 
 // Determines if the first operand 'potential_subsharding' is a subsharding of
@@ -325,23 +321,32 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
 std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota,
                                            const CallGraph& call_graph);
 
+// Returns a set of parallel dimensions for Gather/Scatter instructions given
+// the parameters for the op.
+std::optional<GatherScatterDims> GetGatherScatterBatchParallelDims(
+    const HloInstruction* operand, const HloInstruction* indices,
+    absl::Span<const int64_t> slice_sizes, int64_t index_vector_dim,
+    absl::Span<const int64_t> index_map,
+    absl::Span<const int64_t> indices_batching_dims,
+    const CallGraph& call_graph);
+
 // Returns identified parallel dimensions of operands and indices for Gather.
-std::optional<GatherScatterParallelDims> GetGatherParallelBatchDims(
+std::optional<GatherScatterDims> GetGatherParallelBatchDims(
     const HloInstruction& hlo, const CallGraph& call_graph);
 
 // Returns identified parallel dimensions of operands and indices for Scatter.
-std::optional<GatherScatterParallelDims> GetScatterParallelBatchDims(
+std::optional<GatherScatterDims> GetScatterParallelBatchDims(
     const HloInstruction& hlo, const CallGraph& call_graph);
 
 // Returns the parallel dimensions of the output of a gather based on the
 // parallel dimensions of the operands and indices.
 absl::InlinedVector<int64_t, 1> GetGatherParallelOutputDims(
-    const HloInstruction& hlo, const GatherScatterParallelDims& parallel_dim);
+    const HloInstruction& hlo, const GatherScatterDims& parallel_dim);
 
 // Returns the parallel dimensions of the update of a scatter based on the
 // parallel dimensions of the operands and indices.
 absl::InlinedVector<int64_t, 1> GetScatterParallelUpdateDims(
-    const HloInstruction& hlo, const GatherScatterParallelDims& parallel_dim);
+    const HloInstruction& hlo, const GatherScatterDims& parallel_dim);
 
 // Returns the operand pass-through dimensions for gather operand.
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOperandDims(
@@ -490,15 +495,6 @@ std::shared_ptr<const HloSharding> CreateTupleSharding(
 std::optional<int64_t> GetFirstMergeableDimForSortOperand(
     const Shape& operand_shape, const HloSharding& operand_sharding,
     int64_t sort_dim);
-
-// Returns a set of parallel dimensions for Gather/Scatter instructions given
-// the parameters for the op.
-std::optional<GatherScatterParallelDims> GetGatherScatterBatchParallelDims(
-    const HloInstruction* operand, const HloInstruction* indices,
-    absl::Span<const int64_t> slice_sizes, int64_t index_vector_dim,
-    absl::Span<const int64_t> index_map,
-    absl::Span<const int64_t> indices_batching_dims,
-    const CallGraph& call_graph);
 
 // Returns the sharding of an output of an instruction. Some instructions have
 // special handling like Outfeed and this function takes care of those.

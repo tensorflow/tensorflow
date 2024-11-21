@@ -595,7 +595,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor,
     bool allow_recursive,
-    const hlo_sharding_util::GatherScatterParallelDims& parallel_dims,
+    const hlo_sharding_util::GatherScatterDims& parallel_dims,
     bool need_offset) {
   auto gather_sharding = GatherScatterOperandsShardedAcrossParallelDims(
       *operand.hlo(), *indices.hlo(), parallel_dims);
@@ -615,8 +615,8 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
   const GatherDimensionNumbers& dnums = gather->gather_dimension_numbers();
   const int64_t index_dim = dnums.index_vector_dim();
 
-  const auto& indices_parallel_dims = parallel_dims.indices_parallel_dims;
-  const auto& operand_parallel_dims = parallel_dims.operand_parallel_dims;
+  const auto& indices_parallel_dims = parallel_dims.indices_dims;
+  const auto& operand_parallel_dims = parallel_dims.operand_dims;
   const auto output_parallel_dims =
       hlo_sharding_util::GetGatherParallelOutputDims(*gather, parallel_dims);
   operand = operand.Reshard(gather_sharding->operand_sharding);
@@ -737,7 +737,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherIndexParallelDimensions(
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor,
     bool allow_recursive) {
-  std::optional<hlo_sharding_util::GatherScatterParallelDims> parallel_dims =
+  std::optional<hlo_sharding_util::GatherScatterDims> parallel_dims =
       hlo_sharding_util::GetGatherParallelBatchDims(*gather,
                                                     visitor->call_graph());
   if (!parallel_dims.has_value()) {
@@ -762,13 +762,11 @@ absl::StatusOr<HloInstruction*> PartitionGatherExplicitBatchDimensions(
     return nullptr;
   }
 
-  hlo_sharding_util::GatherScatterParallelDims parallel_dims;
-  parallel_dims.operand_parallel_dims.assign(
-      dnums.operand_batching_dims().begin(),
-      dnums.operand_batching_dims().end());
-  parallel_dims.indices_parallel_dims.assign(
-      dnums.start_indices_batching_dims().begin(),
-      dnums.start_indices_batching_dims().end());
+  hlo_sharding_util::GatherScatterDims parallel_dims;
+  parallel_dims.operand_dims.assign(dnums.operand_batching_dims().begin(),
+                                    dnums.operand_batching_dims().end());
+  parallel_dims.indices_dims.assign(dnums.start_indices_batching_dims().begin(),
+                                    dnums.start_indices_batching_dims().end());
 
   return PartitionGatherParallelDimensions(
       gather, operand, indices, output_shape, output_sharding, batch_dims,
@@ -1076,7 +1074,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
     const Shape& output_shape, const HloSharding& output_sharding,
     absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor,
     bool allow_recursive,
-    const hlo_sharding_util::GatherScatterParallelDims& parallel_dims,
+    const hlo_sharding_util::GatherScatterDims& parallel_dims,
     bool need_offset) {
   auto scatter_sharding = GatherScatterOperandsShardedAcrossParallelDims(
       *operands[0].hlo(), *indices.hlo(), parallel_dims);
@@ -1096,8 +1094,8 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
   const auto& dnums = scatter->scatter_dimension_numbers();
   const int64_t index_dim = dnums.index_vector_dim();
 
-  const auto operand_parallel_dims = parallel_dims.operand_parallel_dims;
-  const auto indices_parallel_dims = parallel_dims.indices_parallel_dims;
+  const auto operand_parallel_dims = parallel_dims.operand_dims;
+  const auto indices_parallel_dims = parallel_dims.indices_dims;
   const auto update_parallel_dims =
       hlo_sharding_util::GetScatterParallelUpdateDims(*scatter, parallel_dims);
   for (auto& operand : operands) {
@@ -1231,7 +1229,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexParallelDimensions(
     const Shape& output_shape, const HloSharding& output_sharding,
     absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor,
     bool allow_recursive) {
-  std::optional<hlo_sharding_util::GatherScatterParallelDims> parallel_dims =
+  std::optional<hlo_sharding_util::GatherScatterDims> parallel_dims =
       hlo_sharding_util::GetScatterParallelBatchDims(*scatter,
                                                      visitor->call_graph());
   if (!parallel_dims) {
@@ -1258,10 +1256,10 @@ absl::StatusOr<HloInstruction*> PartitionScatterExplicitBatchDimensions(
     return nullptr;
   }
 
-  hlo_sharding_util::GatherScatterParallelDims parallel_dims;
-  parallel_dims.operand_parallel_dims.assign(
-      dnums.input_batching_dims().begin(), dnums.input_batching_dims().end());
-  parallel_dims.indices_parallel_dims.assign(
+  hlo_sharding_util::GatherScatterDims parallel_dims;
+  parallel_dims.operand_dims.assign(dnums.input_batching_dims().begin(),
+                                    dnums.input_batching_dims().end());
+  parallel_dims.indices_dims.assign(
       dnums.scatter_indices_batching_dims().begin(),
       dnums.scatter_indices_batching_dims().end());
 
