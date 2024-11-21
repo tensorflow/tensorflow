@@ -16,6 +16,7 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_H_
 
 #include <cstdint>
+#include <functional>
 #include <list>
 #include <vector>
 
@@ -45,6 +46,8 @@ typedef union {
 } LiteRtQuantizationTypeDetail;
 
 struct LiteRtTensorT {
+  using Ref = std::reference_wrapper<LiteRtTensorT>;
+
   // Empty if subgraph output. This is a reference.
   std::vector<LiteRtOp> users;
 
@@ -130,6 +133,12 @@ struct LiteRtSubgraphT {
 
   // These are references and a subset of `tensors`.
   std::vector<LiteRtTensor> outputs;
+
+  LiteRtTensorT& EmplaceTensor() {
+    auto& tensor = tensors_storage.emplace_back();
+    tensors.push_back(&tensor);
+    return tensor;
+  }
 };
 
 //

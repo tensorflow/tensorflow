@@ -75,5 +75,13 @@ TEST(ModelOpTest, AddOutput) {
   EXPECT_THAT(op.outputs, ElementsAreArray({&tensor}));
 }
 
+TEST(ModelSubgraphTest, EmplaceTensor) {
+  LiteRtSubgraphT subgraph;
+
+  auto& tensor = subgraph.EmplaceTensor();
+  ASSERT_EQ(subgraph.tensors_storage.size(), 1);
+  EXPECT_THAT(subgraph.tensors, ElementsAreArray({&tensor}));
+}
+
 }  // namespace
 }  // namespace litert::internal
