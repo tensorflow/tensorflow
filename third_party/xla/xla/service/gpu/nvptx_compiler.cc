@@ -95,7 +95,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
-#include "xla/stream_executor/cuda/cuda_driver_version.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/nvjitlink_known_issues.h"
@@ -576,12 +575,11 @@ HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() const {
 constexpr const uint8_t kPtxPrefix[] = {'P', 'T', 'X', ':', ' '};
 
 absl::StatusOr<GpuCompiler::BackendCompileResult>
-NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
-                                   llvm::Module* llvm_module,
-                                   se::GpuComputeCapability gpu_version,
-                                   bool relocatable,
-                                   const HloModule* debug_module,
-                                   const CompileOptions& options) {
+NVPTXCompiler::CompileTargetBinary(
+    const HloModuleConfig& module_config, llvm::Module* llvm_module,
+    const stream_executor::DeviceDescription& device_description,
+    bool relocatable, const HloModule* debug_module,
+    const CompileOptions& options) {
   std::unique_ptr<llvm::Module> loaded_module =
       MaybeLoadLLVMFromFile(debug_module, llvm_module);
   llvm::Module* selected_module = nullptr;
@@ -602,9 +600,10 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
             (debug_module != nullptr ? debug_module->name() : "(unknown")),
         !options.is_autotuning_compilation);
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
-    TF_ASSIGN_OR_RETURN(ptx,
-                        nvptx::CompileToPtx(selected_module, gpu_version,
-                                            module_config.debug_options()));
+    TF_ASSIGN_OR_RETURN(
+        ptx, nvptx::CompileToPtx(selected_module,
+                                 device_description.gpu_compute_capability(),
+                                 module_config.debug_options()));
 
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
@@ -612,8 +611,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
   }
 
-  TF_ASSIGN_OR_RETURN(se::PtxLinkingMethod linking_method,
-                      ChooseLinkingMethod(module_config.debug_options()));
+  TF_ASSIGN_OR_RETURN(
+      se::PtxLinkingMethod linking_method,
+      ChooseLinkingMethod(module_config.debug_options(), device_description));
 
   if (linking_method == se::PtxLinkingMethod::kNvJitLink && relocatable) {
     VLOG(2) << "Deferring the PTX to CUBIN compilation of the relocatable "
@@ -630,7 +630,10 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 
   absl::StatusOr<std::vector<uint8_t>> maybe_cubin =
       CompileGpuAsmOrGetCachedResult(
-          ptx, std::get<se::CudaComputeCapability>(gpu_version), module_config,
+          ptx,
+          std::get<se::CudaComputeCapability>(
+              device_description.gpu_compute_capability()),
+          module_config,
           (debug_module != nullptr ? debug_module->name() : "(unknown)"),
           relocatable, options);
 
@@ -925,7 +928,8 @@ static absl::StatusOr<stream_executor::SemanticVersion> GetAsmCompilerVersion(
 }
 
 absl::StatusOr<se::PtxLinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
-    const DebugOptions& debug_options) {
+    const DebugOptions& debug_options,
+    const stream_executor::DeviceDescription& device_description) {
   se::GpuAsmOpts ptxas_config = PtxOptsFromDebugOptions(debug_options);
   std::string& preferred_cuda_dir = ptxas_config.preferred_cuda_dir;
 
@@ -954,20 +958,24 @@ absl::StatusOr<se::PtxLinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
     return LinkingMethod::kNvLink;
   }
 
-  int ptxas_version =
-      asm_compiler_version.major() * 1000 + asm_compiler_version.minor() * 10;
-  int32_t driver_version;
-  TF_ASSIGN_OR_RETURN(driver_version,
-                      stream_executor::gpu::CudaDriverVersion());
+  stream_executor::SemanticVersion driver_version =
+      device_description.driver_version();
 
-  if (driver_version >= ptxas_version) {
+  auto greater_equal_major_minor =
+      [](const stream_executor::SemanticVersion& a,
+         const stream_executor::SemanticVersion& b) {
+        return std::make_tuple(a.major(), a.minor()) >=
+               std::make_tuple(b.major(), b.minor());
+      };
+
+  // The patch level version has no meaning when comparing driver to ptxas
+  // versions.
+  if (greater_equal_major_minor(driver_version, asm_compiler_version)) {
     return LinkingMethod::kDriver;
   }
 
   LOG_FIRST_N(WARNING, 1)
-      << "The NVIDIA driver's CUDA version is "
-      << absl::StrFormat("%d.%d", driver_version / 1000,
-                         (driver_version % 1000) / 10)
+      << "The NVIDIA driver's CUDA version is " << driver_version
       << " which is older than the PTX compiler version "
       << asm_compiler_version
       << ". Because the driver is older than the PTX compiler version, XLA is "
@@ -979,25 +987,27 @@ absl::StatusOr<se::PtxLinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
 }
 
 absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
-    const HloModuleConfig& hlo_module_config) {
+    const HloModuleConfig& hlo_module_config,
+    const stream_executor::DeviceDescription& device_description) {
   // TODO(phawkins): rather than comparing version numbers, it might be more
   // robust if we simply tried to link something the first time we compile.
   TF_ASSIGN_OR_RETURN(se::PtxLinkingMethod linking_method,
-                      ChooseLinkingMethod(hlo_module_config.debug_options()));
+                      ChooseLinkingMethod(hlo_module_config.debug_options(),
+                                          device_description));
   return linking_method != se::PtxLinkingMethod::kNone;
 }
 
 absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
-    se::GpuComputeCapability compute_capability,
+    const stream_executor::DeviceDescription& device_description,
     se::StreamExecutor* stream_exec, std::vector<std::vector<uint8_t>> modules,
     const DebugOptions& debug_options) {
   if (modules.empty()) return std::vector<uint8_t>{};
 
-  auto cc =
-      std::get<stream_executor::CudaComputeCapability>(compute_capability);
+  auto cc = std::get<stream_executor::CudaComputeCapability>(
+      device_description.gpu_compute_capability());
 
   TF_ASSIGN_OR_RETURN(se::PtxLinkingMethod linking_method,
-                      ChooseLinkingMethod(debug_options));
+                      ChooseLinkingMethod(debug_options, device_description));
   VLOG(1) << "Linking " << modules.size()
           << " modules with linking method: " << linking_method;
 

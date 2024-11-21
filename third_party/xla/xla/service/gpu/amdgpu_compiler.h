@@ -63,7 +63,7 @@ class AMDGPUCompiler : public GpuCompiler {
 
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      se::GpuComputeCapability gpu_version, bool relocatable,
+      const se::DeviceDescription& device_description, bool relocatable,
       const HloModule* debug_module, const CompileOptions& options) override;
 
  private:

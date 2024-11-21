@@ -240,12 +240,10 @@ AMDGPUCompiler::AMDGPUCompiler()
                   amdgpu::TargetTriple(), amdgpu::DataLayout()) {}
 
 absl::StatusOr<GpuCompiler::BackendCompileResult>
-AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
-                                    llvm::Module* llvm_module,
-                                    se::GpuComputeCapability gpu_version,
-                                    bool relocatable,
-                                    const HloModule* debug_module,
-                                    const CompileOptions& options) {
+AMDGPUCompiler::CompileTargetBinary(
+    const HloModuleConfig& module_config, llvm::Module* llvm_module,
+    const se::DeviceDescription& device_description, bool relocatable,
+    const HloModule* debug_module, const CompileOptions& options) {
   if (relocatable) {
     return Unimplemented("relocatable target binary is not implemented");
   }
@@ -258,9 +256,10 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
         "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco",
         !options.is_autotuning_compilation);
     TF_ASSIGN_OR_RETURN(
-        hsaco, amdgpu::CompileToHsaco(llvm_module, gpu_version,
-                                      module_config.debug_options(),
-                                      module_config.compilation_cache_key()));
+        hsaco, amdgpu::CompileToHsaco(
+                   llvm_module, device_description.gpu_compute_capability(),
+                   module_config.debug_options(),
+                   module_config.compilation_cache_key()));
   }
 
   return BackendCompileResult{"", std::move(hsaco)};

@@ -91,21 +91,24 @@ class NVPTXCompiler : public GpuCompiler {
 
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      se::GpuComputeCapability gpu_version, bool relocatable,
-      const HloModule* debug_module, const CompileOptions& options) override;
+      const stream_executor::DeviceDescription& device_description,
+      bool relocatable, const HloModule* debug_module,
+      const CompileOptions& options) override;
 
   absl::StatusOr<bool> CanUseLinkModules(
-      const HloModuleConfig& module_config) override;
+      const HloModuleConfig& module_config,
+      const stream_executor::DeviceDescription& device_description) override;
 
  private:
   absl::StatusOr<std::vector<uint8_t>> LinkModules(
-      se::GpuComputeCapability gpu_compute_capability,
+      const stream_executor::DeviceDescription& device_description,
       se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules,
       const DebugOptions& debug_options) override;
 
   absl::StatusOr<stream_executor::PtxLinkingMethod> ChooseLinkingMethod(
-      const DebugOptions& debug_options);
+      const DebugOptions& debug_options,
+      const stream_executor::DeviceDescription& device_description);
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin if compilation succeeded.
