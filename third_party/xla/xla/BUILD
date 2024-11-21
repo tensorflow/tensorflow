@@ -202,6 +202,7 @@ cc_library(
     hdrs = ["test.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:test",
     ],
