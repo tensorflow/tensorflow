@@ -47,5 +47,17 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "tensor_type_util_test",
+    srcs = ["tensor_type_util_test.cc"],
+    deps = [
+        ":tensor_type_util",
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )

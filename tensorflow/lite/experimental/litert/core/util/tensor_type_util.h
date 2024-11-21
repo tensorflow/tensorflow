@@ -18,6 +18,7 @@
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
@@ -32,11 +33,78 @@ struct Ratio {
 
 Expected<Ratio> GetElementSize(LiteRtElementType element_type);
 
-Expected<size_t> GetNumElements(const LiteRtRankedTensorType& tensor_type);
+// Get the number of elements in a tensor with given dimensions.
+template <typename T>
+Expected<size_t> GetNumElements(absl::Span<T> dimensions) {
+  size_t num_elements = 1;
+  for (auto i = 0; i < dimensions.size(); ++i) {
+    auto dim = dimensions[i];
+    if (dim < 0) {
+      return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                        "Unexpected negative dimension");
+    } else if (dim == 0) {
+      return Unexpected(kLiteRtStatusErrorInvalidArgument,
+                        "Unexpected 0 dimension");
+    }
+    num_elements *= dim;
+  }
+  return num_elements;
+}
 
-// Get the number of bytes necessary to represent a tensor type, ignoring any
-// stride information.
-Expected<size_t> GetNumPackedBytes(const LiteRtRankedTensorType& tensor_type);
+inline Expected<size_t> GetNumElements(
+    const LiteRtRankedTensorType& tensor_type) {
+  return GetNumElements(
+      absl::MakeSpan(tensor_type.layout.dimensions, tensor_type.layout.rank));
+}
+
+// Get the minimum number of bytes necessary to represent a packed tensor with a
+// given element type and dimensions.
+template <typename T>
+Expected<size_t> GetNumPackedBytes(LiteRtElementType element_type,
+                                   absl::Span<T> dimensions) {
+  auto element_size = GetElementSize(element_type);
+  if (!element_size) {
+    return element_size.Error();
+  }
+  auto num_elements = GetNumElements(dimensions);
+  if (!num_elements) {
+    return num_elements.Error();
+  }
+  return ((*num_elements * element_size->num) + (element_size->denom - 1)) /
+         element_size->denom;
+}
+
+// Get the number of bytes necessary to represent a packed tensor type, ignoring
+// any stride information.
+inline Expected<size_t> GetNumPackedBytes(
+    const LiteRtRankedTensorType& tensor_type) {
+  return GetNumPackedBytes(
+      tensor_type.element_type,
+      absl::MakeSpan(tensor_type.layout.dimensions, tensor_type.layout.rank));
+}
+
+// Get the minimum number of bytes necessary to represent a possibly unpacked
+// tensor with a given element type, dimensions, and strides.
+template <typename T, typename U>
+Expected<size_t> GetNumBytes(LiteRtElementType element_type,
+                             absl::Span<T> dimensions, absl::Span<U> strides) {
+  if (dimensions.size() != strides.size()) {
+    return Unexpected(
+        kLiteRtStatusErrorInvalidArgument,
+        "Dimensions and strides have different number of elements");
+  }
+  auto element_size = GetElementSize(element_type);
+  if (!element_size) {
+    return element_size.Error();
+  }
+  auto rank = dimensions.size();
+  size_t num_elements = 1;
+  for (auto i = 0; i < rank; ++i) {
+    num_elements += (dimensions[i] - 1) * strides[i];
+  }
+  return ((num_elements * element_size->num) + (element_size->denom - 1)) /
+         element_size->denom;
+}
 
 }  // namespace litert::internal
 

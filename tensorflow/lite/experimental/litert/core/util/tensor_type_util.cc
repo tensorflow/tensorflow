@@ -55,37 +55,5 @@ Expected<Ratio> GetElementSize(LiteRtElementType element_type) {
   }
 }
 
-Expected<size_t> GetNumPackedBytes(const LiteRtRankedTensorType& type) {
-  auto element_size = GetElementSize(type.element_type);
-  if (!element_size) {
-    return element_size.Error();
-  }
-
-  auto num_elements = GetNumElements(type);
-  if (!num_elements) {
-    return num_elements.Error();
-  }
-
-  return ((*num_elements * element_size->num) + (element_size->denom - 1)) /
-         element_size->denom;
-}
-
-Expected<size_t> GetNumElements(const LiteRtRankedTensorType& tensor_type) {
-  size_t num_elements = 1;
-  for (auto i = 0; i < tensor_type.layout.rank; ++i) {
-    auto dim = tensor_type.layout.dimensions[i];
-    if (dim < 0) {
-      return Unexpected(kLiteRtStatusErrorInvalidArgument,
-                        "Unexpected dynamic tensor passed as input");
-    } else if (dim == 0) {
-      return Unexpected(kLiteRtStatusErrorInvalidArgument,
-                        "Unexpected 0 tensor dimension");
-    }
-    num_elements *= dim;
-  }
-
-  return num_elements;
-}
-
 }  // namespace internal
 }  // namespace litert
