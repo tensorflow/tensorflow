@@ -567,6 +567,7 @@ xla_test(
 xla_test(
     name = "while_test",
     srcs = ["while_test.cc"],
+    # placeholder for extra args for while_test
     tags = ["test_xla_cpu_thunks"],
     deps = [
         ":client_library_test_base",
@@ -1773,6 +1774,7 @@ xla_test(
     name = "reduce_window_test",
     timeout = "long",
     srcs = [],
+    # placeholder for extra args for reduce_window_test
     shard_count = 40,
     tags = [
         "optonly",
