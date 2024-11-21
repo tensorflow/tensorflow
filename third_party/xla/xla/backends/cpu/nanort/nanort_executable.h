@@ -19,6 +19,8 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -83,10 +85,24 @@ class NanoRtExecutable {
 
  private:
   NanoRtExecutable(std::unique_ptr<Executable> executable,
-                   std::shared_ptr<tsl::thread::ThreadPool> thread_pool);
+                   std::shared_ptr<tsl::thread::ThreadPool> thread_pool,
+                   size_t num_allocations,
+                   std::vector<size_t> argument_to_allocation_index,
+                   std::vector<size_t> result_to_allocation_index,
+                   std::optional<size_t> temp_allocation_index);
 
   std::unique_ptr<Executable> executable_;
   std::shared_ptr<tsl::thread::ThreadPool> thread_pool_;
+
+  size_t num_allocations_;
+
+  // A mapping from the argument/result index to the index of the corresponding
+  // allocation (defined by the executable's buffer assignment).
+  std::vector<size_t> argument_to_allocation_index_;
+  std::vector<size_t> result_to_allocation_index_;
+
+  // Index of the temp allocation.
+  std::optional<size_t> temp_allocation_index_;
 };
 
 template <typename T>

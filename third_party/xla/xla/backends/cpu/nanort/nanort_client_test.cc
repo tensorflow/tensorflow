@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -24,6 +25,8 @@ limitations under the License.
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
@@ -38,17 +41,99 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-absl::StatusOr<XlaComputation> CreateAddScalarsComputation() {
+using Arguments = absl::InlinedVector<NanoRtExecutable::Argument, 8>;
+using Results = absl::InlinedVector<NanoRtExecutable::Result, 8>;
+
+TEST(NanoRtClientTest, CompileAndRunScalarComputation) {
+  constexpr std::string_view hlo = R"(
+    HloModule add
+
+    ENTRY e {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  XlaComputation computation(module->ToProto());
+
+  NanoRtClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                          client.Compile(computation));
+
+  // Storage for executable parameters and results.
+  alignas(32) float p0_value = 1.0f;
+  alignas(32) float p1_value = 2.0f;
+  alignas(32) float r0_value = 0.0f;
+
+  // Prepare executable parameters, results and temp storage.
+  Arguments arguments = {{&p0_value, 1}, {&p1_value, 1}};
+  Results results = {{&r0_value, 1}};
+  NanoRtExecutable::PreallocatedTemp temp = {};
+
+  auto event = executable->Execute(arguments, results, temp);
+  tsl::BlockUntilReady(event);
+
+  ASSERT_TRUE(event.IsConcrete());
+  EXPECT_EQ(r0_value, 3.0f);
+}
+
+TEST(NanoRtClientTest, CompileAndRunTupledComputation) {
+  constexpr std::string_view hlo = R"(
+    HloModule add_and_mul
+
+    ENTRY e {
+      p = (f32[], f32[]) parameter(0)
+      p0 = f32[] get-tuple-element(p), index=0
+      p1 = f32[] get-tuple-element(p), index=1
+      add = f32[] add(p0, p1)
+      mul = f32[] multiply(p0, p1)
+      ROOT add_and_mul = (f32[], f32[]) tuple(add, mul)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  XlaComputation computation(module->ToProto());
+
+  NanoRtClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                          client.Compile(computation));
+
+  // Storage for executable parameters and results.
+  alignas(32) float p0_value = 2.0f;
+  alignas(32) float p1_value = 3.0f;
+  alignas(32) float r0_value = 0.0f;
+  alignas(32) float r1_value = 0.0f;
+
+  // Prepare executable parameters, results and temp storage.
+  Arguments arguments = {{&p0_value, 1}, {&p1_value, 1}};
+  Results results = {{&r0_value, 1}, {&r1_value, 1}};
+  NanoRtExecutable::PreallocatedTemp temp = {};
+
+  auto event = executable->Execute(arguments, results, temp);
+  tsl::BlockUntilReady(event);
+
+  ASSERT_TRUE(event.IsConcrete());
+  EXPECT_EQ(r0_value, 5.0f);
+  EXPECT_EQ(r1_value, 6.0f);
+}
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below
+//===----------------------------------------------------------------------===//
+
+static absl::StatusOr<XlaComputation> CreateAddScalarsComputation() {
   XlaBuilder b("add");
 
   auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "p0");
   auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {}), "p1");
-  Add(Add(p0, p1), Add(p0, p1));
+  Add(p0, p1);
 
   return b.Build();
 }
 
-absl::StatusOr<XlaComputation> CreateFibonacciComputation() {
+static absl::StatusOr<XlaComputation> CreateFibonacciComputation() {
   XlaBuilder b("fib");
 
   auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "p0");
@@ -64,38 +149,6 @@ absl::StatusOr<XlaComputation> CreateFibonacciComputation() {
   return b.Build();
 }
 
-TEST(NanoRtClientTest, CompileAndRun) {
-  NanoRtClient client;
-
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, CreateAddScalarsComputation());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
-                          client.Compile(computation));
-
-  // Storage for executable parameters and results.
-  alignas(32) float p0_value = 1.0f;
-  alignas(32) float p1_value = 2.0f;
-  alignas(32) float result = 0.0f;
-
-  // Prepare executable parameters, results and temp storage.
-  NanoRtExecutable::Argument p0(&p0_value, 1);
-  NanoRtExecutable::Argument p1(&p1_value, 1);
-  NanoRtExecutable::Result r0(&result, 1);
-  NanoRtExecutable::PreallocatedTemp temp = {};
-
-  std::vector<NanoRtExecutable::Argument> arguments = {p0, p1};
-  std::vector<NanoRtExecutable::Result> results = {r0};
-
-  auto event = executable->Execute(arguments, results, temp);
-  tsl::BlockUntilReady(event);
-
-  ASSERT_TRUE(event.IsConcrete());
-  EXPECT_EQ(result, 6.0f);
-}
-
-//===----------------------------------------------------------------------===//
-// Performance benchmarks below
-//===----------------------------------------------------------------------===//
-
 static void BM_NanoRtAddScalars(benchmark::State& state) {
   NanoRtClient client;
 
@@ -105,16 +158,12 @@ static void BM_NanoRtAddScalars(benchmark::State& state) {
   // Storage for executable arguments and results.
   alignas(32) float p0_value = 1.0f;
   alignas(32) float p1_value = 2.0f;
-  alignas(32) float result = 0.0f;
+  alignas(32) float r0_value = 0.0f;
 
   for (auto _ : state) {
-    NanoRtExecutable::Argument p0(&p0_value, 1);
-    NanoRtExecutable::Argument p1(&p1_value, 1);
-    NanoRtExecutable::Result r0(&result, 1);
+    Arguments arguments = {{&p0_value, 1}, {&p1_value, 1}};
+    Results results = {{&r0_value, 1}};
     NanoRtExecutable::PreallocatedTemp temp = {};
-
-    absl::InlinedVector<NanoRtExecutable::Argument, 2> arguments = {p0, p1};
-    absl::InlinedVector<NanoRtExecutable::Result, 1> results = {r0};
 
     auto event = (*executable)->Execute(arguments, results, temp);
     tsl::BlockUntilReady(event);
@@ -132,16 +181,12 @@ static void BM_NanoRtFibonacci(benchmark::State& state) {
   // Storage for executable arguments and results.
   alignas(32) float p0_value = 1.0f;
   alignas(32) float p1_value = 2.0f;
-  alignas(32) float result = 0.0f;
+  alignas(32) float r0_value = 0.0f;
 
   for (auto _ : state) {
-    NanoRtExecutable::Argument p0(&p0_value, 1);
-    NanoRtExecutable::Argument p1(&p1_value, 1);
-    NanoRtExecutable::Result r0(&result, 1);
+    Arguments arguments = {{&p0_value, 1}, {&p1_value, 1}};
+    Results results = {{&r0_value, 1}};
     NanoRtExecutable::PreallocatedTemp temp = {};
-
-    absl::InlinedVector<NanoRtExecutable::Argument, 2> arguments = {p0, p1};
-    absl::InlinedVector<NanoRtExecutable::Result, 1> results = {r0};
 
     auto event = (*executable)->Execute(arguments, results, temp);
     tsl::BlockUntilReady(event);

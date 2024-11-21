@@ -26,13 +26,11 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
-#include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/util.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -84,13 +82,6 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
       std::unique_ptr<Executable> executable,
       compiler.RunBackend(std::move(hlo_module), /*stream_exec=*/nullptr,
                           compile_options));
-
-  // Downcast executable to CpuExecutable to sanity check compilation result.
-  cpu::CpuExecutable* cpu_executable =
-      tsl::down_cast<cpu::CpuExecutable*>(executable.get());
-  if (cpu_executable == nullptr) {
-    return Internal("Failed to downcast executable to CpuExecutable");
-  }
 
   return NanoRtExecutable::Create(std::move(executable), intra_op_thread_pool_);
 }
