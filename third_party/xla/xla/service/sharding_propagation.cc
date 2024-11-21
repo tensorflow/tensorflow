@@ -1876,9 +1876,8 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     }
     case HloOpcode::kGather: {
       if (&instruction == user.operand(1)) {
-        return hlo_sharding_util::
-            GatherIndexShardingFromOutputIndexPassthroughDimensions(
-                user.sharding(), &user);
+        return hlo_sharding_util::GatherIndexShardingFromOutput(user.sharding(),
+                                                                &user);
       }
       if (is_spmd) {
         return hlo_sharding_util::GatherOperandShardingFromOutput(
@@ -1916,9 +1915,8 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
         absl::c_transform(
             partitioned_updates, std::back_inserter(shardings),
             [&scatter_user](const HloInstruction* update) {
-              return hlo_sharding_util::
-                  ScatterIndexShardingFromUpdateIndexPassthroughDimensions(
-                      update->sharding(), &scatter_user);
+              return hlo_sharding_util::ScatterIndexShardingFromUpdate(
+                  update->sharding(), &scatter_user);
             });
         return hlo_sharding_util::FindCommonSharding(shardings);
       }
@@ -1928,9 +1926,8 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       CHECK_LE(update_index, operand_count);
       auto from_indices =
           hlo_sharding_util::IsSpatiallyPartitioned(scatter_indices)
-              ? hlo_sharding_util::
-                    ScatterUpdateShardingFromIndexIndexPassthroughDimensions(
-                        scatter_indices->sharding(), &scatter_user)
+              ? hlo_sharding_util::ScatterUpdateShardingFromIndex(
+                    scatter_indices->sharding(), &scatter_user)
               : HloSharding::Replicate();
       if (is_spmd) {
         auto from_output = hlo_sharding_util::ScatterUpdateShardingFromOutput(
@@ -2519,8 +2516,8 @@ bool ShardingPropagation::InferShardingFromOperands(
       }
 
       if (hlo_sharding_util::IsSpatiallyPartitioned(instruction->operand(1))) {
-        HloSharding new_sharding = hlo_sharding_util::
-            GatherOutputShardingFromIndexIndexPassthroughDimensions(
+        HloSharding new_sharding =
+            hlo_sharding_util::GatherOutputShardingFromIndex(
                 instruction->operand(1)->sharding(), instruction);
         changed |= MaybeImproveInstructionSharding(
             std::move(new_sharding), instruction, may_combine_partial_sharding);

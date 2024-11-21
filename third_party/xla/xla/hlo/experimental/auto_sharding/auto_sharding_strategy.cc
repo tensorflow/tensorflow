@@ -153,9 +153,9 @@ void GenerateScatterShardingFromOperands(
   };
   CHECK_EQ(scatter->scatter_operand_count(), 1);
 
-  const HloSharding& indices_sharding = hlo_sharding_util::
-      ScatterIndexShardingFromUpdateIndexPassthroughDimensions(update_sharding,
-                                                               scatter);
+  const HloSharding& indices_sharding =
+      hlo_sharding_util::ScatterIndexShardingFromUpdate(update_sharding,
+                                                        scatter);
 
   scatter_shardings_insert(data_sharding);
   if (std::optional<HloSharding> maybe_from_update =
@@ -414,9 +414,9 @@ BuildStrategyAndCost(
         for (const ShardingStrategy& indices_strategy :
              indices_strategy_group->GetStrategies()) {
           const HloSharding& indices_spec = indices_strategy.output_sharding;
-          const HloSharding& indices_to_combine_spec = hlo_sharding_util::
-              GatherOutputShardingFromIndexIndexPassthroughDimensions(
-                  indices_spec, ins);
+          const HloSharding& indices_to_combine_spec =
+              hlo_sharding_util::GatherOutputShardingFromIndex(indices_spec,
+                                                               ins);
           if (std::optional<HloSharding> data_spec =
                   hlo_sharding_util::GatherOperandShardingFromOutput(
                       indices_to_combine_spec, *ins, call_graph)) {
