@@ -115,6 +115,8 @@ class BlasLt : public gpu::BlasLt {
     absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
         size_t max_algorithm_count, size_t max_workspace_size) const override;
 
+    absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) const override;
+
    protected:
     absl::Status ValidateInputs(blas::DataType scale_type, bool alpha_on_device,
                                 bool beta_on_device, blas::DataType A_type,
@@ -144,6 +146,7 @@ class BlasLt : public gpu::BlasLt {
     xla::complex128 alpha_;
     double beta_;
     bool must_swap_operands_;
+    mutable std::optional< MatmulAlgorithm > algorithm_; // selected algorithm
   };  // class MatmulPlan
 
   explicit BlasLt(gpu::GpuExecutor* parent)
