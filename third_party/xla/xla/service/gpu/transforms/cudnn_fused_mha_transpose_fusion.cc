@@ -514,7 +514,7 @@ absl::StatusOr<bool> FuseEpilogueTransposeWithcuDNNFMHA(HloComputation* comp) {
                                          int64_t index) {
     int count = 0;
     for (auto user : instr->users()) {
-      if (user->opcode() == HloOpcode::kGetTupleElement &&
+      if (HloPredicateIsOp<HloOpcode::kGetTupleElement>(user) &&
           user->tuple_index() == index) {
         count += 1;
       }
