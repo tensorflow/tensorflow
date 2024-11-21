@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/cuda/cuda_runtime.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/cuda/cuda_timer.h"
@@ -695,10 +695,10 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
 
     VLOG(2) << "Resolve CUDA kernel " << *kernel_name
             << " from symbol pointer: " << symbol;
-    TF_ASSIGN_OR_RETURN(
-        CUfunction function,
-        CudaRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
-    cuda_kernel->set_gpu_function(function);
+    cudaFunction_t func;
+    TF_RETURN_IF_ERROR(cuda::ToStatus(cudaGetFuncBySymbol(&func, symbol),
+                                      "Failed call to cudaGetFuncBySymbol"));
+    cuda_kernel->set_gpu_function(func);
 
   } else {
     return absl::InternalError("No method of loading CUDA kernel provided");
@@ -1165,9 +1165,12 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
 
   desc.set_driver_version(
       ParseCudaVersion(version).value_or(SemanticVersion{0, 0, 0}));
+
+  int32_t runtime_version;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cudaRuntimeGetVersion(&runtime_version),
+                                    "Failed call to cudaGetRuntimeVersion"));
   desc.set_runtime_version(
-      ParseCudaVersion(CudaRuntime::GetRuntimeVersion().value_or(0))
-          .value_or(SemanticVersion{0, 0, 0}));
+      ParseCudaVersion(runtime_version).value_or(SemanticVersion{0, 0, 0}));
   desc.set_compile_time_toolkit_version(
       ParseCudaVersion(CUDA_VERSION).value_or(SemanticVersion{0, 0, 0}));
 

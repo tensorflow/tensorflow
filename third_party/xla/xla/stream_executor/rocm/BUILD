@@ -103,27 +103,6 @@ cc_library(
 )
 
 cc_library(
-    name = "rocm_runtime",
-    srcs = ["rocm_runtime.cc"],
-    hdrs = ["rocm_runtime.h"],
-    tags = [
-        "gpu",
-        "rocm-only",
-    ] + if_google([
-        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
-        "manual",
-    ]),
-    deps = [
-        ":rocm_driver_wrapper",
-        ":rocm_status",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:errors",
-    ],
-)
-
-cc_library(
     name = "rocm_event",
     srcs = ["rocm_event.cc"],
     hdrs = ["rocm_event.h"],
@@ -194,7 +173,6 @@ cc_library(
         ":rocm_event",
         ":rocm_kernel",
         ":rocm_platform_id",
-        ":rocm_runtime",
         ":rocm_status",
         ":rocm_stream",
         ":rocm_timer",
@@ -315,7 +293,6 @@ xla_test(
     ]),
     deps = [
         ":rocm_kernel",
-        ":rocm_runtime",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",

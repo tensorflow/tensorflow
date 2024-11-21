@@ -70,7 +70,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_kernel.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
-#include "xla/stream_executor/rocm/rocm_runtime.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/stream_executor/rocm/rocm_stream.h"
 #include "xla/stream_executor/rocm/rocm_timer.h"
@@ -638,10 +637,11 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
             << " from symbol pointer: " << symbol;
 
 #if TF_ROCM_VERSION >= 60200
-    TF_ASSIGN_OR_RETURN(
-        hipFunction_t function,
-        RocmRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
-    rocm_kernel->set_gpu_function(function);
+    hipFunction_t func;
+    TF_RETURN_IF_ERROR(ToStatus(
+        wrap::hipGetFuncBySymbol(&func, spec.in_process_symbol().symbol()),
+        "Failed call to hipGetFuncBySymbol"));
+    rocm_kernel->set_gpu_function(func);
 #else
     rocm_kernel->set_gpu_function(
         static_cast<hipFunction_t>(spec.in_process_symbol().symbol()));
@@ -1044,14 +1044,16 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   desc.set_registers_per_core_limit(64 * 1024);
   desc.set_compile_time_toolkit_version(
       SemanticVersion{HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH});
+  int32_t runtime_version;
+  TF_RETURN_IF_ERROR(ToStatus(wrap::hipRuntimeGetVersion(&runtime_version),
+                              "Failed call to hipRuntimeGetVersion"));
   desc.set_runtime_version(
-      ParseRocmVersion(RocmRuntime::GetRuntimeVersion().value_or(0))
-          .value_or(SemanticVersion{0, 0, 0}));
-  int32_t version;
-  TF_RETURN_IF_ERROR(ToStatus(wrap::hipDriverGetVersion(&version),
+      ParseRocmVersion(runtime_version).value_or(SemanticVersion{0, 0, 0}));
+  int32_t driver_version;
+  TF_RETURN_IF_ERROR(ToStatus(wrap::hipDriverGetVersion(&driver_version),
                               "Could not get driver version"));
   desc.set_driver_version(
-      ParseRocmVersion(version).value_or(SemanticVersion{0, 0, 0}));
+      ParseRocmVersion(driver_version).value_or(SemanticVersion{0, 0, 0}));
 
   // It would be better to use the PCI device ID or some other truly unique
   // identifier for the GPU model.  But getting this requires using NVML or

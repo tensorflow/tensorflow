@@ -96,7 +96,6 @@ cc_library(
             ":cuda_diagnostics",  # buildcleaner: keep
             ":cuda_executor",
             ":cuda_platform_id",
-            ":cuda_runtime",
             ":cuda_status",
             "//xla/stream_executor:device_description",
             "//xla/stream_executor:executor_cache",
@@ -215,25 +214,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-    ],
-)
-
-cc_library(
-    name = "cuda_runtime",
-    srcs = ["cuda_runtime.cc"],
-    hdrs = ["cuda_runtime.h"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -587,11 +567,10 @@ xla_test(
     backends = ["gpu_any"],
     tags = ["cuda-only"],
     deps = [
-        ":cuda_kernel",
-        ":cuda_runtime",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_test_kernels_cuda",
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cuda_headers",
@@ -1023,10 +1002,9 @@ cc_library(
         ":cuda_command_buffer",
         ":cuda_context",
         ":cuda_driver_version",
-        ":cuda_event",  # buildcleaner: keep
-        ":cuda_kernel",  # buildcleaner: keep
+        ":cuda_event",
+        ":cuda_kernel",
         ":cuda_platform_id",
-        ":cuda_runtime",
         ":cuda_status",
         ":cuda_stream",
         ":cuda_timer",
@@ -1146,7 +1124,6 @@ cc_library(
             # "//tools/cc_target_os:gce": [],
             # copybara:uncomment_end_and_comment_begin
             "//conditions:default": [
-                "@local_config_cuda//cuda:cuda_runtime",  # buildcleaner: keep
                 ":cuda_platform",
             ],
         }),
