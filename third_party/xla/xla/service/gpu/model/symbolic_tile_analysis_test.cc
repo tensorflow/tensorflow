@@ -80,6 +80,12 @@ Matcher<const TiledHloInstruction> MatchTiledHloInstruction(
                                       tile_offsets_indexing);
 }
 
+MATCHER_P(MatchConstraintExpressionString, constraint_expression_string, "") {
+  return ExplainMatchResult(
+      true, ApproximateMatch(constraint_expression_string, arg.ToString()),
+      result_listener);
+}
+
 // Fake emitter-specific constraints for testing. Requires that the tile size
 // along the first dimension is exactly half the size of the axis.
 class FakeEmitterSpecificConstraints : public EmitterSpecificConstraints {
@@ -460,8 +466,8 @@ ENTRY main {
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
   const ConstraintExpression& constraints = analysis->GetConstraints();
-  EXPECT_THAT(constraints.DisjointConjointConstraints(), SizeIs(2));
-  EXPECT_THAT(constraints.DisjointConjointConstraints().front(), SizeIs(1));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString(
+                               "2 mod d0 in [0, 0] || d0 mod 2 in [0, 0]"));
 }
 
 TEST_F(SymbolicTileAnalysisTest, DoesNotBailOutOnConstrainedBitcast) {
@@ -479,8 +485,8 @@ ENTRY main {
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
   const ConstraintExpression& constraints = analysis->GetConstraints();
-  EXPECT_THAT(constraints.DisjointConjointConstraints(), SizeIs(2));
-  EXPECT_THAT(constraints.DisjointConjointConstraints().front(), SizeIs(1));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString(
+                               "2 mod d0 in [0, 0] || d0 mod 2 in [0, 0]"));
 }
 
 TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedConcatenate) {
@@ -534,10 +540,11 @@ ENTRY main {
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
   const ConstraintExpression& constraints = analysis->GetConstraints();
-  EXPECT_THAT(constraints.DisjointConjointConstraints(), SizeIs(4));
-  for (const ConstraintExpression::ConjointConstraints& conjunction :
-       constraints.DisjointConjointConstraints())
-    EXPECT_THAT(conjunction, SizeIs(2));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString(
+                               "6 mod d0 in [0, 0] && 8 mod d1 in [0, 0] || "
+                               "6 mod d0 in [0, 0] && d1 mod 8 in [0, 0] || "
+                               "8 mod d1 in [0, 0] && d0 mod 6 in [0, 0] || "
+                               "d0 mod 6 in [0, 0] && d1 mod 8 in [0, 0]"));
 
   // We expect the constraints here to be
   //    6 mod d0 in [0, 0] && 8 mod s1 in [0, 0] ||
@@ -625,8 +632,11 @@ ENTRY main {
   // Each bitcast in the above module introduces one disjoint constraint. Once
   // they are aggregated, we have four disjoint constraints!
   const ConstraintExpression& constraints = analysis->GetConstraints();
-  EXPECT_THAT(constraints.DisjointConjointConstraints(), SizeIs(4));
-  EXPECT_THAT(constraints.DisjointConjointConstraints().front(), SizeIs(2));
+  EXPECT_THAT(constraints, MatchConstraintExpressionString(
+                               "6 mod d0 in [0, 0] && 8 mod d1 in [0, 0] || "
+                               "6 mod d0 in [0, 0] && d1 mod 8 in [0, 0] || "
+                               "8 mod d1 in [0, 0] && d0 mod 6 in [0, 0] || "
+                               "d0 mod 6 in [0, 0] && d1 mod 8 in [0, 0]"));
 }
 
 bool AlwaysValid(absl::Span<const int64_t>) { return true; }

@@ -271,7 +271,7 @@ SetSymbolicTilesAndComputeConstraints(
     std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
         tiled_hlo_instructions,
     const HloFusionAdaptor& fusion_adaptor) {
-  ConstraintExpression constraints;
+  ConstraintExpression constraints = ConstraintExpression::GetAlwaysSatisfied();
   for (const std::unique_ptr<SymbolicTiledHloInstruction>&
            tiled_hlo_instruction : tiled_hlo_instructions) {
     const HloInstruction* hlo = tiled_hlo_instruction->hlo();
@@ -301,8 +301,7 @@ SetSymbolicTilesAndComputeConstraints(
              << ToString(indexing_map) << " for HLO " << hlo->ToString();
     }
 
-    constraints = ConstraintExpression::And(std::move(constraints),
-                                            symbolic_tile->constraints());
+    constraints = constraints && symbolic_tile->constraints();
     constraints.Simplify();
 
     if (!constraints.is_satisfiable()) {
