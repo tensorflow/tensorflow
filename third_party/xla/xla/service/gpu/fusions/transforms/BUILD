@@ -46,7 +46,6 @@ cc_library(
         "optimize_loops.cc",
         "peel_loops.cc",
         "propagate_slice_indices.cc",
-        "rewrite_reductions.cc",
         "simplify_affine.cc",
         "simplify_arith.cc",
         "unswitch_loops.cc",
