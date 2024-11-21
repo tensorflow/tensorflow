@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/debug_options_flags.h"
-#include "xla/status_macros.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -205,7 +204,17 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
       !AbslParseFlag(opts.input_format_str, &opts.input_format, &error)) {
     return absl::InvalidArgumentError(error);
   }
-  TF_RET_CHECK(opts.device_type_str == "gpu" || opts.device_type_str == "host");
+
+  xla::PjRtDeviceType device_type;
+  if (opts.device_type_str == "gpu") {
+    device_type = xla::PjRtDeviceType::kGpu;
+  } else if (opts.device_type_str == "host") {
+    device_type = xla::PjRtDeviceType::kHostCpu;
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unrecognized device type ", opts.device_type_str,
+                     ". Expected \"gpu\" or \"host\""));
+  }
   PreprocessFlags(opts);
 
   TF_ASSIGN_OR_RETURN(
@@ -225,9 +234,10 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
 
   TF_ASSIGN_OR_RETURN(
       PjRtEnvironment env,
-      GetPjRtClient(opts.device_type_str, opts.address_str, opts.task_id,
-                    opts.num_nodes, opts.enable_mock_nccl,
-                    absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
+      GetPjRtEnvironment(
+          device_type, opts.address_str, opts.task_id, opts.num_nodes,
+          opts.enable_mock_nccl,
+          absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
 
   for (int c = 1; c < argc; c++) {
     const char* filename = argv[c];

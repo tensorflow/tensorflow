@@ -17,17 +17,16 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -41,30 +40,12 @@ limitations under the License.
 
 namespace xla {
 
-static absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
-    absl::string_view device_type, absl::string_view address, int node_id,
-    int num_nodes, bool enable_mock_nccl, absl::Duration init_timeout,
-    std::unique_ptr<xla::DistributedRuntimeService>& service,
-    std::shared_ptr<xla::KeyValueStoreInterface>& kv_store,
-    std::shared_ptr<xla::DistributedRuntimeClient>& distributed_client) {
-  if (device_type == "host") {
-    CHECK_EQ(num_nodes, 1);
-    return CreateHostClient();
-  }
+namespace {
 
-  if (device_type != "gpu") {
-    return absl::UnimplementedError(device_type);
-  }
-
-  if (enable_mock_nccl) {
-    CHECK_GT(num_nodes, 1);
-    return CreateMockGpuClient(num_nodes);
-  }
-
-  if (num_nodes == 1) {
-    return CreateGpuClient({});
-  }
-
+absl::Status InitDistributedRuntimeInEnv(absl::string_view address, int node_id,
+                                         int num_nodes,
+                                         absl::Duration init_timeout,
+                                         PjRtEnvironment& env) {
   TF_RET_CHECK(!address.empty());
   TF_RET_CHECK(node_id >= 0)
       << "Node id is expected to be in range [0, num_nodes)";
@@ -78,35 +59,64 @@ static absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetPjRtClient(
         "[::]:" + std::string(address).substr(address.rfind(':') + 1);
     xla::CoordinationServiceImpl::Options options;
     options.num_nodes = num_nodes;
-    TF_ASSIGN_OR_RETURN(service, xla::GetDistributedRuntimeService(
-                                     coordinator_bind_address, options));
+    TF_ASSIGN_OR_RETURN(env.service, xla::GetDistributedRuntimeService(
+                                         coordinator_bind_address, options));
   }
   xla::DistributedRuntimeClient::Options options;
   options.node_id = node_id;
   options.init_timeout = init_timeout;
-  distributed_client =
+  env.distributed_client =
       GetDistributedRuntimeClient(std::string(address), options);
-  TF_QCHECK_OK(distributed_client->Connect());
-  kv_store = GetDistributedKeyValueStore(distributed_client,
-                                         /*key_prefix=*/"gpu:");
-  GpuClientOptions gpu_client_options;
-  gpu_client_options.node_id = node_id;
-  gpu_client_options.num_nodes = num_nodes;
-  gpu_client_options.kv_store = kv_store;
-  return CreateGpuClient(std::move(gpu_client_options));
+  TF_QCHECK_OK(env.distributed_client->Connect());
+  env.kv_store = GetDistributedKeyValueStore(env.distributed_client,
+                                             /*key_prefix=*/"gpu:");
+  return absl::OkStatus();
 }
 
-absl::StatusOr<PjRtEnvironment> GetPjRtClient(absl::string_view device_type,
-                                              absl::string_view address,
-                                              int node_id, int num_nodes,
-                                              bool enable_mock_nccl,
+absl::Status InitGpuClientInEnv(absl::string_view address, int node_id,
+                                int num_nodes, bool enable_mock_nccl,
+                                absl::Duration init_timeout,
+                                PjRtEnvironment& env) {
+  if (enable_mock_nccl) {
+    CHECK_GT(num_nodes, 1);
+    TF_ASSIGN_OR_RETURN(env.client, CreateMockGpuClient(num_nodes));
+    return absl::OkStatus();
+  }
 
-                                              absl::Duration init_timeout) {
+  GpuClientOptions gpu_client_options;
+
+  if (num_nodes > 1) {
+    TF_QCHECK_OK(InitDistributedRuntimeInEnv(address, node_id, num_nodes,
+                                             init_timeout, env));
+    gpu_client_options.kv_store = env.kv_store;
+  }
+
+  gpu_client_options.node_id = node_id;
+  gpu_client_options.num_nodes = num_nodes;
+  TF_ASSIGN_OR_RETURN(env.client, CreateGpuClient(gpu_client_options));
+  return absl::OkStatus();
+}
+
+}  // namespace
+
+absl::StatusOr<PjRtEnvironment> GetPjRtEnvironment(
+    PjRtDeviceType device_type, absl::string_view address, int node_id,
+    int num_nodes, bool enable_mock_nccl, absl::Duration init_timeout) {
   PjRtEnvironment env;
-  TF_ASSIGN_OR_RETURN(env.client,
-                      GetPjRtClient(device_type, address, node_id, num_nodes,
-                                    enable_mock_nccl, init_timeout, env.service,
-                                    env.kv_store, env.distributed_client));
+
+  switch (device_type) {
+    case PjRtDeviceType::kHostCpu: {
+      CHECK_EQ(num_nodes, 1);
+      TF_ASSIGN_OR_RETURN(env.client, CreateHostClient());
+      break;
+    }
+    case PjRtDeviceType::kGpu: {
+      TF_QCHECK_OK(InitGpuClientInEnv(address, node_id, num_nodes,
+                                      enable_mock_nccl, init_timeout, env));
+      break;
+    }
+  }
+
   return env;
 }
 
@@ -115,7 +125,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> CreateHostClient() {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> CreateGpuClient(
-    GpuClientOptions options) {
+    const GpuClientOptions& options) {
   if (options.node_id < 0 || options.node_id >= options.num_nodes) {
     return absl::InvalidArgumentError(
         "Node id is expected to be in range [0, num_nodes)");
