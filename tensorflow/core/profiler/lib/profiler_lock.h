@@ -16,13 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_LOCK_H_
 
 #include "absl/base/macros.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tsl/profiler/lib/profiler_lock.h"
-
-// TODO: b/323943471 - This macro should eventually be provided by Abseil.
-#ifndef ABSL_DEPRECATE_AND_INLINE
-#define ABSL_DEPRECATE_AND_INLINE()
-#endif
 
 namespace tensorflow {
 namespace profiler {
