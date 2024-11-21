@@ -261,6 +261,8 @@ HloInstruction* LatestNonTrivialAncestor(HloInstruction* hlo) {
 
 void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
     HloInstruction* consumer) {
+  VLOG(4) << "Considering fusing inputs of " << consumer->ToShortString();
+
   // First, find out all potential target candidates. We will filter out
   // unsupported/non-profitable cases below.
   absl::flat_hash_set<HloInstruction*> fusible_candidates;
@@ -270,6 +272,7 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
     if (IsFusibleCandidate(*predecessor)) {
       if (fusible_candidates.insert(predecessor).second) {
         // Add unseen fusion to ordered list.
+        VLOG(4) << "Considering " << predecessor->ToShortString();
         ordered_fusible_candidates.push_back(predecessor);
       }
     }
@@ -674,7 +677,7 @@ absl::Status HorizontalLoopFusionImpl::Fuse(
 
 absl::StatusOr<bool> HorizontalLoopFusionImpl::Run() {
   bool changed = false;
-  XLA_VLOG_LINES(3, computation_->ToString());
+  XLA_VLOG_LINES(10, computation_->ToString());
 
   // Traverse from use to def. Bitcasts are placed after h-fusions to resolve
   // shape mismatch but bitcasts could prevent future h-fusion from happening.
@@ -687,9 +690,10 @@ absl::StatusOr<bool> HorizontalLoopFusionImpl::Run() {
     HloInstruction* consumer = to_fuse_candidates.back();
     to_fuse_candidates.pop_back();
 
-    // the consumer may be the operands of previously fused instruction, so
-    // it will no longer valid, skip this instruction.
-    if (consumer->IsDead()) {
+    // The consumer may be an operand of a previously fused instruction, so it
+    // will no longer be valid - skip it. If the consumer has less than two
+    // operands, there is nothing to fuse.
+    if (consumer->IsDead() || consumer->operand_count() < 2) {
       continue;
     }
 
