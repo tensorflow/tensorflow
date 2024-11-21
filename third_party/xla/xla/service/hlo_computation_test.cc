@@ -843,8 +843,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(module->entry_computation()->MakeInstructionPostOrder(),
-              ElementsAre(op::Parameter(), op::AllReduce(), op::AllReduce(),
-                          op::Add(), op::Tuple()));
+              ElementsAre(op::Parameter(), op::AllReduce(), op::Add(),
+                          op::AllReduce(), op::Tuple()));
 }
 
 TEST_F(HloComputationTest, ComparisonWithCustomComparator) {
