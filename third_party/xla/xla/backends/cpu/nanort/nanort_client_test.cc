@@ -119,6 +119,37 @@ TEST(NanoRtClientTest, CompileAndRunTupledComputation) {
   EXPECT_EQ(r1_value, 6.0f);
 }
 
+TEST(NanoRtClientTest, CompileAndRunConstantComputation) {
+  std::string_view hlo = R"(
+    HloModule cst
+
+    ENTRY e {
+      ROOT cst = f32[] constant(42.0)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  XlaComputation computation(module->ToProto());
+
+  NanoRtClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                          client.Compile(computation));
+
+  // Storage for executable results.
+  alignas(32) float r0_value = 0.0f;
+
+  // Prepare executable parameters, results and temp storage.
+  Arguments arguments;
+  Results results = {{&r0_value, 1}};
+  NanoRtExecutable::PreallocatedTemp temp = {};
+
+  auto event = executable->Execute(arguments, results, temp);
+  tsl::BlockUntilReady(event);
+
+  ASSERT_TRUE(event.IsConcrete());
+  EXPECT_EQ(r0_value, 42.0f);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//

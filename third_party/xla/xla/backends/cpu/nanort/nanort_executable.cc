@@ -287,6 +287,16 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
         MaybeOwningDeviceMemory(ToDeviceMemory(temp));
   }
 
+  for (const auto& constant : executable->constants()) {
+    // Constants are re-indexed by the buffer allocation index at CpuExecutable
+    // construction time, and `executable->constants()` actually returns the
+    // vector of buffer allocations, and only allocations corresponding to
+    // constants have a valid index.
+    if (constant.index >= 0) {
+      buffers[constant.index] = constant.AsDeviceMemoryBase();
+    }
+  }
+
   cpu::BufferAllocations allocations(buffers);
   cpu::Thunk::ExecuteParams execute_params = {
       &executable->function_registry(),
