@@ -572,9 +572,6 @@ absl::StatusOr<std::vector<Literal>> NewHloTestBase::ExecuteReplicated(
   if (profile != nullptr) {
     // We have to enable HLO profiling since otherwise currently the
     // ExecutionProfile is not correct.
-    //
-    // TODO(b/119432044): Fix collection of the ExecutionProfile
-    // so that this is not necessary.
     HloModuleConfig config = (*module)->config();
     DebugOptions debug_options = config.debug_options();
     debug_options.set_xla_hlo_profile(true);
@@ -666,9 +663,6 @@ absl::StatusOr<std::vector<Literal>> NewHloTestBase::ExecuteReplicated(
     if (profiles != nullptr) {
       // We have to enable HLO profiling since otherwise currently the
       // ExecutionProfile is not correct.
-      //
-      // TODO(b/119432044): Fix collection of the ExecutionProfile
-      // so that this is not necessary.
       HloModuleConfig config = (*module)->config();
       DebugOptions debug_options = config.debug_options();
       debug_options.set_xla_hlo_profile(true);
