@@ -123,7 +123,7 @@ std::optional<SortComputationAnalysis> AnalyzeComplexSortComputation(
   }
 
   auto root = computation->root_instruction();
-  if (root->opcode() != HloOpcode::kSelect) {
+  if (HloPredicateIsNotOp<HloOpcode::kSelect>(root)) {
     return std::nullopt;
   }
 
@@ -186,7 +186,7 @@ bool SortOutputIsUsed(const HloSortInstruction* sort_op, int output_index) {
     return true;
   }
   for (const HloInstruction* user : sort_op->users()) {
-    if (user->opcode() != HloOpcode::kGetTupleElement ||
+    if (HloPredicateIsNotOp<HloOpcode::kGetTupleElement>(user) ||
         user->tuple_index() == output_index) {
       return true;
     }

@@ -2692,11 +2692,11 @@ main {
   SCOPED_TRACE(m->ToString());
   for (HloInstruction* instr :
        m->entry_computation()->MakeInstructionPostOrder()) {
-    if (instr->opcode() == HloOpcode::kCustomCall &&
+    if (HloPredicateIsOp<HloOpcode::kCustomCall>(instr) &&
         instr->custom_call_target() == kCudnnfMHASoftmaxCallTarget) {
       fwd_instruction = instr;
     }
-    if (instr->opcode() == HloOpcode::kCustomCall &&
+    if (HloPredicateIsOp<HloOpcode::kCustomCall>(instr) &&
         instr->custom_call_target() == kCudnnfMHASoftmaxBackwardCallTarget) {
       bwd_instruction = instr;
     }
