@@ -38,7 +38,7 @@ absl::StatusOr<bool> SanitizeConstantNames::Run(
   // Collect the names used for the non-constant HLO instructions.+
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* instr : computation->instructions()) {
-      if (instr->opcode() == HloOpcode::kConstant) {
+      if (HloPredicateIsOp<HloOpcode::kConstant>(instr)) {
         continue;
       }
 
@@ -55,7 +55,7 @@ absl::StatusOr<bool> SanitizeConstantNames::Run(
   // even though the non-constant HLO comes after in the HLO module.
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* instr : computation->instructions()) {
-      if (instr->opcode() != HloOpcode::kConstant) {
+      if (HloPredicateIsNotOp<HloOpcode::kConstant>(instr)) {
         continue;
       }
       std::string sanitized_name = llvm_ir::SanitizeConstantName(*instr);
