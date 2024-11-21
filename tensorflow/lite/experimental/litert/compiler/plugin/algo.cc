@@ -124,15 +124,17 @@ inline LiteRtOp DisjointSets::GetBucket(LiteRtOp op) {
 // TODO: b/365339578 - Move helpers from algo.h to the internal model library.
 
 inline void CloneOpData(const LiteRtOpT& old_op, LiteRtOpT& new_op) {
-  // TODO: b/365339578 - Support options in op clone.
   new_op.op_code = old_op.op_code;
+  new_op.option = old_op.option;
 }
 
 inline void CloneTensorData(const LiteRtTensorT& old_tensor,
                             LiteRtTensorT& new_tensor) {
   new_tensor.type_id = old_tensor.type_id;
   new_tensor.type_detail = old_tensor.type_detail;
-  new_tensor.weights.fb_buffer = std::make_unique<tflite::BufferT>();
+  // Copy weights buffer from old tensor to new tensor.
+  new_tensor.weights.fb_buffer =
+      std::make_unique<tflite::BufferT>(*old_tensor.weights.fb_buffer);
 }
 
 inline std::optional<LiteRtParamIndex> FindUseInd(LiteRtTensor tensor,
