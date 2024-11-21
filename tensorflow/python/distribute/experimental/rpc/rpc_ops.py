@@ -329,7 +329,7 @@ class GrpcClient(Client):
     client.add(a, b) or client.add_async(a, b) can be used instead of
     client.call(args=[a,b], output_specs=[..])
 
-  Prerequiste for using list_registered_methods=True:
+  Prerequisite for using list_registered_methods=True:
    1. Server should be already started with the registered methods.
    2. Client must be created in Eager mode.
   """

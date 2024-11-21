@@ -174,7 +174,7 @@ class InputWorkers(object):
 
 
 def _calculate_replicas_with_values(strategy, input_workers, optional_list):
-  """Calcualates the number of replicas that have values.
+  """Calculates the number of replicas that have values.
 
   Args:
     strategy: the `tf.distribute.Strategy`.
@@ -756,7 +756,7 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
         handle last partial batch.
       dataset: `tf.data.Dataset` that will be used as the input source. Either
         dataset or components field should be passed when constructing
-        DistributedDataset. Use this when contructing DistributedDataset from a
+        DistributedDataset. Use this when constructing DistributedDataset from a
         new `tf.data.Dataset`. Use components when constructing using
         DistributedDatasetSpec.
       num_replicas_in_sync: Optional integer. If this is not None, the value is
