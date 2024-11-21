@@ -32,7 +32,7 @@ absl::StatusOr<bool> AliasPassthroughParams::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   if (module->entry_computation()->num_parameters() == 0 ||
-      root->opcode() != HloOpcode::kTuple) {
+      HloPredicateIsNotOp<HloOpcode::kTuple>(root)) {
     return false;
   }
   bool changed = false;
