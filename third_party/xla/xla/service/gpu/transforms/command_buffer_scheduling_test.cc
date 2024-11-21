@@ -46,7 +46,8 @@ class CommandBufferSchedulingTest : public HloTestBase {
   DebugOptions GetDebugOptionsForTest() const override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONALS);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);

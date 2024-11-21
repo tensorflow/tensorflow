@@ -604,10 +604,11 @@ message DebugOptions {
     CUBLAS = 2;
     CUDNN = 3;
     COLLECTIVES = 4;
-    CONDITIONALS = 5;
-    CUSTOM_CALL = 6;
-    CUBLASLT = 7;
-    DYNAMIC_SLICE = 8;
+    CONDITIONAL = 5;
+    WHILE = 6;
+    CUSTOM_CALL = 7;
+    CUBLASLT = 8;
+    DYNAMIC_SLICE_FUSION = 9;
   }
 
   // Determine the types of commands that are recorded into command buffers.

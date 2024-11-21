@@ -178,7 +178,7 @@ static bool IsCommand(const HloInstruction*, const CommandBufferConfig&);
 template <>
 bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
                                   const CommandBufferConfig& config) {
-  return config.enabled_commands.contains(DebugOptions::CONDITIONALS) &&
+  return config.enabled_commands.contains(DebugOptions::WHILE) &&
          IsCommand(hlo->while_body(), config) &&
          IsCommand(hlo->while_condition(), config);
 }
@@ -188,7 +188,7 @@ bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
 template <>
 bool IsCommand<HloOpcode::kConditional>(const HloInstruction* hlo,
                                         const CommandBufferConfig& config) {
-  return config.enabled_commands.contains(DebugOptions::CONDITIONALS) &&
+  return config.enabled_commands.contains(DebugOptions::CONDITIONAL) &&
          absl::c_all_of(hlo->branch_computations(),
                         [&](const HloComputation* comp) {
                           return IsCommand(comp, config);
@@ -261,7 +261,8 @@ static bool IsCommand(const HloInstruction* hlo,
         // DynamicSliceFusionRewriter currently only rewrites for dynamic slice
         // fusion with constant or loop iteration offset values, which are all
         // supported by command buffer.
-        return (config.enabled_commands.contains(DebugOptions::DYNAMIC_SLICE) &&
+        return (config.enabled_commands.contains(
+                    DebugOptions::DYNAMIC_SLICE_FUSION) &&
                 (IsCommand(hero, config) || IsAsyncStartCommand(hero, config)));
       }
     }
@@ -371,7 +372,8 @@ CommandBufferScheduling::CollectCommandBufferSequences(
   // captured in command buffer.
   auto check_dynamic_slice_operand_not_from_seq =
       [&](const HloInstructionSequence& seq, const HloInstruction* inst) {
-        if (!config.enabled_commands.contains(DebugOptions::DYNAMIC_SLICE))
+        if (!config.enabled_commands.contains(
+                DebugOptions::DYNAMIC_SLICE_FUSION))
           return true;
         const auto* fusion = DynCast<HloFusionInstruction>(inst);
         if (!fusion) return true;
@@ -813,7 +815,8 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
                              device_description_};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
-  static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONALS};
+  static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
+                                                DebugOptions::WHILE};
   static constexpr auto kRequireTracing = {
       DebugOptions::CUBLAS, DebugOptions::CUBLASLT, DebugOptions::CUDNN,
       DebugOptions::CUSTOM_CALL, DebugOptions::COLLECTIVES};
