@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 bool AllGatherDynamicSliceSimplifier::InstructionMatchesPattern(
     HloInstruction* instruction) {
-  if (instruction->opcode() != HloOpcode::kDynamicSlice) {
+  if (HloPredicateIsNotOp<HloOpcode::kDynamicSlice>(instruction)) {
     return false;
   }
 
@@ -37,8 +37,8 @@ bool AllGatherDynamicSliceSimplifier::InstructionMatchesPattern(
   HloInstruction* operand = dynamic_slice->mutable_operand(0);
 
   // Check if the operand is a reshape or all-gather instruction
-  bool is_reshape = operand->opcode() == HloOpcode::kReshape;
-  bool is_all_gather = operand->opcode() == HloOpcode::kAllGather;
+  bool is_reshape = HloPredicateIsOp<HloOpcode::kReshape>(operand);
+  bool is_all_gather = HloPredicateIsOp<HloOpcode::kAllGather>(operand);
 
   if (!is_reshape && !is_all_gather) {
     return false;
@@ -71,7 +71,7 @@ AllGatherDynamicSliceSimplifier::ExpandInstruction(
       Cast<HloDynamicSliceInstruction>(instruction);
   HloInstruction* operand = dynamic_slice->mutable_operand(0);
 
-  if (operand->opcode() != HloOpcode::kReshape) {
+  if (HloPredicateIsNotOp<HloOpcode::kReshape>(operand)) {
     // dynamic-slice(all-gather) case
     return operand->mutable_operand(0);
   }

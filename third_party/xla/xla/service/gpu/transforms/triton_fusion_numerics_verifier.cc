@@ -62,7 +62,7 @@ using ProfilingOutput = AutotunerCompileUtil::ProfilingOutput;
 // Triton fusion. Otherwise, returns nullptr.
 absl::StatusOr<const HloFusionInstruction*> AsTritonFusion(
     const HloInstruction* hlo) {
-  if (hlo->opcode() != HloOpcode::kFusion) {
+  if (HloPredicateIsNotOp<HloOpcode::kFusion>(hlo)) {
     return nullptr;
   }
   const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(hlo);
