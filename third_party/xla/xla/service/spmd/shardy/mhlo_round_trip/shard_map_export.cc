@@ -22,6 +22,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "learning/deepmind/partir/compiler/control_flow/dialect.h"
+#include "learning/deepmind/partir/compiler/mpmd/dialect.h"
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -283,7 +285,10 @@ class ShardMapExportPass
     // the func arguments or the func return operands with the inlined return
     // values. Similarly for the MhloDialect since a ManualComputationOp might
     // be nested within an MHLO op, e.g., a while loop.
-    target.addLegalDialect<mlir::func::FuncDialect, mlir::mhlo::MhloDialect>();
+    target.addLegalDialect<
+        mlir::func::FuncDialect, mlir::mhlo::MhloDialect,
+        deepmind::partir::mpmd::PartirMpmdDialect,
+        deepmind::partir::control_flow::PartirControlFlowDialect>();
     mlir::RewritePatternSet patterns(&context);
     patterns.add<ManualComputationPattern>(&context, parentManualCompAxes);
     if (mlir::failed(mlir::applyPartialConversion(module, target,

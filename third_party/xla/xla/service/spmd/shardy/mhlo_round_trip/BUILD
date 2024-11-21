@@ -63,6 +63,8 @@ cc_library(
     hdrs = ["shard_map_export.h"],
     deps = [
         ":export_shardings",
+        "//learning/deepmind/partir/compiler/control_flow:dialect",
+        "//learning/deepmind/partir/compiler/mpmd:dialect",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
