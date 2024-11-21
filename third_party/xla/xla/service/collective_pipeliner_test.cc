@@ -81,7 +81,8 @@ absl::StatusOr<bool> RunOptimizer(
         std::nullopt,
     CollectivePipeliner::HloPostprocessor postprocess_backward_rotated =
         std::nullopt,
-    bool should_add_loop_invariant_op_in_chain = false) {
+    bool should_add_loop_invariant_op_in_chain = false,
+    int64_t collective_size_threshold_to_stop_sinking = INT64_MAX) {
   CollectivePipeliner::Config config = {
       /*level_to_operate_on=*/level_to_operate_on,
       /*max_pipelining_per_loop=*/INT64_MAX,
@@ -95,7 +96,9 @@ absl::StatusOr<bool> RunOptimizer(
       /*reuse_pipelined_op_buffer=*/reuse_pipelined_op_buffer,
       should_allow_loop_variant_parameter_in_chain,
       /*should_allow_control_dependencies=*/false, postprocess_backward_peeled,
-      postprocess_backward_rotated, should_add_loop_invariant_op_in_chain};
+      postprocess_backward_rotated, should_add_loop_invariant_op_in_chain,
+      /*postprocess_pipelined_ops=*/std::nullopt,
+      collective_size_threshold_to_stop_sinking};
   HloPassPipeline pass("optimizer");
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                             /*allow_mixed_precision=*/false);
@@ -3378,6 +3381,100 @@ ENTRY entry {
   CHECK_EQ(dynamic_update_slice->opcode(), HloOpcode::kDynamicUpdateSlice);
   const HloInstruction* custom_call = dynamic_update_slice->operand(1);
   CHECK(custom_call->IsCustomCall("SunkByPreviousStep"));
+}
+
+TEST_F(CollectivePipelinerTest,
+       ForwardSinkDependentPipelineableCollectivesDoNotPipeline) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+add.1 {
+  lhs.1 = bf16[] parameter(0)
+  rhs.1 = bf16[] parameter(1)
+  ROOT add.1 = bf16[] add(lhs.1, rhs.1)
+}
+
+while_body.clone {
+  sink_param.1 = (s32[], bf16[3,8,128]{2,1,0}, bf16[3,8,128]{2,1,0}, bf16[3,1,8,128]{3,2,1,0}) parameter(0)
+  get-tuple-element.0 = s32[] get-tuple-element(sink_param.1), index=0
+  constant.5 = s32[] constant(1)
+  add.2 = s32[] add(get-tuple-element.0, constant.5)
+  get-tuple-element.1 = bf16[3,8,128]{2,1,0} get-tuple-element(sink_param.1), index=1
+  get-tuple-element.2 = bf16[3,8,128]{2,1,0} get-tuple-element(sink_param.1), index=2
+  get-tuple-element.3 = bf16[3,1,8,128]{3,2,1,0} get-tuple-element(sink_param.1), index=3
+  constant.6 = s32[] constant(3)
+  subtract.0 = s32[] subtract(constant.6, get-tuple-element.0)
+  constant.7 = s32[] constant(-1)
+  add.3 = s32[] add(subtract.0, constant.7)
+  constant.8 = s32[] constant(0)
+  compare.0 = pred[] compare(add.3, constant.8), direction=LT
+  constant.9 = s32[] constant(2)
+  add.4 = s32[] add(subtract.0, constant.9)
+  select.0 = s32[] select(compare.0, add.4, add.3)
+  dynamic-slice.0 = bf16[1,8,128]{2,1,0} dynamic-slice(get-tuple-element.2, select.0, constant.8, constant.8), dynamic_slice_sizes={1,8,128}
+  mul.1 = bf16[1,8,128]{2,1,0} multiply(dynamic-slice.0, dynamic-slice.0)
+  ar.0 = bf16[1,8,128]{2,1,0} all-reduce(mul.1), channel_id=1, replica_groups={}, to_apply=add
+  b.0 = bf16[1,8,128,32]{3,2,1,0} broadcast(ar.0), dimensions={0,1,2}
+  constant.10 = bf16[] constant(0)
+  reduce.1 = bf16[1,8,128]{2,1,0} reduce(b.0, constant.10), dimensions={3}, to_apply=add.1
+  reshape.1 = bf16[1,1,8,128]{3,2,1,0} reshape(reduce.1)
+  custom-call.2 = bf16[1,1,8,128]{3,2,1,0} custom-call(reshape.1), custom_call_target="SunkByPreviousStep"
+  constant.12 = s32[] constant(0)
+  dynamic-update-slice.1 = bf16[3,1,8,128]{3,2,1,0} dynamic-update-slice(get-tuple-element.3, custom-call.2, select.0, constant.12, constant.12, constant.12)
+  ROOT tuple.3 = (s32[], bf16[3,8,128]{2,1,0}, bf16[3,8,128]{2,1,0}, bf16[3,1,8,128]{3,2,1,0}) tuple(add.2, get-tuple-element.1, get-tuple-element.2, dynamic-update-slice.1)
+}
+
+while_cond.clone {
+  sink_param = (s32[], bf16[3,8,128]{2,1,0}, bf16[3,8,128]{2,1,0}, bf16[3,1,8,128]{3,2,1,0}) parameter(0)
+  gte.1 = s32[] get-tuple-element(sink_param), index=0
+  constant.13 = s32[] constant(3)
+  ROOT cmp.1 = pred[] compare(gte.1, constant.13), direction=LT
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128]{2,1,0} parameter(0)
+  constant.2 = bf16[] constant(0)
+  broadcast = bf16[3,1,8,128]{3,2,1,0} broadcast(constant.2), dimensions={}
+  tuple.2 = (s32[], bf16[3,8,128]{2,1,0}, bf16[3,8,128]{2,1,0}, bf16[3,1,8,128]{3,2,1,0}) tuple(c0, p0, p0, broadcast)
+  while.1 = (s32[], bf16[3,8,128]{2,1,0}, bf16[3,8,128]{2,1,0}, bf16[3,1,8,128]{3,2,1,0}) while(tuple.2), condition=while_cond.clone, body=while_body.clone
+  get-tuple-element.5 = s32[] get-tuple-element(while.1), index=0
+  get-tuple-element.4 = bf16[3,1,8,128]{3,2,1,0} get-tuple-element(while.1), index=3
+  ar.4 = bf16[3,1,8,128]{3,2,1,0} all-reduce(get-tuple-element.4), channel_id=3, replica_groups={}, to_apply=add
+  c1.3 = bf16[] constant(2)
+  broadcast.1 = bf16[3,1,8,128]{3,2,1,0} broadcast(c1.3), dimensions={}
+  mul1.2 = bf16[3,1,8,128]{3,2,1,0} multiply(ar.4, broadcast.1)
+  mul3.2 = bf16[3,1,8,128]{3,2,1,0} multiply(mul1.2, ar.4)
+  reshape.2 = bf16[3,8,128]{2,1,0} reshape(mul3.2)
+  get-tuple-element.6 = bf16[3,8,128]{2,1,0} get-tuple-element(while.1), index=2
+  tuple.4 = (s32[], bf16[3,8,128]{2,1,0}, bf16[3,8,128]{2,1,0}) tuple(get-tuple-element.5, reshape.2, get-tuple-element.6)
+  ROOT gte1 = bf16[3,8,128]{2,1,0} get-tuple-element(tuple.4), index=1
+}
+)";
+  config_.set_use_spmd_partitioning(true);
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_FALSE(
+      RunOptimizer(
+          module.get(), /*last_run=*/false,
+          /*level_to_operate_on=*/0,
+          /*pipeline_use_tree=*/true,
+          /*process_different_sized_ops=*/true,
+          /*direction=*/CollectivePipeliner::kForwardSink,
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>,
+          /*acceptable_formatting=*/HloPredicateIsNotOp<HloOpcode::kAllReduce>,
+          /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
+          /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateFalse,
+          /*postprocess_backward_peeled=*/std::nullopt,
+          /*postprocess_backward_rotated=*/std::nullopt,
+          /*should_add_loop_invariant_op_in_chain=*/false,
+          /*collective_size_threshold_to_stop_sinking=*/1024)
+          .value());
 }
 
 TEST_F(CollectivePipelinerTest, ForwardSinkFirstDimNotMatchingLoopCount) {

@@ -150,7 +150,7 @@ bool CheckIndexIsMonotonic(
   // we want to make the function more powerful we need to have a more
   // sophisticated check for monotonicity.
   Range range = RecursivelyIdentifyRange(index, induction_map);
-  VLOG(5) << "Range for: " << index->ToString() << " " << range.ToString();
+  VLOG(6) << "Range for: " << index->ToString() << " " << range.ToString();
   return !range.IsEmpty() && range.IsLinear();
 }
 
@@ -2942,6 +2942,23 @@ static absl::Status TransformLoopBackward(
   TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
   return absl::OkStatus();
 }
+bool IsForwardSinkIterationFeasible(HloInstruction* while_inst,
+                                    int64_t collective_size_threshold) {
+  for (HloInstruction* inst :
+       while_inst->while_body()->root_instruction()->operands()) {
+    if (inst->opcode() == HloOpcode::kDynamicUpdateSlice &&
+        inst->operand(1)->IsCustomCall(
+            CollectivePipeliner::kSunkByPreviousStep)) {
+      HloInstruction* cc = inst->mutable_operand(1);
+      if (ShapeUtil::ElementsIn(cc->shape()) >= collective_size_threshold) {
+        VLOG(1) << "Encountered a large collective which was sunk by the "
+                   "previous step, should stop the iteration.";
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
 absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     HloModule* module,
@@ -2990,6 +3007,11 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
   for (auto& [instruction, loop_analysis] : loop_analyses) {
     VLOG(1) << "While iterations: "
             << loop_analysis->GetLoopIterationCount()->ToString();
+    if (config_.pipelining_direction == PipeliningDirection::kForwardSink &&
+        !IsForwardSinkIterationFeasible(
+            instruction, config_.collective_size_threshold_to_stop_sinking)) {
+      continue;
+    }
     loop_analysis->CollectCollectivesToMove(
         config_.level_to_operate_on, config_.pipelining_direction,
         config_.should_process, config_.acceptable_formatting,
