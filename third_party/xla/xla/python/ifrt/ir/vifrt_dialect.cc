@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TypeID.h"
+#include "xla/python/ifrt/ir/vifrt_bytecode.h"
 
 namespace xla {
 namespace ifrt {
@@ -173,6 +174,7 @@ namespace ifrt {
 VifrtDialect::VifrtDialect(mlir::MLIRContext* context)
     : mlir::Dialect(getDialectNamespace(), context,
                     mlir::TypeID::get<VifrtDialect>()) {
+  addBytecodeInterface(this);
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "xla/python/ifrt/ir/vifrt_attrs.cc.inc"

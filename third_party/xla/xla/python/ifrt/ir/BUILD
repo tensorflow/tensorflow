@@ -440,8 +440,14 @@ gentbl_cc_library(
 
 cc_library(
     name = "vifrt",
-    srcs = ["vifrt_dialect.cc"],
-    hdrs = ["vifrt_dialect.h"],
+    srcs = [
+        "vifrt_bytecode.cc",
+        "vifrt_dialect.cc",
+    ],
+    hdrs = [
+        "vifrt_bytecode.h",
+        "vifrt_dialect.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//xla/python/ifrt:friends"],
     deps = [
@@ -451,6 +457,7 @@ cc_library(
         ":vifrt_interfaces_inc_gen",
         ":vifrt_ops_inc_gen",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
