@@ -157,12 +157,6 @@ TEST_P(Conv3dTransposeOpTest, MismatchBiasSizeTest) {
       "NumElements.bias. != SizeOfDimension.filter, 3.");
 }
 
-TEST_P(Conv3dTransposeOpTest, SimpleFloat32Test) {
-  Conv3dTransposeOpModel m(
-      {1, 3, 3, 5, 2}, {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
-      {TensorType_FLOAT32, {1, 2, 2, 4, 2}}, {TensorType_FLOAT32, {}},
-      Conv3dTransposeOpTest::GetParam());
-
 TEST_P(Conv3dTransposeOpTest, PaddingDepthDimensionTest) {
   Conv3dTransposeOpModel m(
       {1, 4, 4, 4, 2}, {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
@@ -265,6 +259,12 @@ TEST_P(Conv3dTransposeOpTest, PaddingValueDepthTestWithBias) {
            44,  42,  48,  47,  3,   -32, 52,  12,  56,  12,  60,  12,  64,
            62,  2,   -47, 3,   -52, 2,   -56, 2,   -60, 2,   1,   1}));
 }
+
+TEST_P(Conv3dTransposeOpTest, SimpleFloat32Test) {
+  Conv3dTransposeOpModel m(
+      {1, 3, 3, 5, 2}, {TensorType_FLOAT32, {2, 2, 2, 2, 2}},
+      {TensorType_FLOAT32, {1, 2, 2, 4, 2}}, {TensorType_FLOAT32, {}},
+      Conv3dTransposeOpTest::GetParam());
 
   m.SetInput(CreateRangeVector<float>(32));
   m.SetFilter({-1, -1, -1, -1, -1, 1, -1, 1, -1, 1,  1,  1, 1, 1,  -1, -1,
