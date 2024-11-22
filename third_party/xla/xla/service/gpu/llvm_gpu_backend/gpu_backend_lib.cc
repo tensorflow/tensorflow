@@ -101,7 +101,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
+#include "xla/stream_executor/cuda/subprocess_compilation.h"
 #endif
 
 #if TENSORFLOW_USE_SYCL
