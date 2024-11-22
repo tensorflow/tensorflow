@@ -82,7 +82,7 @@ typename PrimitiveTrait<config>::pointer_type GetKernelConfig(
 dnnl::post_ops PopulateOneDnnPostOps(
     const dnnl::engine& cpu_engine,
     const std::vector<dnnl::memory::desc>& fused_mds,
-    const OneDnnFusionConfig* fusion_config, const int output_ndims,
+    const OneDnnFusionConfig* fusion_config,
     FusedOperandsRef* fused_operands_ref = nullptr,
     dnnl::memory::desc* bias_md = nullptr);
 
