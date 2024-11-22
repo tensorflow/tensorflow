@@ -78,6 +78,7 @@ absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kParameter:
+    case HloOpcode::kReshape:
     case HloOpcode::kSlice:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
