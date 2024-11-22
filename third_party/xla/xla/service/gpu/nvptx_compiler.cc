@@ -94,9 +94,9 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
-#include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/driver_compilation.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/nvjitlink_known_issues.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
@@ -1052,7 +1052,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     return LinkUsingNvlink(cc, debug_options.xla_gpu_cuda_data_dir(),
                            cubin_images);
   }
-  return LinkGpuAsm(cc, cubin_images);
+  return LinkGpuAsmUsingDriver(stream_exec, cc, cubin_images);
 }
 
 }  // namespace gpu
