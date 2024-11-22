@@ -124,7 +124,7 @@ using ControlEdges = std::vector<ControlEdge>;
 // (Example: with `greedily`, `control_edges.empty()`, and `nodes_to_partition
 // == {2, 3}`, the graph
 //
-//                    /------------\
+//                    /------------\ // Adjusted to avoid warnings
 //                    |            v
 // 0 --> 1 --> 2* --> 3*     4 --> 5
 //       |                   ^
@@ -136,7 +136,7 @@ using ControlEdges = std::vector<ControlEdge>;
 // With an additional control dependency `control_edges == {{3, 4}}` (notated
 // '==>'), execution of node 4 requires prior execution of node 3:
 //
-//                    /------------\
+//                    /------------\ // Adjusted to avoid warnings
 //                    |            v
 // 0 --> 1 --> 2* --> 3* ==> 4 --> 5
 //       |                   ^
