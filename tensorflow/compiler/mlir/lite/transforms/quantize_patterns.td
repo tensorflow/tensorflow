@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This is the quantization pattern definition file for TensorFlow Lite.
+// Quantization patterns to be used both when the converter authoritatively
+// quantizes the model and when the converter follows Q-DQ annotations.
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
@@ -39,19 +40,3 @@ def : Pat<(TFL_DequantizeOp
              (TFL_QuantizeOp (Arith_ConstantOp F32ElementsAttr:$cst), $qt)),
           (TFL_ConstOp $cst)>;
 
-// Transpose conv supports hybrid computation with quantized weights.
-def FoldQuantWeightsIntoTposeConv : Pat<
-  (TFL_TransposeConvOp
-    $output_shape,
-    (TFL_DequantizeOp $quant_weights),
-    $quant_input,
-    $bias, $padding, $stride_h, $stride_w, $faf),
-  (TFL_TransposeConvOp $output_shape, $quant_weights,
-    $quant_input, $bias, $padding, $stride_h, $stride_w, $faf), 
-  [(TensorOf<[QI8, QUI8, QI16]> $quant_weights)]>;
-
-// EmbeddingLookup supports quantized table tensors.
-def FoldQuantWeightsIntoEmbeddingLookup : Pat<
-  (TFL_EmbeddingLookupOp:$output $indices, (TFL_DequantizeOp $table)),
-  (TFL_EmbeddingLookupOp $indices, $table),
-  [(TensorOf<[QI4, QI8, QUI8]> $table), (TensorOf<[F32]> $output)]>;

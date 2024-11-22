@@ -223,7 +223,12 @@ struct QuantizePass : public impl::QuantizePassBase<QuantizePass> {
   quant::QuantizationSpecs quant_specs;
 };
 
+namespace quantize_patterns {
 #include "tensorflow/compiler/mlir/lite/transforms/generated_quantize.inc"
+}
+namespace quantize_by_converter_patterns {
+#include "tensorflow/compiler/mlir/lite/transforms/generated_quantize_by_converter.inc"
+}
 
 void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
@@ -258,7 +263,11 @@ void QuantizePass::runOnOperation() {
        quant_specs.whole_model_verify, enable_log_if_failed_},
       quant_specs};
 
-  populateWithGenerated(patterns);
+  quantize_patterns::populateWithGenerated(patterns);
+
+  if (quant_specs.qdq_conversion_mode == quant::QDQConversionMode::kQDQNone) {
+    quantize_by_converter_patterns::populateWithGenerated(patterns);
+  }
 
   if (quant_specs.weight_quantization || quant_specs.use_fake_quant_num_bits ||
       quant_specs.qdq_conversion_mode ==

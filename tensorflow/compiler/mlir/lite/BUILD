@@ -80,6 +80,7 @@ td_library(
         "transforms/optimize_patterns.td",
         "transforms/post_quantize_patterns.td",
         "transforms/prepare_patterns.td",
+        "transforms/quantize_by_converter_patterns.td",
         "transforms/quantize_patterns.td",
         "transforms/tensorlist_patterns.td",
         "utils/utils.td",
@@ -306,6 +307,20 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/quantize_patterns.td",
+    deps = [":tensorflow_lite_patterns_td_files"],
+)
+
+gentbl_cc_library(
+    name = "tensorflow_lite_quantize_by_converter_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "transforms/generated_quantize_by_converter.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/quantize_by_converter_patterns.td",
     deps = [":tensorflow_lite_patterns_td_files"],
 )
 
@@ -1303,6 +1318,7 @@ cc_library(
         ":tensorflow_lite",
         ":tensorflow_lite_passes_inc_gen",
         ":tensorflow_lite_post_quantize_inc_gen",
+        ":tensorflow_lite_quantize_by_converter_inc_gen",
         ":tensorflow_lite_quantize_inc_gen",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
