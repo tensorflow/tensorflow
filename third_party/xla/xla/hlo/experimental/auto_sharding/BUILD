@@ -197,6 +197,7 @@ cc_library(
         ":auto_sharding_device_mesh",
         ":auto_sharding_util",
         "//xla:array",
+        "//xla/service:hlo_module_config",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

@@ -275,6 +275,7 @@ limitations under the License.
 
 #ifdef PLATFORM_GOOGLE
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #endif  // PLATFORM_GOOGLE
 
 namespace xla {
@@ -603,43 +604,17 @@ absl::Status RunSPMDPasses(
           num_partitions);
     }
     HloPassPipeline spmd_pipeline("spmd-partitioner");
-    AddSPMDPasses(
-        hlo_module, layout_insensitive_algsimp_opts,
-        gpu_target_config.device_description.gpu_compute_capability(),
-        spmd_pipeline,
+    AddSPMDPasses(hlo_module, layout_insensitive_algsimp_opts,
+                  gpu_target_config.device_description.gpu_compute_capability(),
+                  spmd_pipeline,
 #ifdef PLATFORM_GOOGLE
-        [&](HloPassPipeline& pipeline) {
-          if (auto_sharding) {
-            AutoShardingOption option;
-            option.enable = true;
-            if (!hlo_module->config()
-                     .auto_spmd_partitioning_mesh_shape()
-                     .empty()) {
-              option.device_mesh_shape =
-                  hlo_module->config().auto_spmd_partitioning_mesh_shape();
-            } else {
-              // Use a simple mesh shape if not specified.
-              option.device_mesh_shape = {
-                  gpu_target_config.device_description.core_count(), 1};
-            }
-            if (!hlo_module->config()
-                     .auto_spmd_partitioning_mesh_ids()
-                     .empty()) {
-              option.device_mesh_ids =
-                  hlo_module->config().auto_spmd_partitioning_mesh_ids();
-            }
-            option.memory_budget_per_device =
-                hlo_module->config()
-                    .debug_options()
-                    .xla_gpu_auto_spmd_partitioning_memory_budget_gb() *
-                1024 * 1024 * 1024;
-            option.memory_budget_ratio =
-                hlo_module->config()
-                    .debug_options()
-                    .xla_gpu_auto_spmd_partitioning_memory_budget_ratio();
-            spmd_pipeline.AddPass<AutoSharding>(option);
-          }
-        });
+                  [&](HloPassPipeline& pipeline) {
+                    if (auto_sharding) {
+                      spmd_pipeline.AddPass<AutoSharding>(
+                          DefaultAutoShardingOptionFromModuleConfig(
+                              hlo_module->config()));
+                    }
+                  });
 #else
         std::nullopt);
 #endif  // PLATFORM_GOOGLE

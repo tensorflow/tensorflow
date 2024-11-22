@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace xla {
 
@@ -217,6 +218,9 @@ struct AutoShardingOption {
   // consistency of different options.
   absl::Status CheckAndSetup();
 };
+
+AutoShardingOption DefaultAutoShardingOptionFromModuleConfig(
+    const HloModuleConfig& config);
 
 }  // namespace xla
 
