@@ -390,6 +390,21 @@ diff --ruN a/stablehlo/stablehlo/transforms/Passes.td b/stablehlo/stablehlo/tran
 -}
 +  let dependentDialects = ["mlir::vhlo::VhloDialect"];
 +}
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/StablehloAggressiveFolder.cpp
+--- stablehlo/stablehlo/transforms/StablehloAggressiveFolder.cpp
++++ stablehlo/stablehlo/transforms/StablehloAggressiveFolder.cpp
+@@ -79,8 +79,9 @@
+   } else {
+     llvm::report_fatal_error("expected integer type");
+   }
+-  return APSInt({/*numBits=*/numBits, value},
+-                /*isUnsigned=*/isUnsigned);
++  return APSInt(
++      {/*numBits=*/numBits, value, /*isSigned=*/false, /*implicitTrunc=*/true},
++      /*isUnsigned=*/isUnsigned);
+ }
+ 
+ LogicalResult validateResultTypeForEval(PatternRewriter& rewriter,
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp b/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
 --- stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
 +++ stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
