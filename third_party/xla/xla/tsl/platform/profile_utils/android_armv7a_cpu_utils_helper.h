@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_PROFILE_UTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H_
-#define TENSORFLOW_TSL_PLATFORM_PROFILE_UTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H_
+#ifndef XLA_TSL_PLATFORM_PROFILE_UTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H_
+#define XLA_TSL_PLATFORM_PROFILE_UTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H_
 
 #include <sys/types.h>
 
+#include "xla/tsl/platform/profile_utils/i_cpu_utils_helper.h"
 #include "tsl/platform/macros.h"
-#include "tsl/platform/profile_utils/i_cpu_utils_helper.h"
 #include "tsl/platform/types.h"
 
 #if defined(__ANDROID__) && (__ANDROID_API__ >= 21) && \
@@ -66,4 +66,4 @@ class AndroidArmV7ACpuUtilsHelper : public ICpuUtilsHelper {
 #endif  // defined(__ANDROID__) && (__ANDROID_API__ >= 21) &&
         // (defined(__ARM_ARCH_7A__) || defined(__aarch64__))
 
-#endif  // TENSORFLOW_TSL_PLATFORM_PROFILE_UTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H_
+#endif  // XLA_TSL_PLATFORM_PROFILE_UTILS_ANDROID_ARMV7A_CPU_UTILS_HELPER_H_

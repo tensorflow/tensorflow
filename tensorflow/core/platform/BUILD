@@ -1210,7 +1210,7 @@ tf_cc_tests(
     size = "small",
     srcs = [
         "vmodule_benchmark_test.cc",
-        # "@local_tsl//tsl/platform/profile_utils:cpu_utils_test.cc",
+        # "@local_xla//xla/tsl/platform/profile_utils:cpu_utils_test.cc",
     ],
     create_named_test_suite = True,
     deps = [

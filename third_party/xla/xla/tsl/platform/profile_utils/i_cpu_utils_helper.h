@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_PROFILE_UTILS_I_CPU_UTILS_HELPER_H_
-#define TENSORFLOW_TSL_PLATFORM_PROFILE_UTILS_I_CPU_UTILS_HELPER_H_
+#ifndef XLA_TSL_PLATFORM_PROFILE_UTILS_I_CPU_UTILS_HELPER_H_
+#define XLA_TSL_PLATFORM_PROFILE_UTILS_I_CPU_UTILS_HELPER_H_
 
 #include "tsl/platform/macros.h"
 #include "tsl/platform/types.h"
@@ -52,4 +52,4 @@ class ICpuUtilsHelper {
 }  // namespace profile_utils
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PLATFORM_PROFILE_UTILS_I_CPU_UTILS_HELPER_H_
+#endif  // XLA_TSL_PLATFORM_PROFILE_UTILS_I_CPU_UTILS_HELPER_H_

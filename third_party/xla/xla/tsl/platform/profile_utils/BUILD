@@ -5,16 +5,16 @@ load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
-load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
-load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup")
+load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
+load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
-        "@local_xla//xla/stream_executor:__subpackages__",
+        "//xla/stream_executor:__subpackages__",
         "//tensorflow/core/platform:__subpackages__",
-        "//tsl:__pkg__",
-        "@local_xla//xla/tsl/platform/default:__pkg__",
+        "@local_tsl//tsl:__pkg__",
+        "//xla/tsl/platform/default:__pkg__",
     ]),
     licenses = ["notice"],
 )
@@ -37,7 +37,7 @@ filegroup(
     ],
     visibility = internal_visibility([
         "//tensorflow/core/platform:__subpackages__",
-        "//tsl/platform:__pkg__",
+        "@local_tsl//tsl/platform:__pkg__",
     ]),
 )
 
@@ -53,10 +53,10 @@ cc_library(
     ],
     copts = tsl_copts(),
     deps = [
-        "//tsl/platform:logging",
-        "//tsl/platform:macros",
-        "//tsl/platform:types",
         "@com_google_absl//absl/base",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:macros",
+        "@local_tsl//tsl/platform:types",
     ],
     alwayslink = 1,
 )

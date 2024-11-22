@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/profile_utils/clock_cycle_profiler.h"
+#include "xla/tsl/platform/profile_utils/clock_cycle_profiler.h"
 
 #include <chrono>
 

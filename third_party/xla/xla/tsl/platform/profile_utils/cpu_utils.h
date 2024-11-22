@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 // This class is designed to get accurate profile for programs.
 
-#ifndef TENSORFLOW_TSL_PLATFORM_PROFILE_UTILS_CPU_UTILS_H_
-#define TENSORFLOW_TSL_PLATFORM_PROFILE_UTILS_CPU_UTILS_H_
+#ifndef XLA_TSL_PLATFORM_PROFILE_UTILS_CPU_UTILS_H_
+#define XLA_TSL_PLATFORM_PROFILE_UTILS_CPU_UTILS_H_
 
 #include <chrono>
 #include <memory>
 
+#include "xla/tsl/platform/profile_utils/i_cpu_utils_helper.h"
 #include "tsl/platform/macros.h"
-#include "tsl/platform/profile_utils/i_cpu_utils_helper.h"
 #include "tsl/platform/types.h"
 
 #if defined(ARMV6) || defined(__ARM_ARCH_7A__)
@@ -190,4 +190,4 @@ class CpuUtils {
 
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PLATFORM_PROFILE_UTILS_CPU_UTILS_H_
+#endif  // XLA_TSL_PLATFORM_PROFILE_UTILS_CPU_UTILS_H_

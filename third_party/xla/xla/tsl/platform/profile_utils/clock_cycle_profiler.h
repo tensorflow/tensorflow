@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_PROFILE_UTILS_CLOCK_CYCLE_PROFILER_H_
-#define TENSORFLOW_TSL_PLATFORM_PROFILE_UTILS_CLOCK_CYCLE_PROFILER_H_
+#ifndef XLA_TSL_PLATFORM_PROFILE_UTILS_CLOCK_CYCLE_PROFILER_H_
+#define XLA_TSL_PLATFORM_PROFILE_UTILS_CLOCK_CYCLE_PROFILER_H_
 
 #include <algorithm>
 
+#include "xla/tsl/platform/profile_utils/cpu_utils.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
-#include "tsl/platform/profile_utils/cpu_utils.h"
 
 namespace tsl {
 
@@ -104,4 +104,4 @@ class ClockCycleProfiler {
 
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PLATFORM_PROFILE_UTILS_CLOCK_CYCLE_PROFILER_H_
+#endif  // XLA_TSL_PLATFORM_PROFILE_UTILS_CLOCK_CYCLE_PROFILER_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
+#include "xla/tsl/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
 #if defined(__ANDROID__) && (__ANDROID_API__ >= 21) && \
     (defined(__ARM_ARCH_7A__) || defined(__aarch64__))
