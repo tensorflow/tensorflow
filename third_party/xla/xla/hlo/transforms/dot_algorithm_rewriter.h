@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_TRANSFORMS_DOT_ALGORITHM_REWRITER_H_
-#define XLA_SERVICE_GPU_TRANSFORMS_DOT_ALGORITHM_REWRITER_H_
+#ifndef XLA_HLO_TRANSFORMS_DOT_ALGORITHM_REWRITER_H_
+#define XLA_HLO_TRANSFORMS_DOT_ALGORITHM_REWRITER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
-namespace xla::gpu {
+namespace xla {
 
 class DotAlgorithmRewriter : public HloModulePass {
  public:
@@ -35,6 +35,6 @@ class DotAlgorithmRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
-}  // namespace xla::gpu
+}  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_TRANSFORMS_DOT_ALGORITHM_REWRITER_H_
+#endif  // XLA_HLO_TRANSFORMS_DOT_ALGORITHM_REWRITER_H_

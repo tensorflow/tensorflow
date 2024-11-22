@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
+#include "xla/hlo/transforms/dot_algorithm_rewriter.h"
 
 #include <cstdint>
 #include <limits>
@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "tsl/platform/status.h"
 
-namespace xla::gpu {
+namespace xla {
 
 namespace {
 
@@ -80,9 +80,9 @@ std::tuple<HloInstruction*, HloInstruction*, HloInstruction*> Split3xToBF16(
   HloInstruction* high_f32_t = Truncate(f32_param);
   HloInstruction* mid_f32 = Sub(f32_param, high_f32_t);
   HloInstruction* mid_f32_t = Truncate(mid_f32);
-  HloInstruction* low_f32_t = Truncate(Sub(mid_f32, mid_f32_t));
+  HloInstruction* low_f32 = Sub(mid_f32, mid_f32_t);
   return std::make_tuple(RoundToBF16(high_f32_t), RoundToBF16(mid_f32_t),
-                         RoundToBF16(low_f32_t));
+                         RoundToBF16(low_f32));
 }
 
 // If lhs is 1.0, we will have lhs_high = 1.0 and lhs_low = 0.0.
@@ -221,4 +221,4 @@ absl::StatusOr<bool> DotAlgorithmRewriter::Run(
   return changed;
 }
 
-}  // namespace xla::gpu
+}  // namespace xla
