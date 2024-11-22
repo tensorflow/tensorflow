@@ -28,8 +28,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
@@ -42,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -53,9 +52,11 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -446,4 +447,25 @@ TEST(TfrtCpuClientTest, ForwardUserDataToFfiHandler) {
 }
 
 }  // namespace
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below
+//===----------------------------------------------------------------------===//
+
+static void BM_CreateZeroCopyBuffer(benchmark::State& state) {
+  auto client = GetTfrtCpuClient({});
+  PjRtDevice* device = (*client)->devices().front();
+
+  alignas(32) float value = 1.0f;
+
+  for (auto _ : state) {
+    auto buffer = (*client)->BufferFromHostBuffer(
+        &value, PrimitiveType::F32, {}, std::nullopt,
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr, device);
+    CHECK_OK(buffer) << "Failed to create a buffer from a host buffer";
+  }
+}
+
+BENCHMARK(BM_CreateZeroCopyBuffer);
+
 }  // namespace xla
