@@ -16,23 +16,17 @@ package_group(
 
 cc_library(
     name = "dialects",
-    srcs = [
-        "affine.cc",
-        "arith.cc",
-        "bufferization.cc",
-        "builtin.cc",
-        "complex.cc",
-        "func.cc",
-        "linalg.cc",
-        "math.cc",
-        "memref.cc",
-        "mhlo.cc",
-        "mhlo_binary_cwise.cc",
-        "mhlo_unary_cwise.cc",
-        "scf.cc",
-        "tensor.cc",
-        "vector.cc",
-    ],
+    srcs = glob(
+        [
+            "*.cc",
+        ],
+        exclude = [
+            "util.cc",
+            "symbol_finder_linux.cc",
+            "symbol_finder_windows.cc",
+            "symbol_finder_test.cc",
+        ],
+    ),
     deps = [
         ":dialect_utils",
         ":symbol_finder",
