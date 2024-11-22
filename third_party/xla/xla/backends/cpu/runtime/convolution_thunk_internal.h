@@ -88,7 +88,8 @@ void EigenTransposedConv2D(
     Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index padding_x_before,
     Eigen::Index padding_x_after, Eigen::Index padding_y_before,
     Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,
-    Eigen::Index lhs_y_dilation) {
+    Eigen::Index lhs_y_dilation, std::function<void()> done_callback,
+    bool use_thunk_runtime) {
   // TODO(adambanas): Current custom conv algorithm doesn't support both
   // multiple input channels and multiple output channels (i.e. kernel_filters)
   // at the same time.
@@ -130,7 +131,16 @@ void EigenTransposedConv2D(
   ConstTensorMap A(lhs, input_batch * input_image_size, input_channels);
   ConstTensorMap B(rhs, kernel_total_size, input_channels);
 
-  C.device(device) = A.contract(B, contract_dims);
+  // Use concurrent execution if we have a thread pool device.
+  constexpr bool use_thread_pool =
+      std::is_same_v<EigenDevice, Eigen::ThreadPoolDevice>;
+
+  // For thunk runtime, `done_callback` must be provided only if we use a thread
+  // pool device. This check is not true for classic runtime which does not
+  // support async execution.
+  if (use_thunk_runtime) {
+    CHECK_EQ(use_thread_pool, static_cast<bool>(done_callback));  // Crash OK
+  }
 
   // TODO(adambanas): Support 2D transposed convolutions.
   CHECK_EQ(input_x, 1);
@@ -140,14 +150,31 @@ void EigenTransposedConv2D(
   const int output_offset = output_image_size * kernel_filters;
 
   // Pack the calculated patches into the output buffer.
-  // TODO(adambanas): Run this part in parallel.
-  for (int image_id = 0; image_id < input_batch; ++image_id) {
-    Pack1DPatches<ScalarType>(col_buffer_data, kernel_filters, output_y,
-                              kernel_y, padding_y_before, padding_y_after,
-                              lhs_y_dilation, out_data);
+  auto pack_patches = [=]() mutable {
+    // TODO(adambanas): Run this part in parallel.
+    for (int image_id = 0; image_id < input_batch; ++image_id) {
+      Pack1DPatches<ScalarType>(col_buffer_data, kernel_filters, output_y,
+                                kernel_y, padding_y_before, padding_y_after,
+                                lhs_y_dilation, out_data);
 
-    col_buffer_data += input_offset;
-    out_data += output_offset;
+      col_buffer_data += input_offset;
+      out_data += output_offset;
+    }
+
+    // If done callback is provided, we need to call it after all the work is
+    // done.
+    if (done_callback) {
+      done_callback();
+    }
+  };
+
+  if (done_callback) {
+    // Schedule the work in the thread pool and return..
+    C.device(device, pack_patches) = A.contract(B, contract_dims);
+  } else {
+    // Run synchronously in the current thread.
+    C.device(device) = A.contract(B, contract_dims);
+    pack_patches();
   }
 }
 
@@ -315,13 +342,13 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
   if (CanUseCustomTransposedConv(input_x, input_channels, kernel_x,
                                  kernel_filters, lhs_x_dilation, lhs_y_dilation,
                                  rhs_x_dilation, rhs_y_dilation,
-                                 feature_group_count) &&
-      done_callback == nullptr) {
-    EigenTransposedConv2D(
-        device, out, lhs, rhs, input_batch, input_x, input_y, input_channels,
-        kernel_x, kernel_y, kernel_channels, kernel_filters, output_x, output_y,
-        x_stride, y_stride, padding_x_before, padding_x_after, padding_y_before,
-        padding_y_after, lhs_x_dilation, lhs_y_dilation);
+                                 feature_group_count)) {
+    EigenTransposedConv2D(device, out, lhs, rhs, input_batch, input_x, input_y,
+                          input_channels, kernel_x, kernel_y, kernel_channels,
+                          kernel_filters, output_x, output_y, x_stride,
+                          y_stride, padding_x_before, padding_x_after,
+                          padding_y_before, padding_y_after, lhs_x_dilation,
+                          lhs_y_dilation, done_callback, use_thunk_runtime);
   } else {
     EigenGenericConv2D(
         device, out, lhs, rhs, input_batch, input_x, input_y, input_channels,
