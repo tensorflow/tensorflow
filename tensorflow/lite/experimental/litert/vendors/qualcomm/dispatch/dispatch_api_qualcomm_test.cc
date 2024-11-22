@@ -23,7 +23,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
-#include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/core/filesystem.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 
@@ -61,9 +61,9 @@ TEST(Qualcomm, DispatchApiWithFastRpc) {
   ABSL_LOG(INFO) << "device_context: " << device_context;
 
   auto model_file_name = kQualcommModelFileName;
-  auto model = litert::testing::LoadBinaryFile(model_file_name);
+  auto model = litert::internal::LoadBinaryFile(model_file_name);
   EXPECT_TRUE(model);
-  ABSL_LOG(INFO) << "Loaded model " << model_file_name << ", " << model->size()
+  ABSL_LOG(INFO) << "Loaded model " << model_file_name << ", " << model->Size()
                  << " bytes";
 
   // ///////////////////////////////////////////////////////////////////////////
@@ -73,7 +73,7 @@ TEST(Qualcomm, DispatchApiWithFastRpc) {
   LiteRtDispatchInvocationContext invocation_context = nullptr;
   EXPECT_EQ(LiteRtDispatchInvocationContextCreate(
                 device_context, kLiteRtDispatchExecutableTypeMlModel,
-                model->data(), model->size(), /*function_name=*/"simple",
+                model->Data(), model->Size(), /*function_name=*/"simple",
                 /*num_inputs=*/2, /*num_outputs=*/1, &invocation_context),
             kLiteRtStatusOk);
   ABSL_LOG(INFO) << "Invocation context: " << invocation_context;
@@ -312,9 +312,9 @@ TEST(Qualcomm, DispatchApiWithDmaBuf) {
   ABSL_LOG(INFO) << "device_context: " << device_context;
 
   auto model_file_name = kQualcommModelFileName;
-  auto model = ::litert::testing::LoadBinaryFile(model_file_name);
+  auto model = ::litert::internal::LoadBinaryFile(model_file_name);
   EXPECT_TRUE(model);
-  ABSL_LOG(INFO) << "Loaded model " << model_file_name << ", " << model->size()
+  ABSL_LOG(INFO) << "Loaded model " << model_file_name << ", " << model->Size()
                  << " bytes";
 
   // ///////////////////////////////////////////////////////////////////////////
@@ -324,7 +324,7 @@ TEST(Qualcomm, DispatchApiWithDmaBuf) {
   LiteRtDispatchInvocationContext invocation_context = nullptr;
   EXPECT_EQ(LiteRtDispatchInvocationContextCreate(
                 device_context, kLiteRtDispatchExecutableTypeMlModel,
-                model->data(), model->size(), /*function_name=*/"simple",
+                model->Data(), model->Size(), /*function_name=*/"simple",
                 /*num_inputs=*/2, /*num_outputs=*/1, &invocation_context),
             kLiteRtStatusOk);
   ABSL_LOG(INFO) << "Invocation context: " << invocation_context;

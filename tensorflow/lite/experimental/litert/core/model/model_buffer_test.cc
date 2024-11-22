@@ -30,7 +30,7 @@
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
-namespace litert {
+namespace litert::internal {
 namespace {
 
 static constexpr absl::string_view kNpuFile = kGoogleTensorModelFileName;
@@ -38,8 +38,8 @@ static constexpr absl::string_view kTfliteFile = "simple_model_npu.tflite";
 
 TEST(GetModelBufWithByteCode, CreateInterpreter) {
   auto model_with_byte_code =
-      internal::GetModelBufWithByteCode(testing::GetTestFilePath(kTfliteFile),
-                                        testing::GetTestFilePath(kNpuFile));
+      GetModelBufWithByteCode(testing::GetTestFilePath(kTfliteFile),
+                              testing::GetTestFilePath(kNpuFile));
   ASSERT_TRUE(model_with_byte_code);
 
   auto alloc = std::make_unique<tflite::MemoryAllocation>(
@@ -58,16 +58,15 @@ TEST(GetModelBufWithByteCode, CreateInterpreter) {
 
 TEST(GetModelBufWithByteCode, CheckMetadata) {
   auto model_with_byte_code =
-      internal::GetModelBufWithByteCode(testing::GetTestFilePath(kTfliteFile),
-                                        testing::GetTestFilePath(kNpuFile));
+      GetModelBufWithByteCode(testing::GetTestFilePath(kTfliteFile),
+                              testing::GetTestFilePath(kNpuFile));
   ASSERT_TRUE(model_with_byte_code);
 
-  auto model = internal::LoadModelFromMemory(*model_with_byte_code);
+  auto model = LoadModelFromMemory(*model_with_byte_code);
 
-  auto byte_code_buffer =
-      model->Get()->FindMetadata(internal::kByteCodeMetadataKey);
+  auto byte_code_buffer = model->Get()->FindMetadata(kByteCodeMetadataKey);
   ASSERT_TRUE(byte_code_buffer);
 }
 
 }  // namespace
-}  // namespace litert
+}  // namespace litert::internal

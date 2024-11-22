@@ -27,6 +27,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
@@ -36,17 +37,18 @@
 namespace litert {
 namespace {
 
+using ::litert::testing::MakeRuntimeFromTestFileWithNpuModel;
+
 static constexpr absl::string_view kNpuFile = kGoogleTensorModelFileName;
 static constexpr absl::string_view kTfliteFile = "simple_model_npu.tflite";
 
 TEST(DispatchDelegate, GoogleTensorCpuBuffer) {
-  auto runtime =
-      testing::TflRuntime::CreateFromTflFileWithByteCode(kTfliteFile, kNpuFile);
+  auto runtime = MakeRuntimeFromTestFileWithNpuModel(kTfliteFile, kNpuFile);
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
   auto& rt = **runtime;
-  auto& interpreter = rt.Interp();
+  auto& interpreter = rt.Interpreter();
 
-  litert::internal::ExternalLiteRtBufferContext buffer_context;
+  internal::ExternalLiteRtBufferContext buffer_context;
   interpreter.SetExternalContext(kTfLiteLiteRtBufferContext, &buffer_context);
 
   EXPECT_EQ(interpreter.nodes_size(), 1);
@@ -56,7 +58,7 @@ TEST(DispatchDelegate, GoogleTensorCpuBuffer) {
 
   auto dispatch_delegate_options = CreateDispatchDelegateOptionsPtr();
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
-                                           rt.AllocBase());
+                                           rt.Flatbuffer().Buf().Data());
   auto dispatch_delegate =
       CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
 
@@ -107,13 +109,12 @@ TEST(DispatchDelegate, GoogleTensorCpuBuffer) {
 }
 
 TEST(DispatchDelegate, GoogleTensorHwBuffer) {
-  auto runtime =
-      testing::TflRuntime::CreateFromTflFileWithByteCode(kTfliteFile, kNpuFile);
+  auto runtime = MakeRuntimeFromTestFileWithNpuModel(kTfliteFile, kNpuFile);
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
   auto& rt = **runtime;
-  auto& interpreter = rt.Interp();
+  auto& interpreter = rt.Interpreter();
 
-  litert::internal::ExternalLiteRtBufferContext buffer_context;
+  internal::ExternalLiteRtBufferContext buffer_context;
   interpreter.SetExternalContext(kTfLiteLiteRtBufferContext, &buffer_context);
 
   EXPECT_EQ(interpreter.nodes_size(), 1);
@@ -123,7 +124,7 @@ TEST(DispatchDelegate, GoogleTensorHwBuffer) {
 
   auto dispatch_delegate_options = CreateDispatchDelegateOptionsPtr();
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
-                                           rt.AllocBase());
+                                           rt.Flatbuffer().Buf().Data());
   auto dispatch_delegate =
       CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
 

@@ -23,13 +23,14 @@
 #include <gtest/gtest.h>
 #include "testing/base/public/unique-test-directory.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/litert/core/filesystem.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
 
+namespace litert::internal {
 namespace {
 
-using ::litert::internal::CompilerPlugin;
-using ::litert::testing::TouchTestFile;
+using ::testing::UniqueTestDirectory;
 
 constexpr absl::string_view kTestPluginSearchPath =
     "third_party/tensorflow/lite/experimental/litert/vendors/examples";
@@ -47,8 +48,8 @@ TEST(CompilerPluginTest, LoadTestPlugin) {
 }
 
 TEST(CompilerPluginTest, LoadTestPluginWithMalformed) {
-  const auto dir = testing::UniqueTestDirectory();
-  TouchTestFile("notLibLiteRt.so", dir);
+  const auto dir = UniqueTestDirectory();
+  Touch(Join({dir, "notLibLiteRt.so"}));
 
   auto plugins = CompilerPlugin::LoadPlugins({kTestPluginSearchPath});
 
@@ -101,7 +102,7 @@ TEST(CompilerPluginTest, PartitionModel) {
   ASSERT_EQ(plugins->size(), 1);
   EXPECT_EQ(plugins->front().SocManufacturer(), kTestManufacturer);
 
-  auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
+  auto model = testing::LoadTestFileModel("mul_simple.tflite");
   auto subgraph = model.MainSubgraph();
 
   EXPECT_EQ(subgraph->Ops().size(), 2);
@@ -112,7 +113,7 @@ TEST(CompilerPluginTest, CompileModel) {
   ASSERT_EQ(plugins->size(), 1);
   EXPECT_EQ(plugins->front().SocManufacturer(), kTestManufacturer);
 
-  auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
+  auto model = testing::LoadTestFileModel("mul_simple.tflite");
   auto subgraph = model.MainSubgraph();
 
   std::ostringstream byte_code_out;
@@ -129,7 +130,7 @@ TEST(CompilerPluginTest, Dump) {
   ASSERT_EQ(plugins->size(), 1);
 
   std::stringstream dump;
-  litert::internal::Dump(plugins->front(), dump);
+  Dump(plugins->front(), dump);
 
   ASSERT_EQ(dump.view(),
             "SocManufacturer: ExampleSocManufacturer\nSocModels: { "
@@ -137,3 +138,4 @@ TEST(CompilerPluginTest, Dump) {
 }
 
 }  // namespace
+}  // namespace litert::internal

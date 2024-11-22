@@ -139,6 +139,12 @@ struct LiteRtSubgraphT {
     tensors.push_back(&tensor);
     return tensor;
   }
+
+  LiteRtOpT& EmplaceOp() {
+    auto& op = ops_storage.emplace_back();
+    ops.push_back(&op);
+    return op;
+  }
 };
 
 //
@@ -152,10 +158,6 @@ struct LiteRtModelT {
   // Subgraphs that have been unpacked into usable types.
   std::vector<LiteRtSubgraphT> subgraphs;
 
-  // TODO: b/365299994 - Delete this.
-  // Shared views of remaining unpacked flatbuffer data.
-  std::vector<std::shared_ptr<tflite::SubGraphT>> flatbuffer_subgraphs;
-
   // Initial flatbuffer loaded in. "Subgraphs" field has been invalidated.
   std::unique_ptr<tflite::ModelT> flatbuffer_model;
 
@@ -165,15 +167,12 @@ struct LiteRtModelT {
 
   // Look up metadata by key, getting a view of its buffer as a string
   // if it exists.
-  litert::Expected<litert::MutableBufferRef<uint8_t>> FindMetadata(
+  litert::Expected<litert::BufferRef<uint8_t>> FindMetadata(
       absl::string_view key) const;
 
   // Adds a new metadata buffer to the model. Fails if it already exists.
   LiteRtStatus PushMetadata(absl::string_view key,
                             litert::BufferRef<uint8_t> data);
-
- private:
-  LiteRtStatus FindMetadataInd(absl::string_view key, uint32_t& ind) const;
 };
 
 //

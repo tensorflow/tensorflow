@@ -15,18 +15,15 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TEST_COMMON_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TEST_COMMON_H_
 
-#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/mlir/lite/allocation.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/core/model/model_buffer.h"
+#include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/model_builder.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 #define _LITERT_ASSERT_RESULT_OK_ASSIGN(decl, expr, result) \
   auto result = (expr);                                     \
@@ -59,45 +56,55 @@ namespace testing {
 
 std::string GetTestFilePath(absl::string_view filename);
 
-Expected<std::vector<char>> LoadBinaryFile(absl::string_view filename);
-
 Model LoadTestFileModel(absl::string_view filename);
 
-void TouchTestFile(absl::string_view filename, absl::string_view dir);
-
 bool ValidateTopology(const std::vector<Op>& ops);
-
-// Get a buffer that is the concatenation of given tflite file and
-// npu byte code file. Adds metadata containing the offset/size of npu byte
-// code. Input tflite model custom ops should contain only the function name in
-// custom options this will normalize with the correct format. NOTE only the
-// case where all ops share the same offset is currently implemented.
-Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
-    absl::string_view tfl_file, absl::string_view npu_file);
 
 class TflRuntime {
  public:
   using Ptr = std::unique_ptr<TflRuntime>;
-  static Expected<Ptr> CreateFromTflFile(absl::string_view filename);
-  static Expected<Ptr> CreateFromTflFileWithByteCode(
-      absl::string_view tfl_filename, absl::string_view npu_filename);
 
-  tflite::Interpreter& Interp() { return *interp_; }
+  static Expected<Ptr> CreateFromFlatBuffer(
+      internal::FlatbufferWrapper::Ptr flatbuffer);
 
-  BufferRef<uint8_t> ModelBuf() const {
-    return BufferRef<uint8_t>(alloc_->base(), alloc_->bytes());
-  }
+  ::tflite::Interpreter& Interpreter() { return *interpreter_; }
 
-  const void* AllocBase() const { return alloc_->base(); }
-
-  const ::tflite::Model* Model() const { return fb_model_->GetModel(); }
+  const internal::FlatbufferWrapper& Flatbuffer() const { return *flatbuffer_; }
 
  private:
-  std::unique_ptr<::tflite::Interpreter> interp_;
-  std::unique_ptr<::tflite::FlatBufferModel> fb_model_;
-  std::unique_ptr<::tflite::Allocation> alloc_;
-  OwningBufferRef<uint8_t> model_buf_;
+  TflRuntime(internal::FlatbufferWrapper::Ptr flatbuffer,
+             ::tflite::Interpreter::Ptr interpreter)
+      : flatbuffer_(std::move(flatbuffer)),
+        interpreter_(std::move(interpreter)) {}
+
+  internal::FlatbufferWrapper::Ptr flatbuffer_;
+  ::tflite::Interpreter::Ptr interpreter_;
 };
+
+inline Expected<TflRuntime::Ptr> MakeRuntimeFromTestFile(
+    absl::string_view filename) {
+  auto flatbuffer =
+      internal::FlatbufferWrapper::CreateFromTflFile(GetTestFilePath(filename));
+  if (!flatbuffer) {
+    return flatbuffer.Error();
+  }
+  return TflRuntime::CreateFromFlatBuffer(std::move(*flatbuffer));
+}
+
+inline Expected<TflRuntime::Ptr> MakeRuntimeFromTestFileWithNpuModel(
+    absl::string_view filename, absl::string_view npu_filename) {
+  auto buf = internal::GetModelBufWithByteCode(GetTestFilePath(filename),
+                                               GetTestFilePath(npu_filename));
+  if (!buf) {
+    return buf.Error();
+  }
+  auto flatbuffer =
+      internal::FlatbufferWrapper::CreateFromBuffer(std::move(*buf));
+  if (!flatbuffer) {
+    return flatbuffer.Error();
+  }
+  return TflRuntime::CreateFromFlatBuffer(std::move(*flatbuffer));
+}
 
 }  // namespace testing
 }  // namespace litert

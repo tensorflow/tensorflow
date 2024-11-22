@@ -194,6 +194,9 @@ class MutableBufferRef : public BufferRef<ByteT> {
   // Mutable start of actual data.
   ByteT* Data() { return this->data_ + this->offset_; }
 
+  // Get the mutable start of actual data as a char pointer.
+  char* StrData() { return reinterpret_cast<char*>(Data()); }
+
   // Get buffer info in tuple form.
   TupleT Get() { return TupleT(this->data_, this->size_, this->offset_); }
 

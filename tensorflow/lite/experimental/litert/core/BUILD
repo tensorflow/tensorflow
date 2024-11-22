@@ -65,6 +65,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "filesystem",
+    srcs = ["filesystem.cc"],
+    hdrs = ["filesystem.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
+        "//tensorflow/lite/experimental/litert/cc:litert_detail",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_test(
+    name = "filesystem_test",
+    srcs = ["filesystem_test.cc"],
+    deps = [
+        ":filesystem",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 # copybara:uncomment_begin(no OSS for unique-test-directory)
 # cc_test(
 #     name = "dynamic_loading_test",
@@ -77,8 +102,10 @@ cc_library(
 #     ],
 #     deps = [
 #         ":dynamic_loading",
+#         ":filesystem",
 #         "@com_google_googletest//:gtest_main",
 #         "//testing/base/public:unique-test-directory",
+#         "@com_google_absl//absl/strings:str_format",
 #         "@com_google_absl//absl/strings:string_view",
 #         "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
 #         "//tensorflow/lite/experimental/litert/test:common",

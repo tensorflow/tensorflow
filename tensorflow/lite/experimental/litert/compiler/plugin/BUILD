@@ -57,6 +57,7 @@ cc_library(
 #         "@com_google_googletest//:gtest_main",
 #         "//testing/base/public:unique-test-directory",
 #         "@com_google_absl//absl/strings:string_view",
+#         "//tensorflow/lite/experimental/litert/core:filesystem",
 #         "//tensorflow/lite/experimental/litert/test:common",
 #         "//tensorflow/lite/experimental/litert/tools:dump",
 #     ],

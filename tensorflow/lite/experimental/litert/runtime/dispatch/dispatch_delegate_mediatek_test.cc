@@ -36,15 +36,16 @@
 namespace litert {
 namespace {
 
+using ::litert::testing::MakeRuntimeFromTestFileWithNpuModel;
+
 static constexpr absl::string_view kNpuFile = kMediaTekModelFileName;
 static constexpr absl::string_view kTfliteFile = "simple_model_npu.tflite";
 
 TEST(DispatchDelegate, MediaTekCpuBuffer) {
-  auto runtime =
-      testing::TflRuntime::CreateFromTflFileWithByteCode(kTfliteFile, kNpuFile);
+  auto runtime = MakeRuntimeFromTestFileWithNpuModel(kTfliteFile, kNpuFile);
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
   auto& rt = **runtime;
-  auto& interpreter = rt.Interp();
+  auto& interpreter = rt.Interpreter();
 
   litert::internal::ExternalLiteRtBufferContext buffer_context;
   interpreter.SetExternalContext(kTfLiteLiteRtBufferContext, &buffer_context);
@@ -56,7 +57,7 @@ TEST(DispatchDelegate, MediaTekCpuBuffer) {
 
   auto dispatch_delegate_options = CreateDispatchDelegateOptionsPtr();
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
-                                           rt.AllocBase());
+                                           rt.Flatbuffer().Buf().Data());
   auto dispatch_delegate =
       CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
 
@@ -107,11 +108,10 @@ TEST(DispatchDelegate, MediaTekCpuBuffer) {
 }
 
 TEST(DispatchDelegate, MediaTekHwBuffer) {
-  auto runtime =
-      testing::TflRuntime::CreateFromTflFileWithByteCode(kTfliteFile, kNpuFile);
+  auto runtime = MakeRuntimeFromTestFileWithNpuModel(kTfliteFile, kNpuFile);
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
   auto& rt = **runtime;
-  auto& interpreter = rt.Interp();
+  auto& interpreter = rt.Interpreter();
 
   litert::internal::ExternalLiteRtBufferContext buffer_context;
   interpreter.SetExternalContext(kTfLiteLiteRtBufferContext, &buffer_context);
@@ -123,7 +123,7 @@ TEST(DispatchDelegate, MediaTekHwBuffer) {
 
   auto dispatch_delegate_options = CreateDispatchDelegateOptionsPtr();
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
-                                           rt.AllocBase());
+                                           rt.Flatbuffer().Buf().Data());
   auto dispatch_delegate =
       CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
 

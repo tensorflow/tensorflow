@@ -14,6 +14,12 @@
 
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 
+#include <memory>
+#include <utility>
+
+#include "tensorflow/compiler/mlir/lite/allocation.h"
+#include "tensorflow/lite/experimental/litert/core/filesystem.h"
+
 #ifndef NDEBUG
 // Make flatbuffers verifier `assert` in debug mode.
 #define FLATBUFFERS_DEBUG_VERIFICATION_FAILURE
@@ -30,12 +36,33 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/stderr_reporter.h"
 
 namespace litert::internal {
 
 using ::flatbuffers::Verifier;
 using ::tflite::VerifyModelBuffer;
+
+namespace {
+
+Expected<uint32_t> FindMetadataInd(const TflModel& model,
+                                   absl::string_view key) {
+  tflite::MetadataT* fb_metadata = nullptr;
+  for (auto& m : model.metadata) {
+    if (m->name == key) {
+      fb_metadata = m.get();
+      break;
+    }
+  }
+  if (fb_metadata == nullptr) {
+    return Error(kLiteRtStatusErrorNotFound);
+  }
+  return fb_metadata->buffer;
+}
+
+}  // namespace
 
 absl::string_view FbBufToStr(const uint8_t* fb_data, size_t size) {
   auto fb_buf_raw = reinterpret_cast<const char*>(fb_data);
@@ -69,18 +96,127 @@ bool VerifyFlatbuffer(const uint8_t* buf, size_t buf_size) {
   return VerifyModelBuffer(verifier);
 }
 
-Expected<BufferRef<uint8_t>> GetMetadata(absl::string_view key,
-                                         const tflite::Model* model) {
-  for (int i = 0; i < model->metadata()->size(); ++i) {
-    const auto& metadata = model->metadata()->Get(i);
-    if (metadata->name()->string_view() != key) {
-      continue;
-    }
-    const auto buf_ind = metadata->buffer();
-    const auto& fb_vec = model->buffers()->Get(buf_ind)->data();
-    return BufferRef<uint8_t>(fb_vec->data(), fb_vec->size());
+Expected<MutableBufferRef<uint8_t>> GetMetadata(absl::string_view key,
+                                                TflModel& model) {
+  auto buffer_ind = FindMetadataInd(model, key);
+  if (!buffer_ind) {
+    // Metadata key already has value.
+    return buffer_ind.Error();
   }
-  return Unexpected(kLiteRtStatusErrorNotFound);
+  auto& fb_vec = model.buffers.at(*buffer_ind)->data;
+  return MutableBufferRef<uint8_t>(fb_vec.data(), fb_vec.size());
+}
+
+Expected<BufferRef<uint8_t>> GetMetadata(absl::string_view key,
+                                         const TflModel& model) {
+  auto metadata = GetMetadata(key, const_cast<TflModel&>(model));
+  if (!metadata) {
+    return metadata.Error();
+  }
+  return *metadata;
+}
+
+LiteRtStatus PushMetadata(absl::string_view key, TflModel& model,
+                          BufferRef<uint8_t> metadata) {
+  auto buffer_ind = FindMetadataInd(model, key);
+  if (buffer_ind) {
+    // Metadata key already has value.
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+
+  auto& new_metadata =
+      model.metadata.emplace_back(std::make_unique<tflite::MetadataT>());
+  new_metadata->name.assign(key.data(), key.size());
+
+  const auto new_m_buffer_ind = model.buffers.size();
+  new_metadata->buffer = new_m_buffer_ind;
+
+  auto& new_buffer = model.buffers.emplace_back(std::make_unique<TflBuffer>());
+  new_buffer->data.assign(metadata.Data(), metadata.Data() + metadata.Size());
+
+  return kLiteRtStatusOk;
+}
+
+Expected<MutableBufferRef<uint8_t>> GetTflBuffer(TflModel& tfl_model,
+                                                 uint32_t buffer_ind) {
+  if (buffer_ind >= tfl_model.buffers.size()) {
+    return Error(kLiteRtStatusErrorIndexOOB);
+  }
+  auto& tfl_data = tfl_model.buffers.at(buffer_ind)->data;
+  return MutableBufferRef<uint8_t>(tfl_data.data(), tfl_data.size());
+}
+
+Expected<BufferRef<uint8_t>> GetTflBuffer(const TflModel& tfl_model,
+                                          uint32_t buffer_ind) {
+  auto buffer = GetTflBuffer(const_cast<TflModel&>(tfl_model), buffer_ind);
+  if (!buffer) {
+    return buffer.Error();
+  }
+  return *buffer;
+}
+
+Expected<TflBufferPtr> TakeBuffer(TflModel& tfl_model, uint32_t buffer_ind) {
+  if (buffer_ind >= tfl_model.buffers.size()) {
+    return Error(kLiteRtStatusErrorIndexOOB);
+  }
+  return std::move(tfl_model.buffers.at(buffer_ind));
+}
+
+Expected<uint32_t> PushTflBuffer(TflModel& tfl_model,
+                                 BufferRef<uint8_t> buffer) {
+  tfl_model.buffers.emplace_back(std::make_unique<::tflite::BufferT>())
+      ->data.assign(buffer.Data(), buffer.Data() + buffer.Size());
+  return tfl_model.buffers.size() - 1;
+}
+
+Expected<TflOpCode> GetTflOpCode(const TflModel& tfl_model,
+                                 uint32_t op_code_ind) {
+  if (op_code_ind >= tfl_model.operator_codes.size()) {
+    return Error(kLiteRtStatusErrorIndexOOB);
+  }
+  return std::move(tfl_model.operator_codes.at(op_code_ind)->builtin_code);
+}
+
+::tflite::Allocation::Ptr MakeAllocation(BufferRef<uint8_t> buf) {
+  return std::make_unique<::tflite::MemoryAllocation>(
+      buf.Data(), buf.Size(), ::tflite::DefaultErrorReporter());
+}
+
+Expected<FlatbufferWrapper::Ptr> FlatbufferWrapper::CreateFromBuffer(
+    OwningBufferRef<uint8_t>&& buffer) {
+  if (!VerifyFlatbuffer(buffer.Data(), buffer.Size())) {
+    return Error(kLiteRtStatusErrorInvalidFlatbuffer);
+  }
+
+  auto alloc = MakeAllocation(buffer);
+
+  if (alloc == nullptr) {
+    return Error(kLiteRtStatusErrorFileIO);
+  }
+
+  auto fb_model = ::tflite::FlatBufferModel::BuildFromBuffer(
+      reinterpret_cast<const char*>(alloc->base()), alloc->bytes());
+  if (fb_model == nullptr) {
+    return Error(kLiteRtStatusErrorFileIO);
+  }
+
+  return FlatbufferWrapper::Ptr(new FlatbufferWrapper(
+      std::move(fb_model), std::move(alloc), std::move(buffer)));
+}
+
+Expected<FlatbufferWrapper::Ptr> FlatbufferWrapper::CreateFromBuffer(
+    BufferRef<uint8_t> buffer) {
+  return FlatbufferWrapper::CreateFromBuffer(
+      OwningBufferRef<uint8_t>(buffer.Data(), buffer.Size()));
+}
+
+Expected<FlatbufferWrapper::Ptr> FlatbufferWrapper::CreateFromTflFile(
+    absl::string_view path) {
+  auto buf = LoadBinaryFile(path);
+  if (!buf) {
+    return buf.Error();
+  }
+  return FlatbufferWrapper::CreateFromBuffer(std::move(*buf));
 }
 
 }  // namespace litert::internal
