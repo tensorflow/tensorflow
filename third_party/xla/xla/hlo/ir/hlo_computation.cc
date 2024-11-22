@@ -1450,13 +1450,13 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());
   }
-  if (auto old_original_value = old_instruction->original_value()) {
+  if (auto original_value = old_instruction->original_value()) {
     // Fusions are handled separately. The original value of fused instructions
     // is copied when they are added into the fused computation.
     if (new_instruction->opcode() != HloOpcode::kFusion) {
       if (ShapeUtil::Compatible(old_instruction->shape(),
                                 new_instruction->shape())) {
-        new_instruction->set_original_value(old_original_value);
+        new_instruction->set_original_value(original_value);
       } else {
         LOG(WARNING)
             << "Expect the new instruction to have the same shape with the old "
