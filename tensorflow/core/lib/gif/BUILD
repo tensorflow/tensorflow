@@ -51,8 +51,6 @@ cc_library(
         "//tensorflow/core/lib/gtl:legacy_android_gif_internal_headers",
         "//tensorflow/core/platform:gif_internal_hdrs",
         "@local_tsl//tsl/platform:gif_internal_hdrs",
-        "@local_xla//xla/tsl/platform/default:integral_types.h",
-        "@local_xla//xla/tsl/platform/default:logging.h",
     ],
     copts = tf_copts(),
     features = ["-layering_check"],

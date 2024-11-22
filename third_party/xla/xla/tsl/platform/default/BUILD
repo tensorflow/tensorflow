@@ -272,10 +272,13 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    textual_hdrs = ["logging.h"],
     deps = [
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:globals",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:env_time",
@@ -628,7 +631,6 @@ exports_files(
         ["*"],
         exclude = [
             "integral_types.h",
-            "logging.h",
             "test.cc",
         ],
     ),
@@ -638,7 +640,6 @@ exports_files(
 exports_files(
     srcs = [
         "integral_types.h",
-        "logging.h",
         "test.cc",
     ],
     visibility = internal_visibility([

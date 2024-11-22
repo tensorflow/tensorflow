@@ -16,14 +16,49 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_LOGGING_H_
 #define TENSORFLOW_TSL_PLATFORM_LOGGING_H_
 
-#include "tsl/platform/platform.h"
+#include <string>
 
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
-    defined(__EMSCRIPTEN__) || defined(PLATFORM_CHROMIUMOS)
-#include "xla/tsl/platform/google/logging.h"  // IWYU pragma: export
-#else
-#include "xla/tsl/platform/default/logging.h"  // IWYU pragma: export
-#endif
+#include "absl/base/log_severity.h"
+#include "absl/log/check.h"       // IWYU pragma: export
+#include "absl/log/log.h"         // IWYU pragma: export
+#include "absl/log/vlog_is_on.h"  // IWYU pragma: export
+
+namespace tsl {
+
+// These constants are also useful outside of LOG statements, e.g. in mocked
+// logs.
+using base_logging::ERROR;
+using base_logging::FATAL;
+using base_logging::INFO;
+using base_logging::NUM_SEVERITIES;
+using base_logging::WARNING;
+
+namespace internal {
+inline void LogString(const char* fname, int line, absl::LogSeverity severity,
+                      const std::string& message) {
+  LOG(LEVEL(severity)).AtLocation(fname, line) << message;
+}
+
+#ifndef CHECK_NOTNULL
+template <typename T>
+T&& CheckNotNull(const char* file, int line, const char* exprtext, T&& t) {
+  if (t == nullptr) {
+    LOG(FATAL).AtLocation(file, line) << std::string(exprtext);  // Crash OK
+  }
+  return std::forward<T>(t);
+}
+
+#define CHECK_NOTNULL(val)                          \
+  ::tsl::internal::CheckNotNull(__FILE__, __LINE__, \
+                                "'" #val "' Must be non NULL", (val))
+#endif  // CHECK_NOTNULL
+
+}  // namespace internal
+
+// Change verbose level of pre-defined files if envorionment
+// variable `env_var` is defined. This is currently a no op in OSS.
+void UpdateLogVerbosityIfDefined(const char* env_var);
+
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_LOGGING_H_

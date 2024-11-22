@@ -1389,12 +1389,14 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   const int64_t num_groups =
       indices.sharding().NumTiles(indices_update_dims.indices_dims);
   const int64_t num_tiles = indices.sharding().TotalNumTiles();
-  const HloSharding passthrough_sharding =
+  HloSharding passthrough_sharding =
       hlo_sharding_util::ScatterUpdateShardingFromIndex(
           indices.sharding(), scatter, /*consider_explicit_batch_dims=*/false);
   if (passthrough_sharding.IsTileMaximal()) {
     return nullptr;
   }
+  hlo_sharding_util::MergeShardingIfCompatible(updates[0].sharding(),
+                                               &passthrough_sharding);
   const GroupedSharding update_grouped = hlo_sharding_util::GroupShardingOnDims(
       passthrough_sharding, indices_update_dims.output_dims);
   // See if we can group partially replicated dimensions from the operand
@@ -1478,14 +1480,10 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
           pshape,
           HloSharding::Single(scatter->shape(), output_grouped.sharding),
           slice_sizes, visitor, allow_recursive));
-  // All-reduce along all dims in operand sharding -- this is OK because the
-  // operand is not sharded on index_vector_dim.
-  std::vector<int64_t> all_dims(indices.rank());
-  absl::c_iota(all_dims, 0);
   auto all_reduce = operands[0].state().partitioner->AllReduceAlongShardingDims(
       b, pscatter, original_indices_sharding, indices.state().next_channel_id,
-      all_dims, operands[0].state().collective_ops_creator,
-      scatter->to_apply());
+      indices_update_dims.indices_dims,
+      operands[0].state().collective_ops_creator, scatter->to_apply());
   all_reduce->set_sharding(hlo_sharding_util::UngroupSharding(output_grouped));
   if (allow_recursive) {
     VLOG(5) << "[Scatter partitioning]: Partitioned as index passthrough";

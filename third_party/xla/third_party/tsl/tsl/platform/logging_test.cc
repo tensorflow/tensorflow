@@ -126,35 +126,6 @@ TEST(InternalLogString, Basic) {
                       "Hello there");
 }
 
-class TestSink : public TFLogSink {
- public:
-  void Send(const TFLogEntry& entry) override {
-    ss_ << entry.text_message() << std::endl;
-  }
-
-  std::string Get() const { return ss_.str(); }
-
- private:
-  std::stringstream ss_;
-};
-
-TEST(LogSinkTest, testLogSinks) {
-  const int sinks_initial_size = TFGetLogSinks().size();
-  TestSink sink;
-
-  TFAddLogSink(&sink);
-
-  EXPECT_EQ(TFGetLogSinks().size(), sinks_initial_size + 1);
-
-  LOG(INFO) << "Foo";
-  LOG(INFO) << "Bar";
-  EXPECT_EQ(sink.Get(), "Foo\nBar\n");
-
-  TFRemoveLogSink(&sink);
-
-  EXPECT_EQ(TFGetLogSinks().size(), sinks_initial_size);
-}
-
 std::string ReadFromFilePointer(FILE* fp) {
   std::string result;
   while (!feof(fp)) {

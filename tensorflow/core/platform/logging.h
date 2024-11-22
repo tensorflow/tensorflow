@@ -24,11 +24,6 @@ namespace tensorflow {
 namespace internal {
 using tsl::internal::LogString;
 }  // namespace internal
-using tsl::TFAddLogSink;
-using tsl::TFGetLogSinks;
-using tsl::TFLogEntry;
-using tsl::TFLogSink;
-using tsl::TFRemoveLogSink;
 using tsl::UpdateLogVerbosityIfDefined;
 }  // namespace tensorflow
 // NOLINTEND(misc-unused-using-decls)

@@ -59,7 +59,6 @@ cc_library(
         "//tensorflow/core/platform:jpeg_internal_hdrs",
         "@local_tsl//tsl/platform:jpeg_internal_hdrs",
         "@local_xla//xla/tsl/platform/default:integral_types.h",
-        "@local_xla//xla/tsl/platform/default:logging.h",
     ],
     copts = tf_copts(),
     linkopts = if_android(["-ldl"]),
