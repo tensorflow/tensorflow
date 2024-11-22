@@ -491,7 +491,6 @@ xla_test(
     tags = ["cuda-only"],
     deps = [
         ":gpu_cudamallocasync_allocator",
-        ":gpu_stream",
         "//xla/service:platform_util",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
