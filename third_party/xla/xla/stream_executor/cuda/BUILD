@@ -1414,7 +1414,6 @@ cc_library(
         "gpu",
     ],
     deps = [
-        ":cubin_or_ptx_image",
         ":cuda_status",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:device_description",

@@ -1859,7 +1859,6 @@ cc_library(
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/cuda:cubin_or_ptx_image",
         "//xla/stream_executor/cuda:cuda_diagnostics",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/cuda:driver_compilation",

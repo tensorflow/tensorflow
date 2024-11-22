@@ -465,7 +465,8 @@ absl::StatusOr<SemanticVersion> GetNvLinkVersion(
 
 absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     stream_executor::CudaComputeCapability cc,
-    std::string_view preferred_cuda_dir, std::vector<CubinOrPTXImage> images) {
+    std::string_view preferred_cuda_dir,
+    absl::Span<const std::vector<uint8_t>> images) {
   LOG_FIRST_N(INFO, 1) << "Using nvlink for parallel linking";
 
   TF_ASSIGN_OR_RETURN(std::string bin_path,
@@ -488,8 +489,8 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     temp_files.back() += ".cubin";
     TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
         env, temp_files.back(),
-        absl::string_view(reinterpret_cast<const char*>(images[i].bytes.data()),
-                          images[i].bytes.size())));
+        absl::string_view(reinterpret_cast<const char*>(images[i].data()),
+                          images[i].size())));
   }
   std::string output_path;
   TF_RET_CHECK(env->LocalTempFilename(&output_path));

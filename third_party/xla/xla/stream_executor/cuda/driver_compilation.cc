@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -36,7 +35,7 @@ namespace stream_executor {
 
 absl::StatusOr<std::vector<uint8_t>> LinkGpuAsmUsingDriver(
     StreamExecutor* executor, const stream_executor::CudaComputeCapability& cc,
-    absl::Span<const CubinOrPTXImage> images) {
+    absl::Span<const std::vector<uint8_t>> images) {
   std::unique_ptr<ActivateContext> context = executor->Activate();
 
   CUlinkState link_state;
@@ -62,11 +61,10 @@ absl::StatusOr<std::vector<uint8_t>> LinkGpuAsmUsingDriver(
   TF_RETURN_IF_ERROR(
       cuda::ToStatus(cuLinkCreate(sizeof(options) / sizeof(options[0]), options,
                                   option_values, &link_state)));
-  for (const CubinOrPTXImage& image : images) {
-    auto status = cuda::ToStatus(
-        cuLinkAddData(link_state, CU_JIT_INPUT_CUBIN,
-                      absl::bit_cast<void*>(image.bytes.data()),
-                      image.bytes.size(), "", 0, nullptr, nullptr));
+  for (const std::vector<uint8_t>& image : images) {
+    auto status = cuda::ToStatus(cuLinkAddData(
+        link_state, CU_JIT_INPUT_CUBIN, absl::bit_cast<void*>(image.data()),
+        image.size(), "", 0, nullptr, nullptr));
     if (!status.ok()) {
       LOG(ERROR) << "cuLinkAddData fails. This is usually caused by stale "
                     "driver version.";

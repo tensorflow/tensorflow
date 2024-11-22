@@ -93,7 +93,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/driver_compilation.h"
@@ -1039,20 +1038,11 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
         /*cancel_if_reg_spill=*/false);
   }
 
-  std::vector<stream_executor::CubinOrPTXImage> cubin_images;
-  cubin_images.reserve(modules.size());
-  for (std::vector<uint8_t>& module : modules) {
-    {
-      std::string profile = absl::StrCat("sm_", cc.major, cc.minor);
-      cubin_images.push_back({std::move(profile), std::move(module)});
-    }
+  if (linking_method == se::PtxLinkingMethod::kNvLink) {
+    return LinkUsingNvlink(cc, debug_options.xla_gpu_cuda_data_dir(), modules);
   }
 
-  if (linking_method == se::PtxLinkingMethod::kNvLink) {
-    return LinkUsingNvlink(cc, debug_options.xla_gpu_cuda_data_dir(),
-                           cubin_images);
-  }
-  return LinkGpuAsmUsingDriver(stream_exec, cc, cubin_images);
+  return LinkGpuAsmUsingDriver(stream_exec, cc, modules);
 }
 
 }  // namespace gpu

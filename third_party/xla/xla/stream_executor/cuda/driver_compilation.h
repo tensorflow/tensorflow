@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -31,7 +30,7 @@ namespace stream_executor {
 // single image using the CUDA driver linking API.
 absl::StatusOr<std::vector<uint8_t>> LinkGpuAsmUsingDriver(
     StreamExecutor* executor, const CudaComputeCapability& cc,
-    absl::Span<const CubinOrPTXImage> images);
+    absl::Span<const std::vector<uint8_t>> images);
 
 }  // namespace stream_executor
 

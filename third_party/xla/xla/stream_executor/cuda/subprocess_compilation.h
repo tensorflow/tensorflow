@@ -74,7 +74,8 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsmUsingFatbin(
 // Links the given CUBIN `images` using nvlink.
 absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     stream_executor::CudaComputeCapability cc,
-    std::string_view preferred_cuda_dir, std::vector<CubinOrPTXImage> images);
+    std::string_view preferred_cuda_dir,
+    absl::Span<const std::vector<uint8_t>> images);
 
 }  // namespace stream_executor
 
