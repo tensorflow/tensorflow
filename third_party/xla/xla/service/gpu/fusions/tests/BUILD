@@ -1,3 +1,8 @@
+load(
+    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
+    "tf_exec_properties",
+)
 load("//xla:lit.bzl", "lit_test_suite")
 
 package(
@@ -9,7 +14,9 @@ lit_test_suite(
     name = "tests",
     srcs = glob(["**/*.hlo"]),
     cfg = "//xla:lit.cfg.py",
-    default_tags = ["requires-gpu-sm80-only"],
+    default_tags = tf_cuda_tests_tags(),
+    exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
+    hermetic_cuda_data_dir = "%S/../../../../../../../cuda_nvcc",
     tools = [
         "//xla/service/gpu/fusions/tools:fusion_to_mlir",
         "//xla/service/gpu/fusions/tools:mlir_fusions_opt",

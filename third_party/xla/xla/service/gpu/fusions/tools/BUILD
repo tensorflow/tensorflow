@@ -8,6 +8,10 @@ package(
 xla_cc_binary(
     name = "mlir_fusions_opt",
     srcs = ["mlir_fusions_opt.cc"],
+    # We want to use this tool for lit tests. Due to hermetic cuda, we need to
+    # set linkopts in such a way that dynamic libraries are found, which are
+    # symlinked from the lit_lib directory.
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     visibility = ["//xla/service/gpu/fusions:__subpackages__"],
     deps = [
         "//xla/mlir_hlo",
@@ -75,6 +79,10 @@ xla_cc_binary(
     name = "fusion_to_mlir",
     testonly = 1,
     srcs = ["fusion_to_mlir.cc"],
+    # We want to use this tool for lit tests. Due to hermetic cuda, we need to
+    # set linkopts in such a way that dynamic libraries are found, which are
+    # symlinked from the lit_lib directory.
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     visibility = ["//xla/service/gpu/fusions:__subpackages__"],
     deps = [
         ":test_lib",
@@ -90,6 +98,10 @@ xla_cc_binary(
     name = "test_correctness",
     testonly = 1,
     srcs = ["test_correctness.cc"],
+    # We want to use this tool for lit tests. Due to hermetic cuda, we need to
+    # set linkopts in such a way that dynamic libraries are found, which are
+    # symlinked from the lit_lib directory.
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     visibility = ["//xla/service/gpu/fusions:__subpackages__"],
     deps = [
         ":test_lib",
