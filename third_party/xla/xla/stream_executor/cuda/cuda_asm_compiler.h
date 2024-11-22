@@ -45,13 +45,6 @@ inline absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
                        std::string(ptx_contents), options, cancel_if_reg_spill);
 }
 
-// Links multiple relocatable GPU images (e.g. results of ptxas -c) into a
-// single image. The linking method is statically determined and debug options
-// are not taken into account.
-absl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
-    stream_executor::CudaComputeCapability cc,
-    std::vector<CubinOrPTXImage> images);
-
 // Bundles the GPU machine code (cubins) and PTX if requested and returns the
 // resulting binary (i.e. a fatbin) as a byte array.
 absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
