@@ -493,6 +493,8 @@ tf_python_pybind_extension(
     ],
     static_deps = tf_python_pybind_static_deps(),
     deps = [
+        "@com_google_absl//absl/container:raw_hash_set",
+        "@com_google_absl//absl/status",
         "@pybind11",
         "//tensorflow/compiler/aot:tfcompile_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
@@ -1262,6 +1264,7 @@ tf_python_pybind_extension(
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

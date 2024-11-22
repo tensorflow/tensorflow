@@ -5,10 +5,9 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def repo():
     """Imports absl."""
 
-    # Attention: tools parse and update these lines.
     # LINT.IfChange
-    ABSL_COMMIT = "fb3621f4f897824c0dbe0615fa94543df6192f30"
-    ABSL_SHA256 = "0320586856674d16b0b7a4d4afb22151bdc798490bb7f295eddd8f6a62b46fea"
+    ABSL_COMMIT = "ebdba5af75fab91ebe9bc4daa0077f9c57c36692"
+    ABSL_SHA256 = "a64122d2766b3febfff7caec712f8c92abf44d762cc39b0c16593e2ac533d46e"
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/abseil-cpp.cmake)
 
     SYS_DIRS = [

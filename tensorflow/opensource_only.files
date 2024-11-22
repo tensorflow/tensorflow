@@ -317,7 +317,6 @@ tf_staging/third_party/nvtx/BUILD:
 tf_staging/third_party/nvtx/LICENSE:
 tf_staging/third_party/ortools/BUILD:
 tf_staging/third_party/ortools/glpk.BUILD:
-tf_staging/third_party/ortools/ortools.patch:
 tf_staging/third_party/png.BUILD:
 tf_staging/third_party/png_fix_rpi.patch:
 tf_staging/third_party/pprof.BUILD:
