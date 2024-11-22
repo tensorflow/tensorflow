@@ -40,6 +40,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -336,11 +337,12 @@ class Interpreter {
 
   /// \brief Returns a pointer to the SignatureRunner instance to run the part
   /// of the graph identified by a SignatureDef.  If the model does not have any
-  /// signature defs, pass nullptr as signature_key and a SignatureRunner will
-  /// be created using the primary subgraph (0).  A nullptr is returned if the
-  /// given signature_key is not valid.  Note, the returned SignatureRunner
-  /// instance is owned by and has the same lifetime as the Interpreter object;
-  /// additionally, class SignatureRunner is *not* thread-safe.
+  /// signature defs, passing nullptr as signature_key will also default to
+  /// creating runner for primary subgraph.  A nullptr is returned if the given
+  /// signature_key is not valid.
+  /// NOTE: The returned SignatureRunner instance is owned by and has the same
+  /// lifetime as the Interpreter object; additionally, class SignatureRunner is
+  /// *not* thread-safe.
   /// If you need to specify delegates, you have to do that before calling this
   /// function. This function will additionally apply default delegates. Thus,
   /// applying delegates after that might lead to undesirable behaviors.
@@ -348,14 +350,15 @@ class Interpreter {
   /// use `BuiltinOpResolverWithoutDefaultDelegates`.
   SignatureRunner* GetSignatureRunner(const char* signature_key);
 
-  /// \warning Experimental interface, subject to change. \n \brief Returns a
-  /// pointer to the AsyncSignatureRunner instance to run the part of the graph
-  /// identified by a SignatureDef.  If the model does not have any signature
-  /// defs, pass nullptr as signature_key and an AsyncSignatureRunner will be
-  /// created using the primary subgraph (0).  A nullptr is returned if the
-  /// given signature_key is not valid.  Note, the returned AsyncSignatureRunner
-  /// instance is owned by and has the same lifetime as the Interpreter object;
-  /// additionally, class AsyncSignatureRunner is *not* thread-safe.
+  /// \warning Experimental interface, subject to change.
+  /// \brief Returns a pointer to the AsyncSignatureRunner instance to run the
+  /// part of the graph identified by a SignatureDef.  If the model does not
+  /// have any signature defs, passing nullptr as signature_key will also
+  /// default to creating runner for primary subgraph.  A nullptr is returned if
+  /// the given signature_key is not valid.
+  /// NOTE: The returned AsyncSignatureRunner instance is owned by and has the
+  /// same lifetime as the Interpreter object; additionally, class
+  /// AsyncSignatureRunner is *not* thread-safe.
   /// The async delegate should be applied before calling this function.
   async::AsyncSignatureRunner* GetAsyncSignatureRunner(
       const char* signature_key);
@@ -913,6 +916,9 @@ class Interpreter {
   TfLiteStatus ApplyOptionsImpl(InterpreterOptions* options);
 
   std::unique_ptr<internal::SignatureDef> CreatePlaceholderSignatureDef();
+  // Given an input signature key, return a pair where the first field is a
+  // possibly replaced signature key and the second field indicates if the
+  // returned signature key was replaced.
   std::pair<const char*, bool> ReplaceWithPlaceholderSignatureKeyIfNeeded(
       const char* signature_key);
 
