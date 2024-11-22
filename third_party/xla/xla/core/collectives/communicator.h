@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CORE_COLLECTIVES_COMMUNICATOR_H_
 #define XLA_CORE_COLLECTIVES_COMMUNICATOR_H_
 
+#include <ostream>
 #include <string>
 
 namespace xla {
@@ -27,6 +28,10 @@ class Communicator {
 
   virtual std::string ToString() const = 0;
 };
+
+inline std::ostream& operator<<(std::ostream& os, const Communicator& comm) {
+  return os << comm.ToString();
+}
 
 }  // namespace xla
 
