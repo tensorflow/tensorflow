@@ -714,8 +714,6 @@ void HloChannelInstruction::set_channel_id(
 HloInstructionProto HloChannelInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   if (channel_id_) {
-    CHECK_GT(channel_id_.value(), 0)
-        << "Non-positive channel id is equivalent to no channel id";
     proto.set_channel_id(*channel_id_);
   }
   return proto;
