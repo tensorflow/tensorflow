@@ -72,11 +72,11 @@ static bool IsCommand(const HloComputation* computation,
 // bearing commands.
 
 static bool IsConstant(const HloInstruction* hlo) {
-  return hlo->opcode() == HloOpcode::kConstant;
+  return HloPredicateIsOp<HloOpcode::kConstant>(hlo);
 }
 
 static bool IsParameter(const HloInstruction* hlo) {
-  return hlo->opcode() == HloOpcode::kParameter;
+  return HloPredicateIsOp<HloOpcode::kParameter>(hlo);
 }
 
 // Returns true if instruction is no-op at run time and doesn't have a
@@ -99,12 +99,12 @@ static bool IsNoOp(const HloInstruction* hlo) {
 
 static bool IsAsyncStartCommand(const HloInstruction* hlo,
                                 const CommandBufferConfig& config) {
-  if (hlo->opcode() == HloOpcode::kAllReduceStart ||
-      hlo->opcode() == HloOpcode::kAllGatherStart) {
+  if (HloPredicateIsOp<HloOpcode::kAllReduceStart, HloOpcode::kAllGatherStart>(
+          hlo)) {
     return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
   }
 
-  if (hlo->opcode() == HloOpcode::kAsyncStart) {
+  if (HloPredicateIsOp<HloOpcode::kAsyncStart>(hlo)) {
     if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
       return config.enabled_commands.contains(DebugOptions::CUBLAS);
     }
@@ -117,8 +117,7 @@ static bool IsAsyncStartCommand(const HloInstruction* hlo,
     }
   }
 
-  if (hlo->opcode() == HloOpcode::kReduceScatter ||
-      hlo->opcode() == HloOpcode::kAllToAll) {
+  if (HloPredicateIsOp<HloOpcode::kReduceScatter, HloOpcode::kAllToAll>(hlo)) {
     return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
   }
 
@@ -127,12 +126,12 @@ static bool IsAsyncStartCommand(const HloInstruction* hlo,
 
 static bool IsAsyncDoneCommand(const HloInstruction* hlo,
                                const CommandBufferConfig& config) {
-  if (hlo->opcode() == HloOpcode::kAllReduceDone ||
-      hlo->opcode() == HloOpcode::kAllGatherDone) {
+  if (HloPredicateIsOp<HloOpcode::kAllReduceDone, HloOpcode::kAllGatherDone>(
+          hlo)) {
     return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
   }
 
-  if (hlo->opcode() == HloOpcode::kAsyncDone) {
+  if (HloPredicateIsOp<HloOpcode::kAsyncDone>(hlo)) {
     if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
       return config.enabled_commands.contains(DebugOptions::CUBLAS);
     }
@@ -150,11 +149,11 @@ static bool IsAsyncDoneCommand(const HloInstruction* hlo,
 
 // Finds an async-done HLO operation corresponding on an async-start one.
 static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
-  if (start->opcode() == HloOpcode::kAllReduceStart ||
-      start->opcode() == HloOpcode::kAllGatherStart) {
+  if (HloPredicateIsOp<HloOpcode::kAllReduceStart, HloOpcode::kAllGatherStart>(
+          start)) {
     CHECK(start->users().size() == 1);  // NOLINT, checked by HLO verifier
     return start->users().front();
-  } else if (start->opcode() == HloOpcode::kAsyncStart) {
+  } else if (HloPredicateIsOp<HloOpcode::kAsyncStart>(start)) {
     return start->async_chain_done();
   }
 
@@ -292,21 +291,20 @@ static bool IsCommand(const HloInstruction* hlo,
   if (auto* sort = DynCast<HloSortInstruction>(hlo))
     return config.enabled_commands.contains(DebugOptions::FUSION);
 
-  if (hlo->opcode() == HloOpcode::kCopy)
+  if (HloPredicateIsOp<HloOpcode::kCopy>(hlo))
     return config.enabled_commands.contains(DebugOptions::FUSION);
 
-  if (hlo->opcode() == HloOpcode::kPartitionId ||
-      hlo->opcode() == HloOpcode::kReplicaId) {
+  if (HloPredicateIsOp<HloOpcode::kPartitionId, HloOpcode::kReplicaId>(hlo)) {
     return config.enabled_commands.contains(DebugOptions::FUSION);
   }
 
   if (auto* custom_call = DynCast<HloCustomCallInstruction>(hlo))
     return IsCommand(custom_call, config);
 
-  if (hlo->opcode() == HloOpcode::kWhile)
+  if (HloPredicateIsOp<HloOpcode::kWhile>(hlo))
     return IsCommand<HloOpcode::kWhile>(hlo, config);
 
-  if (hlo->opcode() == HloOpcode::kConditional)
+  if (HloPredicateIsOp<HloOpcode::kConditional>(hlo))
     return IsCommand<HloOpcode::kConditional>(hlo, config);
 
   return false;
