@@ -1845,6 +1845,11 @@ xla_test(
 xla_test(
     name = "reduce_hlo_test",
     srcs = ["reduce_hlo_test.cc"],
+    backends = [
+        "gpu",
+        "cpu",
+        "interpreter",
+    ],
     tags = ["test_xla_cpu_thunks"],
     deps = [
         ":hlo_test_base",
