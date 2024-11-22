@@ -1,814 +1,814 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..7c616f4 100644
+index 7c616f4..509398d 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,794 @@
+@@ -1,794 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/clang/unittests/Sema/SemaNoloadLookupTest.cpp b/clang/unittests/Sema/SemaNoloadLookupTest.cpp
-+--- a/clang/unittests/Sema/SemaNoloadLookupTest.cpp
-++++ b/clang/unittests/Sema/SemaNoloadLookupTest.cpp
-+@@ -58,7 +58,7 @@
-+     addFile(FileName, Contents);
-+ 
-+     CreateInvocationOptions CIOpts;
-+-    CIOpts.VFS = llvm::vfs::getRealFileSystem();
-++    CIOpts.VFS = llvm::vfs::createPhysicalFileSystem();
-+     IntrusiveRefCntPtr<DiagnosticsEngine> Diags =
-+         CompilerInstance::createDiagnostics(*CIOpts.VFS,
-+                                             new DiagnosticOptions());
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
-+--- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
-++++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
-+@@ -45,7 +45,6 @@
-+ #include "clang/AST/Type.h"
-+ #include "clang/Basic/Specifiers.h"
-+ #include "llvm/ADT/StringExtras.h"
-+-#include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
-+ #include "llvm/Demangle/Demangle.h"
-+ 
-+ #include <map>
-+@@ -827,11 +826,11 @@
-+   if (llvm::StringRef(die.GetName()).contains("<"))
-+     return {};
-+ 
-+-  std::string name;
-+-  llvm::raw_string_ostream os(name);
-+-  llvm::DWARFTypePrinter<DWARFDIE> type_printer(os);
-+-  type_printer.appendAndTerminateTemplateParameters(die);
-+-  return name;
-++  TypeSystemClang::TemplateParameterInfos template_param_infos;
-++  if (ParseTemplateParameterInfos(die, template_param_infos))
-++    return m_ast.PrintTemplateParams(template_param_infos);
-++
-++  return {};
-+ }
-+ 
-+ void DWARFASTParserClang::MapDeclDIEToDefDIE(
-+@@ -1619,9 +1618,9 @@
-+     case DW_TAG_structure_type:
-+     case DW_TAG_union_type: {
-+       if (const char *class_union_struct_name = parent_decl_ctx_die.GetName()) {
-++        qualified_name.insert(
-++            0, GetDIEClassTemplateParams(parent_decl_ctx_die));
-+         qualified_name.insert(0, "::");
-+-        qualified_name.insert(0,
-+-                              GetDIEClassTemplateParams(parent_decl_ctx_die));
-+         qualified_name.insert(0, class_union_struct_name);
-+       }
-+       parent_decl_ctx_die = parent_decl_ctx_die.GetParentDeclContextDIE();
-+@@ -1674,12 +1673,6 @@
-+   if (attrs.name) {
-+     GetUniqueTypeNameAndDeclaration(die, cu_language, unique_typename,
-+                                     unique_decl);
-+-    if (log) {
-+-      dwarf->GetObjectFile()->GetModule()->LogMessage(
-+-          log, "SymbolFileDWARF({0:p}) - {1:x16}: {2} has unique name: {3} ",
-+-          static_cast<void *>(this), die.GetID(), DW_TAG_value_to_name(tag),
-+-          unique_typename.AsCString());
-+-    }
-+     if (UniqueDWARFASTType *unique_ast_entry_type =
-+             dwarf->GetUniqueDWARFASTTypeMap().Find(
-+                 unique_typename, die, unique_decl, byte_size,
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFBaseDIE.h b/lldb/source/Plugins/SymbolFile/DWARF/DWARFBaseDIE.h
-+--- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFBaseDIE.h
-++++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFBaseDIE.h
-+@@ -24,11 +24,9 @@
-+ class DWARFDebugInfoEntry;
-+ class DWARFDeclContext;
-+ class SymbolFileDWARF;
-+-class DWARFFormValue;
-+ 
-+ class DWARFBaseDIE {
-+ public:
-+-  using DWARFFormValue = dwarf::DWARFFormValue;
-+   DWARFBaseDIE() = default;
-+ 
-+   DWARFBaseDIE(DWARFUnit *cu, DWARFDebugInfoEntry *die)
-+@@ -119,12 +117,6 @@
-+   enum class Recurse : bool { no, yes };
-+   DWARFAttributes GetAttributes(Recurse recurse = Recurse::yes) const;
-+ 
-+-  // The following methods use LLVM naming convension in order to be are used by
-+-  // LLVM libraries.
-+-  dw_tag_t getTag() const { return Tag(); }
-+-
-+-  const char *getShortName() const { return GetName(); }
-+-
-+ protected:
-+   DWARFUnit *m_cu = nullptr;
-+   DWARFDebugInfoEntry *m_die = nullptr;
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.cpp b/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.cpp
-+--- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.cpp
-++++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.cpp
-+@@ -572,43 +572,6 @@
-+     return false;
-+ }
-+ 
-+-// The following methods use LLVM naming convension in order to be are used by
-+-// LLVM libraries.
-+ llvm::iterator_range<DWARFDIE::child_iterator> DWARFDIE::children() const {
-+   return llvm::make_range(child_iterator(*this), child_iterator());
-+ }
-+-
-+-DWARFDIE::child_iterator DWARFDIE::begin() const {
-+-  return child_iterator(*this);
-+-}
-+-
-+-DWARFDIE::child_iterator DWARFDIE::end() const { return child_iterator(); }
-+-
-+-std::optional<DWARFFormValue> DWARFDIE::find(const dw_attr_t attr) const {
-+-  DWARFFormValue form_value;
-+-  if (m_die->GetAttributeValue(m_cu, attr, form_value, nullptr, false))
-+-    return form_value;
-+-  return std::nullopt;
-+-}
-+-
-+-std::optional<uint64_t> DWARFDIE::getLanguage() const {
-+-  if (IsValid())
-+-    return m_cu->GetDWARFLanguageType();
-+-  return std::nullopt;
-+-}
-+-
-+-DWARFDIE DWARFDIE::resolveReferencedType(dw_attr_t attr) const {
-+-  return GetReferencedDIE(attr);
-+-}
-+-
-+-DWARFDIE DWARFDIE::resolveReferencedType(DWARFFormValue v) const {
-+-  if (IsValid())
-+-    return v.Reference();
-+-  return {};
-+-}
-+-
-+-DWARFDIE DWARFDIE::resolveTypeUnitReference() const {
-+-  if (DWARFDIE reference = GetReferencedDIE(DW_AT_signature))
-+-    return reference;
-+-  return *this;
-+-}
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.h b/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.h
-+--- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.h
-++++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.h
-+@@ -103,25 +103,8 @@
-+       std::optional<int> &call_line, std::optional<int> &call_column,
-+       DWARFExpressionList *frame_base) const;
-+ 
-+-  // The following methods use LLVM naming convension in order to be are used by
-+-  // LLVM libraries.
-+-  std::optional<uint64_t> getLanguage() const;
-+-
-+-  DWARFDIE getParent() const { return GetParent(); }
-+-
-+-  DWARFDIE resolveReferencedType(dw_attr_t attr) const;
-+-
-+-  DWARFDIE resolveReferencedType(DWARFFormValue v) const;
-+-
-+-  DWARFDIE resolveTypeUnitReference() const;
-+-
-+-  std::optional<DWARFFormValue> find(const dw_attr_t attr) const;
-+-
-+   /// The range of all the children of this DIE.
-+   llvm::iterator_range<child_iterator> children() const;
-+-
-+-  child_iterator begin() const;
-+-  child_iterator end() const;
-+ };
-+ 
-+ class DWARFDIE::child_iterator
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.cpp b/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.cpp
-+--- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.cpp
-++++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.cpp
-+@@ -574,31 +574,6 @@
-+   }
-+ }
-+ 
-+-std::optional<uint64_t> DWARFFormValue::getAsUnsignedConstant() const {
-+-  if ((!IsDataForm(m_form)) || m_form == lldb_private::dwarf::DW_FORM_sdata)
-+-    return std::nullopt;
-+-  return m_value.uval;
-+-}
-+-
-+-std::optional<int64_t> DWARFFormValue::getAsSignedConstant() const {
-+-  if ((!IsDataForm(m_form)) ||
-+-      (m_form == lldb_private::dwarf::DW_FORM_udata &&
-+-       uint64_t(std::numeric_limits<int64_t>::max()) < m_value.uval))
-+-    return std::nullopt;
-+-  switch (m_form) {
-+-  case lldb_private::dwarf::DW_FORM_data4:
-+-    return int32_t(m_value.uval);
-+-  case lldb_private::dwarf::DW_FORM_data2:
-+-    return int16_t(m_value.uval);
-+-  case lldb_private::dwarf::DW_FORM_data1:
-+-    return int8_t(m_value.uval);
-+-  case lldb_private::dwarf::DW_FORM_sdata:
-+-  case lldb_private::dwarf::DW_FORM_data8:
-+-  default:
-+-    return m_value.sval;
-+-  }
-+-}
-+-
-+ const uint8_t *DWARFFormValue::BlockData() const { return m_value.data; }
-+ 
-+ bool DWARFFormValue::IsBlockForm(const dw_form_t form) {
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.h b/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.h
-+--- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.h
-++++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.h
-+@@ -76,12 +76,6 @@
-+   void Clear();
-+   static bool FormIsSupported(dw_form_t form);
-+ 
-+-  // The following methods use LLVM naming convension in order to be are used by
-+-  // LLVM libraries.
-+-  std::optional<uint64_t> getAsUnsignedConstant() const;
-+-  std::optional<int64_t> getAsSignedConstant() const;
-+-  const char *getAsCString() const { return AsCString(); }
-+-
-+ protected:
-+   // Compile unit where m_value was located.
-+   // It may be different from compile unit where m_value refers to.
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/SymbolFileDWARF.cpp b/lldb/source/Plugins/SymbolFile/DWARF/SymbolFileDWARF.cpp
-+--- a/lldb/source/Plugins/SymbolFile/DWARF/SymbolFileDWARF.cpp
-++++ b/lldb/source/Plugins/SymbolFile/DWARF/SymbolFileDWARF.cpp
-+@@ -9,7 +9,6 @@
-+ #include "SymbolFileDWARF.h"
-+ 
-+ #include "llvm/DebugInfo/DWARF/DWARFDebugLoc.h"
-+-#include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
-+ #include "llvm/Support/Casting.h"
-+ #include "llvm/Support/FileUtilities.h"
-+ #include "llvm/Support/Format.h"
-+@@ -2811,14 +2810,33 @@
-+             return true; // Keep iterating over index types, language mismatch.
-+         }
-+ 
-+-        std::string qualified_name;
-+-        llvm::raw_string_ostream os(qualified_name);
-+-        llvm::DWARFTypePrinter<DWARFDIE> type_printer(os);
-+-        type_printer.appendQualifiedName(die);
-+-        TypeQuery die_query(qualified_name, e_exact_match);
-+-        if (query.ContextMatches(die_query.GetContextRef()))
-+-          if (Type *matching_type = ResolveType(die, true, true))
-+-            results.InsertUnique(matching_type->shared_from_this());
-++        // Check the context matches
-++        std::vector<lldb_private::CompilerContext> die_context;
-++        if (query.GetModuleSearch())
-++          die_context = die.GetDeclContext();
-++        else
-++          die_context = die.GetTypeLookupContext();
-++        assert(!die_context.empty());
-++        if (!query_simple.ContextMatches(die_context))
-++          return true; // Keep iterating over index types, context mismatch.
-++
-++        // Try to resolve the type.
-++        if (Type *matching_type = ResolveType(die, true, true)) {
-++          ConstString name = matching_type->GetQualifiedName();
-++          // We have found a type that still might not match due to template
-++          // parameters. If we create a new TypeQuery that uses the new type's
-++          // fully qualified name, we can find out if this type matches at all
-++          // context levels. We can't use just the "match_simple" context
-++          // because all template parameters were stripped off. The fully
-++          // qualified name of the type will have the template parameters and
-++          // will allow us to make sure it matches correctly.
-++          TypeQuery die_query(name.GetStringRef(),
-++                              TypeQueryOptions::e_exact_match);
-++          if (!query.ContextMatches(die_query.GetContextRef()))
-++            return true; // Keep iterating over index types, context mismatch.
-++
-++          results.InsertUnique(matching_type->shared_from_this());
-++        }
-+         return !results.Done(query); // Keep iterating if we aren't done.
-+       });
-+       if (results.Done(query)) {
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.cpp b/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.cpp
-+--- a/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.cpp
-++++ b/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.cpp
-+@@ -1403,6 +1403,26 @@
-+   return template_param_list;
-+ }
-+ 
-++std::string TypeSystemClang::PrintTemplateParams(
-++    const TemplateParameterInfos &template_param_infos) {
-++  llvm::SmallVector<NamedDecl *, 8> ignore;
-++  clang::TemplateParameterList *template_param_list =
-++      CreateTemplateParameterList(getASTContext(), template_param_infos,
-++                                  ignore);
-++  llvm::SmallVector<clang::TemplateArgument, 2> args(
-++      template_param_infos.GetArgs());
-++  if (template_param_infos.hasParameterPack()) {
-++    llvm::ArrayRef<TemplateArgument> pack_args =
-++        template_param_infos.GetParameterPackArgs();
-++    args.append(pack_args.begin(), pack_args.end());
-++  }
-++  std::string str;
-++  llvm::raw_string_ostream os(str);
-++  clang::printTemplateArgumentList(os, args, GetTypePrintingPolicy(),
-++                                   template_param_list);
-++  return str;
-++}
-++
-+ clang::FunctionTemplateDecl *TypeSystemClang::CreateFunctionTemplateDecl(
-+     clang::DeclContext *decl_ctx, OptionalClangModuleID owning_module,
-+     clang::FunctionDecl *func_decl,
-+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.h b/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.h
-+--- a/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.h
-++++ b/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.h
-+@@ -1148,6 +1148,10 @@
-+ 
-+   bool SetDeclIsForcefullyCompleted(const clang::TagDecl *td);
-+ 
-++  /// Return the template parameters (including surrounding <>) in string form.
-++  std::string
-++  PrintTemplateParams(const TemplateParameterInfos &template_param_infos);
-++
-+ private:
-+   /// Returns the PrintingPolicy used when generating the internal type names.
-+   /// These type names are mostly used for the formatter selection.
-+diff -ruN --strip-trailing-cr a/lldb/test/Shell/SymbolFile/DWARF/x86/simplified-template-names.cpp b/lldb/test/Shell/SymbolFile/DWARF/x86/simplified-template-names.cpp
-+--- a/lldb/test/Shell/SymbolFile/DWARF/x86/simplified-template-names.cpp
-++++ b/lldb/test/Shell/SymbolFile/DWARF/x86/simplified-template-names.cpp
-+@@ -1,36 +0,0 @@
-+-// Test lldb is able to compute the fully qualified names on templates with
-+-// -gsimple-template-names and -fdebug-types-section.
-+-
-+-// REQUIRES: lld
-+-
-+-// Test against logging to see if we print the fully qualified names correctly.
-+-// RUN: %clangxx --target=x86_64-pc-linux -g -gsimple-template-names %s -c -o %t1.o
-+-// RUN: ld.lld %t1.o -o %t1
-+-// RUN: %lldb %t1 -o "log enable dwarf comp" -o "target variable v3" -o exit | FileCheck %s --check-prefix=LOG
-+-
-+-// Test that we following DW_AT_signature correctly. If not, lldb might confuse the types of v1 and v2.
-+-// RUN: %clangxx --target=x86_64-pc-linux -g -gsimple-template-names -fdebug-types-section %s -c -o %t2.o
-+-// RUN: ld.lld %t2.o -o %t2
-+-// RUN: %lldb %t2 -o "target variable v1 v2" -o exit | FileCheck %s --check-prefix=TYPE
-+-
-+-// LOG: unique name: t3<t2<int> >::t4
-+-
-+-// TYPE:      (t2<outer_struct1::t1<int> >) v1 = {}
-+-// TYPE-NEXT: (t2<outer_struct2::t1<int> >) v2 = {}
-+-
-+-struct outer_struct1 {
-+-  template <typename> struct t1 {};
-+-};
-+-
-+-struct outer_struct2 {
-+-  template <typename> struct t1 {};
-+-};
-+-
-+-template <typename> struct t2 {};
-+-t2<outer_struct1::t1<int>> v1;
-+-t2<outer_struct2::t1<int>> v2;
-+-
-+-template <typename> struct t3 {
-+-  struct t4 {};
-+-};
-+-t3<t2<int>>::t4 v3;
-+diff -ruN --strip-trailing-cr a/lldb/unittests/SymbolFile/DWARF/DWARFDIETest.cpp b/lldb/unittests/SymbolFile/DWARF/DWARFDIETest.cpp
-+--- a/lldb/unittests/SymbolFile/DWARF/DWARFDIETest.cpp
-++++ b/lldb/unittests/SymbolFile/DWARF/DWARFDIETest.cpp
-+@@ -14,7 +14,6 @@
-+ #include "lldb/Symbol/Type.h"
-+ #include "lldb/lldb-private-enumerations.h"
-+ #include "llvm/ADT/STLExtras.h"
-+-#include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
-+ #include "gmock/gmock.h"
-+ #include "gtest/gtest.h"
-+ 
-+@@ -395,127 +394,3 @@
-+   EXPECT_THAT(foo_struct_die.GetTypeLookupContext(),
-+               testing::ElementsAre(make_struct("struct_t")));
-+ }
-+-
-+-TEST(DWARFDIETest, TestDWARFTypePrinter) {
-+-  // Make sure we can get template parameters and qualified names correctly with
-+-  // DWARFTypePrinter when using -gsimple-template-names.
-+-
-+-  // 0x0000000b: DW_TAG_compile_unit
-+-  // 0x0000000c:   DW_TAG_base_type
-+-  //                 DW_AT_name      ("int")
-+-  // 0x00000011:   DW_TAG_structure_type
-+-  //                 DW_AT_name      ("t1")
-+-  // 0x00000015:     DW_TAG_template_type_parameter
-+-  //                   DW_AT_type    (0x0000001f "t3<int>")
-+-  // 0x0000001a:     DW_TAG_structure_type
-+-  //                   DW_AT_name    ("t2")
-+-  // 0x0000001e:     NULL
-+-  // 0x0000001f:   DW_TAG_structure_type
-+-  //                 DW_AT_name      ("t3")
-+-  // 0x00000023:     DW_TAG_template_type_parameter
-+-  //                   DW_AT_type    (0x0000000c "int")
-+-  // 0x00000028:     NULL
-+-  // 0x00000029:   NULL
-+-  const char *yamldata = R"(
-+---- !ELF
-+-FileHeader:
-+-  Class:   ELFCLASS64
-+-  Data:    ELFDATA2LSB
-+-  Type:    ET_EXEC
-+-  Machine: EM_386
-+-DWARF:
-+-  debug_abbrev:
-+-    - ID:              0
-+-      Table:
-+-        - Code:            0x1
-+-          Tag:             DW_TAG_compile_unit
-+-          Children:        DW_CHILDREN_yes
-+-        - Code:            0x2
-+-          Tag:             DW_TAG_base_type
-+-          Children:        DW_CHILDREN_no
-+-          Attributes:
-+-            - Attribute:       DW_AT_name
-+-              Form:            DW_FORM_string
-+-        - Code:            0x3
-+-          Tag:             DW_TAG_structure_type
-+-          Children:        DW_CHILDREN_yes
-+-          Attributes:
-+-            - Attribute:       DW_AT_name
-+-              Form:            DW_FORM_string
-+-        - Code:            0x4
-+-          Tag:             DW_TAG_template_type_parameter
-+-          Children:        DW_CHILDREN_no
-+-          Attributes:
-+-            - Attribute:       DW_AT_type
-+-              Form:            DW_FORM_ref4
-+-        - Code:            0x5
-+-          Tag:             DW_TAG_structure_type
-+-          Children:        DW_CHILDREN_no
-+-          Attributes:
-+-            - Attribute:       DW_AT_name
-+-              Form:            DW_FORM_string
-+-        - Code:            0x6
-+-          Tag:             DW_TAG_structure_type
-+-          Children:        DW_CHILDREN_yes
-+-          Attributes:
-+-            - Attribute:       DW_AT_name
-+-              Form:            DW_FORM_string
-+-        - Code:            0x7
-+-          Tag:             DW_TAG_template_type_parameter
-+-          Children:        DW_CHILDREN_no
-+-          Attributes:
-+-            - Attribute:       DW_AT_type
-+-              Form:            DW_FORM_ref4
-+-  debug_info:
-+-    - Version:         4
-+-      AddrSize:        8
-+-      Entries:
-+-        - AbbrCode:        0x1
-+-        - AbbrCode:        0x2
-+-          Values:
-+-            - Value:           0xDEADBEEFDEADBEEF
-+-              CStr:            int
-+-        - AbbrCode:        0x3
-+-          Values:
-+-            - Value:           0xDEADBEEFDEADBEEF
-+-              CStr:            t1
-+-        - AbbrCode:        0x4
-+-          Values:
-+-            - Value:            0x0000001f # update
-+-        - AbbrCode:        0x5
-+-          Values:
-+-            - Value:           0xDEADBEEFDEADBEEF
-+-              CStr:            t2
-+-        - AbbrCode:        0x0
-+-        - AbbrCode:        0x6
-+-          Values:
-+-            - Value:           0xDEADBEEFDEADBEEF
-+-              CStr:            t3
-+-        - AbbrCode:        0x7
-+-          Values:
-+-            - Value:            0x0000000c # update
-+-        - AbbrCode:        0x0
-+-        - AbbrCode:        0x0)";
-+-  YAMLModuleTester t(yamldata);
-+-  auto *symbol_file =
-+-      llvm::cast<SymbolFileDWARF>(t.GetModule()->GetSymbolFile());
-+-  DWARFUnit *unit = symbol_file->DebugInfo().GetUnitAtIndex(0);
-+-  std::string debug_str;
-+-  StreamString debug_os;
-+-  unit->Dump(&debug_os);
-+-  ASSERT_TRUE(unit);
-+-
-+-  DWARFDIE t1_die = unit->GetDIE(0x11);
-+-  std::string template_name;
-+-  llvm::raw_string_ostream template_name_os(template_name);
-+-  llvm::DWARFTypePrinter<DWARFDIE> template_name_printer(template_name_os);
-+-  template_name_printer.appendAndTerminateTemplateParameters(t1_die);
-+-  EXPECT_THAT(template_name, "<t3<int> >");
-+-
-+-  DWARFDIE t2_die = unit->GetDIE(0x1a);
-+-  std::string qualified_name;
-+-  llvm::raw_string_ostream qualified_name_os(qualified_name);
-+-  llvm::DWARFTypePrinter<DWARFDIE> qualified_name_printer(qualified_name_os);
-+-  qualified_name_printer.appendQualifiedName(t2_die);
-+-  EXPECT_THAT(qualified_name, "t1<t3<int> >::t2");
-+-}
-+diff -ruN --strip-trailing-cr a/llvm/include/llvm/DebugInfo/DWARF/DWARFDie.h b/llvm/include/llvm/DebugInfo/DWARF/DWARFDie.h
-+--- a/llvm/include/llvm/DebugInfo/DWARF/DWARFDie.h
-++++ b/llvm/include/llvm/DebugInfo/DWARF/DWARFDie.h
-+@@ -226,8 +226,6 @@
-+ 
-+   bool addressRangeContainsAddress(const uint64_t Address) const;
-+ 
-+-  std::optional<uint64_t> getLanguage() const;
-+-
-+   Expected<DWARFLocationExpressionsVector>
-+   getLocations(dwarf::Attribute Attr) const;
-+ 
-+diff -ruN --strip-trailing-cr a/llvm/include/llvm/DebugInfo/DWARF/DWARFTypePrinter.h b/llvm/include/llvm/DebugInfo/DWARF/DWARFTypePrinter.h
-+--- a/llvm/include/llvm/DebugInfo/DWARF/DWARFTypePrinter.h
-++++ b/llvm/include/llvm/DebugInfo/DWARF/DWARFTypePrinter.h
-+@@ -11,7 +11,6 @@
-+ 
-+ #include "llvm/ADT/StringRef.h"
-+ #include "llvm/BinaryFormat/Dwarf.h"
-+-#include "llvm/Support/Error.h"
-+ 
-+ #include <string>
-+ 
-+@@ -108,11 +107,13 @@
-+     if (std::optional<typename DieType::DWARFFormValue> UpperV =
-+             C.find(dwarf::DW_AT_upper_bound))
-+       UB = UpperV->getAsUnsignedConstant();
-+-    if (std::optional<uint64_t> LV = D.getLanguage())
-+-      if ((DefaultLB =
-+-               LanguageLowerBound(static_cast<dwarf::SourceLanguage>(*LV))))
-+-        if (LB && *LB == *DefaultLB)
-+-          LB = std::nullopt;
-++    if (std::optional<typename DieType::DWARFFormValue> LV =
-++            D.getDwarfUnit()->getUnitDIE().find(dwarf::DW_AT_language))
-++      if (std::optional<uint64_t> LC = LV->getAsUnsignedConstant())
-++        if ((DefaultLB =
-++                 LanguageLowerBound(static_cast<dwarf::SourceLanguage>(*LC))))
-++          if (LB && *LB == *DefaultLB)
-++            LB = std::nullopt;
-+     if (!LB && !Count && !UB)
-+       OS << "[]";
-+     else if (!LB && (Count || UB) && DefaultLB)
-+@@ -149,16 +150,6 @@
-+ DieType resolveReferencedType(DieType D, typename DieType::DWARFFormValue F) {
-+   return D.resolveReferencedType(F);
-+ }
-+-template <typename DWARFFormValueType>
-+-const char *toString(std::optional<DWARFFormValueType> F) {
-+-  if (F) {
-+-    llvm::Expected<const char *> E = F->getAsCString();
-+-    if (E)
-+-      return *E;
-+-    llvm::consumeError(E.takeError());
-+-  }
-+-  return nullptr;
-+-}
-+ } // namespace detail
-+ 
-+ template <typename DieType>
-+@@ -248,7 +239,7 @@
-+     appendConstVolatileQualifierBefore(D);
-+     break;
-+   case dwarf::DW_TAG_namespace: {
-+-    if (const char *Name = detail::toString(D.find(dwarf::DW_AT_name)))
-++    if (const char *Name = dwarf::toString(D.find(dwarf::DW_AT_name), nullptr))
-+       OS << Name;
-+     else
-+       OS << "(anonymous namespace)";
-+@@ -270,7 +261,7 @@
-+   case DW_TAG_base_type:
-+   */
-+   default: {
-+-    const char *NamePtr = detail::toString(D.find(dwarf::DW_AT_name));
-++    const char *NamePtr = dwarf::toString(D.find(dwarf::DW_AT_name), nullptr);
-+     if (!NamePtr) {
-+       appendTypeTagName(D.getTag());
-+       return DieType();
-+@@ -449,7 +440,7 @@
-+       if (T.getTag() == dwarf::DW_TAG_pointer_type ||
-+           T.getTag() == dwarf::DW_TAG_reference_type)
-+         continue;
-+-      const char *RawName = detail::toString(T.find(dwarf::DW_AT_name));
-++      const char *RawName = dwarf::toString(T.find(dwarf::DW_AT_name), nullptr);
-+       assert(RawName);
-+       StringRef Name = RawName;
-+       auto V = C.find(dwarf::DW_AT_const_value);
-+@@ -542,7 +533,7 @@
-+     }
-+     if (C.getTag() == dwarf::DW_TAG_GNU_template_template_param) {
-+       const char *RawName =
-+-          detail::toString(C.find(dwarf::DW_AT_GNU_template_name));
-++          dwarf::toString(C.find(dwarf::DW_AT_GNU_template_name), nullptr);
-+       assert(RawName);
-+       StringRef Name = RawName;
-+       Sep();
-+@@ -602,7 +593,7 @@
-+   decomposeConstVolatile(N, T, C, V);
-+   if (T && T.getTag() == dwarf::DW_TAG_subroutine_type)
-+     appendSubroutineNameAfter(T, detail::resolveReferencedType(T), false,
-+-                              static_cast<bool>(C), static_cast<bool>(V));
-++                              C.isValid(), V.isValid());
-+   else
-+     appendUnqualifiedNameAfter(T, detail::resolveReferencedType(T));
-+ }
-+diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/MemoryDependenceAnalysis.cpp b/llvm/lib/Analysis/MemoryDependenceAnalysis.cpp
-+--- a/llvm/lib/Analysis/MemoryDependenceAnalysis.cpp
-++++ b/llvm/lib/Analysis/MemoryDependenceAnalysis.cpp
-+@@ -1066,40 +1066,18 @@
-+   // Invariant loads don't participate in caching. Thus no need to reconcile.
-+   if (!isInvariantLoad && !Pair.second) {
-+     if (CacheInfo->Size != Loc.Size) {
-+-      bool ThrowOutEverything;
-+-      if (CacheInfo->Size.hasValue() && Loc.Size.hasValue()) {
-+-        // FIXME: We may be able to do better in the face of results with mixed
-+-        // precision. We don't appear to get them in practice, though, so just
-+-        // be conservative.
-+-        ThrowOutEverything =
-+-            CacheInfo->Size.isPrecise() != Loc.Size.isPrecise() ||
-+-            !TypeSize::isKnownGE(CacheInfo->Size.getValue(),
-+-                                 Loc.Size.getValue());
-+-      } else {
-+-        // For our purposes, unknown size > all others.
-+-        ThrowOutEverything = !Loc.Size.hasValue();
-+-      }
-+-
-+-      if (ThrowOutEverything) {
-+-        // The query's Size is greater than the cached one. Throw out the
-+-        // cached data and proceed with the query at the greater size.
-+-        CacheInfo->Pair = BBSkipFirstBlockPair();
-+-        CacheInfo->Size = Loc.Size;
-+-        for (auto &Entry : CacheInfo->NonLocalDeps)
-+-          if (Instruction *Inst = Entry.getResult().getInst())
-+-            RemoveFromReverseMap(ReverseNonLocalPtrDeps, Inst, CacheKey);
-+-        CacheInfo->NonLocalDeps.clear();
-+-        // The cache is cleared (in the above line) so we will have lost
-+-        // information about blocks we have already visited. We therefore must
-+-        // assume that the cache information is incomplete.
-+-        IsIncomplete = true;
-+-      } else {
-+-        // This query's Size is less than the cached one. Conservatively restart
-+-        // the query using the greater size.
-+-        return getNonLocalPointerDepFromBB(
-+-            QueryInst, Pointer, Loc.getWithNewSize(CacheInfo->Size), isLoad,
-+-            StartBB, Result, Visited, SkipFirstBlock, IsIncomplete);
-+-      }
-++      // The query's Size is not equal to the cached one. Throw out the cached
-++      // data and proceed with the query with the new size.
-++      CacheInfo->Pair = BBSkipFirstBlockPair();
-++      CacheInfo->Size = Loc.Size;
-++      for (auto &Entry : CacheInfo->NonLocalDeps)
-++        if (Instruction *Inst = Entry.getResult().getInst())
-++          RemoveFromReverseMap(ReverseNonLocalPtrDeps, Inst, CacheKey);
-++      CacheInfo->NonLocalDeps.clear();
-++      // The cache is cleared (in the above line) so we will have lost
-++      // information about blocks we have already visited. We therefore must
-++      // assume that the cache information is incomplete.
-++      IsIncomplete = true;
-+     }
-+ 
-+     // If the query's AATags are inconsistent with the cached one,
-+diff -ruN --strip-trailing-cr a/llvm/lib/DebugInfo/DWARF/DWARFDie.cpp b/llvm/lib/DebugInfo/DWARF/DWARFDie.cpp
-+--- a/llvm/lib/DebugInfo/DWARF/DWARFDie.cpp
-++++ b/llvm/lib/DebugInfo/DWARF/DWARFDie.cpp
-+@@ -413,15 +413,6 @@
-+   return false;
-+ }
-+ 
-+-std::optional<uint64_t> DWARFDie::getLanguage() const {
-+-  if (isValid()) {
-+-    if (std::optional<DWARFFormValue> LV =
-+-            U->getUnitDIE().find(dwarf::DW_AT_language))
-+-      return LV->getAsUnsignedConstant();
-+-  }
-+-  return std::nullopt;
-+-}
-+-
-+ Expected<DWARFLocationExpressionsVector>
-+ DWARFDie::getLocations(dwarf::Attribute Attr) const {
-+   std::optional<DWARFFormValue> Location = find(Attr);
-+diff -ruN --strip-trailing-cr a/llvm/test/Analysis/MemoryDependenceAnalysis/load-size-cache.ll b/llvm/test/Analysis/MemoryDependenceAnalysis/load-size-cache.ll
-+--- a/llvm/test/Analysis/MemoryDependenceAnalysis/load-size-cache.ll
-++++ b/llvm/test/Analysis/MemoryDependenceAnalysis/load-size-cache.ll
-+@@ -22,9 +22,11 @@
-+ ; CHECK-NEXT:    call void @use(i64 undef)
-+ ; CHECK-NEXT:    br label %[[BB9:.*]]
-+ ; CHECK:       [[BB7]]:
-++; CHECK-NEXT:    [[LOAD8:%.*]] = load i8, ptr [[CALL]], align 4
-+ ; CHECK-NEXT:    br label %[[BB9]]
-+ ; CHECK:       [[BB9]]:
-+-; CHECK-NEXT:    ret i8 4
-++; CHECK-NEXT:    [[PHI10:%.*]] = phi i8 [ [[LOAD8]], %[[BB7]] ], [ 4, %[[BB6]] ]
-++; CHECK-NEXT:    ret i8 [[PHI10]]
-+ ;
-+ bb:
-+   br i1 %arg2, label %bb2, label %bb11
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/GVN/PRE/rle.ll b/llvm/test/Transforms/GVN/PRE/rle.ll
-+--- a/llvm/test/Transforms/GVN/PRE/rle.ll
-++++ b/llvm/test/Transforms/GVN/PRE/rle.ll
-+@@ -673,15 +673,15 @@
-+ ; CHECK-NEXT:    [[X3:%.*]] = getelementptr i8, ptr [[P:%.*]], i32 192
-+ ; CHECK-NEXT:    store i8 -64, ptr [[X3]], align 1
-+ ; CHECK-NEXT:    [[X:%.*]] = getelementptr i8, ptr [[P]], i32 4
-+-; CHECK-NEXT:    [[Y:%.*]] = load i8, ptr [[X]], align 1
-++; CHECK-NEXT:    [[Y2_PRE:%.*]] = load i8, ptr [[X]], align 1
-+ ; CHECK-NEXT:    br label [[LOOP:%.*]]
-+ ; CHECK:       loop:
-+-; CHECK-NEXT:    [[Y2:%.*]] = phi i8 [ [[Y]], [[ENTRY:%.*]] ], [ 0, [[LOOP]] ]
-++; CHECK-NEXT:    [[Y2:%.*]] = phi i8 [ [[Y2_PRE]], [[ENTRY:%.*]] ], [ 0, [[LOOP]] ]
-+ ; CHECK-NEXT:    [[COND:%.*]] = call i1 @cond2()
-+ ; CHECK-NEXT:    store i32 0, ptr [[X3]], align 4
-+ ; CHECK-NEXT:    br i1 [[COND]], label [[LOOP]], label [[OUT:%.*]]
-+ ; CHECK:       out:
-+-; CHECK-NEXT:    [[R:%.*]] = add i8 [[Y]], [[Y2]]
-++; CHECK-NEXT:    [[R:%.*]] = add i8 [[Y2_PRE]], [[Y2]]
-+ ; CHECK-NEXT:    ret i8 [[R]]
-+ ;
-+ entry:
-+@@ -772,7 +772,7 @@
-+ ; CHECK-NEXT:    call void @use_i32(i32 [[L0]])
-+ ; CHECK-NEXT:    br label [[HEADER:%.*]]
-+ ; CHECK:       header:
-+-; CHECK-NEXT:    [[L1:%.*]] = phi i32 [ [[L0]], [[ENTRY:%.*]] ], [ [[L1_PRE:%.*]], [[LATCH_HEADER_CRIT_EDGE:%.*]] ]
-++; CHECK-NEXT:    [[L1_PRE:%.*]] = phi i32 [ [[L0]], [[ENTRY:%.*]] ], [ [[L1_PRE1:%.*]], [[LATCH_HEADER_CRIT_EDGE:%.*]] ]
-+ ; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ 0, [[ENTRY]] ], [ [[IV_NEXT:%.*]], [[LATCH_HEADER_CRIT_EDGE]] ]
-+ ; CHECK-NEXT:    indirectbr ptr blockaddress(@phi_trans6, [[LATCH:%.*]]), [label %latch]
-+ ; CHECK:       latch:
-+@@ -780,10 +780,10 @@
-+ ; CHECK-NEXT:    br i1 [[COND:%.*]], label [[EXIT:%.*]], label [[LATCH_HEADER_CRIT_EDGE]]
-+ ; CHECK:       latch.header_crit_edge:
-+ ; CHECK-NEXT:    [[GEP_1_PHI_TRANS_INSERT_PHI_TRANS_INSERT:%.*]] = getelementptr i32, ptr [[X]], i32 [[IV_NEXT]]
-+-; CHECK-NEXT:    [[L1_PRE]] = load i32, ptr [[GEP_1_PHI_TRANS_INSERT_PHI_TRANS_INSERT]], align 4
-++; CHECK-NEXT:    [[L1_PRE1]] = load i32, ptr [[GEP_1_PHI_TRANS_INSERT_PHI_TRANS_INSERT]], align 4
-+ ; CHECK-NEXT:    br label [[HEADER]]
-+ ; CHECK:       exit:
-+-; CHECK-NEXT:    ret i32 [[L1]]
-++; CHECK-NEXT:    ret i32 [[L1_PRE]]
-+ ;
-+ entry:
-+   %l0 = load i32, ptr %x
-+@@ -1057,7 +1057,7 @@
-+ ; LE-NEXT:    [[TMP0:%.*]] = trunc i32 [[V_1_32]] to i8
-+ ; LE-NEXT:    br label [[LOOP:%.*]]
-+ ; LE:       loop:
-+-; LE-NEXT:    [[V_I:%.*]] = phi i8 [ [[TMP0]], [[ENTRY:%.*]] ], [ [[V_I_PRE:%.*]], [[LOOP_LOOP_CRIT_EDGE:%.*]] ]
-++; LE-NEXT:    [[V_I:%.*]] = phi i8 [ [[TMP0]], [[ENTRY:%.*]] ], [ [[TMP2:%.*]], [[LOOP_LOOP_CRIT_EDGE:%.*]] ]
-+ ; LE-NEXT:    [[I:%.*]] = phi i64 [ 1, [[ENTRY]] ], [ [[I_INC:%.*]], [[LOOP_LOOP_CRIT_EDGE]] ]
-+ ; LE-NEXT:    [[P_I:%.*]] = getelementptr i8, ptr [[P]], i64 [[I]]
-+ ; LE-NEXT:    call void @use.i8(i8 [[V_I]])
-+@@ -1065,10 +1065,10 @@
-+ ; LE-NEXT:    call void @use.i32(i32 [[V_I_32]])
-+ ; LE-NEXT:    [[I_INC]] = add i64 [[I]], 1
-+ ; LE-NEXT:    [[CMP:%.*]] = icmp ne i64 [[I_INC]], 64
-++; LE-NEXT:    [[TMP1:%.*]] = lshr i32 [[V_I_32]], 8
-++; LE-NEXT:    [[TMP2]] = trunc i32 [[TMP1]] to i8
-+ ; LE-NEXT:    br i1 [[CMP]], label [[LOOP_LOOP_CRIT_EDGE]], label [[EXIT:%.*]]
-+ ; LE:       loop.loop_crit_edge:
-+-; LE-NEXT:    [[P_I_PHI_TRANS_INSERT:%.*]] = getelementptr i8, ptr [[P]], i64 [[I_INC]]
-+-; LE-NEXT:    [[V_I_PRE]] = load i8, ptr [[P_I_PHI_TRANS_INSERT]], align 1
-+ ; LE-NEXT:    br label [[LOOP]]
-+ ; LE:       exit:
-+ ; LE-NEXT:    ret void
-+@@ -1084,7 +1084,7 @@
-+ ; BE-NEXT:    [[TMP1:%.*]] = trunc i32 [[TMP0]] to i8
-+ ; BE-NEXT:    br label [[LOOP:%.*]]
-+ ; BE:       loop:
-+-; BE-NEXT:    [[V_I:%.*]] = phi i8 [ [[TMP1]], [[ENTRY:%.*]] ], [ [[V_I_PRE:%.*]], [[LOOP_LOOP_CRIT_EDGE:%.*]] ]
-++; BE-NEXT:    [[V_I:%.*]] = phi i8 [ [[TMP1]], [[ENTRY:%.*]] ], [ [[TMP3:%.*]], [[LOOP_LOOP_CRIT_EDGE:%.*]] ]
-+ ; BE-NEXT:    [[I:%.*]] = phi i64 [ 1, [[ENTRY]] ], [ [[I_INC:%.*]], [[LOOP_LOOP_CRIT_EDGE]] ]
-+ ; BE-NEXT:    [[P_I:%.*]] = getelementptr i8, ptr [[P]], i64 [[I]]
-+ ; BE-NEXT:    call void @use.i8(i8 [[V_I]])
-+@@ -1092,10 +1092,10 @@
-+ ; BE-NEXT:    call void @use.i32(i32 [[V_I_32]])
-+ ; BE-NEXT:    [[I_INC]] = add i64 [[I]], 1
-+ ; BE-NEXT:    [[CMP:%.*]] = icmp ne i64 [[I_INC]], 64
-++; BE-NEXT:    [[TMP2:%.*]] = lshr i32 [[V_I_32]], 16
-++; BE-NEXT:    [[TMP3]] = trunc i32 [[TMP2]] to i8
-+ ; BE-NEXT:    br i1 [[CMP]], label [[LOOP_LOOP_CRIT_EDGE]], label [[EXIT:%.*]]
-+ ; BE:       loop.loop_crit_edge:
-+-; BE-NEXT:    [[P_I_PHI_TRANS_INSERT:%.*]] = getelementptr i8, ptr [[P]], i64 [[I_INC]]
-+-; BE-NEXT:    [[V_I_PRE]] = load i8, ptr [[P_I_PHI_TRANS_INSERT]], align 1
-+ ; BE-NEXT:    br label [[LOOP]]
-+ ; BE:       exit:
-+ ; BE-NEXT:    ret void
-+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Query/QuerySession.h b/mlir/include/mlir/Query/QuerySession.h
-+--- a/mlir/include/mlir/Query/QuerySession.h
-++++ b/mlir/include/mlir/Query/QuerySession.h
-+@@ -9,7 +9,10 @@
-+ #ifndef MLIR_TOOLS_MLIRQUERY_QUERYSESSION_H
-+ #define MLIR_TOOLS_MLIRQUERY_QUERYSESSION_H
-+ 
-++#include "mlir/IR/Operation.h"
-++#include "mlir/Query/Matcher/Registry.h"
-+ #include "llvm/ADT/StringMap.h"
-++#include "llvm/Support/SourceMgr.h"
-+ 
-+ namespace mlir::query {
-+ 
+-diff -ruN --strip-trailing-cr a/clang/unittests/Sema/SemaNoloadLookupTest.cpp b/clang/unittests/Sema/SemaNoloadLookupTest.cpp
+---- a/clang/unittests/Sema/SemaNoloadLookupTest.cpp
+-+++ b/clang/unittests/Sema/SemaNoloadLookupTest.cpp
+-@@ -58,7 +58,7 @@
+-     addFile(FileName, Contents);
+- 
+-     CreateInvocationOptions CIOpts;
+--    CIOpts.VFS = llvm::vfs::getRealFileSystem();
+-+    CIOpts.VFS = llvm::vfs::createPhysicalFileSystem();
+-     IntrusiveRefCntPtr<DiagnosticsEngine> Diags =
+-         CompilerInstance::createDiagnostics(*CIOpts.VFS,
+-                                             new DiagnosticOptions());
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
+---- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
+-+++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
+-@@ -45,7 +45,6 @@
+- #include "clang/AST/Type.h"
+- #include "clang/Basic/Specifiers.h"
+- #include "llvm/ADT/StringExtras.h"
+--#include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
+- #include "llvm/Demangle/Demangle.h"
+- 
+- #include <map>
+-@@ -827,11 +826,11 @@
+-   if (llvm::StringRef(die.GetName()).contains("<"))
+-     return {};
+- 
+--  std::string name;
+--  llvm::raw_string_ostream os(name);
+--  llvm::DWARFTypePrinter<DWARFDIE> type_printer(os);
+--  type_printer.appendAndTerminateTemplateParameters(die);
+--  return name;
+-+  TypeSystemClang::TemplateParameterInfos template_param_infos;
+-+  if (ParseTemplateParameterInfos(die, template_param_infos))
+-+    return m_ast.PrintTemplateParams(template_param_infos);
+-+
+-+  return {};
+- }
+- 
+- void DWARFASTParserClang::MapDeclDIEToDefDIE(
+-@@ -1619,9 +1618,9 @@
+-     case DW_TAG_structure_type:
+-     case DW_TAG_union_type: {
+-       if (const char *class_union_struct_name = parent_decl_ctx_die.GetName()) {
+-+        qualified_name.insert(
+-+            0, GetDIEClassTemplateParams(parent_decl_ctx_die));
+-         qualified_name.insert(0, "::");
+--        qualified_name.insert(0,
+--                              GetDIEClassTemplateParams(parent_decl_ctx_die));
+-         qualified_name.insert(0, class_union_struct_name);
+-       }
+-       parent_decl_ctx_die = parent_decl_ctx_die.GetParentDeclContextDIE();
+-@@ -1674,12 +1673,6 @@
+-   if (attrs.name) {
+-     GetUniqueTypeNameAndDeclaration(die, cu_language, unique_typename,
+-                                     unique_decl);
+--    if (log) {
+--      dwarf->GetObjectFile()->GetModule()->LogMessage(
+--          log, "SymbolFileDWARF({0:p}) - {1:x16}: {2} has unique name: {3} ",
+--          static_cast<void *>(this), die.GetID(), DW_TAG_value_to_name(tag),
+--          unique_typename.AsCString());
+--    }
+-     if (UniqueDWARFASTType *unique_ast_entry_type =
+-             dwarf->GetUniqueDWARFASTTypeMap().Find(
+-                 unique_typename, die, unique_decl, byte_size,
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFBaseDIE.h b/lldb/source/Plugins/SymbolFile/DWARF/DWARFBaseDIE.h
+---- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFBaseDIE.h
+-+++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFBaseDIE.h
+-@@ -24,11 +24,9 @@
+- class DWARFDebugInfoEntry;
+- class DWARFDeclContext;
+- class SymbolFileDWARF;
+--class DWARFFormValue;
+- 
+- class DWARFBaseDIE {
+- public:
+--  using DWARFFormValue = dwarf::DWARFFormValue;
+-   DWARFBaseDIE() = default;
+- 
+-   DWARFBaseDIE(DWARFUnit *cu, DWARFDebugInfoEntry *die)
+-@@ -119,12 +117,6 @@
+-   enum class Recurse : bool { no, yes };
+-   DWARFAttributes GetAttributes(Recurse recurse = Recurse::yes) const;
+- 
+--  // The following methods use LLVM naming convension in order to be are used by
+--  // LLVM libraries.
+--  dw_tag_t getTag() const { return Tag(); }
+--
+--  const char *getShortName() const { return GetName(); }
+--
+- protected:
+-   DWARFUnit *m_cu = nullptr;
+-   DWARFDebugInfoEntry *m_die = nullptr;
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.cpp b/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.cpp
+---- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.cpp
+-+++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.cpp
+-@@ -572,43 +572,6 @@
+-     return false;
+- }
+- 
+--// The following methods use LLVM naming convension in order to be are used by
+--// LLVM libraries.
+- llvm::iterator_range<DWARFDIE::child_iterator> DWARFDIE::children() const {
+-   return llvm::make_range(child_iterator(*this), child_iterator());
+- }
+--
+--DWARFDIE::child_iterator DWARFDIE::begin() const {
+--  return child_iterator(*this);
+--}
+--
+--DWARFDIE::child_iterator DWARFDIE::end() const { return child_iterator(); }
+--
+--std::optional<DWARFFormValue> DWARFDIE::find(const dw_attr_t attr) const {
+--  DWARFFormValue form_value;
+--  if (m_die->GetAttributeValue(m_cu, attr, form_value, nullptr, false))
+--    return form_value;
+--  return std::nullopt;
+--}
+--
+--std::optional<uint64_t> DWARFDIE::getLanguage() const {
+--  if (IsValid())
+--    return m_cu->GetDWARFLanguageType();
+--  return std::nullopt;
+--}
+--
+--DWARFDIE DWARFDIE::resolveReferencedType(dw_attr_t attr) const {
+--  return GetReferencedDIE(attr);
+--}
+--
+--DWARFDIE DWARFDIE::resolveReferencedType(DWARFFormValue v) const {
+--  if (IsValid())
+--    return v.Reference();
+--  return {};
+--}
+--
+--DWARFDIE DWARFDIE::resolveTypeUnitReference() const {
+--  if (DWARFDIE reference = GetReferencedDIE(DW_AT_signature))
+--    return reference;
+--  return *this;
+--}
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.h b/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.h
+---- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.h
+-+++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.h
+-@@ -103,25 +103,8 @@
+-       std::optional<int> &call_line, std::optional<int> &call_column,
+-       DWARFExpressionList *frame_base) const;
+- 
+--  // The following methods use LLVM naming convension in order to be are used by
+--  // LLVM libraries.
+--  std::optional<uint64_t> getLanguage() const;
+--
+--  DWARFDIE getParent() const { return GetParent(); }
+--
+--  DWARFDIE resolveReferencedType(dw_attr_t attr) const;
+--
+--  DWARFDIE resolveReferencedType(DWARFFormValue v) const;
+--
+--  DWARFDIE resolveTypeUnitReference() const;
+--
+--  std::optional<DWARFFormValue> find(const dw_attr_t attr) const;
+--
+-   /// The range of all the children of this DIE.
+-   llvm::iterator_range<child_iterator> children() const;
+--
+--  child_iterator begin() const;
+--  child_iterator end() const;
+- };
+- 
+- class DWARFDIE::child_iterator
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.cpp b/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.cpp
+---- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.cpp
+-+++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.cpp
+-@@ -574,31 +574,6 @@
+-   }
+- }
+- 
+--std::optional<uint64_t> DWARFFormValue::getAsUnsignedConstant() const {
+--  if ((!IsDataForm(m_form)) || m_form == lldb_private::dwarf::DW_FORM_sdata)
+--    return std::nullopt;
+--  return m_value.uval;
+--}
+--
+--std::optional<int64_t> DWARFFormValue::getAsSignedConstant() const {
+--  if ((!IsDataForm(m_form)) ||
+--      (m_form == lldb_private::dwarf::DW_FORM_udata &&
+--       uint64_t(std::numeric_limits<int64_t>::max()) < m_value.uval))
+--    return std::nullopt;
+--  switch (m_form) {
+--  case lldb_private::dwarf::DW_FORM_data4:
+--    return int32_t(m_value.uval);
+--  case lldb_private::dwarf::DW_FORM_data2:
+--    return int16_t(m_value.uval);
+--  case lldb_private::dwarf::DW_FORM_data1:
+--    return int8_t(m_value.uval);
+--  case lldb_private::dwarf::DW_FORM_sdata:
+--  case lldb_private::dwarf::DW_FORM_data8:
+--  default:
+--    return m_value.sval;
+--  }
+--}
+--
+- const uint8_t *DWARFFormValue::BlockData() const { return m_value.data; }
+- 
+- bool DWARFFormValue::IsBlockForm(const dw_form_t form) {
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.h b/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.h
+---- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.h
+-+++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFFormValue.h
+-@@ -76,12 +76,6 @@
+-   void Clear();
+-   static bool FormIsSupported(dw_form_t form);
+- 
+--  // The following methods use LLVM naming convension in order to be are used by
+--  // LLVM libraries.
+--  std::optional<uint64_t> getAsUnsignedConstant() const;
+--  std::optional<int64_t> getAsSignedConstant() const;
+--  const char *getAsCString() const { return AsCString(); }
+--
+- protected:
+-   // Compile unit where m_value was located.
+-   // It may be different from compile unit where m_value refers to.
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/SymbolFileDWARF.cpp b/lldb/source/Plugins/SymbolFile/DWARF/SymbolFileDWARF.cpp
+---- a/lldb/source/Plugins/SymbolFile/DWARF/SymbolFileDWARF.cpp
+-+++ b/lldb/source/Plugins/SymbolFile/DWARF/SymbolFileDWARF.cpp
+-@@ -9,7 +9,6 @@
+- #include "SymbolFileDWARF.h"
+- 
+- #include "llvm/DebugInfo/DWARF/DWARFDebugLoc.h"
+--#include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
+- #include "llvm/Support/Casting.h"
+- #include "llvm/Support/FileUtilities.h"
+- #include "llvm/Support/Format.h"
+-@@ -2811,14 +2810,33 @@
+-             return true; // Keep iterating over index types, language mismatch.
+-         }
+- 
+--        std::string qualified_name;
+--        llvm::raw_string_ostream os(qualified_name);
+--        llvm::DWARFTypePrinter<DWARFDIE> type_printer(os);
+--        type_printer.appendQualifiedName(die);
+--        TypeQuery die_query(qualified_name, e_exact_match);
+--        if (query.ContextMatches(die_query.GetContextRef()))
+--          if (Type *matching_type = ResolveType(die, true, true))
+--            results.InsertUnique(matching_type->shared_from_this());
+-+        // Check the context matches
+-+        std::vector<lldb_private::CompilerContext> die_context;
+-+        if (query.GetModuleSearch())
+-+          die_context = die.GetDeclContext();
+-+        else
+-+          die_context = die.GetTypeLookupContext();
+-+        assert(!die_context.empty());
+-+        if (!query_simple.ContextMatches(die_context))
+-+          return true; // Keep iterating over index types, context mismatch.
+-+
+-+        // Try to resolve the type.
+-+        if (Type *matching_type = ResolveType(die, true, true)) {
+-+          ConstString name = matching_type->GetQualifiedName();
+-+          // We have found a type that still might not match due to template
+-+          // parameters. If we create a new TypeQuery that uses the new type's
+-+          // fully qualified name, we can find out if this type matches at all
+-+          // context levels. We can't use just the "match_simple" context
+-+          // because all template parameters were stripped off. The fully
+-+          // qualified name of the type will have the template parameters and
+-+          // will allow us to make sure it matches correctly.
+-+          TypeQuery die_query(name.GetStringRef(),
+-+                              TypeQueryOptions::e_exact_match);
+-+          if (!query.ContextMatches(die_query.GetContextRef()))
+-+            return true; // Keep iterating over index types, context mismatch.
+-+
+-+          results.InsertUnique(matching_type->shared_from_this());
+-+        }
+-         return !results.Done(query); // Keep iterating if we aren't done.
+-       });
+-       if (results.Done(query)) {
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.cpp b/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.cpp
+---- a/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.cpp
+-+++ b/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.cpp
+-@@ -1403,6 +1403,26 @@
+-   return template_param_list;
+- }
+- 
+-+std::string TypeSystemClang::PrintTemplateParams(
+-+    const TemplateParameterInfos &template_param_infos) {
+-+  llvm::SmallVector<NamedDecl *, 8> ignore;
+-+  clang::TemplateParameterList *template_param_list =
+-+      CreateTemplateParameterList(getASTContext(), template_param_infos,
+-+                                  ignore);
+-+  llvm::SmallVector<clang::TemplateArgument, 2> args(
+-+      template_param_infos.GetArgs());
+-+  if (template_param_infos.hasParameterPack()) {
+-+    llvm::ArrayRef<TemplateArgument> pack_args =
+-+        template_param_infos.GetParameterPackArgs();
+-+    args.append(pack_args.begin(), pack_args.end());
+-+  }
+-+  std::string str;
+-+  llvm::raw_string_ostream os(str);
+-+  clang::printTemplateArgumentList(os, args, GetTypePrintingPolicy(),
+-+                                   template_param_list);
+-+  return str;
+-+}
+-+
+- clang::FunctionTemplateDecl *TypeSystemClang::CreateFunctionTemplateDecl(
+-     clang::DeclContext *decl_ctx, OptionalClangModuleID owning_module,
+-     clang::FunctionDecl *func_decl,
+-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.h b/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.h
+---- a/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.h
+-+++ b/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.h
+-@@ -1148,6 +1148,10 @@
+- 
+-   bool SetDeclIsForcefullyCompleted(const clang::TagDecl *td);
+- 
+-+  /// Return the template parameters (including surrounding <>) in string form.
+-+  std::string
+-+  PrintTemplateParams(const TemplateParameterInfos &template_param_infos);
+-+
+- private:
+-   /// Returns the PrintingPolicy used when generating the internal type names.
+-   /// These type names are mostly used for the formatter selection.
+-diff -ruN --strip-trailing-cr a/lldb/test/Shell/SymbolFile/DWARF/x86/simplified-template-names.cpp b/lldb/test/Shell/SymbolFile/DWARF/x86/simplified-template-names.cpp
+---- a/lldb/test/Shell/SymbolFile/DWARF/x86/simplified-template-names.cpp
+-+++ b/lldb/test/Shell/SymbolFile/DWARF/x86/simplified-template-names.cpp
+-@@ -1,36 +0,0 @@
+--// Test lldb is able to compute the fully qualified names on templates with
+--// -gsimple-template-names and -fdebug-types-section.
+--
+--// REQUIRES: lld
+--
+--// Test against logging to see if we print the fully qualified names correctly.
+--// RUN: %clangxx --target=x86_64-pc-linux -g -gsimple-template-names %s -c -o %t1.o
+--// RUN: ld.lld %t1.o -o %t1
+--// RUN: %lldb %t1 -o "log enable dwarf comp" -o "target variable v3" -o exit | FileCheck %s --check-prefix=LOG
+--
+--// Test that we following DW_AT_signature correctly. If not, lldb might confuse the types of v1 and v2.
+--// RUN: %clangxx --target=x86_64-pc-linux -g -gsimple-template-names -fdebug-types-section %s -c -o %t2.o
+--// RUN: ld.lld %t2.o -o %t2
+--// RUN: %lldb %t2 -o "target variable v1 v2" -o exit | FileCheck %s --check-prefix=TYPE
+--
+--// LOG: unique name: t3<t2<int> >::t4
+--
+--// TYPE:      (t2<outer_struct1::t1<int> >) v1 = {}
+--// TYPE-NEXT: (t2<outer_struct2::t1<int> >) v2 = {}
+--
+--struct outer_struct1 {
+--  template <typename> struct t1 {};
+--};
+--
+--struct outer_struct2 {
+--  template <typename> struct t1 {};
+--};
+--
+--template <typename> struct t2 {};
+--t2<outer_struct1::t1<int>> v1;
+--t2<outer_struct2::t1<int>> v2;
+--
+--template <typename> struct t3 {
+--  struct t4 {};
+--};
+--t3<t2<int>>::t4 v3;
+-diff -ruN --strip-trailing-cr a/lldb/unittests/SymbolFile/DWARF/DWARFDIETest.cpp b/lldb/unittests/SymbolFile/DWARF/DWARFDIETest.cpp
+---- a/lldb/unittests/SymbolFile/DWARF/DWARFDIETest.cpp
+-+++ b/lldb/unittests/SymbolFile/DWARF/DWARFDIETest.cpp
+-@@ -14,7 +14,6 @@
+- #include "lldb/Symbol/Type.h"
+- #include "lldb/lldb-private-enumerations.h"
+- #include "llvm/ADT/STLExtras.h"
+--#include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
+- #include "gmock/gmock.h"
+- #include "gtest/gtest.h"
+- 
+-@@ -395,127 +394,3 @@
+-   EXPECT_THAT(foo_struct_die.GetTypeLookupContext(),
+-               testing::ElementsAre(make_struct("struct_t")));
+- }
+--
+--TEST(DWARFDIETest, TestDWARFTypePrinter) {
+--  // Make sure we can get template parameters and qualified names correctly with
+--  // DWARFTypePrinter when using -gsimple-template-names.
+--
+--  // 0x0000000b: DW_TAG_compile_unit
+--  // 0x0000000c:   DW_TAG_base_type
+--  //                 DW_AT_name      ("int")
+--  // 0x00000011:   DW_TAG_structure_type
+--  //                 DW_AT_name      ("t1")
+--  // 0x00000015:     DW_TAG_template_type_parameter
+--  //                   DW_AT_type    (0x0000001f "t3<int>")
+--  // 0x0000001a:     DW_TAG_structure_type
+--  //                   DW_AT_name    ("t2")
+--  // 0x0000001e:     NULL
+--  // 0x0000001f:   DW_TAG_structure_type
+--  //                 DW_AT_name      ("t3")
+--  // 0x00000023:     DW_TAG_template_type_parameter
+--  //                   DW_AT_type    (0x0000000c "int")
+--  // 0x00000028:     NULL
+--  // 0x00000029:   NULL
+--  const char *yamldata = R"(
+----- !ELF
+--FileHeader:
+--  Class:   ELFCLASS64
+--  Data:    ELFDATA2LSB
+--  Type:    ET_EXEC
+--  Machine: EM_386
+--DWARF:
+--  debug_abbrev:
+--    - ID:              0
+--      Table:
+--        - Code:            0x1
+--          Tag:             DW_TAG_compile_unit
+--          Children:        DW_CHILDREN_yes
+--        - Code:            0x2
+--          Tag:             DW_TAG_base_type
+--          Children:        DW_CHILDREN_no
+--          Attributes:
+--            - Attribute:       DW_AT_name
+--              Form:            DW_FORM_string
+--        - Code:            0x3
+--          Tag:             DW_TAG_structure_type
+--          Children:        DW_CHILDREN_yes
+--          Attributes:
+--            - Attribute:       DW_AT_name
+--              Form:            DW_FORM_string
+--        - Code:            0x4
+--          Tag:             DW_TAG_template_type_parameter
+--          Children:        DW_CHILDREN_no
+--          Attributes:
+--            - Attribute:       DW_AT_type
+--              Form:            DW_FORM_ref4
+--        - Code:            0x5
+--          Tag:             DW_TAG_structure_type
+--          Children:        DW_CHILDREN_no
+--          Attributes:
+--            - Attribute:       DW_AT_name
+--              Form:            DW_FORM_string
+--        - Code:            0x6
+--          Tag:             DW_TAG_structure_type
+--          Children:        DW_CHILDREN_yes
+--          Attributes:
+--            - Attribute:       DW_AT_name
+--              Form:            DW_FORM_string
+--        - Code:            0x7
+--          Tag:             DW_TAG_template_type_parameter
+--          Children:        DW_CHILDREN_no
+--          Attributes:
+--            - Attribute:       DW_AT_type
+--              Form:            DW_FORM_ref4
+--  debug_info:
+--    - Version:         4
+--      AddrSize:        8
+--      Entries:
+--        - AbbrCode:        0x1
+--        - AbbrCode:        0x2
+--          Values:
+--            - Value:           0xDEADBEEFDEADBEEF
+--              CStr:            int
+--        - AbbrCode:        0x3
+--          Values:
+--            - Value:           0xDEADBEEFDEADBEEF
+--              CStr:            t1
+--        - AbbrCode:        0x4
+--          Values:
+--            - Value:            0x0000001f # update
+--        - AbbrCode:        0x5
+--          Values:
+--            - Value:           0xDEADBEEFDEADBEEF
+--              CStr:            t2
+--        - AbbrCode:        0x0
+--        - AbbrCode:        0x6
+--          Values:
+--            - Value:           0xDEADBEEFDEADBEEF
+--              CStr:            t3
+--        - AbbrCode:        0x7
+--          Values:
+--            - Value:            0x0000000c # update
+--        - AbbrCode:        0x0
+--        - AbbrCode:        0x0)";
+--  YAMLModuleTester t(yamldata);
+--  auto *symbol_file =
+--      llvm::cast<SymbolFileDWARF>(t.GetModule()->GetSymbolFile());
+--  DWARFUnit *unit = symbol_file->DebugInfo().GetUnitAtIndex(0);
+--  std::string debug_str;
+--  StreamString debug_os;
+--  unit->Dump(&debug_os);
+--  ASSERT_TRUE(unit);
+--
+--  DWARFDIE t1_die = unit->GetDIE(0x11);
+--  std::string template_name;
+--  llvm::raw_string_ostream template_name_os(template_name);
+--  llvm::DWARFTypePrinter<DWARFDIE> template_name_printer(template_name_os);
+--  template_name_printer.appendAndTerminateTemplateParameters(t1_die);
+--  EXPECT_THAT(template_name, "<t3<int> >");
+--
+--  DWARFDIE t2_die = unit->GetDIE(0x1a);
+--  std::string qualified_name;
+--  llvm::raw_string_ostream qualified_name_os(qualified_name);
+--  llvm::DWARFTypePrinter<DWARFDIE> qualified_name_printer(qualified_name_os);
+--  qualified_name_printer.appendQualifiedName(t2_die);
+--  EXPECT_THAT(qualified_name, "t1<t3<int> >::t2");
+--}
+-diff -ruN --strip-trailing-cr a/llvm/include/llvm/DebugInfo/DWARF/DWARFDie.h b/llvm/include/llvm/DebugInfo/DWARF/DWARFDie.h
+---- a/llvm/include/llvm/DebugInfo/DWARF/DWARFDie.h
+-+++ b/llvm/include/llvm/DebugInfo/DWARF/DWARFDie.h
+-@@ -226,8 +226,6 @@
+- 
+-   bool addressRangeContainsAddress(const uint64_t Address) const;
+- 
+--  std::optional<uint64_t> getLanguage() const;
+--
+-   Expected<DWARFLocationExpressionsVector>
+-   getLocations(dwarf::Attribute Attr) const;
+- 
+-diff -ruN --strip-trailing-cr a/llvm/include/llvm/DebugInfo/DWARF/DWARFTypePrinter.h b/llvm/include/llvm/DebugInfo/DWARF/DWARFTypePrinter.h
+---- a/llvm/include/llvm/DebugInfo/DWARF/DWARFTypePrinter.h
+-+++ b/llvm/include/llvm/DebugInfo/DWARF/DWARFTypePrinter.h
+-@@ -11,7 +11,6 @@
+- 
+- #include "llvm/ADT/StringRef.h"
+- #include "llvm/BinaryFormat/Dwarf.h"
+--#include "llvm/Support/Error.h"
+- 
+- #include <string>
+- 
+-@@ -108,11 +107,13 @@
+-     if (std::optional<typename DieType::DWARFFormValue> UpperV =
+-             C.find(dwarf::DW_AT_upper_bound))
+-       UB = UpperV->getAsUnsignedConstant();
+--    if (std::optional<uint64_t> LV = D.getLanguage())
+--      if ((DefaultLB =
+--               LanguageLowerBound(static_cast<dwarf::SourceLanguage>(*LV))))
+--        if (LB && *LB == *DefaultLB)
+--          LB = std::nullopt;
+-+    if (std::optional<typename DieType::DWARFFormValue> LV =
+-+            D.getDwarfUnit()->getUnitDIE().find(dwarf::DW_AT_language))
+-+      if (std::optional<uint64_t> LC = LV->getAsUnsignedConstant())
+-+        if ((DefaultLB =
+-+                 LanguageLowerBound(static_cast<dwarf::SourceLanguage>(*LC))))
+-+          if (LB && *LB == *DefaultLB)
+-+            LB = std::nullopt;
+-     if (!LB && !Count && !UB)
+-       OS << "[]";
+-     else if (!LB && (Count || UB) && DefaultLB)
+-@@ -149,16 +150,6 @@
+- DieType resolveReferencedType(DieType D, typename DieType::DWARFFormValue F) {
+-   return D.resolveReferencedType(F);
+- }
+--template <typename DWARFFormValueType>
+--const char *toString(std::optional<DWARFFormValueType> F) {
+--  if (F) {
+--    llvm::Expected<const char *> E = F->getAsCString();
+--    if (E)
+--      return *E;
+--    llvm::consumeError(E.takeError());
+--  }
+--  return nullptr;
+--}
+- } // namespace detail
+- 
+- template <typename DieType>
+-@@ -248,7 +239,7 @@
+-     appendConstVolatileQualifierBefore(D);
+-     break;
+-   case dwarf::DW_TAG_namespace: {
+--    if (const char *Name = detail::toString(D.find(dwarf::DW_AT_name)))
+-+    if (const char *Name = dwarf::toString(D.find(dwarf::DW_AT_name), nullptr))
+-       OS << Name;
+-     else
+-       OS << "(anonymous namespace)";
+-@@ -270,7 +261,7 @@
+-   case DW_TAG_base_type:
+-   */
+-   default: {
+--    const char *NamePtr = detail::toString(D.find(dwarf::DW_AT_name));
+-+    const char *NamePtr = dwarf::toString(D.find(dwarf::DW_AT_name), nullptr);
+-     if (!NamePtr) {
+-       appendTypeTagName(D.getTag());
+-       return DieType();
+-@@ -449,7 +440,7 @@
+-       if (T.getTag() == dwarf::DW_TAG_pointer_type ||
+-           T.getTag() == dwarf::DW_TAG_reference_type)
+-         continue;
+--      const char *RawName = detail::toString(T.find(dwarf::DW_AT_name));
+-+      const char *RawName = dwarf::toString(T.find(dwarf::DW_AT_name), nullptr);
+-       assert(RawName);
+-       StringRef Name = RawName;
+-       auto V = C.find(dwarf::DW_AT_const_value);
+-@@ -542,7 +533,7 @@
+-     }
+-     if (C.getTag() == dwarf::DW_TAG_GNU_template_template_param) {
+-       const char *RawName =
+--          detail::toString(C.find(dwarf::DW_AT_GNU_template_name));
+-+          dwarf::toString(C.find(dwarf::DW_AT_GNU_template_name), nullptr);
+-       assert(RawName);
+-       StringRef Name = RawName;
+-       Sep();
+-@@ -602,7 +593,7 @@
+-   decomposeConstVolatile(N, T, C, V);
+-   if (T && T.getTag() == dwarf::DW_TAG_subroutine_type)
+-     appendSubroutineNameAfter(T, detail::resolveReferencedType(T), false,
+--                              static_cast<bool>(C), static_cast<bool>(V));
+-+                              C.isValid(), V.isValid());
+-   else
+-     appendUnqualifiedNameAfter(T, detail::resolveReferencedType(T));
+- }
+-diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/MemoryDependenceAnalysis.cpp b/llvm/lib/Analysis/MemoryDependenceAnalysis.cpp
+---- a/llvm/lib/Analysis/MemoryDependenceAnalysis.cpp
+-+++ b/llvm/lib/Analysis/MemoryDependenceAnalysis.cpp
+-@@ -1066,40 +1066,18 @@
+-   // Invariant loads don't participate in caching. Thus no need to reconcile.
+-   if (!isInvariantLoad && !Pair.second) {
+-     if (CacheInfo->Size != Loc.Size) {
+--      bool ThrowOutEverything;
+--      if (CacheInfo->Size.hasValue() && Loc.Size.hasValue()) {
+--        // FIXME: We may be able to do better in the face of results with mixed
+--        // precision. We don't appear to get them in practice, though, so just
+--        // be conservative.
+--        ThrowOutEverything =
+--            CacheInfo->Size.isPrecise() != Loc.Size.isPrecise() ||
+--            !TypeSize::isKnownGE(CacheInfo->Size.getValue(),
+--                                 Loc.Size.getValue());
+--      } else {
+--        // For our purposes, unknown size > all others.
+--        ThrowOutEverything = !Loc.Size.hasValue();
+--      }
+--
+--      if (ThrowOutEverything) {
+--        // The query's Size is greater than the cached one. Throw out the
+--        // cached data and proceed with the query at the greater size.
+--        CacheInfo->Pair = BBSkipFirstBlockPair();
+--        CacheInfo->Size = Loc.Size;
+--        for (auto &Entry : CacheInfo->NonLocalDeps)
+--          if (Instruction *Inst = Entry.getResult().getInst())
+--            RemoveFromReverseMap(ReverseNonLocalPtrDeps, Inst, CacheKey);
+--        CacheInfo->NonLocalDeps.clear();
+--        // The cache is cleared (in the above line) so we will have lost
+--        // information about blocks we have already visited. We therefore must
+--        // assume that the cache information is incomplete.
+--        IsIncomplete = true;
+--      } else {
+--        // This query's Size is less than the cached one. Conservatively restart
+--        // the query using the greater size.
+--        return getNonLocalPointerDepFromBB(
+--            QueryInst, Pointer, Loc.getWithNewSize(CacheInfo->Size), isLoad,
+--            StartBB, Result, Visited, SkipFirstBlock, IsIncomplete);
+--      }
+-+      // The query's Size is not equal to the cached one. Throw out the cached
+-+      // data and proceed with the query with the new size.
+-+      CacheInfo->Pair = BBSkipFirstBlockPair();
+-+      CacheInfo->Size = Loc.Size;
+-+      for (auto &Entry : CacheInfo->NonLocalDeps)
+-+        if (Instruction *Inst = Entry.getResult().getInst())
+-+          RemoveFromReverseMap(ReverseNonLocalPtrDeps, Inst, CacheKey);
+-+      CacheInfo->NonLocalDeps.clear();
+-+      // The cache is cleared (in the above line) so we will have lost
+-+      // information about blocks we have already visited. We therefore must
+-+      // assume that the cache information is incomplete.
+-+      IsIncomplete = true;
+-     }
+- 
+-     // If the query's AATags are inconsistent with the cached one,
+-diff -ruN --strip-trailing-cr a/llvm/lib/DebugInfo/DWARF/DWARFDie.cpp b/llvm/lib/DebugInfo/DWARF/DWARFDie.cpp
+---- a/llvm/lib/DebugInfo/DWARF/DWARFDie.cpp
+-+++ b/llvm/lib/DebugInfo/DWARF/DWARFDie.cpp
+-@@ -413,15 +413,6 @@
+-   return false;
+- }
+- 
+--std::optional<uint64_t> DWARFDie::getLanguage() const {
+--  if (isValid()) {
+--    if (std::optional<DWARFFormValue> LV =
+--            U->getUnitDIE().find(dwarf::DW_AT_language))
+--      return LV->getAsUnsignedConstant();
+--  }
+--  return std::nullopt;
+--}
+--
+- Expected<DWARFLocationExpressionsVector>
+- DWARFDie::getLocations(dwarf::Attribute Attr) const {
+-   std::optional<DWARFFormValue> Location = find(Attr);
+-diff -ruN --strip-trailing-cr a/llvm/test/Analysis/MemoryDependenceAnalysis/load-size-cache.ll b/llvm/test/Analysis/MemoryDependenceAnalysis/load-size-cache.ll
+---- a/llvm/test/Analysis/MemoryDependenceAnalysis/load-size-cache.ll
+-+++ b/llvm/test/Analysis/MemoryDependenceAnalysis/load-size-cache.ll
+-@@ -22,9 +22,11 @@
+- ; CHECK-NEXT:    call void @use(i64 undef)
+- ; CHECK-NEXT:    br label %[[BB9:.*]]
+- ; CHECK:       [[BB7]]:
+-+; CHECK-NEXT:    [[LOAD8:%.*]] = load i8, ptr [[CALL]], align 4
+- ; CHECK-NEXT:    br label %[[BB9]]
+- ; CHECK:       [[BB9]]:
+--; CHECK-NEXT:    ret i8 4
+-+; CHECK-NEXT:    [[PHI10:%.*]] = phi i8 [ [[LOAD8]], %[[BB7]] ], [ 4, %[[BB6]] ]
+-+; CHECK-NEXT:    ret i8 [[PHI10]]
+- ;
+- bb:
+-   br i1 %arg2, label %bb2, label %bb11
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/GVN/PRE/rle.ll b/llvm/test/Transforms/GVN/PRE/rle.ll
+---- a/llvm/test/Transforms/GVN/PRE/rle.ll
+-+++ b/llvm/test/Transforms/GVN/PRE/rle.ll
+-@@ -673,15 +673,15 @@
+- ; CHECK-NEXT:    [[X3:%.*]] = getelementptr i8, ptr [[P:%.*]], i32 192
+- ; CHECK-NEXT:    store i8 -64, ptr [[X3]], align 1
+- ; CHECK-NEXT:    [[X:%.*]] = getelementptr i8, ptr [[P]], i32 4
+--; CHECK-NEXT:    [[Y:%.*]] = load i8, ptr [[X]], align 1
+-+; CHECK-NEXT:    [[Y2_PRE:%.*]] = load i8, ptr [[X]], align 1
+- ; CHECK-NEXT:    br label [[LOOP:%.*]]
+- ; CHECK:       loop:
+--; CHECK-NEXT:    [[Y2:%.*]] = phi i8 [ [[Y]], [[ENTRY:%.*]] ], [ 0, [[LOOP]] ]
+-+; CHECK-NEXT:    [[Y2:%.*]] = phi i8 [ [[Y2_PRE]], [[ENTRY:%.*]] ], [ 0, [[LOOP]] ]
+- ; CHECK-NEXT:    [[COND:%.*]] = call i1 @cond2()
+- ; CHECK-NEXT:    store i32 0, ptr [[X3]], align 4
+- ; CHECK-NEXT:    br i1 [[COND]], label [[LOOP]], label [[OUT:%.*]]
+- ; CHECK:       out:
+--; CHECK-NEXT:    [[R:%.*]] = add i8 [[Y]], [[Y2]]
+-+; CHECK-NEXT:    [[R:%.*]] = add i8 [[Y2_PRE]], [[Y2]]
+- ; CHECK-NEXT:    ret i8 [[R]]
+- ;
+- entry:
+-@@ -772,7 +772,7 @@
+- ; CHECK-NEXT:    call void @use_i32(i32 [[L0]])
+- ; CHECK-NEXT:    br label [[HEADER:%.*]]
+- ; CHECK:       header:
+--; CHECK-NEXT:    [[L1:%.*]] = phi i32 [ [[L0]], [[ENTRY:%.*]] ], [ [[L1_PRE:%.*]], [[LATCH_HEADER_CRIT_EDGE:%.*]] ]
+-+; CHECK-NEXT:    [[L1_PRE:%.*]] = phi i32 [ [[L0]], [[ENTRY:%.*]] ], [ [[L1_PRE1:%.*]], [[LATCH_HEADER_CRIT_EDGE:%.*]] ]
+- ; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ 0, [[ENTRY]] ], [ [[IV_NEXT:%.*]], [[LATCH_HEADER_CRIT_EDGE]] ]
+- ; CHECK-NEXT:    indirectbr ptr blockaddress(@phi_trans6, [[LATCH:%.*]]), [label %latch]
+- ; CHECK:       latch:
+-@@ -780,10 +780,10 @@
+- ; CHECK-NEXT:    br i1 [[COND:%.*]], label [[EXIT:%.*]], label [[LATCH_HEADER_CRIT_EDGE]]
+- ; CHECK:       latch.header_crit_edge:
+- ; CHECK-NEXT:    [[GEP_1_PHI_TRANS_INSERT_PHI_TRANS_INSERT:%.*]] = getelementptr i32, ptr [[X]], i32 [[IV_NEXT]]
+--; CHECK-NEXT:    [[L1_PRE]] = load i32, ptr [[GEP_1_PHI_TRANS_INSERT_PHI_TRANS_INSERT]], align 4
+-+; CHECK-NEXT:    [[L1_PRE1]] = load i32, ptr [[GEP_1_PHI_TRANS_INSERT_PHI_TRANS_INSERT]], align 4
+- ; CHECK-NEXT:    br label [[HEADER]]
+- ; CHECK:       exit:
+--; CHECK-NEXT:    ret i32 [[L1]]
+-+; CHECK-NEXT:    ret i32 [[L1_PRE]]
+- ;
+- entry:
+-   %l0 = load i32, ptr %x
+-@@ -1057,7 +1057,7 @@
+- ; LE-NEXT:    [[TMP0:%.*]] = trunc i32 [[V_1_32]] to i8
+- ; LE-NEXT:    br label [[LOOP:%.*]]
+- ; LE:       loop:
+--; LE-NEXT:    [[V_I:%.*]] = phi i8 [ [[TMP0]], [[ENTRY:%.*]] ], [ [[V_I_PRE:%.*]], [[LOOP_LOOP_CRIT_EDGE:%.*]] ]
+-+; LE-NEXT:    [[V_I:%.*]] = phi i8 [ [[TMP0]], [[ENTRY:%.*]] ], [ [[TMP2:%.*]], [[LOOP_LOOP_CRIT_EDGE:%.*]] ]
+- ; LE-NEXT:    [[I:%.*]] = phi i64 [ 1, [[ENTRY]] ], [ [[I_INC:%.*]], [[LOOP_LOOP_CRIT_EDGE]] ]
+- ; LE-NEXT:    [[P_I:%.*]] = getelementptr i8, ptr [[P]], i64 [[I]]
+- ; LE-NEXT:    call void @use.i8(i8 [[V_I]])
+-@@ -1065,10 +1065,10 @@
+- ; LE-NEXT:    call void @use.i32(i32 [[V_I_32]])
+- ; LE-NEXT:    [[I_INC]] = add i64 [[I]], 1
+- ; LE-NEXT:    [[CMP:%.*]] = icmp ne i64 [[I_INC]], 64
+-+; LE-NEXT:    [[TMP1:%.*]] = lshr i32 [[V_I_32]], 8
+-+; LE-NEXT:    [[TMP2]] = trunc i32 [[TMP1]] to i8
+- ; LE-NEXT:    br i1 [[CMP]], label [[LOOP_LOOP_CRIT_EDGE]], label [[EXIT:%.*]]
+- ; LE:       loop.loop_crit_edge:
+--; LE-NEXT:    [[P_I_PHI_TRANS_INSERT:%.*]] = getelementptr i8, ptr [[P]], i64 [[I_INC]]
+--; LE-NEXT:    [[V_I_PRE]] = load i8, ptr [[P_I_PHI_TRANS_INSERT]], align 1
+- ; LE-NEXT:    br label [[LOOP]]
+- ; LE:       exit:
+- ; LE-NEXT:    ret void
+-@@ -1084,7 +1084,7 @@
+- ; BE-NEXT:    [[TMP1:%.*]] = trunc i32 [[TMP0]] to i8
+- ; BE-NEXT:    br label [[LOOP:%.*]]
+- ; BE:       loop:
+--; BE-NEXT:    [[V_I:%.*]] = phi i8 [ [[TMP1]], [[ENTRY:%.*]] ], [ [[V_I_PRE:%.*]], [[LOOP_LOOP_CRIT_EDGE:%.*]] ]
+-+; BE-NEXT:    [[V_I:%.*]] = phi i8 [ [[TMP1]], [[ENTRY:%.*]] ], [ [[TMP3:%.*]], [[LOOP_LOOP_CRIT_EDGE:%.*]] ]
+- ; BE-NEXT:    [[I:%.*]] = phi i64 [ 1, [[ENTRY]] ], [ [[I_INC:%.*]], [[LOOP_LOOP_CRIT_EDGE]] ]
+- ; BE-NEXT:    [[P_I:%.*]] = getelementptr i8, ptr [[P]], i64 [[I]]
+- ; BE-NEXT:    call void @use.i8(i8 [[V_I]])
+-@@ -1092,10 +1092,10 @@
+- ; BE-NEXT:    call void @use.i32(i32 [[V_I_32]])
+- ; BE-NEXT:    [[I_INC]] = add i64 [[I]], 1
+- ; BE-NEXT:    [[CMP:%.*]] = icmp ne i64 [[I_INC]], 64
+-+; BE-NEXT:    [[TMP2:%.*]] = lshr i32 [[V_I_32]], 16
+-+; BE-NEXT:    [[TMP3]] = trunc i32 [[TMP2]] to i8
+- ; BE-NEXT:    br i1 [[CMP]], label [[LOOP_LOOP_CRIT_EDGE]], label [[EXIT:%.*]]
+- ; BE:       loop.loop_crit_edge:
+--; BE-NEXT:    [[P_I_PHI_TRANS_INSERT:%.*]] = getelementptr i8, ptr [[P]], i64 [[I_INC]]
+--; BE-NEXT:    [[V_I_PRE]] = load i8, ptr [[P_I_PHI_TRANS_INSERT]], align 1
+- ; BE-NEXT:    br label [[LOOP]]
+- ; BE:       exit:
+- ; BE-NEXT:    ret void
+-diff -ruN --strip-trailing-cr a/mlir/include/mlir/Query/QuerySession.h b/mlir/include/mlir/Query/QuerySession.h
+---- a/mlir/include/mlir/Query/QuerySession.h
+-+++ b/mlir/include/mlir/Query/QuerySession.h
+-@@ -9,7 +9,10 @@
+- #ifndef MLIR_TOOLS_MLIRQUERY_QUERYSESSION_H
+- #define MLIR_TOOLS_MLIRQUERY_QUERYSESSION_H
+- 
+-+#include "mlir/IR/Operation.h"
+-+#include "mlir/Query/Matcher/Registry.h"
+- #include "llvm/ADT/StringMap.h"
+-+#include "llvm/Support/SourceMgr.h"
+- 
+- namespace mlir::query {
+- 
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 2e3ca1f..70f7304 100644
+index 70f7304..cf29a95 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "33fcd6acc75535c8b5e27b00eb99d35abf52954d"
--    LLVM_SHA256 = "cc66c55704db64d7281983b07162eb9ab0138630d19ac37bc438e120c164bea7"
-+    LLVM_COMMIT = "a12e79a85fc18d535c58f2c82d2b2e80586e43d7"
-+    LLVM_SHA256 = "a4d62b3caa84c9a7bb25d70ea44e13dacaf828e3698a113e3b06c89ca6f74d9d"
+-    LLVM_COMMIT = "a12e79a85fc18d535c58f2c82d2b2e80586e43d7"
+-    LLVM_SHA256 = "a4d62b3caa84c9a7bb25d70ea44e13dacaf828e3698a113e3b06c89ca6f74d9d"
++    LLVM_COMMIT = "556ea5265a254aabfd8d520a3b841785e99f4328"
++    LLVM_SHA256 = "3229724ba3ae834378c501dff407822a6fdb0262a30762fc038a88667f37468b"
  
      tf_http_archive(
          name = name,
