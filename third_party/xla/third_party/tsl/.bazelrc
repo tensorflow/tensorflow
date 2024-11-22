@@ -292,6 +292,14 @@ build:rocm --define=using_rocm_hipcc=true
 build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
 build:rocm --repo_env TF_NEED_ROCM=1
 
+build:rocm_clang_official --config=rocm
+build:rocm_clang_official --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
+build:rocm_clang_official --action_env=TF_ROCM_CLANG="1"
+build:rocm_clang_official --linkopt="-fuse-ld=lld"
+build:rocm_clang_official --host_linkopt="-fuse-ld=lld"
+
+build:rocm_ci --config=rocm_clang_official
+
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true
 build:sycl --define=tensorflow_mkldnn_contraction_kernel=0
