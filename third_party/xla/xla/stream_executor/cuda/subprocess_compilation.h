@@ -39,6 +39,13 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     const CudaComputeCapability& cc, std::string_view ptx_contents,
     GpuAsmOpts options, bool cancel_if_reg_spill = false);
 
+// Like the above, but uses the ptxas_binary from `ptxas_path` instead of
+// using `FindCudaExecutable` to find it.
+absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
+    std::string_view ptxas_path, const CudaComputeCapability& cc,
+    std::string_view ptx_contents, GpuAsmOpts options,
+    bool cancel_if_reg_spill = false);
+
 // Finds the CUDA executable with the given binary_name
 // The path <preferred_cuda_dir>/bin is checked first, afterwards some other
 // predefined locations are being checked.
@@ -77,6 +84,11 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     std::string_view preferred_cuda_dir,
     absl::Span<const std::vector<uint8_t>> images);
 
+// The same as above, but uses the nvlink_path instead of
+// `FindCudaExecutable` to find the nvlink binary.
+absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
+    std::string_view nvlink_path, stream_executor::CudaComputeCapability cc,
+    absl::Span<const std::vector<uint8_t>> images);
 }  // namespace stream_executor
 
 #endif  // XLA_STREAM_EXECUTOR_CUDA_SUBPROCESS_COMPILATION_H_

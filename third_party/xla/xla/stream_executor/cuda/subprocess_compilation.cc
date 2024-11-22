@@ -256,7 +256,13 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     bool cancel_if_reg_spill) {
   TF_ASSIGN_OR_RETURN(std::string ptxas_path,
                       FindPtxAsExecutable(options.preferred_cuda_dir));
+  return CompileGpuAsmUsingPtxAs(ptxas_path, cc, ptx, options,
+                                 cancel_if_reg_spill);
+}
 
+absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
+    std::string_view ptxas_path, const CudaComputeCapability& cc,
+    std::string_view ptx, GpuAsmOpts options, bool cancel_if_reg_spill) {
   // Write ptx into a temporary file.
   std::string ptx_path;
   auto env = tsl::Env::Default();
@@ -288,7 +294,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
   std::string extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
   std::vector<std::string> ptxas_args = {
-      ptxas_path,
+      std::string{ptxas_path},
       ptx_path,
       "-o",
       cubin_path,
@@ -302,7 +308,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     VLOG(3) << absl::StrJoin(ptxas_args, " ");
   }
 
-  ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
+  ptxas_info_dumper.SetProgram(std::string{ptxas_path}, ptxas_args);
   ptxas_info_dumper.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!ptxas_info_dumper.Start()) {
     return absl::InternalError("Failed to launch ptxas");
@@ -318,7 +324,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     if (absl::StrContains(stderr_output, "ptxas fatal   : Value '") &&
         absl::StrContains(stderr_output,
                           "is not defined for option 'gpu-name'")) {
-      LogPtxasTooOld(ptxas_path, cc.major, cc.minor);
+      LogPtxasTooOld(std::string{ptxas_path}, cc.major, cc.minor);
       return absl::UnimplementedError(absl::StrFormat(
           "%s ptxas too old. Falling back to the driver to compile.",
           ptxas_path));
@@ -467,10 +473,16 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     stream_executor::CudaComputeCapability cc,
     std::string_view preferred_cuda_dir,
     absl::Span<const std::vector<uint8_t>> images) {
-  LOG_FIRST_N(INFO, 1) << "Using nvlink for parallel linking";
-
   TF_ASSIGN_OR_RETURN(std::string bin_path,
                       FindNvlinkExecutable(preferred_cuda_dir));
+
+  return LinkUsingNvlink(bin_path, cc, images);
+}
+
+absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
+    std::string_view nvlink_path, stream_executor::CudaComputeCapability cc,
+    absl::Span<const std::vector<uint8_t>> images) {
+  LOG_FIRST_N(INFO, 1) << "Using nvlink for parallel linking";
 
   if (images.empty()) {
     return std::vector<uint8_t>();
@@ -500,7 +512,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     tsl::Env::Default()->DeleteFile(output_path).IgnoreError();
   };
   std::vector<std::string> args;
-  args.push_back(bin_path);
+  args.push_back(std::string{nvlink_path});
   std::string_view extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
   args.push_back(absl::StrCat("-arch=sm_", cc.major, cc.minor, extension));
   for (int i = 0; i < images.size(); i++) {
@@ -510,7 +522,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
   args.push_back(output_path);
 
   tsl::SubProcess process;
-  process.SetProgram(bin_path, args);
+  process.SetProgram(std::string{nvlink_path}, args);
   process.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
 
   TF_RET_CHECK(process.Start());
