@@ -174,11 +174,6 @@ class NcclApi {
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommdestroy
   virtual absl::Status CommFinalize(NcclCommHandle comm) = 0;
 
-  // Destroy a communicator object comm.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommdestroy
-  virtual absl::Status CommDestroy(NcclCommHandle comm) = 0;
-
   // Returns the number of ranks in the NCCL communicator comm.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommcount

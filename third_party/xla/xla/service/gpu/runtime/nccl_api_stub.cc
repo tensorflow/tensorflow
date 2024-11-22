@@ -104,10 +104,6 @@ class NcclApiStub final : public NcclApi {
     return UnimplementedError();
   }
 
-  absl::Status CommDestroy(NcclCommHandle) final {
-    return UnimplementedError();
-  }
-
   absl::StatusOr<int32_t> CommCount(NcclCommHandle) final {
     return UnimplementedError();
   }
