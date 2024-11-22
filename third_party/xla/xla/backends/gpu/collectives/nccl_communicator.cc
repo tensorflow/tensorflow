@@ -34,7 +34,9 @@ limitations under the License.
 
 namespace xla::gpu {
 
-NcclCommunicator::NcclCommunicator(ncclComm_t comm) : comm_(comm) {}
+NcclCommunicator::NcclCommunicator(ncclComm_t comm) : comm_(comm) {
+  VLOG(1) << "Created " << *this;
+}
 
 NcclCommunicator::~NcclCommunicator() {
   VLOG(1) << "Destroy " << *this;

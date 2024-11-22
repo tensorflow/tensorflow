@@ -27,11 +27,16 @@ cc_library(
     ],
 )
 
+# TODO(b/380457503): Update visibility to "//visibility:private".
 cc_library(
     name = "nccl_communicator",
     srcs = if_gpu_is_configured(["nccl_communicator.cc"]),
     hdrs = if_gpu_is_configured(["nccl_communicator.h"]),
-    visibility = ["//visibility:private"],
+    local_defines = if_cuda_is_configured([
+        "GOOGLE_CUDA=1",
+    ]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     deps = [
         ":nccl_errors",
         "//xla/core/collectives:communicator",

@@ -17,19 +17,19 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/nccl_communicator.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -171,12 +172,10 @@ static ncclRedOp_t ToNcclReduction(ReductionKind kind) {
 // Casting between opaque API structs and NCCL types.
 //==-----------------------------------------------------------------------===//
 
-static NcclApi::NcclCommHandle Cast(ncclComm_t comm) {
-  return reinterpret_cast<NcclApi::NcclCommHandle>(comm);
-}
-
 static ncclComm_t Cast(NcclApi::NcclCommHandle comm) {
-  return reinterpret_cast<ncclComm_t>(comm);
+  auto* nccl_communicator = tsl::down_cast<NcclCommunicator*>(comm);
+  CHECK(nccl_communicator != nullptr) << "Unsupported XLA communicator";
+  return nccl_communicator->comm();
 }
 
 #if WITH_PERSISTENT_PLAN_ALLOCATOR_SUPPORT
@@ -408,7 +407,7 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
   TF_RETURN_IF_ERROR(GroupEnd());
 
   for (ncclComm_t comm_handle : comm_handles) {
-    comms.emplace_back(Cast(comm_handle), NcclCommDeleter{this});
+    comms.emplace_back(std::make_unique<NcclCommunicator>(comm_handle));
   }
 
   return comms;
@@ -460,8 +459,8 @@ absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
   std::vector<OwnedNcclComm> split_comms;
   split_comms.reserve(split_comms_handles.size());
   for (size_t i = 0; i < split_comms_handles.size(); ++i) {
-    split_comms.emplace_back(Cast(split_comms_handles[i]),
-                             NcclCommDeleter{this});
+    split_comms.emplace_back(
+        std::make_unique<NcclCommunicator>(split_comms_handles[i]));
   }
   return split_comms;
 #else

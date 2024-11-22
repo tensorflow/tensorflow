@@ -25,10 +25,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
@@ -66,25 +68,16 @@ class NcclApi {
 
   // Forward declarations of opaque structs corresponding to underlying platform
   // types (also defined as opaque structs).
-  struct NcclComm;
   struct NcclPersistentPlanAllocator;
   struct NcclRegisteredBuffer;
 
   // Convenience handles for defining API functions.
-  using NcclCommHandle = NcclComm*;
   using NcclPersistentPlanAllocatorHandle = NcclPersistentPlanAllocator*;
   using NcclRegisteredBufferHandle = NcclRegisteredBuffer*;
 
-  // RAII handle for NCCL communicator.
-  struct NcclCommDeleter {
-    void operator()(NcclCommHandle comm) {
-      if (auto destroyed = api->CommDestroy(comm); !destroyed.ok())
-        LOG(ERROR) << "Failed to destroy communicator: " << destroyed;
-    }
-    NcclApi* api;
-  };
-
-  using OwnedNcclComm = std::unique_ptr<NcclComm, NcclCommDeleter>;
+  // TODO(b/380457503): Delete these aliases from XLA codebase.
+  using NcclCommHandle = Communicator*;
+  using OwnedNcclComm = std::unique_ptr<Communicator>;
 
   // Persistent plan allocator allows to pass XLA memory allocator to NCCL to
   // allocate device memory for persistent execution plans for NCCL operations
