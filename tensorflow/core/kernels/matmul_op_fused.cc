@@ -200,6 +200,10 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
 namespace {
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
+/*
+  hipBLASLt support Epilogue:
+  https://rocm.docs.amd.com/projects/hipBLASLt/en/latest/datatypes.html#hipblasltepilogue-t
+*/ 
 StatusOr<se::gpu::BlasLt::Epilogue> GetBlasLtEpilogOp(
     FusedComputationType fusion) {
   if (fusion == FusedComputationType::kBiasAdd) {
@@ -263,7 +267,7 @@ se::blas::AlgorithmConfig AutotuneMatmul(
   }
   return algorithm_config;
 }
-#endif
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 template <typename LaunchFunc, typename Sig>
 StatusOr<std::vector<xla::AutotuneResult>> AutotuneMatMulImpl(
@@ -478,6 +482,17 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
 
     se::dnn::ActivationMode matmul_activation_mode;
     bool use_cudnn = false;
+
+#if !(GOOGLE_CUDA || TF_HIPBLASLT)
+    use_cudnn = true;
+#endif
+    const auto& cc = stream->parent()->GetDeviceDescription().
+                      gpu_compute_capability();
+    if (auto *procm = std::get_if< se::RocmComputeCapability >(&cc)) {
+      use_cudnn = !procm->gfx9_mi200_or_later();
+    }
+ 
+    // use_cudnn is for hipblaslt doesn't support yet
     switch (fusion) {
       case FusedComputationType::kBiasAddWithGeluExact:
         matmul_activation_mode = se::dnn::ActivationMode::kGeluExact;
@@ -512,15 +527,6 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
       default:
         use_cudnn = false;
     }
-#if !(GOOGLE_CUDA || TF_HIPBLASLT)
-    use_cudnn = true;
-#endif
-
-#if TF_HIPBLASLT
-    auto cap = stream->GetRocmComputeCapability();
-    // as of ROCm 5.5, hipblaslt only supports MI200.
-    if (cap.gcn_arch_name().substr(0, 6) != "gfx90a") use_cudnn = true;
-#endif
 
     BlasScratchAllocator scratch_allocator(context);
 
@@ -591,7 +597,7 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
                                          epilog_op};
     absl::Mutex* pmu;
     auto plan_and_algorithms_or =
-        GetPlanAndAlgorithms(stream, matmul_params, &pmu);
+        PlanAndAlgorithms::GetOrCreate(stream, matmul_params, &pmu);
     OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
     absl::MutexLock lock(pmu);
     const auto* plan_and_algorithms = std::move(plan_and_algorithms_or).value();
@@ -602,7 +608,7 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     auto launch_func = [&](BlasScratchAllocator& scratch_allocator,
                            size_t alg_idx,
                            se::blas::ProfileResult* profile_result) {
-      return DoBlasLtMatmul(stream, *plan_and_algorithms, a_ptr, b_ptr, c_ptr,
+      return plan_and_algorithms->ExecuteOnStream(stream, a_ptr, b_ptr, c_ptr,
                             alg_idx, scratch_allocator, bias_ptr,
                             profile_result);
     };
