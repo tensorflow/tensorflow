@@ -283,7 +283,7 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
     return static_cast<uint8_t*>(ptr) + stride * index;
   };
 
-  ExecuteState state(batch_size_);
+  tsl::CountDownAsyncValueRef<ExecuteEvent> state(batch_size_);
 
   auto dispatch = [&](auto type_tag) {
     for (int64_t i = 0; i < batch_size_; ++i) {

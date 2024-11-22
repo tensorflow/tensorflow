@@ -324,10 +324,6 @@ class Thunk {
       const ExecuteParams& params) = 0;
 
  protected:
-  // A helper type to mark thunk execution complete once all launched tasks
-  // are completed.
-  using ExecuteState = tsl::CountDownAsyncValueRef<Thunk::ExecuteEvent>;
-
   // Encodes thunk info into the TraceMe compatible format.
   std::string TraceMeEncode() const;
 
