@@ -341,6 +341,86 @@ TEST_F(ScatterDeterminismExpanderTest,
 }
 
 TEST_F(ScatterDeterminismExpanderTest,
+       ScatterAddWithImplicitInsertedDimensions) {
+  const char* const kModuleStr = R"(
+    HloModule scatter_determinism_expander
+
+    scatter_computation {
+      arg1.173 = f32[] parameter(1)
+      arg0.172 = f32[] parameter(0)
+      ROOT add.48 = f32[] add(arg0.172, arg1.173)
+    }
+
+    ENTRY scatter_add_computation {
+      operand = f32[2, 4] constant({{0, 0, 0, 0}, {0, 0, 0, 0}})
+      indices = s32[3] constant({0, 3, 9})
+      updates = f32[3] constant({1, 2, 3})
+      ROOT scatter.48 = f32[2, 4] scatter(operand, indices, updates),
+        update_window_dims={}, inserted_window_dims={0, 1},
+        scatter_dims_to_operand_dims={1}, index_vector_dim=1,
+        to_apply=scatter_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto cloned_module = module->Clone();
+  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  auto expected_result = expected_literal.data<float>();
+  ScatterDeterminismExpander scatter_determinism_expander;
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+
+  EXPECT_TRUE(result);
+
+  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+
+  auto result_data = result_literal.data<float>();
+  std::vector<float> actual_result(result_data.begin(), result_data.end());
+
+  EXPECT_EQ(actual_result, expected_result);
+}
+
+TEST_F(ScatterDeterminismExpanderTest,
+       ScatterAddWithNonScalarUpdateAndImplicitInsertedDimensions) {
+  const char* const kModuleStr = R"(
+    HloModule scatter_determinism_expander
+
+    scatter_computation {
+      arg1.173 = f32[] parameter(1)
+      arg0.172 = f32[] parameter(0)
+      ROOT add.48 = f32[] add(arg0.172, arg1.173)
+    }
+
+    ENTRY scatter_add_computation {
+      operand = f32[2, 4] constant({{0, 0, 0, 0}, {0, 0, 0, 0}})
+      indices = s32[3] constant({1, 2, 3})
+      updates = f32[3, 2] constant({{1, 2}, {3, 4}, {5, 6}})
+      ROOT scatter.48 = f32[2, 4] scatter(operand, indices, updates),
+        update_window_dims={1}, inserted_window_dims={0},
+        scatter_dims_to_operand_dims={1}, index_vector_dim=1,
+        to_apply=scatter_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto cloned_module = module->Clone();
+  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  auto expected_result = expected_literal.data<float>();
+  ScatterDeterminismExpander scatter_determinism_expander;
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool result, RunHloPass(&scatter_determinism_expander, module.get()));
+
+  EXPECT_TRUE(result);
+
+  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+
+  auto result_data = result_literal.data<float>();
+  std::vector<float> actual_result(result_data.begin(), result_data.end());
+
+  EXPECT_EQ(actual_result, expected_result);
+}
+
+TEST_F(ScatterDeterminismExpanderTest,
        ScatterAddWithNonScalarIndexAndUpdateCorrectness2DTest1) {
   const char* const kModuleStr = R"(
     HloModule scatter_determinism_expander
@@ -772,8 +852,9 @@ TEST_F(ScatterDeterminismExpanderTest, ScatterAddHloVerificationTest) {
     CHECK-DAG:   %[[CONCATENATE2:.*]] = pred[2]{0} concatenate(%[[COMPARE2]], %[[BROADCAST2]]), dimensions={0}
     CHECK-DAG:   %[[BROADCAST3:.*]] = pred[2,1]{1,0} broadcast(%[[CONCATENATE2]]), dimensions={0}
     CHECK-DAG:   %[[RESHAPE5:.*]] = s32[2,1]{1,0} reshape(%[[GET_TUPLE_ELEMENT]])
-    CHECK-DAG:   %[[CONSTANT:.*]] = s32[2,1]{1,0} constant({ {2}, {2} })
-    CHECK-DAG:   %[[SELECT1:.*]] = s32[2,1]{1,0} select(%[[BROADCAST3]], %[[RESHAPE5]], %[[CONSTANT]])
+    CHECK-DAG:   %[[CONSTANT:.*]] = s32[1]{0} constant({2})
+    CHECK-DAG:   %[[BROADCAST0:.*]] = s32[2,1]{1,0} broadcast(%[[CONSTANT]]), dimensions={1}
+    CHECK-DAG:   %[[SELECT1:.*]] = s32[2,1]{1,0} select(%[[BROADCAST3]], %[[RESHAPE5]], %[[BROADCAST0]])
     CHECK-DAG:   %[[CONSTANT2:.*]] = s32[] constant(0)
     CHECK-DAG:   %[[BROADCAST1:.*]] = s32[1]{0} broadcast(%[[CONSTANT2]]), dimensions={}
     CHECK-DAG:   %[[SLICE1:.*]] = s32[1]{0} slice(%[[GET_TUPLE_ELEMENT]]), slice={[0:1]}
