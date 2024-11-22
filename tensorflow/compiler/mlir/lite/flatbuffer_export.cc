@@ -1833,7 +1833,56 @@ Translator::BuildVhloCompositeV1Op(mlir::vhlo::CompositeOpV1 composite_op,
           attr.cast<mlir::vhlo::FloatV1Attr>().getValue().convertToFloat());
     else if (llvm::isa<mlir::vhlo::ArrayV1Attr>(attr))
       CreateFlexbufferVector(flex_builder, name, attr);
-    else
+    else if (llvm::isa<mlir::vhlo::TensorV1Attr>(attr)) {
+      // For TensorV1Attr, it's encoded as the following format:
+      // _TENSOR_V1_<name>: {
+      //   TENSOR_SHAPE: Vector<i64>,
+      //   TENSOR_TYPE: tflite::TensorType (casted to i64),
+      //   TENSOR_DATA: Vector<f32> or Vector<i64>
+      // }
+      auto attr_name = "_TENSOR_V1_" + name;
+      size_t attr_start = flex_builder->StartMap(attr_name.c_str());
+      mlir::VhloToStablehloTypeConverter vhlo_type_converter;
+      auto tensor_v1_attr = mlir::cast<mlir::vhlo::TensorV1Attr>(attr);
+
+      auto dense = mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(
+          mlir::cast<mlir::ShapedType>(
+              vhlo_type_converter.convertType(tensor_v1_attr.getType())),
+          tensor_v1_attr.getData());
+      auto type = mlir::cast<TensorType>(dense.getType());
+      tflite::TensorType tflite_element_type =
+          GetTFLiteType(type.getElementType()).value();
+      auto shape = mlir::cast<mlir::ShapedType>(vhlo_type_converter.convertType(
+                                                    tensor_v1_attr.getType()))
+                       .getShape();
+      flex_builder->Vector("TENSOR_SHAPE", [&]() {
+        for (int d : shape) flex_builder->Int(d);
+      });
+      flex_builder->Int("TENSOR_TYPE", tflite_element_type);
+      if (tflite_element_type == tflite::TensorType_INT32) {
+        auto elements = mlir::GetVector<int32_t>(
+            mlir::cast<mlir::vhlo::TensorV1Attr>(attr), vhlo_type_converter);
+        flex_builder->Vector("TENSOR_DATA", [&]() {
+          for (int d : elements) flex_builder->Int(d);
+        });
+      } else if (tflite_element_type == tflite::TensorType_FLOAT32) {
+        auto elements = mlir::GetVector<float>(
+            mlir::cast<mlir::vhlo::TensorV1Attr>(attr), vhlo_type_converter);
+        flex_builder->Vector("TENSOR_DATA", [&]() {
+          for (int d : elements) flex_builder->Float(d);
+        });
+      } else if (tflite_element_type == tflite::TensorType_INT64) {
+        auto elements = mlir::GetVector<int64_t>(
+            mlir::cast<mlir::vhlo::TensorV1Attr>(attr), vhlo_type_converter);
+        flex_builder->Vector("TENSOR_DATA", [&]() {
+          for (int d : elements) flex_builder->Int(d);
+        });
+      } else {
+        // Unhandled data type.
+        return std::nullopt;
+      }
+      flex_builder->EndMap(attr_start);
+    } else
       // Unhandled attribute type.
       return std::nullopt;
   }
