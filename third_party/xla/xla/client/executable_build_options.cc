@@ -198,6 +198,8 @@ absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
     output.mutable_auto_spmd_partitioning_mesh_ids()->Add(s);
   }
   output.set_use_shardy_partitioner(use_shardy_partitioner());
+  output.set_process_index(process_index());
+  output.set_process_count(process_count());
   return output;
 }
 
@@ -248,6 +250,8 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
       std::vector<int64_t>(input.auto_spmd_partitioning_mesh_ids().begin(),
                            input.auto_spmd_partitioning_mesh_ids().end()));
   output.set_use_shardy_partitioner(input.use_shardy_partitioner());
+  output.set_process_index(input.process_index());
+  output.set_process_count(input.process_count());
   return output;
 }
 
