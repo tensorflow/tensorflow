@@ -52,6 +52,7 @@ cc_library(
         "spmd_expandable_interface_verification_pass.cc",
         "spmd_expansion_pass.cc",
         "vifrt_legalize_to_ifrt_pass.cc",
+        "vifrt_to_version_pass.cc",
     ],
     hdrs = [
         "map_ifrt_to_vifrt.h",
@@ -76,6 +77,7 @@ cc_library(
         "//xla/python/ifrt/ir:ifrt_ir_program_proto_cc",
         "//xla/python/ifrt/ir:ifrt_ops_inc_gen",
         "//xla/python/ifrt/ir:sharding_param",
+        "//xla/python/ifrt/ir:version",
         "//xla/python/ifrt/ir:vifrt",
         "//xla/python/ifrt/support:sharding_conversions",
         "//xla/python/pjrt_ifrt:xla_ifrt",

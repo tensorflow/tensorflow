@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/version.h"
 
 namespace xla {
 namespace ifrt {
@@ -73,8 +74,14 @@ void CreateIfrtToVersionedPipeline(mlir::OpPassManager& pm,
 
 void CreateIfrtFromVersionedPipeline(
     mlir::OpPassManager& pm, const IfrtIrProgramProto& ifrt_ir_program) {
+  // Converts from given VIFRT version to the current VIFRT version.
+  pm.addPass(
+      CreateVifrtToVersionPass({Version::getCurrentVersion().toString()}));
+  // Deserializes atom programs (including VHLO serialized version to VHLO
+  // current conversion), and inserts them to the IFRT IR program ModuleOp.
   pm.addPass(
       CreateIfrtAtomProgramsFromVhloPass(ifrt_ir_program.atom_programs()));
+  // Converts VIFRT current to IFRT.
   pm.addPass(createVifrtLegalizeToIfrtPass());
 }
 

@@ -136,6 +136,9 @@ CreateIfrtAtomProgramsFromVhloPass(
     const tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>&
         atom_programs);
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateVifrtToVersionPass(
+    VifrtToVersionPassOptions options = {});
+
 void populateIfrtToVifrtPatterns(mlir::RewritePatternSet* patterns,
                                  mlir::TypeConverter* converter,
                                  mlir::MLIRContext* context);
@@ -143,6 +146,10 @@ void populateIfrtToVifrtPatterns(mlir::RewritePatternSet* patterns,
 void populateVifrtToIfrtPatterns(mlir::RewritePatternSet* patterns,
                                  mlir::TypeConverter* converter,
                                  mlir::MLIRContext* context);
+
+void populateVifrtToVersionPatterns(mlir::RewritePatternSet* patterns,
+                                    mlir::TypeConverter* converter,
+                                    mlir::MLIRContext* context);
 
 // Generated definitions. This should be placed after all Pass creations.
 #define GEN_PASS_REGISTRATION
