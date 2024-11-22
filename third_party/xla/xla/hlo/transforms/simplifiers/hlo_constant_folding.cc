@@ -256,7 +256,6 @@ absl::StatusOr<bool> HloConstantFolding::Run(
       });
 
       // Currently we skip unimplemented operations.
-      // TODO(b/35975797): Fold constant computations for more operations.
       Literal result;
       if (!evaluator->TryEvaluate(
               instruction, &result,
