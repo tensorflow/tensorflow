@@ -111,5 +111,8 @@ cc_library(
 cc_library(
     name = "test_models",
     hdrs = ["test_models.h"],
-    deps = ["@com_google_absl//absl/strings:string_view"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
 )

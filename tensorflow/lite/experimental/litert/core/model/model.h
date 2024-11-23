@@ -41,9 +41,14 @@ typedef union {
   LiteRtRankedTensorType ranked_tensor_type;
 } LiteRtTypeDetail;
 
+using TensorType = std::pair<LiteRtTensorTypeId, LiteRtTypeDetail>;
+
 typedef union {
   LiteRtQuantizationPerTensor per_tensor;
 } LiteRtQuantizationTypeDetail;
+
+using Quantization =
+    std::pair<LiteRtQuantizationTypeId, LiteRtQuantizationTypeDetail>;
 
 struct LiteRtTensorT {
   using Ref = std::reference_wrapper<LiteRtTensorT>;

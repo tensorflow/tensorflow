@@ -177,6 +177,55 @@ Expected<TflOpCode> GetTflOpCode(const TflModel& tfl_model,
   return std::move(tfl_model.operator_codes.at(op_code_ind)->builtin_code);
 }
 
+bool IsRankedTensor(const TflTensor& tensor) { return tensor.has_rank; }
+
+bool HasStaticShape(const TflTensor& tensor) {
+  return IsRankedTensor(tensor) && tensor.shape_signature.empty();
+}
+
+Expected<TflStaticTensorTypeInfo> GetStaticTensorTypeInfo(
+    const TflTensor& tensor) {
+  if (!HasStaticShape(tensor)) {
+    return Error(kLiteRtStatusErrorInvalidArgument);
+  }
+  return std::make_pair(tensor.type, TflStaticShapeInfo(tensor.shape.data(),
+                                                        tensor.shape.size()));
+}
+
+bool IsQuantized(const TflQuantization* tfl_quantization) {
+  return tfl_quantization &&
+         (!tfl_quantization->scale.empty() ||
+          tfl_quantization->details.type != tflite::QuantizationDetails_NONE);
+}
+
+bool IsPerChannelQuantized(const TflQuantization* tfl_quantization) {
+  return tfl_quantization && tfl_quantization->scale.size() > 1;
+}
+
+bool IsPerTensorQuantized(const TflQuantization* tfl_quantization) {
+  return tfl_quantization && tfl_quantization->scale.size() == 1;
+}
+
+bool IsBlockwiseQuantized(const TflQuantization* tfl_quantization) {
+  return tfl_quantization &&
+         tfl_quantization->details.type ==
+             tflite::QuantizationDetails_BlockwiseQuantization;
+}
+
+bool IsCustomQuantized(const TflQuantization* tfl_quantization) {
+  return tfl_quantization && tfl_quantization->details.type ==
+                                 tflite::QuantizationDetails_CustomQuantization;
+}
+
+Expected<std::pair<int64_t, float>> GetPerTensorQparams(
+    const TflQuantization* tfl_quantization) {
+  if (!IsPerTensorQuantized(tfl_quantization)) {
+    return Error(kLiteRtStatusErrorInvalidArgument);
+  }
+  return std::make_pair(tfl_quantization->zero_point.front(),
+                        tfl_quantization->scale.front());
+}
+
 ::tflite::Allocation::Ptr MakeAllocation(BufferRef<uint8_t> buf) {
   return std::make_unique<::tflite::MemoryAllocation>(
       buf.Data(), buf.Size(), ::tflite::DefaultErrorReporter());

@@ -16,22 +16,29 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_UTIL_H_
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/litert/core/model/model.h"
+#include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace litert::internal {
 
-LiteRtStatus IsOpSupported(const tflite::OperatorT& op);
+LiteRtStatus IsOpSupported(const TflOp& op);
 
-LiteRtStatus IsBufferSupported(const tflite::BufferT& buffer);
+LiteRtStatus IsBufferSupported(const TflBuffer& buffer);
 
-LiteRtStatus IsTensorSupported(const tflite::TensorT& tensor);
+// Checks if the misc non-type non quantization parts of this tensor are
+// supported in the litet model api.
+LiteRtStatus IsTensorSupported(const TflTensor& tensor);
 
 LiteRtStatus SetDefaultOptions(tflite::BuiltinOptionsUnion& opts,
                                LiteRtOpCode code);
 
 LiteRtElementType MapElementType(tflite::TensorType type);
+
+Expected<TensorType> MapTensorType(const TflTensor& tensor);
+
+Expected<Quantization> MapQuantization(const TflQuantization* tfl_quantization);
 
 }  // namespace litert::internal
 

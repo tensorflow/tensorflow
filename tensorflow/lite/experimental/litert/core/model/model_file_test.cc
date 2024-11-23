@@ -32,10 +32,13 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
+#include "tensorflow/lite/experimental/litert/core/model/model_file_test_util.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_load.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/test_models.h"
+#include "tensorflow/lite/experimental/litert/tools/dump.h"
 
 namespace litert::internal {
 namespace {
@@ -59,7 +62,12 @@ Model LoadModelThroughRoundTrip(std::string_view path) {
   return Model::CreateFromOwnedHandle(result);
 }
 
-class TestWithPath : public ::testing::TestWithParam<std::string_view> {};
+class TestWithModelPath : public ::testing::TestWithParam<absl::string_view> {
+ protected:
+  std::string GetTestModelPath() const {
+    return testing::GetTestFilePath(GetParam());
+  }
+};
 
 class TopologyTest : public ::testing::TestWithParam<LiteRtModel> {
  public:
@@ -252,6 +260,39 @@ TEST_P(SimpleMultiOpTest, TestBuildModelSimpleMultiAdd) {
 INSTANTIATE_TEST_SUITE_P(SimpleMultiOpTests, SimpleMultiOpTest,
                          ::testing::ValuesIn(TopologyTest::MakeTestModels(
                              {"simple_multi_op.tflite"})));
+
+using PerTensorQuantizedModelTest = TestWithModelPath;
+
+TEST_P(PerTensorQuantizedModelTest, LoadModel) {
+  const auto model_path = GetTestModelPath();
+  auto model = LoadModelFromFile(model_path);
+  ASSERT_TRUE(model);
+
+  const auto subgraph = model->MainSubgraph();
+  const auto ops = subgraph->Ops();
+
+  const auto& fb_subgraph =
+      *model->Get()->subgraphs.front().flatbuffer_subgraph;
+  const auto& fb_ops = fb_subgraph.operators;
+  const auto& fb_tensors = fb_subgraph.tensors;
+
+  ASSERT_EQ(ops.size(), fb_ops.size());
+
+  auto get_tfl_tensor = [&](uint32_t ind) -> const TflTensor& {
+    return *fb_tensors.at(ind);
+  };
+
+  for (auto i = 0; i < ops.size(); ++i) {
+    Dump(*ops.at(i).Get());
+    ASSERT_TRUE(EqualsFbOp(ops.at(i), *fb_ops.at(i), get_tfl_tensor));
+  }
+}
+
+// TODO Add the rest of quantized models when support for dynamic shape is
+// present.
+INSTANTIATE_TEST_SUITE_P(QuantizedModelFileTests, PerTensorQuantizedModelTest,
+                         ::testing::ValuesIn({kQSimpleMul16x16Model,
+                                              kQMulAdd16x16Model}));
 
 }  // namespace
 }  // namespace litert::internal

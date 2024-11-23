@@ -14,10 +14,15 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/model_util.h"
 
+#include <utility>
+
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/core/model/model.h"
+#include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace litert::internal {
@@ -58,13 +63,7 @@ LiteRtStatus IsBufferSupported(const tflite::BufferT& buffer) {
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus IsTensorSupported(const tflite::TensorT& tensor) {
-  if (!tensor.has_rank) {
-    // TODO: b/365299994 - Support unranked tensors.
-    LITERT_LOG(LITERT_ERROR, "Unranked tensors not yet supported.");
-    return kLiteRtStatusErrorUnsupported;
-  }
-
+LiteRtStatus IsTensorSupported(const TflTensor& tensor) {
   if (tensor.is_variable) {
     // TODO: b/365299994 - Support variable tensors.
     LITERT_LOG(LITERT_ERROR, "Variable tensors not yet supported.");
@@ -77,23 +76,9 @@ LiteRtStatus IsTensorSupported(const tflite::TensorT& tensor) {
     return kLiteRtStatusErrorUnsupported;
   }
 
-  if (!tensor.shape_signature.empty()) {
-    // TODO: b/365299994 - Support shape signature.
-    LITERT_LOG(LITERT_ERROR, "Shape signature not yet supported.");
-    return kLiteRtStatusErrorUnsupported;
-  }
-
   if (tensor.sparsity) {
     // TODO: b/365299994 - Support sparsity tensors.
     LITERT_LOG(LITERT_ERROR, "Sparsity tensors not yet supported.");
-    return kLiteRtStatusErrorUnsupported;
-  }
-
-  if (tensor.type != tflite::TensorType_FLOAT32 &&
-      tensor.type != tflite::TensorType_INT32 &&
-      tensor.type != tflite::TensorType_BOOL) {
-    // TODO: b/365299994 - Support all element types.
-    LITERT_LOG(LITERT_ERROR, "Only f32, i32 and bool currently supported.");
     return kLiteRtStatusErrorUnsupported;
   }
 
@@ -126,9 +111,55 @@ LiteRtElementType MapElementType(tflite::TensorType type) {
       return kLiteRtElementTypeInt32;
     case tflite::TensorType_BOOL:
       return kLiteRtElementTypeBool;
+    case tflite::TensorType_INT16:
+      return kLiteRtElementTypeInt16;
     default:
       return kLiteRtElementTypeNone;
   }
+}
+
+Expected<TensorType> MapTensorType(const TflTensor& tfl_tensor) {
+  if (!HasStaticShape(tfl_tensor)) {
+    LITERT_LOG(LITERT_ERROR, "Only static shaped tensors currently supported");
+    return Error(kLiteRtStatusErrorUnsupported);
+  }
+
+  auto element_type = MapElementType(tfl_tensor.type);
+  if (element_type == kLiteRtElementTypeNone) {
+    LITERT_LOG(LITERT_ERROR, "Element type not currently supported");
+    return Error(kLiteRtStatusErrorUnsupported);
+  }
+
+  LiteRtTypeDetail detail;
+  detail.ranked_tensor_type.element_type = element_type;
+  detail.ranked_tensor_type.layout.rank = tfl_tensor.shape.size();
+  detail.ranked_tensor_type.layout.dimensions = tfl_tensor.shape.data();
+  // TFL tensors don't support strides yet.
+  detail.ranked_tensor_type.layout.strides = nullptr;
+
+  return std::make_pair(kLiteRtRankedTensorType, detail);
+}
+
+Expected<Quantization> MapQuantization(
+    const TflQuantization* tfl_quantization) {
+  if (!IsQuantized(tfl_quantization)) {
+    return std::make_pair(kLiteRtQuantizationNone,
+                          LiteRtQuantizationTypeDetail());
+  }
+
+  auto per_tensor_qparams = GetPerTensorQparams(tfl_quantization);
+  if (!per_tensor_qparams) {
+    LITERT_LOG(LITERT_ERROR,
+               "Only per tensor quantization currently supported");
+    return Error(kLiteRtStatusErrorUnsupported);
+  }
+  auto [zero_point, scale] = *per_tensor_qparams;
+
+  LiteRtQuantizationTypeDetail detail;
+  detail.per_tensor.scale = scale;
+  detail.per_tensor.zero_point = zero_point;
+
+  return std::make_pair(kLiteRtQuantizationPerTensor, detail);
 }
 
 }  // namespace litert::internal

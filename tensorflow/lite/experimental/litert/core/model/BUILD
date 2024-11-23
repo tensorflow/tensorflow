@@ -61,9 +61,7 @@ cc_library(
     deps = [
         ":model",
         ":model_util",
-        "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
-        "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
@@ -80,9 +78,13 @@ cc_library(
 cc_test(
     name = "model_file_test",
     srcs = ["model_file_test.cc"],
-    data = ["//tensorflow/lite/experimental/litert/test:mlir_test_data"],
+    data = [
+        "//tensorflow/lite/experimental/litert/test:mlir_test_data",
+        "//tensorflow/lite/experimental/litert/test:tflite_test_data",
+    ],
     deps = [
         ":model",
+        ":model_file_test_util",
         ":model_load",
         ":model_serialize",
         "//tensorflow/lite/experimental/litert/c:litert_common",
@@ -94,6 +96,8 @@ cc_test(
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:test_models",
+        "//tensorflow/lite/experimental/litert/tools:dump",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -125,10 +129,13 @@ cc_library(
     srcs = ["model_util.cc"],
     hdrs = ["model_util.h"],
     deps = [
+        ":model",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -153,6 +160,19 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "model_file_test_util",
+    testonly = 1,
+    srcs = ["model_file_test_util.cc"],
+    hdrs = ["model_file_test_util.h"],
+    deps = [
+        ":model",
+        ":model_util",
+        "//tensorflow/lite/experimental/litert/cc:litert_model",
+        "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
     ],
 )
 

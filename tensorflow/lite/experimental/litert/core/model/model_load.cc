@@ -42,16 +42,6 @@ using GetBuffer = std::function<Expected<TflBufferPtr>(uint32_t ind)>;
 using GetOpCode = std::function<Expected<LiteRtOpCode>(uint32_t ind)>;
 using GetTensor = std::function<Expected<LiteRtTensorT::Ref>(size_t ind)>;
 
-LiteRtRankedTensorType MapTensorType(const TflTensor& tfl_tensor) {
-  LiteRtRankedTensorType ranked_tensor_type;
-  ranked_tensor_type.element_type = MapElementType(tfl_tensor.type);
-  ranked_tensor_type.layout.rank = tfl_tensor.shape.size();
-  ranked_tensor_type.layout.dimensions = tfl_tensor.shape.data();
-  // TFL tensors don't support strides yet.
-  ranked_tensor_type.layout.strides = nullptr;
-  return ranked_tensor_type;
-}
-
 LiteRtStatus ConvertTensor(const TflTensor& tfl_tensor, GetBuffer get_buffer,
                            LiteRtTensorT& target) {
   LITERT_RETURN_STATUS_IF_NOT_OK(IsTensorSupported(tfl_tensor));
@@ -66,8 +56,21 @@ LiteRtStatus ConvertTensor(const TflTensor& tfl_tensor, GetBuffer get_buffer,
     target.weights.fb_buffer = std::move(*buffer);
   }
 
-  target.type_id = kLiteRtRankedTensorType;
-  target.type_detail.ranked_tensor_type = MapTensorType(tfl_tensor);
+  auto tensor_type = MapTensorType(tfl_tensor);
+  if (!tensor_type) {
+    return tensor_type.Error().Status();
+  }
+
+  target.type_id = tensor_type->first;
+  target.type_detail = tensor_type->second;
+
+  auto quantization = MapQuantization(tfl_tensor.quantization.get());
+  if (!quantization) {
+    return quantization.Error().Status();
+  }
+
+  target.q_type_id = quantization->first;
+  target.q_type_detail = quantization->second;
 
   target.name = tfl_tensor.name;
 
@@ -76,6 +79,8 @@ LiteRtStatus ConvertTensor(const TflTensor& tfl_tensor, GetBuffer get_buffer,
 
 LiteRtStatus ConvertOp(const TflOp& op, GetTensor get_tensor,
                        GetOpCode get_op_code, LiteRtOpT& target) {
+  LITERT_RETURN_STATUS_IF_NOT_OK(IsOpSupported(op));
+
   auto op_code = get_op_code(op.opcode_index);
   if (!op_code) {
     return op_code.Error().Status();

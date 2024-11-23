@@ -33,9 +33,16 @@ using TflOp = ::tflite::OperatorT;
 using TflBuffer = ::tflite::BufferT;
 using TflModel = ::tflite::ModelT;
 using TflOpCode = ::tflite::BuiltinOperator;
+using TflQuantization = ::tflite::QuantizationParametersT;
+using TflElementType = ::tflite::TensorType;
 
 using TflBufferPtr = std::unique_ptr<TflBuffer>;
 using TflModelPtr = std::unique_ptr<TflModel>;
+using TflQuantizationPtr = std::unique_ptr<TflQuantization>;
+
+using TflPerTensorQParams = std::pair<int64_t, float>;
+using TflStaticShapeInfo = absl::Span<const int32_t>;
+using TflStaticTensorTypeInfo = std::pair<TflElementType, TflStaticShapeInfo>;
 
 // Flatbuffer bytes util.
 
@@ -60,7 +67,7 @@ bool VerifyFlatbuffer(const uint8_t* buf, size_t buf_size);
 // Override of above with view input.
 bool VerifyFlatbuffer(absl::Span<const uint8_t> buf);
 
-// Flatbuffer model api helpers.
+// TFL flatbuffer IR helpers.
 
 // Get the metadata buffer under given key if it exists.
 Expected<BufferRef<uint8_t>> GetMetadata(absl::string_view key,
@@ -92,6 +99,37 @@ Expected<uint32_t> PushTflBuffer(TflModel& tfl_model,
 // Get the op code from the model at the given index if it exists.
 Expected<TflOpCode> GetTflOpCode(const TflModel& tfl_model,
                                  uint32_t op_code_ind);
+
+// Is tensor fixed rank.
+bool HasRankedTensorType(const TflTensor& tensor);
+
+// Is tensor shape and rank fully defined.
+bool HasStaticShape(const TflTensor& tensor);
+
+// Get static shape and element type info if the tensor is of static shape.
+Expected<TflStaticTensorTypeInfo> GetStaticTensorTypeInfo(
+    const TflTensor& tensor);
+
+// Is the tensor quantized.
+bool IsQuantized(const TflQuantization* tfl_quantization);
+
+// Is the tensor per-tensor quantized.
+bool IsPerTensorQuantized(const TflQuantization* tfl_quantization);
+
+// Is the tensor per-channel quantized.
+bool IsPerChannelQuantized(const TflQuantization* tfl_quantization);
+
+// Is the tensor block-wise quantized.
+bool IsBlockWiseQuantized(const TflQuantization* tfl_quantization);
+
+// Does tensor have custom quantization.
+bool IsCustomQuantized(const TflQuantization* tfl_quantization);
+
+// Get the per-tensor q-params if given tensor has them.
+Expected<TflPerTensorQParams> GetPerTensorQparams(
+    const TflQuantization* tfl_quantization);
+
+// Flatbuffer management helpers.
 
 // Make a tfl allocation from buffer.
 ::tflite::Allocation::Ptr MakeAllocation(BufferRef<uint8_t> buf);

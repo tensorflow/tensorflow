@@ -15,9 +15,11 @@
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
 
 #include <sstream>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
@@ -85,6 +87,29 @@ TEST(DumpTest, TestDumpOptions) {
             "new_axis_mask: 0\n"
             "shrink_axis_mask: 0\n"
             "offset: 0\n");
+}
+
+TEST(DumpTest, TestDumpPerTensorQuantization) {
+  LiteRtQuantizationTypeDetail per_tensor_detail;
+  per_tensor_detail.per_tensor.scale = 1.0;
+  per_tensor_detail.per_tensor.zero_point = 2;
+  std::ostringstream q_dump;
+  Dump(std::make_pair(kLiteRtQuantizationPerTensor, per_tensor_detail), q_dump);
+  EXPECT_EQ(q_dump.view(), " <q PerTensor [ .z = 2, .s = 1.000000 ]>");
+}
+
+TEST(DumpTest, TestDumpNoQuantization) {
+  LiteRtQuantizationTypeDetail none_detail;
+  std::ostringstream q_dump;
+  Dump(std::make_pair(kLiteRtQuantizationNone, none_detail), q_dump);
+  EXPECT_TRUE(q_dump.view().empty());
+}
+
+TEST(DumpTest, TestDumpUnknownQuantization) {
+  LiteRtQuantizationTypeDetail detail;
+  std::ostringstream q_dump;
+  Dump(std::make_pair(kLiteRtQuantizationBlockWise, detail), q_dump);
+  EXPECT_EQ(q_dump.view(), " <q UNKNOWN>");
 }
 
 }  // namespace

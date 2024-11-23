@@ -50,6 +50,9 @@ void Dump(const LiteRtRankedTensorType& type, std::ostream& out = std::cerr);
 // Dump details about the given LiteRtModel to the given stream.
 void Dump(const LiteRtModelT& model, std::ostream& out = std::cerr);
 
+// Dump details about the given quantization params.
+void Dump(Quantization quantization, std::ostream& out = std::cerr);
+
 // Dump details about options
 void DumpOptions(const LiteRtOpT& op, std::ostream& out = std::cerr);
 

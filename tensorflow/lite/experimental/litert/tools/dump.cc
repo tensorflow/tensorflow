@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
@@ -47,6 +48,7 @@ void DumpNode(const LiteRtTensorT& tensor, std::ostream& out) {
     default:
       out << "UKNOWN_TENSOR_TYPE" << tensor.type_id;
   }
+  Dump(std::make_pair(tensor.q_type_id, tensor.q_type_detail), out);
 }
 
 void DumpNode(const LiteRtOpT& op, std::ostream& out) { Dump(op.op_code, out); }
@@ -385,4 +387,20 @@ void DumpOptions(const LiteRtOpT& op, std::ostream& out) {
       break;
   }
 }
+
+void Dump(Quantization quantization, std::ostream& out) {
+  switch (quantization.first) {
+    case kLiteRtQuantizationNone:
+      return;
+    case kLiteRtQuantizationPerTensor:
+      out << absl::StreamFormat(" <q PerTensor [ .z = %ld, .s = %f ]>",
+                                quantization.second.per_tensor.zero_point,
+                                quantization.second.per_tensor.scale);
+      return;
+    default:
+      out << " <q UNKNOWN>";
+      return;
+  }
+}
+
 }  // namespace litert::internal
