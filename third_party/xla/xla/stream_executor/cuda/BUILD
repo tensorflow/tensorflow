@@ -1479,9 +1479,18 @@ cc_library(
 xla_cc_test(
     name = "compilation_provider_test",
     srcs = ["compilation_provider_test.cc"],
+    args = if_google([
+        # nvjitlink allocates memory and only keeps a pointer past the usual offset of 1024 bytes;
+        # so we need to increase the max pointer offset. -1 means no limit.
+        # This is only relevant for Google's HeapLeakChecker. The newer Leak sanitizer doesn't
+        # have this issue.
+        "--heap_check_max_pointer_offset=-1",
+    ]),
     deps = [
         ":compilation_options",
         ":compilation_provider",
+        ":nvjitlink_compilation_provider",
+        ":nvjitlink_support",
         ":subprocess_compilation",
         ":subprocess_compilation_provider",
         "//xla/stream_executor:device_description",
@@ -1493,5 +1502,22 @@ xla_cc_test(
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "nvjitlink_compilation_provider",
+    srcs = ["nvjitlink_compilation_provider.cc"],
+    hdrs = ["nvjitlink_compilation_provider.h"],
+    deps = [
+        ":compilation_options",
+        ":compilation_provider",
+        ":nvjitlink",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )

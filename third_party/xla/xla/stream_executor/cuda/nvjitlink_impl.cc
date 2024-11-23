@@ -67,6 +67,10 @@ static std::string_view ToString(nvJitLinkResult status) {
   }
 }
 
+static absl::Status ToStatus(nvJitLinkResult status, std::string_view message) {
+  return absl::UnknownError(absl::StrCat(ToString(status), ": ", message));
+}
+
 #define RETURN_IF_NVJITLINK_ERROR(expr)                                  \
   do {                                                                   \
     nvJitLinkResult _status = expr;                                      \
@@ -214,7 +218,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
 
       TF_RETURN_IF_ERROR(CreateErrorFromPTXASLog(error_log, architecture,
                                                  cancel_if_reg_spill));
-      RETURN_IF_NVJITLINK_ERROR(result);
+      return ToStatus(result, error_log);
     }
   }
 
@@ -229,7 +233,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
 
     TF_RETURN_IF_ERROR(
         CreateErrorFromPTXASLog(error_log, architecture, cancel_if_reg_spill));
-    RETURN_IF_NVJITLINK_ERROR(linking_result);
+    return ToStatus(linking_result, error_log);
   }
 
   TF_ASSIGN_OR_RETURN(std::string info_log, nvJitLinkGetInfoLog(link_handle));
