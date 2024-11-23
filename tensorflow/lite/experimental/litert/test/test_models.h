@@ -51,12 +51,36 @@ static constexpr absl::string_view kTransformerBlockModel =
 
 // Quantized model with a single mul op.
 // Mul: <8x100x32x4xint16>, <8x100x32x4xint16> -> <8x100x32x4xint16>
-static constexpr absl::string_view kQuantizedMulOpModel = "mul_quant.tflite";
+static constexpr absl::string_view kQSimpleMul16x16Model = "mul_quant.tflite";
 
 // Quantized model with a mul op and a add op.
 // Mul: <8x100x32x4xint16>, <8x100x32x4xint16> -> <8x100x32x4xint16>
 // Add: <8x100x32x4xint16>, <8x100x32x4xint16> -> <8x100x32x4xint16>
-static constexpr absl::string_view kSimopleQuantizedOpskModel =
+static constexpr absl::string_view kQMulAdd16x16Model =
     "simple_quantized_ops.tflite";
+
+// Single add op i16 activations and i8 weights and dynamic shape.
+static constexpr absl::string_view kQSingleDynAdd16x8Model =
+    "single_add_default_a16w8_recipe_quantized.tflite";
+
+// Single add op i8 activations and i8 weights and dynamic shape.
+static constexpr absl::string_view kQSingleDynAdd8x8Model =
+    "single_add_default_a8w8_recipe_quantized.tflite";
+
+// Single mul op i16 activations and i8 weights and dynamic shape.
+static constexpr absl::string_view kQSingleDynMul16x8Model =
+    "single_mul_default_a16w8_recipe_quantized.tflite";
+
+// Single mul op i8 activations and i8 weights and dynamic shape.
+static constexpr absl::string_view kQSingleDynMul8x8Model =
+    "single_mul_default_a8w8_recipe_quantized.tflite";
+
+// Single rsqrt op i16 activations and i8 weights and dynamic shape.
+static constexpr absl::string_view kQSingleDynRsqrt16x8Model =
+    "single_rsqrt_default_a16w8_recipe_quantized.tflite";
+
+// Single rsqrt op i8 activations and i8 weights and dynamic shape.
+static constexpr absl::string_view kQSingleDynRsqrt8x8Model =
+    "single_rsqrt_default_a8w8_recipe_quantized.tflite";
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TEST_TEST_MODELS_H_
