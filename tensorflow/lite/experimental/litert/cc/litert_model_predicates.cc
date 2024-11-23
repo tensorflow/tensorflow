@@ -14,32 +14,17 @@
 
 #include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 
-#include <cstdint>
 #include <functional>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 
 namespace litert {
-
 namespace {
-
-template <typename L, typename R = L>
-bool AllZip(absl::Span<const L> l, absl::Span<const R> r,
-            std::function<bool(const L&, const R&)> bin_pred) {
-  if (l.size() != r.size()) {
-    return false;
-  }
-  for (int i = 0; i < l.size(); ++i) {
-    if (!bin_pred(l.at(i), r.at(i))) {
-      return false;
-    }
-  }
-  return true;
-}
 
 template <typename T>
 bool Any(absl::Span<const T> vals, std::function<bool(const T&)> unary_pred) {
@@ -78,9 +63,8 @@ bool MatchRankedTensorType(const RankedTensorType& tensor_type,
   if (expected.dims.has_value()) {
     auto actual_dims = tensor_type.Layout().Dimensions();
     auto expected_dims = absl::MakeConstSpan(expected.dims.value());
-    return AllZip<int32_t, int32_t>(
-        actual_dims, expected_dims,
-        [](auto l, auto r) -> bool { return l == r; });
+    return AllZip(actual_dims, expected_dims,
+                  [](auto l, auto r) -> bool { return l == r; });
   }
   return true;
 }
@@ -99,12 +83,11 @@ bool MatchOpType(
     return MatchRankedTensorType(actual.RankedTensorType(), expected.value());
   };
 
-  const bool inputs_match = AllZip<Tensor, std::optional<TensorTypeInfo>>(
-      absl::MakeConstSpan(op.Inputs()), absl::MakeConstSpan(expected_inputs),
-      match);
-  const bool outputs_match = AllZip<Tensor, std::optional<TensorTypeInfo>>(
-      absl::MakeConstSpan(op.Outputs()), absl::MakeConstSpan(expected_outputs),
-      match);
+  const bool inputs_match = AllZip(absl::MakeConstSpan(op.Inputs()),
+                                   absl::MakeConstSpan(expected_inputs), match);
+  const bool outputs_match =
+      AllZip(absl::MakeConstSpan(op.Outputs()),
+             absl::MakeConstSpan(expected_outputs), match);
   return inputs_match && outputs_match;
 }
 

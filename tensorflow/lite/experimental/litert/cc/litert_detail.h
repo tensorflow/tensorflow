@@ -16,6 +16,7 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_DETAIL_H_
 
 #include <cstddef>
+#include <functional>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/absl_check.h"
@@ -35,19 +36,46 @@ inline T* ConstructAt(T* p, Args&&... args) {
   return ::new (static_cast<void*>(p)) T(std::forward<Args>(args)...);
 }
 
+// Reduce all over zipped iters of same size.
+template <typename LeftVals, typename RightVals = LeftVals>
+inline bool AllZip(const LeftVals& lhs, const RightVals& rhs,
+                   std::function<bool(const typename LeftVals::value_type&,
+                                      const typename RightVals::value_type&)>
+                       bin_pred) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  for (auto i = 0; i < lhs.size(); ++i) {
+    if (!bin_pred(lhs.at(i), rhs.at(i))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Reduce any over zipped iters of same size.
+template <typename LeftVals, typename RightVals = LeftVals>
+inline bool AnyZip(const LeftVals& lhs, const RightVals& rhs,
+                   std::function<bool(const typename LeftVals::value_type&,
+                                      const typename RightVals::value_type&)>
+                       bin_pred) {
+  auto neg = [&](const auto& l, const auto& r) { return !bin_pred(l, r); };
+  return !(AllZip(lhs, rhs, neg));
+}
+
 namespace internal {
 
 // Call function "get" and assert it returns value equal to given expected
 // value.
 template <class F, class Expected, typename... Args>
-void AssertEq(F get, Expected expected, Args... args) {
+inline void AssertEq(F get, Expected expected, Args... args) {
   auto status = get(args...);
   ABSL_CHECK_EQ(status, expected);
 }
 
 // Call function "get" and assert it returns an OK LiteRtStatus.
 template <class F, typename... Args>
-void AssertOk(F get, Args... args) {
+inline void AssertOk(F get, Args... args) {
   AssertEq(get, kLiteRtStatusOk, args...);
 }
 

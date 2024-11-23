@@ -237,9 +237,8 @@ cc_library(
     srcs = ["litert_model_predicates.cc"],
     hdrs = ["litert_model_predicates.h"],
     deps = [
-        ":litert_macros",
+        ":litert_detail",
         ":litert_model",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "@com_google_absl//absl/container:inlined_vector",
