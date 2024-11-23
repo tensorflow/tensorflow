@@ -96,7 +96,8 @@ bool CheckPaddingOverflow(PadContext* op_context) {
           static_cast<int64_t>(std::numeric_limits<int32_t>::min());
       int64_t int32_max =
           static_cast<int64_t>(std::numeric_limits<int32_t>::max());
-      for (int idx = 0; idx < op_context->dims; ++idx) {
+      const int paddings_total = GetTensorShape(op_context->paddings).FlatSize();
+      for (int idx = 0; idx < paddings_total; ++idx) {
         int64_t padding = paddings_data[idx];
         if (padding < int32_min || padding > int32_max) {
           return true;
