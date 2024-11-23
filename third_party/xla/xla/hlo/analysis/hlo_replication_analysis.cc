@@ -37,9 +37,87 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+namespace {
+// When cross_partition_spmd is true, returns the partition IDs of all
+// replica groups in which a given replica participates. Specfically, the k-th
+// element of the outermost vector in the returned data structure holds the
+// partition IDs converted from the global IDs in a collective's
+// replica_groups field for replica k.
+//
+// When cross_partition_spmd is false, returns the replica IDs of all
+// replica groups in which a given partition participates. Specfically, the k-th
+// element of the outermost vector in the returned data structure holds the
+// replica IDs converted from the global IDs in a collective's replica_groups
+// field for partition k.
+std::vector<std::vector<std::vector<int64_t>>> GroupsForReplicas(
+    absl::Span<const ReplicaGroup> groups, int64_t num_partitions,
+    int64_t replica_count, bool cross_partition_spmd) {
+  int64_t num_replicas = cross_partition_spmd ? replica_count : num_partitions;
+  std::vector<std::vector<std::vector<int64_t>>> groups_for_replicas(
+      num_replicas);
+  for (const ReplicaGroup& group : groups) {
+    for (int64_t idx = 0; idx < num_replicas; ++idx) {
+      std::vector<int64_t> ids;
+      for (int64_t id : group.replica_ids()) {
+        int64_t rid = id / num_partitions;
+        int64_t pid = id % num_partitions;
+        if ((cross_partition_spmd ? rid : pid) == idx) {
+          ids.push_back(cross_partition_spmd ? pid : rid);
+        }
+      }
+      if (!ids.empty()) {
+        groups_for_replicas[idx].emplace_back(std::move(ids));
+      }
+    }
+  }
+  return groups_for_replicas;
+}
+
+// Returns a vector of vectors such that two ints appear in the same inner
+// vector iff they appear in the same inner vector of both groups0 and groups1.
+//
+// Example:
+//
+//  groups0 = {{0,1,2,3},{4,5,6,7}}
+//  groups1 = {{0,3,4,5},{1,2,6,7}}
+//
+//  MergeGroups(groups0, groups1) returns {{0,3},{1,2},{4,5},{6,7}}.
+std::vector<std::vector<int64_t>> MergeGroups(
+    absl::Span<const std::vector<int64_t>> groups0,
+    absl::Span<const std::vector<int64_t>> groups1) {
+  auto groups_idx_for_target = [](absl::Span<const std::vector<int64_t>> groups,
+                                  int64_t target) -> int64_t {
+    for (int groups_idx = 0; groups_idx < groups.size(); ++groups_idx) {
+      for (int64_t element : groups[groups_idx]) {
+        if (element == target) {
+          return groups_idx;
+        }
+      }
+    }
+    LOG(FATAL) << "Unable to find target.";
+  };
+
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, std::vector<int64_t>>
+      groups_idxs_to_elements;
+  for (int groups0_idx = 0; groups0_idx < groups0.size(); ++groups0_idx) {
+    for (int64_t element : groups0[groups0_idx]) {
+      int64_t groups1_idx = groups_idx_for_target(groups1, element);
+      groups_idxs_to_elements[{groups0_idx, groups1_idx}].push_back(element);
+    }
+  }
+  std::vector<std::vector<int64_t>> merged_groups;
+  for (const auto& [pair, group] : groups_idxs_to_elements) {
+    merged_groups.emplace_back(std::move(group));
+  }
+  return merged_groups;
+}
+}  // namespace
 
 // Determines whether an HLO instruction is replicated at index based on current
-// knowledge in hlo_replication.
+// knowledge in hlo_replication. When cross_partition_spmd is true, the
+// instruction must be replicated across all partitions on each replica.
+// Similarly, when cross_partition_spmd is false, the instruction must be
+// replicated across all replicas on each partition.
 HloReplicationAnalysis::HloReplication
 HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
     const HloInstruction* hlo, const ShapeIndex& index,
@@ -78,11 +156,20 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
         return HloReplication::ReplicatedOnAllDevices();
       }
       if (support_partial_replication) {
-        std::vector<absl::Span<const int64_t>> device_sets;
+        const int64_t num_partitions =
+            hlo->GetModule()->config().num_partitions();
+        std::vector<std::vector<std::vector<int64_t>>> groups_for_replicas(
+            num_partitions);
         for (const ReplicaGroup& replica_group : hlo->replica_groups()) {
-          device_sets.push_back(replica_group.replica_ids());
+          std::vector<int64_t> group_for_replica;
+          for (auto id : replica_group.replica_ids()) {
+            group_for_replica.push_back(id);
+          }
+          groups_for_replicas[0].push_back(group_for_replica);
         }
-        return HloReplication::PartiallyReplicated(device_sets);
+        std::fill(groups_for_replicas.begin() + 1, groups_for_replicas.end(),
+                  groups_for_replicas.front());
+        return HloReplication::PartiallyReplicated(groups_for_replicas);
       } else {
         return HloReplication::UniqueOnAllDevices();
       }
@@ -94,48 +181,29 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
         global_id = Cast<HloAllGatherInstruction>(hlo)->use_global_device_ids();
       }
       if (global_id) {
-        // TODO(philipphack): The following is incorrect if partitions are
-        // replicated differently on replicas, or if replicas are replicated
-        // differently on partitions.
-        bool replicated_across_partitions = true;
-        bool replicated_across_replicas = true;
         const int64_t num_partitions =
             hlo->GetModule()->config().num_partitions();
-        absl::flat_hash_set<int64_t> visited_partitions;
-        absl::flat_hash_set<int64_t> visited_replicas;
-        std::vector<int64_t> device_set;
-        std::vector<absl::Span<const int64_t>> device_sets;
-        std::vector<std::vector<int64_t>> device_sets_storage;
-        for (const auto& group : hlo->replica_groups()) {
-          device_set.clear();
-          visited_partitions.clear();
-          visited_replicas.clear();
-          visited_replicas.reserve(group.replica_ids().size());
-          visited_partitions.reserve(group.replica_ids().size());
-          for (int64_t id : group.replica_ids()) {
-            int64_t rid = id / num_partitions;
-            int64_t pid = id % num_partitions;
-            visited_partitions.insert(pid);
-            visited_replicas.insert(rid);
-            if (support_partial_replication) {
-              device_set.push_back(cross_partition_spmd ? pid : rid);
-            }
-          }
-          replicated_across_partitions &=
-              visited_partitions.size() == num_partitions;
-          replicated_across_replicas &=
-              visited_replicas.size() ==
-              hlo->GetModule()->config().replica_count();
-          if (support_partial_replication) {
-            device_sets_storage.push_back(device_set);
-            device_sets.push_back(device_sets_storage.back());
-          }
+        const int64_t replica_count =
+            hlo->GetModule()->config().replica_count();
+        std::vector<std::vector<std::vector<int64_t>>> groups_for_replicas =
+            GroupsForReplicas(hlo->replica_groups(), num_partitions,
+                              replica_count, cross_partition_spmd);
+
+        // In the fully replicated case, there is one set of partition or
+        // replica IDs on each replica or partition. Since the flattened ID
+        // replica groups must contain every device, the size of the set is the
+        // number of partitions or replicas.
+        bool fully_replicated = true;
+        for (auto groups_for_replica : groups_for_replicas) {
+          fully_replicated &=
+              groups_for_replica.size() == 1 &&
+              groups_for_replica[0].size() ==
+                  (cross_partition_spmd ? num_partitions : replica_count);
         }
-        if ((cross_partition_spmd && replicated_across_partitions) ||
-            (!cross_partition_spmd && replicated_across_replicas)) {
+        if (fully_replicated) {
           return HloReplication::ReplicatedOnAllDevices();
         } else if (support_partial_replication) {
-          return HloReplication::PartiallyReplicated(device_sets);
+          return HloReplication::PartiallyReplicated(groups_for_replicas);
         } else {
           return HloReplication::UniqueOnAllDevices();
         }
@@ -210,12 +278,17 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
               ds_buffer->literal().GetIntegralAsS64({device_id});
           value_to_device_set[*value].push_back(device_id);
         }
-        std::vector<absl::Span<const int64_t>> device_sets;
+        int64_t num_replicas = cross_partition_spmd
+                                   ? hlo_module->config().replica_count()
+                                   : hlo_module->config().num_partitions();
+        std::vector<std::vector<std::vector<int64_t>>> groups_for_replicas(
+            num_replicas);
         for (const auto& value_and_device_set : value_to_device_set) {
-          device_sets.push_back(
-              absl::Span<const int64_t>(value_and_device_set.second));
+          groups_for_replicas[0].push_back(value_and_device_set.second);
         }
-        return HloReplication::PartiallyReplicated(device_sets);
+        std::fill(groups_for_replicas.begin() + 1, groups_for_replicas.end(),
+                  groups_for_replicas.front());
+        return HloReplication::PartiallyReplicated(groups_for_replicas);
       }
     }
   }
@@ -539,10 +612,11 @@ HloReplicationAnalysis::HloReplication::HloReplication()
 
 HloReplicationAnalysis::HloReplication::HloReplication(
     HloReplicationAnalysis::HloReplication::State state,
-    absl::Span<const int64_t> device_set_root)
+    absl::Span<const std::vector<std::vector<int64_t>>> groups_for_replicas)
     : state_(state),
-      device_set_root_(device_set_root.begin(), device_set_root.end()) {
-  CHECK(state == State::kPartiallyReplicated || device_set_root_.empty());
+      groups_for_replicas_(groups_for_replicas.begin(),
+                           groups_for_replicas.end()) {
+  CHECK(state == State::kPartiallyReplicated || groups_for_replicas_.empty());
 }
 
 HloReplicationAnalysis::HloReplication
@@ -557,22 +631,8 @@ HloReplicationAnalysis::HloReplication::UniqueOnAllDevices() {
 
 HloReplicationAnalysis::HloReplication
 HloReplicationAnalysis::HloReplication::PartiallyReplicated(
-    absl::Span<const absl::Span<const int64_t>> device_sets) {
-  int64_t max_device_id = 0;
-  for (const absl::Span<const int64_t>& device_set : device_sets) {
-    for (int64_t device_id : device_set) {
-      max_device_id = std::max(max_device_id, device_id);
-    }
-  }
-  std::vector<int64_t> device_set_root;
-  device_set_root.resize(max_device_id + 1);
-  for (const absl::Span<const int64_t>& device_set : device_sets) {
-    int64_t min_device_id = *absl::c_min_element(device_set);
-    for (int64_t device_id : device_set) {
-      device_set_root[device_id] = min_device_id;
-    }
-  }
-  return HloReplication(State::kPartiallyReplicated, device_set_root);
+    absl::Span<const std::vector<std::vector<int64_t>>> groups_for_replicas) {
+  return HloReplication(State::kPartiallyReplicated, groups_for_replicas);
 }
 
 HloReplicationAnalysis::HloReplication
@@ -590,27 +650,16 @@ HloReplicationAnalysis::HloReplication::Merge(
         case State::kUniqueOnAllDevices:
           return other;
         case State::kPartiallyReplicated: {
-          absl::flat_hash_map<int64_t, std::vector<int64_t>>
-              value_to_device_set;
-          size_t num_devices = device_set_root_.size();
-          for (int64_t device_id = 0; device_id < num_devices; ++device_id) {
-            int64_t new_value = device_set_root_[device_id] * num_devices +
-                                other.device_set_root_[device_id];
-            value_to_device_set[new_value].push_back(device_id);
-          }
-          CHECK_LE(value_to_device_set.size(), num_devices);
-          if (value_to_device_set.size() == 1) {
-            return ReplicatedOnAllDevices();
-          } else if (value_to_device_set.size() < num_devices) {
-            std::vector<absl::Span<const int64_t>> device_sets;
-            for (const auto& value_and_device_set : value_to_device_set) {
-              device_sets.push_back(
-                  absl::Span<const int64_t>(value_and_device_set.second));
-            }
-            return PartiallyReplicated(device_sets);
-          } else {
-            return UniqueOnAllDevices();
-          }
+          CHECK_EQ(groups_for_replicas_.size(),
+                   other.groups_for_replicas_.size());
+          // Merge the groups for each replica or partition.
+          std::vector<std::vector<std::vector<int64_t>>>
+              merged_groups_for_replicas(groups_for_replicas_.size());
+          std::transform(groups_for_replicas_.begin(),
+                         groups_for_replicas_.end(),
+                         other.groups_for_replicas_.begin(),
+                         merged_groups_for_replicas.begin(), MergeGroups);
+          return PartiallyReplicated(merged_groups_for_replicas);
         }
       }
     }
@@ -622,7 +671,7 @@ bool HloReplicationAnalysis::HloReplication::Equal(
   if (state_ != other.state_) {
     return false;
   }
-  return absl::c_equal(device_set_root_, other.device_set_root_);
+  return absl::c_equal(groups_for_replicas_, other.groups_for_replicas_);
 }
 
 bool HloReplicationAnalysis::HloReplication::IsReplicatedOnAllDevices() const {
@@ -635,10 +684,24 @@ bool HloReplicationAnalysis::HloReplication::IsUniqueOnAllDevices() const {
 
 bool HloReplicationAnalysis::HloReplication::IsReplicatedWithinSubgroup(
     absl::Span<const int64_t> device_ids) const {
-  if (device_ids.empty()) return true;
-  return absl::c_all_of(device_ids, [this, &device_ids](int device_id) {
-    return device_set_root_[device_id] == device_set_root_[device_ids.front()];
-  });
+  for (std::vector<std::vector<int64_t>> groups_for_replica :
+       groups_for_replicas_) {
+    // All groups for all replicas must contain all or none of the elements of
+    // device_ids.
+    for (std::vector<int64_t> group_for_replica : groups_for_replica) {
+      int match_count = 0;
+      for (int64_t device_id : device_ids) {
+        match_count +=
+            std::find(group_for_replica.begin(), group_for_replica.end(),
+                      device_id) != group_for_replica.end();
+      }
+      if (match_count && match_count != device_ids.size()) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 std::string HloReplicationAnalysis::HloReplication::ToString() const {
@@ -648,8 +711,18 @@ std::string HloReplicationAnalysis::HloReplication::ToString() const {
     case State::kUniqueOnAllDevices:
       return "UniqueOnAllDevices";
     case State::kPartiallyReplicated:
-      return absl::StrCat("PartiallyReplicated{",
-                          absl::StrJoin(device_set_root_, ","), "}");
+      std::ostringstream oss;
+      oss << "PartiallyReplicated";
+      for (int k = 0; k < groups_for_replicas_.size(); ++k) {
+        oss << " device" << k << "{";
+        for (int l = 0; l < groups_for_replicas_[k].size(); ++l) {
+          oss << "{";
+          oss << absl::StrJoin(groups_for_replicas_[k][l], ",");
+          oss << (l == groups_for_replicas_[k][l].size() - 1 ? "}" : "},");
+        }
+        oss << "}" << std::endl;
+      }
+      return oss.str();
   }
 }
 
