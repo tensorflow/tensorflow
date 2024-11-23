@@ -21,8 +21,8 @@ This document provides an overview of GPUs support in TensorFlow Lite, and some
 advanced uses for GPU processors. For more specific information about
 implementing GPU support on specific platforms, see the following guides:
 
-*   [GPU support for Android](../android/delegates/gpu)
-*   [GPU support for iOS](../ios/delegates/gpu)
+*   [GPU support for Android](https://ai.google.dev/edge/litert/android/gpu)
+*   [GPU support for iOS](https://ai.google.dev/edge/litert/ios/gpu)
 
 ## GPU ML operations support {:#supported_ops}
 
