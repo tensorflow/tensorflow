@@ -84,8 +84,8 @@ absl::StatusOr<const TfTensorView> TensorView::New<const ::tensorflow::Tensor>(
 template <typename DType>
 TfTensorView::TfTensorView(const ::tensorflow::Tensor *wrapped_tensor,
                            const DType &dtype)
-    : TensorView({}, wrapped_tensor->data(),
-                 wrapped_tensor->tensor_data().size(), dtype) {
+    : TensorView({}, wrapped_tensor->data(), wrapped_tensor->TotalBytes(),
+                 dtype) {
   shape_data_.resize(wrapped_tensor->shape().dims());
   for (int dim = 0; dim < wrapped_tensor->shape().dims(); ++dim) {
     shape_data_[dim] = wrapped_tensor->shape().dim_size(dim);
