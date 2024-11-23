@@ -136,7 +136,7 @@ using ControlEdges = std::vector<ControlEdge>;
 // With an additional control dependency `control_edges == {{3, 4}}` (notated
 // '==>'), execution of node 4 requires prior execution of node 3:
 //
-//                    /------------\ // Adjusted to avoid warnings
+//                    /------------\ 
 //                    |            v
 // 0 --> 1 --> 2* --> 3* ==> 4 --> 5
 //       |                   ^
