@@ -209,7 +209,7 @@ bool IsProfitableFusionCandidate(const HloInstruction& instr,
                                    : &instr;
 
   // Too large shapes are not easily profitable.
-  if (root->opcode() == HloOpcode::kTuple) {
+  if (HloPredicateIsOp<HloOpcode::kTuple>(root)) {
     // Since all output shapes are the same, use the first shape as the
     // representative.
     Shape shape = root->operand(0)->shape();
@@ -244,7 +244,7 @@ bool AnyOpndIsParamSharedAmongFusions(
     const HloInstruction* instr,
     const absl::flat_hash_set<HloInstruction*>& fusion_instrs) {
   return absl::c_any_of(instr->operands(), [&](const HloInstruction* opnd) {
-    return opnd->opcode() == HloOpcode::kParameter &&
+    return HloPredicateIsOp<HloOpcode::kParameter>(opnd) &&
            absl::c_any_of(opnd->users(), [&](const HloInstruction* user) {
              return user != instr && fusion_instrs.contains(user);
            });
@@ -252,8 +252,7 @@ bool AnyOpndIsParamSharedAmongFusions(
 }
 
 HloInstruction* LatestNonTrivialAncestor(HloInstruction* hlo) {
-  if (hlo->opcode() == HloOpcode::kGetTupleElement ||
-      hlo->opcode() == HloOpcode::kBitcast) {
+  if (HloPredicateIsOp<HloOpcode::kGetTupleElement, HloOpcode::kBitcast>(hlo)) {
     return LatestNonTrivialAncestor(hlo->mutable_operand(0));
   }
   return hlo;
@@ -433,7 +432,7 @@ absl::StatusOr<bool> HorizontalLoopFusionImpl::FuseConsumerOperands(
     std::vector<HloInstruction*> fusion_instrs;
     for (HloInstruction* instr : fusibles) {
       VLOG(2) << "next candidate: " << instr->ToString();
-      if (instr->opcode() == HloOpcode::kFusion) {
+      if (HloPredicateIsOp<HloOpcode::kFusion>(instr)) {
         fusion_instrs.push_back(instr);
       } else {
         TF_ASSIGN_OR_RETURN(
@@ -494,8 +493,9 @@ absl::Status HorizontalLoopFusionImpl::CreateFusedComputation(
                                 ->fused_instructions_computation()
                                 ->MakeInstructionPostOrder();
     for (HloInstruction* old_instr : def_to_use_order) {
-      if (old_instr->opcode() == HloOpcode::kParameter ||
-          (sliced_input_fusion && old_instr->opcode() == HloOpcode::kTuple &&
+      if (HloPredicateIsOp<HloOpcode::kParameter>(old_instr) ||
+          (sliced_input_fusion &&
+           HloPredicateIsOp<HloOpcode::kTuple>(old_instr) &&
            old_instr == fused_fusion_instrs[i]->fused_expression_root())) {
         // Parameters have been created, and we don't need tuples from
         // multi-output fusions, as we will directly reference the tuple
