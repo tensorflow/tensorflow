@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
@@ -108,13 +109,12 @@ static bool TerminateOnNcclError() {
 
 NcclCliqueCommunicators::NcclCliqueCommunicators(
     NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
-    absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators)
+    absl::btree_map<int32_t, std::unique_ptr<Communicator>> communicators)
     : clique_key_(std::move(clique_key)),
       clique_id_(std::move(clique_id)),
       communicators_(std::move(communicators)) {}
 
-std::optional<NcclApi::NcclCommHandle> NcclCliqueCommunicators::comm(
-    int32_t rank) {
+std::optional<Communicator*> NcclCliqueCommunicators::comm(int32_t rank) {
   if (auto it = communicators_.find(rank); it != communicators_.end()) {
     return it->second.get();
   }
@@ -126,7 +126,7 @@ bool NcclCliqueCommunicators::IsLocal() const {
 }
 
 void NcclCliqueCommunicators::ForEachComm(
-    absl::FunctionRef<void(int32_t, NcclApi::NcclCommHandle)> fn) {
+    absl::FunctionRef<void(int32_t, Communicator*)> fn) {
   for (auto& [rank, comm] : communicators_) {
     fn(rank, comm.get());
   }
@@ -171,7 +171,7 @@ static NcclCliques& GetNcclCliques() {
 // Runs an async error check for a `comm` and aborts it if it is in the
 // error state. It will free resources that are allocated to a communicator
 // and abort any uncompleted operations before destroying the communicator.
-static absl::Status CheckComm(NcclApi::NcclCommHandle comm) {
+static absl::Status CheckComm(Communicator* comm) {
   absl::Status async_err = NcclApi::Default()->CommGetAsyncError(comm);
   if (!async_err.ok()) {
     LOG(ERROR) << "Aborting communicator: " << comm
@@ -195,7 +195,7 @@ static void CheckClique(const NcclCliqueKey& clique_key,
     VLOG(5) << "Checking NCCL clique " << clique_key.ToString()
             << " for async errors; num_communicators="
             << clique->num_communicators();
-    clique->ForEachComm([](int32_t rank, NcclApi::NcclCommHandle comm) {
+    clique->ForEachComm([](int32_t rank, Communicator* comm) {
       if (auto status = CheckComm(comm); !status.ok()) LOG(ERROR) << status;
     });
   } else {
@@ -293,10 +293,10 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
         clique_id.fingerprint());
 
     TF_ASSIGN_OR_RETURN(
-        std::vector<NcclApi::OwnedNcclComm> created_comms,
+        std::vector<std::unique_ptr<Communicator>> created_comms,
         NcclApi::Default()->CommInitRanks(nranks, clique_id, ranks, config));
 
-    absl::btree_map<int32_t, NcclApi::OwnedNcclComm> comms;
+    absl::btree_map<int32_t, std::unique_ptr<Communicator>> comms;
     for (size_t i = 0; i < ranks.size(); ++i) {
       comms[ranks[i].rank] = std::move(created_comms[i]);
     }
@@ -413,7 +413,7 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
 
     // Collect parent communicators we'll be splitting from and keys for
     // creating new communicators.
-    std::vector<NcclApi::NcclCommHandle> parent_comms;
+    std::vector<Communicator*> parent_comms;
     std::vector<int32_t> keys;
 
     for (auto& [parent_rank, split_rank] : rank_mapping) {
@@ -441,7 +441,7 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
         auto splitted_comms,
         NcclApi::Default()->CommSplit(parent_comms, color, keys, config));
 
-    absl::btree_map<int32_t, NcclApi::OwnedNcclComm> comms;
+    absl::btree_map<int32_t, std::unique_ptr<Communicator>> comms;
     for (size_t i = 0; i < splitted_comms.size(); ++i) {
       comms[keys[i]] = std::move(splitted_comms[i]);
     }
@@ -552,15 +552,14 @@ absl::Status NcclClique::CheckAsyncErrors() {
 
 absl::Status NcclCliqueCommunicators::AsyncErrorChecker::Check() {
   absl::Status status = absl::OkStatus();
-  communicators_.ForEachComm(
-      [&status](int32_t rank, NcclApi::NcclCommHandle comm) {
-        // Do not overwrite previous errors.
-        if (!status.ok()) return;
-        status = NcclApi::Default()->CommGetAsyncError(comm);
-        if (!status.ok()) {
-          LOG(ERROR) << "NCCL async error (rank " << rank << "): " << status;
-        }
-      });
+  communicators_.ForEachComm([&status](int32_t rank, Communicator* comm) {
+    // Do not overwrite previous errors.
+    if (!status.ok()) return;
+    status = NcclApi::Default()->CommGetAsyncError(comm);
+    if (!status.ok()) {
+      LOG(ERROR) << "NCCL async error (rank " << rank << "): " << status;
+    }
+  });
   return status;
 }
 

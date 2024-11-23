@@ -15,16 +15,19 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -63,7 +66,7 @@ absl::Status PersistentPlanAllocator::Deallocate(se::DeviceMemoryBase mem) {
 }
 
 ScopedPersistentPlanAllocator::ScopedPersistentPlanAllocator(
-    NcclCommHandle, tsl::RCReference<PersistentPlanAllocator>) {
+    Communicator*, tsl::RCReference<PersistentPlanAllocator>) {
   // Suppress clang unused private field warnings.
   (void)comm_;
   (void)recover_;
@@ -86,29 +89,29 @@ class NcclApiStub final : public NcclApi {
     return UnimplementedError();
   }
 
-  absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommInitRanks(
       int32_t, const NcclCliqueId&, absl::Span<const DeviceRank>,
       const Config&) final {
     return UnimplementedError();
   }
 
-  absl::StatusOr<std::vector<OwnedNcclComm>> CommSplit(
-      absl::Span<const NcclCommHandle>, int32_t, absl::Span<const int32_t>,
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommSplit(
+      absl::Span<const Communicator* const>, int32_t, absl::Span<const int32_t>,
       std::optional<Config>) final {
     return UnimplementedError();
   }
 
-  absl::Status CommAbort(NcclCommHandle) final { return UnimplementedError(); }
+  absl::Status CommAbort(Communicator*) final { return UnimplementedError(); }
 
-  absl::Status CommFinalize(NcclCommHandle) final {
+  absl::Status CommFinalize(Communicator*) final {
     return UnimplementedError();
   }
 
-  absl::StatusOr<int32_t> CommCount(NcclCommHandle) final {
+  absl::StatusOr<int32_t> CommCount(Communicator*) final {
     return UnimplementedError();
   }
 
-  absl::Status CommGetAsyncError(NcclCommHandle) final {
+  absl::Status CommGetAsyncError(Communicator*) final {
     return UnimplementedError();
   }
 
@@ -116,57 +119,57 @@ class NcclApiStub final : public NcclApi {
   absl::Status GroupEnd() final { return UnimplementedError(); }
 
   absl::Status AllReduce(se::DeviceMemoryBase, se::DeviceMemoryBase,
-                         PrimitiveType, size_t, ReductionKind, NcclCommHandle,
+                         PrimitiveType, size_t, ReductionKind, Communicator*,
                          se::Stream*) final {
     return UnimplementedError();
   }
 
   absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                         size_t count, size_t root, NcclCommHandle comm,
+                         size_t count, size_t root, Communicator* comm,
                          se::Stream* stream) final {
     return UnimplementedError();
   }
 
   absl::Status ReduceScatter(se::DeviceMemoryBase, se::DeviceMemoryBase,
                              PrimitiveType, size_t, ReductionKind,
-                             NcclCommHandle, se::Stream*) final {
+                             Communicator*, se::Stream*) final {
     return UnimplementedError();
   }
 
   absl::Status AllGather(se::DeviceMemoryBase, se::DeviceMemoryBase,
-                         PrimitiveType, size_t, NcclCommHandle,
+                         PrimitiveType, size_t, Communicator*,
                          se::Stream*) final {
     return UnimplementedError();
   }
 
   absl::Status Send(se::DeviceMemoryBase, PrimitiveType, size_t, int32_t,
-                    NcclCommHandle, se::Stream*) final {
+                    Communicator*, se::Stream*) final {
     return UnimplementedError();
   }
 
-  absl::Status SendPtrToPeer(void* ptr, int32_t peer, NcclCommHandle comm,
+  absl::Status SendPtrToPeer(void* ptr, int32_t peer, Communicator* comm,
                              se::Stream* stream) final {
     return UnimplementedError();
   }
 
   absl::Status Recv(se::DeviceMemoryBase, PrimitiveType, size_t, int32_t,
-                    NcclCommHandle, se::Stream*) final {
+                    Communicator*, se::Stream*) final {
     return UnimplementedError();
   }
 
-  absl::Status RecvPtrFromPeer(void* ptr, int32_t peer, NcclCommHandle comm,
+  absl::Status RecvPtrFromPeer(void* ptr, int32_t peer, Communicator* comm,
                                se::Stream* stream) final {
     return UnimplementedError();
   }
 
   absl::StatusOr<NcclRegisteredBufferHandle> RegisterBuffer(
-      NcclCommHandle, se::DeviceMemoryBase) final {
+      Communicator*, se::DeviceMemoryBase) final {
     return UnimplementedError();
   }
 
   absl::StatusOr<NcclRegisteredBufferHandle> DeregisterBuffer(
-      NcclCommHandle, NcclRegisteredBufferHandle) final {
+      Communicator*, NcclRegisteredBufferHandle) final {
     return UnimplementedError();
   }
 };

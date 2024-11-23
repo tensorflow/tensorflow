@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <map>
 #include <memory>
 #include <ostream>
@@ -32,7 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/Operation.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,7 +39,6 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/service_executable_run_options.h"
@@ -215,8 +213,8 @@ class Thunk {
     CollectiveCliques() = default;
     explicit CollectiveCliques(NcclClique::AcquiredCliquesMap cliques_map);
 
-    absl::StatusOr<NcclApi::NcclCommHandle> GetComm(
-        const NcclCliqueKey& clique_key, int32_t rank) const;
+    absl::StatusOr<Communicator*> GetComm(const NcclCliqueKey& clique_key,
+                                          int32_t rank) const;
 
     // Returns the number of communicators in a collective clique. Returns error
     // if we do not have an acquired clique for a given key.

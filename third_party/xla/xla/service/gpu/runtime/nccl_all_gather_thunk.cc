@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -100,7 +101,7 @@ absl::Status NcclAllGatherStartThunk::RunNcclCollective(
 
 absl::Status RunAllGather(NcclApi* nccl_api,
                           std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, NcclApi::NcclCommHandle comm) {
+                          se::Stream& stream, Communicator* comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-gather from device ordinal: " << device_ordinal;
   TF_RETURN_IF_ERROR(

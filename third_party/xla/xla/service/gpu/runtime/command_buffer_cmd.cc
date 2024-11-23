@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/call_frame.h"
@@ -1684,7 +1685,7 @@ absl::Status AllReduceCmd::Record(const Thunk::ExecuteParams& execute_params,
       GetNcclComm(*execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
-  NcclApi::NcclCommHandle comm = comm_handle.comm_handle;
+  Communicator* comm = comm_handle.comm_handle;
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
       comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
@@ -1755,7 +1756,7 @@ absl::Status ReduceScatterCmd::Record(
       GetNcclComm(*execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
-  NcclApi::NcclCommHandle comm = comm_handle.comm_handle;
+  Communicator* comm = comm_handle.comm_handle;
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
       comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
@@ -1825,7 +1826,7 @@ absl::Status AllToAllCmd::Record(const Thunk::ExecuteParams& execute_params,
       GetNcclComm(*execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
-  NcclApi::NcclCommHandle comm = comm_handle.comm_handle;
+  Communicator* comm = comm_handle.comm_handle;
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
       comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
@@ -1893,7 +1894,7 @@ absl::Status AllGatherCmd::Record(const Thunk::ExecuteParams& execute_params,
       GetNcclComm(*execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
-  NcclApi::NcclCommHandle comm = comm_handle.comm_handle;
+  Communicator* comm = comm_handle.comm_handle;
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
       comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
@@ -1962,7 +1963,7 @@ absl::Status CollectiveBroadcastCmd::Record(
       GetNcclComm(*execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
-  NcclApi::NcclCommHandle comm = comm_handle.comm_handle;
+  Communicator* comm = comm_handle.comm_handle;
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
       comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -215,7 +216,7 @@ bool NcclAllToAllStartThunk::is_local() const {
 
 absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
-                         se::Stream& stream, NcclApi::NcclCommHandle comm) {
+                         se::Stream& stream, Communicator* comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal;
   TF_RETURN_IF_ERROR(
@@ -275,7 +276,7 @@ absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
 absl::Status RunMemCpyAllToAll(
     NcclApi* nccl_api, bool has_split_dimension,
     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    NcclApi::NcclCommHandle comm,
+    Communicator* comm,
     absl::flat_hash_map<int64_t, uint64_t>& send_pointer_map,
     absl::flat_hash_map<int64_t, uint64_t>& receive_pointer_map) {
   int device_ordinal = stream.parent()->device_ordinal();

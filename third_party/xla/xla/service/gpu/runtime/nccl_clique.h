@@ -29,11 +29,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/lockable.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla::gpu {
 
@@ -93,18 +94,17 @@ class NcclCliqueCommunicators {
 
   NcclCliqueCommunicators(
       NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
-      absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators);
+      absl::btree_map<int32_t, std::unique_ptr<Communicator>> communicators);
 
   // Returns a NCCL communicator for a given rank if it's in a clique.
-  std::optional<NcclApi::NcclCommHandle> comm(int32_t rank);
+  std::optional<Communicator*> comm(int32_t rank);
 
   // Return true if clique is local: all communicators belong to current
   // process. Non-local cliques spans multiple processes (typically hosts).
   bool IsLocal() const;
 
   // Calls `fn` for each communicator in the clique.
-  void ForEachComm(
-      absl::FunctionRef<void(int32_t, NcclApi::NcclCommHandle)> fn);
+  void ForEachComm(absl::FunctionRef<void(int32_t, Communicator*)> fn);
 
   const NcclCliqueKey& clique_key() const { return clique_key_; }
   const std::optional<NcclCliqueId>& clique_id() const { return clique_id_; }
@@ -119,7 +119,7 @@ class NcclCliqueCommunicators {
   std::optional<NcclCliqueId> clique_id_;
 
   // TODO(ezhulenev): Switch this map to GlobalDeviceId key.
-  absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators_;
+  absl::btree_map<int32_t, std::unique_ptr<Communicator>> communicators_;
 };
 
 struct NcclCliqueName {
@@ -141,8 +141,9 @@ class NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
   // To get the lock-free reference to the communicators for the async
   // error checks, the constructor intentionally leaks the reference
   // to the communicators from an acquired lock.
-  NcclClique(NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
-             absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators)
+  NcclClique(
+      NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
+      absl::btree_map<int32_t, std::unique_ptr<Communicator>> communicators)
       : Lockable(std::move(clique_key), clique_id, std::move(communicators)),
         async_error_checker_(Acquire()->GetChecker()) {}
 

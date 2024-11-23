@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -67,8 +68,7 @@ absl::Status NcclCollectiveBroadcastStartThunk::RunNcclCollective(
 }
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream,
-                                    NcclApi::NcclCommHandle comm,
+                                    se::Stream& stream, Communicator* comm,
                                     NcclApi* nccl_api) {
   TF_RETURN_IF_ERROR(nccl_api->GroupStart());
   for (auto buffer : buffers) {

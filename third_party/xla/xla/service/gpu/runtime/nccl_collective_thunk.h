@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
@@ -106,14 +107,15 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
   return config;
 }
 
-// This wraps the ncclCommHandle object along with other information
+// This wraps the communicator object along with other information
 // that could be useful.
+// TODO(b/380457503): Find a better name for this class.
 struct NcclCommHandleWrapper {
-  NcclCommHandleWrapper(NcclApi::NcclCommHandle handle, bool is_local)
+  NcclCommHandleWrapper(Communicator* handle, bool is_local)
       : comm_handle(handle), is_local(is_local) {}
 
   // Communicator handle.
-  NcclApi::NcclCommHandle comm_handle;
+  Communicator* comm_handle;
   // Whether this comm is a node-local comm.
   bool is_local;
 };
@@ -329,7 +331,7 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 absl::Status MaybeRegisterBuffers(NcclApi* nccl_api,
                                   se::StreamExecutor* executor,
                                   const std::vector<DeviceBufferPair>& buffers,
-                                  NcclApi::NcclCommHandle comm);
+                                  Communicator* comm);
 
 }  // namespace gpu
 }  // namespace xla

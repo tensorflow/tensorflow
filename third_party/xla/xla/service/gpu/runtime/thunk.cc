@@ -18,28 +18,25 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <ostream>
 #include <string>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/service_executable_run_options.h"
@@ -57,7 +54,7 @@ Thunk::CollectiveCliques::CollectiveCliques(
     NcclClique::AcquiredCliquesMap cliques_map)
     : cliques_map_(std::move(cliques_map)) {}
 
-absl::StatusOr<NcclApi::NcclCommHandle> Thunk::CollectiveCliques::GetComm(
+absl::StatusOr<Communicator*> Thunk::CollectiveCliques::GetComm(
     const NcclCliqueKey& clique_key, int32_t rank) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
@@ -66,7 +67,7 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
 
 absl::Status RunAllGather(NcclApi* nccl_api,
                           std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, NcclApi::NcclCommHandle comm);
+                          se::Stream& stream, Communicator* comm);
 
 }  // namespace gpu
 }  // namespace xla

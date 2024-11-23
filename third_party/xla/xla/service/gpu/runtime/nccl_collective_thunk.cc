@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "mlir/IR/Value.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
@@ -265,7 +266,7 @@ absl::StatusOr<NcclCommHandleWrapper> GetNcclComm(
   std::optional<int64_t> rank = clique_key.rank(params.global_device_id);
   TF_ASSIGN_OR_RETURN(bool is_local,
                       collective_cliques.is_local_clique(clique_key));
-  TF_ASSIGN_OR_RETURN(NcclApi::NcclCommHandle comm,
+  TF_ASSIGN_OR_RETURN(Communicator * comm,
                       collective_cliques.GetComm(std::move(clique_key), *rank));
 
   return NcclCommHandleWrapper(comm, is_local);
@@ -299,14 +300,14 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 }
 
 absl::Status RegisterBufferOnce(NcclApi* nccl_api, se::StreamExecutor* executor,
-                                NcclApi::NcclCommHandle comm,
+                                Communicator* comm,
                                 se::DeviceMemoryBase buffer) {
   // Keep track of which communicators we have registered for already.
   // Each ncclMemAlloc'd buffer needs to be registered once per comm.
   struct RegisteredBuffers {
     absl::Mutex mu;
     // Device ordinal, communicator, and base pointer address.
-    absl::flat_hash_set<std::tuple<int, NcclApi::NcclCommHandle, void*>> records
+    absl::flat_hash_set<std::tuple<int, Communicator*, void*>> records
         ABSL_GUARDED_BY(mu);
     // Buffers could be deregistered with ncclCommDeregister.
     std::vector<NcclApi::NcclRegisteredBufferHandle> handles
@@ -337,7 +338,7 @@ absl::Status RegisterBufferOnce(NcclApi* nccl_api, se::StreamExecutor* executor,
 absl::Status MaybeRegisterBuffers(NcclApi* nccl_api,
                                   se::StreamExecutor* executor,
                                   const std::vector<DeviceBufferPair>& buffers,
-                                  NcclApi::NcclCommHandle comm) {
+                                  Communicator* comm) {
   for (int i = 0; i < buffers.size(); ++i) {
     if (buffers[i].source_memory_space == kCollectiveMemorySpaceColor) {
       TF_RETURN_IF_ERROR(RegisterBufferOnce(nccl_api, executor, comm,
