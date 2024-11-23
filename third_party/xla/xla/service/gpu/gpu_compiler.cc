@@ -218,6 +218,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/scatter_expander.h"
 #include "xla/service/gpu/transforms/scatter_slice_simplifier.h"
 #include "xla/service/gpu/transforms/softmax_rewriter_triton.h"
+#include "xla/service/gpu/transforms/sort_rewriter.h"
 #include "xla/service/gpu/transforms/stream_attribute_annotator.h"
 #include "xla/service/gpu/transforms/stream_attribute_async_wrapper.h"
 #include "xla/service/gpu/transforms/topk_specializer.h"
@@ -675,9 +676,6 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<RngExpander>();
   pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
-  // Comparison total order expander
-  pipeline.AddPass<ComparisonExpander>(std::array{std::make_pair(BF16, F32)});
-
   // Remove zero-sized HLO from the input so that other passes don't have to
   // handle it.
   pipeline.AddPass<ZeroSizedHloElimination>();
@@ -757,9 +755,6 @@ absl::Status RunOptimizationPasses(
   }
 
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
-
-  // Expand the sort op to support stable sorting if required.
-  pipeline.AddPass<StableSortExpander>();
 
   se::GpuComputeCapability gpu_version =
       gpu_target_config.device_description.gpu_compute_capability();
@@ -1094,9 +1089,7 @@ void AddDoubleBufferingPasses(const HloModule& module,
 
 absl::Status RunPostFusionPasses(
     HloModule* hlo_module, const se::DeviceDescription& device_description,
-    int pointer_size,
-    std::function<absl::Status(HloPassPipeline*, const DebugOptions&)>
-        add_custom_kernel_replacement_passes) {
+    int pointer_size) {
   const DebugOptions& opts = hlo_module->config().debug_options();
 
   HloPassPipeline pipeline("post-fusion optimization");
@@ -1123,8 +1116,6 @@ absl::Status RunPostFusionPasses(
       /*pointer_size=*/pointer_size);
 
   pipeline.AddPass<AllReduceContiguous>();
-
-  TF_RETURN_IF_ERROR(add_custom_kernel_replacement_passes(&pipeline, opts));
 
   int32_t blueconnect_num_devices_per_host =
       hlo_module->config()
@@ -1303,6 +1294,21 @@ absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
   return absl::OkStatus();
 }
 
+absl::Status RunSortOptimizationPasses(HloModule* hlo_module) {
+  HloPassPipeline pipeline("sort-optimization");
+  // Comparison total order expander
+  pipeline.AddPass<ComparisonExpander>(std::array{std::make_pair(BF16, F32)});
+  // Expand the sort op to support stable sorting if required.
+  pipeline.AddPass<StableSortExpander>();
+
+  if (hlo_module->config().debug_options().xla_gpu_enable_cub_radix_sort()) {
+    pipeline.AddPass<SortRewriter>();
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::Status GpuCompiler::RunCollectiveScheduleLinearizerPasses(
@@ -1360,6 +1366,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   TF_RETURN_IF_ERROR(
       RunLayoutAssignmentPasses(hlo_module, gpu_version, dnn_version));
+  TF_RETURN_IF_ERROR(RunSortOptimizationPasses(hlo_module));
 
   TF_RETURN_IF_ERROR(RunLayoutNormalizationPasses(hlo_module, gpu_version));
 
@@ -1375,10 +1382,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
                                      thread_pool.get_mutable(),
                                      ShapeSizeBytesFunction()));
   TF_RETURN_IF_ERROR(RunPostFusionPasses(
-      hlo_module, gpu_target_config.device_description, pointer_size_,
-      [this](HloPassPipeline* pipeline, const DebugOptions& debug_options) {
-        return AddCustomKernelReplacementPasses(pipeline, debug_options);
-      }));
+      hlo_module, gpu_target_config.device_description, pointer_size_));
   TF_RETURN_IF_ERROR(RunPostFusionCollectiveOptimizationPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
       hlo_module, layout_insensitive_algsimp_opts, gpu_version));

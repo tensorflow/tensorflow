@@ -170,12 +170,6 @@ class GpuCompiler : public LLVMCompiler {
     return absl::OkStatus();
   }
 
-  // Add passes that convert HLO operations to custom kernels.
-  virtual absl::Status AddCustomKernelReplacementPasses(
-      HloPassPipeline* pipeline, const DebugOptions& debug_options) {
-    return absl::OkStatus();
-  }
-
   // Runs cuDNN fusion and custom call compiler passes.
   virtual absl::Status RunCudnnCompilerPasses(HloModule* module,
                                               se::StreamExecutor* stream_exec,

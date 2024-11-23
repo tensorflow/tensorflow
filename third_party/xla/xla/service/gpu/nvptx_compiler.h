@@ -80,9 +80,6 @@ class NVPTXCompiler : public GpuCompiler {
       const MultiProcessKeyValueStore& key_value_store,
       const se::SemanticVersion& toolkit_version) override;
 
-  absl::Status AddCustomKernelReplacementPasses(
-      HloPassPipeline* pipeline, const DebugOptions& debug_options) override;
-
   absl::Status RunCudnnCompilerPasses(HloModule* module,
                                       se::StreamExecutor* stream_exec,
                                       BinaryMap* dnn_compiled_graphs) override;
