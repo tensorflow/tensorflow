@@ -278,22 +278,6 @@ cc_library(
 )
 
 cc_library(
-    name = "statusor",
-    hdrs = [
-        "statusor.h",
-    ],
-    linkopts = select({
-        "//xla/tsl:freebsd": ["-lexecinfo"],
-        "//conditions:default": [],
-    }),
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
     name = "fp_util",
     hdrs = ["fp_util.h"],
     visibility = ["//visibility:public"],
