@@ -68,13 +68,6 @@ using DeviceTopologyPair =
 
 class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
  public:
-  static StreamExecutorGpuTopologyDescription Create(
-      const PjRtPlatformId platform_id, const absl::string_view platform_name,
-      std::shared_ptr<const GpuTopology> gpu_topology) {
-    return StreamExecutorGpuTopologyDescription(platform_id, platform_name,
-                                                gpu_topology);
-  }
-
   StreamExecutorGpuTopologyDescription(
       const PjRtPlatformId platform_id, const absl::string_view platform_name,
       std::shared_ptr<const GpuTopology> gpu_topology,

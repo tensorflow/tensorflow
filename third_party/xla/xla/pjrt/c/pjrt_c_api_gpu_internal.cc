@@ -268,11 +268,17 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
       device_ids, target_config_proto.device_description_str(),
       sizes.num_slices, sizes.num_hosts_per_slice, sizes.num_devices_per_host);
 
+  std::string target_config_attr;
+  if (!tsl::protobuf::TextFormat::PrintToString(target_config_proto,
+                                                &target_config_attr)) {
+    return new PJRT_Error{
+        absl::FailedPreconditionError("Cannot serialize target_config_proto")};
+  }
   auto pjrt_topology =
       std::make_unique<xla::StreamExecutorGpuTopologyDescription>(
           platform_id, platform_name, std::move(gpu_topology),
           absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>{
-              {"target_config", target_config_proto.SerializeAsString()}});
+              {"target_config", std::move(target_config_attr)}});
   args->topology = CreateWrapperDeviceTopology(std::move(pjrt_topology));
   return nullptr;
 }
