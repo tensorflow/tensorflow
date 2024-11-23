@@ -481,6 +481,9 @@ cc_library(
     name = "registry",
     srcs = ["registry.cc"],
     hdrs = ["registry.h"],
+    visibility = default_ifrt_proxy_visibility + if_google([
+        "//xla/python/ifrt_proxy/common/google:cc_client_users",
+    ]),
     deps = [
         ":global_flags",
         "//xla/python/ifrt",
