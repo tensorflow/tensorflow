@@ -14,6 +14,7 @@
 
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 
@@ -169,27 +170,40 @@ Expected<uint32_t> PushTflBuffer(TflModel& tfl_model,
   return tfl_model.buffers.size() - 1;
 }
 
-Expected<TflOpCode> GetTflOpCode(const TflModel& tfl_model,
-                                 uint32_t op_code_ind) {
+Expected<TflOpCodeEnum> GetTflOpCode(const TflModel& tfl_model,
+                                     uint32_t op_code_ind) {
   if (op_code_ind >= tfl_model.operator_codes.size()) {
     return Error(kLiteRtStatusErrorIndexOOB);
   }
   return std::move(tfl_model.operator_codes.at(op_code_ind)->builtin_code);
 }
 
-bool IsRankedTensor(const TflTensor& tensor) { return tensor.has_rank; }
-
-bool HasStaticShape(const TflTensor& tensor) {
-  return IsRankedTensor(tensor) && tensor.shape_signature.empty();
+bool IsRankedTensorType(const TflShapeInfo& tfl_shape) {
+  return tfl_shape.has_rank;
 }
 
-Expected<TflStaticTensorTypeInfo> GetStaticTensorTypeInfo(
-    const TflTensor& tensor) {
-  if (!HasStaticShape(tensor)) {
+bool IsStaticTensorType(const TflShapeInfo& tfl_shape) {
+  return !IsRankedTensorType(tfl_shape) ||
+         std::none_of(tfl_shape.shape_signature.begin(),
+                      tfl_shape.shape_signature.end(),
+                      [](auto d) { return d < 0; });
+}
+
+Expected<SmallVec<int32_t>> AsStaticShape(const TflShapeInfo& tfl_shape) {
+  if (!IsStaticTensorType(tfl_shape)) {
     return Error(kLiteRtStatusErrorInvalidArgument);
   }
-  return std::make_pair(tensor.type, TflStaticShapeInfo(tensor.shape.data(),
-                                                        tensor.shape.size()));
+  return tfl_shape.shape;
+}
+
+Expected<SmallVec<int32_t>> AsDynamicShape(const TflShapeInfo& tfl_shape) {
+  if (IsStaticTensorType(tfl_shape)) {
+    return tfl_shape.shape;
+  }
+  if (!IsRankedTensorType(tfl_shape)) {
+    return Error(kLiteRtStatusErrorInvalidArgument);
+  }
+  return tfl_shape.shape_signature;
 }
 
 bool IsQuantized(const TflQuantization* tfl_quantization) {
@@ -217,7 +231,7 @@ bool IsCustomQuantized(const TflQuantization* tfl_quantization) {
                                  tflite::QuantizationDetails_CustomQuantization;
 }
 
-Expected<std::pair<int64_t, float>> GetPerTensorQparams(
+Expected<std::pair<int64_t, float>> AsPerTensorQparams(
     const TflQuantization* tfl_quantization) {
   if (!IsPerTensorQuantized(tfl_quantization)) {
     return Error(kLiteRtStatusErrorInvalidArgument);

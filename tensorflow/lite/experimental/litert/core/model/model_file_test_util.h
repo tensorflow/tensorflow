@@ -18,6 +18,7 @@
 #include <functional>
 
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 
 namespace litert::internal {
@@ -26,15 +27,13 @@ namespace litert::internal {
 using GetTflTensor =
     std::function<std::reference_wrapper<const TflTensor>(uint32_t ind)>;
 
-// Compare q-params within litert tensor to flatbuffer q-params for having the
-// same type and values.
-bool EqualsFbQuantization(const Tensor& litert_tensor,
+// Compare q-params for having the same type and values.
+bool EqualsFbQuantization(const Quantization& litert_quantization,
                           const TflQuantization* tfl_quantization);
 
-// Compare tensor type within litert tensor to the type within flatbuffer
-// tensor.
-bool EqualsFbTensorType(const Tensor& litert_tensor,
-                        const TflTensor& tfl_tensor);
+// Compare tensor types for having the same shape and element type.
+bool EqualsFbTensorType(const TensorType& litert_tensor_type,
+                        const TflTensorType& tfl_tensor_type);
 
 // Compare litert op to flatbuffer op along with their input/output tensors
 // types and quantization. Takes a callback to lookup tfl tensors the indices

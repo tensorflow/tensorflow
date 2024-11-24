@@ -41,11 +41,15 @@ cc_library(
 cc_test(
     name = "flatbuffer_tools_test",
     srcs = ["flatbuffer_tools_test.cc"],
-    data = ["//tensorflow/lite/experimental/litert/test:mlir_test_data"],
+    data = [
+        "//tensorflow/lite/experimental/litert/test:mlir_test_data",
+        "//tensorflow/lite/experimental/litert/test:tflite_test_data",
+    ],
     deps = [
         ":flatbuffer_tools",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/test:common",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

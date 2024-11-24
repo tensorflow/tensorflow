@@ -28,21 +28,48 @@
 
 namespace litert::internal {
 
+// Flatbuffer IR
+
 using TflTensor = ::tflite::TensorT;
 using TflOp = ::tflite::OperatorT;
 using TflBuffer = ::tflite::BufferT;
 using TflModel = ::tflite::ModelT;
-using TflOpCode = ::tflite::BuiltinOperator;
+using TflOpCodeEnum = ::tflite::BuiltinOperator;
+using TflOpCode = ::tflite::OperatorCodeT;
 using TflQuantization = ::tflite::QuantizationParametersT;
 using TflElementType = ::tflite::TensorType;
 
 using TflBufferPtr = std::unique_ptr<TflBuffer>;
 using TflModelPtr = std::unique_ptr<TflModel>;
 using TflQuantizationPtr = std::unique_ptr<TflQuantization>;
+using TflOpCodePtr = std::unique_ptr<TflOpCode>;
 
 using TflPerTensorQParams = std::pair<int64_t, float>;
-using TflStaticShapeInfo = absl::Span<const int32_t>;
-using TflStaticTensorTypeInfo = std::pair<TflElementType, TflStaticShapeInfo>;
+
+// Mirror of all the tensor type related fields in flatbuffer tensor definition.
+struct TflShapeInfo {
+  // Fixed or dynamic rank.
+  bool has_rank;
+
+  // Basic shape, all elements are non-negative (even if this is a dynamic
+  // shape).
+  SmallVec<int32_t> shape;
+
+  // Dynamic dyn info. If this is not empty, then its length is equal to shape.
+  // If i is a dyn dim, then shape[i] == 1 and shape_signature[i] < 0. Otherwise
+  // shape_signature[i] == shape[i].
+  SmallVec<int32_t> shape_signature;
+
+  // Convert from tensor.
+  explicit TflShapeInfo(const TflTensor& tfl_tensor)
+      : has_rank(tfl_tensor.has_rank),
+        shape(SmallVec<int32_t>(tfl_tensor.shape.begin(),
+                                tfl_tensor.shape.end())),
+        shape_signature(SmallVec<int32_t>(tfl_tensor.shape_signature.begin(),
+                                          tfl_tensor.shape_signature.end())) {}
+};
+
+using TflTensorType = std::pair<TflElementType, TflShapeInfo>;
 
 // Flatbuffer bytes util.
 
@@ -97,18 +124,21 @@ Expected<uint32_t> PushTflBuffer(TflModel& tfl_model,
                                  BufferRef<uint8_t> buffer);
 
 // Get the op code from the model at the given index if it exists.
-Expected<TflOpCode> GetTflOpCode(const TflModel& tfl_model,
-                                 uint32_t op_code_ind);
+Expected<TflOpCodeEnum> GetTflOpCode(const TflModel& tfl_model,
+                                     uint32_t op_code_ind);
 
-// Is tensor fixed rank.
-bool HasRankedTensorType(const TflTensor& tensor);
+// Is tensor fixed rank, with possible dynamic dims.
+bool IsRankedTensorType(const TflShapeInfo& tfl_shape);
 
-// Is tensor shape and rank fully defined.
-bool HasStaticShape(const TflTensor& tensor);
+// Is ranked tensor type with static shape.
+bool IsStaticTensorType(const TflShapeInfo& tfl_shape);
 
-// Get static shape and element type info if the tensor is of static shape.
-Expected<TflStaticTensorTypeInfo> GetStaticTensorTypeInfo(
-    const TflTensor& tensor);
+// Get static shape info if given is indeed a static shape.
+Expected<SmallVec<int32_t>> AsStaticShape(const TflShapeInfo& tfl_shape);
+
+// Get ranked dynamic shape info if given is indeed a ranked. Still works with
+// static shapes.
+Expected<SmallVec<int32_t>> AsDynamicShape(const TflShapeInfo& tfl_shape);
 
 // Is the tensor quantized.
 bool IsQuantized(const TflQuantization* tfl_quantization);
@@ -126,7 +156,7 @@ bool IsBlockWiseQuantized(const TflQuantization* tfl_quantization);
 bool IsCustomQuantized(const TflQuantization* tfl_quantization);
 
 // Get the per-tensor q-params if given tensor has them.
-Expected<TflPerTensorQParams> GetPerTensorQparams(
+Expected<TflPerTensorQParams> AsPerTensorQparams(
     const TflQuantization* tfl_quantization);
 
 // Flatbuffer management helpers.

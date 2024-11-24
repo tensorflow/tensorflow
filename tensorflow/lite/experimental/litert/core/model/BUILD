@@ -171,8 +171,10 @@ cc_library(
     deps = [
         ":model",
         ":model_util",
+        "//tensorflow/lite/experimental/litert/cc:litert_detail",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

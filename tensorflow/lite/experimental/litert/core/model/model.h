@@ -82,6 +82,20 @@ struct LiteRtTensorT {
 
   // Authored name of tensor, may be empty.
   std::string name;
+
+  // Update the type and copy and store the given's dimensions.
+  // TODO Unify mangement of dims and clean this up.
+  void SetType(const TensorType& tensor_type) {
+    type_id = tensor_type.first;
+    type_detail = tensor_type.second;
+    auto& layout = type_detail.ranked_tensor_type.layout;
+    dims.assign(layout.dimensions, layout.dimensions + layout.rank);
+    layout.dimensions = dims.data();
+  }
+
+ private:
+  // TODO Unify mangement of dims and clean this up.
+  litert::SmallVec<int32_t> dims;
 };
 
 //

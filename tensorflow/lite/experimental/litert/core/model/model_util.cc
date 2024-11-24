@@ -101,7 +101,7 @@ LiteRtStatus SetDefaultOptions(tflite::BuiltinOptionsUnion& opts,
   }
 }
 
-LiteRtElementType MapElementType(tflite::TensorType type) {
+LiteRtElementType MapElementType(TflElementType type) {
   switch (type) {
     case tflite::TensorType_FLOAT32:
       return kLiteRtElementTypeFloat32;
@@ -118,22 +118,23 @@ LiteRtElementType MapElementType(tflite::TensorType type) {
   }
 }
 
-Expected<TensorType> MapTensorType(const TflTensor& tfl_tensor) {
-  if (!HasStaticShape(tfl_tensor)) {
+Expected<TensorType> MapTensorType(const TflTensorType& tfl_tensor_type) {
+  const auto& [element_type, shape] = tfl_tensor_type;
+  if (!IsStaticTensorType(shape)) {
     LITERT_LOG(LITERT_ERROR, "Only static shaped tensors currently supported");
     return Error(kLiteRtStatusErrorUnsupported);
   }
 
-  auto element_type = MapElementType(tfl_tensor.type);
-  if (element_type == kLiteRtElementTypeNone) {
+  auto litert_element_type = MapElementType(element_type);
+  if (litert_element_type == kLiteRtElementTypeNone) {
     LITERT_LOG(LITERT_ERROR, "Element type not currently supported");
     return Error(kLiteRtStatusErrorUnsupported);
   }
 
   LiteRtTypeDetail detail;
-  detail.ranked_tensor_type.element_type = element_type;
-  detail.ranked_tensor_type.layout.rank = tfl_tensor.shape.size();
-  detail.ranked_tensor_type.layout.dimensions = tfl_tensor.shape.data();
+  detail.ranked_tensor_type.element_type = litert_element_type;
+  detail.ranked_tensor_type.layout.rank = shape.shape.size();
+  detail.ranked_tensor_type.layout.dimensions = shape.shape.data();
   // TFL tensors don't support strides yet.
   detail.ranked_tensor_type.layout.strides = nullptr;
 
@@ -147,7 +148,7 @@ Expected<Quantization> MapQuantization(
                           LiteRtQuantizationTypeDetail());
   }
 
-  auto per_tensor_qparams = GetPerTensorQparams(tfl_quantization);
+  auto per_tensor_qparams = AsPerTensorQparams(tfl_quantization);
   if (!per_tensor_qparams) {
     LITERT_LOG(LITERT_ERROR,
                "Only per tensor quantization currently supported");

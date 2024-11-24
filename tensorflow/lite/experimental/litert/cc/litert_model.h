@@ -24,6 +24,7 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -213,24 +214,33 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
   Expected<absl::Span<const T>> WeightsData() const {
     const ElementType ty = RankedTensorType().ElementType();
     if (ty != GetElementType<T>()) {
+      std::cerr << "element tye bad\n";
       return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }
 
     if (!HasWeights()) {
+      std::cerr << "no weights\n";
       return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }
     const absl::Span<const uint8_t> weights = Weights().Bytes();
 
     auto num_elements = RankedTensorType().Layout().NumElements();
     if (!num_elements.has_value()) {
+      std::cerr << "no num elements\n";
       return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }
     auto byte_width = GetByteWidth(ty);
     if (!byte_width.has_value()) {
+      std::cerr << "no byte width\n";
       return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }
 
+    std::cerr << absl::StreamFormat(
+        "byte_width: %lu, num_elements: %lu, weights_size: %lu\n",
+        byte_width.value(), num_elements.value(), weights.size());
+
     if (byte_width.value() * num_elements.value() != weights.size()) {
+      std::cerr << "check\n";
       return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }
 

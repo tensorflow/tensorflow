@@ -16,15 +16,22 @@
 
 #include <cstdint>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
 namespace litert::internal {
 namespace {
 
-FlatbufferWrapper::Ptr TestFlatbuffer() {
-  const auto tfl_path = testing::GetTestFilePath("one_mul.tflite");
+using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
+using ::testing::Lt;
+
+FlatbufferWrapper::Ptr TestFlatbuffer(
+    absl::string_view filename = "one_mul.tflite") {
+  const auto tfl_path = testing::GetTestFilePath(filename);
   return *FlatbufferWrapper::CreateFromTflFile(tfl_path);
 }
 
@@ -85,6 +92,59 @@ TEST(FlatbufferToolsTest, GetTflOpCodeNotFound) {
 
   auto op_code = GetTflOpCode(flatbuffer->UnpackedModel(), 100);
   ASSERT_FALSE(op_code);
+}
+
+TEST(FlatbufferToolsTest, StaticTensorTypeTest) {
+  auto flatbuffer = TestFlatbuffer();
+  auto& tensor = flatbuffer->UnpackedModel().subgraphs.front()->tensors.front();
+
+  TflShapeInfo shape(*tensor);
+
+  ASSERT_TRUE(IsRankedTensorType(shape));
+  ASSERT_TRUE(IsStaticTensorType(shape));
+
+  auto static_shape = AsStaticShape(shape);
+
+  ASSERT_TRUE(static_shape);
+  ASSERT_THAT(*static_shape, ElementsAreArray({2, 2}));
+}
+
+TEST(FlatbufferToolsTest, UnrankedTensorTypeTest) {
+  auto flatbuffer = TestFlatbuffer("unranked_tensor.tflite");
+  auto& tensor = flatbuffer->UnpackedModel().subgraphs.front()->tensors.front();
+
+  TflShapeInfo shape(*tensor);
+
+  ASSERT_FALSE(IsRankedTensorType(shape));
+}
+
+TEST(FlatbufferToolsTest, RankedDynamicTensorTypeTest) {
+  auto flatbuffer = TestFlatbuffer("dynamic_shape_tensor.tflite");
+  auto& tensor = flatbuffer->UnpackedModel().subgraphs.front()->tensors.front();
+
+  TflShapeInfo shape(*tensor);
+
+  ASSERT_TRUE(IsRankedTensorType(shape));
+  ASSERT_FALSE(IsStaticTensorType(shape));
+
+  auto dyn_shape = AsDynamicShape(shape);
+
+  ASSERT_TRUE(dyn_shape);
+  ASSERT_THAT(*dyn_shape, ElementsAre(Lt(0), 2));
+}
+
+TEST(FlatbufferToolsTest, PerTensorQuantizedTest) {
+  auto flatbuffer =
+      TestFlatbuffer("single_add_default_a16w8_recipe_quantized.tflite");
+  auto& tensor = flatbuffer->UnpackedModel().subgraphs.front()->tensors.front();
+
+  const auto* const q_parms = tensor->quantization.get();
+
+  ASSERT_TRUE(IsQuantized(q_parms));
+  EXPECT_TRUE(IsPerTensorQuantized(q_parms));
+
+  auto per_tensor = AsPerTensorQparams(q_parms);
+  ASSERT_TRUE(per_tensor);
 }
 
 }  // namespace

@@ -56,13 +56,13 @@ LiteRtStatus ConvertTensor(const TflTensor& tfl_tensor, GetBuffer get_buffer,
     target.weights.fb_buffer = std::move(*buffer);
   }
 
-  auto tensor_type = MapTensorType(tfl_tensor);
+  TflTensorType tfl_tensor_type(tfl_tensor.type, TflShapeInfo(tfl_tensor));
+  auto tensor_type = MapTensorType(tfl_tensor_type);
   if (!tensor_type) {
     return tensor_type.Error().Status();
   }
 
-  target.type_id = tensor_type->first;
-  target.type_detail = tensor_type->second;
+  target.SetType(*tensor_type);
 
   auto quantization = MapQuantization(tfl_tensor.quantization.get());
   if (!quantization) {

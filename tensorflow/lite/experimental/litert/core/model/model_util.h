@@ -34,9 +34,9 @@ LiteRtStatus IsTensorSupported(const TflTensor& tensor);
 LiteRtStatus SetDefaultOptions(tflite::BuiltinOptionsUnion& opts,
                                LiteRtOpCode code);
 
-LiteRtElementType MapElementType(tflite::TensorType type);
+LiteRtElementType MapElementType(TflElementType element_type);
 
-Expected<TensorType> MapTensorType(const TflTensor& tensor);
+Expected<TensorType> MapTensorType(const TflTensorType& tfl_tensor_type);
 
 Expected<Quantization> MapQuantization(const TflQuantization* tfl_quantization);
 
