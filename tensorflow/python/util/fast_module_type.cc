@@ -15,6 +15,7 @@ limitations under the License.
 // clang-format off
 // These headers must be at the top, before including Python.h header
 // Otherwise, we get C2039 on MSVC due to 'copysign'
+#include <array>
 #include "pybind11/complex.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 // clang-format on
