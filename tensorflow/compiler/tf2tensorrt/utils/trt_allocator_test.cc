@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 
+#include <cstdint>
+
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
