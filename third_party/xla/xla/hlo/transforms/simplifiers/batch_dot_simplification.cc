@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/batch_dot_simplification.h"
 
+#include <cstdint>
+#include <iterator>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/sort_simplifier.h"
 
+#include <cstdint>
+#include <iterator>
 #include <memory>
 #include <vector>
 

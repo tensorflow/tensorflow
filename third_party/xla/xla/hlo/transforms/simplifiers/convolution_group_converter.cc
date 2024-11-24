@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/convolution_group_converter.h"
 
-#include <algorithm>
+#include <cstdint>
+#include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
