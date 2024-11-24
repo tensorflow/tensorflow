@@ -702,7 +702,6 @@ absl::Status RunOptimizationPasses(
 
   pipeline.AddPass<DynamicIndexSplitter>();
 
-  // TODO(b/64094172): make Call work on GPU instead of inlining.
   pipeline.AddPass<CallInliner>();
 
   pipeline.AddPass<StochasticConvertDecomposer>();
@@ -1509,9 +1508,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // Greedy pattern matching for custom kernel fusions. We run it before
     // Triton rewriter or a regular Gemm rewriter to be able to match compatible
     // GEMMs before they matched into Triton gemm or a cuBLAS custom call.
-    //
-    // TODO(b/361267225): Remove once we have a unified autotuner for Triton and
-    // custom kernel fusions.
     if (debug_options.xla_gpu_enable_custom_fusions()) {
       pipeline.AddPass<SimplifyFPConversions>();
       pipeline.AddPass<CustomKernelFusionRewriter>(
@@ -1539,7 +1535,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     } else if (cuda_cc != nullptr &&
                cuda_cc->major == se::CudaComputeCapability::VOLTA) {
       // Greedy pattern matching for custom kernel fusions.
-      // TODO(b/361267225): Add Custom Kernel Fusions to GEMM Fusion Autotuner.
       pipeline.AddPass<SimplifyFPConversions>();
       pipeline.AddPass<CustomKernelFusionRewriter>(
           &gpu_target_config.device_description);

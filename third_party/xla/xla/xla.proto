@@ -1114,7 +1114,7 @@ message ExecutionOptions {
   // Used to seed random-number generators used in this computation.  If this is
   // 0, we generate a seed ourselves.
   //
-  // TODO(b/32083678): Changing the seed unnecessarily forces a recompilation.
+  // Changing the seed unnecessarily forces a recompilation.
   uint64 seed = 3;
 
   DebugOptions debug_options = 4;
