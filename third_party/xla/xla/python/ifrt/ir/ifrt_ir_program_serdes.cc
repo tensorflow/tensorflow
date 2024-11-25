@@ -52,7 +52,7 @@ class IfrtIRProgramSerDes
     : public llvm::RTTIExtends<IfrtIRProgramSerDes, SerDes> {
  public:
   absl::string_view type_name() const override {
-    return "xla::ifrt::IfrtIRProgram";
+    return IfrtIRProgram::type_name();
   }
 
   // Serializes the `IfrtIRProgram`.

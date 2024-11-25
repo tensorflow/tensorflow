@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -46,6 +47,8 @@ struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
       : mlir_module(*module),
         mlir_context(std::move(context)),
         owning_mlir_module(std::move(module)) {}
+
+  static absl::string_view type_name() { return "xla::ifrt::IfrtIRProgram"; }
 
   mlir::ModuleOp mlir_module;
 

@@ -2,7 +2,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_pybind_extension")
 
 package_group(
     name = "internal",
@@ -205,6 +205,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
@@ -309,6 +310,7 @@ cc_library(
     srcs = ["version.cc"],
     hdrs = ["version.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:friends"],
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -461,5 +463,31 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+tsl_pybind_extension(
+    name = "ir_py",
+    srcs = ["ir_py.cc"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//xla/python/ifrt:friends"],
+    deps = [
+        ":ifrt_ir_program",
+        ":ifrt_ir_program_serdes",
+        ":version",
+        "//xla/pjrt:status_casters",
+        "//xla/python/ifrt/ir/transforms:utils",
+        "//xla/python/ifrt/support:module_parsing",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:CAPIIRHeaders",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MLIRBindingsPythonHeaders",
+        "@local_tsl//tsl/platform:statusor",
+        "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )
