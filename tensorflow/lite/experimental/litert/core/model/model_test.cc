@@ -20,7 +20,10 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/core/model/model_load.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -87,6 +90,38 @@ TEST(ModelSubgraphTest, EmplaceOp) {
   auto& tensor = subgraph.EmplaceOp();
   ASSERT_EQ(subgraph.ops_storage.size(), 1);
   EXPECT_THAT(subgraph.ops, ElementsAreArray({&tensor}));
+}
+
+TEST(ModelSignatureTest, Basic) {
+  constexpr absl::string_view kTfliteFile =
+      "third_party/tensorflow/lite/experimental/litert/test/testdata/"
+      "simple_model.tflite";
+  LiteRtModel model;
+  auto status = LiteRtLoadModelFromFile(kTfliteFile.data(), &model);
+  ASSERT_EQ(status, kLiteRtStatusOk);
+  ASSERT_EQ(model->signatures.size(), 1);
+  EXPECT_EQ(model->signatures[0]->key, LITERT_DEFAULT_SIGNATURE_KEY);
+  EXPECT_THAT(model->signatures[0]->input_names,
+              ElementsAreArray({"arg0", "arg1"}));
+  EXPECT_THAT(model->signatures[0]->output_names,
+              ElementsAreArray({"tfl.add"}));
+  LiteRtModelDestroy(model);
+}
+
+TEST(ModelSignatureTest, Lookup) {
+  constexpr absl::string_view kTfliteFile =
+      "third_party/tensorflow/lite/experimental/litert/test/testdata/"
+      "simple_model.tflite";
+  LiteRtModel model;
+  auto status = LiteRtLoadModelFromFile(kTfliteFile.data(), &model);
+  ASSERT_EQ(status, kLiteRtStatusOk);
+  ASSERT_EQ(model->signatures.size(), 1);
+  auto signature = model->FindSignature(LITERT_DEFAULT_SIGNATURE_KEY);
+  ASSERT_TRUE(signature);
+  EXPECT_EQ((*signature)->key, LITERT_DEFAULT_SIGNATURE_KEY);
+  EXPECT_THAT((*signature)->input_names, ElementsAreArray({"arg0", "arg1"}));
+  EXPECT_THAT((*signature)->output_names, ElementsAreArray({"tfl.add"}));
+  LiteRtModelDestroy(model);
 }
 
 }  // namespace

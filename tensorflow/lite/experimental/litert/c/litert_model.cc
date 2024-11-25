@@ -25,6 +25,8 @@
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
+static const char* LiteRtDefaultSignatureKey = LITERT_DEFAULT_SIGNATURE_KEY;
+
 //
 // Model
 //
@@ -64,10 +66,74 @@ LiteRtStatus LiteRtGetModelMetadata(LiteRtModel model, const char* metadata_key,
   return kLiteRtStatusOk;
 }
 
+LiteRtStatus LiteRtGetNumModelSignatures(LiteRtModel model,
+                                         LiteRtParamIndex* num_signatures) {
+  *num_signatures = model->signatures.size();
+  return kLiteRtStatusOk;
+}
+
+// Get the signature at the given index in the model
+LiteRtStatus LiteRtGetModelSignature(LiteRtModel model,
+                                     LiteRtParamIndex signature_idx,
+                                     LiteRtSignature* signature) {
+  if (signature_idx >= model->signatures.size()) {
+    return kLiteRtStatusErrorIndexOOB;
+  }
+  *signature = model->signatures[signature_idx].get();
+  return kLiteRtStatusOk;
+}
+
 void LiteRtModelDestroy(LiteRtModel model) { delete model; }
 
 LiteRtStatus LiteRtPushOp(LiteRtOpList op_list, LiteRtOp op) {
   op_list->Push(op);
+  return kLiteRtStatusOk;
+}
+
+//
+// Signature
+//
+
+LiteRtStatus LiteRtGetDefaultSignatureKey(const char** signature_key) {
+  *signature_key = LiteRtDefaultSignatureKey;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetSignatureKey(LiteRtSignature signature,
+                                   const char** signature_key) {
+  *signature_key = signature->key.data();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetNumSignatureInputs(LiteRtSignature signature,
+                                         LiteRtParamIndex* num_inputs) {
+  *num_inputs = signature->input_names.size();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetSignatureInputName(LiteRtSignature signature,
+                                         LiteRtParamIndex input_idx,
+                                         const char** input_name) {
+  if (input_idx >= signature->input_names.size()) {
+    return kLiteRtStatusErrorIndexOOB;
+  }
+  *input_name = signature->input_names[input_idx].data();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetNumSignatureOutputs(LiteRtSignature signature,
+                                          LiteRtParamIndex* num_outputs) {
+  *num_outputs = signature->output_names.size();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetSignatureOutputName(LiteRtSignature signature,
+                                          LiteRtParamIndex output_idx,
+                                          const char** output_name) {
+  if (output_idx >= signature->output_names.size()) {
+    return kLiteRtStatusErrorIndexOOB;
+  }
+  *output_name = signature->output_names[output_idx].data();
   return kLiteRtStatusOk;
 }
 

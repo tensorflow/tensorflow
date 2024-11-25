@@ -85,6 +85,42 @@ TEST(CcModelTest, SimpleModel) {
 }
 
 //===----------------------------------------------------------------------===//
+//                                CC Signature                                //
+//===----------------------------------------------------------------------===//
+
+TEST(CcSignatureTest, Basic) {
+  auto model = testing::LoadTestFileModel("one_mul.tflite");
+
+  auto signatures = model.GetSignatures();
+  ASSERT_TRUE(signatures);
+  ASSERT_EQ(signatures->size(), 1);
+  auto& signature = signatures->at(0);
+  EXPECT_THAT(signature.Key(), Model::DefaultSignatureKey());
+  auto input_names = signature.InputNames();
+  EXPECT_THAT(input_names[0], "arg0");
+  EXPECT_THAT(input_names[1], "arg1");
+  auto output_names = signature.OutputNames();
+  EXPECT_THAT(output_names[0], "tfl.mul");
+}
+
+TEST(CcSignatureTest, Lookup) {
+  auto model = testing::LoadTestFileModel("one_mul.tflite");
+
+  {
+    auto signature = model.FindSignature("nonexistent");
+    ASSERT_FALSE(signature);
+  }
+  auto signature = model.FindSignature(Model::DefaultSignatureKey());
+  ASSERT_TRUE(signature);
+  EXPECT_THAT(signature->Key(), Model::DefaultSignatureKey());
+  auto input_names = signature->InputNames();
+  EXPECT_THAT(input_names[0], "arg0");
+  EXPECT_THAT(input_names[1], "arg1");
+  auto output_names = signature->OutputNames();
+  EXPECT_THAT(output_names[0], "tfl.mul");
+}
+
+//===----------------------------------------------------------------------===//
 //                                CC Layout                                   //
 //===----------------------------------------------------------------------===//
 

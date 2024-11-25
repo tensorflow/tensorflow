@@ -235,7 +235,7 @@ class NVPTXCompilationTests
 
   absl::StatusOr<std::unique_ptr<Executable>> CompileExecutable(
       std::unique_ptr<HloModule> module) {
-    NVPTXCompiler compiler{module->config().debug_options()};
+    NVPTXCompiler compiler{};
 
     return compiler.RunBackend(std::move(module),
                                backend().default_stream_executor(),
@@ -302,8 +302,8 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   absl::StatusOr<std::unique_ptr<Executable>> reference =
       compile(PtxCompilationMethod::kPtxas, reference_linking_method);
 
-  ASSERT_THAT(executable, tsl::testing::IsOkAndHolds(::testing::NotNull()));
-  ASSERT_THAT(reference, tsl::testing::IsOkAndHolds(::testing::NotNull()));
+  EXPECT_THAT(executable, tsl::testing::IsOkAndHolds(::testing::NotNull()));
+  EXPECT_THAT(reference, tsl::testing::IsOkAndHolds(::testing::NotNull()));
 
   absl::Span<const uint8_t> executable_binary =
       static_cast<GpuExecutable*>(executable.value().get())->binary();

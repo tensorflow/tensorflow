@@ -305,6 +305,46 @@ class Subgraph : public internal::NonOwnedHandle<LiteRtSubgraph> {
   }
 };
 
+// Model signature. C++ equivalent of LiteRtSignature.
+class Signature : public internal::NonOwnedHandle<LiteRtSignature> {
+ public:
+  Signature() = default;
+  explicit Signature(LiteRtSignature signature)
+      : internal::NonOwnedHandle<LiteRtSignature>(signature) {}
+
+  absl::string_view Key() const {
+    const char* key;
+    internal::AssertOk(LiteRtGetSignatureKey, Get(), &key);
+    return key;
+  }
+
+  std::vector<absl::string_view> InputNames() const {
+    LiteRtParamIndex num_inputs;
+    internal::AssertOk(LiteRtGetNumSignatureInputs, Get(), &num_inputs);
+    std::vector<absl::string_view> input_names;
+    input_names.reserve(num_inputs);
+    for (int i = 0; i < num_inputs; ++i) {
+      const char* input_name;
+      internal::AssertOk(LiteRtGetSignatureInputName, Get(), i, &input_name);
+      input_names.push_back(input_name);
+    }
+    return input_names;
+  }
+
+  std::vector<absl::string_view> OutputNames() const {
+    LiteRtParamIndex num_outputs;
+    internal::AssertOk(LiteRtGetNumSignatureOutputs, Get(), &num_outputs);
+    std::vector<absl::string_view> output_names;
+    output_names.reserve(num_outputs);
+    for (int i = 0; i < num_outputs; ++i) {
+      const char* output_name;
+      internal::AssertOk(LiteRtGetSignatureOutputName, Get(), i, &output_name);
+      output_names.push_back(output_name);
+    }
+    return output_names;
+  }
+};
+
 // Model. C++ equivalent of LiteRtModel.
 class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
  public:
@@ -349,6 +389,43 @@ class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
       return Unexpected(kLiteRtStatusErrorNotFound, "Subgraph not found");
     }
     return litert::Subgraph(subgraph);
+  }
+
+  // Returns the list of signatures defined in the model.
+  Expected<std::vector<class Signature>> GetSignatures() const {
+    LiteRtParamIndex num_signatures;
+    internal::AssertOk(LiteRtGetNumModelSignatures, Get(), &num_signatures);
+    std::vector<class Signature> signatures;
+    signatures.reserve(num_signatures);
+    for (int i = 0; i < num_signatures; ++i) {
+      LiteRtSignature lite_rt_signature;
+      internal::AssertOk(LiteRtGetModelSignature, Get(), i, &lite_rt_signature);
+      Signature signature(lite_rt_signature);
+      signatures.push_back(std::move(signature));
+    }
+    return std::move(signatures);
+  }
+
+  Expected<class Signature> FindSignature(
+      absl::string_view signature_key) const {
+    LiteRtParamIndex num_signatures;
+    internal::AssertOk(LiteRtGetNumModelSignatures, Get(), &num_signatures);
+    for (int i = 0; i < num_signatures; ++i) {
+      LiteRtSignature lite_rt_signature;
+      internal::AssertOk(LiteRtGetModelSignature, Get(), i, &lite_rt_signature);
+      const char* key_cstr;
+      internal::AssertOk(LiteRtGetSignatureKey, lite_rt_signature, &key_cstr);
+      if (absl::string_view(key_cstr) == signature_key) {
+        return Signature(lite_rt_signature);
+      }
+    }
+    return Unexpected(kLiteRtStatusErrorNotFound, "Signature not found");
+  }
+
+  static absl::string_view DefaultSignatureKey() {
+    const char* key;
+    internal::AssertOk(LiteRtGetDefaultSignatureKey, &key);
+    return key;
   }
 
  private:

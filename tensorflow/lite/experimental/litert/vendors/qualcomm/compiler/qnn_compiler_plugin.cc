@@ -74,6 +74,7 @@ constexpr LiteRtOpCode kSupportedOps[] = {
   kLiteRtOpCodeTflFullyConnected,
   kLiteRtOpCodeTflEmbeddingLookup,
   kLiteRtOpCodeTflLogicalAnd,
+  kLiteRtOpCodeTflLess,
 };
 // clang-format on
 

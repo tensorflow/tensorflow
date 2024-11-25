@@ -44,8 +44,13 @@ cc_library(
 cc_test(
     name = "model_test",
     srcs = ["model_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/litert/test:testdata/simple_model.tflite",
+    ],
     deps = [
         ":model",
+        ":model_load",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/schema:schema_fbs",

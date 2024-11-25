@@ -195,6 +195,38 @@ LiteRtStatus ModelUnpacker::Unpack(LiteRtModel model) {
   subgraph.flatbuffer_subgraph = std::move(unpacker.Fb().subgraphs[0]);
   LITERT_RETURN_STATUS_IF_NOT_OK(unpacker.UnpackSubgraph(subgraph));
 
+  // Unpack signatures. If there are no signatures, create a default one with
+  // LiteRtDefaultSignatureKey.
+  if (unpacker.Fb().signature_defs.empty()) {
+    model->signatures.reserve(1);
+    auto signature = std::make_unique<LiteRtSignatureT>();
+    signature->key = LITERT_DEFAULT_SIGNATURE_KEY;
+    signature->input_names.reserve(subgraph.inputs.size());
+    for (auto& input : subgraph.inputs) {
+      signature->input_names.push_back(input->name);
+    }
+    signature->output_names.reserve(subgraph.outputs.size());
+    for (auto& output : subgraph.outputs) {
+      signature->output_names.push_back(output->name);
+    }
+    model->signatures.push_back(std::move(signature));
+  } else {
+    model->signatures.reserve(unpacker.Fb().signature_defs.size());
+    for (auto& signature_def : unpacker.Fb().signature_defs) {
+      auto signature = std::make_unique<LiteRtSignatureT>();
+      signature->key = signature_def->signature_key;
+      signature->input_names.reserve(signature_def->inputs.size());
+      for (auto& input : signature_def->inputs) {
+        signature->input_names.push_back(input->name);
+      }
+      signature->output_names.reserve(signature_def->outputs.size());
+      for (auto& output : signature_def->outputs) {
+        signature->output_names.push_back(output->name);
+      }
+      model->signatures.push_back(std::move(signature));
+    }
+  }
+
   return kLiteRtStatusOk;
 }
 

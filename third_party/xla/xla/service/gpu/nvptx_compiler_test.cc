@@ -235,7 +235,7 @@ ENTRY main {
   EXPECT_EQ(while_op->while_body()->root_instruction()->operand(1)->opcode(),
             HloOpcode::kCopy);
 
-  NVPTXCompiler compiler{module->config().debug_options()};
+  NVPTXCompiler compiler;
   TF_EXPECT_OK(compiler.RunPostSchedulingPipelines(
       module.get(), 100000,
       backend().default_stream_executor()->GetDeviceDescription()));

@@ -30,6 +30,7 @@
 
 using ::litert::BufferRef;
 using ::litert::Expected;
+using ::litert::Unexpected;
 
 Expected<BufferRef<uint8_t>> LiteRtModelT::FindMetadata(
     const absl::string_view key) const {
@@ -41,3 +42,12 @@ LiteRtStatus LiteRtModelT::PushMetadata(absl::string_view key,
   return ::litert::internal::PushMetadata(key, *flatbuffer_model, data);
 }
 
+litert::Expected<LiteRtSignatureT*> LiteRtModelT::FindSignature(
+    absl::string_view signature_key) const {
+  for (auto& signature : signatures) {
+    if (signature->key == signature_key) {
+      return signature.get();
+    }
+  }
+  return Unexpected(kLiteRtStatusErrorNotFound, "Signature not found");
+}

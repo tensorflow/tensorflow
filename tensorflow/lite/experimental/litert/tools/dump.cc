@@ -150,6 +150,9 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflLogicalAnd:
       out << "TFL_LOGICAL_AND";
       break;
+    case kLiteRtOpCodeTflLess:
+      out << "TFL_LESS";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;
