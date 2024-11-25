@@ -1586,3 +1586,38 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
     ],
 )
+
+cc_library(
+    name = "caching_compilation_provider",
+    srcs = ["caching_compilation_provider.cc"],
+    hdrs = ["caching_compilation_provider.h"],
+    deps = [
+        ":compilation_options",
+        ":compilation_provider",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "caching_compilation_provider_test",
+    srcs = ["caching_compilation_provider_test.cc"],
+    deps = [
+        ":caching_compilation_provider",
+        ":compilation_options",
+        ":compilation_provider",
+        ":mock_compilation_provider",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
