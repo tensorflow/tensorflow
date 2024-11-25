@@ -16,10 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/selectors/special_selector.h"
 
 #include <map>
-#include <memory>
 #include <set>
 #include <string>
-#include <utility>
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
