@@ -964,9 +964,9 @@ class Subgraph {
 
     // Add/remove the skipped `f16`->`f32` inputs/outputs to the externals.
     if (!delegate.f16_input_tensor_for_dequant_f32_tensor_.empty()) {
-      TFLITE_LOG(tflite::TFLITE_LOG_INFO,
-                 "Processing %zu skipped `f16`->`f32` dequantizations.",
-                 delegate.f16_input_tensor_for_dequant_f32_tensor_.size());
+      // TFLITE_LOG(tflite::TFLITE_LOG_VERBOSE,
+      //            "Processing %zu skipped `f16`->`f32` dequantizations.",
+      //            delegate.f16_input_tensor_for_dequant_f32_tensor_.size());
       for (const auto [f32_output_id, f16_input_id] :
            delegate.f16_input_tensor_for_dequant_f32_tensor_) {
         tensors[f16_input_id] = f16_input_id;
@@ -7284,10 +7284,10 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
             }
           }
           if (skip_this_node) {
-            TFLITE_LOG(tflite::TFLITE_LOG_INFO,
-                       "Skipping kTfLiteBuiltinDequantize with node_index=%i, "
-                       "input=%i and output=%i.",
-                       node_index, input_id, output_id);
+            // TFLITE_LOG(tflite::TFLITE_LOG_VERBOSE,
+            //            "Skipping kTfLiteBuiltinDequantize with node_"
+            //            "index=%i, input=%i and output=%i.",
+            //            node_index, input_id, output_id);
             f16_input_tensor_for_dequant_f32_tensor_[output_id] = input_id;
           }
         }
@@ -7482,9 +7482,9 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
     const size_t tensor_offset = static_unpacked_data_[subgraph_index].size();
     static_unpacked_data_[subgraph_index].resize(tensor_offset +
                                                  context->tensors[t].bytes);
-    TFLITE_LOG(tflite::TFLITE_LOG_INFO,
-               "Allocating %zu bytes for static tensor %i.",
-               context->tensors[t].bytes, t);
+    // TFLITE_LOG(tflite::TFLITE_LOG_VERBOSE,
+    //            "Allocating %zu bytes for static tensor %i.",
+    //            context->tensors[t].bytes, t);
 
     char* unpacked_data =
         static_unpacked_data_[subgraph_index].data() + tensor_offset;
