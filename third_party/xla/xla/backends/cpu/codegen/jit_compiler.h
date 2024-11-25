@@ -18,11 +18,14 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/Support/CodeGen.h"
+#include "llvm/Target/TargetOptions.h"
 #include "xla/backends/cpu/codegen/function_library.h"
 
 namespace xla::cpu {
@@ -34,6 +37,18 @@ class JitCompiler {
  public:
   virtual ~JitCompiler() = default;
 
+  struct Options {
+    // Maximum CPU instruction set for wich the compiler should generate code.
+    // If instruction set is empty, compiler will generate code for all ISA
+    // extensions detected on the current machine.
+    std::string max_cpu_isa;
+  };
+
+  // Creates a new instance of the JitCompiler.
+  static absl::StatusOr<std::unique_ptr<JitCompiler>> Create(
+      llvm::TargetOptions target_options, llvm::CodeGenOptLevel opt_level,
+      const Options& options);
+
   // Adds a LLVM module to the dynamic library at `dylib_index`.
   virtual absl::Status AddModule(llvm::orc::ThreadSafeModule module,
                                  size_t dylib_index) = 0;
@@ -44,13 +59,6 @@ class JitCompiler {
 
   // Compiles all added LLVM modules into the FunctionLibrary.
   virtual absl::StatusOr<std::unique_ptr<FunctionLibrary>> Compile() && = 0;
-
-  size_t num_dylibs() const { return num_dylibs_; }
-
- private:
-  explicit JitCompiler(size_t num_dylibs);
-
-  size_t num_dylibs_;
 };
 
 }  // namespace xla::cpu
