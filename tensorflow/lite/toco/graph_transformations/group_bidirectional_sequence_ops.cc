@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cstdio>
-#include <iterator>
 #include <memory>
 #include <stack>
 #include <string>
