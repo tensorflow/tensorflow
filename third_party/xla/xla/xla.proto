@@ -1321,3 +1321,15 @@ message ScheduleProto {
   HloModuleProto hlo_module = 3;
   int64 cycles_per_microsecond = 4;
 }
+
+// Message that captures sharding configuration of an HLO op.
+message NodeShardingConfigProto {
+  xla.OpSharding sharding = 1;                 // For non-tuples.
+  repeated NodeShardingConfigProto nodes = 2;  // For tuples.
+}
+
+// Message that captures sharding configuration of an HLO module.
+message ShardingConfigProto {
+  // Configuration for each HLO instruction.
+  repeated NodeShardingConfigProto nodes = 1;
+}
