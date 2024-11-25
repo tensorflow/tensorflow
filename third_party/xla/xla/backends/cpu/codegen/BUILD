@@ -15,6 +15,20 @@ package_group(
 )
 
 cc_library(
+    name = "contiguous_section_memory_manager",
+    srcs = ["contiguous_section_memory_manager.cc"],
+    hdrs = ["contiguous_section_memory_manager.h"],
+    deps = [
+        "//xla:util",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:ExecutionEngine",
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
     name = "function_library",
     hdrs = ["function_library.h"],
     deps = [

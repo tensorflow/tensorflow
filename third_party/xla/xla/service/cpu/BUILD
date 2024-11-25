@@ -528,6 +528,7 @@ cc_library(
         ":runtime_topk",
         "//xla:types",
         "//xla:util",
+        "//xla/backends/cpu/codegen:contiguous_section_memory_manager",
         "//xla/service:custom_call_target_registry",
         "//xla/service:llvm_compiler",
         "@com_google_absl//absl/container:flat_hash_map",
