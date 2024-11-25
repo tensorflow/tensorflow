@@ -74,8 +74,8 @@ cc_library(
     srcs = ["polynomial_approximations.cc"],
     hdrs = ["polynomial_approximations.h"],
     deps = [
+        ":vector_ir_builder",
         "//xla:xla_data_proto_cc",
-        "//xla/service/cpu:vector_support_library",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:math_ops",
         "@llvm-project//llvm:Analysis",
@@ -83,5 +83,24 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
         "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
+    name = "vector_ir_builder",
+    srcs = ["vector_ir_builder.cc"],
+    hdrs = ["vector_ir_builder.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla/service/cpu:target_machine_features",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
     ],
 )

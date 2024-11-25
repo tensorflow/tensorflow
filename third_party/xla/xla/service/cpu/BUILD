@@ -943,8 +943,8 @@ cc_library(
     srcs = ["tiled_dot_emitter.cc"],
     hdrs = ["tiled_dot_emitter.h"],
     deps = [
-        ":vector_support_library",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/codegen:vector_ir_builder",
         "//xla/service:hlo_module_config",
         "//xla/service/llvm_ir:kernel_support_library",
         "@com_google_absl//absl/log:check",
@@ -968,12 +968,12 @@ cc_library(
         ":ir_emission_utils",
         ":target_machine_features",
         ":tiled_dot_emitter",
-        ":vector_support_library",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/codegen:vector_ir_builder",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
         "//xla/service/llvm_ir:ir_array",
@@ -1699,25 +1699,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:ExecutionEngine",
         "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-cc_library(
-    name = "vector_support_library",
-    srcs = ["vector_support_library.cc"],
-    hdrs = ["vector_support_library.h"],
-    deps = [
-        ":target_machine_features",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/service/llvm_ir:llvm_util",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
     ],
 )
 

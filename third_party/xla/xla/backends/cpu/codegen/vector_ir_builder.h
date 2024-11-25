@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_VECTOR_SUPPORT_LIBRARY_H_
-#define XLA_SERVICE_CPU_VECTOR_SUPPORT_LIBRARY_H_
+#ifndef XLA_BACKENDS_CPU_CODEGEN_VECTOR_IR_BUILDER_H_
+#define XLA_BACKENDS_CPU_CODEGEN_VECTOR_IR_BUILDER_H_
 
 #include <cstdint>
 #include <initializer_list>
@@ -31,11 +31,9 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/TypeSize.h"
 #include "xla/primitive_util.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
 
 // Simple wrappers around llvm::APFloat::APFloat to make the calling code more
 // obvious.
@@ -49,14 +47,14 @@ inline llvm::APFloat GetIeeeF32FromBitwiseRep(int32_t bitwise_value) {
 
 // A thin wrapper around llvm_util.h to make code generating vector math flow
 // more readable.
-class VectorSupportLibrary {
+class VectorIrBuilder {
  public:
-  // This VectorSupportLibrary instance remembers `primitive_type` and
+  // This VectorIrBuilder instance remembers `primitive_type` and
   // `vector_size`, and these are implicitly used by the methods on this
   // instance (i.e. LoadVector will load a vector of type <`vector_size` x
   // `primitive_type`>).
-  VectorSupportLibrary(PrimitiveType primitive_type, int64_t vector_size,
-                       llvm::IRBuilderBase* b, std::string name);
+  VectorIrBuilder(PrimitiveType primitive_type, int64_t vector_size,
+                  llvm::IRBuilderBase* b, std::string name);
 
   llvm::Value* Mul(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* Mul(int64_t lhs, llvm::Value* rhs) {
@@ -124,7 +122,7 @@ class VectorSupportLibrary {
   // i1.  For instance, on a vector typed input, lanes where the predicate is
   // true get a float with all ones and other lanes get a float with all zeros.
   // This is slightly odd from the perspective of LLVM's type system, but it
-  // makes kernel IR generation code written using VectorSupportLibrary (its
+  // makes kernel IR generation code written using VectorIrBuilder (its
   // raison d'etre) less cluttered.
 
   llvm::Value* FCmpEQMask(llvm::Value* lhs, llvm::Value* rhs);
@@ -319,8 +317,7 @@ class LlvmVariable {
 
 class VectorVariable : public LlvmVariable {
  public:
-  VectorVariable(VectorSupportLibrary* vector_support,
-                 llvm::Value* initial_value)
+  VectorVariable(VectorIrBuilder* vector_support, llvm::Value* initial_value)
       : LlvmVariable(vector_support->vector_type(), vector_support->b()) {
     Set(initial_value);
   }
@@ -328,8 +325,7 @@ class VectorVariable : public LlvmVariable {
 
 class ScalarVariable : public LlvmVariable {
  public:
-  ScalarVariable(VectorSupportLibrary* vector_support,
-                 llvm::Value* initial_value)
+  ScalarVariable(VectorIrBuilder* vector_support, llvm::Value* initial_value)
       : LlvmVariable(vector_support->scalar_type(), vector_support->b()) {
     Set(initial_value);
   }
@@ -340,7 +336,7 @@ class ScalarVariable : public LlvmVariable {
 // grid of scalar values (e.g. for tiled GEMMs).
 class TileVariable {
  public:
-  TileVariable(VectorSupportLibrary* vector_support,
+  TileVariable(VectorIrBuilder* vector_support,
                std::vector<llvm::Value*> initial_value);
 
   std::vector<llvm::Value*> Get() const;
@@ -349,7 +345,7 @@ class TileVariable {
  private:
   std::vector<VectorVariable> storage_;
 };
-}  // namespace cpu
-}  // namespace xla
 
-#endif  // XLA_SERVICE_CPU_VECTOR_SUPPORT_LIBRARY_H_
+}  // namespace xla::cpu
+
+#endif  // XLA_BACKENDS_CPU_CODEGEN_VECTOR_IR_BUILDER_H_

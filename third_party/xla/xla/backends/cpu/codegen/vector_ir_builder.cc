@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/vector_support_library.h"
+#include "xla/backends/cpu/codegen/vector_ir_builder.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -44,12 +44,11 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace cpu {
-VectorSupportLibrary::VectorSupportLibrary(PrimitiveType primitive_type,
-                                           int64_t vector_size,
-                                           llvm::IRBuilderBase* b,
-                                           std::string name)
+namespace xla::cpu {
+
+VectorIrBuilder::VectorIrBuilder(PrimitiveType primitive_type,
+                                 int64_t vector_size, llvm::IRBuilderBase* b,
+                                 std::string name)
     : vector_size_(vector_size),
       primitive_type_(primitive_type),
       b_(b),
@@ -61,7 +60,7 @@ VectorSupportLibrary::VectorSupportLibrary(PrimitiveType primitive_type,
   vector_pointer_type_ = llvm::PointerType::getUnqual(vector_type_);
 }
 
-void VectorSupportLibrary::AssertCorrectTypes(
+void VectorIrBuilder::AssertCorrectTypes(
     std::initializer_list<llvm::Value*> values) {
   for (llvm::Value* v : values) {
     llvm::Type* type = v->getType();
@@ -73,13 +72,12 @@ void VectorSupportLibrary::AssertCorrectTypes(
   }
 }
 
-llvm::Value* VectorSupportLibrary::Mul(llvm::Value* lhs, llvm::Value* rhs) {
+llvm::Value* VectorIrBuilder::Mul(llvm::Value* lhs, llvm::Value* rhs) {
   AssertCorrectTypes({lhs, rhs});
   return MulInternal(lhs, rhs);
 }
 
-llvm::Value* VectorSupportLibrary::MulInternal(llvm::Value* lhs,
-                                               llvm::Value* rhs) {
+llvm::Value* VectorIrBuilder::MulInternal(llvm::Value* lhs, llvm::Value* rhs) {
   if (scalar_type_->isFloatingPointTy()) {
     return b()->CreateFMul(lhs, rhs, name());
   } else {
@@ -87,18 +85,18 @@ llvm::Value* VectorSupportLibrary::MulInternal(llvm::Value* lhs,
   }
 }
 
-llvm::Value* VectorSupportLibrary::Add(llvm::Value* lhs, llvm::Value* rhs) {
+llvm::Value* VectorIrBuilder::Add(llvm::Value* lhs, llvm::Value* rhs) {
   AssertCorrectTypes({lhs, rhs});
   return AddInternal(lhs, rhs);
 }
 
-llvm::Value* VectorSupportLibrary::Sub(llvm::Value* lhs, llvm::Value* rhs) {
+llvm::Value* VectorIrBuilder::Sub(llvm::Value* lhs, llvm::Value* rhs) {
   AssertCorrectTypes({lhs, rhs});
   return b()->CreateFSub(lhs, rhs);
 }
 
-llvm::Value* VectorSupportLibrary::Max(llvm::Value* lhs, llvm::Value* rhs,
-                                       bool enable_fast_min_max) {
+llvm::Value* VectorIrBuilder::Max(llvm::Value* lhs, llvm::Value* rhs,
+                                  bool enable_fast_min_max) {
   AssertCorrectTypes({lhs, rhs});
   if (scalar_type_->isFloatingPointTy()) {
     return llvm_ir::EmitFloatMax(lhs, rhs, b_, enable_fast_min_max);
@@ -107,13 +105,13 @@ llvm::Value* VectorSupportLibrary::Max(llvm::Value* lhs, llvm::Value* rhs,
   }
 }
 
-llvm::Value* VectorSupportLibrary::Floor(llvm::Value* a) {
+llvm::Value* VectorIrBuilder::Floor(llvm::Value* a) {
   AssertCorrectTypes({a});
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::floor, {a},
                                       {a->getType()}, b());
 }
 
-llvm::Value* VectorSupportLibrary::Div(llvm::Value* lhs, llvm::Value* rhs) {
+llvm::Value* VectorIrBuilder::Div(llvm::Value* lhs, llvm::Value* rhs) {
   AssertCorrectTypes({lhs, rhs});
   if (scalar_type_->isFloatingPointTy()) {
     return b()->CreateFDiv(lhs, rhs, name());
@@ -122,9 +120,8 @@ llvm::Value* VectorSupportLibrary::Div(llvm::Value* lhs, llvm::Value* rhs) {
   }
 }
 
-llvm::Value* VectorSupportLibrary::Clamp(llvm::Value* a,
-                                         const llvm::APFloat& low,
-                                         const llvm::APFloat& high) {
+llvm::Value* VectorIrBuilder::Clamp(llvm::Value* a, const llvm::APFloat& low,
+                                    const llvm::APFloat& high) {
   CHECK(!low.isNaN());
   CHECK(!high.isNaN());
   CHECK(low.compare(high) == llvm::APFloat::cmpLessThan);
@@ -140,32 +137,29 @@ llvm::Value* VectorSupportLibrary::Clamp(llvm::Value* a,
   return a;
 }
 
-llvm::Value* VectorSupportLibrary::FCmpEQMask(llvm::Value* lhs,
-                                              llvm::Value* rhs) {
+llvm::Value* VectorIrBuilder::FCmpEQMask(llvm::Value* lhs, llvm::Value* rhs) {
   AssertCorrectTypes({lhs, rhs});
   return I1ToFloat(b()->CreateFCmpOEQ(lhs, rhs, name()));
 }
 
-llvm::Value* VectorSupportLibrary::FCmpOLTMask(llvm::Value* lhs,
-                                               llvm::Value* rhs) {
+llvm::Value* VectorIrBuilder::FCmpOLTMask(llvm::Value* lhs, llvm::Value* rhs) {
   AssertCorrectTypes({lhs, rhs});
   return I1ToFloat(b()->CreateFCmpOLT(lhs, rhs, name()));
 }
 
-llvm::Value* VectorSupportLibrary::FCmpULEMask(llvm::Value* lhs,
-                                               llvm::Value* rhs) {
+llvm::Value* VectorIrBuilder::FCmpULEMask(llvm::Value* lhs, llvm::Value* rhs) {
   AssertCorrectTypes({lhs, rhs});
   return I1ToFloat(b()->CreateFCmpULE(lhs, rhs, name()));
 }
 
-llvm::Value* VectorSupportLibrary::I1ToFloat(llvm::Value* i1) {
+llvm::Value* VectorIrBuilder::I1ToFloat(llvm::Value* i1) {
   bool is_vector = llvm::isa<llvm::VectorType>(i1->getType());
   llvm::Type* integer_type = IntegerTypeForFloatSize(is_vector);
   return b()->CreateBitCast(b()->CreateSExt(i1, integer_type, name()),
                             is_vector ? vector_type() : scalar_type(), name());
 }
 
-llvm::Type* VectorSupportLibrary::IntegerTypeForFloatSize(bool vector) {
+llvm::Type* VectorIrBuilder::IntegerTypeForFloatSize(bool vector) {
   CHECK(scalar_type()->isFloatingPointTy());
   const llvm::DataLayout& data_layout =
       b()->GetInsertBlock()->getModule()->getDataLayout();
@@ -178,13 +172,12 @@ llvm::Type* VectorSupportLibrary::IntegerTypeForFloatSize(bool vector) {
   }
 }
 
-llvm::Value* VectorSupportLibrary::BroadcastScalar(llvm::Value* x) {
+llvm::Value* VectorIrBuilder::BroadcastScalar(llvm::Value* x) {
   CHECK_EQ(x->getType(), scalar_type());
   return b()->CreateVectorSplat(vector_size(), x, name());
 }
 
-llvm::Value* VectorSupportLibrary::FloatAnd(llvm::Value* lhs,
-                                            llvm::Value* rhs) {
+llvm::Value* VectorIrBuilder::FloatAnd(llvm::Value* lhs, llvm::Value* rhs) {
   AssertCorrectTypes({lhs, rhs});
   llvm::Type* int_type =
       IntegerTypeForFloatSize(lhs->getType() == vector_type());
@@ -194,7 +187,7 @@ llvm::Value* VectorSupportLibrary::FloatAnd(llvm::Value* lhs,
       vector_type());
 }
 
-llvm::Value* VectorSupportLibrary::FloatNot(llvm::Value* lhs) {
+llvm::Value* VectorIrBuilder::FloatNot(llvm::Value* lhs) {
   AssertCorrectTypes({lhs});
   llvm::Type* int_type =
       IntegerTypeForFloatSize(lhs->getType() == vector_type());
@@ -203,7 +196,7 @@ llvm::Value* VectorSupportLibrary::FloatNot(llvm::Value* lhs) {
       vector_type());
 }
 
-llvm::Value* VectorSupportLibrary::FloatOr(llvm::Value* lhs, llvm::Value* rhs) {
+llvm::Value* VectorIrBuilder::FloatOr(llvm::Value* lhs, llvm::Value* rhs) {
   AssertCorrectTypes({lhs, rhs});
   llvm::Type* int_type =
       IntegerTypeForFloatSize(lhs->getType() == vector_type());
@@ -213,8 +206,7 @@ llvm::Value* VectorSupportLibrary::FloatOr(llvm::Value* lhs, llvm::Value* rhs) {
       vector_type(), name());
 }
 
-llvm::Value* VectorSupportLibrary::AddInternal(llvm::Value* lhs,
-                                               llvm::Value* rhs) {
+llvm::Value* VectorIrBuilder::AddInternal(llvm::Value* lhs, llvm::Value* rhs) {
   if (scalar_type_->isFloatingPointTy()) {
     return b()->CreateFAdd(lhs, rhs, name());
   } else {
@@ -222,7 +214,7 @@ llvm::Value* VectorSupportLibrary::AddInternal(llvm::Value* lhs,
   }
 }
 
-llvm::Value* VectorSupportLibrary::ComputeOffsetPointer(
+llvm::Value* VectorIrBuilder::ComputeOffsetPointer(
     llvm::Value* base_pointer, llvm::Value* offset_elements) {
   if (base_pointer->getType() != scalar_pointer_type()) {
     base_pointer =
@@ -232,7 +224,7 @@ llvm::Value* VectorSupportLibrary::ComputeOffsetPointer(
                                 name());
 }
 
-llvm::Value* VectorSupportLibrary::LoadVector(llvm::Value* pointer) {
+llvm::Value* VectorIrBuilder::LoadVector(llvm::Value* pointer) {
   if (pointer->getType() != vector_pointer_type()) {
     pointer = b()->CreateBitCast(pointer, vector_pointer_type(), name());
   }
@@ -241,7 +233,7 @@ llvm::Value* VectorSupportLibrary::LoadVector(llvm::Value* pointer) {
       llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)), name());
 }
 
-llvm::Value* VectorSupportLibrary::LoadScalar(llvm::Value* pointer) {
+llvm::Value* VectorIrBuilder::LoadScalar(llvm::Value* pointer) {
   if (pointer->getType() != scalar_pointer_type()) {
     pointer = b()->CreateBitCast(pointer, scalar_pointer_type(), name());
   }
@@ -250,8 +242,7 @@ llvm::Value* VectorSupportLibrary::LoadScalar(llvm::Value* pointer) {
       llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)), name());
 }
 
-void VectorSupportLibrary::StoreVector(llvm::Value* value,
-                                       llvm::Value* pointer) {
+void VectorIrBuilder::StoreVector(llvm::Value* value, llvm::Value* pointer) {
   AssertCorrectTypes({value});
   if (pointer->getType() != vector_pointer_type()) {
     pointer = b()->CreateBitCast(pointer, vector_pointer_type());
@@ -261,8 +252,7 @@ void VectorSupportLibrary::StoreVector(llvm::Value* value,
       llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)));
 }
 
-void VectorSupportLibrary::StoreScalar(llvm::Value* value,
-                                       llvm::Value* pointer) {
+void VectorIrBuilder::StoreScalar(llvm::Value* value, llvm::Value* pointer) {
   AssertCorrectTypes({value});
   if (pointer->getType() != scalar_pointer_type()) {
     pointer = b()->CreateBitCast(pointer, scalar_pointer_type(), name());
@@ -272,7 +262,7 @@ void VectorSupportLibrary::StoreScalar(llvm::Value* value,
       llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(primitive_type_)));
 }
 
-llvm::Value* VectorSupportLibrary::LoadBroadcast(llvm::Value* pointer) {
+llvm::Value* VectorIrBuilder::LoadBroadcast(llvm::Value* pointer) {
   if (pointer->getType() != scalar_pointer_type()) {
     pointer = b()->CreateBitCast(pointer, scalar_pointer_type(), name());
   }
@@ -280,7 +270,7 @@ llvm::Value* VectorSupportLibrary::LoadBroadcast(llvm::Value* pointer) {
       vector_size(), b()->CreateLoad(scalar_type(), pointer), name());
 }
 
-llvm::Value* VectorSupportLibrary::AddReduce(llvm::Value* vector) {
+llvm::Value* VectorIrBuilder::AddReduce(llvm::Value* vector) {
   llvm::SmallVector<llvm::Constant*, 32> mask(vector_size(), nullptr);
   for (unsigned i = vector_size(); i != 1; i >>= 1) {
     // On every iteration, we shuffle half of the remaining lanes to the top
@@ -303,8 +293,8 @@ llvm::Value* VectorSupportLibrary::AddReduce(llvm::Value* vector) {
   return b()->CreateExtractElement(vector, b()->getInt32(0), name());
 }
 
-llvm::Value* VectorSupportLibrary::AvxStyleHorizontalAdd(llvm::Value* lhs,
-                                                         llvm::Value* rhs) {
+llvm::Value* VectorIrBuilder::AvxStyleHorizontalAdd(llvm::Value* lhs,
+                                                    llvm::Value* rhs) {
   CHECK_EQ(lhs->getType(), vector_type());
   CHECK_EQ(rhs->getType(), vector_type());
   CHECK_EQ(vector_size() % 2, 0);
@@ -344,7 +334,7 @@ llvm::Value* VectorSupportLibrary::AvxStyleHorizontalAdd(llvm::Value* lhs,
   return Add(shuffle_0, shuffle_1);
 }
 
-llvm::Value* VectorSupportLibrary::ExtractLowHalf(llvm::Value* vector) {
+llvm::Value* VectorIrBuilder::ExtractLowHalf(llvm::Value* vector) {
   llvm::SmallVector<llvm::Constant*, 32> mask;
   for (int i = 0; i < vector_size() / 2; i++) {
     mask.push_back(b()->getInt32(i));
@@ -354,7 +344,7 @@ llvm::Value* VectorSupportLibrary::ExtractLowHalf(llvm::Value* vector) {
                                   llvm::ConstantVector::get(mask));
 }
 
-llvm::Value* VectorSupportLibrary::ExtractHighHalf(llvm::Value* vector) {
+llvm::Value* VectorIrBuilder::ExtractHighHalf(llvm::Value* vector) {
   llvm::SmallVector<llvm::Constant*, 32> mask;
   for (int i = 0; i < vector_size() / 2; i++) {
     mask.push_back(b()->getInt32(i + vector_size() / 2));
@@ -364,7 +354,7 @@ llvm::Value* VectorSupportLibrary::ExtractHighHalf(llvm::Value* vector) {
                                   llvm::ConstantVector::get(mask));
 }
 
-std::vector<llvm::Value*> VectorSupportLibrary::ComputeHorizontalSums(
+std::vector<llvm::Value*> VectorIrBuilder::ComputeHorizontalSums(
     std::vector<llvm::Value*> vectors, llvm::Value* init_values) {
   const int x86_avx_vector_elements =
       TargetMachineFeatures::kX86AvxVectorByteSize / scalar_byte_size();
@@ -385,8 +375,7 @@ std::vector<llvm::Value*> VectorSupportLibrary::ComputeHorizontalSums(
   return result;
 }
 
-std::vector<llvm::Value*>
-VectorSupportLibrary::ComputeAvxOptimizedHorizontalSums(
+std::vector<llvm::Value*> VectorIrBuilder::ComputeAvxOptimizedHorizontalSums(
     std::vector<llvm::Value*> vectors, llvm::Value* init_values) {
   // vectors are N llvm vector values, each with N elements.
   int64_t lane_width = vectors.size();
@@ -426,11 +415,11 @@ VectorSupportLibrary::ComputeAvxOptimizedHorizontalSums(
   return results;
 }
 
-llvm::Value* VectorSupportLibrary::GetZeroVector() {
+llvm::Value* VectorIrBuilder::GetZeroVector() {
   return llvm::Constant::getNullValue(vector_type());
 }
 
-llvm::Value* VectorSupportLibrary::GetZeroScalar() {
+llvm::Value* VectorIrBuilder::GetZeroScalar() {
   return llvm::Constant::getNullValue(scalar_type());
 }
 
@@ -446,7 +435,7 @@ void LlvmVariable::Set(llvm::Value* new_value) {
   b_->CreateStore(new_value, alloca_);
 }
 
-TileVariable::TileVariable(VectorSupportLibrary* vector_support,
+TileVariable::TileVariable(VectorIrBuilder* vector_support,
                            std::vector<llvm::Value*> initial_value) {
   for (llvm::Value* initial_vector_value : initial_value) {
     storage_.emplace_back(vector_support, initial_vector_value);
@@ -467,5 +456,4 @@ void TileVariable::Set(absl::Span<llvm::Value* const> value) {
   }
 }
 
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu

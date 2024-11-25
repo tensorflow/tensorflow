@@ -35,7 +35,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/TypeSize.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "xla/service/cpu/vector_support_library.h"
+#include "xla/backends/cpu/codegen/vector_ir_builder.h"
 #include "xla/service/llvm_ir/math_ops.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
@@ -169,7 +169,7 @@ llvm::Value* GenerateVF64Tanh(llvm::IRBuilderBase* b, llvm::Value* input,
 
 llvm::Value* GenerateVF32Exp(llvm::IRBuilderBase* b, llvm::Value* input,
                              int32_t vector_width) {
-  VectorSupportLibrary vsl(F32, vector_width, b, "exp_f32");
+  VectorIrBuilder vb(F32, vector_width, b, "exp_f32");
 
   // This implements the same polynomial approximation as implemented in Cephes.
   const llvm::APFloat half = GetIeeeF32(0.5);
@@ -211,12 +211,12 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilderBase* b, llvm::Value* input,
   //
   //   log(F32_MAX) = 88.723...
   //   log(2^-126) = -87.337...
-  input = vsl.Clamp(input, GetIeeeF32(-87.8), GetIeeeF32(88.8));
+  input = vb.Clamp(input, GetIeeeF32(-87.8), GetIeeeF32(88.8));
 
   llvm::Value* x = input;
 
   // Calculates n = floor(input / log(2) + 0.5) = round(input / log(2))
-  llvm::Value* n = vsl.Floor(vsl.MulAdd(input, cephes_LOG2EF, half));
+  llvm::Value* n = vb.Floor(vb.MulAdd(input, cephes_LOG2EF, half));
 
   // When we eventually do the multiplication in e^a * 2^n, we need to handle
   // the case when n > 127, the max fp32 exponent (so 2^n == inf) but e^a < 1
@@ -257,20 +257,20 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilderBase* b, llvm::Value* input,
   //              implies e^x < 2^-126.5 < 2^-126
   //
   //    This proves that n' = -127 implies e^x < 2^-126.
-  n = vsl.Clamp(n, GetIeeeF32(-127), GetIeeeF32(127));
+  n = vb.Clamp(n, GetIeeeF32(-127), GetIeeeF32(127));
 
   // Computes x = x - n' * log(2), the value for `a`
-  x = vsl.Sub(x, vsl.Mul(cephes_exp_C1, n));
-  x = vsl.Sub(x, vsl.Mul(cephes_exp_C2, n));
+  x = vb.Sub(x, vb.Mul(cephes_exp_C1, n));
+  x = vb.Sub(x, vb.Mul(cephes_exp_C2, n));
 
   // Polynomial to compute z = e^a, accurate for a in (-0.5, 0.5).
-  llvm::Value* z = vsl.MulAdd(x, cephes_exp_p0, cephes_exp_p1);
-  z = vsl.MulAdd(z, x, cephes_exp_p2);
-  z = vsl.MulAdd(z, x, cephes_exp_p3);
-  z = vsl.MulAdd(z, x, cephes_exp_p4);
-  z = vsl.MulAdd(z, x, cephes_exp_p5);
-  z = vsl.MulAdd(z, vsl.Mul(x, x), x);
-  z = vsl.Add(one, z);
+  llvm::Value* z = vb.MulAdd(x, cephes_exp_p0, cephes_exp_p1);
+  z = vb.MulAdd(z, x, cephes_exp_p2);
+  z = vb.MulAdd(z, x, cephes_exp_p3);
+  z = vb.MulAdd(z, x, cephes_exp_p4);
+  z = vb.MulAdd(z, x, cephes_exp_p5);
+  z = vb.MulAdd(z, vb.Mul(x, x), x);
+  z = vb.Add(one, z);
 
   // Convert n' to an i32.  This is safe because we clamped it above.
   llvm::Value* n_i32 = b->CreateFPToSI(
@@ -286,15 +286,15 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilderBase* b, llvm::Value* input,
   llvm::Value* pow2 =
       b->CreateBitCast(b->CreateShl(b->CreateAdd(n_i32, exp_bias),
                                     splat_i32(kF32SignificandBits)),
-                       vsl.vector_type());
+                       vb.vector_type());
 
   // Return z * 2^n' if -126 <= n' <= 127 and 0 if n = -127.
-  return vsl.Mul(z, pow2);
+  return vb.Mul(z, pow2);
 }
 
 llvm::Value* GenerateVF32Log(llvm::IRBuilderBase* b, llvm::Value* input,
                              int32_t vector_width) {
-  VectorSupportLibrary vsl(F32, vector_width, b, "log_f32");
+  VectorIrBuilder vb(F32, vector_width, b, "log_f32");
 
   const llvm::APFloat half = GetIeeeF32(0.5);
   const llvm::APFloat one = GetIeeeF32(1.0);
@@ -322,16 +322,15 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilderBase* b, llvm::Value* input,
 
   // invalid_mask is set if x is negative or NaN (and therefore output
   // must be NaN).
-  llvm::Value* invalid_mask = vsl.FCmpULEMask(input, vsl.GetZeroVector());
-  llvm::Value* is_zero_mask = vsl.FCmpEQMask(input, vsl.GetZeroVector());
-  llvm::Value* is_pos_inf_mask = vsl.FCmpEQMask(input, pos_inf);
+  llvm::Value* invalid_mask = vb.FCmpULEMask(input, vb.GetZeroVector());
+  llvm::Value* is_zero_mask = vb.FCmpEQMask(input, vb.GetZeroVector());
+  llvm::Value* is_pos_inf_mask = vb.FCmpEQMask(input, pos_inf);
 
   // Cut off denormalized stuff.
   // Always allow fast max because we are checking for the nan above.
-  llvm::Value* tmp0 =
-      vsl.Max(min_norm_pos, input, /*enable_fast_min_max=*/true);
+  llvm::Value* tmp0 = vb.Max(min_norm_pos, input, /*enable_fast_min_max=*/true);
 
-  // VectorSupportLibrary (intentionally) can't juggle more than one type at a
+  // VectorIrBuilder (intentionally) can't juggle more than one type at a
   // time so drop down to IRBuilder for this bit.
   llvm::Value* vector_constant_0x7f =
       b->CreateVectorSplat(vector_width, b->getInt32(0x7f));
@@ -344,59 +343,59 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilderBase* b, llvm::Value* input,
                                     vector_constant_23);
 
   // Keep only the fractional part.
-  tmp0 = vsl.FloatAnd(tmp0, inv_mant_mask);
-  tmp0 = vsl.FloatOr(tmp0, half);
+  tmp0 = vb.FloatAnd(tmp0, inv_mant_mask);
+  tmp0 = vb.FloatOr(tmp0, half);
 
   emm0 = b->CreateSub(emm0, vector_constant_0x7f);
-  llvm::Value* e = vsl.Add(one, b->CreateSIToFP(emm0, vsl.vector_type()));
+  llvm::Value* e = vb.Add(one, b->CreateSIToFP(emm0, vb.vector_type()));
 
   // part2:
   //   if( x < SQRTHF ) {
   //     e -= 1;
   //     x = x + x - 1.0;
   //   } else { x = x - 1.0; }
-  llvm::Value* mask = vsl.FCmpOLTMask(tmp0, cephes_SQRTHF);
-  llvm::Value* tmp1 = vsl.FloatAnd(tmp0, mask);
-  tmp0 = vsl.Sub(tmp0, one);
-  e = vsl.Sub(e, vsl.FloatAnd(mask, one));
-  tmp0 = vsl.Add(tmp0, tmp1);
+  llvm::Value* mask = vb.FCmpOLTMask(tmp0, cephes_SQRTHF);
+  llvm::Value* tmp1 = vb.FloatAnd(tmp0, mask);
+  tmp0 = vb.Sub(tmp0, one);
+  e = vb.Sub(e, vb.FloatAnd(mask, one));
+  tmp0 = vb.Add(tmp0, tmp1);
 
-  llvm::Value* x2 = vsl.Mul(tmp0, tmp0);
-  llvm::Value* x3 = vsl.Mul(x2, tmp0);
+  llvm::Value* x2 = vb.Mul(tmp0, tmp0);
+  llvm::Value* x3 = vb.Mul(x2, tmp0);
 
   llvm::Value *y, *y1, *y2;
-  y = vsl.MulAdd(tmp0, cephes_log_p0, cephes_log_p1);
-  y1 = vsl.MulAdd(tmp0, cephes_log_p3, cephes_log_p4);
-  y2 = vsl.MulAdd(tmp0, cephes_log_p6, cephes_log_p7);
-  y = vsl.MulAdd(y, tmp0, cephes_log_p2);
-  y1 = vsl.MulAdd(y1, tmp0, cephes_log_p5);
-  y2 = vsl.MulAdd(y2, tmp0, cephes_log_p8);
-  y = vsl.MulAdd(y, x3, y1);
-  y = vsl.MulAdd(y, x3, y2);
-  y = vsl.Mul(y, x3);
+  y = vb.MulAdd(tmp0, cephes_log_p0, cephes_log_p1);
+  y1 = vb.MulAdd(tmp0, cephes_log_p3, cephes_log_p4);
+  y2 = vb.MulAdd(tmp0, cephes_log_p6, cephes_log_p7);
+  y = vb.MulAdd(y, tmp0, cephes_log_p2);
+  y1 = vb.MulAdd(y1, tmp0, cephes_log_p5);
+  y2 = vb.MulAdd(y2, tmp0, cephes_log_p8);
+  y = vb.MulAdd(y, x3, y1);
+  y = vb.MulAdd(y, x3, y2);
+  y = vb.Mul(y, x3);
 
-  y1 = vsl.Mul(cephes_log_q1, e);
-  llvm::Value* tmp2 = vsl.Mul(half, x2);
-  y = vsl.Add(y, y1);
-  tmp0 = vsl.Sub(tmp0, tmp2);
-  y2 = vsl.Mul(cephes_log_q2, e);
-  tmp0 = vsl.Add(tmp0, y);
-  tmp0 = vsl.Add(tmp0, y2);
+  y1 = vb.Mul(cephes_log_q1, e);
+  llvm::Value* tmp2 = vb.Mul(half, x2);
+  y = vb.Add(y, y1);
+  tmp0 = vb.Sub(tmp0, tmp2);
+  y2 = vb.Mul(cephes_log_q2, e);
+  tmp0 = vb.Add(tmp0, y);
+  tmp0 = vb.Add(tmp0, y2);
 
   // Contains +/-inf where +/-inf is the correct answer, otherwise 0.
-  llvm::Value* result_inf = vsl.FloatOr(vsl.FloatAnd(is_zero_mask, minus_inf),
-                                        vsl.FloatAnd(is_pos_inf_mask, pos_inf));
+  llvm::Value* result_inf = vb.FloatOr(vb.FloatAnd(is_zero_mask, minus_inf),
+                                       vb.FloatAnd(is_pos_inf_mask, pos_inf));
 
   // Contains a finite result or nan.  This is the correct answer only if both
   // result_minus_inf and result_pos_inf are both 0.
   //
   // (This implementation works because 0xffffffff is a nan.)
-  llvm::Value* result_finite_or_nan = vsl.FloatOr(tmp0, invalid_mask);
+  llvm::Value* result_finite_or_nan = vb.FloatOr(tmp0, invalid_mask);
 
   // Combine the above into a final result.
-  return vsl.FloatOr(result_inf,
-                     vsl.FloatAndNot(vsl.FloatOr(is_zero_mask, is_pos_inf_mask),
-                                     result_finite_or_nan));
+  return vb.FloatOr(result_inf,
+                    vb.FloatAndNot(vb.FloatOr(is_zero_mask, is_pos_inf_mask),
+                                   result_finite_or_nan));
 }
 }  // namespace
 
