@@ -261,7 +261,7 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
 
   if (sizes.GetDeviceCount() != device_ids.size()) {
     device_ids.resize(sizes.GetDeviceCount());
-    absl::c_iota(device_ids, sizes.GetDeviceCount());
+    absl::c_iota(device_ids, 0);
   }
 
   auto gpu_topology = std::make_shared<const xla::GpuTopology>(

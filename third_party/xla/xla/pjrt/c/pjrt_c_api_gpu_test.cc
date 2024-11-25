@@ -584,6 +584,10 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
   EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions().size(), 16 * 2 * 4);
   EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions()[0]->device_kind(),
             "Tesla V100-SXM2-32GB");
+  for (int i = 0; i < pjrt_topology->topology->DeviceDescriptions().size() - 1;
+       ++i) {
+    EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions()[i]->id(), i);
+  }
 
   PJRT_TopologyDescription_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;
