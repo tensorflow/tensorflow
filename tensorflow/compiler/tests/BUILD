@@ -2759,6 +2759,7 @@ cuda_py_strict_test(
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
