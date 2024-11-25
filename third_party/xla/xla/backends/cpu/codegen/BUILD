@@ -68,3 +68,20 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test_main",
     ],
 )
+
+cc_library(
+    name = "polynomial_approximations",
+    srcs = ["polynomial_approximations.cc"],
+    hdrs = ["polynomial_approximations.h"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla/service/cpu:vector_support_library",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/service/llvm_ir:math_ops",
+        "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TransformUtils",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)

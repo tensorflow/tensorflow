@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/SmallVector.h"
@@ -36,67 +35,16 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SmallVectorMemoryBuffer.h"
-#include "llvm/Support/TypeSize.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
-#include "xla/service/cpu/llvm_ir_runtime.h"
+#include "xla/backends/cpu/codegen/polynomial_approximations.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 
 namespace xla::cpu {
-
-static std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl() {
-  std::vector<llvm::VecDesc> result = {
-      {"tanhf", runtime::kTanhV4F32SymbolName, llvm::ElementCount::getFixed(4),
-       false, "_ZGV_LLVM_N4v"},
-      {"llvm.tanh.f32", runtime::kTanhV4F32SymbolName,
-       llvm::ElementCount::getFixed(4), false, "_ZGV_LLVM_N4v"},
-
-      {"tanhf", runtime::kTanhV8F32SymbolName, llvm::ElementCount::getFixed(8),
-       false, "_ZGV_LLVM_N8v"},
-      {"llvm.tanh.f32", runtime::kTanhV8F32SymbolName,
-       llvm::ElementCount::getFixed(8), false, "_ZGV_LLVM_N8v"},
-
-      {"tanhf", runtime::kTanhV16F32SymbolName,
-       llvm::ElementCount::getFixed(16), false, "_ZGV_LLVM_N16v"},
-      {"llvm.tanh.f32", runtime::kTanhV16F32SymbolName,
-       llvm::ElementCount::getFixed(16), false, "_ZGV_LLVM_N16v"},
-
-      {"expf", runtime::kExpV4F32SymbolName, llvm::ElementCount::getFixed(4),
-       false, "_ZGV_LLVM_N4v"},
-      {"llvm.exp.f32", runtime::kExpV4F32SymbolName,
-       llvm::ElementCount::getFixed(4), false, "_ZGV_LLVM_N4v"},
-
-      {"expf", runtime::kExpV8F32SymbolName, llvm::ElementCount::getFixed(8),
-       false, "_ZGV_LLVM_N8v"},
-      {"llvm.exp.f32", runtime::kExpV8F32SymbolName,
-       llvm::ElementCount::getFixed(8), false, "_ZGV_LLVM_N8v"},
-
-      {"expf", runtime::kExpV16F32SymbolName, llvm::ElementCount::getFixed(16),
-       false, "_ZGV_LLVM_N16v"},
-      {"llvm.exp.f32", runtime::kExpV16F32SymbolName,
-       llvm::ElementCount::getFixed(16), false, "_ZGV_LLVM_N16v"},
-
-      {"logf", runtime::kLogV4F32SymbolName, llvm::ElementCount::getFixed(4),
-       false, "_ZGV_LLVM_N4v"},
-      {"llvm.log.f32", runtime::kLogV4F32SymbolName,
-       llvm::ElementCount::getFixed(4), false, "_ZGV_LLVM_N4v"},
-
-      {"logf", runtime::kLogV8F32SymbolName, llvm::ElementCount::getFixed(8),
-       false, "_ZGV_LLVM_N8v"},
-      {"llvm.log.f32", runtime::kLogV8F32SymbolName,
-       llvm::ElementCount::getFixed(8), false, "_ZGV_LLVM_N8v"},
-
-      {"logf", runtime::kLogV16F32SymbolName, llvm::ElementCount::getFixed(16),
-       false, "_ZGV_LLVM_N16v"},
-      {"llvm.log.f32", runtime::kLogV16F32SymbolName,
-       llvm::ElementCount::getFixed(16), false, "_ZGV_LLVM_N16v"},
-  };
-  return result;
-}
 
 static llvm::OptimizationLevel GetOptimizationLevel(
     CompilerFunctor::Options options) {
@@ -166,7 +114,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
   auto target_library_info_impl =
       std::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
-      VectorFunctionsForTargetLibraryInfoImpl());
+      PolynomialApproximationsVectorization());
 
   fam.registerPass(
       [&] { return llvm::TargetLibraryAnalysis(*target_library_info_impl); });
@@ -196,7 +144,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
 
   CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
 
-  runtime::RewriteIRRuntimeFunctions(&module, options_.fast_math_flags);
+  RewriteToPolynomialApproximations(&module, options_.fast_math_flags);
 
   // Buffer for holding machine code prior to constructing the ObjectFile.
   llvm::SmallVector<char, 0> mc_stream_buffer;

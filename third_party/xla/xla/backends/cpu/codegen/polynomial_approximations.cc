@@ -13,36 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/llvm_ir_runtime.h"
+#include "xla/backends/cpu/codegen/polynomial_approximations.h"
 
 #include <cstdint>
 #include <functional>
+#include <string_view>
 #include <vector>
 
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/FMF.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/TypeSize.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "xla/service/cpu/vector_support_library.h"
 #include "xla/service/llvm_ir/math_ops.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
-namespace xla {
-namespace cpu {
-namespace runtime {
-
-const char* const kTanhV4F32SymbolName = "__xla_cpu_runtime_TanhV4F32";
-const char* const kTanhV8F32SymbolName = "__xla_cpu_runtime_TanhV8F32";
-const char* const kTanhV16F32SymbolName = "__xla_cpu_runtime_TanhV16F32";
-const char* const kExpV4F32SymbolName = "__xla_cpu_runtime_ExpV4F32";
-const char* const kExpV8F32SymbolName = "__xla_cpu_runtime_ExpV8F32";
-const char* const kExpV16F32SymbolName = "__xla_cpu_runtime_ExpV16F32";
-const char* const kLogV4F32SymbolName = "__xla_cpu_runtime_LogV4F32AVX";
-const char* const kLogV8F32SymbolName = "__xla_cpu_runtime_LogV8F32AVX";
-const char* const kLogV16F32SymbolName = "__xla_cpu_runtime_LogV16F32AVX";
-
+namespace xla::cpu {
 namespace {
 
 // Removes 'fn' from the list of symbols to keep in 'module'.
@@ -55,7 +53,7 @@ void RemoveFunctionFromUsedList(llvm::Module* module, llvm::Function* fn) {
   llvm::Type* ptr_type = llvm::PointerType::getUnqual(module->getContext());
   llvm::Constant* casted_fn = llvm::ConstantExpr::getBitCast(fn, ptr_type);
   auto* initializer = llvm::cast<llvm::ConstantArray>(used->getInitializer());
-  llvm::SmallVector<llvm::Constant*, 4> new_initializer;
+  llvm::SmallVector<llvm::Constant*> new_initializer;
   for (auto& op : initializer->operands()) {
     if (op != casted_fn) {
       new_initializer.push_back(llvm::cast<llvm::Constant>(op));
@@ -86,7 +84,7 @@ void RemoveFunctionFromUsedList(llvm::Module* module, llvm::Function* fn) {
 // vector_width f32s, and that fn_body_generator generates a function body with
 // the same inputs/outputs as fn_name.
 void RewriteCalls(
-    llvm::Module* module, const char* fn_name,
+    llvm::Module* module, std::string_view fn_name,
     std::function<llvm::Value*(llvm::IRBuilderBase* b, llvm::Value* input,
                                int32_t vector_width)>
         fn_body_generator,
@@ -190,7 +188,7 @@ llvm::Value* GenerateVF32Exp(llvm::IRBuilderBase* b, llvm::Value* input,
   const llvm::APFloat cephes_exp_p4 = GetIeeeF32(1.6666665459E-1);
   const llvm::APFloat cephes_exp_p5 = GetIeeeF32(5.0000001201E-1);
 
-  // To compute e^x, we re-express it as
+  // To compute e^x, we reexpress it as
   //
   //   e^x = e^(a + b)
   //       = e^(a + n log(2))
@@ -402,8 +400,67 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilderBase* b, llvm::Value* input,
 }
 }  // namespace
 
-void RewriteIRRuntimeFunctions(llvm::Module* module,
-                               llvm::FastMathFlags fast_math_flags) {
+static constexpr std::string_view kTanhV4F32Sym = "__xla_cpu_TanhV4F32";
+static constexpr std::string_view kTanhV8F32Sym = "__xla_cpu_TanhV8F32";
+static constexpr std::string_view kTanhV16F32Sym = "__xla_cpu_TanhV16F32";
+static constexpr std::string_view kExpV4F32Sym = "__xla_cpu_ExpV4F32";
+static constexpr std::string_view kExpV8F32Sym = "__xla_cpu_ExpV8F32";
+static constexpr std::string_view kExpV16F32Sym = "__xla_cpu_ExpV16F32";
+static constexpr std::string_view kLogV4F32Sym = "__xla_cpu_LogV4F32AVX";
+static constexpr std::string_view kLogV8F32Sym = "__xla_cpu_LogV8F32AVX";
+static constexpr std::string_view kLogV16F32Sym = "__xla_cpu_LogV16F32AVX";
+
+std::vector<llvm::VecDesc> PolynomialApproximationsVectorization() {
+  return std::vector<llvm::VecDesc>{
+      {"tanhf", kTanhV4F32Sym, llvm::ElementCount::getFixed(4), false,
+       "_ZGV_LLVM_N4v"},
+      {"llvm.tanh.f32", kTanhV4F32Sym, llvm::ElementCount::getFixed(4), false,
+       "_ZGV_LLVM_N4v"},
+
+      {"tanhf", kTanhV8F32Sym, llvm::ElementCount::getFixed(8), false,
+       "_ZGV_LLVM_N8v"},
+      {"llvm.tanh.f32", kTanhV8F32Sym, llvm::ElementCount::getFixed(8), false,
+       "_ZGV_LLVM_N8v"},
+
+      {"tanhf", kTanhV16F32Sym, llvm::ElementCount::getFixed(16), false,
+       "_ZGV_LLVM_N16v"},
+      {"llvm.tanh.f32", kTanhV16F32Sym, llvm::ElementCount::getFixed(16), false,
+       "_ZGV_LLVM_N16v"},
+
+      {"expf", kExpV4F32Sym, llvm::ElementCount::getFixed(4), false,
+       "_ZGV_LLVM_N4v"},
+      {"llvm.exp.f32", kExpV4F32Sym, llvm::ElementCount::getFixed(4), false,
+       "_ZGV_LLVM_N4v"},
+
+      {"expf", kExpV8F32Sym, llvm::ElementCount::getFixed(8), false,
+       "_ZGV_LLVM_N8v"},
+      {"llvm.exp.f32", kExpV8F32Sym, llvm::ElementCount::getFixed(8), false,
+       "_ZGV_LLVM_N8v"},
+
+      {"expf", kExpV16F32Sym, llvm::ElementCount::getFixed(16), false,
+       "_ZGV_LLVM_N16v"},
+      {"llvm.exp.f32", kExpV16F32Sym, llvm::ElementCount::getFixed(16), false,
+       "_ZGV_LLVM_N16v"},
+
+      {"logf", kLogV4F32Sym, llvm::ElementCount::getFixed(4), false,
+       "_ZGV_LLVM_N4v"},
+      {"llvm.log.f32", kLogV4F32Sym, llvm::ElementCount::getFixed(4), false,
+       "_ZGV_LLVM_N4v"},
+
+      {"logf", kLogV8F32Sym, llvm::ElementCount::getFixed(8), false,
+       "_ZGV_LLVM_N8v"},
+      {"llvm.log.f32", kLogV8F32Sym, llvm::ElementCount::getFixed(8), false,
+       "_ZGV_LLVM_N8v"},
+
+      {"logf", kLogV16F32Sym, llvm::ElementCount::getFixed(16), false,
+       "_ZGV_LLVM_N16v"},
+      {"llvm.log.f32", kLogV16F32Sym, llvm::ElementCount::getFixed(16), false,
+       "_ZGV_LLVM_N16v"},
+  };
+}
+
+void RewriteToPolynomialApproximations(llvm::Module* module,
+                                       llvm::FastMathFlags fast_math_flags) {
   // Curry some params to RewriteCalls.
   auto rewrite_calls =
       std::bind(RewriteCalls, module, std::placeholders::_1,
@@ -411,26 +468,24 @@ void RewriteIRRuntimeFunctions(llvm::Module* module,
 
   rewrite_calls("tanhf", GenerateVF32Tanh, /*vector_width=*/1);
   rewrite_calls("llvm.tanh.f32", GenerateVF32Tanh, /*vector_width=*/1);
-  rewrite_calls(kTanhV4F32SymbolName, GenerateVF32Tanh, /*vector_width=*/4);
-  rewrite_calls(kTanhV8F32SymbolName, GenerateVF32Tanh, /*vector_width=*/8);
-  rewrite_calls(kTanhV16F32SymbolName, GenerateVF32Tanh, /*vector_width=*/16);
+  rewrite_calls(kTanhV4F32Sym, GenerateVF32Tanh, /*vector_width=*/4);
+  rewrite_calls(kTanhV8F32Sym, GenerateVF32Tanh, /*vector_width=*/8);
+  rewrite_calls(kTanhV16F32Sym, GenerateVF32Tanh, /*vector_width=*/16);
 
   // TODO(penporn): Re-enable after fixing JAX issue #23590.
   // rewrite_calls("tanh", GenerateVF64Tanh, /*vector_width=*/1);
 
   rewrite_calls("expf", GenerateVF32Exp, /*vector_width=*/1);
   rewrite_calls("llvm.exp.f32", GenerateVF32Exp, /*vector_width=*/1);
-  rewrite_calls(kExpV4F32SymbolName, GenerateVF32Exp, /*vector_width=*/4);
-  rewrite_calls(kExpV8F32SymbolName, GenerateVF32Exp, /*vector_width=*/8);
-  rewrite_calls(kExpV16F32SymbolName, GenerateVF32Exp, /*vector_width=*/16);
+  rewrite_calls(kExpV4F32Sym, GenerateVF32Exp, /*vector_width=*/4);
+  rewrite_calls(kExpV8F32Sym, GenerateVF32Exp, /*vector_width=*/8);
+  rewrite_calls(kExpV16F32Sym, GenerateVF32Exp, /*vector_width=*/16);
 
   rewrite_calls("logf", GenerateVF32Log, /*vector_width=*/1);
   rewrite_calls("llvm.log.f32", GenerateVF32Log, /*vector_width=*/1);
-  rewrite_calls(kLogV4F32SymbolName, GenerateVF32Log, /*vector_width=*/4);
-  rewrite_calls(kLogV8F32SymbolName, GenerateVF32Log, /*vector_width=*/8);
-  rewrite_calls(kLogV16F32SymbolName, GenerateVF32Log, /*vector_width=*/16);
+  rewrite_calls(kLogV4F32Sym, GenerateVF32Log, /*vector_width=*/4);
+  rewrite_calls(kLogV8F32Sym, GenerateVF32Log, /*vector_width=*/8);
+  rewrite_calls(kLogV16F32Sym, GenerateVF32Log, /*vector_width=*/16);
 }
 
-}  // namespace runtime
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu

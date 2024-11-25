@@ -1026,9 +1026,9 @@ cc_library(
     hdrs = ["compiler_functor.h"],
     deps = [
         ":cpu_runtime",
-        ":llvm_ir_runtime",
         "//xla:types",
         "//xla:util",
+        "//xla/backends/cpu/codegen:polynomial_approximations",
         "//xla/service:llvm_compiler",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/base:core_headers",
@@ -1089,25 +1089,6 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:traceme",
-    ],
-)
-
-cc_library(
-    name = "llvm_ir_runtime",
-    srcs = [
-        "llvm_ir_runtime.cc",
-    ],
-    hdrs = [
-        "llvm_ir_runtime.h",
-    ],
-    deps = [
-        ":vector_support_library",
-        "//xla:xla_data_proto_cc",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/service/llvm_ir:math_ops",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:TransformUtils",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
