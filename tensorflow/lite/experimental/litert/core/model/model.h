@@ -174,6 +174,8 @@ struct LiteRtSubgraphT {
 // Keeps a reference to the flatbuffer model. Lifetimes of all storage
 // are linked to the containing model.
 struct LiteRtModelT {
+  using Ref = std::reference_wrapper<LiteRtModelT>;
+
   // Subgraphs that have been unpacked into usable types.
   std::vector<LiteRtSubgraphT> subgraphs;
 

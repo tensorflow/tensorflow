@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <tuple>
 #include <utility>
@@ -23,6 +24,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/absl_check.h"
+#include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -31,138 +33,146 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/core/model/litert_to_flatbuffer.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace litert::internal {
-
 namespace {
+
+using OpCodeMap = absl::flat_hash_map<LiteRtOpCode, uint32_t>;
+using TensorMap = absl::flat_hash_map<LiteRtTensor, int32_t>;
+using SubmitBuffer = std::function<uint32_t(TflBufferPtr buf)>;
+
+TflOpCodePtr MakeCustomOpCode(absl::string_view custom_code_name) {
+  auto custom_code = std::make_unique<TflOpCode>();
+  custom_code->builtin_code = ::tflite::BuiltinOperator_CUSTOM;
+  custom_code->custom_code.assign(custom_code_name.begin(),
+                                  custom_code_name.end());
+  custom_code->version = 1;
+  return custom_code;
+}
+
+OpCodeMap BuildOpCodeMap(const std::vector<TflOpCodePtr>& op_codes) {
+  OpCodeMap map;
+  for (auto i = 0; i < op_codes.size(); ++i) {
+    const auto tfl_code = op_codes[i]->builtin_code;
+    map.insert({static_cast<LiteRtOpCode>(tfl_code), i});
+  }
+  return map;
+}
+
+void SetOptions(const LiteRtOpT& litert_op, TflOp& tfl_op) {
+  tfl_op.builtin_options = litert_op.option;
+
+  if (litert_op.custom_options.Size() != 0) {
+    tfl_op.custom_options = litert_op.custom_options.ToVec();
+    tfl_op.custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS;
+  }
+}
 
 class ModelRepacker {
  public:
-  static LiteRtStatus Repack(LiteRtModel model);
+  static LiteRtStatus Repack(LiteRtModelT& model);
 
  private:
-  static void BuildOpCodeMap(LiteRtModel model,
-                             absl::flat_hash_map<LiteRtOpCode, uint32_t>& map);
-
-  explicit ModelRepacker(LiteRtModel model) : model_(model) {
-    BuildOpCodeMap(model_, op_code_map_);
+  explicit ModelRepacker(LiteRtModelT::Ref model) : model_(model) {
+    model_.get().flatbuffer_model->operator_codes.emplace_back(
+        MakeCustomOpCode(model_.get().custom_op_code));
+    op_code_map_ =
+        BuildOpCodeMap(model_.get().flatbuffer_model->operator_codes);
   }
 
-  LiteRtStatus SerializeTensor(LiteRtTensor tensor, tflite::TensorT& target);
+  LiteRtStatus SerializeTensor(LiteRtTensorT& tensor, TflTensor& target);
 
-  LiteRtStatus SerializeOp(
-      LiteRtOp op, tflite::OperatorT& target,
-      const absl::flat_hash_map<LiteRtTensor, int32_t>& tensor_map);
+  LiteRtStatus SerializeOp(LiteRtOpT& op, TflOp& target,
+                           const TensorMap& tensor_map);
 
-  LiteRtStatus SerializeSubgraph(LiteRtSubgraph subgraph,
-                                 tflite::SubGraphT& target);
+  LiteRtStatus SerializeSubgraph(LiteRtSubgraphT& subgraph,
+                                 TflSubgraph& target);
 
-  uint32_t SubmitBuffer(std::unique_ptr<tflite::BufferT> buffer) {
+  uint32_t SubmitBuffer(TflBufferPtr buffer) {
     OldFb().buffers.push_back(std::move(buffer));
     return OldFb().buffers.size() - 1;
   }
 
-  tflite::ModelT& OldFb() { return *model_->flatbuffer_model; }
+  TflModel& OldFb() { return *model_.get().flatbuffer_model; }
 
-  LiteRtModel model_;
-  absl::flat_hash_map<LiteRtOpCode, uint32_t> op_code_map_;
+  LiteRtModelT::Ref model_;
+  OpCodeMap op_code_map_;
 };
 
-void ModelRepacker::BuildOpCodeMap(
-    LiteRtModel model, absl::flat_hash_map<LiteRtOpCode, uint32_t>& map) {
-  // Add the user set custom code to the flatbuffers known codes.
-  auto& custom_code = model->flatbuffer_model->operator_codes.emplace_back(
-      std::make_unique<tflite::OperatorCodeT>());
-  custom_code->builtin_code = tflite::BuiltinOperator_CUSTOM;
-  custom_code->custom_code = model->custom_op_code;
-  custom_code->version = 1;
-
-  auto& codes = model->flatbuffer_model->operator_codes;
-
-  for (int i = 0; i < codes.size(); ++i) {
-    const auto tfl_code = codes[i]->builtin_code;
-    map.insert({static_cast<LiteRtOpCode>(tfl_code), i});
+LiteRtStatus ModelRepacker::SerializeTensor(LiteRtTensorT& tensor,
+                                            TflTensor& target) {
+  auto tfl_tensor_type = MapTensorType({tensor.type_id, tensor.type_detail});
+  if (!tfl_tensor_type) {
+    return tfl_tensor_type.Error().Status();
   }
-}
+  auto [tfl_elem_type, tfl_shape] = *tfl_tensor_type;
 
-LiteRtStatus ModelRepacker::SerializeTensor(LiteRtTensor tensor,
-                                            tflite::TensorT& target) {
-  target.has_rank = true;
-  const auto& type = tensor->type_detail.ranked_tensor_type;
-  // TODO: b/365299994 - Map litert element types to flatbuffer elements types.
-  target.type = tflite::TensorType_FLOAT32;
+  target.type = tfl_elem_type;
+  target.shape.assign(tfl_shape.shape.begin(), tfl_shape.shape.end());
+  target.has_rank = tfl_shape.has_rank;
+  target.shape_signature.assign(tfl_shape.shape_signature.begin(),
+                                tfl_shape.shape_signature.end());
 
-  for (int i = 0; i < type.layout.rank; ++i) {
-    target.shape.push_back(type.layout.dimensions[i]);
-  }
-
-  // TFL tensors don't support strides yet.
-  ABSL_DCHECK(type.layout.strides == nullptr);
-
-  ABSL_DCHECK(tensor->weights.fb_buffer != nullptr)
+  ABSL_DCHECK(tensor.weights.fb_buffer != nullptr)
       << "Submitting a null buffer";
-  target.buffer = SubmitBuffer(std::move(tensor->weights.fb_buffer));
+  target.buffer = SubmitBuffer(std::move(tensor.weights.fb_buffer));
 
-  target.name = tensor->name;
+  target.name = tensor.name;
 
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus ModelRepacker::SerializeOp(
-    LiteRtOp op, tflite::OperatorT& target,
-    const absl::flat_hash_map<LiteRtTensor, int32_t>& tensor_map) {
-  target.opcode_index = op_code_map_.at(op->op_code);
+LiteRtStatus ModelRepacker::SerializeOp(LiteRtOpT& op, TflOp& target,
+                                        const TensorMap& tensor_map) {
+  target.opcode_index = op_code_map_.at(op.op_code);
 
-  for (auto in : op->inputs) {
+  for (auto in : op.inputs) {
     target.inputs.push_back(tensor_map.at(in));
   }
 
-  for (auto out : op->outputs) {
+  for (auto out : op.outputs) {
     target.outputs.push_back(tensor_map.at(out));
   }
 
-  target.builtin_options = op->option;
+  SetOptions(op, target);
 
-  if (op->custom_options.Size() != 0) {
-    target.custom_options = op->custom_options.ToVec();
-    target.custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS;
-  }
   // TODO: b/365299994 - Support exotic op fields in serialize.
 
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus ModelRepacker::SerializeSubgraph(LiteRtSubgraph subgraph,
-                                              tflite::SubGraphT& target) {
-  absl::flat_hash_map<LiteRtTensor, int32_t> tensor_map;
+LiteRtStatus ModelRepacker::SerializeSubgraph(LiteRtSubgraphT& subgraph,
+                                              TflSubgraph& target) {
+  TensorMap tensor_map;
 
-  for (auto tensor : subgraph->tensors) {
+  for (auto tensor : subgraph.tensors) {
     tensor_map.insert({tensor, tensor_map.size()});
-    target.tensors.push_back(std::make_unique<tflite::TensorT>());
+    target.tensors.push_back(std::make_unique<TflTensor>());
     LITERT_RETURN_STATUS_IF_NOT_OK(
-        SerializeTensor(tensor, *target.tensors.back()));
+        SerializeTensor(*tensor, *target.tensors.back()));
   }
 
-  for (auto op : subgraph->ops) {
-    target.operators.push_back(std::make_unique<tflite::OperatorT>());
+  for (auto op : subgraph.ops) {
+    target.operators.push_back(std::make_unique<TflOp>());
     LITERT_RETURN_STATUS_IF_NOT_OK(
-        SerializeOp(op, *target.operators.back(), tensor_map));
+        SerializeOp(*op, *target.operators.back(), tensor_map));
   }
 
-  for (auto in : subgraph->inputs) {
+  for (auto in : subgraph.inputs) {
     target.inputs.push_back(tensor_map.at(in));
   }
-  for (auto out : subgraph->outputs) {
+  for (auto out : subgraph.outputs) {
     target.outputs.push_back(tensor_map.at(out));
   }
 
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus ModelRepacker::Repack(LiteRtModel model) {
+LiteRtStatus ModelRepacker::Repack(LiteRtModelT& model) {
   ModelRepacker repacker(model);
 
   auto& target = repacker.OldFb();
@@ -180,12 +190,12 @@ LiteRtStatus ModelRepacker::Repack(LiteRtModel model) {
   target.metadata.clear();
   target.metadata_buffer.clear();
 
-  target.buffers.push_back(std::make_unique<tflite::BufferT>());
+  target.buffers.push_back(std::make_unique<TflBuffer>());
 
-  for (auto& subgraph : model->subgraphs) {
-    target.subgraphs.push_back(std::make_unique<tflite::SubGraphT>());
+  for (auto& subgraph : model.subgraphs) {
+    target.subgraphs.push_back(std::make_unique<TflSubgraph>());
     LITERT_RETURN_STATUS_IF_NOT_OK(
-        repacker.SerializeSubgraph(&subgraph, *target.subgraphs.back()));
+        repacker.SerializeSubgraph(subgraph, *target.subgraphs.back()));
   }
 
   for (auto& [name, buf] : metadata) {
@@ -204,7 +214,7 @@ LiteRtStatus ModelRepacker::Repack(LiteRtModel model) {
 }  // namespace
 
 Expected<OwningBufferRef<uint8_t>> SerializeModel(Model&& model) {
-  LITERT_EXPECT_OK(ModelRepacker::Repack(model.Get()));
+  LITERT_EXPECT_OK(ModelRepacker::Repack(*model.Get()));
 
   flatbuffers::FlatBufferBuilder b;
   auto model_offset =

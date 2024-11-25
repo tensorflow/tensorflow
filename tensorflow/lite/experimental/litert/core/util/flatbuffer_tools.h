@@ -33,6 +33,7 @@ namespace litert::internal {
 using TflTensor = ::tflite::TensorT;
 using TflOp = ::tflite::OperatorT;
 using TflBuffer = ::tflite::BufferT;
+using TflSubgraph = ::tflite::SubGraphT;
 using TflModel = ::tflite::ModelT;
 using TflOpCodeEnum = ::tflite::BuiltinOperator;
 using TflOpCode = ::tflite::OperatorCodeT;
@@ -59,6 +60,27 @@ struct TflShapeInfo {
   // If i is a dyn dim, then shape[i] == 1 and shape_signature[i] < 0. Otherwise
   // shape_signature[i] == shape[i].
   SmallVec<int32_t> shape_signature;
+
+  // Convert from a single dims array. Will detect if array is static/dynamic
+  // and populate fields accordingly.
+  explicit TflShapeInfo(absl::Span<const int32_t> shape_data) : has_rank(true) {
+    bool is_dyn = false;
+    shape.reserve(shape_data.size());
+    shape_signature.reserve(shape_data.size());
+    for (auto d : shape_data) {
+      if (d >= 0) {
+        shape.push_back(d);
+        shape_signature.push_back(d);
+      } else {
+        is_dyn = true;
+        shape.push_back(1);
+        shape_signature.push_back(-1);
+      }
+    }
+    if (!is_dyn) {
+      shape_signature.clear();
+    }
+  }
 
   // Convert from tensor.
   explicit TflShapeInfo(const TflTensor& tfl_tensor)

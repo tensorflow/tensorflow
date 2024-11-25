@@ -265,6 +265,10 @@ using ModelLoadOpCheckTest = TestWithModelPath;
 
 TEST_P(ModelLoadOpCheckTest, CheckOps) {
   const auto model_path = GetTestModelPath();
+
+  auto expected_fb = FlatbufferWrapper::CreateFromTflFile(model_path);
+  ASSERT_TRUE(expected_fb);
+
   auto model = LoadModelFromFile(model_path);
   ASSERT_TRUE(model);
 
@@ -272,7 +276,7 @@ TEST_P(ModelLoadOpCheckTest, CheckOps) {
   const auto ops = subgraph->Ops();
 
   const auto& fb_subgraph =
-      *model->Get()->subgraphs.front().flatbuffer_subgraph;
+      *expected_fb->get()->UnpackedModel().subgraphs.front();
   const auto& fb_ops = fb_subgraph.operators;
   const auto& fb_tensors = fb_subgraph.tensors;
 
@@ -298,6 +302,71 @@ INSTANTIATE_TEST_SUITE_P(ModelLoadDynamicOpCheckTest, ModelLoadOpCheckTest,
 INSTANTIATE_TEST_SUITE_P(
     ModelLoadStaticOpCheckTest, ModelLoadOpCheckTest,
     ::testing::ValuesIn({static_cast<absl::string_view>("one_mul.tflite")}));
+
+using ModelSerializeOpCheckTest = TestWithModelPath;
+
+TEST_P(ModelSerializeOpCheckTest, CheckOps) {
+  const auto model_path = GetTestModelPath();
+
+  auto expected_fb = FlatbufferWrapper::CreateFromTflFile(model_path);
+  ASSERT_TRUE(expected_fb);
+
+  auto serialized = SerializeModel(*LoadModelFromFile(model_path));
+  auto actual_fb = FlatbufferWrapper::CreateFromBuffer(*serialized);
+  ASSERT_TRUE(actual_fb);
+
+  const auto& expected_fb_subgraph =
+      *expected_fb->get()->UnpackedModel().subgraphs.front();
+  const auto& expected_fb_ops = expected_fb_subgraph.operators;
+  const auto& expected_fb_tensors = expected_fb_subgraph.tensors;
+
+  const auto& actual_fb_subgraph =
+      *actual_fb->get()->UnpackedModel().subgraphs.front();
+  const auto& actual_fb_ops = actual_fb_subgraph.operators;
+  const auto& actual_fb_tensors = actual_fb_subgraph.tensors;
+
+  ASSERT_EQ(expected_fb_ops.size(), actual_fb_ops.size());
+  for (auto i = 0; i < actual_fb_ops.size(); ++i) {
+    const auto& expected = *expected_fb_ops.at(i);
+    const auto& actual = *actual_fb_ops.at(i);
+    EXPECT_EQ(expected.inputs.size(), actual.inputs.size());
+    EXPECT_EQ(expected.outputs.size(), actual.outputs.size());
+  }
+
+  ASSERT_EQ(expected_fb_tensors.size(), actual_fb_tensors.size());
+  for (auto i = 0; i < actual_fb_tensors.size(); ++i) {
+    const auto& expected = *expected_fb_tensors.at(i);
+    const auto& actual = *actual_fb_tensors.at(i);
+
+    EXPECT_EQ(actual.type, expected.type);
+    EXPECT_EQ(actual.shape, expected.shape);
+    EXPECT_EQ(actual.shape_signature, expected.shape_signature);
+
+    const auto expected_q_params = expected.quantization.get();
+    const auto actual_q_params = actual.quantization.get();
+
+    const auto neither_quantized =
+        !IsQuantized(expected_q_params) && !IsQuantized(actual_q_params);
+    const auto both_per_tensor = IsPerTensorQuantized(expected_q_params) &&
+                                 IsPerTensorQuantized(actual_q_params);
+    ASSERT_TRUE(neither_quantized || both_per_tensor);
+
+    if (both_per_tensor) {
+      const auto expected_per_tensor = AsPerTensorQparams(expected_q_params);
+      const auto actual_per_tensor = AsPerTensorQparams(actual_q_params);
+      EXPECT_EQ(*expected_per_tensor, *actual_per_tensor);
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ModelSerializeStaticOpCheckTest, ModelSerializeOpCheckTest,
+    ::testing::ValuesIn({static_cast<absl::string_view>("one_mul.tflite")}));
+
+INSTANTIATE_TEST_SUITE_P(ModelSerializeDynamicOpCheckTest,
+                         ModelSerializeOpCheckTest,
+                         ::testing::ValuesIn({static_cast<absl::string_view>(
+                             "dynamic_shape_tensor.tflite")}));
 
 }  // namespace
 }  // namespace litert::internal
