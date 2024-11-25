@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
@@ -45,8 +46,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
 
 static std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl() {
   std::vector<llvm::VecDesc> result = {
@@ -98,6 +98,33 @@ static std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl() {
   return result;
 }
 
+static llvm::OptimizationLevel GetOptimizationLevel(
+    CompilerFunctor::Options options) {
+  if (options.optimize_for_size) {
+    return llvm::OptimizationLevel::Os;
+  }
+
+  switch (options.optimization_level) {
+    case 0:
+      return llvm::OptimizationLevel::O0;
+    case 1:
+      return llvm::OptimizationLevel::O1;
+    case 2:
+      return llvm::OptimizationLevel::O2;
+    case 3:
+      return llvm::OptimizationLevel::O3;
+    default:
+      return llvm::OptimizationLevel::O0;
+  }
+}
+
+CompilerFunctor::CompilerFunctor(TargetMachineBuilder target_machine_builder,
+                                 Options options, CompilationHooks hooks)
+    : IRCompiler(llvm::orc::IRSymbolMapper::ManglingOptions()),
+      target_machine_builder_(std::move(target_machine_builder)),
+      options_(std::move(options)),
+      hooks_(std::move(hooks)) {}
+
 llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
     llvm::Module& module) {
   VLOG(2) << "IR before optimizations";
@@ -112,34 +139,15 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
 
   {  // Synchronize access to user-defined hooks.
     absl::MutexLock lock(&mutex_);
-    if (pre_optimization_hook_) {
-      pre_optimization_hook_(module);
-    }
-  }
-
-  llvm::OptimizationLevel opt_level;
-  if (optimize_for_size_) {
-    opt_level = llvm::OptimizationLevel::Os;
-  } else {
-    switch (opt_level_) {
-      case 0:
-        opt_level = llvm::OptimizationLevel::O0;
-        break;
-      case 1:
-        opt_level = llvm::OptimizationLevel::O1;
-        break;
-      case 2:
-        opt_level = llvm::OptimizationLevel::O2;
-        break;
-      case 3:
-        opt_level = llvm::OptimizationLevel::O3;
-        break;
+    if (hooks_.pre_optimization) {
+      hooks_.pre_optimization(module);
     }
   }
 
   llvm::PipelineTuningOptions pto;
-  pto.LoopVectorization = !optimize_for_size_;
-  pto.SLPVectorization = !optimize_for_size_ && !disable_slp_vectorizer_;
+  pto.LoopVectorization = !options_.optimize_for_size;
+  pto.SLPVectorization =
+      !options_.optimize_for_size && !options_.disable_slp_vectorizer;
   pto.LoopUnrolling = false;
 
   llvm::LoopAnalysisManager lam;
@@ -171,10 +179,11 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
 
   llvm::ModulePassManager pm;
 
-  if (dfsan_enabled_) {
-    pm.addPass(llvm::DataFlowSanitizerPass(dfsan_abi_list_files_));
+  if (options_.dfsan_enabled) {
+    pm.addPass(llvm::DataFlowSanitizerPass(options_.dfsan_abi_list_files));
   }
 
+  llvm::OptimizationLevel opt_level = GetOptimizationLevel(options_);
   if (opt_level == llvm::OptimizationLevel::O0) {
     pm.addPass(pb.buildO0DefaultPipeline(opt_level));
   } else {
@@ -187,7 +196,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
 
   CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
 
-  runtime::RewriteIRRuntimeFunctions(&module, fast_math_flags_);
+  runtime::RewriteIRRuntimeFunctions(&module, options_.fast_math_flags);
 
   // Buffer for holding machine code prior to constructing the ObjectFile.
   llvm::SmallVector<char, 0> mc_stream_buffer;
@@ -197,8 +206,8 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
 
   {  // Synchronize access to user-defined hooks.
     absl::MutexLock lock(&mutex_);
-    if (post_optimization_hook_) {
-      post_optimization_hook_(module);
+    if (hooks_.post_optimization) {
+      hooks_.post_optimization(module);
     }
   }
 
@@ -213,13 +222,13 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
 
   {  // Synchronize access to user-defined hooks.
     absl::MutexLock lock(&mutex_);
-    if (post_codegen_hook_) {
+    if (hooks_.post_codegen) {
       llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
           llvm::object::ObjectFile::createObjectFile(*mc_memory_buffer);
       if (obj_file) {
-        post_codegen_hook_(*obj_file.get());
+        hooks_.post_codegen(*obj_file.get());
       } else {
-        LOG(WARNING) << "Could not convert memory buffer to object file!";
+        LOG(WARNING) << "Could not convert memory buffer to object file";
       }
     }
   }
@@ -227,5 +236,4 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
   return std::move(mc_memory_buffer);
 }
 
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu

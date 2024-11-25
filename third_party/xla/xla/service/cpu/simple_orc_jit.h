@@ -18,15 +18,14 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -80,8 +79,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook,
       LLVMCompiler::ModuleHook post_optimization_hook,
-      absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
-          post_codegen_hook,
+      std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook,
       size_t num_jit_dylibs, absl::string_view max_cpu_isa);
 
   static llvm::Expected<std::unique_ptr<SimpleOrcJIT>> Create(
@@ -91,8 +89,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook,
       LLVMCompiler::ModuleHook post_optimization_hook,
-      absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
-          post_codegen_hook,
+      std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook,
       size_t num_jit_dylibs, absl::string_view max_cpu_isa);
 
   ~SimpleOrcJIT() override;

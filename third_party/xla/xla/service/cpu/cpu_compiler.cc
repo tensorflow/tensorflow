@@ -1026,7 +1026,7 @@ namespace {
 // Post-compilation callback functor for use by SimpleOrcJIT.
 //
 // Dumps machine code if dumping is enabled for the module.
-static absl::AnyInvocable<void(const llvm::object::ObjectFile& obj_file)>
+static std::function<void(const llvm::object::ObjectFile& obj_file)>
 CreateOrcJITPostCompilationHook(const HloModule* module,
                                 std::vector<std::string>* obj_files) {
   return [=](const llvm::object::ObjectFile& obj_file) {
@@ -1939,15 +1939,28 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                           obj_file.getData().size()));
       };
 
-      CompilerFunctor compiler_functor(
-          [&] { return target_machine; }, static_cast<int>(opt_level),
+      CompilerFunctor::Options ir_compiler_options = {
+          /*optimization_level=*/static_cast<int>(opt_level),
+          /*optimize_for_size=*/
           options::OptimizeForSizeRequested(module->config()),
+          /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(module->config()),
+          /*disable_expensive_passes=*/
           module->config().debug_options().xla_llvm_disable_expensive_passes(),
+          /*disable_slp_vectorizer=*/
           options::SlpVectorizerDisabled(module->config()),
-          llvm_ir::GetCpuFastMathFlags(module->config()),
-          pre_optimization_ir_hook, post_optimization_ir_hook,
-          post_codegen_hook, aot_options.sanitize_dataflow(),
-          aot_options.sanitize_abilists_dataflow());
+          /*dfsan_enabled=*/aot_options.sanitize_dataflow(),
+          /*dfsan_abilists_enabled=*/aot_options.sanitize_abilists_dataflow()};
+
+      CompilerFunctor::CompilationHooks ir_compiler_hooks = {
+          pre_optimization_ir_hook,
+          post_optimization_ir_hook,
+          post_codegen_hook,
+      };
+
+      CompilerFunctor compiler_functor([&] { return target_machine; },
+                                       std::move(ir_compiler_options),
+                                       std::move(ir_compiler_hooks));
+
       std::unique_ptr<llvm::MemoryBuffer> object_file =
           cantFail(compiler_functor(*llvm_module));
       ObjectFileData object_file_data(object_file->getBufferStart(),

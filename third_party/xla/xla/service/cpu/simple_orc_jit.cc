@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -271,7 +272,7 @@ SimpleOrcJIT::SimpleOrcJIT(
     bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
-    absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook,
+    std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook,
     size_t num_jit_dylibs, absl::string_view max_cpu_isa)
     : target_machine_builder_(
           CreateTargetMachineBuilder(target_options, opt_level, max_cpu_isa)),
@@ -288,11 +289,19 @@ SimpleOrcJIT::SimpleOrcJIT(
       compile_layer_(
           *execution_session_, object_layer_,
           std::make_unique<CompilerFunctor>(
-              target_machine_builder_, static_cast<int>(opt_level),
-              optimize_for_size, disable_expensive_passes,
-              disable_slp_vectorizer, fast_math_flags,
-              std::move(pre_optimization_hook),
-              std::move(post_optimization_hook), std::move(post_codegen_hook))),
+              target_machine_builder_,
+              CompilerFunctor::Options{
+                  /*optimization_level=*/static_cast<int32_t>(opt_level),
+                  /*optimize_for_size=*/optimize_for_size,
+                  /*fast_math_flags=*/fast_math_flags,
+                  /*disable_expensive_passes=*/disable_expensive_passes,
+                  /*disable_slp_vectorizer=*/disable_slp_vectorizer,
+              },
+              CompilerFunctor::CompilationHooks{
+                  std::move(pre_optimization_hook),
+                  std::move(post_optimization_hook),
+                  std::move(post_codegen_hook),
+              })),
       gdb_jit_event_listener_(
           llvm::JITEventListener::createGDBRegistrationListener()),
       perf_jit_event_listener_(
@@ -359,7 +368,7 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
-    absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook,
+    std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook,
     size_t num_jit_dylibs, absl::string_view max_cpu_isa) {
   auto SSP = std::make_shared<llvm::orc::SymbolStringPool>();
   auto target_process_control =
