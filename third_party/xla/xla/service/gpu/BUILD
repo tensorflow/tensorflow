@@ -13,10 +13,6 @@ load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "if_static",
-)
 load("//xla:xla.bzl", "xla_cc_test", "xla_internal")
 load(
     "//xla/service/gpu:build_defs.bzl",
@@ -948,13 +944,11 @@ cc_library(
     name = "matmul_utils",
     srcs = ["matmul_utils.cc"],
     hdrs = ["matmul_utils.h"],
-    compatible_with = get_compatible_with_portable(),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
     deps = [
         ":backend_configs_cc",
-        ":ir_emission_utils",
         ":matmul_indexing_utils",
         "//xla:autotuning_proto_cc",
         "//xla:shape_util",
@@ -963,7 +957,6 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/mlir_hlo",
         "//xla/service:algorithm_util",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory",
@@ -979,24 +972,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_gpu_is_configured([
-        #keep sorted
-        "//xla/stream_executor:host_or_device_scalar",
-    ]) + if_cuda_is_configured([
-        #keep sorted
-        "//xla/stream_executor/cuda:cublas_lt_header",
-        "//xla/stream_executor/cuda:cublas_plugin",
-        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
-    ]) + if_rocm_is_configured([
-        #keep sorted
-        "//xla/stream_executor/rocm:amdhipblaslt_plugin",
-        "//xla/stream_executor/rocm:hipblas_lt_header",
-        "@local_config_rocm//rocm:rocm_headers",
-    ]) + if_static([
-        "@local_tsl//tsl/platform:tensor_float_32_utils",
-    ]),
+    ],
 )
 
 xla_cc_test(

@@ -35,10 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/xla_data.pb.h"
 
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
-
 namespace xla {
 namespace gpu {
 
