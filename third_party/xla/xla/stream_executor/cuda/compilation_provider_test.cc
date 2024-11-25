@@ -29,6 +29,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/nvjitlink_compilation_provider.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
+#include "xla/stream_executor/cuda/nvptxcompiler_compilation_provider.h"
+#include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/cuda/subprocess_compilation_provider.h"
 #include "xla/stream_executor/device_description.h"
@@ -51,6 +53,8 @@ using ::tsl::testing::StatusIs;
 
 constexpr std::string_view kSubprocessCompilationProviderName = "subprocess";
 constexpr std::string_view kNvJitLinkCompilationProviderName = "nvjitlink";
+constexpr std::string_view kNvptxcompilerCompilationProviderName =
+    "nvptxcompiler";
 
 class CompilationProviderTest
     : public testing::TestWithParam<std::string_view> {
@@ -63,11 +67,19 @@ class CompilationProviderTest
       GTEST_SKIP() << "nvjitlink is a precompiled and not instrumented binary "
                       "library, so it's not compatible with MSAN.";
     }
+    if (GetParam() == kNvptxcompilerCompilationProviderName) {
+      GTEST_SKIP() << "nvptxcompiler is a precompiled and not instrumented "
+                      "binary library, so it's not compatible with MSAN.";
+    }
 #endif
 
     if (GetParam() == kNvJitLinkCompilationProviderName &&
         !IsLibNvJitLinkSupported()) {
       GTEST_SKIP() << "nvjitlink is not supported in this build.";
+    }
+    if (GetParam() == kNvptxcompilerCompilationProviderName &&
+        !IsLibNvPtxCompilerSupported()) {
+      GTEST_SKIP() << "nvptxcompiler is not supported in this build.";
     }
 
     TF_ASSERT_OK_AND_ASSIGN(compilation_provider_,
@@ -94,6 +106,10 @@ CompilationProviderTest::CreateCompilationProvider(std::string_view name) {
 
   if (name == kNvJitLinkCompilationProviderName) {
     return std::make_unique<NvJitLinkCompilationProvider>();
+  }
+
+  if (name == kNvptxcompilerCompilationProviderName) {
+    return std::make_unique<NvptxcompilerCompilationProvider>();
   }
 
   return absl::NotFoundError(
@@ -471,9 +487,11 @@ TEST_P(CompilationProviderTest, ParallelCompileAndLinkReturnsSameResult) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(CompilationProviderTest, CompilationProviderTest,
-                         testing::Values(kSubprocessCompilationProviderName,
-                                         kNvJitLinkCompilationProviderName));
+INSTANTIATE_TEST_SUITE_P(
+    CompilationProviderTest, CompilationProviderTest,
+    testing::Values(kSubprocessCompilationProviderName,
+                    kNvJitLinkCompilationProviderName,
+                    kNvptxcompilerCompilationProviderName));
 
 }  // namespace
 }  // namespace stream_executor::cuda

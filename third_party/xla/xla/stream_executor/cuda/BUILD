@@ -707,7 +707,6 @@ cc_library(
 cc_library(
     name = "ptx_compiler",
     hdrs = ["ptx_compiler.h"],
-    tags = ["cuda-only"],
     deps = select({
         ":libnvptxcompiler_support_enabled": [":ptx_compiler_impl"],
         "//conditions:default": [":ptx_compiler_stub"],
@@ -1491,6 +1490,8 @@ xla_cc_test(
         ":compilation_provider",
         ":nvjitlink_compilation_provider",
         ":nvjitlink_support",
+        ":nvptxcompiler_compilation_provider",
+        ":ptx_compiler_support",
         ":subprocess_compilation",
         ":subprocess_compilation_provider",
         "//xla/stream_executor:device_description",
@@ -1513,6 +1514,23 @@ cc_library(
         ":compilation_options",
         ":compilation_provider",
         ":nvjitlink",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "nvptxcompiler_compilation_provider",
+    srcs = ["nvptxcompiler_compilation_provider.cc"],
+    hdrs = ["nvptxcompiler_compilation_provider.h"],
+    deps = [
+        ":compilation_options",
+        ":compilation_provider",
+        ":ptx_compiler",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status",
