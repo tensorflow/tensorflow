@@ -114,10 +114,10 @@ class TransformGraphTest : public ::testing::Test {
 
     for (const NodeDef& node : out_graph_def.node()) {
       const int occurrence_count = out_node_map.count(node.name());
-      if (str_util::EndsWith(node.name(), "expect_removed")) {
+      if (absl::EndsWith(node.name(), "expect_removed")) {
         EXPECT_EQ(0, occurrence_count) << "node.name()=" << node.name();
       }
-      if (str_util::EndsWith(node.name(), "expect_remains")) {
+      if (absl::EndsWith(node.name(), "expect_remains")) {
         EXPECT_EQ(1, occurrence_count) << "node.name()=" << node.name();
       }
     }
