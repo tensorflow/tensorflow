@@ -724,12 +724,16 @@ absl::StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     const int64_t buffer_size = allocation.size();
     se::DeviceMemoryBase buffer_address;
     if (buffer_size > 0) {
-      TF_ASSIGN_OR_RETURN(
-          se::OwningDeviceMemory buffer,
+      absl::StatusOr<se::OwningDeviceMemory> buffer =
           memory_allocator->Allocate(device_ordinal, buffer_size,
                                      /*retry_on_failure=*/true,
-                                     /*memory_space=*/allocation.color()));
-      buffer_address = buffer.Release();
+                                     /*memory_space=*/allocation.color());
+      if (!buffer.ok()) {
+        return ResourceExhausted("%s\n%s\n", buffer.status().message(),
+                                 buffer_assignment_->ToVerboseString(
+                                     debug_buffer_assignment_show_max_));
+      }
+      buffer_address = buffer->Release();
     }
     return buffer_address;
   }

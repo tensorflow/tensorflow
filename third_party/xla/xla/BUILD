@@ -268,16 +268,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "status",
-    hdrs = ["status.h"],
-    deprecation = "Use @com_google_absl//absl/status instead.",
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/status",
-    ],
-)
-
-cc_library(
     name = "fp_util",
     hdrs = ["fp_util.h"],
     visibility = ["//visibility:public"],
