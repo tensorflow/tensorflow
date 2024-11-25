@@ -68,19 +68,24 @@ namespace internal {
 // Call function "get" and assert it returns value equal to given expected
 // value.
 template <class F, class Expected, typename... Args>
-inline void AssertEq(F get, Expected expected, Args... args) {
-  auto status = get(args...);
+inline void AssertEq(F get, Expected expected, Args&&... args) {
+  auto status = get(std::forward<Args>(args)...);
   ABSL_CHECK_EQ(status, expected);
+}
+
+// Call function "get" and assert it returns true.
+template <class F, typename... Args>
+inline void AssertTrue(F get, Args&&... args) {
+  AssertEq(get, true, std::forward<Args>(args)...);
 }
 
 // Call function "get" and assert it returns an OK LiteRtStatus.
 template <class F, typename... Args>
-inline void AssertOk(F get, Args... args) {
-  AssertEq(get, kLiteRtStatusOk, args...);
+inline void AssertOk(F get, Args&&... args) {
+  AssertEq(get, kLiteRtStatusOk, std::forward<Args>(args)...);
 }
 
 }  // namespace internal
-
 }  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_DETAIL_H_
