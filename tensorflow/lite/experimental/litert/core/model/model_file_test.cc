@@ -368,5 +368,9 @@ INSTANTIATE_TEST_SUITE_P(ModelSerializeDynamicOpCheckTest,
                          ::testing::ValuesIn({static_cast<absl::string_view>(
                              "dynamic_shape_tensor.tflite")}));
 
+INSTANTIATE_TEST_SUITE_P(ModelSerializeQuantizedOpCheckTest,
+                         ModelSerializeOpCheckTest,
+                         ::testing::ValuesIn(kAllQModels));
+
 }  // namespace
 }  // namespace litert::internal

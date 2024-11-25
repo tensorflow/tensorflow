@@ -145,7 +145,7 @@ typedef struct {
   float scale;
 
   // The value that float:0 maps to in q-space.
-  size_t zero_point;
+  int64_t zero_point;
 } LiteRtQuantizationPerTensor;
 
 // The identifier for quantization scheme type union.

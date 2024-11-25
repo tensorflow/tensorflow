@@ -43,7 +43,6 @@ namespace {
 
 using OpCodeMap = absl::flat_hash_map<LiteRtOpCode, uint32_t>;
 using TensorMap = absl::flat_hash_map<LiteRtTensor, int32_t>;
-using SubmitBuffer = std::function<uint32_t(TflBufferPtr buf)>;
 
 TflOpCodePtr MakeCustomOpCode(absl::string_view custom_code_name) {
   auto custom_code = std::make_unique<TflOpCode>();
@@ -116,6 +115,13 @@ LiteRtStatus ModelRepacker::SerializeTensor(LiteRtTensorT& tensor,
   target.has_rank = tfl_shape.has_rank;
   target.shape_signature.assign(tfl_shape.shape_signature.begin(),
                                 tfl_shape.shape_signature.end());
+
+  auto tfl_quantization =
+      MapQuantization(std::make_pair(tensor.q_type_id, tensor.q_type_detail));
+  if (!tfl_quantization) {
+    return tfl_quantization.Error().Status();
+  }
+  target.quantization = std::move(*tfl_quantization);
 
   ABSL_DCHECK(tensor.weights.fb_buffer != nullptr)
       << "Submitting a null buffer";

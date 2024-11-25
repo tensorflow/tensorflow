@@ -26,6 +26,9 @@ namespace litert::internal {
 
 Expected<TflTensorType> MapTensorType(const TensorType& litert_tensor_type);
 
+Expected<TflQuantizationPtr> MapQuantization(
+    const Quantization& litert_quantization);
+
 }  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_LITERT_TO_FLATBUFFER_H_
