@@ -67,7 +67,7 @@ struct BlasLtMatmulPlanMap {
   }
 
  private:
-  absl::flat_hash_map<BlasLtMatmulPlanParams, PlanAndAlgorithms> map_
+  absl::node_hash_map<BlasLtMatmulPlanParams, PlanAndAlgorithms> map_
       ABSL_GUARDED_BY(mu);
 };
 
