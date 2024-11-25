@@ -86,7 +86,6 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -493,27 +492,6 @@ class AsyncHostToDeviceTransferManager
   }
 };
 
-static absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
-    absl::Span<PjRtDevice* const> devices) {
-  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attrs;
-  for (const PjRtDevice* device : devices) {
-    LocalDeviceState* local_device_state =
-        tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
-            ->local_device_state();
-    if (local_device_state != nullptr) {
-      std::string attr;
-      if (tsl::protobuf::TextFormat::PrintToString(
-              xla::Compiler::TargetConfig(local_device_state->executor())
-                  .ToProto(),
-              &attr)) {
-        attrs["target_config"] = std::move(attr);
-        break;
-      }
-    }
-  }
-  return attrs;
-}
-
 StreamExecutorGpuClient::StreamExecutorGpuClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
@@ -527,9 +505,9 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
           platform_name, client, std::move(devices), process_index,
           std::move(allocator), std::move(host_memory_allocator),
           should_stage_host_to_device_transfers, std::move(gpu_run_options)),
-      topology_(xla::StreamExecutorGpuTopologyDescription(
+      topology_(xla::StreamExecutorGpuTopologyDescription::Create(
           tsl::Fingerprint64(platform_name), platform_name,
-          std::move(gpu_topology), GetAttrsForDevices(addressable_devices()))),
+          std::move(gpu_topology))),
       kv_store_(std::move(kv_store)) {
   const int basePinnedId = device_count();
   for (auto* device : addressable_devices()) {
