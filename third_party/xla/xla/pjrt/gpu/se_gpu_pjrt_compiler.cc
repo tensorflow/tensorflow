@@ -109,12 +109,15 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
       TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
       return client->Compile(computation, options);
     }
-    const auto& gpu_topology =
-        tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
-            topology);
-    if (gpu_topology.target_config().has_value()) {
+    auto attr = topology.Attributes();
+    if (auto it = attr.find("target_config"); it != attr.end()) {
+      auto target_config_str = std::get<std::string>(it->second);
+      stream_executor::GpuTargetConfigProto gpu_target_config_proto;
+      if (!gpu_target_config_proto.ParseFromString(target_config_str)) {
+        return FailedPrecondition("Failed to parse GpuTargetConfigProto");
+      }
       options.target_config.emplace(
-          Compiler::TargetConfig(*gpu_topology.target_config()));
+          Compiler::TargetConfig(gpu_target_config_proto));
     } else {
       return absl::UnimplementedError(
           "Compilation without client and without target_config specified is "

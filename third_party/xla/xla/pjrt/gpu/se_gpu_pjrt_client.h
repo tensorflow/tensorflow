@@ -72,14 +72,11 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
       const PjRtPlatformId platform_id, const absl::string_view platform_name,
       std::shared_ptr<const GpuTopology> gpu_topology,
       const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& attributes =
-          {},
-      std::optional<stream_executor::GpuTargetConfigProto> target_config =
-          std::nullopt)
+          {})
       : platform_id_(platform_id),
         platform_name_(platform_name),
         gpu_topology_(std::move(gpu_topology)),
-        attributes_(attributes),
-        target_config_(std::move(target_config)) {}
+        attributes_(attributes) {}
 
   bool operator==(const StreamExecutorGpuTopologyDescription& other) const {
     return this->platform_id() == other.platform_id() &&
@@ -135,11 +132,6 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
 
   absl::StatusOr<std::string> Serialize() const override;
 
-  const std::optional<stream_executor::GpuTargetConfigProto>& target_config()
-      const {
-    return target_config_;
-  }
-
   // Returns vendor specific attributes about the topology.
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
@@ -155,7 +147,6 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   const std::string platform_name_;
   std::shared_ptr<const GpuTopology> gpu_topology_;
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
-  std::optional<stream_executor::GpuTargetConfigProto> target_config_;
 };
 
 class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
