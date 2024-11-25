@@ -48,7 +48,5 @@ absl::StatusOr<bool> DisableCompressionAtRuntime(
 
 void LogFilenames(const std::vector<std::string>& files) {}
 
-void LogLineage(const std::vector<std::string>& files) {}
-
 }  // namespace data
 }  // namespace tensorflow
