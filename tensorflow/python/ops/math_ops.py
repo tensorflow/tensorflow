@@ -3360,9 +3360,9 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
     raw_max = reduce_max(input_tensor, axis=axis, keepdims=True)
     my_max = array_ops.stop_gradient(
-        gen_math_ops.select(
+        gen_math_ops.select_v2(
             gen_math_ops.is_finite(raw_max), raw_max,
-            gen_array_ops.zeros_like(raw_max)))
+            0))
     result = gen_math_ops.log(
         reduce_sum(
             exp(subtract(input_tensor, my_max)),
