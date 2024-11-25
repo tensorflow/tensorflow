@@ -2855,9 +2855,13 @@ cc_library(
 
 xla_test(
     name = "sort_rewriter_test",
-    srcs = if_cuda_is_configured(["sort_rewriter_test.cc"]),
-    backends = ["gpu"],
-    tags = ["no_oss"],
+    srcs = ["sort_rewriter_test.cc"],
+    backends = [
+        "gpu",
+    ],
+    tags = [
+        "cuda-only",
+    ],
     deps = [
         ":sort_rewriter",
         "//xla:error_spec",
