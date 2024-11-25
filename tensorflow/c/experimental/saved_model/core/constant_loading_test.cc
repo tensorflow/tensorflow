@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
+#include <tuple>
 #include <vector>
 
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
