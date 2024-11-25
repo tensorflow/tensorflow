@@ -32,13 +32,25 @@ namespace {
 int GetMaximumWGTotalSize(const GpuInfo& gpu_info) {
   // total_wg_size must be power of 2 and >= 4;
   int total_wg_size = 256;
+  // The Intel GPUs have max WorkGroup size more than 256, detect the actual
+  // size, to improve parralels.
   if (gpu_info.IsIntel() && gpu_info.IsApiOpenCl() &&
       gpu_info.opencl_info.IsCLVK()) {
-    int total_wg_size_tmp = gpu_info.GetMaxWorkGroupTotalSize() / total_wg_size;
-    while (total_wg_size_tmp >> 1) {
-      total_wg_size <<= 1;
-      total_wg_size_tmp >>= 1;
-    }
+    auto roundDownToPowerOfTwo = [](int num) {
+      if (num <= 0) {
+        return 0;  // Handle non-positive numbers
+      }
+      // Find the position of the most significant bit (MSB)
+      int msbPosition = std::log2(num);
+      // Calculate the power of 2
+      int powerOfTwo = 1 << msbPosition;
+      return powerOfTwo;
+    };
+   
+    total_wg_size = roundDownToPowerOfTwo(
+        std::max(gpu_info.GetMaxWorkGroupTotalSize(), total_wg_size));
+    // Limit to no more than 1024.
+    total_wg_size = std::min(total_wg_size, 1024);
   }
   if (gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
     total_wg_size = 128;
@@ -177,7 +189,8 @@ Reduce::Reduce(const std::map<Axis, int>& axis_to_reduce, OperationType op_type,
   int current_wg_size_total =
       current_wg_size.x * current_wg_size.y * current_wg_size.z;
   int threshold = max_total_wg_size / 4;
-  if (gpu_info.IsApple() || gpu_info.IsIntel()) {
+  if (gpu_info.IsApple() || (gpu_info.IsIntel() && gpu_info.IsApiOpenCl() &&
+                             gpu_info.opencl_info.IsCLVK())) {
     threshold = 16;
   }
   if (current_wg_size_total < threshold) {
