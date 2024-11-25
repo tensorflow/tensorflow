@@ -348,7 +348,6 @@ cc_library(
         "//xla/service:name_uniquer",
         "//xla/service/gpu/fusions",
         "//xla/service/gpu/fusions:fusion_emitter",
-        "//xla/service/gpu/fusions:thunk_util",
         "//xla/service/gpu/fusions/triton:triton_fusion_emitter",
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/kernels:topk_custom_kernel",

@@ -454,25 +454,6 @@ xla_test(
 )
 
 cc_library(
-    name = "thunk_util",
-    srcs = ["thunk_util.cc"],
-    hdrs = ["thunk_util.h"],
-    visibility = ["//xla/service/gpu:__subpackages__"],
-    deps = [
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:buffer_assignment",
-        "//xla/service/gpu:ir_emitter_context",
-        "//xla/service/gpu/runtime:memset_thunk",
-        "//xla/service/gpu/runtime:thunk",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "reduction_base",
     srcs = ["reduction_base.cc"],
     hdrs = ["reduction_base.h"],

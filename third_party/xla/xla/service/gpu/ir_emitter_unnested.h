@@ -323,9 +323,6 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<const HloInstruction* const> needed_operands,
       const LaunchDimensions& launch_dimensions);
 
-  absl::Status BuildInitializerThunk(const HloInstruction* instr,
-                                     const HloInstruction* init_value);
-
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction.
   absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(

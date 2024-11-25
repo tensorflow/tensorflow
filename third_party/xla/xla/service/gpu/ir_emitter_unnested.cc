@@ -92,7 +92,6 @@ limitations under the License.
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
-#include "xla/service/gpu/fusions/thunk_util.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
@@ -2199,46 +2198,6 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
       /*shmem_bytes=*/0));
 
   return {{inputs, outputs}};
-}
-
-absl::Status IrEmitterUnnested::BuildInitializerThunk(
-    const HloInstruction* instr, const HloInstruction* init_value) {
-  // initial value must be a scalar memref.
-  TF_RET_CHECK(init_value->shape().rank() == 0);
-
-  auto maybe_dest_slice = GetAllocationSliceForHlo(instr, {});
-  if (!maybe_dest_slice.ok()) return maybe_dest_slice.status();
-
-  BufferAllocation::Slice dest_slice = *maybe_dest_slice;
-
-  TF_ASSIGN_OR_RETURN(std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
-                      BuildConstantInitializerThunk(*ir_emitter_context_, instr,
-                                                    init_value, dest_slice));
-  if (constant_init_thunk) {
-    AddThunkToThunkSequence(*std::move(constant_init_thunk));
-    return absl::OkStatus();
-  }
-
-  // Otherwise fall back to our slow initializer code. The thunk in this case
-  // will just need the IR arrays for the initial value and the destination.
-  const Shape& dest_shape = instr->shape();
-
-  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      dest_shape, ir_emitter_context_->gpu_device_info());
-  TF_ASSIGN_OR_RETURN(
-      auto ir_arrays,
-      BuildKernelThunkForNonFusionOp(instr, {init_value}, launch_dimensions));
-  auto& [inputs, outputs] = ir_arrays;
-  auto init_array = inputs[0];
-
-  std::string name = llvm_ir::IrName(instr, "init");
-  TF_RETURN_IF_ERROR(ParallelLoopEmitter(
-                         [=](const llvm_ir::IrArray::Index& index) {
-                           return init_array.EmitReadArrayElement(index, &b_);
-                         },
-                         {inputs[1]}, launch_dimensions, &b_)
-                         .EmitLoop(name));
-  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
