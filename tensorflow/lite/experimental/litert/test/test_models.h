@@ -61,26 +61,32 @@ static constexpr absl::string_view kQMulAdd16x16Model =
     "simple_quantized_ops.tflite";
 
 // Single add op i16 activations and i8 weights and dynamic shape.
+// Add: <?x32x32int16>, <?x32x32int16> -> <?x32x32int16>
 static constexpr absl::string_view kQSingleDynAdd16x8Model =
     "single_add_default_a16w8_recipe_quantized.tflite";
 
 // Single add op i8 activations and i8 weights and dynamic shape.
+// Add: <?x32x32int8>, <?x32x32int8> -> <?x32x32int8>
 static constexpr absl::string_view kQSingleDynAdd8x8Model =
     "single_add_default_a8w8_recipe_quantized.tflite";
 
 // Single mul op i16 activations and i8 weights and dynamic shape.
+// Mul: <?x32x32int16>, <?x32x32int16> -> <?x32x32int16>
 static constexpr absl::string_view kQSingleDynMul16x8Model =
     "single_mul_default_a16w8_recipe_quantized.tflite";
 
 // Single mul op i8 activations and i8 weights and dynamic shape.
+// Mul: <?x32x32int8>, <?x32x32int8> -> <?x32x32int8>
 static constexpr absl::string_view kQSingleDynMul8x8Model =
     "single_mul_default_a8w8_recipe_quantized.tflite";
 
 // Single rsqrt op i16 activations and i8 weights and dynamic shape.
+// RSQRT: <?x32x32int16> -> <?x32x32int16>
 static constexpr absl::string_view kQSingleDynRsqrt16x8Model =
     "single_rsqrt_default_a16w8_recipe_quantized.tflite";
 
 // Single rsqrt op i8 activations and i8 weights and dynamic shape.
+// RSQRT: <?x32x32int8> -> <?x32x32int8>
 static constexpr absl::string_view kQSingleDynRsqrt8x8Model =
     "single_rsqrt_default_a8w8_recipe_quantized.tflite";
 
