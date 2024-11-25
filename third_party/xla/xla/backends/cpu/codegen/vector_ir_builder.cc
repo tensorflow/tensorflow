@@ -39,7 +39,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
-#include "xla/service/cpu/target_machine_features.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"

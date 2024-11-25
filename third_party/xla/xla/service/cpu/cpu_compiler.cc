@@ -76,6 +76,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
@@ -158,7 +159,6 @@ limitations under the License.
 #include "xla/service/cpu/metrics.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
 #include "xla/service/cpu/simple_orc_jit.h"
-#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/cpu/thunk_emitter.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/dump.h"
@@ -468,12 +468,11 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
 
 absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool is_aot_compile,
-    LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
+    TargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
   HloPassPipeline pre_sharding_pipeline("pre-spmd-pipeline");
   // TODO(b/359982037): Run BatchedGatherScatterNormalizer after partitioning.
   pre_sharding_pipeline.AddPass<BatchedGatherScatterNormalizer>();
   TF_RETURN_IF_ERROR(pre_sharding_pipeline.Run(module).status());
-
   const int64_t num_partitions = module->config().num_partitions();
   if (num_partitions > 1) {
     if (!module->config().use_spmd_partitioning()) {
@@ -760,7 +759,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
 absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     HloModule* module, bool is_aot_compile,
-    LLVMTargetMachineFeatures* target_machine_features,
+    TargetMachineFeatures* target_machine_features,
     const CompileOptions& compile_options, bool is_mlir_compile) {
   HloPassPipeline pipeline("HLO passes after layout assignment");
 
@@ -880,7 +879,7 @@ absl::Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
                                        llvm::TargetMachine* target_machine,
                                        const CompileOptions& compile_options,
                                        bool is_mlir_compile) {
-  LLVMTargetMachineFeatures target_machine_features(target_machine);
+  TargetMachineFeatures target_machine_features(target_machine);
   TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(
       module, is_aot_compile, &target_machine_features, is_mlir_compile));
 
@@ -1420,7 +1419,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     return cpu_executable;
   };
 
-  LLVMTargetMachineFeatures target_machine_features((*jit)->target_machine());
+  TargetMachineFeatures target_machine_features((*jit)->target_machine());
 
   // TODO(ezhulenev): Once we fully migrate to Thunks current IrEmitter should
   // be renamed to NestedIrEmitter and be used only for emitting nested (aka
@@ -1862,7 +1861,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
             &hlo_profile_index_map, &hlo_profile_printer_data));
       }
 
-      LLVMTargetMachineFeatures target_machine_features(target_machine.get());
+      TargetMachineFeatures target_machine_features(target_machine.get());
       std::vector<BufferInfo> buffer_infos =
           CreateBufferInfosFromBufferAssignment(*module, *assignment);
       HloComputation* computation = module->entry_computation();
@@ -2113,7 +2112,7 @@ CpuExecutableAotCompilationResult::LoadExecutable(
     auto llvm_module =
         std::make_unique<llvm::Module>(kXlaModuleIdentifier, *llvm_context);
 
-    LLVMTargetMachineFeatures target_machine_features((*jit)->target_machine());
+    TargetMachineFeatures target_machine_features((*jit)->target_machine());
 
     IrEmitter nested_ir_emitter(
         nullptr, *module, *buffer_assignment, llvm_module.get(), {}, {},
