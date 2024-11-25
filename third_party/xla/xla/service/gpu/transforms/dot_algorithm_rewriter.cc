@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -32,12 +33,33 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
 namespace {
+
+absl::StatusOr<HloInstruction*> Mult(HloInstruction* lhs, HloInstruction* rhs) {
+  return MakeBinaryHlo(HloOpcode::kMultiply, lhs, rhs);
+}
+
+HloInstruction* UpcastToF32(HloInstruction* instr) {
+  Shape new_shape = instr->shape();
+  new_shape.set_element_type(PrimitiveType::F32);
+  return instr->AddInstruction(HloInstruction::CreateConvert(new_shape, instr));
+}
+
+HloInstruction* SumToF32(HloInstruction* lhs, HloInstruction* rhs) {
+  Shape shape = lhs->shape();
+  shape.set_element_type(PrimitiveType::F32);
+  auto computation = lhs->parent();
+  return computation->AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, UpcastToF32(lhs), UpcastToF32(rhs)));
+}
 
 HloInstruction* Truncate(HloInstruction* f32_param) {
   // Cast to int32 first, then zero out the high bits. Then cast back to f32.
@@ -105,9 +127,11 @@ HloInstruction* ReplaceNaNWithZeros(HloInstruction* input) {
   HloInstruction* abs_result = computation->AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, input));
   // Compare the abs result with the infinity.
+  Shape cmp_shape = shape;
+  cmp_shape.set_element_type(PrimitiveType::PRED);
   HloInstruction* cmp_result =
       computation->AddInstruction(HloInstruction::CreateCompare(
-          shape, infinity, abs_result, ComparisonDirection::kGe));
+          cmp_shape, infinity, abs_result, ComparisonDirection::kGe));
   HloInstruction* zero = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
   zero = computation->AddInstruction(
@@ -219,6 +243,66 @@ absl::StatusOr<bool> DotAlgorithmRewriter::Run(
     }
   }
   return changed;
+}
+
+absl::StatusOr<HloInstruction*>
+DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32(HloInstruction* lhs,
+                                                 HloInstruction* rhs) {
+  TF_RET_CHECK(lhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32, but the lhs is not F32.";
+  TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32, but the rhs is not F32.";
+  auto lhs_bf16 = RoundToBF16(lhs);
+  auto rhs_bf16 = RoundToBF16(rhs);
+  TF_ASSIGN_OR_RETURN(auto result_bf16,
+                      MakeBinaryHlo(HloOpcode::kMultiply, lhs_bf16, rhs_bf16));
+  return UpcastToF32(result_bf16);
+}
+
+absl::StatusOr<HloInstruction*>
+DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X3(HloInstruction* lhs,
+                                                   HloInstruction* rhs) {
+  TF_RET_CHECK(lhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32_X3, but the lhs is not F32.";
+  TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32_X3, but the rhs is not F32.";
+
+  auto [lhs_high_bf16, lhs_low_bf16] = Split2xToBF16(lhs);
+  auto [rhs_high_bf16, rhs_low_bf16] = Split2xToBF16(rhs);
+  TF_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_bf16, rhs_high_bf16));
+  TF_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_bf16, rhs_low_bf16));
+  TF_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_bf16, rhs_high_bf16));
+  auto* low_sum = SumToF32(low_high, high_low);
+  auto* low = ReplaceNaNWithZeros(low_sum);
+  auto* result = SumToF32(low, high_high);
+  return result;
+}
+
+absl::StatusOr<HloInstruction*>
+DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X6(HloInstruction* lhs,
+                                                   HloInstruction* rhs) {
+  TF_RET_CHECK(lhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32_X6, but the lhs is not F32.";
+  TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
+      << "Algorithm field set to BF16_BF16_F32_X6, but the rhs is not F32.";
+
+  auto [lhs_high_bf16, lhs_mid_bf16, lhs_low_bf16] = Split3xToBF16(lhs);
+  auto [rhs_high_bf16, rhs_mid_bf16, rhs_low_bf16] = Split3xToBF16(rhs);
+  TF_ASSIGN_OR_RETURN(auto* middle_middle, Mult(lhs_mid_bf16, rhs_mid_bf16));
+  TF_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_bf16, rhs_low_bf16));
+  TF_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_bf16, rhs_high_bf16));
+  TF_ASSIGN_OR_RETURN(auto* high_middle, Mult(lhs_high_bf16, rhs_mid_bf16));
+  TF_ASSIGN_OR_RETURN(auto* middle_high, Mult(lhs_mid_bf16, rhs_high_bf16));
+  TF_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_bf16, rhs_high_bf16));
+
+  HloInstruction* result = nullptr;
+  result = SumToF32(middle_middle, high_low);
+  result = SumToF32(result, low_high);
+  result = SumToF32(result, high_middle);
+  result = SumToF32(result, middle_high);
+  result = ReplaceNaNWithZeros(result);
+  result = SumToF32(result, high_high);
+  return result;
 }
 
 }  // namespace xla::gpu

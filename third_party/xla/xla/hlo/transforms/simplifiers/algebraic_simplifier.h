@@ -556,6 +556,16 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   const AlgebraicSimplifierOptions& options_;
 
  private:
+  // Returns whether the dot precision config is supported by simplifier.
+  virtual bool SupportedDotPrecisionConfig(const PrecisionConfig& config);
+
+  // Makes algorithm specific set of instructions for multiply with precision
+  // algorithm in mind. In the trivial case it returns just multiply.
+  // For x3 or x6 algorithms it adds the parameters split instructions and the
+  // corresponding multiply instructions.
+  virtual absl::StatusOr<HloInstruction*> MakeMultiplyForPrecisionAlgorithm(
+      HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs);
+
   // Rewrite dot as mul(broadcast(transpose(x)),broadcast(transpose(y)))
   absl::Status RewriteAsMultiplyDotWithZeroLhsContractingDim(
       HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs,

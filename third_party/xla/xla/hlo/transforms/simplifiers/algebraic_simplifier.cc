@@ -3940,7 +3940,8 @@ absl::Status AlgebraicSimplifierVisitor::RewriteBatchPlusContractingAsReduce(
   }
 
   TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
-                      MakeBinaryHlo(HloOpcode::kMultiply, new_lhs, new_rhs));
+                      MakeMultiplyForPrecisionAlgorithm(dot, new_lhs, new_rhs));
+
   std::vector<int64_t> reduce_dims(dnums.lhs_contracting_dimensions_size());
   PrimitiveType dot_type =
       ShapeUtil::ElementIsFloating(dot->shape())
@@ -3952,6 +3953,17 @@ absl::Status AlgebraicSimplifierVisitor::RewriteBatchPlusContractingAsReduce(
   new_dot = AddReduce(new_dot, reduce_dims, dot_type);
   new_dot = AsType(new_dot, dot->shape().element_type());
   return ReplaceInstruction(dot, new_dot);
+}
+
+bool AlgebraicSimplifierVisitor::SupportedDotPrecisionConfig(
+    const PrecisionConfig& config) {
+  return config.algorithm() == PrecisionConfig::ALG_UNSET;
+}
+
+absl::StatusOr<HloInstruction*>
+AlgebraicSimplifierVisitor::MakeMultiplyForPrecisionAlgorithm(
+    HloInstruction*, HloInstruction* lhs, HloInstruction* rhs) {
+  return MakeBinaryHlo(HloOpcode::kMultiply, lhs, rhs);
 }
 
 absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
@@ -3980,13 +3992,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
       absl::c_linear_search(dot->precision_config().operand_precision(),
                             PrecisionConfig::PACKED_NIBBLE);
   const bool can_rewrite_dot_with_precision_config_algorithm =
-      dot->precision_config().algorithm() == PrecisionConfig::ALG_UNSET ||
-      dot->precision_config().algorithm() ==
-          PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
-      dot->precision_config().algorithm() ==
-          PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
-      dot->precision_config().algorithm() ==
-          PrecisionConfig::ALG_DOT_F32_F32_F32;
+      SupportedDotPrecisionConfig(dot->precision_config());
   // If there are no contracting dimensions, a dot can be rewritten as
   // mul(broadcast(transpose(x)),broadcast(transpose(y)))
   if (!is_packed_nibble && can_rewrite_dot_with_precision_config_algorithm &&

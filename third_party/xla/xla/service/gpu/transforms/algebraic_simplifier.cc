@@ -24,6 +24,8 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/service/gpu/fusions/triton/triton_support_legacy.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
+#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -77,6 +79,35 @@ absl::Status GpuAlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   }
 
   return AlgebraicSimplifierVisitor::HandleAdd(add);
+}
+
+bool GpuAlgebraicSimplifierVisitor::SupportedDotPrecisionConfig(
+    const PrecisionConfig& config) {
+  return config.algorithm() == PrecisionConfig::ALG_UNSET ||
+         config.algorithm() == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
+         config.algorithm() == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
+         config.algorithm() == PrecisionConfig::ALG_DOT_F32_F32_F32 ||
+         config.algorithm() == PrecisionConfig::ALG_DOT_BF16_BF16_F32;
+}
+
+absl::StatusOr<HloInstruction*>
+GpuAlgebraicSimplifierVisitor::MakeMultiplyForPrecisionAlgorithm(
+    HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs) {
+  const auto algorithm = dot->precision_config().algorithm();
+  switch (algorithm) {
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+      return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32(lhs, rhs);
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+      return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X3(lhs, rhs);
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+      return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X6(lhs, rhs);
+    case PrecisionConfig::ALG_DOT_F32_F32_F32:
+      return MakeBinaryHlo(HloOpcode::kMultiply, lhs, rhs);
+    case PrecisionConfig::ALG_UNSET:
+      return MakeBinaryHlo(HloOpcode::kMultiply, lhs, rhs);
+    default:
+      CHECK(false) << "Unsupported dot precision algorithm: " << algorithm;
+  }
 }
 
 bool GpuAlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
