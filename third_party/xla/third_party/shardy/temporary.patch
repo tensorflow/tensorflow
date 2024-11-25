@@ -1,57 +1,15 @@
-diff --git a/docs/sdy_export_passes.md b/docs/sdy_export_passes.md
-index b363034..e22cbd4 100755
---- a/docs/sdy_export_passes.md
-+++ b/docs/sdy_export_passes.md
-@@ -63,37 +63,6 @@ operation becomes compatible.
- _Removes ShardingGroupOps after propagation._
- 
- 
--### `-sdy-reshard-to-collectives`
--
--_Converts ReshardOp into various Shardy collective ops._
--
--Here we match reshard ops and rewrite them into various Shardy collective
-- ops. After this pass, no reshard ops remain in the module. This pass assumes
-- that xplicit reshards have already been inserted
-- (`sdy-insert-explicit-reshards`).
--
-- A clarifying example:
--
-- Input:
-- ```mlir
-- mesh = <"x"=2, "y"=2, "z"=2>
-- %0 : tensor<16x2xf32> {sdy.sharding<@mesh, \[{"x", "y", "z"}, {}\]>
-- %1 = sdy.reshard %arg0 <@mesh, \[{"x"}, {}\]> : tensor<16x2xf32>
-- ```
--
-- Output:
-- ```mlir
-- mesh = <"x"=2, "y"=2, "z"=2>
-- %0 : tensor<16x2xf32> {sdy.sharding<@mesh, \[{"x", "y", "z"}, {}\]>
-- %1 = sdy.all_gather  \[{"y", "z"}, {}\] %arg0 out_sharding=<@mesh, \[{"x"}, {}\]> : tensor<16x2xf32>
-- ```
--
-- In the example above, the tensor `%0 : tensor<16x2xf32>` is sharded as
-- `\[{"x", "y", "z"}, {}\]`. Then, there's a `reshard` op resharding it as
-- `\[{"x"}, {}\]`. On the first axes, since the suffix `{"y", "z"}` is removed
-- after the reshard, we infer that we have all-gathered `{"y", "z"}`. The
-- second dimension is not changed.
--
- ### `-sdy-sharding-constraint-to-reshard`
- 
- _Converts ShardingConstraintOp into ReshardOp._
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index cf29a95..06a880d 100644
+index 06a880d..fd43de3 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "556ea5265a254aabfd8d520a3b841785e99f4328"
--    LLVM_SHA256 = "3229724ba3ae834378c501dff407822a6fdb0262a30762fc038a88667f37468b"
-+    LLVM_COMMIT = "2fe947b47798de1ad20553be4e162e332428ad91"
-+    LLVM_SHA256 = "be9cf17d57a4b27c7963c0ea03a5f144ee6c80d1cd58d8a225f345f1a1ef8bb2"
+-    LLVM_COMMIT = "2fe947b47798de1ad20553be4e162e332428ad91"
+-    LLVM_SHA256 = "be9cf17d57a4b27c7963c0ea03a5f144ee6c80d1cd58d8a225f345f1a1ef8bb2"
++    LLVM_COMMIT = "f81f47e3ff29598fdf58cde94ccf2c7d4be53df5"
++    LLVM_SHA256 = "4ae981aea07e2e75d6a7ea92f4582fa892fa84b0b396c8297dbc3e1411bd3783"
  
      tf_http_archive(
          name = name,
