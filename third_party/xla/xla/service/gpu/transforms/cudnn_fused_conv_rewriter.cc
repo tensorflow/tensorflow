@@ -563,7 +563,7 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
         graph_string.OpInGraph(operand0->unique_id(), "relu") &&
         AppliesMaxReduce(op)) {
       if (graph_string.AppendOp("amax", op, {operand0})) {
-        aux_outputs.emplace_back(op);
+        aux_outputs.push_back(op);
         num_nonlinear_users++;
       }
       continue;
@@ -586,7 +586,7 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
                 m::Reduce(&op, m::Abs(m::Op(&operand0)), m::Op())) &&
           AppliesMaxReduce(op)) {
         if (graph_string.AppendOp("amax", op, {operand0})) {
-          aux_outputs.emplace_back(op);
+          aux_outputs.push_back(op);
           num_nonlinear_users++;
         }
         continue;

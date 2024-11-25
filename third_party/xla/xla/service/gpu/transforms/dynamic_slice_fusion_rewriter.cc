@@ -389,7 +389,7 @@ absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
     for (HloInstruction* operand : instr->operands()) {
       if (!matched_instrs.contains(operand) &&
           absl::c_find(captures, operand) == captures.end()) {
-        captures.emplace_back(operand);
+        captures.push_back(operand);
       }
     }
   }

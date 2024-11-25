@@ -1249,7 +1249,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                   ShapeUtil::ChangeElementType(op.first->operand(1)->shape(),
                                                x->shape().element_type()),
                   op.first->mutable_operand(1)));
-          operands.emplace_back(convert);
+          operands.push_back(convert);
         }
         // Convert and insert the additional operands of select ops.
         if (op.first->opcode() == HloOpcode::kSelect) {

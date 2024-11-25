@@ -85,7 +85,7 @@ void SkipUnaryOpsTopDownRecursive(HloInstruction* instr,
       SkipUnaryOpsTopDownRecursive(user, instrs);
     }
   } else {
-    instrs.emplace_back(instr);
+    instrs.push_back(instr);
   }
 }
 
@@ -331,7 +331,7 @@ std::vector<int64_t> MapDimensions(const Shape& original_shape,
   std::vector<int64_t> original_dimensions, reshaped_dimensions;
   for (int64_t original_dimension = 0, reshaped_dimension = 0;
        original_dimension < original_shape.rank(); ++original_dimension) {
-    original_dimensions.emplace_back(original_dimension);
+    original_dimensions.push_back(original_dimension);
     while ((reshaped_dimensions.empty() ||
             dimension_product(reshaped_shape, reshaped_dimensions) <
                 dimension_product(original_shape, original_dimensions)) &&
@@ -1017,7 +1017,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       for (int64_t x_dim = 0; x_dim < x.Instr()->shape().rank(); ++x_dim) {
         if (std::find(norm_dims.begin(), norm_dims.end(), x_dim) ==
             norm_dims.end()) {
-          non_norm_dims.emplace_back(x_dim);
+          non_norm_dims.push_back(x_dim);
         }
       }
       std::vector<int64_t> non_norm_dims_adjusted =
@@ -1058,7 +1058,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       }
       // cuDNN requires tensors to have at least four dimensions.
       while (reshaped_dims.size() < 4) {
-        reshaped_dims.emplace_back(1);
+        reshaped_dims.push_back(1);
       }
 
       Shape reshaped_shape = ShapeUtil::MakeShape(
