@@ -219,6 +219,7 @@ filegroup(
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
         "@local_tsl//tsl/platform:xla_cpu_runtime_srcs",
         "@local_xla//xla:cpu_runtime_hdrs",
+        "@local_xla//xla/backends/cpu:xla_cpu_runtime_hdrs",
         "@local_xla//xla/service:custom_call_status_hdrs",
         "@local_xla//xla/service/cpu:runtime_hdrs",
         "@local_xla//xla/tsl/framework:xla_cpu_runtime_hdrs",

@@ -821,9 +821,9 @@ cc_library(
     ],
     hdrs = ["target_machine_features.h"],
     deps = [
-        "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu:alignment",
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Support",

@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/Support/MathExtras.h"
-#include "xla/cpu_function_runtime.h"
+#include "xla/backends/cpu/alignment.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -52,8 +52,7 @@ int64_t LLVMTargetMachineFeatures::minimum_alignment_for_allocation(
 
   // Allow small buffers to be underaligned, there is no vectorization benefit
   // anyways.
-  return std::min<int64_t>(llvm::PowerOf2Ceil(size_bytes),
-                           cpu_function_runtime::MinAlign());
+  return std::min<int64_t>(llvm::PowerOf2Ceil(size_bytes), MinAlign());
 }
 
 std::string LLVMTargetMachineFeatures::get_target_feature_string() const {
