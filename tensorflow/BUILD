@@ -892,6 +892,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This flag specifies the file prefixes to strip from the file imports
+# when generating python apis.
+config_setting(
+    name = "litert_prefixes",
+    define_values = {"litert_prefixes": "external/org_tensorflow/"},
+    visibility = ["//visibility:public"],
+)
+
 # This flag enables experimental MLIR support.
 config_setting(
     name = "with_mlir_support",
@@ -1676,6 +1684,10 @@ generate_apis(
         "compat_template_v1.__init__.py",
         "compat_template.__init__.py",
     ],
+    file_prefixes_to_strip = select({
+        ":litert_prefixes": ["external/org_tensorflow/"],
+        "//conditions:default": [],
+    }),
     output_dir = "_api/v1/",
     output_files = TENSORFLOW_API_INIT_FILES_V1,
     output_package = "tensorflow._api.v1",
@@ -1696,6 +1708,10 @@ generate_apis(
         "compat_template_v1.__init__.py",
         "compat_template.__init__.py",
     ],
+    file_prefixes_to_strip = select({
+        ":litert_prefixes": ["external/org_tensorflow/"],
+        "//conditions:default": [],
+    }),
     output_dir = "_api/v2/",
     output_files = TENSORFLOW_API_INIT_FILES_V2,
     output_package = "tensorflow._api.v2",
