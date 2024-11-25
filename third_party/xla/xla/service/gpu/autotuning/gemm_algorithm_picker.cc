@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
