@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/ahwb_buffer.h"  // IWYU pragma: keep
@@ -36,11 +37,7 @@ constexpr const int32_t kTensorDimensions[] = {sizeof(kTensorData) /
 
 constexpr const LiteRtRankedTensorType kTensorType = {
     /*.element_type=*/kLiteRtElementTypeFloat32,
-    /*.layout=*/{
-        /*.rank=*/1,
-        /*.dimensions=*/kTensorDimensions,
-        /*.strides=*/nullptr,
-    }};
+    ::litert::BuildLayout(kTensorDimensions)};
 }  // namespace
 
 int GetReferenceCount(const litert::TensorBuffer& tensor_buffer) {

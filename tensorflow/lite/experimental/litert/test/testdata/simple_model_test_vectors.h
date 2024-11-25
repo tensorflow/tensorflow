@@ -19,6 +19,7 @@
 #include <cstdint>
 
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
 
 constexpr const char* kModelFileName = "simple_model.tflite";
 constexpr const char* kQualcommModelFileName = "simple_model_qualcomm.bin";
@@ -53,23 +54,14 @@ constexpr const size_t kTestOutputSize =
 
 constexpr const LiteRtRankedTensorType kInput0TensorType = {
     /*.element_type=*/kLiteRtElementTypeFloat32,
-    /*.layout=*/{
-        /*.rank=*/kNumTestInput0Dimensions,
-        /*.dimensions=*/kTestInput0Dimensions,
-    }};
+    ::litert::BuildLayout(kTestInput0Dimensions)};
 
 constexpr const LiteRtRankedTensorType kInput1TensorType = {
     /*.element_type=*/kLiteRtElementTypeFloat32,
-    /*.layout=*/{
-        /*.rank=*/kNumTestInput1Dimensions,
-        /*.dimensions=*/kTestInput1Dimensions,
-    }};
+    ::litert::BuildLayout(kTestInput1Dimensions)};
 
 constexpr const LiteRtRankedTensorType kOutputTensorType = {
     /*.element_type=*/kLiteRtElementTypeFloat32,
-    /*.layout=*/{
-        /*.rank=*/kNumTestOutputDimensions,
-        /*.dimensions=*/kTestOutputDimensions,
-    }};
+    ::litert::BuildLayout(kTestOutputDimensions)};
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TEST_TESTDATA_SIMPLE_MODEL_TEST_VECTORS_H_

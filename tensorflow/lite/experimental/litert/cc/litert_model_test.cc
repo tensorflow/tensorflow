@@ -25,6 +25,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
@@ -41,11 +42,10 @@ static constexpr const auto kRank =
 
 static constexpr const uint32_t kTensorStrides[] = {6, 3, 1};
 
-static constexpr const LiteRtLayout kLayout = {
-    /*.rank=*/kRank,
-    /*.dimensions=*/kTensorDimensions,
-    /*.strides=*/nullptr,
-};
+static constexpr const LiteRtLayout kLayout = BuildLayout(kTensorDimensions);
+
+static constexpr const LiteRtLayout kLayoutWithStrides =
+    BuildLayout(kTensorDimensions, kTensorStrides);
 
 static constexpr const LiteRtRankedTensorType kTensorType = {
     /*.element_type=*/kLiteRtElementTypeFloat32,
@@ -88,12 +88,6 @@ TEST(CcModelTest, SimpleModel) {
 //===----------------------------------------------------------------------===//
 
 TEST(CcLayoutTest, NoStrides) {
-  constexpr const LiteRtLayout kLayout = {
-      /*.rank=*/kRank,
-      /*.dimensions=*/kTensorDimensions,
-      /*.strides=*/nullptr,
-  };
-
   Layout layout(kLayout);
 
   ASSERT_EQ(layout.Rank(), kLayout.rank);
@@ -104,54 +98,33 @@ TEST(CcLayoutTest, NoStrides) {
 }
 
 TEST(CcLayoutTest, WithStrides) {
-  constexpr const LiteRtLayout kLayout = {
-      /*.rank=*/kRank,
-      /*.dimensions=*/kTensorDimensions,
-      /*.strides=*/kTensorStrides,
-  };
+  Layout layout(kLayoutWithStrides);
 
-  Layout layout(kLayout);
-
-  ASSERT_EQ(layout.Rank(), kLayout.rank);
+  ASSERT_EQ(layout.Rank(), kLayoutWithStrides.rank);
   for (auto i = 0; i < layout.Rank(); ++i) {
-    ASSERT_EQ(layout.Dimensions()[i], kLayout.dimensions[i]);
+    ASSERT_EQ(layout.Dimensions()[i], kLayoutWithStrides.dimensions[i]);
   }
   ASSERT_TRUE(layout.HasStrides());
   for (auto i = 0; i < layout.Rank(); ++i) {
-    ASSERT_EQ(layout.Strides()[i], kLayout.strides[i]);
+    ASSERT_EQ(layout.Strides()[i], kLayoutWithStrides.strides[i]);
   }
 }
 
 TEST(CcLayoutTest, Equal) {
-  Layout layout1({
-      /*.rank=*/kRank,
-      /*.dimensions=*/kTensorDimensions,
-      /*.strides=*/kTensorStrides,
-  });
-  Layout layout2({
-      /*.rank=*/kRank,
-      /*.dimensions=*/kTensorDimensions,
-      /*.strides=*/kTensorStrides,
-  });
+  auto&& dims = {2, 2};
+  Layout layout1(BuildLayout(dims));
+  Layout layout2(BuildLayout({2, 2}));
   ASSERT_TRUE(layout1 == layout2);
 }
 
 TEST(CcLayoutTest, NotEqual) {
-  Layout layout1({
-      /*.rank=*/kRank,
-      /*.dimensions=*/kTensorDimensions,
-      /*.strides=*/nullptr,
-  });
-  Layout layout2({
-      /*.rank=*/kRank,
-      /*.dimensions=*/kTensorDimensions,
-      /*.strides=*/kTensorStrides,
-  });
+  Layout layout1(BuildLayout({2, 2}, nullptr));
+  Layout layout2(BuildLayout({2, 2}, kTensorStrides));
   ASSERT_FALSE(layout1 == layout2);
 }
 
 TEST(CcLayoutTest, NumElements) {
-  Layout layout({2, 2, 3});
+  Layout layout(BuildLayout({2, 2, 3}));
   auto num_elements = layout.NumElements();
   ASSERT_TRUE(num_elements.has_value());
   EXPECT_EQ(num_elements.value(), 12);

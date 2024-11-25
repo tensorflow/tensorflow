@@ -140,11 +140,8 @@ void ResetOp(Qnn_OpConfig_t& op) {
 void ResetParam(Qnn_Param_t& param) { param = QNN_PARAM_INIT; }
 LiteRtStatus LegalizeOp(LiteRtOp src, Qnn_OpConfig_t& dest) {
   ResetOp(dest);
-
   Op op(src);
-  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeOpType(op, dest));
-
-  return kLiteRtStatusOk;
+  return LegalizeOpType(op, dest);
 }
 
 }  // namespace litert::qnn

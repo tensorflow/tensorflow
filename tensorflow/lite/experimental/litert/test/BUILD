@@ -87,6 +87,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_layout",
     ],
 )
 
@@ -105,6 +106,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_layout",
     ],
 )
 

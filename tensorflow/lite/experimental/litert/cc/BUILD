@@ -44,11 +44,9 @@ cc_library(
         ":litert_element_type",
         ":litert_expected",
         ":litert_handle",
-        ":litert_macros",
+        ":litert_layout",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -65,6 +63,7 @@ cc_test(
     ],
     deps = [
         ":litert_element_type",
+        ":litert_layout",
         ":litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
@@ -110,6 +109,7 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
+        ":litert_layout",
         ":litert_model",
         ":litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/c:litert_common",
@@ -247,6 +247,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "litert_layout",
+    hdrs = ["litert_layout.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 cc_test(
     name = "litert_model_predicates_test",
     srcs = ["litert_model_predicates_test.cc"],
@@ -262,6 +271,15 @@ cc_test(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "litert_layout_test",
+    srcs = ["litert_layout_test.cc"],
+    deps = [
+        ":litert_layout",
         "@com_google_googletest//:gtest_main",
     ],
 )

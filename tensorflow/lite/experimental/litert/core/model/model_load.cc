@@ -62,7 +62,8 @@ LiteRtStatus ConvertTensor(const TflTensor& tfl_tensor, GetBuffer get_buffer,
     return tensor_type.Error().Status();
   }
 
-  target.SetType(*tensor_type);
+  target.type_id = tensor_type->first;
+  target.type_detail = tensor_type->second;
 
   auto quantization = MapQuantization(tfl_tensor.quantization.get());
   if (!quantization) {

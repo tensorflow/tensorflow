@@ -35,6 +35,7 @@
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemInterface.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 
 //===----------------------------------------------------------------------===//

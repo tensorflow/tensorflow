@@ -88,14 +88,17 @@ typedef enum {
   kLiteRtElementTypeTfVariant = kTfLiteVariant,
 } LiteRtElementType;
 
+// Max number of dimensions in any ranked tensor type.
+#define LITERT_TENSOR_MAX_RANK 8
+
 // The shape information for tensor types of fixed rank.
 typedef struct {
   // The number of dimensions.
   uint32_t rank;
 
   // Dimension sizes, array of length `rank`. Dynamic dimensions are anything
-  // less than 0.
-  const int32_t* dimensions;
+  // less than 0. Everything from [rank, LITERT_MAX_RANK) is undefined.
+  int32_t dimensions[LITERT_TENSOR_MAX_RANK];
 
   // Strides for a nomimal NWHC layout. NULL if unused.
   const uint32_t* strides;

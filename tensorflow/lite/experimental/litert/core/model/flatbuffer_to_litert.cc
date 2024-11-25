@@ -19,8 +19,8 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -120,10 +120,7 @@ Expected<TensorType> MapTensorType(const TflTensorType& tfl_tensor_type) {
 
   LiteRtTypeDetail detail;
   detail.ranked_tensor_type.element_type = litert_element_type;
-  detail.ranked_tensor_type.layout.rank = ranked_shape->size();
-  detail.ranked_tensor_type.layout.dimensions = ranked_shape->data();
-  // TFL tensors don't support strides yet.
-  detail.ranked_tensor_type.layout.strides = nullptr;
+  detail.ranked_tensor_type.layout = BuildLayout(*ranked_shape);
 
   return std::make_pair(kLiteRtRankedTensorType, detail);
 }

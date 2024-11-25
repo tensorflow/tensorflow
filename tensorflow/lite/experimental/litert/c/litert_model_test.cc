@@ -25,6 +25,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -94,9 +95,7 @@ TEST(LiteRtTensorTest, GetRankedTensorType) {
   tensor.type_id = kLiteRtRankedTensorType;
   tensor.type_detail.ranked_tensor_type.element_type =
       kLiteRtElementTypeFloat32;
-  LITERT_STACK_ARRAY(int32_t, dims, 2, 3);
-  tensor.type_detail.ranked_tensor_type.layout.dimensions = dims;
-  tensor.type_detail.ranked_tensor_type.layout.rank = 2;
+  tensor.type_detail.ranked_tensor_type.layout = ::litert::BuildLayout({3, 3});
 
   LiteRtTensorTypeId id;
   LITERT_ASSERT_STATUS_OK(LiteRtGetTensorTypeId(&tensor, &id));
