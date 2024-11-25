@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/core/model/model_util.h"
+#include "tensorflow/lite/experimental/litert/core/model/flatbuffer_to_litert.h"
 
 #include <utility>
 
@@ -85,22 +85,6 @@ LiteRtStatus IsTensorSupported(const TflTensor& tensor) {
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus SetDefaultOptions(tflite::BuiltinOptionsUnion& opts,
-                               LiteRtOpCode code) {
-  switch (code) {
-    case kLiteRtOpCodeTflMul:
-      opts.Set(tflite::MulOptionsT());
-      return kLiteRtStatusOk;
-    case kLiteRtOpCodeTflAdd:
-      opts.Set(tflite::AddOptionsT());
-      return kLiteRtStatusOk;
-    case kLiteRtOpCodeTflCustom:
-      return kLiteRtStatusOk;
-    default:
-      return kLiteRtStatusErrorUnsupported;
-  }
-}
-
 LiteRtElementType MapElementType(TflElementType type) {
   switch (type) {
     case tflite::TensorType_FLOAT32:
@@ -113,6 +97,8 @@ LiteRtElementType MapElementType(TflElementType type) {
       return kLiteRtElementTypeBool;
     case tflite::TensorType_INT16:
       return kLiteRtElementTypeInt16;
+    case tflite::TensorType_INT8:
+      return kLiteRtElementTypeInt8;
     default:
       return kLiteRtElementTypeNone;
   }
@@ -120,8 +106,9 @@ LiteRtElementType MapElementType(TflElementType type) {
 
 Expected<TensorType> MapTensorType(const TflTensorType& tfl_tensor_type) {
   const auto& [element_type, shape] = tfl_tensor_type;
-  if (!IsStaticTensorType(shape)) {
-    LITERT_LOG(LITERT_ERROR, "Only static shaped tensors currently supported");
+  auto ranked_shape = AsDynamicShape(shape);
+  if (!ranked_shape) {
+    LITERT_LOG(LITERT_ERROR, "Only ranked tensors currently supported");
     return Error(kLiteRtStatusErrorUnsupported);
   }
 
@@ -133,8 +120,8 @@ Expected<TensorType> MapTensorType(const TflTensorType& tfl_tensor_type) {
 
   LiteRtTypeDetail detail;
   detail.ranked_tensor_type.element_type = litert_element_type;
-  detail.ranked_tensor_type.layout.rank = shape.shape.size();
-  detail.ranked_tensor_type.layout.dimensions = shape.shape.data();
+  detail.ranked_tensor_type.layout.rank = ranked_shape->size();
+  detail.ranked_tensor_type.layout.dimensions = ranked_shape->data();
   // TFL tensors don't support strides yet.
   detail.ranked_tensor_type.layout.strides = nullptr;
 

@@ -189,21 +189,25 @@ bool IsStaticTensorType(const TflShapeInfo& tfl_shape) {
                       [](auto d) { return d < 0; });
 }
 
-Expected<SmallVec<int32_t>> AsStaticShape(const TflShapeInfo& tfl_shape) {
+Expected<absl::Span<const int32_t>> AsStaticShape(
+    const TflShapeInfo& tfl_shape) {
   if (!IsStaticTensorType(tfl_shape)) {
     return Error(kLiteRtStatusErrorInvalidArgument);
   }
-  return tfl_shape.shape;
+  return absl::MakeConstSpan(tfl_shape.shape.data(), tfl_shape.shape.size());
 }
 
-Expected<SmallVec<int32_t>> AsDynamicShape(const TflShapeInfo& tfl_shape) {
-  if (IsStaticTensorType(tfl_shape)) {
-    return tfl_shape.shape;
+Expected<absl::Span<const int32_t>> AsDynamicShape(
+    const TflShapeInfo& tfl_shape) {
+  auto static_shape = AsStaticShape(tfl_shape);
+  if (static_shape) {
+    return static_shape;
   }
   if (!IsRankedTensorType(tfl_shape)) {
     return Error(kLiteRtStatusErrorInvalidArgument);
   }
-  return tfl_shape.shape_signature;
+  return absl::MakeConstSpan(tfl_shape.shape_signature.data(),
+                             tfl_shape.shape_signature.size());
 }
 
 bool IsQuantized(const TflQuantization* tfl_quantization) {

@@ -261,9 +261,9 @@ INSTANTIATE_TEST_SUITE_P(SimpleMultiOpTests, SimpleMultiOpTest,
                          ::testing::ValuesIn(TopologyTest::MakeTestModels(
                              {"simple_multi_op.tflite"})));
 
-using PerTensorQuantizedModelTest = TestWithModelPath;
+using ModelLoadOpCheckTest = TestWithModelPath;
 
-TEST_P(PerTensorQuantizedModelTest, LoadModel) {
+TEST_P(ModelLoadOpCheckTest, CheckOps) {
   const auto model_path = GetTestModelPath();
   auto model = LoadModelFromFile(model_path);
   ASSERT_TRUE(model);
@@ -288,11 +288,16 @@ TEST_P(PerTensorQuantizedModelTest, LoadModel) {
   }
 }
 
-// TODO Add the rest of quantized models when support for dynamic shape is
-// present.
-INSTANTIATE_TEST_SUITE_P(QuantizedModelFileTests, PerTensorQuantizedModelTest,
-                         ::testing::ValuesIn({kQSimpleMul16x16Model,
-                                              kQMulAdd16x16Model}));
+INSTANTIATE_TEST_SUITE_P(ModelLoadQuantizedOpCheckTest, ModelLoadOpCheckTest,
+                         ::testing::ValuesIn(kAllQModels));
+
+INSTANTIATE_TEST_SUITE_P(ModelLoadDynamicOpCheckTest, ModelLoadOpCheckTest,
+                         ::testing::ValuesIn({static_cast<absl::string_view>(
+                             "dynamic_shape_tensor.tflite")}));
+
+INSTANTIATE_TEST_SUITE_P(
+    ModelLoadStaticOpCheckTest, ModelLoadOpCheckTest,
+    ::testing::ValuesIn({static_cast<absl::string_view>("one_mul.tflite")}));
 
 }  // namespace
 }  // namespace litert::internal

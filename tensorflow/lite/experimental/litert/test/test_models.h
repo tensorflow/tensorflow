@@ -16,6 +16,7 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TEST_TEST_MODELS_H_
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 
 // Attention sub-module of a toy model.
 static constexpr absl::string_view kAttentionModel = "attention.tflite";
@@ -82,5 +83,11 @@ static constexpr absl::string_view kQSingleDynRsqrt16x8Model =
 // Single rsqrt op i8 activations and i8 weights and dynamic shape.
 static constexpr absl::string_view kQSingleDynRsqrt8x8Model =
     "single_rsqrt_default_a8w8_recipe_quantized.tflite";
+
+// All the quantized test models.
+static constexpr auto kAllQModels = absl::MakeConstSpan((absl::string_view[]){
+    kQSimpleMul16x16Model, kQMulAdd16x16Model, kQSingleDynAdd16x8Model,
+    kQSingleDynAdd8x8Model, kQSingleDynMul16x8Model, kQSingleDynMul8x8Model,
+    kQSingleDynRsqrt16x8Model, kQSingleDynRsqrt8x8Model});
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TEST_TEST_MODELS_H_

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_UTIL_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_UTIL_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_FLATBUFFER_TO_LITERT_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_FLATBUFFER_TO_LITERT_H_
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
@@ -31,9 +31,6 @@ LiteRtStatus IsBufferSupported(const TflBuffer& buffer);
 // supported in the litet model api.
 LiteRtStatus IsTensorSupported(const TflTensor& tensor);
 
-LiteRtStatus SetDefaultOptions(tflite::BuiltinOptionsUnion& opts,
-                               LiteRtOpCode code);
-
 LiteRtElementType MapElementType(TflElementType element_type);
 
 Expected<TensorType> MapTensorType(const TflTensorType& tfl_tensor_type);
@@ -42,4 +39,4 @@ Expected<Quantization> MapQuantization(const TflQuantization* tfl_quantization);
 
 }  // namespace litert::internal
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_UTIL_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_FLATBUFFER_TO_LITERT_H_

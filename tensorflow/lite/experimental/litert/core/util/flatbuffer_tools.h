@@ -134,11 +134,13 @@ bool IsRankedTensorType(const TflShapeInfo& tfl_shape);
 bool IsStaticTensorType(const TflShapeInfo& tfl_shape);
 
 // Get static shape info if given is indeed a static shape.
-Expected<SmallVec<int32_t>> AsStaticShape(const TflShapeInfo& tfl_shape);
+Expected<absl::Span<const int32_t>> AsStaticShape(
+    const TflShapeInfo& tfl_shape);
 
 // Get ranked dynamic shape info if given is indeed a ranked. Still works with
 // static shapes.
-Expected<SmallVec<int32_t>> AsDynamicShape(const TflShapeInfo& tfl_shape);
+Expected<absl::Span<const int32_t>> AsDynamicShape(
+    const TflShapeInfo& tfl_shape);
 
 // Is the tensor quantized.
 bool IsQuantized(const TflQuantization* tfl_quantization);

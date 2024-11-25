@@ -32,7 +32,6 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
-#include "tensorflow/lite/experimental/litert/core/model/model_util.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -125,9 +124,7 @@ LiteRtStatus ModelRepacker::SerializeOp(
     target.outputs.push_back(tensor_map.at(out));
   }
 
-  // TODO: b/365299994 - Support options in serialize.
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      SetDefaultOptions(target.builtin_options, op->op_code));
+  target.builtin_options = op->option;
 
   if (op->custom_options.Size() != 0) {
     target.custom_options = op->custom_options.ToVec();
