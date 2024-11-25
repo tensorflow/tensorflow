@@ -19,8 +19,22 @@ limitations under the License.
 #include <optional>
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/literal.h"
+#include "xla/service/value_range.h"
 
 namespace xla {
+
+struct StaticInterval {
+  int64_t start;
+  int64_t end;
+  int64_t step;
+
+  bool IsIncreasing() const { return step > 0; }
+
+  std::string ToString() const {
+    return absl::StrCat(start, " to ", end, " step ", step);
+  }
+};
 
 // Returns the precise trip count of the loop if it's statically known,
 // nullopt otherwise.
@@ -58,6 +72,14 @@ std::optional<int64_t> GetLoopInductionVarTupleIdx(
 std::optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction *while_op,
                                                  int64_t indvar_tuple_idx,
                                                  const Literal &indvar_init);
+// Checks the following conditions:
+//  - `i`, the induction varaiable, is initialized to a scalar constant K
+//    (namely, `indvar_init`),
+//  - the while condition does `i < N` or `i <= N` (where N is a know constant)
+//  - the while body does `i++`.
+// If so, it's trivial to compute the loop bound as `N - k` or `N - k + 1`,
+// respectively.
+std::optional<Range> MatchTrivialLoopRange(const HloInstruction *while_op);
 }  // namespace xla
 
 #endif  // XLA_HLO_ANALYSIS_WHILE_LOOP_ANALYSIS_H_

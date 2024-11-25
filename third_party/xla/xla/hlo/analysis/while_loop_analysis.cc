@@ -41,8 +41,13 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/constant_value.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/value_range.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tools/hlo_extractor.h"
 #include "tsl/platform/status.h"
@@ -479,9 +484,18 @@ optional<int64_t> CheckedSubtract(int64_t a, int64_t b) {
   return result;
 }
 
-optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
-                                            int64_t indvar_tuple_idx,
-                                            const Literal& indvar_init) {
+optional<Range> MatchTrivialLoopRange(const HloInstruction* while_op) {
+  std::optional<int64_t> indvar_tuple_idx =
+      GetLoopInductionVarTupleIdx(while_op);
+  if (!indvar_tuple_idx.has_value()) {
+    return nullopt;
+  }
+  if (!while_op->operand(0)->operand(*indvar_tuple_idx)->IsConstant()) {
+    return nullopt;
+  }
+  const Literal& indvar_init =
+      while_op->operand(0)->operand(*indvar_tuple_idx)->literal();
+
   // First, find the scalar constant init that `i` is initialized to.
   optional<int64_t> indvar_init_val =
       LiteralUtil::LiteralAsScalarInt64(indvar_init);
@@ -496,12 +510,15 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
   // number.
   auto* while_body = while_op->while_body();
   auto* while_body_indvar_update =
-      while_body->root_instruction()->mutable_operand(indvar_tuple_idx);
+      while_body->root_instruction()->mutable_operand(indvar_tuple_idx.value());
   auto* while_body_indvar = NonConstantOperand(while_body_indvar_update);
   if (while_body_indvar == nullptr ||
       while_body_indvar !=
           hlo_query::GetUniqueGteInstruction(
-              while_body->parameter_instruction(0), indvar_tuple_idx)) {
+              while_body->parameter_instruction(0), indvar_tuple_idx.value())) {
+    VLOG(2) << "Pattern-match failed: update of induction variable is not in "
+               "the form of op(gte, constant): "
+            << while_body_indvar_update->ToString();
     return std::nullopt;
   }
   HloInstruction* trip_count_increase_step_instr = nullptr;
@@ -551,7 +568,8 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
   if (while_cond_indvar == nullptr ||
       while_cond_indvar !=
           hlo_query::GetUniqueGteInstruction(
-              while_cond->parameter_instruction(0), indvar_tuple_idx)) {
+              while_cond->parameter_instruction(0), indvar_tuple_idx.value())) {
+    VLOG(2) << "Pattern-match failed: while condition is not supported.";
     return std::nullopt;
   }
   HloInstruction* while_cond_bound = nullptr;
@@ -573,6 +591,49 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
     return nullopt;
   }
 
+  const int64_t init_bitwidth =
+      primitive_util::BitWidth(indvar_init.shape().element_type());
+  const bool init_is_signed =
+      primitive_util::IsSignedIntegralType(indvar_init.shape().element_type());
+
+  const int64_t bound_bitwidth =
+      primitive_util::BitWidth(while_cond_bound->shape().element_type());
+  const bool bound_is_signed = primitive_util::IsSignedIntegralType(
+      while_cond_bound->shape().element_type());
+
+  return Range{ConstantValue::Get(indvar_init_val.value(), init_bitwidth,
+                                  /*is_signed=*/init_is_signed),
+               ConstantValue::Get(while_cond_bound_val.value(), bound_bitwidth,
+                                  /*is_signed=*/bound_is_signed),
+               ConstantValue::Get(trip_count_step, /*bitwidth=*/64,
+                                  /*is_signed=*/true),
+               /*is_linear=*/true};
+}
+
+optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
+                                            int64_t indvar_tuple_idx,
+                                            const Literal& indvar_init) {
+  auto* while_cond = while_op->while_condition();
+  auto* while_cond_root = while_cond->root_instruction();
+  auto* while_cond_indvar = NonConstantOperand(while_cond_root);
+  std::optional<Range> range_opt = MatchTrivialLoopRange(while_op);
+  if (!range_opt.has_value()) {
+    VLOG(2) << "Pattern-match failed: loop range is not trivial: "
+            << while_cond_root->ToString();
+    return nullopt;
+  }
+  Range range = range_opt.value();
+  VLOG(2) << "Loop range: " << range.ToString();
+
+  auto get_range_max = [&]() {
+    return range.max().IsSigned() ? range.max().GetSignedValue()
+                                  : range.max().GetUnsignedValue();
+  };
+  auto get_range_min = [&]() {
+    return range.min().IsSigned() ? range.min().GetSignedValue()
+                                  : range.min().GetUnsignedValue();
+  };
+
   // Handle `i = init; i < N; i+=k`.
   if (Match(while_cond_root,
             m::Op()
@@ -580,11 +641,11 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
                 .WithOperand(0, m::Op().Is(while_cond_indvar)))) {
     VLOG(2) << "Pattern-match succeeded: loop condition is i < N: "
             << while_cond_root->ToString();
-    optional<int64_t> trips =
-        CheckedSubtract(*while_cond_bound_val, *indvar_init_val);
+    optional<int64_t> trips = CheckedSubtract(get_range_max(), get_range_min());
     if (trips) {
-      const int64_t remainder = std::remainder(*trips, trip_count_step);
-      const int64_t div = std::floor(*trips / trip_count_step);
+      const int64_t remainder =
+          std::remainder(*trips, range.step().GetSignedValue());
+      const int64_t div = std::floor(*trips / range.step().GetSignedValue());
       if (remainder == 0) {
         return std::max(int64_t{0}, div);
       }
@@ -593,7 +654,7 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
         VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
         return nullopt;
       }
-      if (*trips < *while_cond_bound_val) {
+      if (*trips < get_range_max()) {
         return std::max(int64_t{0}, *trips);
       }
       return std::max(int64_t{0}, div);
@@ -609,13 +670,12 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
                 .WithOperand(0, m::Op().Is(while_cond_indvar)))) {
     VLOG(2) << "Pattern-match succeeded: loop condition is i <= N: "
             << while_cond_root->ToString();
-    optional<int64_t> trips =
-        CheckedSubtract(*while_cond_bound_val, *indvar_init_val);
+    optional<int64_t> trips = CheckedSubtract(get_range_max(), get_range_min());
     if (!trips) {
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
     }
-    trips = CheckedAdd(std::floor(*trips / trip_count_step), 1);
+    trips = CheckedAdd(std::floor(*trips / range.step().GetSignedValue()), 1);
     if (!trips) {
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
