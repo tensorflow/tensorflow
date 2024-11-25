@@ -202,7 +202,9 @@ STABLE_FRAMEWORK_LIB_IMPL_HDRS = [
 
 exports_files(
     [hdr for hdr in FRAMEWORK_LIB_HDRS if hdr[0] != "/"],
-    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    visibility = [
+        "//tensorflow/lite/core/shims:__subpackages__",
+    ] + tflite_internal_cc_3p_api_deps_src_all_visibility_allowlist(),
 )
 
 cc_library(
