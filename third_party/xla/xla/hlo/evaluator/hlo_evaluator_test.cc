@@ -3708,6 +3708,31 @@ ENTRY main {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_result, result));
 }
 
+TEST_F(HloEvaluatorTest, EvaluateGather_GetDiagonal) {
+  const std::string hlo_text = R"(
+HloModule module
+
+ENTRY %module {
+  %operand = f32[4,4] parameter(0)
+  %indices = s32[4,1] iota(), iota_dimension=0
+  ROOT %gather = f32[4,1] gather(%operand, %indices), offset_dims={},
+    collapsed_slice_dims={1}, start_index_map={1}, operand_batching_dims={0},
+    start_indices_batching_dims={0}, index_vector_dim=2, slice_sizes={1,1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal operand = LiteralUtil::CreateR2<float>({{0.0, 0.1, 0.2, 0.3},
+                                                  {1.0, 1.1, 1.2, 1.3},
+                                                  {2.0, 2.1, 2.2, 2.3},
+                                                  {3.0, 3.1, 3.2, 3.3}});
+  Literal expected_result =
+      LiteralUtil::CreateR2<float>({{0.0}, {1.1}, {2.2}, {3.3}});
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&operand}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_result, result));
+}
+
 TEST_F(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterV1_Update) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatterV1
