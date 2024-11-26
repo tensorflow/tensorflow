@@ -2688,7 +2688,7 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
 
     // TODO(mehrdadk): Remove this code once we have a better way to find
     // repeated instructions.
-    if (false) {
+    if (/* DISABLES CODE */ (false)) {
       const std::vector<const HloInstruction*>* repeated_insts =
           GetRepeatedInstructionList(hlo_use.instruction);
       if (repeated_insts) {
