@@ -183,7 +183,8 @@ Status InitializeCheckpointReader(const TransformFuncContext& context,
                                   std::unique_ptr<BundleReader>* ckpt_reader) {
   if (context.params.count("input_checkpoint")) {
     const string input_checkpoint = context.params.at("input_checkpoint")[0];
-    ckpt_reader->reset(new BundleReader(Env::Default(), input_checkpoint));
+    *ckpt_reader =
+        std::make_unique<BundleReader>(Env::Default(), input_checkpoint);
     TF_RETURN_IF_ERROR((*ckpt_reader)->status());
   }
   return OkStatus();
@@ -192,7 +193,7 @@ Status InitializeCheckpointReader(const TransformFuncContext& context,
 Status ObtainVariableInfo(
     const GraphDef& input_graph_def,
     std::unique_ptr<std::unordered_map<string, string> >* shapes_and_slices) {
-  shapes_and_slices->reset(new std::unordered_map<string, string>());
+  *shapes_and_slices = std::make_unique<std::unordered_map<string, string>>();
   for (const auto& node : input_graph_def.node()) {
     if ((node.op() == "Variable") || (node.op() == "VariableV2")) {
       string s;
