@@ -23,33 +23,8 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_buffer.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
+#include "tensorflow/lite/experimental/litert/test/test_macros.h"  // IWYU pragma: keep
 #include "tensorflow/lite/interpreter.h"
-
-#define _LITERT_ASSERT_RESULT_OK_ASSIGN(decl, expr, result) \
-  auto result = (expr);                                     \
-  ASSERT_TRUE(result.HasValue());                           \
-  decl = result.Value();
-
-#define LITERT_ASSERT_RESULT_OK_ASSIGN(decl, expr) \
-  _LITERT_ASSERT_RESULT_OK_ASSIGN(decl, expr,      \
-                                  _CONCAT_NAME(_result, __COUNTER__))
-
-#define _LITERT_ASSERT_RESULT_OK_MOVE(decl, expr, result) \
-  auto result = (expr);                                   \
-  ASSERT_TRUE(result.HasValue());                         \
-  decl = std::move(result.Value());
-
-#define LITERT_ASSERT_RESULT_OK_MOVE(decl, expr) \
-  _LITERT_ASSERT_RESULT_OK_MOVE(decl, expr, _CONCAT_NAME(_result, __COUNTER__))
-
-#define LITERT_ASSERT_STATUS_HAS_CODE(expr, code) \
-  {                                               \
-    LiteRtStatus status = (expr);                 \
-    ASSERT_EQ(status, code);                      \
-  }
-
-#define LITERT_ASSERT_STATUS_OK(expr) \
-  LITERT_ASSERT_STATUS_HAS_CODE(expr, kLiteRtStatusOk);
 
 namespace litert {
 namespace testing {
