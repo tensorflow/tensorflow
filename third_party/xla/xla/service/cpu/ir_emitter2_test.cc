@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter.h"
-#include "xla/service/cpu/target_machine_features_stub.h"
+#include "xla/service/cpu/target_machine_features_fake.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -68,8 +68,9 @@ class IrEmitter2Test : public HloTestBase {
             backend().compiler()->BufferSizeBytesFunction(),
             [](LogicalBuffer::Color) { return /*alignment=*/1; }));
 
-    target_machine_ = std::make_unique<TargetMachineFeaturesStub>(
-        [](int64_t size) { return 1; });
+    target_machine_ =
+        std::make_unique<TargetMachineFeaturesWithFakeAlignmentLogic>(
+            [](int64_t size) { return 1; });
 
     nested_ir_emitter_ = absl::WrapUnique(
         new IrEmitter(nullptr, hlo, *buffer_assignment_, &module, {}, {}, {},
@@ -98,7 +99,7 @@ class IrEmitter2Test : public HloTestBase {
   // alive for the duration of the test, because IrEmitter2 does not take
   // ownership of them.
   std::unique_ptr<BufferAssignment> buffer_assignment_;
-  std::unique_ptr<TargetMachineFeaturesStub> target_machine_;
+  std::unique_ptr<TargetMachineFeaturesWithFakeAlignmentLogic> target_machine_;
   std::unique_ptr<IrEmitter> nested_ir_emitter_;
 };
 

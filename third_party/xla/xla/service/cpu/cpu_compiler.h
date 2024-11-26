@@ -25,13 +25,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/Target/TargetMachine.h"
-#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/cpu/xla_framework.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
@@ -203,13 +203,13 @@ class CpuCompiler : public LLVMCompiler {
   // Runs HLO passes up to and including layout assignment.
   absl::Status RunHloPassesThroughLayoutAssn(
       HloModule* module, bool /*is_aot_compile*/,
-      TargetMachineFeatures* target_machine_features,
+      LLVMTargetMachineFeatures* target_machine_features,
       bool is_mlir_compile = false);
 
   // Runs HLO passes after layout assignment.
   absl::Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
-      TargetMachineFeatures* target_machine_features,
+      LLVMTargetMachineFeatures* target_machine_features,
       const CompileOptions& compile_options, bool is_mlir_compile);
 
   absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(

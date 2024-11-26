@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/cpu/target_machine_features_stub.h"
+#include "xla/service/cpu/target_machine_features_fake.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
@@ -51,7 +51,7 @@ class CpuLayoutAssignmentTest : public HloTestBase {
  protected:
   void AssignLayouts(HloModule* module,
                      ComputationLayout* entry_computation_layout) {
-    cpu::TargetMachineFeaturesStub target_machine_features(
+    cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(
         [](int64_t shape_size) {
           return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
         });
@@ -329,7 +329,7 @@ static absl::StatusOr<DotOutputFusionLayoutAssignmentResult> RunDotOutputFusion(
   result.addend_fusion_param = fusion_instruction->operand(
       fused_add->operand(1 - dot_operand_idx_in_add)->parameter_number());
 
-  cpu::TargetMachineFeaturesStub target_machine_features(
+  cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(
       [](int64_t shape_size) {
         return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });

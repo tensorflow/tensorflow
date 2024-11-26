@@ -87,31 +87,14 @@ cc_library(
 )
 
 cc_library(
-    name = "target_machine_features",
-    srcs = ["target_machine_features.cc"],
-    hdrs = ["target_machine_features.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu:alignment",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@llvm-project//llvm:Analysis",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:Target",
-        "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-cc_library(
     name = "vector_ir_builder",
     srcs = ["vector_ir_builder.cc"],
     hdrs = ["vector_ir_builder.h"],
     deps = [
-        ":target_machine_features",
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "//xla/service/cpu:target_machine_features",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",

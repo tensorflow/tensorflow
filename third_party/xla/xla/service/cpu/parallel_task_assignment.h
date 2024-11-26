@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/util.h"
 

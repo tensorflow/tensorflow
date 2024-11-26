@@ -20,12 +20,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
-#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_executable.h"
-#include "xla/service/cpu/target_machine_features_stub.h"
+#include "xla/service/cpu/target_machine_features.h"
+#include "xla/service/cpu/target_machine_features_fake.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -40,7 +40,7 @@ class ParallelTaskAssignmentTest : public HloTestBase {
   // parallelized or not
   const int max_parallelism_ = 10;
 
-  cpu::TargetMachineFeaturesStub target_machine_features_;
+  cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features_;
 
   ParallelTaskAssignmentTest()
       : HloTestBase(), target_machine_features_([](int64_t shape_size) {

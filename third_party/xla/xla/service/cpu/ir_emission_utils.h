@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/IR/Value.h"
-#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/cpu/target_machine_features.h"
 
 namespace xla {
 namespace cpu {

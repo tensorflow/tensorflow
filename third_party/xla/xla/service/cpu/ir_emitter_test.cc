@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_function.h"
-#include "xla/service/cpu/target_machine_features_stub.h"
+#include "xla/service/cpu/target_machine_features_fake.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/tests/hlo_test_base.h"
@@ -84,7 +84,8 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
           backend().compiler()->BufferSizeBytesFunction(),
           [](LogicalBuffer::Color) { return /*alignment=*/1; }));
 
-  TargetMachineFeaturesStub target_machine([](int64_t size) { return 1; });
+  TargetMachineFeaturesWithFakeAlignmentLogic target_machine(
+      [](int64_t size) { return 1; });
 
   IrEmitter ir_emitter(nullptr, *hlo, *buffer_assignment, module.get(), {}, {},
                        {}, &target_machine, false);
