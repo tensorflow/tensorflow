@@ -168,7 +168,7 @@ xla_cc_test(
     size = "small",
     srcs = ["xla_sharding_test.cc"],
     deps = [
-        ":pjrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         ":xla_ifrt",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -240,10 +240,13 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt/hlo:hlo_program",
+        "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
@@ -270,6 +273,22 @@ cc_library(
     name = "pjrt_cpu_client_test_lib",
     testonly = True,
     srcs = ["pjrt_cpu_client_test_lib.cc"],
+    deps = [
+        ":pjrt_ifrt",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:test_util",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "pjrt_cpu_client_multi_process_test_lib",
+    testonly = True,
+    srcs = ["pjrt_cpu_client_multi_process_test_lib.cc"],
     deps = [
         ":pjrt_ifrt",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
@@ -357,7 +376,7 @@ xla_cc_test(
     srcs = ["basic_string_array_test.cc"],
     deps = [
         ":basic_string_array",
-        ":pjrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         "//xla:shape_util",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_layout",
@@ -385,7 +404,7 @@ xla_cc_test(
     size = "small",
     srcs = ["pjrt_array_impl_test_tfrt_cpu.cc"],
     deps = [
-        ":pjrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/python/ifrt:array_impl_test_lib",
         "//xla/python/ifrt:test_util",
         "@com_google_absl//absl/strings",
@@ -398,7 +417,7 @@ xla_cc_test(
     size = "small",
     srcs = [],
     deps = [
-        ":pjrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/python/ifrt:client_impl_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -409,7 +428,7 @@ xla_cc_test(
     size = "small",
     srcs = ["pjrt_executable_impl_test_tfrt_cpu.cc"],
     deps = [
-        ":pjrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         ":xla_executable_impl_test_lib",
         "//xla/python/ifrt:test_util",
         "@com_google_absl//absl/strings",
@@ -422,7 +441,7 @@ xla_cc_test(
     size = "small",
     srcs = [],
     deps = [
-        ":pjrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/python/ifrt:tuple_impl_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -433,7 +452,7 @@ xla_cc_test(
     size = "small",
     srcs = [],
     deps = [
-        ":pjrt_cpu_client_test_lib",
+        ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/python/ifrt:remap_impl_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
