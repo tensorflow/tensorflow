@@ -24,14 +24,4 @@ set -euox pipefail
 
 cd "${KOKORO_ARTIFACTS_DIR}/github/xla"
 
-export PATH="$PATH:/c/Python38"
-
-TARGET_FILTER="-//xla/hlo/experimental/... -//xla/python_api/... -//xla/python/..."
-TAGS_FILTER="-no_oss,-oss_excluded,-gpu,-no_windows,-windows_excluded"
-/c/tools/bazel.exe test \
-  --keep_going \
-  --build_tag_filters=$TAGS_FILTER  --test_tag_filters=$TAGS_FILTER \
-  -- //xla/... $TARGET_FILTER |& grep -v "violates visibility of" \
-  || { exit 1; }
-
-exit 0
+./build_tools/ci/build.py

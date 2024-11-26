@@ -48,6 +48,12 @@ class DeviceTest : public testing::TestWithParam<DeviceTestParam> {
   // REQUIRES: 0 <= device_indices[i] < num_devices
   tsl::RCReference<DeviceList> GetDevices(absl::Span<const int> device_indices);
 
+  // Returns `DeviceList` containing devices at given indexes (not ids) within
+  // `client.addressable_devices()`.
+  // REQUIRES: 0 <= device_indices[i] < num_addressable_devices
+  tsl::RCReference<DeviceList> GetAddressableDevices(
+      absl::Span<const int> device_indices);
+
  private:
   std::shared_ptr<Client> client_;
 };
