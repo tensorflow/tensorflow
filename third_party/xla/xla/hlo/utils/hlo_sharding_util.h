@@ -323,6 +323,23 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
     const HloSharding& source, absl::Span<int64_t const> src_to_tgt,
     absl::Span<int64_t const> tgt_to_src);
 
+// Given a `source_sharding`, preserve the tiles along the `source_dims` and
+// replicate the rest. The `target_dims` are used to determine the order of the
+// dimensions in the resulting sharding. If `source_dims` and `target_dims` are
+// in the different order (i.e., different ArgSort results), we need to
+// transpose the tile assignment.
+//
+// Given the following input,
+//   * source_sharding = {devices=[2,3,5,7,11]<=[2310]}
+//   * source_dims = [2, 4, 1]
+//   * target_dims = [2, 1, 3]
+//   * target_shape_rank = 5
+// The result shoule be {devices=[1,11,5,3,1,14]<=[2,3,5,7,11]T(4,2,1,0,3)
+// last_tile_dim_replicate}.
+HloSharding PropagateShardingAlongDimsAndReplicateOthers(
+    const HloSharding& source_sharding, absl::Span<const int64_t> source_dims,
+    absl::Span<const int64_t> target_dims, int64_t target_shape_rank);
+
 // Returns the iota dimension if maybe_iota is an kIota instruction or
 // equivalent to kIota.
 std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota,

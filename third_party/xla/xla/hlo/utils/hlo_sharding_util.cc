@@ -1164,19 +1164,6 @@ bool ContainsTileSharding(const HloModule& module) {
   return false;
 }
 
-// Given a `source_sharding`, preserve the tiles along the `source_dims` and
-// replicate the rest. The `target_dims` are used to determine the order of the
-// dimensions in the resulting sharding. If `source_dims` and `target_dims` are
-// in the different order (i.e., different ArgSort results), we need to
-// transpose the tile assignment.
-//
-// Given the following input,
-//   * source_sharding = {devices=[2,3,5,7,11]<=[2310]}
-//   * source_dims = [2, 4, 1]
-//   * target_dims = [2, 1, 3]
-//   * target_shape_rank = 5
-// The result shoule be {devices=[1,11,5,3,1,14]<=[2,3,5,7,11]T(4,2,1,0,3)
-// last_tile_dim_replicate}.
 HloSharding PropagateShardingAlongDimsAndReplicateOthers(
     const HloSharding& source_sharding, absl::Span<const int64_t> source_dims,
     absl::Span<const int64_t> target_dims, int64_t target_shape_rank) {
@@ -1195,16 +1182,17 @@ HloSharding PropagateShardingAlongDimsAndReplicateOthers(
   std::vector<int64_t> argsort_source_dims = ArgSort(source_dims);
   std::vector<int64_t> argsort_target_dims = ArgSort(target_dims);
   if (argsort_source_dims != argsort_target_dims) {
-    std::vector<int64_t> perm(
-        replicate_other_dims.tile_assignment().num_dimensions(), -1);
+    std::vector<int64_t> perm;
+    perm.reserve(replicate_other_dims.tile_assignment().num_dimensions());
     for (int64_t i = 0; i < source_dims.size(); ++i) {
-      perm[source_dims[argsort_target_dims[i]]] = i;
+      perm.push_back(source_dims[argsort_target_dims[i]]);
     }
-    int64_t i = source_dims.size();
-    for (int64_t& perm_element : perm) {
-      if (perm_element == -1) {
-        perm_element = i++;
+    for (int64_t non_source_dim = 0, i = source_dims.size();
+         i < replicate_other_dims.tile_assignment().num_dimensions(); ++i) {
+      while (absl::c_linear_search(source_dims, non_source_dim)) {
+        non_source_dim++;
       }
+      perm.push_back(non_source_dim++);
     }
     replicate_other_dims = TransposeSharding(replicate_other_dims, perm);
   }

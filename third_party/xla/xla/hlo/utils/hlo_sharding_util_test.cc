@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -631,6 +630,42 @@ TEST(HloShardingUtilTest,
   HloSharding result = PropagateShardingThroughReshape(
       input_shape, output_shape, input_sharding);
   EXPECT_EQ(result, output_sharding);
+}
+
+TEST(HloShardingUtilTest, PropagateShardingAlongDimsAndReplicateOthers1) {
+  HloSharding source_sharding = HloSharding::IotaTile({2, 3, 5, 7, 11});
+  std::vector<int64_t> source_dims = {2, 4, 1};
+  std::vector<int64_t> target_dims = {2, 1, 3};
+  int64_t target_shape_rank = 5;
+  HloSharding target_sharding = PropagateShardingAlongDimsAndReplicateOthers(
+      source_sharding, source_dims, target_dims, target_shape_rank);
+  HloSharding expected = HloSharding::PartialTile(
+      TileAssignment({1, 11, 5, 3, 1, 14}, {2, 3, 5, 7, 11}, {4, 2, 1, 0, 3}));
+  EXPECT_EQ(target_sharding, expected);
+}
+
+TEST(HloShardingUtilTest, PropagateShardingAlongDimsAndReplicateOthers2) {
+  HloSharding source_sharding = HloSharding::IotaTile({2, 3, 5, 7, 11});
+  std::vector<int64_t> source_dims = {0, 2, 4};
+  std::vector<int64_t> target_dims = {0, 1, 2};
+  int64_t target_shape_rank = 3;
+  HloSharding target_sharding = PropagateShardingAlongDimsAndReplicateOthers(
+      source_sharding, source_dims, target_dims, target_shape_rank);
+  HloSharding expected = HloSharding::PartialTile(
+      TileAssignment({2, 5, 11, 21}, {2, 3, 5, 7, 11}, {0, 2, 4, 1, 3}));
+  EXPECT_EQ(target_sharding, expected);
+}
+
+TEST(HloShardingUtilTest, PropagateShardingAlongDimsAndReplicateOthers3) {
+  HloSharding source_sharding = HloSharding::IotaTile({2, 3, 5, 7, 11});
+  std::vector<int64_t> source_dims = {4, 3, 1};
+  std::vector<int64_t> target_dims = {0, 1, 3};
+  int64_t target_shape_rank = 4;
+  HloSharding target_sharding = PropagateShardingAlongDimsAndReplicateOthers(
+      source_sharding, source_dims, target_dims, target_shape_rank);
+  HloSharding expected = HloSharding::PartialTile(
+      TileAssignment({11, 7, 1, 3, 10}, {2, 3, 5, 7, 11}, {4, 3, 1, 0, 2}));
+  EXPECT_EQ(target_sharding, expected);
 }
 
 TEST(HloShardingUtilTest, MergeManualSubgroupSharding) {
