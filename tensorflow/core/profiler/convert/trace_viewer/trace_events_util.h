@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_UTIL_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_UTIL_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <type_traits>
 #include <utility>

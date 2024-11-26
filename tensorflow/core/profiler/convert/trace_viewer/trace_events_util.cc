@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>

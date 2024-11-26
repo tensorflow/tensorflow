@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_to_json.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <string>
