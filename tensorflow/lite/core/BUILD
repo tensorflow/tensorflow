@@ -510,6 +510,35 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "model_building",
+    srcs = ["model_building.cc"],
+    hdrs = ["model_building.h"],
+    deps = [
+        ":subgraph",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_test(
+    name = "model_building_test",
+    srcs = ["model_building_test.cc"],
+    deps = [
+        ":model_building",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tflite_self_contained_libs_test_suite(name = "self_contained_libs_test_suite")
 
 tflite_portable_test_suite()
