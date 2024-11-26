@@ -17,7 +17,6 @@
 
 #include <functional>
 
-#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 
@@ -40,6 +39,11 @@ bool EqualsFbTensorType(const TensorType& litert_tensor_type,
 // within the tfl op.
 bool EqualsFbOp(const LiteRtOpT& litert_op, const TflOp& tfl_op,
                 GetTflTensor get_tfl_tensor);
+
+// Compare litert tensor to flatbuffer tensor for having same types and
+// quantization.
+bool EqualsFbTensor(const LiteRtTensorT& litert_tensor,
+                    const TflTensor& tfl_tensor);
 
 }  // namespace litert::internal
 

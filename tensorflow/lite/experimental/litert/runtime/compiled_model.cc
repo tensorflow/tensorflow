@@ -62,8 +62,8 @@ Expected<void> LiteRtCompiledModelT::Initialize() {
 
   signature_keys_ = interp_->signature_keys();
   if (signature_keys_.empty()) {
-    static std::string* default_signature_key =
-        new std::string(LITERT_DEFAULT_SIGNATURE_KEY);
+    static auto* default_signature_key =
+        new std::string(LiteRtSignatureT::kDefaultSignatureKey);
     signature_keys_.push_back(default_signature_key);
   }
   // Register the ExternalLiteRtBufferContext for TensorBuffer handshaking.
@@ -83,11 +83,12 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
   size_t model_buffer_size = 0;
   // The following code gets the original FB pointer from LiteRtModel.
   // TODO b/383120429 - Use a better way of getting the FB pointer.
-  if (model->model_buffer) {
+  auto init_model_buffer = detail::GetTflInitFlatbuffer(*model);
+  if (init_model_buffer.Size() != 0) {
     // Use the saved the original FB pointer when the LiteRtModel was created
     // from a buffer.
-    model_buffer = reinterpret_cast<const char*>(model->model_buffer);
-    model_buffer_size = model->model_buffer_size;
+    model_buffer = init_model_buffer.StrData();
+    model_buffer_size = init_model_buffer.Size();
   } else {
     // TODO b/383120429 - Once LiteRtModel provide tflite::Model object, switch
     // to use it to initialize Interpreter instead of serializing LiteRtModel.
@@ -200,10 +201,10 @@ tflite::SignatureRunner* LiteRtCompiledModelT::GetSignatureRunner(
   if (signature_runners_.contains(signature_key)) {
     return signature_runners_[signature_key];
   }
-  auto runner =
-      interp_->GetSignatureRunner(signature_key == LITERT_DEFAULT_SIGNATURE_KEY
-                                      ? nullptr
-                                      : std::string(signature_key).c_str());
+  auto runner = interp_->GetSignatureRunner(
+      signature_key == LiteRtSignatureT::kDefaultSignatureKey
+          ? nullptr
+          : std::string(signature_key).c_str());
   signature_runners_[signature_key] = runner;
   return runner;
 }

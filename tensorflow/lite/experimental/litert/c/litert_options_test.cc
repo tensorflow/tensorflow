@@ -213,7 +213,7 @@ TEST(GetOpOptionTest, TestGetReshapeOptions) {
   auto ops = subgraph->Ops();
   auto op = ops.front().Get();
 
-  int32_t* new_shape = nullptr;
+  const int32_t* new_shape = nullptr;
   int32_t new_shape_size;
   LITERT_ASSERT_STATUS_OK(
       LiteRtGetReshapeNewShapeOption(op, &new_shape, &new_shape_size));

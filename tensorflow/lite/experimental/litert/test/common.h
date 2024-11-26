@@ -33,8 +33,6 @@ std::string GetTestFilePath(absl::string_view filename);
 
 Model LoadTestFileModel(absl::string_view filename);
 
-bool ValidateTopology(const std::vector<Op>& ops);
-
 class TflRuntime {
  public:
   using Ptr = std::unique_ptr<TflRuntime>;

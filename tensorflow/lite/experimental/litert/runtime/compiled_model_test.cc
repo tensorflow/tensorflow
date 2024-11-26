@@ -44,9 +44,9 @@ Expected<std::vector<LiteRtTensorBuffer>> CreateInputBuffers(
     LiteRtModel& model, LiteRtCompiledModelT& compiled_model,
     absl::string_view signature_key) {
   std::vector<LiteRtTensorBuffer> input_buffers;
-  auto subgraph = model->FindSubgraph(signature_key);
-  auto& input_tensors = (*subgraph)->inputs;
-  size_t num_inputs = input_tensors.size();
+  auto* subgraph = *LookupSubgraph(*model, signature_key);
+  auto& input_tensors = subgraph->Inputs();
+  const size_t num_inputs = subgraph->NumInputs();
   input_buffers.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     auto litert_input_buffer_requirements =
@@ -58,7 +58,8 @@ Expected<std::vector<LiteRtTensorBuffer>> CreateInputBuffers(
     TensorBufferRequirements input_buffer_requirements =
         TensorBufferRequirements(*litert_input_buffer_requirements,
                                  /*owned=*/false);
-    auto ranked_tensor_type = input_tensors[i]->type_detail.ranked_tensor_type;
+    const auto& ranked_tensor_type =
+        input_tensors[i]->Type().second.ranked_tensor_type;
     LiteRtTensorBufferType tensor_buffer_type =
         input_buffer_requirements.SupportedTypes()->at(0);
     LiteRtTensorBuffer input_buffer;
@@ -78,10 +79,9 @@ Expected<std::vector<LiteRtTensorBuffer>> CreateOutputBuffers(
     LiteRtModel& model, LiteRtCompiledModelT& compiled_model,
     absl::string_view signature_key) {
   std::vector<LiteRtTensorBuffer> output_buffers;
-
-  auto subgraph = model->FindSubgraph(signature_key);
-  auto& output_tensors = (*subgraph)->outputs;
-  size_t num_outputs = output_tensors.size();
+  auto* subgraph = *LookupSubgraph(*model, signature_key);
+  auto& output_tensors = subgraph->Outputs();
+  size_t num_outputs = subgraph->NumOutputs();
   output_buffers.reserve(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     auto litert_output_buffer_requirements =
@@ -93,7 +93,8 @@ Expected<std::vector<LiteRtTensorBuffer>> CreateOutputBuffers(
     TensorBufferRequirements output_buffer_requirements =
         TensorBufferRequirements(*litert_output_buffer_requirements,
                                  /*owned=*/false);
-    auto ranked_tensor_type = output_tensors[i]->type_detail.ranked_tensor_type;
+    auto ranked_tensor_type =
+        output_tensors[i]->Type().second.ranked_tensor_type;
     LiteRtTensorBufferType tensor_buffer_type =
         output_buffer_requirements.SupportedTypes()->at(0);
     LiteRtTensorBuffer output_buffer;
@@ -132,10 +133,10 @@ TEST(CompiledModelTest, Basic) {
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
   auto& compiled_model = **res_compiled_model;
 
-  auto& signatures = model->signatures;
+  auto signatures = model->Signatures();
   ASSERT_EQ(signatures.size(), 1);
-  auto signature_key = signatures[0]->key;
-  EXPECT_EQ(signature_key, LITERT_DEFAULT_SIGNATURE_KEY);
+  auto signature_key = signatures[0]->Key();
+  EXPECT_EQ(signature_key, LiteRtSignatureT::kDefaultSignatureKey);
 
   auto input_buffers_res =
       CreateInputBuffers(model, compiled_model, signature_key);
@@ -148,7 +149,7 @@ TEST(CompiledModelTest, Basic) {
   auto output_buffers = std::move(*output_buffers_res);
 
   // Fill model inputs.
-  auto input_names = signatures[0]->input_names;
+  auto& input_names = signatures[0]->InputNames();
   EXPECT_EQ(input_names.size(), 2);
   EXPECT_EQ(input_names.at(0), "arg0");
   EXPECT_EQ(input_names.at(1), "arg1");
@@ -169,7 +170,7 @@ TEST(CompiledModelTest, Basic) {
   compiled_model.Run(signature_key, input_buffers, output_buffers);
 
   // Check model output.
-  auto output_names = signatures[0]->output_names;
+  auto output_names = signatures[0]->OutputNames();
   EXPECT_EQ(output_names.size(), 1);
   EXPECT_EQ(output_names.at(0), "tfl.add");
   auto& output_buffer = output_buffers[0];

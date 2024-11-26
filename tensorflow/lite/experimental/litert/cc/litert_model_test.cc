@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -249,7 +250,7 @@ TEST(CcTensorTest, WeightsData) {
 TEST(CcTensorTest, Name) {
   static constexpr absl::string_view kName = "foo";
   LiteRtTensorT tensor;
-  tensor.name = kName;
+  tensor.SetName(std::string(kName));
 
   Tensor cc_tensor(&tensor);
   EXPECT_EQ(cc_tensor.Name(), kName);
@@ -257,7 +258,7 @@ TEST(CcTensorTest, Name) {
 
 TEST(CcTensorTest, QuantizationNone) {
   LiteRtTensorT litert_tensor;
-  litert_tensor.q_type_id = kLiteRtQuantizationNone;
+  litert_tensor.Qparams().first = kLiteRtQuantizationNone;
 
   Tensor tensor(&litert_tensor);
   EXPECT_EQ(tensor.QTypeId(), kLiteRtQuantizationNone);
@@ -269,8 +270,7 @@ TEST(CcTensorTest, QuantizationPerTensor) {
   static constexpr auto kZeroPoint = 1;
 
   LiteRtTensorT litert_tensor;
-  litert_tensor.q_type_id = kLiteRtQuantizationPerTensor;
-  litert_tensor.q_type_detail.per_tensor = {kScale, kZeroPoint};
+  litert_tensor.SetQarams(MakePerTensorQuantization(kScale, kZeroPoint));
 
   Tensor tensor(&litert_tensor);
   ASSERT_EQ(tensor.QTypeId(), kLiteRtQuantizationPerTensor);
@@ -288,13 +288,9 @@ TEST(CcTensorTest, QuantizationPerChannel) {
   static constexpr int64_t kZeroPoints[kNumChannels] = {0, 0};
 
   LiteRtTensorT litert_tensor;
-  litert_tensor.q_type_id = kLiteRtQuantizationPerChannel;
-  litert_tensor.q_type_detail.per_channel.scales = const_cast<float*>(kScales);
-  litert_tensor.q_type_detail.per_channel.zero_points =
-      const_cast<int64_t*>(kZeroPoints);
-  litert_tensor.q_type_detail.per_channel.num_channels = kNumChannels;
-  litert_tensor.q_type_detail.per_channel.quantized_dimension =
-      kQuantizedDimension;
+  auto per_channel = MakePerChannelQuantization(
+      kScales, kZeroPoints, kQuantizedDimension, litert_tensor);
+  litert_tensor.SetQarams(per_channel);
 
   Tensor tensor(&litert_tensor);
   ASSERT_EQ(tensor.QTypeId(), kLiteRtQuantizationPerChannel);

@@ -356,16 +356,17 @@ Expected<OwningBufferRef<uint8_t>> ApplyPlugin(
   std::vector<LiteRtOp> custom_ops;
   for (auto& partition : grouped_partitions) {
     auto custom_op =
-        OutlinePartition(model.Get()->subgraphs.front(),
-                         &model.Get()->subgraphs.emplace_back(), partition);
+        OutlinePartition(*model.Get()->Subgraphs().front(),
+                         &model.Get()->EmplaceSubgraph(), partition);
     custom_ops.push_back(custom_op);
   }
 
   // Pass new subgraphs to the plugin for compilation.
   std::vector<LiteRtSubgraph> compilation_input;
-  for (auto it = model.Get()->subgraphs.begin() + 1;
-       it < model.Get()->subgraphs.end(); ++it) {
-    compilation_input.push_back(&*it);
+  auto begin = model.Get()->Subgraphs().begin();
+  auto end = model.Get()->Subgraphs().end();
+  for (auto it = begin + 1; it < end; ++it) {
+    compilation_input.push_back(*it);
   }
 
   // Compile partitions with plugin.
@@ -384,15 +385,13 @@ Expected<OwningBufferRef<uint8_t>> ApplyPlugin(
     return Error(kLiteRtStatusErrorRuntimeFailure);
   }
 
-  model.Get()->custom_op_code = kLiteRtDispatchOpCustomCode;
-
   // Attach entry point info to the custom ops.
   auto custom_op_it = custom_ops.begin();
   auto exec_info_it = exec_info.begin();
   for (; custom_op_it < custom_ops.end(); custom_op_it++, exec_info_it++) {
     LiteRtOp custom_op = *custom_op_it;
     const auto& exec_info = *exec_info_it;
-    custom_op->custom_options = OwningBufferRef<uint8_t>(exec_info.data());
+    custom_op->SetCustomOptions(exec_info.data());
   }
 
   const auto byte_code_str = byte_code.str();

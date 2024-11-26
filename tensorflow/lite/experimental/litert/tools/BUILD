@@ -38,6 +38,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/compiler/plugin:algo",
         "//tensorflow/lite/experimental/litert/compiler/plugin:compiler_plugin",
         "//tensorflow/lite/experimental/litert/core:byte_code_util",
+        "//tensorflow/lite/experimental/litert/core/model:model_graph",
         "//tensorflow/lite/experimental/litert/core/model:model_serialize",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "@com_google_absl//absl/log:absl_check",
