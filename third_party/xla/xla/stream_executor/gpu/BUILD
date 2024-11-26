@@ -688,6 +688,19 @@ cc_library(
     ]),
 )
 
+cc_library(
+    name = "gpu_blas_lt_gemm_runner",
+    srcs = if_rocm_is_configured(["gpu_blas_lt_gemm_runner.cc"]),
+    hdrs = if_rocm_is_configured(["gpu_blas_lt_gemm_runner.h"]),
+    deps = if_rocm_is_configured([
+        "//xla:autotuning_proto_cc",
+        "//xla:autotune_results_proto_cc",	        
+        "//xla:xla_proto_cc",		 
+        "//xla/stream_executor:scratch_allocator",			        
+        ":gpu_blas_lt"
+    ]),
+)
+
 gpu_kernel_library(
     name = "gpu_test_kernels",
     testonly = 1,

@@ -122,6 +122,17 @@ struct GemmConfig {  // plain GemmConfig which is extended with create functions
   std::optional<blas::ComputationType> compute_type;
 };
 
+struct GroupedGemmConfig {
+  int64_t m, n, k, batch_count;
+  blas::Transpose trans_a, trans_b;
+  const void *alpha, *beta;
+  blas::DataType type_a, type_b, type_c, type_d;
+  int64_t lda, ldb, ldc, ldd;
+  blas::ComputationType compute_type;
+  const void **a, **b, **c;
+  void **d;
+};
+
 struct BlasLt {
   enum class Epilogue {
     kDefault = 1,                   // No special postprocessing

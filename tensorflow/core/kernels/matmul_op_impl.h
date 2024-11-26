@@ -725,8 +725,12 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
 
         BlasScratchAllocator scratch_allocator(context, max_scratch_size);
         auto blas = stream->parent()->AsBlas();
+        
         OP_REQUIRES(context, blas != nullptr,
                     absl::InternalError("No blas support for stream"));
+        
+        // TODO: calling hipblaslt here to replace blas->DoBlasGemmBatched        
+
         bool blas_launch_status = blas->DoBlasGemmBatched(
             stream, blas_transpose_b, blas_transpose_a, n, m, k,
             static_cast<Coefficient>(1.0), b_ptrs, adj_y || trans_y ? k : n,
