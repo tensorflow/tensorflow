@@ -6,8 +6,6 @@ load(
     "if_rocm_hipblaslt",
     "rocm_library",
 )
-load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -19,6 +17,8 @@ load(
     "internal_visibility",
     "tsl_copts",
 )
+load("//xla/tsl/platform:build_config_root.bzl", "if_static")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

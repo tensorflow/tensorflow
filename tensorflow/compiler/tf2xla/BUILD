@@ -4,10 +4,10 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 # load("//devtools/deps/check:deps_check.bzl", "check_dependencies")
 # copybara:uncomment_end
 
-load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load("@local_xla//xla:xla.bzl", "xla_py_proto_library")
 load("@local_xla//xla/service/cpu:build_defs.bzl", "runtime_copts")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load(
     "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",

@@ -1,6 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load(
-    "@local_tsl//tsl/platform:build_config.bzl",
+    "@local_xla//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")

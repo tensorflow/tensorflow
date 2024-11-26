@@ -2,15 +2,6 @@
 #    LLVM-based CPU backend for XLA.
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "if_llvm_aarch64_available",
-    "if_llvm_powerpc_available",
-    "if_llvm_system_z_available",
-    "if_llvm_x86_available",
-)
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
@@ -29,6 +20,15 @@ load(
     "//xla/tsl/mkl:build_defs.bzl",
     "mkl_deps",
 )
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
+load(
+    "//xla/tsl/platform:build_config_root.bzl",
+    "if_llvm_aarch64_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
+)
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(":build_defs.bzl", "runtime_copts")
 
 package(

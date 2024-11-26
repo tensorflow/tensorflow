@@ -1,11 +1,10 @@
-load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
-
 # copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
     "internal_visibility",
 )
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

@@ -1,12 +1,12 @@
 """Build rules for XLA testing."""
 
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:plugin.bzl", "plugins")
 load("//xla/tsl:tsl.bzl", "if_oss")
+load(
+    "//xla/tsl/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 # Possible backend values for the GPU family.
 NVIDIA_GPU_BACKENDS = [

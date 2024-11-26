@@ -1,10 +1,10 @@
 # Description:
 #   Computationally expensive, exhaustive tests for XLA
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tests/exhaustive:build_defs.bzl", "exhaustive_xla_test")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

@@ -1,15 +1,6 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "if_static",
-    "tf_cuda_tests_tags",
-)
-load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
-)
-load(
     "//xla:xla.bzl",
     "xla_cc_test",
 )
@@ -28,6 +19,15 @@ load(
     "if_windows",
     "internal_visibility",
     "tsl_copts",
+)
+load(
+    "//xla/tsl/platform:build_config_root.bzl",
+    "if_static",
+    "tf_cuda_tests_tags",
+)
+load(
+    "//xla/tsl/platform:rules_cc.bzl",
+    "cc_library",
 )
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",

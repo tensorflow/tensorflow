@@ -1,9 +1,9 @@
+load("//xla:lit.bzl", "lit_test_suite")
 load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "//xla/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
     "tf_exec_properties",
 )
-load("//xla:lit.bzl", "lit_test_suite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

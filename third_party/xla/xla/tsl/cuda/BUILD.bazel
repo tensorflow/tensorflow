@@ -2,7 +2,7 @@
 #   Stubs for dynamically loading CUDA.
 
 load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "@local_xla//xla/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(

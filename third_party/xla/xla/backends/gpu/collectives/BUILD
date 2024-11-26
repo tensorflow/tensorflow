@@ -1,6 +1,6 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(

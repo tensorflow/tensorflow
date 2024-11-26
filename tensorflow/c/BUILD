@@ -3,8 +3,8 @@
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
-load("@local_tsl//tsl/platform:build_config_root.bzl", "if_pywrap")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
+load("@local_xla//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",

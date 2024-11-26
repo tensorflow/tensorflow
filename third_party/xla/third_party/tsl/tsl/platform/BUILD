@@ -5,14 +5,6 @@
 #   to other TF components outside of TSL.
 
 load(
-    "@bazel_skylib//:bzl_library.bzl",
-    "bzl_library",
-)
-load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
-)
-load(
     "@local_xla//xla/tsl:tsl.bzl",
     "if_not_fuchsia",
     "internal_visibility",
@@ -20,13 +12,12 @@ load(
 )
 load("@local_xla//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
-    "//tsl/platform:build_config.bzl",
+    "@local_xla//xla/tsl/platform:build_config.bzl",
     "tf_cuda_root_path_deps",
     "tf_error_logging_deps",
     "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
     "tf_logging_deps",
-    "tf_platform_alias",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
     "tf_resource_deps",
@@ -36,7 +27,11 @@ load(
     "tsl_grpc_credentials_deps",
     "tsl_protobuf_deps",
 )
-load("//tsl/platform:build_config_root.bzl", "if_static")
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
+load(
+    "@local_xla//xla/tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -1747,18 +1742,6 @@ tsl_cc_test(
         ":test",
         ":test_main",
     ],
-)
-
-bzl_library(
-    name = "rules_cc_bzl",
-    srcs = ["rules_cc.bzl"],
-    deps = tf_platform_alias("rules_cc_bzl"),
-)
-
-bzl_library(
-    name = "build_config_root_bzl",
-    srcs = ["build_config_root.bzl"],
-    deps = tf_platform_alias("build_config_root_bzl"),
 )
 
 cc_library(
