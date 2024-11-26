@@ -33,7 +33,7 @@ cc_library(
     hdrs = ["function_library.h"],
     deps = [
         "//xla:util",
-        "//xla/stream_executor/host:host_kernel_c_api",
+        "//xla/backends/cpu/runtime:kernel_c_api",
         "@com_google_absl//absl/status:statusor",
     ],
 )

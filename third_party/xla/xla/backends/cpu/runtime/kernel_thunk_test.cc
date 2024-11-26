@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
+#include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/statusor.h"
@@ -40,9 +40,9 @@ namespace {
 class AddF32HostKernel : public Thunk::FunctionRegistry {
  public:
   absl::StatusOr<Kernel> FindKernel(std::string_view name) override {
-    return +[](const SE_HOST_KernelCallFrame* call_frame) {
-      const SE_HOST_KernelArg& in = call_frame->args[0];
-      const SE_HOST_KernelArg& out = call_frame->args[1];
+    return +[](const XLA_CPU_KernelCallFrame* call_frame) {
+      const XLA_CPU_KernelArg& in = call_frame->args[0];
+      const XLA_CPU_KernelArg& out = call_frame->args[1];
 
       float* in_ptr = reinterpret_cast<float*>(in.data);
       float* out_ptr = reinterpret_cast<float*>(out.data);
@@ -50,7 +50,7 @@ class AddF32HostKernel : public Thunk::FunctionRegistry {
       uint64_t i = call_frame->thread->x;
       *(out_ptr + i) = *(in_ptr + i) + *(in_ptr + i);
 
-      return static_cast<SE_HOST_KernelError*>(nullptr);
+      return static_cast<XLA_CPU_KernelError*>(nullptr);
     };
   }
 };
