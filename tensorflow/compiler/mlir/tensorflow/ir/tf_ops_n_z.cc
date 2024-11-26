@@ -2737,7 +2737,7 @@ class FuseWithBroadcastCompatibleOp
 
       auto tile = mlir::dyn_cast<TF::TileOp>(operand.get().getDefiningOp());
       if (!tile) {
-        return failure();
+        continue;
       }
 
       DenseIntElementsAttr multiples_attr;

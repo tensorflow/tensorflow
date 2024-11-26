@@ -689,6 +689,18 @@ func.func @testTileFold(%arg0: tensor<2x3x1xf32>, %arg1: tensor<2x3x20xf32>) -> 
   func.return %1 : tensor<2x3x20xf32>
 }
 
+// CHECK-LABEL: testSecondOperandTileFold
+func.func @testSecondOperandTileFold(%arg0: tensor<1x128x1x128x128xf32>, %arg1: tensor<1x128x8x128x128xf32>) -> tensor<1x128x8x128x128xf32> {
+  %cst = "tf.Const"() <{value = dense<[1, 1, 8, 1, 1]> : tensor<5xi64>}> : () -> tensor<5xi64>
+  %cst_783 = "tf.Const"() <{value = dense<2.500000e-01> : tensor<f32>}> {device = ""} : () -> tensor<f32>
+  %3278 = "tf.Tile"(%arg0, %cst) {device = ""} : (tensor<1x128x1x128x128xf32>, tensor<5xi64>) -> tensor<1x128x8x128x128xf32>
+  %3588 = "tf.Mul"(%arg1, %cst_783) {device = ""} : (tensor<1x128x8x128x128xf32>, tensor<f32>) -> tensor<1x128x8x128x128xf32>
+  %3589 = "tf.AddV2"(%3588, %3278) {device = ""} : (tensor<1x128x8x128x128xf32>, tensor<1x128x8x128x128xf32>) -> tensor<1x128x8x128x128xf32>
+  // CHECK: "tf.Mul"(%arg1, %cst)
+  // CHECK: "tf.AddV2"(%0, %arg0)
+  return %3589 : tensor<1x128x8x128x128xf32>
+}
+
 // CHECK-LABEL: testFoldTileIntoSelect
 func.func @testFoldTileIntoSelect(%arg0: tensor<1xi1>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>) -> tensor<8xf32> {
   %cst = "tf.Const"() <{value = dense<[8]> : tensor<1xi64>}> : () -> tensor<1xi64>
