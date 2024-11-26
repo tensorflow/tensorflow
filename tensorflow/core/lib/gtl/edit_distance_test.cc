@@ -16,7 +16,12 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/edit_distance.h"
 
 #include <cctype>
+#include <cstddef>
+#include <functional>
+#include <string>
 #include <vector>
+
+#include "absl/types/span.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
