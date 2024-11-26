@@ -1,13 +1,15 @@
-diff --git a/shardy/dialect/sdy/transforms/propagation/debugging/source_sharding.cc b/shardy/dialect/sdy/transforms/propagation/debugging/source_sharding.cc
-index e1ff855..361b1a6 100644
---- a/shardy/dialect/sdy/transforms/propagation/debugging/source_sharding.cc
-+++ b/shardy/dialect/sdy/transforms/propagation/debugging/source_sharding.cc
-@@ -144,7 +144,7 @@ void saveShardingOriginsOnModule(ModuleOp moduleOp,
-                            DictionaryAttr::get(context, entries));
-     }
-     TypeSwitch<Operation*, void>(owningOp)
--        .Case<func::FuncOp>([&](func::FuncOp funcOp) {
-+        .Case<func::FuncOp>([&, value = value](func::FuncOp funcOp) {
-           funcOp.setArgAttr(cast<BlockArgument>(value).getArgNumber(),
-                             kOriginShardingAttr,
-                             DictionaryAttr::get(context, entries));
+diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
+index 6a41a29..de7b579 100644
+--- a/third_party/llvm/workspace.bzl
++++ b/third_party/llvm/workspace.bzl
+@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+ 
+ def repo(name):
+     """Imports LLVM."""
+-    LLVM_COMMIT = "c0192a008c4a2b8afdc2b63526c0483632d81c07"
+-    LLVM_SHA256 = "89b7b9a0baa6e5b4a9d77f30a66b957683a8eaf2f05eb9738cbe846036a8478c"
++    LLVM_COMMIT = "b214ca82daeece1568268ebc0fbcc2eaa649425b"
++    LLVM_SHA256 = "3894d536d9dcdae1c18df738cabd37a3ede1e2f7e10c335ba14ab71b07bdad5d"
+ 
+     tf_http_archive(
+         name = name,
