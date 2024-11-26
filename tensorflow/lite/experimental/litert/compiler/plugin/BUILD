@@ -75,6 +75,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -87,6 +88,7 @@ cc_test(
     ],
     deps = [
         ":algo",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",

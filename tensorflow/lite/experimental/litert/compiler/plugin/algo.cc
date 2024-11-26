@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/MapVector.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -294,6 +295,22 @@ inline LiteRtOp GraphSlicer::SlicePartitionFromGraph(
     std::vector<LiteRtOp>& partition) {
   GraphSlicer slicer(slice);
 
+  // Register input tensors of the sliced partition WRT to their original order
+  // in the root subgraph. This ensures the order of input tensors of the
+  // later outlined custom op is the same as the order of input tensors of the
+  // GraphInputs.
+  absl::flat_hash_set<LiteRtTensor> used_tensors;
+  // Get all tensors used in the partition.
+  for (auto* op : partition) {
+    used_tensors.insert(op->inputs.begin(), op->inputs.end());
+  }
+  for (auto* old_input : root.inputs) {
+    if (used_tensors.contains(old_input)) {
+      LiteRtTensor new_input = RequestNewInput(slicer.slice_, *old_input);
+      slicer.tensor_map_.insert({old_input, new_input});
+    }
+  }
+
   for (auto* op : partition) {
     slicer.CloneInto(*op);
   }
@@ -325,7 +342,7 @@ inline void GraphSlicer::RerouteTensorsThroughCustomOp(
     }
 
     // Reroute custom op as the definer of tensors within the removed partition
-    // and referenced latern in the root graph.
+    // and referenced later in the root graph.
     if (!old_tensor->users.empty() || IsOutput(root, old_tensor)) {
       AddOutput(*hal_cal_op_, *old_tensor);
       AddOutput(slice_, new_tensor);

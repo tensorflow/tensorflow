@@ -80,6 +80,7 @@ void SetOutputTensorAttrs(Qnn_Tensor_t& tensor) {
 
 void SetResultTensorAttrs(Qnn_Tensor_t& tensor) {
   ABSL_DCHECK(tensor.version == QNN_TENSOR_VERSION_2);
+  tensor.v2.memType = QNN_TENSORMEMTYPE_RAW;
   tensor.v2.type = QNN_TENSOR_TYPE_NATIVE;
 }
 

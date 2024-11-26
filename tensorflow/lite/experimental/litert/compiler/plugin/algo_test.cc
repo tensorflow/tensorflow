@@ -19,6 +19,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
@@ -32,6 +33,7 @@ namespace {
 // NOLINTBEGIN
 bool HasValidGeneralTopology(LiteRtSubgraph subgraph) {
   if (!testing::ValidateTopology(Subgraph(subgraph).Ops())) {
+    LITERT_LOG(LITERT_ERROR, "Invalid topology.");
     return false;
   }
 
@@ -43,11 +45,15 @@ bool HasValidGeneralTopology(LiteRtSubgraph subgraph) {
   }
 
   if (implied_subgraph_outs.size() != subgraph->outputs.size()) {
+    LITERT_LOG(LITERT_ERROR,
+               "Output size mismatch: %d (Actual) != %d (Expected).",
+               implied_subgraph_outs.size(), subgraph->outputs.size());
     return false;
   }
 
   for (auto tensor : subgraph->outputs) {
     if (implied_subgraph_outs.find(tensor) == implied_subgraph_outs.end()) {
+      LITERT_LOG(LITERT_ERROR, "Output not found.");
       return false;
     }
   }
@@ -61,11 +67,15 @@ bool HasValidGeneralTopology(LiteRtSubgraph subgraph) {
   }
 
   if (implied_subgraph_ins.size() != subgraph->inputs.size()) {
+    LITERT_LOG(LITERT_ERROR,
+               "Input size mismatch: %d (Actual) != %d (Expected).",
+               implied_subgraph_ins.size(), subgraph->inputs.size());
     return false;
   }
 
   for (auto tensor : subgraph->inputs) {
     if (implied_subgraph_ins.find(tensor) == implied_subgraph_ins.end()) {
+      LITERT_LOG(LITERT_ERROR, "Input not found.");
       return false;
     }
   }
