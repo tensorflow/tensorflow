@@ -33,7 +33,7 @@ Status InitTfrtGpu(const GpuRunnerOptions& options,
   auto policy = std::make_unique<tsl::RoundRobinPolicy>();
   auto serving_device_selector =
       std::make_unique<tensorflow::gpu::GpuServingDeviceSelector>(
-          options.num_gpu_streams, std::move(policy));
+          options.num_gpu_streams * options.num_gpu_devices, std::move(policy));
 
   // We need to move `serving_device_selector` to the heap here, as
   // `AddCreateRuntimeResourceFn` requires a copyable callback.

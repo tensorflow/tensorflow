@@ -424,6 +424,7 @@ GpuRunner::Run(GpuRunInputs run_inputs) {
       serving_device_selector_->ReserveDevice(absl::StrCat(fingerprint));
   const int device_idx = device_reservation.device_index();
   VLOG(1) << "GpuRunner selected device " << device_idx << ".";
+  CHECK(device_idx < run_inputs.gpu_devices.size());  // Crash OK
 
   // Compile the program.
   const XlaCompiler::CompilationResult* compilation_result;
