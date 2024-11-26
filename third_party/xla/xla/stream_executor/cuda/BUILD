@@ -3,6 +3,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
+    "tf_cuda_tests_tags",
 )
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
@@ -659,7 +660,22 @@ cc_library(
     srcs = ["ptx_compiler_helpers.cc"],
     hdrs = ["ptx_compiler_helpers.h"],
     deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_test(
+    name = "ptx_compiler_helpers_test",
+    srcs = ["ptx_compiler_helpers_test.cc"],
+    deps = [
+        ":ptx_compiler_helpers",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -1489,19 +1505,22 @@ cc_library(
     ],
 )
 
-xla_cc_test(
-    name = "compilation_provider_test",
+# compilation_provider_test is split into two targets since only a subset of the tests need a GPU to run.
+cc_library(
+    name = "compilation_provider_test_lib",
+    testonly = True,
     srcs = ["compilation_provider_test.cc"],
-    args = if_google([
-        # nvjitlink allocates memory and only keeps a pointer past the usual offset of 1024 bytes;
-        # so we need to increase the max pointer offset. -1 means no limit.
-        # This is only relevant for Google's HeapLeakChecker. The newer Leak sanitizer doesn't
-        # have this issue.
-        "--heap_check_max_pointer_offset=-1",
-    ]),
+    hdrs = ["compilation_provider_test.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         ":compilation_options",
         ":compilation_provider",
+        ":cuda_platform",  # buildcleaner: keep
+        ":cuda_platform_id",
+        ":driver_compilation_provider",
         ":nvjitlink_compilation_provider",
         ":nvjitlink_support",
         ":nvptxcompiler_compilation_provider",
@@ -1509,6 +1528,9 @@ xla_cc_test(
         ":subprocess_compilation",
         ":subprocess_compilation_provider",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -1517,6 +1539,51 @@ xla_cc_test(
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_cc_test(
+    name = "compilation_provider_test_without_gpu",
+    srcs = ["compilation_provider_test_without_gpu.cc"],
+    args = if_google([
+        # nvjitlink allocates memory and only keeps a pointer past the usual offset of 1024 bytes;
+        # so we need to increase the max pointer offset. -1 means no limit.
+        # This is only relevant for Google's HeapLeakChecker. The newer Leak sanitizer doesn't
+        # have this issue.
+        "--heap_check_max_pointer_offset=-1",
+    ]),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":compilation_provider_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "compilation_provider_test_with_gpu",
+    srcs = ["compilation_provider_test_with_gpu.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ] + tf_cuda_tests_tags(),
+    deps = [
+        ":compilation_provider_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+test_suite(
+    name = "compilation_provider_test",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    tests = [
+        ":compilation_provider_test_with_gpu",
+        ":compilation_provider_test_without_gpu",
     ],
 )
 
@@ -1619,5 +1686,39 @@ xla_cc_test(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "driver_compilation_provider",
+    srcs = ["driver_compilation_provider.cc"],
+    hdrs = ["driver_compilation_provider.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":compilation_options",
+        ":compilation_provider",
+        ":cuda_platform_id",
+        ":cuda_status",
+        ":ptx_compiler_helpers",
+        "//xla/stream_executor:activate_context",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/cuda",  # buildcleaner: keep
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )

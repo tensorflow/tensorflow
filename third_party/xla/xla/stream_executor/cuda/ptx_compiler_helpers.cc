@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <string_view>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_format.h"
 
 namespace stream_executor {
 
@@ -25,6 +28,32 @@ bool IsPtxRegisterAllocationError(std::string_view str) {
   return absl::StrContains(str, "ptxas fatal") &&
          (absl::StrContains(str, "Register allocation failed") ||
           absl::StrContains(str, "Insufficient registers"));
+}
+
+absl::Status CreateErrorFromPTXASLog(std::string_view log,
+                                     std::string_view architecture,
+                                     bool cancel_if_reg_spill) {
+  //  It happens when the loaded version of nvjitlink is too old for
+  //  the current GPU. Example error message associated with this error
+  //  code:
+  //      ptxas fatal   : Value 'sm_80' is not defined for option 'gpu-name'
+  if (absl::StrContains(log, "ptxas fatal   : Value '") &&
+      absl::StrContains(log, "is not defined for option 'gpu-name'")) {
+    return absl::UnimplementedError(absl::StrFormat(
+        "Loaded PTX assembler is too old for %s.", architecture));
+  }
+  if (IsPtxRegisterAllocationError(log)) {
+    return absl::ResourceExhaustedError(log);
+  }
+  if (absl::StrContains(log, "warning")) {
+    LOG(INFO) << log;
+    if (cancel_if_reg_spill &&
+        absl::StrContains(log, "Registers are spilled")) {
+      return absl::CancelledError(
+          "Compilation result discarded due to register spilling");
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace stream_executor
