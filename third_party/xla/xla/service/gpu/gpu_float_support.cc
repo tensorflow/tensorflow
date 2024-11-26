@@ -107,7 +107,7 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
         auto* cuda_compute_capability =
             std::get_if<se::CudaComputeCapability>(&compute_capability_);
         return cuda_compute_capability != nullptr &&
-               cuda_compute_capability->IsAtLeastHopper();
+               cuda_compute_capability->IsAtLeastAmpere();
       }
       return false;
     }
