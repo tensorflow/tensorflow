@@ -1160,15 +1160,30 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   TF_RETURN_IF_ERROR(GetComputeCapability(&cc_major, &cc_minor, device));
 
   DeviceDescription desc;
-  int32_t driver_version;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuDriverGetVersion(&driver_version),
-                                    "Could not get driver version"));
+  int32_t driver_version{};
+  {
+    // TODO(b/381052076): Return an error instead of silent failure once TF can
+    // accommodate that.
+    absl::Status result = cuda::ToStatus(cuDriverGetVersion(&driver_version),
+                                         "Could not get driver version");
+    if (!result.ok()) {
+      LOG(ERROR) << result;
+    }
+  }
   desc.set_driver_version(
       ParseCudaVersion(driver_version).value_or(SemanticVersion{0, 0, 0}));
 
-  int32_t runtime_version;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cudaRuntimeGetVersion(&runtime_version),
-                                    "Failed call to cudaGetRuntimeVersion"));
+  int32_t runtime_version{};
+  {
+    // TODO(b/381052076): Return an error instead of silent failure once TF can
+    // accommodate that.
+    absl::Status result =
+        cuda::ToStatus(cudaRuntimeGetVersion(&runtime_version),
+                       "Failed call to cudaGetRuntimeVersion");
+    if (!result.ok()) {
+      LOG(ERROR) << result;
+    }
+  }
   desc.set_runtime_version(
       ParseCudaVersion(runtime_version).value_or(SemanticVersion{0, 0, 0}));
   desc.set_compile_time_toolkit_version(
