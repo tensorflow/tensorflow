@@ -101,6 +101,10 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
              << "can't find callee `" << call_op.getCalleeAttr() << "`";
     }
     auto stablehlo_module = llvm::cast<mlir::ModuleOp>(callee->getParentOp());
+    if (stablehlo_module == module) {
+      return call_op->emitOpError() << "callee `" << call_op.getCalleeAttr()
+                                    << "` has not been outlined to a module";
+    }
     // Verify that the atom program is a top-level IFRT IR module. Nested atom
     // programs are not supported in IFRT IR. Moreover, it would difficult
     // to exactly reconstruct the IFRT IR program post atom program DCE.
@@ -113,6 +117,11 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
     if (call_op.getCalleeAttr().getNestedReferences().size() > 1) {
       return call_op->emitOpError() << "nested atom programs are not supported "
                                     << call_op.getCalleeAttr();
+    }
+    if (!stablehlo_module.getSymNameAttr()) {
+      return call_op->emitOpError()
+             << "callee `" << call_op.getCalleeAttr()
+             << "` has not been outlined to a module with a `sym_name`";
     }
     std::string atom_program_name = stablehlo_module.getSymNameAttr().str();
     if (!converted_atom_program_names.insert(atom_program_name).second) {
