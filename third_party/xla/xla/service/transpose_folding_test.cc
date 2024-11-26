@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "xla/service/transpose_folding.h"
 
+#include <cstdint>
 #include <memory>
-#include <vector>
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"

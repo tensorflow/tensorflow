@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/service/triangular_solve_expander.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "xla/literal.h"

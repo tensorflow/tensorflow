@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/constant_value.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
