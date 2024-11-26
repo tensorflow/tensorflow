@@ -68,6 +68,7 @@ absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
     case HloOpcode::kBroadcast:
     case HloOpcode::kCall:
     case HloOpcode::kConstant:
+    case HloOpcode::kReshape:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:

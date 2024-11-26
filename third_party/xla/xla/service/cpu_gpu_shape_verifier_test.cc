@@ -68,9 +68,10 @@ TEST_F(CpuGpuShapeVerifierTest, Int4SupportedInstruction) {
 
   select_bcast {
     p0 = u4[] parameter(0)
-    p1 = u4[] parameter(1)
-    cmp = pred[] compare(p0, p1), direction=LT
-    sel = u4[] select(cmp, p0, p1)
+    p1 = u4[] reshape(p0)
+    p2 = u4[] parameter(1)
+    cmp = pred[] compare(p1, p2), direction=LT
+    sel = u4[] select(cmp, p1, p2)
     ROOT out = u4[3, 3] broadcast(sel), dimensions={}
   }
 
