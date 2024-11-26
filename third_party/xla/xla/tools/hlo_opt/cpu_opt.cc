@@ -54,6 +54,9 @@ class CpuOptProvider : public CompiledOptProvider {
   }
 
   std::string GetPlatformName() override { return "cpu"; }
+
+  // Register the CPU provider passes.
+  void RegisterProviderPasses(HloModule& module) override {}
 };
 
 }  // namespace

@@ -152,6 +152,10 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
   }
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> modules,
                       GetModules(opts, argc, argv));
+  // Registration can be done using HloModuleConfig, but some
+  // GPU pipelines APIs expects HloModule.
+  // Assumption: All input modules have same HloModuleConfig.
+  provider->RegisterProviderPasses(*modules[0].get());
 
   std::string out_combined;
 

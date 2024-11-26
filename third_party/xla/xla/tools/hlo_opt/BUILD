@@ -69,7 +69,6 @@ cc_library(
         "transforms_example_passes.h",
     ],
     deps = [
-        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",

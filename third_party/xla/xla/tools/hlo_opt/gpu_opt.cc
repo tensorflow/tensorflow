@@ -90,6 +90,9 @@ class GpuOptProvider : public CompiledOptProvider {
     return supported;
   }
 
+  // Register the GPU provider passes.
+  void RegisterProviderPasses(HloModule& module) override {}
+
  private:
   absl::StatusOr<std::string> LlvmIrBeforeOptimizations(
       HloModule* optimized_module) {

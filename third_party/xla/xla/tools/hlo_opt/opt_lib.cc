@@ -108,6 +108,11 @@ OptProvider::BuildAndRunTransformPipeline(std::unique_ptr<HloModule> module,
 
 std::set<std::string> OptProvider::SupportedStages() { return {"hlo"}; }
 
+// Hardware Independent passes are already registered in the constructor.
+// Hardware Specific passes can be populated by respective hardware provider
+// subclasses using this method.
+void OptProvider::RegisterProviderPasses(HloModule& module) {}
+
 // Register Hardware-independent HLO passes here if you want the hlo-opt tool
 // to be able to apply them.
 void OptProvider::RegisterAllHardwareIndependentPasses() {
