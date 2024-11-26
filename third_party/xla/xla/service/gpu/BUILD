@@ -3107,6 +3107,7 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/service:collective_ops_utils",
         "//xla/service:collective_utils",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/log",
@@ -3125,6 +3126,7 @@ xla_cc_test(
         ":gpu_hlo_schedule",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/transforms:hlo_dce",
         "//xla/hlo/utils:hlo_query",

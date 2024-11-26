@@ -698,7 +698,9 @@ template <typename Comp>
 absl::StatusOr<HloInstruction*> CloneBackwardChain(
     Comp& target_computation, const WhileMoveInfo& move_info,
     InstructionMap& clone_map, int64_t loop_iter_idx, int64_t& next_channel_id,
-    LoopVariantParameterInfo* loop_variant_parameter_info = nullptr) {
+    LoopVariantParameterInfo* loop_variant_parameter_info = nullptr,
+    CollectivePipeliner::HloPostprocessor postprocess_pipelined_ops =
+        std::nullopt) {
   std::vector<HloInstruction*> to_clone(move_info.formatting_ops.begin(),
                                         move_info.formatting_ops.end());
   to_clone.push_back(move_info.collectives_to_move[0]);
@@ -715,6 +717,9 @@ absl::StatusOr<HloInstruction*> CloneBackwardChain(
     TF_RETURN_IF_ERROR(UpdateControlDependencies(chain_op, cloned, clone_map));
     UpdateInstructionChannelId(cloned, next_channel_id);
     clone_map[chain_op] = cloned;
+    if (postprocess_pipelined_ops.has_value()) {
+      TF_RETURN_IF_ERROR((*postprocess_pipelined_ops)(cloned));
+    }
     last_cloned = cloned;
     if (loop_variant_parameter_info != nullptr &&
         chain_op->opcode() == HloOpcode::kGetTupleElement &&
@@ -1913,6 +1918,9 @@ absl::Status TransformLoopForward(
           formatting_op->CloneWithNewOperands(formatting_op->shape(),
                                               new_operands));
       cloned_map[formatting_op] = processed;
+      if (post_processing_fn.has_value()) {
+        TF_RETURN_IF_ERROR((*post_processing_fn)(processed));
+      }
     }
     return processed;
   };
@@ -2721,10 +2729,11 @@ static absl::Status TransformLoopBackward(
         loop_analysis.GetMoveInfos()[i].collectives_to_move[0];
     TF_ASSIGN_OR_RETURN(
         new_init_operands[idx],
-        CloneBackwardChain(*while_loop->parent(),
-                           loop_analysis.GetMoveInfos()[i], chain_clone_map,
-                           *loop_analysis.GetLoopIterationIdx(),
-                           next_channel_id));
+        CloneBackwardChain(
+            *while_loop->parent(), loop_analysis.GetMoveInfos()[i],
+            chain_clone_map, *loop_analysis.GetLoopIterationIdx(),
+            next_channel_id, /*loop_variant_parameter_info=*/nullptr,
+            post_processing_fn));
 
     if (post_processing_fn.has_value()) {
       TF_RETURN_IF_ERROR((*post_processing_fn)(new_init_operands[idx]));
@@ -2774,11 +2783,11 @@ static absl::Status TransformLoopBackward(
     if (it != collective_to_move_map.end()) {
       TF_ASSIGN_OR_RETURN(
           cloned_instr,
-          CloneBackwardChain(body_builder,
-                             loop_analysis.GetMoveInfos()[it->second],
-                             collective_to_move_clone_map,
-                             *loop_analysis.GetLoopIterationIdx(),
-                             next_channel_id, &loop_variant_parameter_info));
+          CloneBackwardChain(
+              body_builder, loop_analysis.GetMoveInfos()[it->second],
+              collective_to_move_clone_map,
+              *loop_analysis.GetLoopIterationIdx(), next_channel_id,
+              &loop_variant_parameter_info, post_processing_fn));
 
       if (post_processing_fn.has_value()) {
         TF_RETURN_IF_ERROR((*post_processing_fn)(cloned_instr));

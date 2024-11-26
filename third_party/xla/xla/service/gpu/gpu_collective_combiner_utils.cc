@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/device_description.h"
@@ -70,6 +71,9 @@ int64_t ComputeSuggestedCombinerThreshold(
 }
 
 absl::Status AppendPipelinedInstruction(HloInstruction* instr) {
+  if (!IsCollective(instr)) {
+    return absl::OkStatus();
+  }
   TF_ASSIGN_OR_RETURN(auto config,
                       instr->backend_config<gpu::GpuBackendConfig>());
   config.mutable_collective_backend_config()->set_is_pipelined(true);
