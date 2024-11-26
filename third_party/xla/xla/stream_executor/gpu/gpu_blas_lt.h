@@ -130,7 +130,7 @@ struct GroupedGemmConfig {
   int64_t lda, ldb, ldc, ldd;
   blas::ComputationType compute_type;
   const void **a, **b, **c;
-  void **d;
+  void** d;
 };
 
 struct BlasLt {
@@ -280,7 +280,8 @@ struct BlasLt {
         size_t max_workspace_size = 1ll << 32) const = 0;
 
     // Algorithm needs to be set before calling ExecuteOnStream function
-    virtual absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) const = 0;
+    virtual absl::Status SetAlgorithm(
+        const MatmulAlgorithm& algorithm) const = 0;
 
     virtual ~MatmulPlan() {}
 
@@ -352,7 +353,7 @@ struct BlasLt {
                                                      const GemmConfig& cfg,
                                                      Epilogue epilogue);
 
-  virtual ~BlasLt() {}
+  virtual ~BlasLt() = default;
 };  // class BlasLt
 
 }  // namespace stream_executor::gpu

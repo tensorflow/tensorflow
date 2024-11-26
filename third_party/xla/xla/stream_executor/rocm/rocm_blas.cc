@@ -1241,7 +1241,6 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
 }
 
 absl::Status ROCMBlas::GetVersion(std::string *version) {
-
 #if TF_ROCM_VERSION >= 60200  // Not available in ROCM-6.1
   absl::MutexLock lock{&mu_};
   size_t len = 0;
@@ -1285,7 +1284,8 @@ void initialize_rocblas() {
                     return nullptr;
                   }
 
-                  gpu::ROCMBlas *blas = new gpu::ROCMBlas(rocm_executor);
+                  gpu::ROCMBlas *blas =
+                      new gpu::GpuBlasLtAdaptor<gpu::ROCMBlas>(rocm_executor);
                   if (!blas->Init()) {
                     // Note: Init() will log a more specific error.
                     delete blas;

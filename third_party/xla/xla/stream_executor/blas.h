@@ -209,9 +209,8 @@ constexpr bool is_any_of() {
 // the system. Any operation that a user attempts to perform by enqueueing BLAS
 // operations on a thread not-associated with the CUDA-context has unknown
 // behavior at the current time; see b/13176597
-class BlasSupport {
- public:
-  virtual ~BlasSupport() {}
+struct BlasSupport {
+  virtual ~BlasSupport() = default;
 
   virtual gpu::BlasLt *GetBlasLt() = 0;
 
@@ -716,32 +715,6 @@ class BlasSupport {
   BlasSupport(const BlasSupport &) = delete;
   void operator=(const BlasSupport &) = delete;
 };
-
-// struct GpuBlasLtAdaptor : public BlasSupport {
-//   absl::Status DoBlasGemmBatched(Stream *stream, blas::Transpose transa, 
-//                                 blas::Transpose transb, uint64_t m, 
-//                                 uint64_t n, uint64 k, float alpha, 
-//                                 DeviceMemorySlice<float> a, int lda, 
-//                                 DeviceMemorySlice<float> b, int ldb, float beta,
-//                                 DeviceMemorySlice<float> c, int ldc, int batch_count,
-//                                 const NumericOptions &numeric_options,
-//                                 ScratchAllocator *scratch_allocator, 
-//                                 blas::CallContext context) override {
-                            
-//     if (gpuBlasLtEnabled()) {
-//       auto& r = gpu::BlasLtGemmRunner::i(this);          
-//       CheckStatus(r.RunBatched(*this, transa, transb, m, n, k, alpha, 
-//                   a, lda, b, ldb, beta, c, ldc, batch_count, allocator));
-//       return *this;
-//     } else {
-//       DoBlasGemmBatched(stream, transa, transb, m, n, k,
-//                         alpha, a, lda, b, ldb, beta, c, ldc,
-//                         numeric_options, scratch_allocator,
-//                         context);
-//       return absl::OkStatus();
-//     }
-//   }
-// };
 
 // Macro used to quickly declare overrides for abstract virtuals in the
 // BlasSupport base class.

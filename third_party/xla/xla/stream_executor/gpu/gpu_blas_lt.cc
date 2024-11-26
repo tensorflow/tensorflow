@@ -202,15 +202,6 @@ bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
   return blas->GetMatmulPlan(cfg, epilogue);
 }
 
-/* static */ auto BlasLt::CreateGroupedMatmulPlan(Stream* stream, 				
-		const GroupedGemmConfig& cfg) -> absl::StatusOr<GroupedMatmulPlanPtr> {
-  auto blas = Get(stream);
-  if (blas == nullptr) {
-    return xla::Internal("BlasLt is unavailable");
-  }
-  return blas->GetGroupedMatmulPlan(stream, cfg);
-}
-
 /*static*/ BlasLt* BlasLt::Get(const Stream* stream) {
   auto blas = stream->parent()->AsBlas();
   return (blas != nullptr ? blas->GetBlasLt() : nullptr);
