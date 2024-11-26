@@ -640,6 +640,12 @@ TensorBuffer* Int4FromProtoField(Allocator* a, const TensorProto& in,
   auto begin = in.int_val().begin();
   if (n <= in_n) {
     std::copy_n(begin, n, data);
+    // swapping bits of the data pointer for big endian systems
+    #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    for (int64_t i = 0; i < n; ++i) {
+      data[i] = ((data[i] & 0xF0) >> 4) | ((data[i] & 0x0F) << 4);
+    }
+    #endif
   } else if (in_n > 0) {
     std::copy_n(begin, in_n, data);
     const uint16 last = *(data + in_n - 1);
