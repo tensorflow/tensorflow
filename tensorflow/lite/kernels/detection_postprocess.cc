@@ -517,7 +517,7 @@ void InplaceMergeBoxInfo(std::vector<BoxInfo>& boxes, int mid_index,
                          int end_index) {
   std::inplace_merge(
       boxes.begin(), boxes.begin() + mid_index, boxes.begin() + end_index,
-      [](const BoxInfo& a, const BoxInfo& b) { return a.score >= b.score; });
+      [](const BoxInfo& a, const BoxInfo& b) { return a.score > b.score; });
 }
 
 TfLiteStatus ComputeNMSResult(const NMSTaskParam& nms_task_param, int col_begin,
