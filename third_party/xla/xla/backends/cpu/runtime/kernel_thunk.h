@@ -34,10 +34,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/runtime/kernel.h"
+#include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/host/host_kernel.h"
-#include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
@@ -90,8 +90,8 @@ class KernelThunk : public Thunk {
 
   using KernelArgs = std::conditional_t<
       IsDynamic(num_arguments) || IsDynamic(num_results),
-      absl::InlinedVector<SE_HOST_KernelArg, 8>,
-      std::array<SE_HOST_KernelArg, Size(num_arguments + num_results)>>;
+      absl::InlinedVector<XLA_CPU_KernelArg, 8>,
+      std::array<XLA_CPU_KernelArg, Size(num_arguments + num_results)>>;
 
   KernelThunk(Info info,
               absl::Span<const BufferAllocation::Slice> arguments_buffers,
@@ -121,8 +121,8 @@ class KernelThunk : public Thunk {
 
   // Lazily loaded host kernel corresponding to `kernel_name_`.
   absl::Mutex mutex_;
-  std::optional<se::host::HostKernel> kernel_ ABSL_GUARDED_BY(mutex_);
-  std::atomic<se::host::HostKernel*> kernel_ptr_;  // pointer to `kernel_`
+  std::optional<Kernel> kernel_ ABSL_GUARDED_BY(mutex_);
+  std::atomic<Kernel*> kernel_ptr_;  // pointer to `kernel_`
 
   // Pre-initialized kernel arguments that are updated with memory addresses
   // before the kernel launch.

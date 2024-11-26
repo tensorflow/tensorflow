@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
+#include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
-#include "xla/stream_executor/host/host_kernel_c_api.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/util.h"
@@ -162,7 +162,7 @@ class Thunk {
   // functions required for running emitted thunks (number of threads, etc.).
   class FunctionRegistry {
    public:
-    using Kernel = SE_HOST_Kernel*;
+    using Kernel = XLA_CPU_Kernel*;
 
     // TODO(ezhulenev): We rely on legacy IrEmitter to emit comparator
     // functions, and we use legacy compute function ABI. We should emit a

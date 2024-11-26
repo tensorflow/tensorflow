@@ -19,7 +19,7 @@ limitations under the License.
 #include <string_view>
 
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/host/host_kernel_c_api.h"
+#include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/util.h"
 
 namespace xla::cpu {
@@ -30,7 +30,7 @@ class FunctionLibrary {
  public:
   virtual ~FunctionLibrary() = default;
 
-  using Kernel = SE_HOST_Kernel*;
+  using Kernel = XLA_CPU_Kernel*;
 
   virtual absl::StatusOr<Kernel> FindKernel(std::string_view name) const {
     return Unimplemented("Kernel %s not found", name);
