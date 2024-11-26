@@ -179,7 +179,7 @@ bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
 
 // Returns number of instructions in the fusible `instr`. If `instr` is not a
 // fusion instruction, 1 is returned.
-size_t GetInstrCountOfFusible(const HloInstruction& instr);
+int64_t GetInstrCountOfFusible(const HloInstruction& instr);
 
 // Returns the outputs of the fusible `instr`.
 absl::InlinedVector<const HloInstruction*, 2> GetOutputsOfFusible(

@@ -51,18 +51,16 @@ using ::tsl::testing::IsOkAndHolds;
 
 class LayoutAssignmentTest : public HloTestBase {
  public:
+  se::DeviceDescription GetDeviceDescription() {
+    return backend().default_stream_executor()->GetDeviceDescription();
+  }
+
   se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
+    return GetDeviceDescription().cuda_compute_capability();
   }
 
   se::GpuComputeCapability GetGpuComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
+    return GetDeviceDescription().gpu_compute_capability();
   }
 
   se::dnn::VersionInfo GetDnnVersion() {

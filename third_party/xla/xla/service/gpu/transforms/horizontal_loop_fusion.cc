@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -311,22 +312,17 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
   // For kLoop fusion, we in addition require the same output shape.
   // We did a sort here so the fusion candidates is
   // populating a continuous span.
-  std::stable_sort(
-      fusible_instrs_.begin(), fusible_instrs_.end(),
-      [&](const HloInstruction* a, const HloInstruction* b) {
-        if (GetUniqueOutputTypeOfFusible(*a) !=
-            GetUniqueOutputTypeOfFusible(*b)) {
-          return GetUniqueOutputTypeOfFusible(*a) <
-                 GetUniqueOutputTypeOfFusible(*b);
-        } else if (GetOutputSizeOfFusible(*a) != GetOutputSizeOfFusible(*b)) {
-          return GetOutputSizeOfFusible(*a) < GetOutputSizeOfFusible(*b);
-        } else if (GetInstrCountOfFusible(*a) != GetInstrCountOfFusible(*b)) {
-          return GetInstrCountOfFusible(*a) < GetInstrCountOfFusible(*b);
-        } else {
-          return ShapeUtil::ElementsIn(GetOutputsOfFusible(*a)[0]->shape()) <
-                 ShapeUtil::ElementsIn(GetOutputsOfFusible(*b)[0]->shape());
-        }
-      });
+  std::sort(fusible_instrs_.begin(), fusible_instrs_.end(),
+            [&](const HloInstruction* a, const HloInstruction* b) {
+              auto make_tuple_for_op = [](const HloInstruction* op) {
+                return std::tuple{
+                    GetUniqueOutputTypeOfFusible(*op),
+                    GetOutputSizeOfFusible(*op), GetInstrCountOfFusible(*op),
+                    ShapeUtil::ElementsIn(GetOutputsOfFusible(*op)[0]->shape()),
+                    op->unique_id()};
+              };
+              return make_tuple_for_op(a) < make_tuple_for_op(b);
+            });
 }
 
 // Gets a next span of fusion instructions to be fused.

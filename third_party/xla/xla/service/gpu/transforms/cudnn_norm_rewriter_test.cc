@@ -1184,7 +1184,7 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D2) {
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[64,6,1,1]{3,2,1,0} bitcast([[TRANSPOSE0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[6]{0} parameter(1)
 ; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[6]{0} parameter(2)
+; CHECK:         [[P2:%[^ ]+]] = f32[6]{0} parameter(2)
 ; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,6,1,1]{3,2,1,0} bitcast([[P2]])
 ; CHECK-NEXT:    [[CC0:%[^ ]+]] = (f32[64,6,1,1]{3,2,1,0}, f32[64,1,1,1]{3,2,1,0}, f32[64,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
@@ -1277,7 +1277,7 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D12) {
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,6,1]{3,2,1,0} bitcast([[TRANSPOSE0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,6]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4,6]{1,0} parameter(2)
+; CHECK:         [[P2:%[^ ]+]] = f32[4,6]{1,0} parameter(2)
 ; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,6,1]{3,2,1,0} bitcast([[P2]])
 ; CHECK-NEXT:    [[CC0:%[^ ]+]] = (f32[16,4,6,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",
@@ -1370,7 +1370,7 @@ TEST_F(CudnnNormRewriterTest, LayerNormTrainBackward4D12Degenerate2) {
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[16,4,1,1]{3,2,1,0} bitcast([[TRANSPOSE0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,1]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P1]])
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4,1]{1,0} parameter(2)
+; CHECK:         [[P2:%[^ ]+]] = f32[4,1]{1,0} parameter(2)
 ; CHECK-NEXT:    [[P2_BITCAST:%[^ ]+]] = f32[1,4,1,1]{3,2,1,0} bitcast([[P2]])
 ; CHECK-NEXT:    [[CC0:%[^ ]+]] = (f32[16,4,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, f32[16,1,1,1]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[P2_BITCAST]]),
 ; CHECK:           custom_call_target="__cudnn$norm",

@@ -769,7 +769,7 @@ bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
   });
 }
 
-size_t GetInstrCountOfFusible(const HloInstruction& instr) {
+int64_t GetInstrCountOfFusible(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kFusion ? instr.fused_instruction_count()
                                               : 1;
 }

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -69,23 +71,6 @@ class HorizontalInputFusionImpl {
   const se::DeviceDescription& device_info_;
 };  // HorizontalInputFusionImpl
 
-// Compares one-by-one the dimensions of `shape_a` and `shape_b` from left to
-// right.
-bool CompareShapeDimsFromLeftToRight(const Shape& shape_a,
-                                     const Shape& shape_b) {
-  if (shape_a.rank() != shape_b.rank()) {
-    return shape_a.rank() < shape_b.rank();
-  }
-  auto dims_a = shape_a.dimensions();
-  auto dims_b = shape_b.dimensions();
-  for (size_t i = 0; i < dims_a.size(); ++i) {
-    if (dims_a[i] != dims_b[i]) {
-      return dims_a[i] < dims_b[i];
-    }
-  }
-  return true;
-}
-
 std::vector<HloInstruction*> FindAndSortFusionCandidates(
     HloInstruction* consumer) {
   absl::flat_hash_set<HloInstruction*> fusion_instr_set;
@@ -106,16 +91,16 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
 
   std::sort(fusion_instrs.begin(), fusion_instrs.end(),
             [&](const HloInstruction* a, const HloInstruction* b) {
-              Shape shape_a = GetInputShapeForMultiOutputFusion(*a);
-              Shape shape_b = GetInputShapeForMultiOutputFusion(*b);
-              if (!ShapeUtil::EqualIgnoringElementType(shape_a, shape_b)) {
+              auto tuple_for_op = [](const HloInstruction* op) {
+                Shape shape = GetInputShapeForMultiOutputFusion(*op);
                 // Sort shapes according to dimensions, so that the same input
                 // shapes will be placed adjacent each other.
-                return CompareShapeDimsFromLeftToRight(shape_a, shape_b);
-              }
-              // Sort `fusion_instrs` according to instruction counts, because
-              // we'd like to fuse together computations of similar sizes.
-              return GetInstrCountOfFusible(*a) < GetInstrCountOfFusible(*b);
+                // Sort `fusion_instrs` according to instruction counts, because
+                // we'd like to fuse together computations of similar sizes.
+                return std::tuple{shape.rank(), shape.dimensions(),
+                                  GetInstrCountOfFusible(*op), op->unique_id()};
+              };
+              return tuple_for_op(a) < tuple_for_op(b);
             });
 
   return fusion_instrs;
