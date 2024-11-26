@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_CONFIG_H_
-#define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_CONFIG_H_
+#ifndef XLA_SERVICE_SHARDING_CONFIG_H_
+#define XLA_SERVICE_SHARDING_CONFIG_H_
 
 #include <optional>
 #include <vector>
 
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -40,8 +41,10 @@ struct ShardingConfig {
   bool operator==(const ShardingConfig& other) const {
     return nodes == other.nodes;
   }
+  static ShardingConfig FromProto(const ShardingConfigProto& proto);
+  static ShardingConfigProto ToProto(const ShardingConfig& config);
 };
 
 }  // namespace xla
 
-#endif  // XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_CONFIG_H_
+#endif  // XLA_SERVICE_SHARDING_CONFIG_H_
