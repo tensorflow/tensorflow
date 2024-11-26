@@ -1403,6 +1403,47 @@ CHECK:     tt.store {{.*}} !tt.ptr<f32>
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{0, 0}));
 }
 
+// Reproducer from b/380277401.
+TEST_F(TritonEmitterTest, IntraWarpReduceOfReduceIsCorrect) {
+  const std::string kHloText = R"(
+add {
+  x = s32[] parameter(0)
+  y = s32[] parameter(1)
+  ROOT add = s32[] add(x, y)
+}
+
+triton_computation {
+  p = s32[4,8] parameter(0)
+  bitcast = s32[4,2,4] bitcast(p)
+
+  zero = s32[] constant(0)
+  reduce_1 = s32[4,2] reduce(bitcast, zero), dimensions={2}, to_apply=add
+  ROOT reduce_2 = s32[2] reduce(reduce_1, zero), dimensions={0}, to_apply=add
+}
+
+ENTRY entry_computation {
+  i = s32[32] iota(), iota_dimension=0
+  p = s32[4,8] bitcast(i)
+
+  ROOT r = s32[2] fusion(p),
+     kind=kCustom, calls=triton_computation,
+     backend_config={
+     "fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
+     {"output_tile_sizes":["2"],"num_warps":"1"}}}
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:     tt.load
+CHECK:     tt.reshape
+CHECK:     tt.reduce
+CHECK:     tt.reduce
+CHECK:     tt.store
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
