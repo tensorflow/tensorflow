@@ -530,18 +530,23 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
                         pshape, output_grouped.sharding, batch_dims,
                         slice_sizes, visitor, allow_recursive));
     // Mask out invalid results.
-    auto filter = b->AddInstruction(HloInstruction::CreateCompare(
-        ShapeUtil::ChangeElementType(indices.hlo()->shape(), PRED),
-        indices.hlo(), indices_min, ComparisonDirection::kLt));
-    filter = b->AddInstruction(HloInstruction::CreateBinary(
-        filter->shape(), HloOpcode::kOr, filter,
-        b->AddInstruction(HloInstruction::CreateCompare(
-            ShapeUtil::ChangeElementType(indices.hlo()->shape(), PRED),
-            indices.hlo(), indices_max, ComparisonDirection::kGt))));
+    const Shape filter_shape =
+        ShapeUtil::ChangeElementType(indices.hlo()->shape(), PRED);
+    const Shape filter_base_shape =
+        ShapeUtil::ChangeElementType(indices.base_shape(), PRED);
+    HloInstruction* compare_lt = b->AddInstruction(
+        HloInstruction::CreateCompare(filter_shape, indices.hlo(), indices_min,
+                                      ComparisonDirection::kLt));
+    HloInstruction* compare_gt = b->AddInstruction(
+        HloInstruction::CreateCompare(filter_shape, indices.hlo(), indices_max,
+                                      ComparisonDirection::kGt));
+    HloInstruction* filter = b->AddInstruction(HloInstruction::CreateBinary(
+        filter_shape, HloOpcode::kOr, compare_lt, compare_gt));
+    filter->set_sharding(indices.hlo()->sharding());
     // Make sure that filter is of the same shape on the index pass-through
     // dimensions as the partitioned gather output, since we will need to filter
     // the gather output later.
-    PartitionedHlo pfilter = indices.CloneWithNewHlo(filter);
+    PartitionedHlo pfilter(filter, filter_base_shape, indices.state());
     pfilter = pfilter.Reshard(hlo_sharding_util::GatherIndexShardingFromOutput(
         hlo_sharding_util::UngroupSharding(output_grouped), gather));
     filter = pfilter.hlo();
