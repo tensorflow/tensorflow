@@ -15,9 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBEXPORT_LOAD_H_
 #define TENSORFLOW_CC_EXPERIMENTAL_LIBEXPORT_LOAD_H_
 
+#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
