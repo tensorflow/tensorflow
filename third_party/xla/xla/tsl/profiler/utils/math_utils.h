@@ -63,8 +63,8 @@ inline double GibiToGiga(double gibi) { return gibi * ((1 << 30) / 1.0e9); }
 inline double GigaToGibi(double giga) { return giga / ((1 << 30) / 1.0e9); }
 
 // Calculates GiB/s.
-inline double GibibytesPerSecond(double gigabytes, double ns) {
-  return GigaToGibi(SafeDivide(gigabytes, ns));
+inline double GibibytesPerSecond(double bytes, double ns) {
+  return GigaToGibi(SafeDivide(bytes, ns));
 }
 
 }  // namespace profiler

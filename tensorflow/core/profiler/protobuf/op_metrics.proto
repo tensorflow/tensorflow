@@ -2,6 +2,30 @@ syntax = "proto3";
 
 package tensorflow.profiler;
 
+// Predicted computational cost of the instruction associated with the symbol.
+// Estimated by traversing the HLO graph.
+message PerformanceInfo {
+  // The number of floating-point operations computed.
+  optional int64 flops = 1;
+  // The sum of bytes read and bytes written.
+  optional int64 bytes_accessed = 2;
+  // Breakdown of memory accessed by read/write and memory space.
+  message MemoryAccessed {
+    optional bool is_read = 1;
+    enum MemorySpace {
+      UNKNOWN = 0;
+      HBM = 1;
+      CMEM = 2;
+      VMEM = 3;
+    }
+    optional MemorySpace memory_space = 2;
+    optional int64 bytes_accessed = 3;
+  }
+  repeated MemoryAccessed memory_accessed_breakdown = 3;
+
+  reserved 4;
+}
+
 // Types of memory bandwidth we track in the system.
 enum MemBwType {
   option allow_alias = true;
@@ -30,6 +54,7 @@ enum MemBwType {
 }
 
 // Tensorflow generic memory space names.
+// These space names are used in analysis code to get memory bandwidth per core.
 enum MemorySpace {
   MEMORY_SPACE_UNDEFINED = 0;
   // Off-chip memory.

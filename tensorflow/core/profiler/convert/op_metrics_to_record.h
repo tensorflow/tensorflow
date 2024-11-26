@@ -17,9 +17,14 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_CONVERT_OP_METRICS_TO_RECORD_H_
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/device_utils.h"
+#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 
 namespace tensorflow {
@@ -141,23 +146,195 @@ inline void SetRankAndHostTimeFractions(double total_time_us,
       record->host_total_self_time_as_fraction());
 }
 
+// Returns the memory bandwidth in GigaBytes/s in the PerfEnv.
+// memory space is chosen by index following order in xplane_to_op_stats.cc
+static inline double GetMemoryPeakBandwidth(const PerfEnv& perf_env,
+                                            const int index) {
+  if (perf_env.peak_bws_giga_bytes_per_second_size() > index) {
+    return perf_env.peak_bws_giga_bytes_per_second(index);
+  }
+  return perf_env.peak_hbm_bw_giga_bytes_per_second();
+}
+
 template <typename Record>
-inline void SetRooflineMetrics(const OpMetrics& metrics,
-                               double ridge_point_operational_intensity,
-                               Record* record) {
+inline void SetRooflineMetrics(const OpMetrics& metrics, const PerfEnv perf_env,
+                               const RunEnvironment& run_env, Record* record) {
+  using ::tensorflow::profiler::MemorySpace;
+  using ::tensorflow::profiler::PerformanceInfo;
   using ::tensorflow::profiler::PicoToNano;
+
+  // Set overall performance metrics.
   record->set_measured_flop_rate(GigaFlopsPerSecondPerCore(metrics));
-  record->set_measured_memory_bw(
-      GigaBytesPerSecondPerCore(metrics, MemorySpace::MEMORY_SPACE_ALL,
-                                OpMetrics::MemoryAccessed::UNKNOWN));
+  record->set_model_flop_rate(GigaModelFlopsPerSecondPerCore(metrics));
+  record->set_measured_memory_bw(GibiBytesPerSecondPerCore(
+      metrics, tensorflow::profiler::MemorySpace::MEMORY_SPACE_ALL,
+      OpMetrics::MemoryAccessed::UNKNOWN));
+  record->set_flops(metrics.flops());
+  record->set_bytes_accessed(metrics.bytes_accessed());
   record->set_operational_intensity(
       tsl::profiler::SafeDivide(metrics.flops(), metrics.bytes_accessed()));
-  record->set_bound_by((metrics.bytes_accessed() != 0)
-                           ? ((record->operational_intensity() >=
-                               ridge_point_operational_intensity)
-                                  ? "Compute"
-                                  : "Memory")
-                           : ((metrics.flops() != 0) ? "Compute" : "Unknown"));
+  // Set performance metrics per memory access type.
+  uint64_t hbm_bytes = 0;
+  uint64_t cmem_read_bytes = 0;
+  uint64_t cmem_write_bytes = 0;
+  uint64_t vmem_read_bytes = 0;
+  uint64_t vmem_write_bytes = 0;
+  for (const auto& memory_access : metrics.memory_accessed_breakdown()) {
+    if (memory_access.memory_space() == PerformanceInfo::MemoryAccessed::HBM) {
+      hbm_bytes += memory_access.bytes_accessed();
+    } else if (memory_access.memory_space() ==
+               PerformanceInfo::MemoryAccessed::CMEM) {
+      if (memory_access.operation_type() == OpMetrics::MemoryAccessed::READ) {
+        cmem_read_bytes += memory_access.bytes_accessed();
+      } else if (memory_access.operation_type() ==
+                 OpMetrics::MemoryAccessed::WRITE) {
+        cmem_write_bytes += memory_access.bytes_accessed();
+      }
+    } else if (memory_access.memory_space() ==
+               PerformanceInfo::MemoryAccessed::VMEM) {
+      if (memory_access.operation_type() == OpMetrics::MemoryAccessed::READ) {
+        vmem_read_bytes += memory_access.bytes_accessed();
+      } else if (memory_access.operation_type() ==
+                 OpMetrics::MemoryAccessed::WRITE) {
+        vmem_write_bytes += memory_access.bytes_accessed();
+      }
+    }
+  }
+  if (metrics.memory_accessed_breakdown_size() == 0) {
+    // For legacy profiles without memory access breakdown, consider all memory
+    // access as HBM access.
+    hbm_bytes = metrics.bytes_accessed();
+  }
+  record->set_hbm_bw(tsl::profiler::GibibytesPerSecond(
+      hbm_bytes, tsl::profiler::PicoToNano(metrics.time_ps())));
+  record->set_cmem_read_bw(tsl::profiler::GibibytesPerSecond(
+      cmem_read_bytes, tsl::profiler::PicoToNano(metrics.time_ps())));
+  record->set_cmem_write_bw(tsl::profiler::GibibytesPerSecond(
+      cmem_write_bytes, tsl::profiler::PicoToNano(metrics.time_ps())));
+  record->set_vmem_read_bw(tsl::profiler::GibibytesPerSecond(
+      vmem_read_bytes, tsl::profiler::PicoToNano(metrics.time_ps())));
+  record->set_vmem_write_bw(tsl::profiler::GibibytesPerSecond(
+      vmem_write_bytes, tsl::profiler::PicoToNano(metrics.time_ps())));
+  record->set_hbm_operational_intensity(
+      tsl::profiler::SafeDivide(metrics.flops(), hbm_bytes));
+  record->set_cmem_read_operational_intensity(
+      tsl::profiler::SafeDivide(metrics.flops(), cmem_read_bytes));
+  record->set_cmem_write_operational_intensity(
+      tsl::profiler::SafeDivide(metrics.flops(), cmem_write_bytes));
+  record->set_vmem_read_operational_intensity(
+      tsl::profiler::SafeDivide(metrics.flops(), vmem_read_bytes));
+  record->set_vmem_write_operational_intensity(
+      tsl::profiler::SafeDivide(metrics.flops(), vmem_write_bytes));
+  // Resources considered for roofline analysis.
+  constexpr absl::string_view kUnknown = "Unknown";
+  constexpr absl::string_view kCompute = "Compute";
+  constexpr absl::string_view kHbm = "HBM";
+  constexpr absl::string_view kCmemRead = "CMEM Read";
+  constexpr absl::string_view kCmemWrite = "CMEM Write";
+  constexpr absl::string_view kVmemRead = "VMEM Read";
+  constexpr absl::string_view kVmemWrite = "VMEM Write";
+  constexpr absl::string_view kShmL1 = "Shm/L1";
+  // Compute the bound time assuming the peak capacity of each resource and
+  // choose the highest one as the bottleneck. See go/xprof-roofline-pxc for
+  // more details.
+  // NOTE: The roofline analysis result is the same for Megacore because every
+  // resource's capacity is doubled for Megacore so the comparison result is the
+  // same.
+  absl::string_view bottleneck_resource = kUnknown;
+  double bottleneck_utilization = 0;
+  double bottleneck_operational_intensity = 0;
+  double peak_flops =
+      tsl::profiler::TeraToGiga(perf_env.peak_tera_flops_per_second());
+  double flops_utilization =
+      SafeDivide(record->measured_flop_rate(), peak_flops);
+  if (bottleneck_utilization < flops_utilization) {
+    bottleneck_resource = kCompute;
+    bottleneck_utilization = flops_utilization;
+    bottleneck_operational_intensity = record->operational_intensity();
+  }
+  double peak_hbm_bw = GetMemoryPeakBandwidth(perf_env, 0);
+  double hbm_bw_utilization =
+      SafeDivide(record->hbm_bw(), tsl::profiler::GigaToGibi(peak_hbm_bw));
+  if (bottleneck_utilization < hbm_bw_utilization) {
+    bottleneck_resource = kHbm;
+    bottleneck_utilization = hbm_bw_utilization;
+    bottleneck_operational_intensity = record->hbm_operational_intensity();
+  }
+  tensorflow::profiler::HardwareType hardware_type = run_env.hardware_type();
+  if (hardware_type == tensorflow::profiler::HardwareType::TPU) {
+    if (cmem_read_bytes) {
+      double peak_cmem_read_bw = GetMemoryPeakBandwidth(perf_env, 3);
+      if (peak_cmem_read_bw) {
+        double cmem_read_bw_utilization =
+            SafeDivide(record->cmem_read_bw(),
+                       tsl::profiler::GigaToGibi(peak_cmem_read_bw));
+        if (bottleneck_utilization < cmem_read_bw_utilization) {
+          bottleneck_resource = kCmemRead;
+          bottleneck_utilization = cmem_read_bw_utilization;
+          bottleneck_operational_intensity =
+              record->cmem_read_operational_intensity();
+        }
+      }
+    }
+    if (cmem_write_bytes) {
+      double peak_cmem_write_bw = GetMemoryPeakBandwidth(perf_env, 4);
+      if (peak_cmem_write_bw) {
+        double cmem_write_bw_utilization =
+            SafeDivide(record->cmem_write_bw(),
+                       tsl::profiler::GigaToGibi(peak_cmem_write_bw));
+        if (bottleneck_utilization < cmem_write_bw_utilization) {
+          bottleneck_resource = kCmemWrite;
+          bottleneck_utilization = cmem_write_bw_utilization;
+          bottleneck_operational_intensity =
+              record->cmem_write_operational_intensity();
+        }
+      }
+    }
+    if (vmem_read_bytes) {
+      double peak_vmem_read_bw = GetMemoryPeakBandwidth(perf_env, 5);
+      if (peak_vmem_read_bw) {
+        double vmem_read_bw_utilization =
+            SafeDivide(record->vmem_read_bw(),
+                       tsl::profiler::GigaToGibi(peak_vmem_read_bw));
+        if (bottleneck_utilization < vmem_read_bw_utilization) {
+          bottleneck_resource = kVmemRead;
+          bottleneck_utilization = vmem_read_bw_utilization;
+          bottleneck_operational_intensity =
+              record->vmem_read_operational_intensity();
+        }
+      }
+    }
+    if (vmem_write_bytes) {
+      double peak_vmem_write_bw = GetMemoryPeakBandwidth(perf_env, 6);
+      if (peak_vmem_write_bw) {
+        double vmem_write_bw_utilization =
+            SafeDivide(record->vmem_write_bw(),
+                       tsl::profiler::GigaToGibi(peak_vmem_write_bw));
+        if (bottleneck_utilization < vmem_write_bw_utilization) {
+          bottleneck_resource = kVmemWrite;
+          bottleneck_utilization = vmem_write_bw_utilization;
+          bottleneck_operational_intensity =
+              record->vmem_write_operational_intensity();
+        }
+      }
+    }
+  }
+  if (hardware_type == tensorflow::profiler::HardwareType::GPU) {
+    double peak_shm_l1_bw = GetMemoryPeakBandwidth(perf_env, 2);
+    if (peak_shm_l1_bw) {
+      // Currently, we only have general read/write bandwidth in record.
+      double shm_l1_bw_utilization = SafeDivide(
+          record->hbm_bw(), tsl::profiler::GigaToGibi(peak_shm_l1_bw));
+      if (bottleneck_utilization < shm_l1_bw_utilization) {
+        bottleneck_resource = kShmL1;
+        bottleneck_utilization = shm_l1_bw_utilization;
+        bottleneck_operational_intensity = record->hbm_operational_intensity();
+      }
+    }
+  }
+  record->set_bound_by(std::string(bottleneck_resource));
+  record->set_bottleneck_operational_intensity(
+      bottleneck_operational_intensity);
 }
 
 }  // namespace profiler

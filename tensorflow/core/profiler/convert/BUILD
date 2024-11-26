@@ -77,10 +77,13 @@ cc_library(
     hdrs = ["op_metrics_to_record.h"],
     copts = tf_profiler_copts(),
     deps = [
+        "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/utils:math_utils",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/profiler/utils:device_utils",
     ],
 )
 
@@ -838,6 +841,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
+        "@local_xla//xla/tsl/profiler/utils:math_utils",
     ],
 )
 
