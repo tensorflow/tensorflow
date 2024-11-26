@@ -23,6 +23,14 @@ class CompileOptions:  ...
 
 def make_hlo_program(mlir_module: Union[str, bytes]) -> Program: ...
 
+def make_colocated_python_program(
+    name : str,
+    picked_function: bytes,
+    devices: Sequence[xla_extension.Device] | xla_extension.DeviceList,
+    input_avals: Sequence[Any],
+    output_avals: Sequence[Any],
+) -> Program: ...
+
 def make_plugin_program(data: Union[str, bytes]) -> Program: ...
 
 def make_xla_compile_options(
