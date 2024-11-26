@@ -2014,6 +2014,8 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
       in_place_pairs.push_back({HloOperandIndex{0, {}}, {}});
     }
     return in_place_pairs;
+  } else if (instruction->opcode() == HloOpcode::kRaggedAllToAll) {
+    return {{HloOperandIndex{1, {}}, {}}};
   }
 
   return {};

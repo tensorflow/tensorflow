@@ -3536,5 +3536,33 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSLoopFusionWithBitcast) {
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
+TEST_F(GetInPlaceInputOutputPairsTest, RaggedAllToAll) {
+  const char* kModule = R"(
+HloModule RaggedAllToAll, is_scheduled=true
+
+ENTRY AllToAll {
+  input = f32[24,56,119] parameter(0)
+  copy-start = (f32[24,56,119], f32[24,56,119], u32[]) copy-start(input)
+  c0 = f32[] constant(0)
+  output = f32[24,56,119] broadcast(c0), dimensions={}
+  input_offsets = s32[8] parameter(1)
+  send_sizes = s32[8] parameter(2)
+  output_offsets = s32[8] parameter(3)
+  recv_sizes = s32[8] parameter(4)
+  copy-done = f32[24,56,119] copy-done(copy-start)
+  ROOT ra2a = f32[24,56,119] ragged-all-to-all(copy-done, output, input_offsets, send_sizes, output_offsets, recv_sizes), replica_groups={{0,1,2,3,4,5,6,7}}
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* ragged_all_to_all =
+      module->entry_computation()->root_instruction();
+
+  auto in_place_pairs =
+      HloDataflowAnalysis::GetInPlaceInputOutputPairs(ragged_all_to_all);
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{1, {}}, {}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
 }  // namespace
 }  // namespace xla
