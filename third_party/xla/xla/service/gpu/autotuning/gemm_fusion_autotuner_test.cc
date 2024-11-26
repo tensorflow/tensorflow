@@ -1020,6 +1020,36 @@ ENTRY e {
       [](const TritonGemmConfig& config) { return config.block_k > 16; }));
 }
 
+// TODO(b/337839570): In addition to Triton's existing limitations on small
+// block_k values, there are further issues happening on FP8 types and
+// predicates that require additional restriction on block_m when num_warps
+// > 8 (see b/378660935). It's unclear if the issue extends beyond these cases,
+// so restrictions here are conservative to these.
+TEST_F(GemmFusionAutotunerExhaustiveTest, SkipsCrashingConfigsFP8Dot) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+ENTRY e {
+  x = f8e4m3fn[33,33]{1,0} parameter(0)
+  y = f8e4m3fn[33,33]{1,0} parameter(1)
+  ROOT out = bf16[33,33]{1,0} dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)")
+                                                  .value();
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::AMPERE, /*minor=*/0};
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> configs,
+      GetPossibleMatmulAutotuneTritonConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
+  EXPECT_TRUE(std::all_of(
+      configs.begin(), configs.end(), [](const TritonGemmConfig& config) {
+        return config.block_k > 16 &&
+               (config.num_warps <= 8 || config.block_m > 16);
+      }));
+}
+
 class GemmFusionAutotunerDisableSplitK : public GemmFusionAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {

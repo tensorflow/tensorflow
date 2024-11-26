@@ -910,16 +910,15 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
     // on small block_k values depending on the bit-width of the inputs to the
     // dot. The logic below accounts for this limitation.
     constexpr int kLdmatrixGranularity = 256;
-    if (config.block_k < kLdmatrixGranularity / minBitWidth) {
-      config.block_k = kLdmatrixGranularity / minBitWidth;
+    config.block_k =
+        std::max(config.block_k, kLdmatrixGranularity / minBitWidth);
 
-      // Additionally, there are further issues happening on FP8 types that
-      // require additional restriction on block_m to avoid failures similar to
-      // b/378660935.
-      if (isF8Dot) {
-        config.block_m =
-            std::max(config.block_m, kLdmatrixGranularity / minBitWidth);
-      }
+    // Additionally, there are further issues happening on FP8 types and
+    // predicates that require additional restriction on block_m when num_warps
+    // > 8 (see b/378660935). It's unclear if the issue extends beyond these
+    // cases, so restrictions here are conservative to these.
+    if ((isF8Dot || minBitWidth == 1) && config.num_warps > 8) {
+      config.block_m = std::max(config.block_m, 32);
     }
 
     // Sparse meta should have at least one element per thread.
