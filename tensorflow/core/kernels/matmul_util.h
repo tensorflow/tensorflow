@@ -21,7 +21,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/container/node_hash_map.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "tensorflow/core/framework/types.h"
