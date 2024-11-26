@@ -293,22 +293,33 @@ class OwningBufferRef : public MutableBufferRef<ByteT> {
     return WeakTupleT(this->data_, this->size_, this->offset_);
   }
 
+  // Free any owned memory.
+  void Reset() {
+    Allocator()(this->data_);
+    Drop();
+  }
+
+  // Reset any existing data and copy in given ro buffer.
+  void Assign(const ByteT* buf, size_t size, size_t offset = 0) {
+    Reset();
+    this->size_ = size;
+    this->data_ = (ByteT*)Allocator()(this->size_);
+    std::memcpy(this->data_, buf, this->size_);
+    this->offset_ = offset;
+  }
+
   OwningBufferRef(OwningBufferRef&& other)
       : MutableBufferRef<ByteT>(other.data_, other.size_, other.offset_) {
-    other.data_ = nullptr;
-    other.size_ = 0;
-    other.offset_ = 0;
+    other.Drop();
   }
 
   OwningBufferRef& operator=(OwningBufferRef&& other) {
     if (this != &other) {
-      Allocator()(this->data_);
+      Reset();
       this->data_ = other.data_;
       this->size_ = other.size_;
       this->offset_ = other.offset_;
-      other.data_ = nullptr;
-      other.size_ = 0;
-      other.offset_ = 0;
+      other.Drop();
     }
     return *this;
   }
@@ -316,25 +327,15 @@ class OwningBufferRef : public MutableBufferRef<ByteT> {
   OwningBufferRef(const OwningBufferRef& other)
       : MutableBufferRef<ByteT>(/*data*/ (ByteT*)nullptr, other.size_,
                                 other.offset_) {
-    this->data_ = (ByteT*)Allocator()(other.size_);
-    std::memcpy(this->data_, other.data_, other.size_);
+    Assign(other.data_, other.size_, other.offset_);
   }
 
   OwningBufferRef& operator=(const OwningBufferRef& other) {
-    Allocator()(this->data_);
-    this->size_ = other.size_;
-    this->data_ = (ByteT*)Allocator()(this->size_);
-    std::memcpy(this->data_, other.data_, this->size_);
-    this->offset_ = other.offset_;
+    Assign(other.data_, other.size_, other.offset_);
     return *this;
   }
 
-  ~OwningBufferRef() override {
-    Allocator()(this->data_);
-    this->data_ = nullptr;
-    this->size_ = 0;
-    this->offset_ = 0;
-  }
+  ~OwningBufferRef() override { Reset(); }
 
  protected:
   // Debug string.
