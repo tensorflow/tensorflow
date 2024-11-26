@@ -1722,3 +1722,38 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
     ],
 )
+
+cc_library(
+    name = "defer_relocatable_compilation_compilation_provider",
+    srcs = ["defer_relocatable_compilation_compilation_provider.cc"],
+    hdrs = ["defer_relocatable_compilation_compilation_provider.h"],
+    deps = [
+        ":compilation_options",
+        ":compilation_provider",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "defer_relocatable_compilation_compilation_provider_test",
+    srcs = ["defer_relocatable_compilation_compilation_provider_test.cc"],
+    deps = [
+        ":compilation_options",
+        ":compilation_provider",
+        ":defer_relocatable_compilation_compilation_provider",
+        ":mock_compilation_provider",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
