@@ -71,7 +71,8 @@ constexpr int kDefaultHeartbeatTimeoutMs = 10 * 1000;  // 10 seconds
 constexpr int kServiceToClientTimeoutMs = 10 * 1000;   // 10 seconds
 constexpr size_t kOngoingBarriersSoftLimit = 20;
 constexpr char kHealthCheckThread[] = "CoordinationServiceHealthCheck";
-constexpr int kPendingTaskLogLimit = 20;
+// Limit the number of stragglers we log to avoid `RESOURCE_EXHAUSTED` errors in
+// the RPC layer from sending overly verbose errors.
 constexpr int kPendingStragglerLogLimit = 3;
 constexpr int kUniqueBarrierCounter = 0;
 
@@ -676,7 +677,7 @@ void CoordinationServiceStandaloneImpl::CheckBarrierTimeout() {
         continue;
       }
       ++pending_task_count;
-      if (pending_task_count < kPendingTaskLogLimit) {
+      if (pending_task_count < kPendingStragglerLogLimit) {
         absl::StrAppend(&pending_tasks, GetTaskName(task), "\n");
       }
     }

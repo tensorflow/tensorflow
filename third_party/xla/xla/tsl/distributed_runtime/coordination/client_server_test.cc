@@ -1125,6 +1125,22 @@ TEST_F(ClientServerTest, DeleteKeyValue_Directory) {
   EXPECT_THAT(kvs.value(), IsEmpty());
 }
 
+// This prevents a regression found in b/380359918 where original error messages
+// are hidden because the RPC layer cannot send long error messages.
+TEST_F(ClientServerTest, BarrierTimeout_ManyLateTasks_ReturnsCorrectError) {
+  StartService(/*num_nodes=*/100,
+               /*init_and_shutdown_timeout=*/absl::Seconds(1),
+               /*cluster_register_with_barrier=*/false);
+  auto client = GetClient(/*node_id=*/0);
+  TF_ASSERT_OK(client->Connect());
+
+  // Blocks until the barrier times out.
+  auto status =
+      client->WaitAtBarrier("test_barrier", absl::Milliseconds(100), {});
+
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kDeadlineExceeded));
+}
+
 TEST_F(ClientServerTest, Dtor_CancelsOngoingGetKeyValueAndBarrier) {
   // Set 2 nodes with no register barrier to allowing pending barrier RPC.
   StartService(/*num_nodes=*/2, /*init_and_shutdown_timeout=*/absl::Seconds(2),
