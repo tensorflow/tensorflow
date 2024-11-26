@@ -13,6 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <iterator>
+#include <utility>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/types/span.h"
 #include "xla/execution_options_util.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/status_macros.h"
@@ -20,6 +27,7 @@ limitations under the License.
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {

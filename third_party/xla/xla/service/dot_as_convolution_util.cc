@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "xla/service/dot_as_convolution_util.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <memory>
 #include <optional>
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/shape_inference.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace dot_as_convolution_util {

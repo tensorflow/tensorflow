@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_DUMP_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"

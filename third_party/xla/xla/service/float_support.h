@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_FLOAT_SUPPORT_H_
 #define XLA_SERVICE_FLOAT_SUPPORT_H_
 
+#include <cstdint>
+
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/xla_data.pb.h"

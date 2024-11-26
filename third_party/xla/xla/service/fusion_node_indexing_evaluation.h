@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_FUSION_NODE_INDEXING_EVALUATION_H_
 #define XLA_SERVICE_FUSION_NODE_INDEXING_EVALUATION_H_
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_instruction.h"

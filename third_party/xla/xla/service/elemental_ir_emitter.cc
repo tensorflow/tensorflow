@@ -15,14 +15,12 @@ limitations under the License.
 
 #include "xla/service/elemental_ir_emitter.h"
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>

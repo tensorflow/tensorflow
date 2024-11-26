@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_EXECUTION_TRACKER_H_
 #define XLA_SERVICE_EXECUTION_TRACKER_H_
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/backend.h"
 #include "xla/service/stream_pool.h"

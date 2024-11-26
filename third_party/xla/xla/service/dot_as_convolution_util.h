@@ -20,7 +20,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace dot_as_convolution_util {

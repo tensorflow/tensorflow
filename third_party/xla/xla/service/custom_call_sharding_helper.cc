@@ -16,11 +16,13 @@ limitations under the License.
 #include "xla/service/custom_call_sharding_helper.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/base/attributes.h"
 #include "absl/base/const_init.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "tsl/platform/logging.h"
 

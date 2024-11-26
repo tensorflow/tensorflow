@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <optional>
+#include <string>
+
+#include "absl/strings/string_view.h"
 #include "xla/service/custom_call_status_internal.h"
 
 namespace xla {
