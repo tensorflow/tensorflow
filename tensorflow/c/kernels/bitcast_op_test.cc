@@ -54,7 +54,7 @@ void TestBitcastOp(Tensor* input_tensor, DataType out_type,
 
   std::unique_ptr<OpKernel> kernel =
       CreateOpKernel(DeviceType(DEVICE_CPU), nullptr, nullptr, def, 1, &status);
-  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(status.ok()) << status;
 
   OpKernelContext::Params params;
   DummyDevice dummy_device(nullptr);

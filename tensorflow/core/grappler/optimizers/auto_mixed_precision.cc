@@ -2340,7 +2340,7 @@ absl::Status AutoMixedPrecision::Optimize(Cluster* cluster,
   if (!status.ok()) {
     // Restore the original graph.
     *output = item.graph;
-    LOG(WARNING) << name() << " graph optimizer FAILED: " << status.ToString();
+    LOG(WARNING) << name() << " graph optimizer FAILED: " << status;
   }
   return status;
 }

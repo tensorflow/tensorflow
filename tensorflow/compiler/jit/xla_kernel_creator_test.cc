@@ -109,7 +109,7 @@ TEST_F(XlaKernelCreatorTest, OneFloatOneResourceArgument) {
   // Note: need to set attribute on the created node.
   absl::Status status =
       xla_kernel_creator.CreateKernel(flr_, callsite, &kernel_);
-  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(status.ok()) << status;
 
   EXPECT_EQ("XTimesY", kernel_->name());
   EXPECT_EQ("XTimesY", kernel_->type_string());

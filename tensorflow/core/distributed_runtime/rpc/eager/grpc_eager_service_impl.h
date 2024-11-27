@@ -137,7 +137,7 @@ class GrpcEagerServiceImpl : public tsl::AsyncServiceInterface {
         VLOG(1) << "local_impl_.Enqueue completed successfully";
         call->SendResponse();
       } else {
-        VLOG(1) << "local_impl_.Enqueue failed with " << status.ToString()
+        VLOG(1) << "local_impl_.Enqueue failed with " << status
                 << " on request " << call->request().DebugString();
         call->Finish(ToGrpcStatus(status));
       }

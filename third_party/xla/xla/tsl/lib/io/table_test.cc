@@ -173,7 +173,7 @@ class Constructor {
     }
     data_.clear();
     absl::Status s = FinishImpl(options, *kvmap);
-    ASSERT_TRUE(s.ok()) << s.ToString();
+    ASSERT_TRUE(s.ok()) << s;
   }
 
   // Construct the data structure from the data in "data"
@@ -230,7 +230,7 @@ class TableConstructor : public Constructor {
       TF_CHECK_OK(builder.status());
     }
     absl::Status s = builder.Finish();
-    TF_CHECK_OK(s) << s.ToString();
+    TF_CHECK_OK(s) << s;
 
     CHECK_EQ(sink.contents().size(), builder.FileSize());
 

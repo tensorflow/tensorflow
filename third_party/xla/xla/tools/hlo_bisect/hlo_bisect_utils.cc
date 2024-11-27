@@ -182,14 +182,14 @@ MiscompareChecker::MiscompareChecker(HloModule* module,
 
   // Set up the reference platform.
   absl::StatusOr<se::Platform*> reference_platform_status =
-      PlatformUtil::GetPlatform(std::string(reference_platform));
+      PlatformUtil::GetPlatform(reference_platform);
   CHECK(reference_platform_status.ok());
   reference_runner_ =
       std::make_unique<HloRunner>(reference_platform_status.value());
 
   // Set up the test platform.
   absl::StatusOr<se::Platform*> test_platform_status =
-      PlatformUtil::GetPlatform(std::string(test_platform));
+      PlatformUtil::GetPlatform(test_platform);
   CHECK(test_platform_status.ok());
   test_runner_ =
       std::make_unique<HloRunner>(std::move(test_platform_status).value());
