@@ -935,6 +935,13 @@ message DebugOptions {
   // command buffer.
   repeated string legacy_command_buffer_custom_call_targets = 314;
 
+  // If true, XLA runtime will retain exclusive ownership of the GPU when
+  // running a module, so there are no multi-thread conflicts on the GPU. This
+  // can enable some optimizations that reduce the cost of resource management,
+  // e.g., command buffer updates to ensure correctness when running in
+  // multi-thread mode.
+  bool xla_gpu_require_exclusive_lock = 347;
+
   // This flag is used for controlling HLO dumping and NVTX marker. If turned
   // on, both HLO dumping and NVTX marker will use syntactic sugar wrappers
   // as op names, while the actual op names will be shown if turned off.
@@ -1055,7 +1062,7 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 347
+  // Next id: 348
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

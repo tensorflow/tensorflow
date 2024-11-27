@@ -1558,7 +1558,22 @@ ENTRY main.49 {
   ROOT tuple.48 = (f32[128,128]{1,0}, f32[2,128,128]{2,1,0}) tuple(get-tuple-element.46, get-tuple-element.47)
 }
 )";
-  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{1e-3, 1e-3}));
+
+  // running with module without exclusive lock on GpuExecutable
+  HloModuleConfig config;
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_require_exclusive_lock(false);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str, config));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
+
+  // running with module with exclusive lock on GpuExecutable
+  debug_options.set_xla_gpu_require_exclusive_lock(true);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(module,
+                          ParseAndReturnVerifiedModule(module_str, config));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
 }
 
 }  // namespace xla::gpu
