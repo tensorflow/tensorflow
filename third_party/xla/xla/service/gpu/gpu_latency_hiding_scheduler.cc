@@ -114,27 +114,6 @@ bool IsAsyncPair(const HloInstruction& from, const HloInstruction& target) {
   return IsGpuAsyncStart(from) && IsGpuAsyncDone(target);
 }
 
-// Count the maximum overlapping count in subgroups of group and other
-size_t CountOverlappingRanks(const std::vector<ReplicaGroup>& group,
-                             const std::vector<ReplicaGroup>& other) {
-  size_t overlapping_count = 0;
-  for (const auto& curr_replica_group : group) {
-    absl::flat_hash_set<int> curr_replica_ids;
-    for (const auto curr_replica_id : curr_replica_group.replica_ids()) {
-      curr_replica_ids.insert(curr_replica_id);
-    }
-
-    for (const auto& replica_group : other) {
-      size_t subgroup_count = 0;
-      for (const auto replica_id : replica_group.replica_ids()) {
-        if (curr_replica_ids.contains(replica_id)) ++subgroup_count;
-      }
-      overlapping_count = std::max(overlapping_count, subgroup_count);
-    }
-  }
-  return overlapping_count;
-}
-
 }  // namespace
 
 int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
@@ -160,70 +139,6 @@ CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
     default:
       return DefaultGetCanonicalAsyncOp(hlo);
   }
-}
-
-bool GpuScheduleCrossesOverlapLimit(
-    const DefaultSchedulerCore::SchedulingState& sched_state,
-    const HloGraphNode* node) {
-  for (const auto& [resource, limit] : sched_state.max_concurrent_resource) {
-    // No resources in flight of this kind. Continue.
-    auto it = sched_state.resource_occupiers_in_flight.find(resource);
-    if (it == sched_state.resource_occupiers_in_flight.end() ||
-        it->second.size() == 0) {
-      continue;
-    }
-    // Number of instances of 'resource' needed if this instruction was
-    // to be scheduled.
-    const int64_t num_resources_needed =
-        sched_state.async_tracker->GetNumResourcesPerInstruction(
-            resource, node->GetInstr());
-    if (limit < num_resources_needed) {
-      return true;
-    }
-  }
-
-  if (node->GetResources().size() == 0) {
-    return false;
-  }
-  auto resource_type = node->GetResources().at(0).first;
-  // If the candidate collective has more than 1 overlapping ranks with
-  // in-flight collectives, they can form cyclic dependency and cannot be
-  // overlapped
-  if ((resource_type - AsyncTracker::GetFirstTargetDefinedResource()) ==
-          static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamCollectives) &&
-      sched_state.resource_occupiers_in_flight.contains(resource_type) &&
-      sched_state.resource_occupiers_in_flight.at(resource_type).size() > 0) {
-    const HloInstruction& curr_hlo_inst = node->GetInstr();
-    if (hlo_query::IsAsyncCollectiveDoneOp(&curr_hlo_inst, true)) {
-      CHECK(
-          hlo_query::IsAsyncCollectiveStartOp(curr_hlo_inst.operand(0), true));
-      const HloInstruction* curr_start_inst =
-          curr_hlo_inst.operand(0)->async_wrapped_instruction();
-
-      // If candidate can be overlapped with in-flight collectives
-      bool can_overlap = true;
-      for (const auto occupier :
-           sched_state.resource_occupiers_in_flight.at(resource_type)) {
-        if (hlo_query::IsAsyncCollectiveStartOp(occupier, true)) {
-          // Number of overlapping ranks between this occupier and candidate
-          size_t overlapping_count = CountOverlappingRanks(
-              curr_start_inst->replica_groups(), occupier->replica_groups());
-          if (overlapping_count > 1) {
-            can_overlap = false;
-            VLOG(3) << "Collectives have " << overlapping_count
-                    << "overlapping ranks and cannot be overlapped. Candidate "
-                       "collective: "
-                    << curr_start_inst->ToString()
-                    << ", in flight collective: " << occupier->ToString();
-            break;
-          }
-        }
-      }
-      if (!can_overlap) return true;
-    }
-  }
-
-  return false;
 }
 
 //===--------------------------------------------------------------------===//

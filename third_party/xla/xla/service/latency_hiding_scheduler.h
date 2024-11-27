@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/container/node_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -959,9 +958,8 @@ class DefaultSchedulerCore : public SchedulerCore {
     std::vector<HloInstruction*> new_sequence_reversed;
     // Units of time passed in the schedule. To keep track of latency hiding.
     HloGraphNode::TimeCost current_time = 0;
-    // Resources and corresponding occupiers in flight.
-    absl::flat_hash_map<int64_t, absl::node_hash_set<const HloInstruction*>>
-        resource_occupiers_in_flight;
+    // Number of resources in flight.
+    ResourceMap resources_in_flight;
     // Number of instructions using the key resource type in the set waiting to
     // be scheduled.
     ResourceMap resource_users_in_queue;
@@ -1011,8 +1009,6 @@ class DefaultSchedulerCore : public SchedulerCore {
           config(config) {}
   };
 
-  using OverlapLimitRule =
-      std::function<bool(const SchedulingState&, const HloGraphNode*)>;
   using PostProcessingFn = std::function<void(SchedulingState&)>;
 
   DefaultSchedulerCore(
@@ -1021,17 +1017,14 @@ class DefaultSchedulerCore : public SchedulerCore {
       const LatencyEstimator* latency_estimator, const SchedulerConfig& config,
       TargetSchedulingRule target_scheduling_rule = nullptr,
       TargetSchedulingRule early_target_scheduling_rule = nullptr,
-      PostProcessingFn post_processing_fn = nullptr,
-      OverlapLimitRule scheduling_instruction_crosses_overlap_limit = nullptr)
+      PostProcessingFn post_processing_fn = nullptr)
       : shape_size_bytes_(shape_size_bytes),
         async_tracker_(async_tracker),
         latency_estimator_(latency_estimator),
         config_(config),
         target_scheduling_rule_(target_scheduling_rule),
         early_target_scheduling_rule_(early_target_scheduling_rule),
-        post_processing_fn_(post_processing_fn),
-        scheduling_instruction_crosses_overlap_limit_(
-            scheduling_instruction_crosses_overlap_limit) {}
+        post_processing_fn_(post_processing_fn) {}
   absl::Status InitializeScheduler(const HloModule* module) override;
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) override;
@@ -1084,7 +1077,6 @@ class DefaultSchedulerCore : public SchedulerCore {
   TargetSchedulingRule target_scheduling_rule_ = nullptr;
   TargetSchedulingRule early_target_scheduling_rule_ = nullptr;
   PostProcessingFn post_processing_fn_ = nullptr;
-  OverlapLimitRule scheduling_instruction_crosses_overlap_limit_ = nullptr;
   std::unique_ptr<AnnotationTracker> annotation_tracker_;
 };
 

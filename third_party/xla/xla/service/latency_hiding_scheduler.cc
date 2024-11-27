@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/map_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo_buffer.h"
@@ -1139,8 +1138,6 @@ class ReadySetLt {
   const DefaultSchedulerCore::SchedulingState& sched_state_;
   DefaultSchedulerCore::TargetSchedulingRule target_scheduling_rule_;
   DefaultSchedulerCore::TargetSchedulingRule early_target_scheduling_rule_;
-  DefaultSchedulerCore::OverlapLimitRule
-      scheduling_instruction_crosses_overlap_limit_;
 
   int ReadyIfScheduled(const HloGraphNode& gn) const {
     int ready_nodes_if_scheduled = 0;
@@ -1274,9 +1271,9 @@ class ReadySetLt {
             cand.node->GetResources());
     int64_t num_conflicting_resources = 0;
     for (int64_t resource : resources) {
-      if (!sched_state_.resource_occupiers_in_flight.count(resource)) continue;
+      if (!sched_state_.resources_in_flight.contains(resource)) continue;
       num_conflicting_resources +=
-          sched_state_.resource_occupiers_in_flight.at(resource).size();
+          sched_state_.resources_in_flight.at(resource);
     }
     return num_conflicting_resources;
   }
@@ -1315,29 +1312,26 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
   }
   absl::InlinedVector<std::pair<HloGraphNode*, SkipNodeReason>, 2>
       skipped_nodes_and_reasons;
-  if (!scheduling_instruction_crosses_overlap_limit_) {
-    scheduling_instruction_crosses_overlap_limit_ =
-        [](const SchedulingState& sched_state, const HloGraphNode* node) {
-          for (const auto& [resource, limit] :
-               sched_state.max_concurrent_resource) {
-            // No resources in flight of this kind. Continue.
-            auto it = sched_state.resource_occupiers_in_flight.find(resource);
-            if (it == sched_state.resource_occupiers_in_flight.end() ||
-                it->second.size() == 0) {
-              continue;
-            }
-            // Number of instances of 'resource' needed if this instruction was
-            // to be scheduled.
-            const int64_t num_resources_needed =
-                sched_state.async_tracker->GetNumResourcesPerInstruction(
-                    resource, node->GetInstr());
-            if (limit < num_resources_needed) {
-              return true;
-            }
+  auto scheduling_instruction_crosses_overlap_limit =
+      [&sched_state](const HloInstruction& instr) {
+        for (const auto& [resource, limit] :
+             sched_state.max_concurrent_resource) {
+          // No resources in flight of this kind. Continue.
+          auto it = sched_state.resources_in_flight.find(resource);
+          if (it == sched_state.resources_in_flight.end() || it->second == 0) {
+            continue;
           }
-          return false;
-        };
-  }
+          // Number of instances of 'resource' needed if this instruction was to
+          // be scheduled.
+          const int64_t num_resources_needed =
+              sched_state.async_tracker->GetNumResourcesPerInstruction(resource,
+                                                                       instr);
+          if (limit < num_resources_needed) {
+            return true;
+          }
+        }
+        return false;
+      };
   VLOG(2) << "Current time: " << sched_state.current_time;
   ReadySetLt ready_lt{&sched_state, target_scheduling_rule_,
                       early_target_scheduling_rule_};
@@ -1369,8 +1363,8 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     }
     // If this node would cause the max_concurrent_resource count to go beyond
     // the limit do not schedule it and pass to the next node.
-    if (scheduling_instruction_crosses_overlap_limit_(sched_state,
-                                                      *ready_node_it)) {
+    if (scheduling_instruction_crosses_overlap_limit(
+            (*ready_node_it)->GetInstr())) {
       if (ready_chosen.node == nullptr) {
         skipped_nodes_and_reasons.push_back(
             {*ready_node_it, SkipNodeReason::kExceedsOverlapLimit});
@@ -1907,25 +1901,10 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   }
   ++sched_state->scheduled_count;
   for (auto& resource : n->GetResources()) {
-    // No need to release non-extendable resources
-    if (resource.second == ResourceUsageType::kResourceRelease &&
-        async_tracker_->GetResourceHazardType(resource.first) !=
-            ResourceHazardType::kNonextendable) {
-      sched_state->resource_occupiers_in_flight.at(resource.first)
-          .erase(&n->GetInstr());
+    if (resource.second == ResourceUsageType::kResourceRelease) {
+      --sched_state->resources_in_flight[resource.first];
     } else if (resource.second == ResourceUsageType::kResourceOccupy) {
-      // For async collective done ops, save their corresponding start ops to
-      // the map
-      if (hlo_query::IsAsyncCollectiveDoneOp(&n->GetInstr(),
-                                             /*include_send_recv=*/true)) {
-        CHECK(hlo_query::IsAsyncCollectiveStartOp(n->GetInstr().operand(0),
-                                                  true));
-        sched_state->resource_occupiers_in_flight[resource.first].insert(
-            n->GetInstr().operand(0));
-      } else {
-        sched_state->resource_occupiers_in_flight[resource.first].insert(
-            &n->GetInstr());
-      }
+      ++sched_state->resources_in_flight[resource.first];
     }
   }
   VLOG(10) << "Memory pressure before schedule: "

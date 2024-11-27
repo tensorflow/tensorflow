@@ -34,15 +34,6 @@ CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo);
 // Returns size of the `shape` given the `pointer_size`.
 int64_t GetSizeOfShape(const Shape& shape, int pointer_size);
 
-// GPU overlap limit rule rule for scheduling candidate.
-// On top of the default rule, we do not allow collectives with more than 1
-// overlapping ranks to overlap. This is because the execution order of NCCL
-// kernels is not deterministic and cannot be controlled by launch order at the
-// moment. A cyclic dependency can be formed with at least 2 overlapping ranks.
-bool GpuScheduleCrossesOverlapLimit(
-    const DefaultSchedulerCore::SchedulingState& sched_state,
-    const HloGraphNode* node);
-
 // GPU specific resources for latency hiding scheduler.
 //
 // We use two different set of resources to model the scheduling of asynchronous
