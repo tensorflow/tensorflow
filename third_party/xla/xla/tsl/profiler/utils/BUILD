@@ -132,6 +132,17 @@ cc_library(
 )
 
 cc_library(
+    name = "trace_filter_utils",
+    hdrs = ["trace_filter_utils.h"],
+    copts = tf_profiler_copts(),
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+cc_library(
     name = "xplane_visitor",
     srcs = ["xplane_visitor.cc"],
     hdrs = ["xplane_visitor.h"],

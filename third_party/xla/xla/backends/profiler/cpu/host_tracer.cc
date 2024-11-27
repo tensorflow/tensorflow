@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/backends/profiler/cpu/host_tracer.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -35,6 +36,8 @@ limitations under the License.
 namespace xla {
 namespace profiler {
 namespace {
+
+#define TRACEME_FILTER_DEFAULT_MASK std::numeric_limits<uint64_t>::max()
 
 // Controls TraceMeRecorder and converts TraceMeRecorder::Events into XEvents.
 //
@@ -70,7 +73,8 @@ class HostTracer : public tsl::profiler::ProfilerInterface {
 };
 
 HostTracer::HostTracer(int host_trace_level)
-    : host_trace_level_(host_trace_level), filter_mask_(0xffffffffffffffff) {}
+    : host_trace_level_(host_trace_level),
+      filter_mask_(TRACEME_FILTER_DEFAULT_MASK) {}
 
 HostTracer::HostTracer(int host_trace_level, uint64_t filter_mask)
     : host_trace_level_(host_trace_level), filter_mask_(filter_mask) {}
