@@ -13,7 +13,7 @@ For details of the ROCm instructions, please refer to the [ROCm QuickStart Insta
 
 To build with ROCm3.10, set the following environment variables, and add those environment variables at the end of ~/.bashrc 
 ```
-export ROCM_PATH=/opt/rocm-6.1.2
+export ROCM_PATH=/opt/rocm/
 export HCC_HOME=$ROCM_PATH/hcc
 export HIP_PATH=$ROCM_PATH/hip
 export PATH=$HCC_HOME/bin:$HIP_PATH/bin:$PATH
