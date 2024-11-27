@@ -93,20 +93,6 @@ class TritonTest : public GpuCodegenTest {
 
 class TritonGemmTest : public TritonTest {
  public:
-  se::GpuComputeCapability GetGpuComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
-  }
-
-  void SetUp() override {
-    if (std::holds_alternative<se::RocmComputeCapability>(
-            GetGpuComputeCapability())) {
-      GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
-    }
-  }
-
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
     // Do not fall back to cuBLAS, we are testing Triton.

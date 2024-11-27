@@ -1,6 +1,10 @@
 # Description:
 #   Components that implement GPU autotuning.
 
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_oss")
@@ -27,14 +31,89 @@ package_group(
 )
 
 cc_library(
-    name = "gemm_fusion_autotuner",
-    srcs = ["gemm_fusion_autotuner.cc"],
-    hdrs = ["gemm_fusion_autotuner.h"],
+    name = "gemm_fusion_autotuner_cuda",
+    srcs = [
+        "gemm_fusion_autotuner.h",
+        "gemm_fusion_autotuner_cuda.cc",
+    ],
     tags = [
         "cuda-only",
         "gpu",
     ],
     deps = [
+        ":autotuner_compile_util",
+        ":autotuner_util",
+        "//xla:autotuning_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/service:algorithm_util",
+        "//xla/service:executable",
+        "//xla/service:shaped_buffer",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu:stream_executor_util",
+        "//xla/service/gpu/transforms:cudnn_fusion_compiler",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/platform:env",
+    ],
+)
+
+cc_library(
+    name = "gemm_fusion_autotuner_rocm",
+    srcs = [
+        "gemm_fusion_autotuner.h",
+        "gemm_fusion_autotuner_rocm.cc",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":autotuner_compile_util",
+        ":autotuner_util",
+        "//xla:autotuning_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/service:executable",
+        "//xla/service:shaped_buffer",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/rocm:rocblas_plugin",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_tsl//tsl/platform:env",
+    ],
+)
+
+cc_library(
+    name = "gemm_fusion_autotuner",
+    srcs = [
+        "gemm_fusion_autotuner.cc",
+    ],
+    hdrs = ["gemm_fusion_autotuner.h"],
+    tags = ["gpu"],
+    deps = if_cuda_is_configured([":gemm_fusion_autotuner_cuda"]) + if_rocm_is_configured([
+        ":gemm_fusion_autotuner_rocm",
+    ]) + [
         ":autotuner_compile_util",
         ":autotuner_status_key",
         ":autotuner_util",
@@ -71,7 +150,6 @@ cc_library(
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/kernels:custom_kernel_fusion",
         "//xla/service/gpu/kernels:custom_kernel_fusion_pattern",
-        "//xla/service/gpu/transforms:cudnn_fusion_compiler",
         "//xla/service/gpu/transforms:custom_kernel_fusion_rewriter",
         "//xla/service/gpu/transforms:dot_algorithm_rewriter",
         "//xla/service/gpu/transforms:fusion_wrapper",
@@ -95,10 +173,10 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",

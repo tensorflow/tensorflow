@@ -158,6 +158,8 @@ class GemmFusionAutotunerImpl {
   bool IsAutotuningEnabled() const;
   static std::string ToString(const BackendConfig& config);
 
+  static const int64_t BLAS_GEMM_DEFAULT;
+
  private:
   // Measures the performance of a single executable candidate.
   //
@@ -183,10 +185,20 @@ class GemmFusionAutotunerImpl {
                               const ScopedShapedBuffer& buffer,
                               AutotuneResult& res);
 
-  se::CudaComputeCapability GetComputeCapability() const {
-    return std::get<se::CudaComputeCapability>(
-        config_.GetGpuComputeCapability());
+  se::GpuComputeCapability GetComputeCapability() const {
+    return config_.GetGpuComputeCapability();
   }
+
+  bool isRocm() const {
+    return std::holds_alternative<se::RocmComputeCapability>(
+        GetComputeCapability());
+  }
+
+  bool IsFusionKind(const HloInstruction& hlo, absl::string_view kind);
+
+  bool AddLibConfigs(const HloFusionInstruction& fusion,
+                     const HloDotInstruction* dot,
+                     std::vector<BackendConfig>& configs);
 
   std::vector<TritonGemmConfig> GetDefaultTritonConfigs() const;
   std::vector<TritonGemmConfig> GetExhaustiveTritonConfigs() const;

@@ -40,7 +40,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -75,7 +74,6 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/split_k_gemm_rewriter.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
@@ -424,29 +422,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> CuDnnFusionExtractor(
   return module;
 }
 
-bool IsFusionKind(const HloInstruction& hlo, absl::string_view kind) {
-  auto gpu_config = hlo.backend_config<GpuBackendConfig>();
-  if (!gpu_config.ok()) {
-    return false;
-  }
-  return gpu_config->fusion_backend_config().kind() == kind;
-}
-
-int GetCuDnnPlanCount(const HloInstruction& hlo,
-                      const AutotuneConfig& autotune_config) {
-  if (auto gpu_config = hlo.backend_config<GpuBackendConfig>();
-      !gpu_config.ok() ||
-      gpu_config->fusion_backend_config().has_cudnn_fusion_config()) {
-    return {};
-  }
-  return CuDnnFusionCompiler::GetAvailablePlanCount(
-      *autotune_config.GetExecutor(), *DynCast<HloFusionInstruction>(&hlo));
-}
-
 AutotuneResult FromConfig(const BackendConfig& config) {
   AutotuneResult res;
   if (std::holds_alternative<GemmFusionAutotunerImpl::CuBlasConfig>(config)) {
-    res.mutable_gemm()->set_algorithm(CUBLAS_GEMM_DEFAULT);
+    res.mutable_gemm()->set_algorithm(
+        GemmFusionAutotunerImpl::BLAS_GEMM_DEFAULT);
   } else if (std::holds_alternative<
                  GemmFusionAutotunerImpl::CustomKernelFusionConfig>(config)) {
     res.mutable_custom_kernel_fusion()->set_kernel_index(
@@ -674,6 +654,15 @@ absl::Status GemmFusionAutotunerRewriterVisitor::HandleFusion(
   return absl::OkStatus();
 }
 
+bool GemmFusionAutotunerImpl::IsFusionKind(const HloInstruction& hlo,
+                                           absl::string_view kind) {
+  auto gpu_config = hlo.backend_config<GpuBackendConfig>();
+  if (!gpu_config.ok()) {
+    return false;
+  }
+  return gpu_config->fusion_backend_config().kind() == kind;
+}
+
 // Methods required for sorting the configs.
 bool GemmFusionAutotunerImpl::CuBlasConfig::operator<(
     const CuBlasConfig& other) const {
@@ -788,28 +777,8 @@ GemmFusionAutotunerImpl::GenerateConfigs(const HloFusionInstruction& fusion) {
       configs.push_back(CuBlasConfig{});
     }
 
-    // Add cuDNN plans, if available.
-    bool is_hopper =
-        !config_.IsDeviceless() && GetComputeCapability().IsAtLeastHopper();
-    bool is_cudnn_enabled =
-        debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 0 && is_hopper &&
-        GetDnnVersionInfoOrDefault(config_.GetExecutor()).major_version() >= 9;
-    if ((IsFusionKind(fusion, kCuDnnFusionKind) && IsAutotuningEnabled()) ||
-        (IsFusionKind(fusion, kTritonGemmFusionKind) && is_cudnn_enabled &&
-         algorithm_util::IsSupportedByCudnn(
-             dot->precision_config().algorithm()) &&
-         !dot->sparse_operands() && IsAutotuningEnabled())) {
-      const int plan_count = GetCuDnnPlanCount(fusion, config_);
-      for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
-        configs.push_back(CuDnnConfig{plan_id});
-      }
-    }
-    if (IsFusionKind(fusion, kCuDnnFusionKind)) {
-      if (!IsAutotuningEnabled()) {
-        configs.push_back(CuDnnConfig{-1});
-      }
-      return configs;
-    }
+    // Add lib (e.g. cuDNN) plans, if available.
+    if (AddLibConfigs(fusion, dot, configs)) return configs;
   }
 
   // Add CustomKernelFusion (Cutlass) configs, if available.
@@ -1220,9 +1189,13 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
 std::vector<TritonGemmConfig>
 GemmFusionAutotunerImpl::GetExhaustiveTritonConfigs() const {
   std::vector<TritonGemmConfig> configs;
-  se::CudaComputeCapability cc = GetComputeCapability();
-  bool tune_ctas =
-      debug_options_.xla_gpu_enable_triton_hopper() && cc.IsAtLeastHopper();
+  se::GpuComputeCapability gcc = GetComputeCapability();
+  bool tune_ctas = false;
+
+  if (!isRocm()) {
+    auto cc = std::get<se::CudaComputeCapability>(gcc);
+    debug_options_.xla_gpu_enable_triton_hopper() && cc.IsAtLeastHopper();
+  }
 
   for (int num_stages : kNumStages) {
     for (int tile_m : kBlockSizes) {
@@ -1259,38 +1232,6 @@ GemmFusionAutotunerImpl::GetExhaustiveTritonConfigs() const {
         }
       }
     }
-  }
-  return configs;
-}
-
-std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
-    const {
-  using Config = TritonGemmConfig;
-  std::vector<Config> configs = {
-      Config(32, 32, 256, 1, 1, 4),   Config(64, 32, 32, 16, 1, 4),
-      Config(32, 64, 64, 4, 1, 4),    Config(128, 128, 64, 4, 1, 4),
-      Config(16, 16, 256, 1, 1, 4),   Config(16, 128, 32, 16, 1, 4),
-      Config(16, 64, 128, 1, 1, 4),   Config(16, 128, 32, 8, 1, 4),
-      Config(16, 16, 512, 1, 1, 4),   Config(32, 16, 512, 1, 1, 4),
-      Config(64, 32, 64, 1, 2, 8),    Config(128, 256, 32, 1, 3, 8),
-      Config(256, 128, 32, 1, 3, 8),  Config(256, 64, 32, 1, 4, 4),
-      Config(64, 256, 32, 1, 4, 4),   Config(128, 64, 32, 1, 4, 4),
-      Config(64, 128, 32, 1, 4, 4),   Config(256, 128, 128, 1, 3, 8),
-      Config(256, 64, 128, 1, 4, 4),  Config(64, 256, 128, 1, 4, 4),
-      Config(128, 128, 128, 1, 4, 4), Config(128, 64, 64, 1, 4, 4),
-      Config(64, 128, 64, 1, 4, 4),   Config(128, 32, 64, 1, 4, 4),
-      Config(64, 32, 64, 1, 4, 4),    Config(32, 128, 32, 1, 4, 4),
-      Config(128, 128, 32, 1, 4, 4),  Config(16, 16, 256, 1, 3, 4),
-      Config(128, 128, 64, 2, 1, 8),  Config(64, 64, 64, 1, 2, 4),
-      Config(16, 64, 256, 8, 1, 4),   Config(256, 256, 128, 1, 3, 8)};
-  if (GetComputeCapability().IsAtLeastHopper()) {
-    absl::c_copy(
-        std::vector<Config>{
-            Config(16, 32, 32, 8, 1, 2),
-            Config(16, 64, 128, 8, 1, 4),
-            Config(16, 64, 128, 16, 3, 4),
-        },
-        std::back_inserter(configs));
   }
   return configs;
 }
