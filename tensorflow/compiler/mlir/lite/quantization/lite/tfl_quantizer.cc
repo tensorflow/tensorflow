@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iostream>
+#include <string>
+#include <system_error>
 
 #include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
