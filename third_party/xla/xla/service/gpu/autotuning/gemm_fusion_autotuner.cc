@@ -1189,12 +1189,10 @@ std::vector<TritonGemmConfig>
 GemmFusionAutotunerImpl::GetExhaustiveTritonConfigs() const {
   std::vector<TritonGemmConfig> configs;
   se::GpuComputeCapability gcc = GetComputeCapability();
-  bool tune_ctas = false;
 
-  if (!isRocm()) {
-    auto cc = std::get<se::CudaComputeCapability>(gcc);
-    debug_options_.xla_gpu_enable_triton_hopper() && cc.IsAtLeastHopper();
-  }
+  bool tune_ctas = !isRocm() && debug_options_.xla_gpu_enable_triton_hopper() &&
+                   std::get<se::CudaComputeCapability>(gcc).IsAtLeastHopper();
+
   const int64_t threads_per_warp =
       config_.GetDeviceDescription().threads_per_warp();
 

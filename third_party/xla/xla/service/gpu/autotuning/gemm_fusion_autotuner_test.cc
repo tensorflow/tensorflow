@@ -36,6 +36,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/dump.h"
@@ -54,10 +56,8 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
@@ -1416,6 +1416,35 @@ TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
   TF_ASSERT_OK_AND_ASSIGN(bool file_check_matches,
                           RunFileCheck(module->ToString(), pattern));
   EXPECT_TRUE(file_check_matches);
+}
+
+TEST_F(GemmFusionAutotunerTest, NumCtasAutotuningOnHopper) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "NumCtas autotuning is only supported from Hopper onwards.";
+  }
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  ROOT r = f32[1024,1024] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                                                  .value();
+
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_exhaustive_tiling_search(true);
+  debug_options.set_xla_gpu_enable_triton_hopper(true);
+  debug_options.set_xla_gpu_autotune_level(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> configs,
+      GetPossibleMatmulAutotuneTritonConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          GetCudaComputeCapability(), GetToolkitVersion(), debug_options));
+  EXPECT_TRUE(std::any_of(
+      configs.begin(), configs.end(),
+      [](const TritonGemmConfig& config) { return config.num_ctas > 2; }));
 }
 
 }  // namespace
