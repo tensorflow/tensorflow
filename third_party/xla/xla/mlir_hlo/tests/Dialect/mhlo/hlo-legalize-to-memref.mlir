@@ -83,7 +83,7 @@ func.func @dyn_reshape_unsigned(%operand: tensor<?x?xi32>, %shape: tensor<3xi64>
 // CHECK-DAG: %[[BSHAPE:.*]] = bufferization.to_memref %[[SHAPE]]
 
 // CHECK: %[[RESHAPED:.*]] = memref.reshape %[[OPERAND]](%[[BSHAPE]]) : (memref<?x?xi32>, memref<3xi64>) -> memref<?x?x?xi32>
-// CHECK: %[[TRESULT:.*]] = bufferization.to_tensor %[[RESHAPED]] : memref<?x?x?xi32>
+// CHECK: %[[TRESULT:.*]] = bufferization.to_tensor %[[RESHAPED]] : memref<?x?x?xi32> to tensor<?x?x?xi32>
 // CHECK: return %[[TRESULT]]
 
 // -----
@@ -97,5 +97,5 @@ func.func @reshape_unsigned(%operand: tensor<*xi32>) -> tensor<4x3xi32> {
 
 // CHECK: %[[OPERAND:.*]] = bufferization.to_memref %[[ARG]]
 // CHECK: %[[RESHAPED:.*]] = memref.cast %[[OPERAND]] : memref<*xi32> to memref<4x3xi32>
-// CHECK: %[[TRESULT:.*]] = bufferization.to_tensor %[[RESHAPED]] : memref<4x3xi32>
+// CHECK: %[[TRESULT:.*]] = bufferization.to_tensor %[[RESHAPED]] : memref<4x3xi32> to tensor<4x3xi32>
 // CHECK: return %[[TRESULT]]
