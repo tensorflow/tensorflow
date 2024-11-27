@@ -28,6 +28,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/cpu:cpu_client",
         "//xla/service:hlo_module_config",
+        "//xla/tests:test_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
