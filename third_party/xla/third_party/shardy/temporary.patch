@@ -1,532 +1,102 @@
-diff --git a/shardy/dialect/sdy/ir/BUILD b/shardy/dialect/sdy/ir/BUILD
-index 1fdb305..57f7939 100644
---- a/shardy/dialect/sdy/ir/BUILD
-+++ b/shardy/dialect/sdy/ir/BUILD
-@@ -218,7 +218,6 @@ cc_library(
-     hdrs = ["axis_list_ref.h"],
-     deps = [
-         ":dialect",
--        "//shardy/dialect/sdy/transforms/common:macros",
-         "@llvm-project//llvm:Support",
-         "@llvm-project//mlir:Support",
-     ],
-diff --git a/shardy/dialect/sdy/ir/axis_list_ref.cc b/shardy/dialect/sdy/ir/axis_list_ref.cc
-index c9629ad..0a4a147 100644
---- a/shardy/dialect/sdy/ir/axis_list_ref.cc
-+++ b/shardy/dialect/sdy/ir/axis_list_ref.cc
-@@ -17,13 +17,11 @@ limitations under the License.
- #include "shardy/dialect/sdy/ir/axis_list_ref.h"
- 
- #include <cstdint>
--#include <optional>
- 
- #include "llvm/ADT/STLExtras.h"
- #include "llvm/ADT/SmallVector.h"
- #include "mlir/Support/LLVM.h"
- #include "shardy/dialect/sdy/ir/dialect.h"  // IWYU pragma: keep
--#include "shardy/dialect/sdy/transforms/common/macros.h"
- 
- namespace mlir {
- namespace sdy {
-@@ -43,6 +41,32 @@ bool AxisListRef::operator<(const AxisListRef& rhs) const {
-   return false;
- }
- 
-+// Checks if `axisRef` overlaps with axes of this FactorAxesPair.
-+// Assumes `axisRef` is non-empty.
-+bool AxisListRef::overlaps(AxisRefAttr axisRef) const {
-+  if (empty()) {
-+    return false;
-+  }
-+  if (axisRef.overlaps(tailAxisRef)) {
-+    return true;
-+  }
-+  return llvm::any_of(axisRefs, [&](AxisRefAttr againstAxisRef) {
-+    return axisRef.overlaps(againstAxisRef);
-+  });
-+}
-+
-+// Checks if any two axes, one from this, and the other from `rhs`, overlap.
-+bool AxisListRef::overlaps(const AxisListRef& rhs) const {
-+  if (empty()) {
-+    return false;
-+  }
-+  if (rhs.overlaps(tailAxisRef)) {
-+    return true;
-+  }
-+  return llvm::any_of(
-+      axisRefs, [&](AxisRefAttr axisRef) { return rhs.overlaps(axisRef); });
-+}
-+
- SmallVector<AxisRefAttr> AxisListRef::toVector() const {
-   if (empty()) {
-     return {};
-@@ -83,59 +107,5 @@ int64_t AxisListRef::getShardingSize(MeshAttr mesh) const {
-   return shardingSize * tailAxisRef.getSize(mesh);
- };
- 
--void AxisListRef::clear() {
--  axisRefs = {};
--  tailAxisRef = AxisRefAttr();
--}
--
--void AxisListRef::trim(int64_t newSizeExcludingNewTail,
--                       std::optional<AxisRefAttr> newTailAxisRef) {
--  if (!newTailAxisRef) {
--    if (newSizeExcludingNewTail == 0) {
--      clear();
--    } else {
--      tailAxisRef = axisRefs[newSizeExcludingNewTail - 1];
--      axisRefs = axisRefs.take_front(newSizeExcludingNewTail - 1);
+diff --git a/shardy/dialect/sdy/transforms/propagation/debugging/source_sharding.cc b/shardy/dialect/sdy/transforms/propagation/debugging/source_sharding.cc
+index 3884ae6..0d207e7 100644
+--- a/shardy/dialect/sdy/transforms/propagation/debugging/source_sharding.cc
++++ b/shardy/dialect/sdy/transforms/propagation/debugging/source_sharding.cc
+@@ -346,14 +346,7 @@ void SourceShardingHandler::operator()(function_ref<void()> transform,
+     llvm_unreachable("unknown EdgeSource");
+   };
+   auto updateEdgeMap = [&](AxisRefAttr newAxisRef, Value value) {
+-    // Axis may not be in the map for region ops like `ManualComputationOp`
+-    // where the `out_sharding` refers to a manual axis, but the body's
+-    // `ReturnOp` doesn't have the manual axis.
+-    auto it = axisToEdgeSourceMap.find(newAxisRef);
+-    if (it == axisToEdgeSourceMap.end()) {
+-      return;
 -    }
--    return;
--  }
--  axisRefs = axisRefs.take_front(newSizeExcludingNewTail);
--  tailAxisRef = *newTailAxisRef;
--}
--
--std::optional<AxisRefAttr> AxisListRef::getPrefixOfInputWithoutOverlap(
--    AxisRefAttr axisRef) const {
--  if (empty()) {
--    return axisRef;
--  }
--  AxisRefAttr prefixAxisRef = axisRef;
--  for (AxisRefAttr againstAxisRef : axisRefs) {
--    SDY_ASSIGN_OR_RETURN_IF_NULLOPT(
--        prefixAxisRef, prefixAxisRef.getPrefixWithoutOverlap(againstAxisRef));
--  }
--  SDY_ASSIGN_OR_RETURN_IF_NULLOPT(
--      prefixAxisRef, prefixAxisRef.getPrefixWithoutOverlap(tailAxisRef));
--  return prefixAxisRef;
--}
--
--bool AxisListRef::truncateWithoutOverlap(const AxisListRef& rhs) {
--  if (empty()) {
--    return false;
--  }
--  for (const auto& [axisRefIndex, axisRef] : llvm::enumerate(axisRefs)) {
--    if (auto prefixAxisRef = rhs.getPrefixOfInputWithoutOverlap(axisRef);
--        prefixAxisRef != axisRef) {
--      trim(axisRefIndex, prefixAxisRef);
--      return true;
--    }
--  }
--  if (auto prefixAxisRef = rhs.getPrefixOfInputWithoutOverlap(tailAxisRef);
--      prefixAxisRef != tailAxisRef) {
--    trim(axisRefs.size(), prefixAxisRef);
--    return true;
--  }
--  return false;
--}
--
- }  // namespace sdy
- }  // namespace mlir
-diff --git a/shardy/dialect/sdy/ir/axis_list_ref.h b/shardy/dialect/sdy/ir/axis_list_ref.h
-index 0d9cef2..779878d 100644
---- a/shardy/dialect/sdy/ir/axis_list_ref.h
-+++ b/shardy/dialect/sdy/ir/axis_list_ref.h
-@@ -28,6 +28,12 @@ namespace sdy {
- // is also a prefix sub-axis of an axis in the original list.
- class AxisListRef {
-  public:
-+  // Assumes that input `tailAxisRef` is non-empty.
-+  // TODO(enver): Drop this ctor, or make it private, as it is not used at the
-+  // moment.
-+  AxisListRef(ArrayRef<AxisRefAttr> axisRefs, AxisRefAttr tailAxisRef)
-+      : axisRefs(axisRefs), tailAxisRef(tailAxisRef) {}
-+
-   // Assumes that input `axisRefs` is non-empty.
-   AxisListRef(ArrayRef<AxisRefAttr> axisRefs)
-       : axisRefs(axisRefs.drop_back()), tailAxisRef(axisRefs.back()) {}
-@@ -53,6 +59,9 @@ class AxisListRef {
-     return axisRefs == rhs.axisRefs && tailAxisRef == rhs.tailAxisRef;
-   }
- 
-+  // Checks if any two axes, one from this, and the other from `rhs`, overlap.
-+  bool overlaps(const AxisListRef& rhs) const;
-+
-   SmallVector<AxisRefAttr> toVector() const;
- 
-   std::pair<ArrayRef<AxisRefAttr>, AxisRefAttr> toPair() const {
-@@ -69,43 +78,11 @@ class AxisListRef {
-   // the `prefix`.
-   //
-   // Assumes `prefix` is a prefix of this `AxisListRef`.
--  int64_t getExpandedShardingSize(MeshAttr mesh,
--                                  const AxisListRef& prefix) const {
-+  int64_t getShardingSize(MeshAttr mesh, const AxisListRef& prefix) const {
-     return getShardingSize(mesh) / prefix.getShardingSize(mesh);
-   }
--  // Truncates `this` to its largest prefix so that it does not overlap with
--  // `rhs`. Returns true if `this` has been truncated, and false otherwise,
--  // which happens if `this` did not overlap with `rhs` in the first place.
--  bool truncateWithoutOverlap(const AxisListRef& rhs);
- 
-  private:
--  // Returns prefix of input `axisRef` that does not overlap with this axes.
--  // TODO(enver): Move this method to utilities.
--  // TODO(enver): Instead make this a method of AxisRefAttr, after moving
--  // AxesWithTail to a general data structure in Shardy.
--  // TODO(enver): Reuse getPrefixOfInputWithout method on
--  // shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc,
--  // instead, after an iterater is added.
--  std::optional<AxisRefAttr> getPrefixOfInputWithoutOverlap(
--      AxisRefAttr axisRef) const;
--
--  // Trims axes to have the first `newSizeExcludingNewTail` axes and, in case
--  // non-empty, `newTailAxisRef` as an additional final axis.
--
--  // As a result, `newSizeExcludingNewTail` is the new size of AxisListRef
--  // excluding `newTailAxisRef`. That is, if `newTailAxisRef` is non-empty then
--  // the new size of AxisListRef equals to `newSizeExcludingNewTail`+1,
--  // otherwise it equals to `newSizeExcludingNewTail`.
--  //
--  // Assumes that:
--  //  1. `this` AxisListRef is non-empty, and
--  //  2. `newSize` is strictly smaller than size().
--  //  3. Input `newTailAxisRef` is a prefix of the (`newSize`+1)st axis.
--  void trim(int64_t newSizeExcludingNewTail,
--            std::optional<AxisRefAttr> newTailAxisRef);
--  // Clears this AxisListRef.
--  void clear();
--
-   // The axes that this FactorAxesPair holds is defined by `axisRefs` and
-   // `tailAxisRef` together as the concatantion of the two. If `tailAxisRef` is
-   // empty, then `axisRefs` is empty as well.
-@@ -114,6 +91,9 @@ class AxisListRef {
-   // TODO(enver): Use ArrayRef::getTombstoneKey or AxisRefAttr::getTombstoneKey,
-   // either for `axisRefs` or `tailAxisRef` respectively, instead.
-   bool isTombstone = false;
-+  // Checks if `axisRef` overlaps with axes of this FactorAxesPair.
-+  // Assumes `axisRef` is non-empty.
-+  bool overlaps(AxisRefAttr axisRef) const;
- };
- 
- struct AxisListRefInfo : public llvm::DenseMapInfo<AxisListRef> {
-diff --git a/shardy/dialect/sdy/ir/axis_list_ref_test.cc b/shardy/dialect/sdy/ir/axis_list_ref_test.cc
-index 063783f..bd1e514 100644
---- a/shardy/dialect/sdy/ir/axis_list_ref_test.cc
-+++ b/shardy/dialect/sdy/ir/axis_list_ref_test.cc
-@@ -40,124 +40,14 @@ class AxisListRefTest : public ::testing::Test {
-     return AxisRefAttr::get(&context, name, preSize, size);
-   }
- 
--  AxisListRef createAxisListRef(SmallVector<AxisRefAttr> axisRefs) {
--    if (axisRefs.empty()) {
--      return AxisListRef();
--    }
--    backingData.push_back(axisRefs);
--    return AxisListRef(backingData.back());
--  }
--
--  SmallVector<SmallVector<AxisRefAttr>> backingData;
-   MLIRContext context;
- };
- 
--TEST_F(AxisListRefTest, Empty) {
--  AxisListRef axes = createAxisListRef({});
--  EXPECT_TRUE(axes.empty());
--}
--
--TEST_F(AxisListRefTest, Empty_NotEmpty) {
--  AxisListRef axes = createAxisListRef({createAxis("a")});
--  EXPECT_FALSE(axes.empty());
--}
--
--TEST_F(AxisListRefTest, TruncateWithoutOverlap) {
--  AxisListRef axes =
--      createAxisListRef({createAxis("a"), createAxis("b"), createAxis("c"),
--                         createAxis("d"), createAxis("e")});
--  AxisListRef against =
--      createAxisListRef({createAxis("c"), createAxis("e"), createAxis("f")});
--  EXPECT_TRUE(axes.truncateWithoutOverlap(against));
--  EXPECT_EQ(axes, createAxisListRef({createAxis("a"), createAxis("b")}));
--}
--
--TEST_F(AxisListRefTest, TruncateWithoutOverlap_AgainstOrderDoesNotMatter) {
--  AxisListRef axes =
--      createAxisListRef({createAxis("a"), createAxis("b"), createAxis("c"),
--                         createAxis("d"), createAxis("e")});
--  AxisListRef against =
--      createAxisListRef({createAxis("f"), createAxis("e"), createAxis("c")});
--  EXPECT_TRUE(axes.truncateWithoutOverlap(against));
--  EXPECT_EQ(axes, createAxisListRef({createAxis("a"), createAxis("b")}));
--}
--
--TEST_F(AxisListRefTest, TruncateWithoutOverlap_NoOverlap) {
--  AxisListRef axes = createAxisListRef({createAxis("a"), createAxis("b")});
--  AxisListRef against = createAxisListRef({createAxis("c")});
--  EXPECT_FALSE(axes.truncateWithoutOverlap(against));
--  EXPECT_EQ(axes, createAxisListRef({createAxis("a"), createAxis("b")}));
--}
--
--TEST_F(AxisListRefTest, TruncateWithoutOverlap_EmptyTruncateOnEmpty) {
--  AxisListRef axes = createAxisListRef({});
--  AxisListRef against = createAxisListRef({});
--  EXPECT_FALSE(axes.truncateWithoutOverlap(against));
--  EXPECT_TRUE(axes.empty());
--}
--
--TEST_F(AxisListRefTest, TruncateWithoutOverlap_EmptyTruncateOnNonEmpty) {
--  AxisListRef axes = createAxisListRef({});
--  AxisListRef against = createAxisListRef({createAxis("a")});
--  EXPECT_FALSE(axes.truncateWithoutOverlap(against));
--  EXPECT_TRUE(axes.empty());
--}
--
--TEST_F(AxisListRefTest, TruncateWithoutOverlap_NonEmptyTruncateOnEmpty) {
--  AxisListRef axes = createAxisListRef({createAxis("a")});
--  AxisListRef against = createAxisListRef({});
--  EXPECT_FALSE(axes.truncateWithoutOverlap(against));
--  EXPECT_EQ(axes, createAxisListRef({createAxis("a")}));
--}
--
--TEST_F(AxisListRefTest, TruncateWithoutOverlap_AgainstSame) {
--  AxisListRef axes = createAxisListRef({createAxis("a"), createAxis("b")});
--  AxisListRef against = createAxisListRef({createAxis("a"), createAxis("b")});
--  EXPECT_TRUE(axes.truncateWithoutOverlap(against));
--  EXPECT_TRUE(axes.empty());
--}
--
--TEST_F(AxisListRefTest, TruncateWithoutOverlap_AxesIsSingleton) {
--  AxisListRef axes = createAxisListRef({createAxis("a")});
--  AxisListRef against = createAxisListRef({createAxis("a"), createAxis("b")});
--  EXPECT_TRUE(axes.truncateWithoutOverlap(against));
--  EXPECT_TRUE(axes.empty());
--}
--
--TEST_F(AxisListRefTest, TruncateWithoutOverlap_AgainstPrefix) {
--  AxisListRef axes = createAxisListRef({createAxis("a"), createAxis("b")});
--  AxisListRef against = createAxisListRef({createAxis("a")});
--  EXPECT_TRUE(axes.truncateWithoutOverlap(against));
--  EXPECT_TRUE(axes.empty());
--}
--
--TEST_F(AxisListRefTest, TruncateWithoutOverlap_AgainstSuffix) {
--  AxisListRef axes = createAxisListRef({createAxis("a"), createAxis("b")});
--  AxisListRef against = createAxisListRef({createAxis("b")});
--  EXPECT_TRUE(axes.truncateWithoutOverlap(against));
--  EXPECT_EQ(axes, createAxisListRef({createAxis("a")}));
--}
--
--TEST_F(AxisListRefTest, TruncateWithoutOverlap_SubAxis) {
--  AxisListRef axes = createAxisListRef({createAxis("a"), createAxis("b")});
--  AxisListRef against = createAxisListRef({createSubAxis("a", 4, 2)});
--  EXPECT_TRUE(axes.truncateWithoutOverlap(against));
--  EXPECT_EQ(axes, createAxisListRef({createSubAxis("a", 1, 4)}));
--}
--
--TEST_F(AxisListRefTest, TruncateWithoutOverlap_SubAxisAndAxesIsSingleton) {
--  AxisListRef axes = createAxisListRef({createAxis("a")});
--  AxisListRef against = createAxisListRef({createSubAxis("a", 4, 2)});
--  EXPECT_TRUE(axes.truncateWithoutOverlap(against));
--  EXPECT_EQ(axes, createAxisListRef({createSubAxis("a", 1, 4)}));
--}
-+TEST_F(AxisListRefTest, Empty) { EXPECT_TRUE(AxisListRef().empty()); }
- 
--TEST_F(AxisListRefTest, TruncateWithoutOverlap_SubAxisOnLastElement) {
--  AxisListRef axes = createAxisListRef({createAxis("a"), createAxis("b")});
--  AxisListRef against = createAxisListRef({createSubAxis("b", 4, 2)});
--  EXPECT_TRUE(axes.truncateWithoutOverlap(against));
--  EXPECT_EQ(axes,
--            createAxisListRef({createAxis("a"), createSubAxis("b", 1, 4)}));
-+TEST_F(AxisListRefTest, NonEmpty) {
-+  SmallVector<AxisRefAttr> backingAxes({createAxis("a")});
-+  EXPECT_FALSE(AxisListRef(backingAxes).empty());
- }
- 
- // TODO(enver): Add unit tests for all methods.
-diff --git a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-index e7ff1a5..4259a9f 100644
---- a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-+++ b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-@@ -184,6 +184,15 @@ struct FactorAxesPair {
-   }
- 
-   bool empty() const { return factorIndex == kEmptyFactorIndex; }
-+
-+  // Checks if any two axes, one from this, and the other from `rhs`, overlap.
-+  bool overlaps(const FactorAxesPair& rhs) const {
-+    return axes.overlaps(rhs.axes);
-+  }
-+
-+  void assignTo(SmallVector<AxisListRef>& axesPerFactor) const {
-+    axesPerFactor[factorIndex] = axes;
-+  }
- };
- 
- struct FactorAxesPairInfo : public llvm::DenseMapInfo<FactorAxesPair> {
-@@ -323,7 +332,6 @@ SmallVector<AxisListRef> findCommonAxesUsingMajorityVoteHeuristic(
-     const ShardingProjection& projection, int64_t numFactors,
-     ArrayRef<int64_t> tensorSizes, MeshAttr mesh) {
-   SmallVector<AxisListRef> factorAxisRefs(numFactors);
--  // TODO(enver): Use priority queue for a better performance.
-   SmallVector<FactorAxesCandidate> factorAxesCandidates =
-       findFactorAxesCandidates(projection, numFactors, tensorSizes, mesh);
-   // TODO(enver): Instead of taking an axes-array with the largest count, take
-@@ -336,7 +344,7 @@ SmallVector<AxisListRef> findCommonAxesUsingMajorityVoteHeuristic(
-   FactorAxesPair bestFactorAxes;
-   while (!factorAxesCandidates.empty()) {
-     if (!bestFactorAxes.empty()) {
--      factorAxisRefs[bestFactorAxes.factorIndex] = bestFactorAxes.axes;
-+      bestFactorAxes.assignTo(factorAxisRefs);
+-    EdgeSource source = it->getSecond();
++    EdgeSource source = axisToEdgeSourceMap.at(newAxisRef);
+     if (mappings->debugEdgeSourceSharding) {
+       mappings->valueToEdgeSourceMap[value][newAxisRef] = source;
      }
-     // TODO(enver): Tie-breaking currently depends on the order of iteration.
-     // Consider some heuristic for breaking ties.
-@@ -368,41 +376,20 @@ SmallVector<AxisListRef> findCommonAxesUsingMajorityVoteHeuristic(
-           // factor-axes pair, as we remove all factor-axes pair who can
-           // not expand from the picked axes for the picked factor from
-           // map at each iteration.
--          candidate.shardingSize =
--              candidate.factorAxes.axes.getExpandedShardingSize(
--                  mesh,
--                  /*prefix=*/bestFactorAxes.axes);
-+          candidate.shardingSize = candidate.factorAxes.axes.getShardingSize(
-+              mesh,
-+              /*prefix=*/bestFactorAxes.axes);
-           nextBestFactorAxes = std::max(nextBestFactorAxes, candidate);
-           candidateIndex++;
+@@ -376,11 +369,7 @@ void SourceShardingHandler::operator()(function_ref<void()> transform,
+       }
+       for (auto [oldDimSharding, newDimSharding] : llvm::zip_equal(
+                oldSharding.getDimShardings(), newSharding.getDimShardings())) {
+-        // Skip if the sharding is empty or didn't change. The sharding may
+-        // be empty when data flow ops are added for the block arguments of
+-        // `ManualComputationOp`s, where the `in_sharding` only refers to
+-        // manual axes.
+-        if (newDimSharding.emptyAxes() || oldDimSharding == newDimSharding) {
++        if (oldDimSharding == newDimSharding) {
+           continue;
          }
-         continue;
-       }
--      if (candidate.factorAxes.axes.truncateWithoutOverlap(
--              bestFactorAxes.axes)) {
--        // In case the axes is trimmed up to the current assignment then we
--        // can drop it from the list as it would not be expanding on the current
--        // assignment.
--        // Note that it is guaranteed that the current assignment of candidate's
--        // factor is a prefix of `prefixAxes` as
--        //   1. We only keep the candidates with axes that can expand on the
--        //   current assignment of its factor, and
--        //   2. We trim the axes of candidates that overlaps with any of the
--        //   current assignment (and hence the picked axes do not overlap with
--        //   the current assignment of candidate's factor).
--        if (candidate.factorAxes.axes ==
--            factorAxisRefs[candidate.factorAxes.factorIndex]) {
--          factorAxesCandidates[candidateIndex] = factorAxesCandidates.back();
--          factorAxesCandidates.pop_back();
--        } else {
--          // Trim the axes to use the largest prefix that does not overlap
--          // with the picked one.
--          candidate.shardingSize =
--              candidate.factorAxes.axes.getExpandedShardingSize(
--                  mesh,
--                  /*prefix=*/factorAxisRefs[candidate.factorAxes.factorIndex]);
--          nextBestFactorAxes = std::max(nextBestFactorAxes, candidate);
--          candidateIndex++;
--        }
-+      if (candidate.factorAxes.overlaps(bestFactorAxes)) {
-+        // Clear the count of overlapping axis, effectively erasing.
-+        // TODO(enver): Instead of removing from the list, trim the axisRefs,
-+        // to use the largest prefix that does not overlap with bestAxisRefs.
-+        factorAxesCandidates[candidateIndex] = factorAxesCandidates.back();
-+        factorAxesCandidates.pop_back();
-         continue;
-       }
-       nextBestFactorAxes = std::max(nextBestFactorAxes, candidate);
-diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
-index eab0c60..67741d2 100644
---- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
-+++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
-@@ -252,10 +252,9 @@ func.func @dot_incompatible_in_out_mismatch_i_j_swapped_large_k(%arg0: tensor<8x
+         const int oldDimShardingSize = oldDimSharding.getAxes().size();
+diff --git a/shardy/dialect/sdy/transforms/propagation/debugging/test/sharding_origins.mlir b/shardy/dialect/sdy/transforms/propagation/debugging/test/sharding_origins.mlir
+index a97d04c..a9309ae 100644
+--- a/shardy/dialect/sdy/transforms/propagation/debugging/test/sharding_origins.mlir
++++ b/shardy/dialect/sdy/transforms/propagation/debugging/test/sharding_origins.mlir
+@@ -150,38 +150,6 @@ func.func @manual_computation_no_manual_axes(%arg0: tensor<32x32x32xf32>) -> ten
+   return %2: tensor<32x32x32xf32>
  }
  
- // CHECK-LABEL: func @dot_incompatible_sub_axis_overlaps
--// CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg1 <@mesh, [{"y"}, {"x":(1)2}]> : tensor<32x16xf32>
--// CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %[[RESHARD1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(2)2}, {"x":(1)2}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, k], [k, j])->([i, j]) {i=8, j=16, k=32}>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
--// CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[DOT]] <@mesh, [{}, {"x"}]> : tensor<8x16xf32>
--// CHECK-NEXT: return %[[RESHARD2]] : tensor<8x16xf32>
-+// CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x":(2)2}, {}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, k], [k, j])->([i, j]) {i=8, j=16, k=32}>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
-+// CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[DOT]] <@mesh, [{}, {"x"}]> : tensor<8x16xf32>
-+// CHECK-NEXT: return %[[RESHARD]] : tensor<8x16xf32>
- func.func @dot_incompatible_sub_axis_overlaps(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x":(2)2}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}]>}) {
-   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, k],[k, j])->([i, j]) {i=8, j=16, k=32}>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
-   return %0 : tensor<8x16xf32>
-@@ -351,10 +350,10 @@ func.func @dot_multiple_axes_with_overlap(%arg0: tensor<8x32xf32> {sdy.sharding
- }
- 
- // CHECK-LABEL: func @dot_multiple_axes_with_overlap_on_suffix
--// CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{}, {"z":(1)2}]> : tensor<8x32xf32>
--// CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %arg1 <@mesh_xyz, [{"z":(1)2}, {"x", "y", "z":(2)2}]> : tensor<32x16xf32>
--// CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD1]], %[[RESHARD2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"x", "y", "z":(2)2}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
-+// CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{}, {}]> : tensor<8x32xf32>
-+// CHECK-NEXT: %[[DOT:.*]] = stablehlo.dot %[[RESHARD]], %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"x", "y", "z":(2)2}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
- // CHECK-NEXT: return %[[DOT]] : tensor<8x16xf32>
-+// TODO(enver): A better solution would be to reshard LHS to [{},{"z":(1)2}] instead of fully replicate.
- func.func @dot_multiple_axes_with_overlap_on_suffix(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"z", "x":(2)2}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"x", "y", "z":(2)2}]>}) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{}, {"x", "y", "z":(2)2}]>}) {
-   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"x", "y", "z":(2)2}]>]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
-   return %0 : tensor<8x16xf32>
-@@ -430,23 +429,3 @@ func.func @dot_genaral_overlaps_from_most_major(%arg0: tensor<64x8x32xf32> {sdy.
-   return %0 : tensor<64x8x16xf32>
- }
- 
--// CHECK-LABEL: func @dot_genaral_overlaps_and_trimmable_on_subaxis
--// CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzt, [{"y":(2)2}, {"y":(1)2}, {}]> : tensor<64x8x32xf32>
--// CHECK-NEXT: %[[DOTGENERAL:.*]] = stablehlo.dot_general %[[RESHARD1]], %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{"y":(2)2}, {"y":(1)2}, {}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, l], [i, l, k])->([i, j, k]) {i=64, j=8, k=16, l=32}>} : (tensor<64x8x32xf32>, tensor<64x32x16xf32>) -> tensor<64x8x16xf32>
--// CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[DOTGENERAL]] <@mesh_xyzt, [{}, {"y"}, {}]> : tensor<64x8x16xf32>
--// CHECK-NEXT: return %[[RESHARD2]] : tensor<64x8x16xf32>
--func.func @dot_genaral_overlaps_and_trimmable_on_subaxis(%arg0: tensor<64x8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y":(2)2}, {}, {}]>}, %arg1: tensor<64x32x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y":(2)2}, {}, {}]>}) ->(tensor<64x8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{}, {"y"}, {}]>}) {
--  %0 = stablehlo.dot_general %arg0, %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{}, {"y"}, {}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, l], [i, l, k])->([i, j, k]) {i=64, j=8, k=16, l=32}>} : (tensor<64x8x32xf32>, tensor<64x32x16xf32>) -> tensor<64x8x16xf32>
--  return %0 : tensor<64x8x16xf32>
+-// TODO(b/381281685): save the changes to the in/out shardings on the
+-// ManualComputationOp.
+-// CHECK-LABEL: manual_computation_manual_axes
+-// CHECK-SAME:    %arg0: tensor<32x32x32xf32> {sdy.origin_sharding = {a = "mc_1_input: 0", b = "mc_1_input: 0"},
+-// CHECK-SAME:                                 sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b", ?}, {?}]>}
+-// CHECK-SAME:    -> (tensor<32x32x32xf32> {sdy.origin_sharding = {a = "mc_1_output: 0", b = "mc_1_input: 0"},
+-// CHECK-SAME:                              sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b", ?}, {?}]>}) {
+-func.func @manual_computation_manual_axes(%arg0: tensor<32x32x32xf32>) -> tensor<32x32x32xf32> {
+-  // CHECK-NEXT: %[[SUB:.*]] = stablehlo.subtract %arg0, %arg0 {sdy.origin_sharding = {a = "mc_1_input: 0", b = "mc_1_input: 0"},
+-  // CHECK-SAME:                                                sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", ?}, {"b", ?}, {?}]>]>}
+-  // CHECK-NEXT: %[[MC:.*]] = sdy.manual_computation(%[[SUB]])
+-  // CHECK-SAME:   in_shardings=[<@mesh, [{"a", ?}, {"b", ?}, {?}]>]
+-  // CHECK-SAME:   out_shardings=[<@mesh, [{"a", ?}, {"b", ?}, {?}]>]
+-  // CHECK-SAME:   manual_axes={"a"} (%arg1: tensor<16x32x32xf32>) {
+-  // CHECK-NEXT:   %[[ADD:.*]] = stablehlo.add %arg1, %arg1 {
+-  // CHECK-SAME:     sdy.origin_sharding = {b = "mc_1_input: 0"},
+-  // CHECK-SAME:     sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"b", ?}, {?}]>]>}
+-  // CHECK-NEXT:   sdy.return %[[ADD]]
+-  // CHECK-NEXT: } {sdy.origin_sharding_name = "mc_1"}
+-  // CHECK-NEXT: %[[SUB_2:.*]] = stablehlo.subtract %[[MC]], %[[MC]] {
+-  // CHECK-SAME:   sdy.origin_sharding = {a = "mc_1_output: 0", b = "mc_1_input: 0"},
+-  // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", ?}, {"b", ?}, {?}]>]>}
+-  // CHECK-NEXT: return %[[SUB_2]]
+-  %0 = stablehlo.subtract %arg0, %arg0 : tensor<32x32x32xf32>
+-  %1 = sdy.manual_computation(%0) in_shardings=[<@mesh, [{"a", ?}, {"b", ?}, {?}]>] out_shardings=[<@mesh, [{"a", ?}, {?}, {?}]>] manual_axes={"a"} (%arg1: tensor<16x32x32xf32>) {
+-    %3 = stablehlo.add %arg1, %arg1 : tensor<16x32x32xf32>
+-    sdy.return %3 : tensor<16x32x32xf32>
+-  } : (tensor<32x32x32xf32>) -> tensor<32x32x32xf32>
+-  %2 = stablehlo.subtract %1, %1 : tensor<32x32x32xf32>
+-  return %2: tensor<32x32x32xf32>
 -}
 -
--// CHECK-LABEL: func @dot_genaral_overlaps_and_trimmable_on_subaxis
--// CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzt, [{"y":(2)2}, {"x", "y":(1)2}, {}]> : tensor<64x8x32xf32>
--// CHECK-NEXT: %[[DOTGENERAL:.*]] = stablehlo.dot_general %[[RESHARD1]], %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{"y":(2)2}, {"x", "y":(1)2}, {}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, l], [i, l, k])->([i, j, k]) {i=64, j=8, k=16, l=32}>} : (tensor<64x8x32xf32>, tensor<64x32x16xf32>) -> tensor<64x8x16xf32>
--// CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[DOTGENERAL]] <@mesh_xyzt, [{}, {"x", "y", "z"}, {}]> : tensor<64x8x16xf32>
--// CHECK-NEXT: return %[[RESHARD2]] : tensor<64x8x16xf32>
--func.func @dot_genaral_overlaps_and_trimmable_on_subaxis_multiple_axes(%arg0: tensor<64x8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y":(2)2}, {}, {}]>}, %arg1: tensor<64x32x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y":(2)2}, {}, {}]>}) ->(tensor<64x8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{}, {"x","y","z"}, {}]>}) {
--  %0 = stablehlo.dot_general %arg0, %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{}, {"x","y","z"}, {}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, l], [i, l, k])->([i, j, k]) {i=64, j=8, k=16, l=32}>} : (tensor<64x8x32xf32>, tensor<64x32x16xf32>) -> tensor<64x8x16xf32>
--  return %0 : tensor<64x8x16xf32>
--}
--
-diff --git a/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc b/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc
-index 0bb88e9..7094883 100644
---- a/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc
-+++ b/shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.cc
-@@ -44,7 +44,6 @@ namespace {
  
- // Returns the largest prefix of `axisRef` that does not overlap with any axes
- // in `otherAxisRefs`.
--// TODO(enver): Move to ir/utils and use in AxisListRef methods.
- std::optional<AxisRefAttr> getPrefixWithoutOverlap(
-     AxisRefAttr axisRef, ArrayRef<AxisRefAttr> otherAxisRefs) {
-   AxisRefAttr result = axisRef;
+ // Show that when an axis came from multiple sources, we just use the first we
+ // see left to right, from operands to results.
+@@ -245,6 +213,10 @@ func.func @real_conflict_across_factors_diff_tensors_size(
+ 
+ // TODO(b/379279614): support ops with multiple results.
+ 
++// TODO(b/379279617): After `ManualComputationOp` implements the
++// `ShardableDataFlowOpInterface`, add a test for manual computation with
++// manual axes.
++
+ // TODO(b/379279614): add test for while loop with multiple results, need to make
+ // sure the origin sharding info is preserved after sinking the dataflow edge
+ // ops.
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index de7b579..c0df38c 100644
+index c0df38c..95eedff 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "b214ca82daeece1568268ebc0fbcc2eaa649425b"
--    LLVM_SHA256 = "3894d536d9dcdae1c18df738cabd37a3ede1e2f7e10c335ba14ab71b07bdad5d"
-+    LLVM_COMMIT = "f67ba5855278401728413431216dda5d370ac2e0"
-+    LLVM_SHA256 = "11b0bf49f2cbf34b951ec940979290b57833bbccb74ea3a9ad379123ce229870"
+-    LLVM_COMMIT = "f67ba5855278401728413431216dda5d370ac2e0"
+-    LLVM_SHA256 = "11b0bf49f2cbf34b951ec940979290b57833bbccb74ea3a9ad379123ce229870"
++    LLVM_COMMIT = "92a15dd7482ff4e1fae7a07f888564e5b1d53eee"
++    LLVM_SHA256 = "f1db765cbe004140d66107cad99d7f19d37e0b74646bdba217d1135b3bb86cb2"
  
      tf_http_archive(
          name = name,
-diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index 5b7342a..642269b 100755
---- a/third_party/stablehlo/temporary.patch
-+++ b/third_party/stablehlo/temporary.patch
-@@ -1,3 +1,18 @@
-+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
-+--- stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
-++++ stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
-+@@ -7,9 +7,9 @@
-+   %1 = builtin.unrealized_conversion_cast %arg0 : memref<*xui16> to memref<*xi16>
-+   %2 = memref.cast %1 : memref<*xi16> to memref<i16>
-+   %3 = builtin.unrealized_conversion_cast %2 : memref<i16> to memref<ui16>
-+-  %4 = bufferization.to_tensor %3 : memref<ui16>
-++  %4 = bufferization.to_tensor %3 : memref<ui16> to tensor<ui16>
-+   %5 = builtin.unrealized_conversion_cast %4 : tensor<ui16> to tensor<i16>
-+-  %6 = bufferization.to_memref %5 : memref<i16>
-++  %6 = bufferization.to_memref %5 : tensor<i16> to memref<i16>
-+   %7 = builtin.unrealized_conversion_cast %6 : memref<i16> to memref<ui16>
-+   func.return %7 : memref<ui16>
-+ }
- diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
- --- stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
- +++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir
