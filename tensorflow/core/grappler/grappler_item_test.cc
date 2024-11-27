@@ -14,9 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/grappler_item.h"
+
+#include <algorithm>
+#include <vector>
+
+#include "absl/log/check.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/platform/test.h"
 

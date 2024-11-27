@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_GRAPH_TOPOLOGY_VIEW_H_
 #define TENSORFLOW_CORE_GRAPPLER_GRAPH_TOPOLOGY_VIEW_H_
 
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/graph_view.h"
 
