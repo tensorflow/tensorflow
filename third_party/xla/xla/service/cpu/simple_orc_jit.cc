@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
+#include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/orc_jit_memory_mapper.h"
 #include "xla/service/cpu/runtime_conv2d.h"
@@ -101,42 +102,14 @@ extern "C" uint16_t __truncdfbf2(double);
 
 namespace xla::cpu {
 
-using tsl::port::CPUFeature;
-
-/*static*/ std::unique_ptr<llvm::TargetMachine>
-SimpleOrcJIT::InferTargetMachineForJIT(
-    const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
-    absl::string_view max_cpu_isa) {
-  std::optional<CPUFeature> max_feature = CpuFeatureFromString(max_cpu_isa);
-  auto result = DetectMachineAttributes(max_feature);
-  llvm::SmallVector<std::string, 0> llvm_attrs(result.features.begin(),
-                                               result.features.end());
-  // If `max_feature` is newer than the host CPU, we should keep the host CPU
-  // name, e.g., we don't want to set the target CPU to Skylake when we are on
-  // a Broadwell host.
-  std::string_view target_cpu =
-      result.num_filtered_features
-          ? CpuTargetFromMaxFeature(*max_feature)
-          : std::string_view(llvm::sys::getHostCPUName());
-
-  std::unique_ptr<llvm::TargetMachine> target_machine(
-      llvm::EngineBuilder()
-          .setTargetOptions(target_options)
-          .setOptLevel(opt_level)
-          .selectTarget(
-              /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
-              /*MCPU=*/target_cpu,
-              /*MAttrs=*/llvm_attrs));
-  CHECK(target_machine != nullptr);
-  return target_machine;
-}
-
 static IrCompiler::TargetMachineBuilder CreateTargetMachineBuilder(
     llvm::TargetOptions target_options, llvm::CodeGenOptLevel opt_level,
     absl::string_view max_cpu_isa) {
   return [target_options, opt_level, max_cpu_isa]() {
-    return SimpleOrcJIT::InferTargetMachineForJIT(target_options, opt_level,
-                                                  max_cpu_isa);
+    auto target_machine = JitCompiler::InferTargetMachine(
+        target_options, opt_level, CpuFeatureFromString(max_cpu_isa));
+    CHECK_OK(target_machine) << "Failed to infer target machine";
+    return std::move(*target_machine);
   };
 }
 

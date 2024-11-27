@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -25,17 +26,33 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/Support/CodeGen.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "xla/backends/cpu/codegen/function_library.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 
 // Jit compiler that compiles LLVM modules added to it into a FunctionLibrary.
 // Jit-compiled function library will be backed by multiple dynamic libraries
 // compiled from LLVM modules using LLVM ORC APIs.
+//
+// JitCompiler is an opinionated JIT compiler built on top of LLVM ORC stack,
+// optimized for compiling LLVM modules produced by XLA:CPU. LLVM itself
+// has another pre-fabricated ORC JIT stack called `llvm::orc::LLJIT`.
 class JitCompiler {
  public:
   virtual ~JitCompiler() = default;
+
+  // Infers the `llvm::TargetMachine` for the current host. If `max_cpu_feature`
+  // is provided, it will be used to constrain the set of features that LLVM
+  // codegen (instruction selection) is allowed to use, e.g. it can be used to
+  // explicitly disable certain AVX512 extensions, in case the compiled
+  // executable will be serialized and later loaded on a different machine.
+  static absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
+  InferTargetMachine(const llvm::TargetOptions& target_options,
+                     llvm::CodeGenOptLevel opt_level,
+                     std::optional<tsl::port::CPUFeature> max_cpu_feature);
 
   struct Options {
     // Maximum CPU instruction set for wich the compiler should generate code.

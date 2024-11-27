@@ -17,15 +17,24 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/Support/CodeGen.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/Host.h"
+#include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/function_library.h"
 #include "xla/util.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 namespace {
@@ -50,6 +59,38 @@ class LlvmOrcFunctionLibrary : public FunctionLibrary {
 };
 
 }  // namespace
+
+absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
+JitCompiler::InferTargetMachine(
+    const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
+    std::optional<tsl::port::CPUFeature> max_cpu_feature) {
+  // Detect machine attributes for the target CPU.
+  auto result = DetectMachineAttributes(max_cpu_feature);
+  llvm::SmallVector<std::string, 0> attrs(result.features.begin(),
+                                          result.features.end());
+
+  // If `max_cpu_feature` is newer than the host CPU, we should keep the host
+  // CPU name, e.g., we don't want to set the target CPU to Skylake when we are
+  // on a Broadwell host.
+  std::string_view cpu = result.num_filtered_features
+                             ? CpuTargetFromMaxFeature(*max_cpu_feature)
+                             : std::string_view(llvm::sys::getHostCPUName());
+
+  std::unique_ptr<llvm::TargetMachine> target_machine(
+      llvm::EngineBuilder()
+          .setTargetOptions(target_options)
+          .setOptLevel(opt_level)
+          .selectTarget(
+              /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
+              /*MCPU=*/cpu,
+              /*MAttrs=*/attrs));
+
+  if (target_machine == nullptr) {
+    return Internal("Failed to create target machine for CPU %s", cpu);
+  }
+
+  return std::move(target_machine);
+}
 
 absl::StatusOr<std::unique_ptr<JitCompiler>> JitCompiler::Create(
     llvm::TargetOptions target_options, llvm::CodeGenOptLevel opt_level,

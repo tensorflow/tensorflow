@@ -114,12 +114,6 @@ class SimpleOrcJIT : public llvm::JITEventListener {
 
   llvm::TargetMachine* target_machine() const { return target_machine_.get(); }
 
-  // Creates an llvm::TargetMachine suitable for JITting code that will run on
-  // the current machine.
-  static std::unique_ptr<llvm::TargetMachine> InferTargetMachineForJIT(
-      const llvm::TargetOptions& target_options,
-      llvm::CodeGenOptLevel opt_level, absl::string_view max_cpu_isa);
-
   int64_t SizeOfGeneratedCodeInBytes() const {
     return size_of_generated_code_in_bytes_;
   }
