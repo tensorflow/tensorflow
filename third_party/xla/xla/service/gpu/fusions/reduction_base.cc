@@ -49,14 +49,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-int RowReductionGetRowsPerWarp(int reduced_dimension_size) {
-  if (WarpSize() % reduced_dimension_size != 0 ||
-      reduced_dimension_size >= WarpSize()) {
-    return 1;
-  }
-  return WarpSize() / reduced_dimension_size;
-}
-
 int GetVectorSize(const HloFusionAnalysis& analysis,
                   const ReductionDimensions& reduction_dimensions,
                   int num_threads, Vector3 reduction_tiling) {

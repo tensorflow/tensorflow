@@ -42,8 +42,6 @@ struct ReductionGroups {
 ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
                                         bool for_mlir);
 
-int RowReductionGetRowsPerWarp(int reduced_dimension_size);
-
 int GetVectorSize(const HloFusionAnalysis& analysis,
                   const ReductionDimensions& reduction_dimensions,
                   int num_threads, Vector3 reduction_tiling);
