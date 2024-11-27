@@ -63,6 +63,7 @@
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/prof_util.h"
 #include "xla/python/ifrt_proxy/common/proto_util.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
@@ -102,12 +103,24 @@ MakeStringArrayFromHostBuffer(
        string_host_buffer = std::move(string_host_buffer)]() {});
 }
 
+// Returns a string_view that is guaranteed to be valid and constant until this
+// process dies.
+absl::string_view GetRequestName(const IfrtRequest* req) {
+  if (IfrtRequest::descriptor() == nullptr) return "unknown";
+  if (req == nullptr) return "unknown";
+  auto* field =
+      IfrtRequest::descriptor()->FindFieldByNumber(req->request_case());
+  if (field == nullptr) return "unknown";
+  return field->name();
+}
+
 }  // namespace
 
 class IfrtBackend::InOrderRequestsProcessor {
   struct Entry {
     std::unique_ptr<IfrtRequest> req;
     Future<Response>::Promise promise;
+    XFlowHelper xflow;
   };
 
  public:
@@ -145,6 +158,7 @@ class IfrtBackend::InOrderRequestsProcessor {
   }
 
   Future<Response> Push(std::unique_ptr<IfrtRequest> request) {
+    VLOG(3) << "Enqueuing " << request->ShortDebugString();
     auto promise = Future<Response>::CreatePromise();
     Future<Response> result(promise);
     absl::MutexLock l(&mu_);
@@ -153,9 +167,9 @@ class IfrtBackend::InOrderRequestsProcessor {
           "InOrderRequestsProcessor already stopped: ", *shutdown_msg_)));
       return result;
     }
-    Entry entry;
-    entry.req = std::move(request);
-    entry.promise = std::move(promise);
+    Entry entry{/*req=*/std::move(request), /*promise=*/std::move(promise),
+                XFlowHelper(GetRequestName(request.get()))};
+    entry.xflow.InstantActivity<XFlowHelper::kSend>();
     entries_.push_back(std::move(entry));
     return result;
   }
@@ -179,10 +193,23 @@ class IfrtBackend::InOrderRequestsProcessor {
 
   void Loop() {
     while (auto entry = Pop()) {
+      uint64_t op_id = entry->req->request_metadata().op_id();
+      VLOG(3) << "Processing " << entry->req->ShortDebugString();
+      auto span = entry->xflow.Span<XFlowHelper::kRecvSend>();
       parent_->ProcessInternal(std::move(entry->req))
-          .OnReady(
-              [p = std::move(entry->promise)](
-                  absl::StatusOr<Response> r) mutable { p.Set(std::move(r)); });
+          .OnReady([p = std::move(entry->promise),
+                    xflow = std::move(entry->xflow),
+                    op_id](absl::StatusOr<Response> r) mutable {
+            auto span = xflow.Span<XFlowHelper::kRecv>();
+            if (!r.ok()) {
+              VLOG(3) << "Responding " << op_id << ": " << r.status();
+
+            } else {
+              VLOG(3) << "Responding " << op_id << ": "
+                      << (*r)->ShortDebugString();
+            }
+            p.Set(std::move(r));
+          });
     }
   }
 

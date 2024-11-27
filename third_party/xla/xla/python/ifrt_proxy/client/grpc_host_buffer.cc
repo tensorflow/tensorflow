@@ -35,6 +35,7 @@
 #include "xla/python/ifrt_proxy/common/prof_util.h"
 #include "xla/tsl/protobuf/status.pb.h"
 #include "tsl/platform/unbounded_work_queue.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace ifrt {
@@ -71,7 +72,7 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
                                           absl::string_view data) {
   auto promise = Future<>::CreatePromise();
 
-  XFlowHelper flow("GrpcClientHostBufferStore::Store");
+  XFlowHelper flow("GrpcClientHostBufferStore::StoreAsync");
   flow.InstantActivity<XFlowHelper::kSend>();
 
   std::unique_ptr<std::string> buffered_data;
@@ -82,6 +83,8 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
     metadata.set_session_id(session_id_);
     metadata.set_handle(handle);
     metadata.set_buffer_size(data.size());
+    VLOG(3) << "GrpcClientHostBufferStore::Store start "
+            << metadata.ShortDebugString();
 
     ::grpc::ClientContext context;
     context.AddMetadata("ifrt-proxy-grpc-host-buffer-store-metadata-bin",
@@ -90,17 +93,25 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
     GrpcHostBufferStoreResponse response;
     auto writer = stub_->HostBufferStore(&context, &response);
 
-    for (int64_t offset = 0; offset < data.size(); offset += kChunkSize) {
-      GrpcHostBufferStoreRequest request;
-      SetDataFromStringView(request, data.substr(offset, kChunkSize));
-      writer->Write(request);
+    {
+      tsl::profiler::TraceMe trace_me_send_data([size = data.size()]() {
+        return tsl::profiler::TraceMeEncode(
+            "GrpcClientHostBufferStore::StoreAsync_Send", {{"size", size}});
+      });
+      for (int64_t offset = 0; offset < data.size(); offset += kChunkSize) {
+        GrpcHostBufferStoreRequest request;
+        SetDataFromStringView(request, data.substr(offset, kChunkSize));
+        writer->Write(request);
+      }
+
+      if (!writer->WritesDone()) {
+        promise.Set(
+            absl::InternalError("Failed to write all host buffer chunks"));
+      }
     }
 
-    if (!writer->WritesDone()) {
-      promise.Set(
-          absl::InternalError("Failed to write all host buffer chunks"));
-    }
-
+    VLOG(3) << "GrpcClientHostBufferStore::Store done "
+            << metadata.ShortDebugString();
     promise.Set(xla::FromGrpcStatus(writer->Finish()));
   });
   return Future<>(promise);
@@ -110,11 +121,14 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
                                           const absl::Cord& data) {
   // The current implementation synchronously sends host buffer chunks. We may
   // consider making it asynchronous if the caller can leverage such asynchrony.
+  tsl::profiler::TraceMe traceme("GrpcClientHostBufferStore::StoreSync");
 
   GrpcHostBufferStoreMetadata metadata;
   metadata.set_session_id(session_id_);
   metadata.set_handle(handle);
   metadata.set_buffer_size(data.size());
+  VLOG(3) << "GrpcClientHostBufferStore::Store start "
+          << metadata.ShortDebugString();
 
   ::grpc::ClientContext context;
   context.AddMetadata("ifrt-proxy-grpc-host-buffer-store-metadata-bin",
@@ -123,17 +137,25 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
   GrpcHostBufferStoreResponse response;
   auto writer = stub_->HostBufferStore(&context, &response);
 
-  for (absl::string_view chunk : data.Chunks()) {
-    for (int64_t offset = 0; offset < chunk.size(); offset += kChunkSize) {
-      GrpcHostBufferStoreRequest request;
-      SetDataFromStringView(request, chunk.substr(offset, kChunkSize));
-      writer->Write(request);
+  {
+    tsl::profiler::TraceMe trace_me_send_data([size = data.size()]() {
+      return tsl::profiler::TraceMeEncode(
+          "GrpcClientHostBufferStore::StoreAsync_Send", {{"size", size}});
+    });
+    for (absl::string_view chunk : data.Chunks()) {
+      for (int64_t offset = 0; offset < chunk.size(); offset += kChunkSize) {
+        GrpcHostBufferStoreRequest request;
+        SetDataFromStringView(request, chunk.substr(offset, kChunkSize));
+        writer->Write(request);
+      }
+    }
+    if (!writer->WritesDone()) {
+      return Future<>(
+          absl::InternalError("Failed to write all host buffer chunks"));
     }
   }
-  if (!writer->WritesDone()) {
-    return Future<>(
-        absl::InternalError("Failed to write all host buffer chunks"));
-  }
+  VLOG(3) << "GrpcClientHostBufferStore::Store done "
+          << metadata.ShortDebugString();
 
   return Future<>(xla::FromGrpcStatus(writer->Finish()));
 }
@@ -141,10 +163,16 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
 Future<absl::Cord> GrpcClientHostBufferStore::Lookup(uint64_t handle) {
   auto promise = Future<absl::Cord>::CreatePromise();
 
-  work_queue_->Schedule([this, handle, promise]() mutable -> void {
+  XFlowHelper flow("GrpcClientHostBufferStore::Lookup");
+  flow.InstantActivity<XFlowHelper::kSend>();
+
+  work_queue_->Schedule([this, handle, promise, flow]() mutable -> void {
+    auto span = flow.Span<XFlowHelper::kRecv>();
     GrpcHostBufferLookupRequest request;
     request.set_handle(handle);
     request.set_session_id(session_id_);
+    VLOG(3) << "GrpcClientHostBufferStore::Lookup start "
+            << request.ShortDebugString();
 
     ::grpc::ClientContext context;
 
@@ -163,6 +191,8 @@ Future<absl::Cord> GrpcClientHostBufferStore::Lookup(uint64_t handle) {
     } else {
       promise.Set(status);
     }
+    VLOG(3) << "GrpcClientHostBufferStore::Lookup done "
+            << request.ShortDebugString();
   });
 
   return Future<absl::Cord>(promise);
@@ -172,11 +202,16 @@ Future<> GrpcClientHostBufferStore::Delete(uint64_t handle) {
   GrpcHostBufferDeleteRequest request;
   request.set_session_id(session_id_);
   request.set_handle(handle);
+  VLOG(3) << "GrpcClientHostBufferStore::Delete start "
+          << request.ShortDebugString();
 
   ::grpc::ClientContext context;
   GrpcHostBufferDeleteResponse response;
-  return Future<>(xla::FromGrpcStatus(
-      stub_->HostBufferDelete(&context, request, &response)));
+  auto result = xla::FromGrpcStatus(
+      stub_->HostBufferDelete(&context, request, &response));
+  VLOG(3) << "GrpcClientHostBufferStore::Delete done "
+          << request.ShortDebugString();
+  return Future<>(result);
 }
 
 }  // namespace proxy

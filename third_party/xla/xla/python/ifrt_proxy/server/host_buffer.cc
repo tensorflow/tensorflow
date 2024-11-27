@@ -21,6 +21,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -33,6 +34,7 @@ namespace ifrt {
 namespace proxy {
 
 absl::Status HostBufferStore::Store(uint64_t handle, std::string data) {
+  VLOG(3) << "HostBuffer::Store " << handle << " " << data.size();
   absl::MutexLock lock(&mu_);
   if (shutdown_msg_.has_value()) {
     return absl::CancelledError(*shutdown_msg_);
@@ -49,27 +51,41 @@ absl::Status HostBufferStore::Store(uint64_t handle, std::string data) {
 
 absl::StatusOr<std::shared_ptr<const std::string>> HostBufferStore::Lookup(
     uint64_t handle, absl::Duration timeout) {
-  absl::MutexLock lock(&mu_);
-  auto cond = [&]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
-    return shutdown_msg_.has_value() || buffers_.contains(handle);
-  };
-  if (!cond()) {
-    tsl::profiler::TraceMe traceme("HostBufferStore::Lookup.Wait");
-    mu_.AwaitWithTimeout(absl::Condition(&cond), timeout);
+  VLOG(3) << "HostBufferStore::Lookup " << handle
+          << " start, timeout=" << timeout;
+  tsl::profiler::TraceMe traceme("HostBufferStore::Lookup");
+  auto result = [&]() -> absl::StatusOr<std::shared_ptr<const std::string>> {
+    absl::MutexLock lock(&mu_);
+    auto cond = [&]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
+      return shutdown_msg_.has_value() || buffers_.contains(handle);
+    };
+    if (!cond()) {
+      tsl::profiler::TraceMe traceme("HostBufferStore::Lookup.Wait");
+      mu_.AwaitWithTimeout(absl::Condition(&cond), timeout);
+    }
+    if (shutdown_msg_) {
+      return absl::CancelledError(shutdown_msg_.value());
+    }
+    const auto it = buffers_.find(handle);
+    if (it == buffers_.end()) {
+      return absl::NotFoundError(
+          absl::StrCat("Host buffer handle ", handle, " not found"));
+    }
+    return it->second;
+  }();
+  if (result.ok()) {
+    VLOG(3) << "HostBufferStore::Lookup " << handle
+            << " done, size=" << (*result == nullptr ? -1 : (*result)->size());
+  } else {
+    VLOG(3) << "HostBufferStore::Lookup " << handle
+            << " done: " << result.status();
   }
-  if (shutdown_msg_) {
-    return absl::CancelledError(shutdown_msg_.value());
-  }
-  const auto it = buffers_.find(handle);
-  if (it == buffers_.end()) {
-    return absl::NotFoundError(
-        absl::StrCat("Host buffer handle ", handle, " not found"));
-  }
-  return it->second;
+  return result;
 }
 
 absl::Status HostBufferStore::Delete(uint64_t handle) {
   absl::MutexLock lock(&mu_);
+  VLOG(3) << "HostBufferStore::Delete " << handle;
   if (buffers_.erase(handle) == 0) {
     return absl::NotFoundError(
         absl::StrCat("Host buffer handle ", handle, " not found"));
@@ -78,6 +94,7 @@ absl::Status HostBufferStore::Delete(uint64_t handle) {
 }
 
 void HostBufferStore::Shutdown(std::string reason) {
+  VLOG(0) << "HostBufferStore::Shutdown " << reason;
   absl::MutexLock lock(&mu_);
   if (!shutdown_msg_.has_value()) {
     shutdown_msg_ = std::move(reason);
