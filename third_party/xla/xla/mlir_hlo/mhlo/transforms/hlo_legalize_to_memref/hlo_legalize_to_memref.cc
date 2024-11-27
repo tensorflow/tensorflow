@@ -281,6 +281,21 @@ struct DynamicBroadcastInDimOpInterface
   }
 };
 
+static bufferization::BufferizationOptions getPartialBufferizationOptions() {
+  bufferization::BufferizationOptions options;
+  options.allowUnknownOps = true;
+  options.copyBeforeWrite = true;
+  options.enforceAliasingInvariants = false;
+  options.unknownTypeConverterFn =
+      [](Value value, Attribute memorySpace,
+         const bufferization::BufferizationOptions &options) {
+        return bufferization::getMemRefTypeWithStaticIdentityLayout(
+            cast<TensorType>(value.getType()), memorySpace);
+      };
+  options.opFilter.allowDialect<bufferization::BufferizationDialect>();
+  return options;
+}
+
 struct HloLegalizeToMemrefPass
     : public impl::HloLegalizeToMemrefPassBase<HloLegalizeToMemrefPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -291,7 +306,7 @@ struct HloLegalizeToMemrefPass
  public:
   void runOnOperation() override {
     bufferization::BufferizationOptions options =
-        bufferization::getPartialBufferizationOptions();
+        getPartialBufferizationOptions();
     options.opFilter.allowDialect<mhlo::MhloDialect>();
     if (failed(bufferizeOp(getOperation(), options))) signalPassFailure();
   }

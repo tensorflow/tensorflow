@@ -96,8 +96,7 @@ static Value materializeToTensor(OpBuilder& builder, TensorType type,
 }
 
 // TODO(pifon): Remove as soon as https://reviews.llvm.org/D93126 is landed.
-class CustomBufferizeTypeConverter
-    : public bufferization::BufferizeTypeConverter {
+class CustomBufferizeTypeConverter : public mlir::TypeConverter {
  public:
   CustomBufferizeTypeConverter() {
     // Keep all types unchanged.
@@ -112,6 +111,28 @@ class CustomBufferizeTypeConverter
     });
     addArgumentMaterialization(materializeToTensor);
     addSourceMaterialization(materializeToTensor);
+    addTargetMaterialization([](OpBuilder& builder, BaseMemRefType type,
+                                ValueRange inputs, Location loc) -> Value {
+      assert(inputs.size() == 1 && "expected exactly one input");
+      if (auto inputType = dyn_cast<MemRefType>(inputs[0].getType())) {
+        // MemRef to MemRef cast.
+        assert(inputType != type && "expected different types");
+        // Ranked to unranked casts must be explicit.
+        auto rankedDestType = dyn_cast<MemRefType>(type);
+        if (!rankedDestType) return nullptr;
+        bufferization::BufferizationOptions options;
+        options.bufferAlignment = 0;
+        FailureOr<Value> replacement = castOrReallocMemRefValue(
+            builder, inputs[0], rankedDestType, options);
+        if (failed(replacement)) return nullptr;
+        return *replacement;
+      }
+      if (isa<TensorType>(inputs[0].getType())) {
+        // Tensor to MemRef cast.
+        return builder.create<bufferization::ToMemrefOp>(loc, type, inputs[0]);
+      }
+      llvm_unreachable("only tensor/memref input types supported");
+    });
     addTargetMaterialization([](OpBuilder& builder, BaseMemRefType type,
                                 ValueRange inputs, Location loc) -> Value {
       assert(inputs.size() == 1);
@@ -129,6 +150,21 @@ class CustomBufferizeTypeConverter
     });
   }
 };
+
+static bufferization::BufferizationOptions getPartialBufferizationOptions() {
+  bufferization::BufferizationOptions options;
+  options.allowUnknownOps = true;
+  options.copyBeforeWrite = true;
+  options.enforceAliasingInvariants = false;
+  options.unknownTypeConverterFn =
+      [](Value value, Attribute memorySpace,
+         const bufferization::BufferizationOptions& options) {
+        return bufferization::getMemRefTypeWithStaticIdentityLayout(
+            cast<TensorType>(value.getType()), memorySpace);
+      };
+  options.opFilter.allowDialect<bufferization::BufferizationDialect>();
+  return options;
+}
 
 struct ComputeOpAndFuncBufferizePass
     : public impl::ComputeOpAndFuncBufferizePassBase<
@@ -150,7 +186,7 @@ struct ComputeOpAndFuncBufferizePass
     // Bufferize ops using BufferizableOpInterface. This could be switched to
     // One-Shot Bufferize in the future.
     bufferization::BufferizationOptions options =
-        bufferization::getPartialBufferizationOptions();
+        getPartialBufferizationOptions();
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
     options.opFilter.allowDialect<bufferization::BufferizationDialect,
@@ -190,7 +226,7 @@ struct ComputeOpAndFuncBufferizePass
     populateReturnOpTypeConversionPattern(patterns, converter);
 
     // Configure legality and structural patterns.
-    bufferization::populateBufferizeMaterializationLegality(target);
+    target.addLegalOp<bufferization::ToTensorOp, bufferization::ToMemrefOp>();
     scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
                                                          target);
 
@@ -323,7 +359,7 @@ struct FinalBufferizePass
     // Bufferize ops using BufferizableOpInterface. This could be switched to
     // One-Shot Bufferize in the future.
     bufferization::BufferizationOptions options =
-        bufferization::getPartialBufferizationOptions();
+        getPartialBufferizationOptions();
     options.bufferAlignment = alignment_;
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
