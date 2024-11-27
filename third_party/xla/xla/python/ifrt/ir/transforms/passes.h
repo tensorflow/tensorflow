@@ -73,6 +73,9 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtRemoveIfrtAttrsPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtRemoveAttrsFromOtherDialectsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtLowerMpmdReshardToCallPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

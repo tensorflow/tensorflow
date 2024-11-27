@@ -41,6 +41,7 @@ cc_library(
         "ifrt_outline_atom_program_to_module_pass.cc",
         "ifrt_populate_atom_program_metadata_pass.cc",
         "ifrt_precompile_atom_program_preprocessing_pass.cc",
+        "ifrt_remove_attrs_from_other_dialects_pass.cc",
         "ifrt_remove_ifrt_attrs_pass.cc",
         "ifrt_reshard_to_copy_arrays_pass.cc",
         "ifrt_verify_bound_external_loaded_executable_pass.cc",

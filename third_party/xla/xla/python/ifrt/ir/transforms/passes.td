@@ -374,6 +374,16 @@ module {
   let constructor = "CreateIfrtRemoveIfrtAttrsPass()";
 }
 
+def IfrtRemoveAttrsFromOtherDialectsPass :
+    Pass<"ifrt-remove-attrs-from-other-dialects", "mlir::ModuleOp"> {
+  let summary = "Remove attrs from other dialects in IFRT functions";
+  let description = [{
+Remove attributes that are not from IFRT or Builtin dialect from IFRT functions.
+Does not modify atom programs.
+  }];
+  let constructor = "CreateIfrtRemoveAttrsFromOtherDialectsPass()";
+}
+
 def IfrtLowerMpmdReshardToCallPass :
     Pass<"ifrt-lower-mpmd-reshard-to-call", "mlir::ModuleOp"> {
   let summary = "Lowers MPMD `ifrt.Reshard` to `ifrt.Call`";

@@ -67,6 +67,7 @@ void CreateIfrtToVersionedPipeline(mlir::OpPassManager& pm,
                                    std::string ifrt_target_version,
                                    std::string vhlo_target_version,
                                    IfrtIrProgramProto& ifrt_ir_program) {
+  pm.addPass(CreateIfrtRemoveAttrsFromOtherDialectsPass());
   pm.addPass(CreateIfrtAtomProgramsToVhloPass(
       ifrt_ir_program.mutable_atom_programs(), std::move(vhlo_target_version)));
   pm.addPass(createIfrtLegalizeToVifrtPass());
