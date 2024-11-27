@@ -531,7 +531,7 @@ TEST_F(HorizontalLoopFusionTest, RMSPropLike) {
 
 TEST_F(HorizontalLoopFusionTest, DynamicUpdateSlice) {
   auto module = ParseAndReturnVerifiedModule(R"(
-  HloModule NegativeTestForDynamicUpdateSlice
+  HloModule DynamicUpdateSlice
 
   fusion.1 {
     p.0 = f16[5,9,10]{2,1,0} parameter(0)
@@ -574,6 +574,39 @@ TEST_F(HorizontalLoopFusionTest, DynamicUpdateSlice) {
   VLOG(2) << module->ToString();
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec{0, 0}));
+}
+
+TEST_F(HorizontalLoopFusionTest, DontFuseDynamicUpdateSlice) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule DynamicUpdateSliceFusionsShareParameter
+
+fused_dynamic_update_slice {
+  p0 = s32[3,3]{1,0} parameter(0)
+  p1 = pred[3,2]{1,0} parameter(1)
+  convert = s32[3,2]{1,0} convert(p1)
+  zero = s32[] constant(0)
+  ROOT dynamic-update-slice = s32[3,3]{1,0} dynamic-update-slice(p0, convert, zero, zero)
+}
+
+fused_dynamic_update_slice.1 {
+  p0 = s32[3,3]{1,0} parameter(0)
+  p1 = pred[2,3]{1,0} parameter(1)
+  convert = s32[2,3]{1,0} convert(p1)
+  zero = s32[] constant(0)
+  ROOT dynamic-update-slice = s32[3,3]{1,0} dynamic-update-slice(p0, convert, zero, zero)
+}
+
+ENTRY main {
+  param_0 = s32[3,3]{1,0} parameter(0)
+  param_1 = pred[2,3]{1,0} parameter(1)
+  param_2 = pred[3,2]{1,0} parameter(2)
+  loop_dynamic_update_slice_fusion = s32[3,3]{1,0} fusion(param_0, param_2), kind=kLoop, calls=fused_dynamic_update_slice
+  loop_dynamic_update_slice_fusion.1 = s32[3,3]{1,0} fusion(param_0, param_1), kind=kLoop, calls=fused_dynamic_update_slice.1
+  ROOT tuple.11.0 = (s32[3,3]{1,0}, s32[3,3]{1,0}) tuple(loop_dynamic_update_slice_fusion.1, loop_dynamic_update_slice_fusion)
+}
+)"));
+  EXPECT_FALSE(
+      HorizontalLoopFusion{device_description_}.Run(module.get()).value());
 }
 
 TEST_F(HorizontalLoopFusionTest,
