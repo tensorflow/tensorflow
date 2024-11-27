@@ -218,6 +218,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/scatter_expander.h"
 #include "xla/service/gpu/transforms/scatter_slice_simplifier.h"
 #include "xla/service/gpu/transforms/softmax_rewriter_triton.h"
+#include "xla/service/gpu/transforms/sort_rewriter.h"
 #include "xla/service/gpu/transforms/stream_attribute_annotator.h"
 #include "xla/service/gpu/transforms/stream_attribute_async_wrapper.h"
 #include "xla/service/gpu/transforms/topk_specializer.h"
@@ -760,6 +761,10 @@ absl::Status RunOptimizationPasses(
   // Expand the sort op to support stable sorting if required.
   pipeline.AddPass<StableSortExpander>();
 
+  if (hlo_module->config().debug_options().xla_gpu_enable_cub_radix_sort()) {
+    pipeline.AddPass<SortRewriter>();
+  }
+
   se::GpuComputeCapability gpu_version =
       gpu_target_config.device_description.gpu_compute_capability();
 
@@ -1093,9 +1098,7 @@ void AddDoubleBufferingPasses(const HloModule& module,
 
 absl::Status RunPostFusionPasses(
     HloModule* hlo_module, const se::DeviceDescription& device_description,
-    int pointer_size,
-    std::function<absl::Status(HloPassPipeline*, const DebugOptions&)>
-        add_custom_kernel_replacement_passes) {
+    int pointer_size) {
   const DebugOptions& opts = hlo_module->config().debug_options();
 
   HloPassPipeline pipeline("post-fusion optimization");
@@ -1122,8 +1125,6 @@ absl::Status RunPostFusionPasses(
       /*pointer_size=*/pointer_size);
 
   pipeline.AddPass<AllReduceContiguous>();
-
-  TF_RETURN_IF_ERROR(add_custom_kernel_replacement_passes(&pipeline, opts));
 
   int32_t blueconnect_num_devices_per_host =
       hlo_module->config()
@@ -1374,10 +1375,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
                                      thread_pool.get_mutable(),
                                      ShapeSizeBytesFunction()));
   TF_RETURN_IF_ERROR(RunPostFusionPasses(
-      hlo_module, gpu_target_config.device_description, pointer_size_,
-      [this](HloPassPipeline* pipeline, const DebugOptions& debug_options) {
-        return AddCustomKernelReplacementPasses(pipeline, debug_options);
-      }));
+      hlo_module, gpu_target_config.device_description, pointer_size_));
   TF_RETURN_IF_ERROR(RunPostFusionCollectiveOptimizationPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
       hlo_module, layout_insensitive_algsimp_opts, gpu_version));
