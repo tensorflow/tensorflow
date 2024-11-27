@@ -171,43 +171,22 @@ def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
     OptionalParameter<"::mlir::StringAttr">:$memory_kind_attr);
 
   let builders = [
+    // Constructs an array with unspecified sharding.
     TypeBuilder<(ins
       "::mlir::RankedTensorType":$shape,
-      "::xla::ifrt::IfrtShardingAttrInterface":$sharding_attr,
-      "::llvm::ArrayRef<int>":$devices), [{
-        return Base::get(
-          $_ctxt, shape, sharding_attr,
-          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices),
-          /*memory_kind=*/nullptr);
-      }]>,
-    TypeBuilder<(ins
-      "::mlir::RankedTensorType":$shape,
-      "::llvm::ArrayRef<int>":$devices), [{
+      "::xla::ifrt::IfrtDevicesAttr":$devices_attr,
+      "::mlir::StringAttr":$memory_kind_attr), [{
         return Base::get(
           $_ctxt, shape, ::xla::ifrt::IfrtUnspecifiedShardingAttr::get($_ctxt),
-          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices),
-          /*memory_kind=*/nullptr);
+          devices_attr, memory_kind_attr);
       }]>,
     TypeBuilder<(ins
       "::mlir::RankedTensorType":$shape,
-      "::xla::ifrt::ShardingParam":$sharding,
-      "::llvm::ArrayRef<int>":$devices), [{
+      "::xla::ifrt::IfrtShardingParamAttr":$sharding_attr,
+      "::xla::ifrt::IfrtDevicesAttr":$devices_attr,
+      "::mlir::StringAttr":$memory_kind_attr), [{
         return Base::get(
-          $_ctxt, shape,
-          ::xla::ifrt::IfrtShardingParamAttr::get($_ctxt, sharding),
-          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices),
-          /*memory_kind=*/nullptr);
-      }]>,
-    TypeBuilder<(ins
-      "::mlir::RankedTensorType":$shape,
-      "::xla::ifrt::ShardingParam":$sharding,
-      "::llvm::ArrayRef<int>":$devices,
-      "::std::string":$memory_kind), [{
-        return Base::get(
-          $_ctxt, shape,
-          ::xla::ifrt::IfrtShardingParamAttr::get($_ctxt, sharding),
-          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices),
-          ::mlir::StringAttr::get($_ctxt, memory_kind));
+          $_ctxt, shape, sharding_attr, devices_attr, memory_kind_attr);
       }]>
   ];
 

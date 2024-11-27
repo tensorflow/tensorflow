@@ -513,7 +513,10 @@ IfrtCompileAndPropagateShardingsPass::PropagateShardings(
       callee.setArgAttr(idx, kHloShardingAttrName,
                         builder.getStringAttr(hlo_sharding.value().ToString()));
       auto new_array_type = builder.getType<IfrtArrayType>(
-          array_type.getShape(), input_shardings[idx], array_type.getDevices());
+          array_type.getShape(),
+          IfrtShardingParamAttr::get(builder.getContext(),
+                                     input_shardings[idx]),
+          array_type.getDevicesAttr(), array_type.getMemoryKindAttr());
       input.setType(new_array_type);
     }
   }
@@ -548,8 +551,10 @@ IfrtCompileAndPropagateShardingsPass::PropagateShardings(
     if (mlir::isa<IfrtUnspecifiedShardingAttr>(array_type.getShardingAttr())) {
       replace_call_op = true;
       auto new_array_type = builder.getType<IfrtArrayType>(
-          array_type.getShape(), output_shardings[idx],
-          array_type.getDevices());
+          array_type.getShape(),
+          IfrtShardingParamAttr::get(builder.getContext(),
+                                     output_shardings[idx]),
+          array_type.getDevicesAttr(), array_type.getMemoryKindAttr());
       new_call_op_result_types.push_back(new_array_type);
     } else {
       new_call_op_result_types.push_back(output.getType());
