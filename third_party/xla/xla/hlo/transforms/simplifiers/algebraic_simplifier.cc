@@ -3957,7 +3957,9 @@ absl::Status AlgebraicSimplifierVisitor::RewriteBatchPlusContractingAsReduce(
 
 bool AlgebraicSimplifierVisitor::SupportedDotPrecisionConfig(
     const PrecisionConfig& config) {
-  return config.algorithm() == PrecisionConfig::ALG_UNSET;
+  return config.algorithm() == PrecisionConfig::ALG_UNSET ||
+         // TODO(loislo): Fixes a failure on a test with CPU backend.
+         config.algorithm() == PrecisionConfig::ALG_DOT_F32_F32_F32;
 }
 
 absl::StatusOr<HloInstruction*>
