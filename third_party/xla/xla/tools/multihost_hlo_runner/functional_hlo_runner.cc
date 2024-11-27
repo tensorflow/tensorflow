@@ -332,11 +332,6 @@ absl::StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
     debug_options.set_xla_dump_hlo_as_proto(raw_options.xla_proto_dump_mode ==
                                             XlaProtoDumpMode::kDumpAsProto);
   }
-  // TODO(b/378832773) The flag is temporary, this line should be removed when
-  // default is changed / or flag is removed.
-  build_options.mutable_debug_options()->set_xla_pjrt_allow_auto_layout_in_hlo(
-      true);
-
   switch (raw_options.hlo_passes_mode) {
     case HloPassesMode::kRunXLABackendOnly:
       build_options.set_run_backend_only(true);
