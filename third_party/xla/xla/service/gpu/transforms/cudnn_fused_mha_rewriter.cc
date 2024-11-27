@@ -427,7 +427,13 @@ absl::StatusOr<bool> IsFlashAttention(
   int64_t hidden_dim = qkv_layout.hidden_dim;
   // start with most relaxed constraint
   bool is_seqlen_supported = (!is_training || (s_q % 2 == 0 && s_kv % 2 == 0));
-  bool is_hidden_dim_supported = hidden_dim <= 128 && hidden_dim % 8 == 0;
+  bool support_large_hidden_dim =
+      cc.IsAtLeastHopper() &&
+      IsComputeCapabilityAndCudnnSupported(
+          cc, cudnn_version, stream_executor::dnn::VersionInfo(9, 5, 0));
+  int64_t hidden_dim_max = support_large_hidden_dim ? 256 : 128;
+  bool is_hidden_dim_supported =
+      hidden_dim <= hidden_dim_max && hidden_dim % 8 == 0;
   bool is_flash_attention = is_seqlen_supported && is_hidden_dim_supported;
   if (!is_flash_attention) return false;
 
