@@ -18,7 +18,10 @@
 #include <stddef.h>
 
 #include <cstdint>
+#include <tuple>
+#include <utility>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"

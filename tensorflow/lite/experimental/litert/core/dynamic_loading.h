@@ -18,6 +18,7 @@
 #include <dlfcn.h>
 #include <stdlib.h>
 
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
