@@ -606,16 +606,6 @@ void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder) {
   }
 }
 
-llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
-                       llvm::IRBuilderBase* builder) {
-  auto size = rotand->getType()->getPrimitiveSizeInBits();
-  auto size_value = builder->getIntN(size, size);
-  auto mod = [=](llvm::Value* x) { return builder->CreateURem(x, size_value); };
-  return builder->CreateOr(
-      builder->CreateShl(rotand, mod(builder->CreateSub(size_value, rotor))),
-      builder->CreateLShr(rotand, mod(rotor)));
-}
-
 int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
   unsigned pointer_size = data_layout.getPointerSize();
   return ShapeUtil::ByteSizeOf(shape, pointer_size);
@@ -732,27 +722,6 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   }
 
   return function;
-}
-
-std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilderBase* b,
-                                                    llvm::Value* src0,
-                                                    llvm::Value* src1) {
-  CHECK_EQ(src0->getType()->getPrimitiveSizeInBits(), 32);
-  CHECK_EQ(src1->getType()->getPrimitiveSizeInBits(), 32);
-  llvm::Type* int64_ty = b->getInt64Ty();
-  src0 = b->CreateZExt(src0, int64_ty);
-  src1 = b->CreateZExt(src1, int64_ty);
-  return SplitInt64ToInt32s(b, b->CreateMul(src0, src1));
-}
-
-std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
-    llvm::IRBuilderBase* b, llvm::Value* value_64bits) {
-  CHECK_EQ(value_64bits->getType()->getPrimitiveSizeInBits(), 64);
-  llvm::Type* int32_ty = b->getInt32Ty();
-  llvm::Value* low_32bits = b->CreateTrunc(value_64bits, int32_ty);
-  llvm::Value* high_32bits =
-      b->CreateTrunc(b->CreateLShr(value_64bits, 32), int32_ty);
-  return std::make_pair(low_32bits, high_32bits);
 }
 
 unsigned GetGlobalMemoryAddressSpace() { return 1; }
