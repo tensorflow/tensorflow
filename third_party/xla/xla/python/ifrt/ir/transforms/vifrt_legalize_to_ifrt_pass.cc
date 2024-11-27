@@ -311,8 +311,10 @@ mlir::FailureOr<mlir::SymbolRefAttr> getCalleeSymbolRef(CallOpV1 call_op) {
   if (!callee_symbol_ref_str_attr) {
     return mlir::failure();
   }
-  std::vector<std::string> symbol_strs =
-      absl::StrSplit(callee_symbol_ref_str_attr.str(), absl::ByString("::@"));
+  // It is important to call `getValue()` on the `StringAttr` to get the
+  // unescaped string instead of the escaped string.
+  std::vector<std::string> symbol_strs = absl::StrSplit(
+      callee_symbol_ref_str_attr.getValue().str(), absl::ByString("::@"));
   if (symbol_strs.empty()) {
     return mlir::failure();
   }

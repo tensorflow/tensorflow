@@ -355,6 +355,19 @@ func.func @op_call(
   %1, %ctrl_1 = ifrt.Call @add_one::@main(%0) after %ctrl_0 on devices [0,1]
       : (!array_op_call) -> !array_op_call
 
+  // Verifies that escaped symbol attr is correctly handled.
+  // CHECK: %[[OUT2:.+]]:2 = "vifrt.CallV1"(%[[ARG0]])
+  // CHECK-SAME: <{
+  // CHECK-DAG: callee = "@escaped-module::@main"
+  // CHECK-DAG: devices = #vifrt<devices_v1[0, 1]>
+  // CHECK-DAG: donated_input_indices = array<i32>
+  // CHECK-DAG: io_aliases = []
+  // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
+  // CHECK-SAME: }>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1)
+  %2, %ctrl_2 = ifrt.Call @"escaped-module"::@main(%arg0) on devices [0,1]
+      : (!array_op_call) -> !array_op_call
+
   // Verifies that the donated input indices attribute is converted.
 
   // CHECK: "vifrt.CallV1"(%[[ARG0]])
@@ -366,7 +379,7 @@ func.func @op_call(
   // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1)
-  %2, %ctrl_2 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
+  %3, %ctrl_3 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
       {donated_input_indices=array<i32: 0>} : (!array_op_call) -> !array_op_call
 
   // Verifies that the io_aliases attribute is converted.
@@ -380,7 +393,7 @@ func.func @op_call(
   // CHECK-DAG: operandSegmentSizes = array<i32: 1, 0>
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">) -> (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<2x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default">, !vifrt.control_v1)
-  %3, %ctrl_3 = ifrt.Call @add_two::@main(%arg1) on devices [0,1]
+  %4, %ctrl_4 = ifrt.Call @add_two::@main(%arg1) on devices [0,1]
       {io_aliases=[array<i32: 0, 0>]} : (!array_op_call) -> !array_op_call
 
   return %1 : !array_op_call
@@ -390,6 +403,15 @@ func.func @op_call(
 module @add_one attributes {sym_visibility = "private"} {
   func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
+}
+
+// CHECK-NOT @"escaped-module"
+module @"escaped-module" attributes {sym_visibility = "private"} {
+  func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    %0 = stablehlo.constant dense<2> : tensor<2x2xi32>
     %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
     return %1 : tensor<2x2xi32>
   }
