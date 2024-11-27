@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
+#include "xla/service/gpu/fusions/transforms/passes.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/util.h"
@@ -66,7 +67,9 @@ using mlir::ValueRange;
 using mlir::scf::IfOp;
 
 struct RewritePredicatedInsert : mlir::OpRewritePattern<PredicatedInsertOp> {
-  using OpRewritePattern::OpRewritePattern;
+  RewritePredicatedInsert(mlir::MLIRContext* context,
+                          const LowerXlaGpuToScfPassOptions& options)
+      : OpRewritePattern(context) {}
 
   mlir::LogicalResult matchAndRewrite(
       PredicatedInsertOp op, mlir::PatternRewriter& rewriter) const override {
@@ -86,7 +89,9 @@ struct RewritePredicatedInsert : mlir::OpRewritePattern<PredicatedInsertOp> {
 };
 
 struct RewritePredicatedExtract : mlir::OpRewritePattern<PredicatedExtractOp> {
-  using OpRewritePattern::OpRewritePattern;
+  RewritePredicatedExtract(mlir::MLIRContext* context,
+                           const LowerXlaGpuToScfPassOptions& options)
+      : OpRewritePattern(context) {}
 
   mlir::LogicalResult matchAndRewrite(
       PredicatedExtractOp op, mlir::PatternRewriter& rewriter) const override {
@@ -106,15 +111,19 @@ struct RewritePredicatedExtract : mlir::OpRewritePattern<PredicatedExtractOp> {
 };
 
 struct RewriteShuffleReduce : mlir::OpRewritePattern<ShuffleReduceOp> {
-  using OpRewritePattern::OpRewritePattern;
+  const int64_t warp_size;
+
+  RewriteShuffleReduce(mlir::MLIRContext* context,
+                       const LowerXlaGpuToScfPassOptions& options)
+      : OpRewritePattern(context), warp_size(options.warp_size) {}
 
   mlir::LogicalResult matchAndRewrite(
       ShuffleReduceOp op, mlir::PatternRewriter& rewriter) const override {
     int max_distance =
         mlir::cast<mlir::IntegerAttr>(op->getAttr("max_distance")).getInt();
     // TODO(jreiffers): Do this in a verifier.
-    if (max_distance & (max_distance - 1) || max_distance >= WarpSize()) {
-      return op->emitOpError("max_distance must be a power of 2 < WarpSize()");
+    if (max_distance & (max_distance - 1) || max_distance >= warp_size) {
+      return op->emitOpError("max_distance must be a power of 2 < warp_size_");
     }
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -123,7 +132,7 @@ struct RewriteShuffleReduce : mlir::OpRewritePattern<ShuffleReduceOp> {
       namespace ml = mlir::LLVM;
       auto shuffle_32 = [&](Value v) {
         return b
-            .create<mlir::gpu::ShuffleOp>(v, distance, WarpSize(),
+            .create<mlir::gpu::ShuffleOp>(v, distance, warp_size,
                                           mlir::gpu::ShuffleMode::DOWN)
             .getShuffleResult();
       };
@@ -259,7 +268,9 @@ mlir::VectorType getThreadLevelVectorType(IndexedVectorType indexed_vector) {
 }
 
 struct RewriteMaterialize : mlir::OpRewritePattern<MaterializeOp> {
-  using OpRewritePattern::OpRewritePattern;
+  RewriteMaterialize(mlir::MLIRContext* context,
+                     const LowerXlaGpuToScfPassOptions& options)
+      : OpRewritePattern(context) {}
 
   mlir::LogicalResult matchAndRewrite(
       MaterializeOp op, mlir::PatternRewriter& rewriter) const override {
@@ -316,7 +327,9 @@ struct RewriteMaterialize : mlir::OpRewritePattern<MaterializeOp> {
 };
 
 struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
-  using OpRewritePattern::OpRewritePattern;
+  RewriteInsert(mlir::MLIRContext* context,
+                const LowerXlaGpuToScfPassOptions& options)
+      : OpRewritePattern(context) {}
 
   mlir::LogicalResult matchAndRewrite(
       InsertOp op, mlir::PatternRewriter& rewriter) const override {
@@ -368,16 +381,23 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
 class LowerXlaGpuToScfPass
     : public impl::LowerXlaGpuToScfPassBase<LowerXlaGpuToScfPass> {
  public:
+  explicit LowerXlaGpuToScfPass(const LowerXlaGpuToScfPassOptions& options)
+      : options_(options) {}
+
   void runOnOperation() override {
     auto* ctx = &getContext();
     mlir::RewritePatternSet patterns(ctx);
     patterns.add<RewritePredicatedInsert, RewritePredicatedExtract,
-                 RewriteShuffleReduce, RewriteMaterialize, RewriteInsert>(ctx);
+                 RewriteShuffleReduce, RewriteMaterialize, RewriteInsert>(
+        ctx, options_);
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
                                                         std::move(patterns)))) {
       signalPassFailure();
     }
   }
+
+ private:
+  const LowerXlaGpuToScfPassOptions options_;
 };
 
 class LowerXlaGpuLoopsToScfPass
@@ -396,8 +416,11 @@ class LowerXlaGpuLoopsToScfPass
 
 }  // namespace
 
-std::unique_ptr<::mlir::Pass> CreateLowerXlaGpuToScfPass() {
-  return std::make_unique<LowerXlaGpuToScfPass>();
+std::unique_ptr<::mlir::Pass> CreateLowerXlaGpuToScfPass(
+    const int64_t warp_size) {
+  LowerXlaGpuToScfPassOptions options;
+  options.warp_size = warp_size;
+  return std::make_unique<LowerXlaGpuToScfPass>(options);
 }
 
 std::unique_ptr<::mlir::Pass> CreateLowerXlaGpuLoopsToScfPass() {

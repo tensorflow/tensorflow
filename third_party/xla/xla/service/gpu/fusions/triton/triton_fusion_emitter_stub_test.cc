@@ -71,7 +71,7 @@ TEST(TritonStub, CallStubApi) {
 TEST(TritonStub, CallLegacyMatMulApis) {
   HloConstantInstruction constant(Literal{});
   auto adaptor = HloFusionAdaptor::ForInstruction(&constant);
-  EXPECT_FALSE(GetMatMulLaunchDimensions({}, *adaptor.get(), {}).ok());
+  EXPECT_FALSE(GetMatMulLaunchDimensions({}, *adaptor.get(), {}, {}).ok());
 
   mlir::MLIRContext context;
   mlir::OpBuilder builder(&context);

@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter_legacy_matmul.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
 // Compute the launch dimensions for the given Triton MatMul.
 absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
     const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
-    const TritonGemmConfig& config) {
+    const TritonGemmConfig& config, const se::DeviceDescription& device_info) {
   return absl::UnimplementedError("not supported for this build configuration");
 }
 

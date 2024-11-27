@@ -75,7 +75,6 @@ using mlir::func::ReturnOp;
 using mlir_converter::ApplyIndexing;
 
 constexpr int kNumRows = 4;
-constexpr int kBaseBlockSize = WarpSize();
 constexpr int kNumThreadsPerBlock = 128;
 constexpr int kMaxVectorizedBytes = 4;
 
@@ -86,7 +85,8 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
       transpose_(analysis.tiled_transpose()),
       permutation_(transpose_.permutation),
       input_shape_(
-          Permute(transpose_.dimensions, InversePermutation(permutation_))) {
+          Permute(transpose_.dimensions, InversePermutation(permutation_))),
+      base_block_size_(WarpSize(analysis_.device_info())) {
   ConstHloInstructionSet transposes_to_tile;
   int index = 0;
   int64_t shmem_usage = 0;
@@ -104,7 +104,7 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
         size *= input_shape_.back();
       }
       max_element_bytes = std::max(max_element_bytes, size);
-      shmem_usage += kBaseBlockSize * (kBaseBlockSize + 1) * size;
+      shmem_usage += base_block_size_ * (base_block_size_ + 1) * size;
       shmem_transpose_root_indices_.push_back(index);
     } else {
       side_output_roots_.push_back(&root.instruction());
@@ -118,12 +118,12 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
     vector_size_ = vector_size;
     block_sizes_.assign(input_shape_.size(), 1);
     if (MostMinorDimensionUnchanged()) {
-      block_size_ = kBaseBlockSize;
+      block_size_ = base_block_size_;
       block_sizes_.back() = vector_size_;
       block_sizes_[block_sizes_.size() - 2] = block_size_;
       block_sizes_[permutation_[block_sizes_.size() - 2]] = block_size_;
     } else {
-      block_size_ = kBaseBlockSize * vector_size_;
+      block_size_ = base_block_size_ * vector_size_;
       block_sizes_.back() = block_size_;
       block_sizes_[permutation_.back()] = block_size_;
     }

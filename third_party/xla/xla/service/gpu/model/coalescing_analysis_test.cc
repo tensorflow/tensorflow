@@ -78,8 +78,8 @@ class CoalescingTest : public HloTestBase {
     auto module = ParseAndReturnVerifiedModule(hlo_string).value();
     HloInstruction* root = module->entry_computation()->root_instruction();
     auto analysis = HloFusionAnalysis::Create(*root, device_info_);
-    return xla::gpu::IsReadCoalescedHeuristic(analysis.GetEmitterFusionKind(),
-                                              root->operand(0), root);
+    return xla::gpu::IsReadCoalescedHeuristic(
+        analysis.GetEmitterFusionKind(), device_info_, root->operand(0), root);
   }
 
  protected:

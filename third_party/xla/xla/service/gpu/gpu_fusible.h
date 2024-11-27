@@ -47,6 +47,8 @@ namespace gpu {
 // Invariant: After modifying or removing a fusion node, call Invalidate(node).
 class FusionInfoCache {
  public:
+  explicit FusionInfoCache(const se::DeviceDescription& device_info)
+      : device_info_(device_info) {}
   // Must be called after modifying or removing a fusion node (or other node
   // that's part of this cache).
   void Invalidate(const HloInstruction* instr) {
@@ -61,6 +63,8 @@ class FusionInfoCache {
   int64_t GetNumUnnestedReductions(const HloInstruction& instr);
 
  private:
+  const se::DeviceDescription& device_info_;
+
   absl::Mutex mutex_;
 
   absl::flat_hash_map<const HloInstruction*, int64_t> shared_memory_usage_;
@@ -102,23 +106,22 @@ bool TransposesMinorDimension(const HloInstruction* instr);
 
 // Whether `instr` is an input fusion rooted at a reduction-to-vector op or a
 // multi-output input fusion with at least one reduction-to-vector op root.
-bool IsReduceInputFusion(const HloInstruction& instr);
+bool IsReduceInputFusion(const HloInstruction& instr,
+                         const se::DeviceDescription& device_info);
 
 // Whether `instr` is fusible as root of a reduce input fusions, i.e. `instr`
 // is either an unfused reduction-to-vector op or a reduce input fusion.
-bool IsInputFusibleReduction(const HloInstruction& instr);
+bool IsInputFusibleReduction(const HloInstruction& instr,
+                             const se::DeviceDescription& device_info);
 
 // Whether `instr` is a nestable variadic reduction
 // or a loop fusion rooted with such.
-bool IsNestableVariadicReduction(const HloInstruction& instr);
+bool IsNestableVariadicReduction(const HloInstruction& instr,
+                                 const se::DeviceDescription& device_info);
 
 // Whether `instr` is a nestable variadic reduce-window
 // or a loop fusion rooted with such.
 bool IsNestableVariadicReduceWindow(const HloInstruction& instr);
-
-// Whether `instr` is a nestable variadic reduction
-// or a loop fusion rooted with such.
-bool IsNestableVariadicReduction(const HloInstruction& instr);
 
 // Whether `instr` is fusible as root of a scatter input fusions, i.e. `instr`
 // is either an unfused scatter op or a scatter input fusion.
@@ -138,13 +141,14 @@ FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
 // Returns the instruction that determines the emitter used for lowering,
 // sometimes referred to as "the real hero".
 const HloInstruction* GetRealHeroForMultiOutputFusion(
-    const HloInstruction& instr);
+    const HloInstruction& instr, const se::DeviceDescription& device_info);
 
 // Whether 'hero1' and 'hero2' are compatible if the two fusions containing
 // 'hero1' and 'hero2' are merged together. For example merging two fusions with
 // a reduction hero and a transpose here, respectively, does not work.
-FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
-                                         const HloInstruction* hero2);
+FusionDecision FusionHeroesAreCompatible(
+    const HloInstruction* hero1, const HloInstruction* hero2,
+    const se::DeviceDescription& device_info);
 
 // Whether instruction shapes are compatible for multi-output fusion, i.e.
 // whether the emitters support lowering the resulting fusion.
@@ -154,7 +158,8 @@ FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
 // input fusions only. It is up to the caller to ensure the instructions
 // themselves are fusible!
 FusionDecision ShapesCompatibleForMultiOutputFusion(
-    const HloInstruction& instr1, const HloInstruction& instr2);
+    const HloInstruction& instr1, const HloInstruction& instr2,
+    const se::DeviceDescription& device_info);
 
 // Whether fusing producer into consumer creates a scatter fusion that cannot be
 // handled by the scatter emitter.
@@ -164,14 +169,17 @@ FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
 // Whether the producer is a valid candidate for a multi-output fusion.
 // That is, the root tuple of the multi-output fusion will contain the results
 // of both, the producer and consumer.
-FusionDecision IsProducerMultiOutputFusible(const HloInstruction& producer);
+FusionDecision IsProducerMultiOutputFusible(
+    const HloInstruction& producer, const se::DeviceDescription& device_info);
 // Whether `instr` is a candidate for sibling fusion or as a consumer in
 // a producer-consumer multi-output fusion.
-bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
+bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr,
+                                      const se::DeviceDescription& device_info);
 
 // Determines the fusion kind to be used when fusing into `consumer`.
-HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
-                                            const HloInstruction& consumer);
+HloInstruction::FusionKind ChooseFusionKind(
+    const HloInstruction& producer, const HloInstruction& consumer,
+    const se::DeviceDescription& device_info);
 
 // Returns whether `consumer` is the only non-root user of `instr`.
 bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,

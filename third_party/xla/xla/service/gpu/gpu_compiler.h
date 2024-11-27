@@ -113,8 +113,13 @@ class GpuCompiler : public LLVMCompiler {
       const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
       se::StreamExecutor* executor);
 
-  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const {
-    return &FusionCanShareBufferHint;
+  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer(
+      const se::DeviceDescription& device_description) const {
+    return [&](const HloInstruction* user, const HloInstruction* operand,
+               const ShapeIndex& user_index) {
+      return FusionCanShareBufferHint(user, operand, user_index,
+                                      device_description);
+    };
   }
 
   virtual absl::StatusOr<bool> CanUseLinkModules(
@@ -207,8 +212,9 @@ class GpuCompiler : public LLVMCompiler {
   absl::Status SerializeAutotuneResultsToFile(
       const DebugOptions& debug_options);
 
-  absl::Status RunPreSchedulingPasses(HloModule* module,
-                                      se::StreamExecutor* stream_exec);
+  absl::Status RunPreSchedulingPasses(
+      HloModule* module, se::StreamExecutor* stream_exec,
+      const se::DeviceDescription& gpu_device_info);
   absl::Status RunCollectiveScheduleLinearizerPasses(
       HloModule* hlo_module, se::StreamExecutor* stream_exec);
 
@@ -233,7 +239,8 @@ class GpuCompiler : public LLVMCompiler {
       bool relocatable, const HloModule* debug_module,
       const CompileOptions& options) = 0;
 
-  absl::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
+  absl::Status PrepareHloModuleForIrEmitting(
+      HloModule* hlo_module, const se::DeviceDescription& device_description);
 
   virtual absl::StatusOr<std::vector<uint8_t>> LinkModules(
       const stream_executor::DeviceDescription& device_description,

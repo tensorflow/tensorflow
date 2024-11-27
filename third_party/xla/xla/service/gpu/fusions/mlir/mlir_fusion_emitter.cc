@@ -306,7 +306,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
 
   mlir::PassManager pm(&mlir_context);
   AddXlaGpuOpsOptimizationPasses(pm);
-  AddLoopTransformationPasses(pm);
+  AddLoopTransformationPasses(pm, device);
   AddLoweringPasses(pm, device);
   auto pipeline_status = RunPassPipeline(module.get(), pm, trace.get());
   if (trace) {
@@ -584,8 +584,10 @@ void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCSEPass());
 }
 
-void AddLoopTransformationPasses(mlir::OpPassManager& pm) {
-  pm.addNestedPass<FuncOp>(CreateLowerXlaGpuToScfPass());
+void AddLoopTransformationPasses(mlir::OpPassManager& pm,
+                                 const se::DeviceDescription& device) {
+  pm.addNestedPass<FuncOp>(
+      CreateLowerXlaGpuToScfPass(device.threads_per_warp()));
   pm.addNestedPass<FuncOp>(CreateFuseLoopsPass());
   pm.addPass(mlir::createInlinerPass({}, [&](mlir::OpPassManager& pm) {
     // CSE after inlining because inlining can introduce duplicates.

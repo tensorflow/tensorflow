@@ -318,6 +318,7 @@ TEST_F(HloFusionAnalysisTest, InvalidDevice) {
 
   stream_executor::GpuDeviceInfoProto device_info_proto;
   stream_executor::DeviceDescription device_info(device_info_proto);
+  device_info.set_threads_per_warp(32);
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis_fused =

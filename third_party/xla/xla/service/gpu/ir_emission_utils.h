@@ -64,7 +64,10 @@ inline constexpr int64_t kMaxBytesInMostMinorDimension = 8;
 bool IsMatrixMultiplication(const HloInstruction& dot);
 bool IsMatrixVectorMultiplication(const HloInstruction& dot);
 
-inline constexpr int64_t WarpSize() { return 32; }
+inline constexpr int64_t WarpSize(
+    const se::DeviceDescription& gpu_device_info) {
+  return gpu_device_info.threads_per_warp();
+}
 
 // Fusions that implemented with pre-compiled device kernels have
 // FusionBackendConfig.kind requel to this string.

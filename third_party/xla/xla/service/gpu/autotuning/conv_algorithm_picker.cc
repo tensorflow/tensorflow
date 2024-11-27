@@ -456,8 +456,7 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
 
   // Get canonical HLO.
   std::string canonical_hlo(
-      AutotuneCacheKey(config.GetExecutor()->GetDeviceDescription(), *instr)
-          .GetHlo());
+      AutotuneCacheKey(config.GetDeviceDescription(), *instr).GetHlo());
 
   TF_ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
 

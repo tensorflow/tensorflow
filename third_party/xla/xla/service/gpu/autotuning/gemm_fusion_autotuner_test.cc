@@ -407,6 +407,8 @@ GetPossibleMatmulAutotuneTritonConfigs(
   auto ccc = deviceless_proto.mutable_cuda_compute_capability();
   ccc->set_major(compute_capability.major);
   ccc->set_minor(compute_capability.minor);
+  deviceless_proto.set_core_count(100);
+  deviceless_proto.set_threads_per_warp(32);
   DevicelessConfig test_config{se::DeviceDescription{deviceless_proto}};
   AutotuneConfig autotune_config{test_config, debug_options};
   GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
@@ -1161,7 +1163,11 @@ ENTRY wais {
           compute_capability, GetToolkitVersion(), debug_options));
   for (const auto& config : configs) {
     int metadata_size = config.block_m * config.block_k / 16;
-    EXPECT_LE(config.num_warps * WarpSize(), metadata_size);
+    EXPECT_LE(
+        config.num_warps *
+            WarpSize(
+                backend().default_stream_executor()->GetDeviceDescription()),
+        metadata_size);
     EXPECT_GT(config.block_k, 16);  // kMinTileSize
   }
 }

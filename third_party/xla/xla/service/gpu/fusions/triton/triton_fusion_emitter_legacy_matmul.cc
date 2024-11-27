@@ -778,7 +778,8 @@ struct MatMulDims {
 struct MatMulLaunchConfig {
   explicit MatMulLaunchConfig(const TritonGemmConfig& config,
                               const HloDotInstruction& dot,
-                              const MatMulDims& dims);
+                              const MatMulDims& dims,
+                              const se::DeviceDescription& device_info);
 
   int64_t grid_m;
   int64_t grid_n;
@@ -875,7 +876,8 @@ struct MatMulLaunchConfig {
 
 MatMulLaunchConfig::MatMulLaunchConfig(const TritonGemmConfig& config,
                                        const HloDotInstruction& dot,
-                                       const MatMulDims& dims)
+                                       const MatMulDims& dims,
+                                       const se::DeviceDescription& device_info)
     : grid_m((dims.m + config.block_m - 1) / config.block_m),
       grid_n((dims.n + config.block_n - 1) / config.block_n) {
   int64_t batch_size = dims.lhs_noncontracting_split.value_or(
@@ -897,13 +899,13 @@ MatMulLaunchConfig::MatMulLaunchConfig(const TritonGemmConfig& config,
     noncontracting_program_id_dim = mt::ProgramIDDim::Y;
     launch_dims = LaunchDimensions(
         se::BlockDim(batch_size, grid_m * grid_n, config.split_k),
-        se::ThreadDim(config.num_warps * WarpSize(), 1, 1));
+        se::ThreadDim(config.num_warps * WarpSize(device_info), 1, 1));
   } else {
     batch_program_id_dim = mt::ProgramIDDim::Y;
     noncontracting_program_id_dim = mt::ProgramIDDim::X;
     launch_dims = LaunchDimensions(
         se::BlockDim(grid_m * grid_n, batch_size, config.split_k),
-        se::ThreadDim(config.num_warps * WarpSize(), 1, 1));
+        se::ThreadDim(config.num_warps * WarpSize(device_info), 1, 1));
   }
 }
 
@@ -2081,7 +2083,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
 
   TF_ASSIGN_OR_RETURN(const MatMulDims dims,
                       MatMulDims::Create(config, *dot_instr, analysis));
-  const MatMulLaunchConfig launch_config(config, *dot_instr, dims);
+  const MatMulLaunchConfig launch_config(config, *dot_instr, dims, device_info);
   VLOG(6) << analysis.ToString();
 
   MatMulEmitterHelper emitter(libdevice_path, device_info, dot_instr, b,
@@ -2321,7 +2323,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
 
 absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
     const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
-    const TritonGemmConfig& config) {
+    const TritonGemmConfig& config, const se::DeviceDescription& device_info) {
   auto dot = HloBfsFindIf(fusion.GetRoots(), fusion, [](auto node) {
     return node.opcode() == HloOpcode::kDot;
   });
@@ -2330,7 +2332,7 @@ absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
       *static_cast<const HloDotInstruction*>(&dot->instruction());
   TF_ASSIGN_OR_RETURN(MatMulDims dims,
                       MatMulDims::Create(config, dot_instr, analysis));
-  MatMulLaunchConfig launch_config(config, dot_instr, dims);
+  MatMulLaunchConfig launch_config(config, dot_instr, dims, device_info);
   return launch_config.launch_dims;
 }
 

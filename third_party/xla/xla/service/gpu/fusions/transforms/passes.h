@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_H_
 #define XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,7 +48,7 @@ std::unique_ptr<mlir::Pass> CreateFlattenTensorsPass();
 std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
     bool is_amd_gpu = false, const std::string& gpu_arch = "6.0");
 std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(bool use_rocdl);
-std::unique_ptr<mlir::Pass> CreateLowerXlaGpuToScfPass();
+std::unique_ptr<mlir::Pass> CreateLowerXlaGpuToScfPass(int64_t warp_size = 32);
 std::unique_ptr<mlir::Pass> CreateLowerXlaGpuLoopsToScfPass();
 std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
 std::unique_ptr<mlir::Pass> CreateOptimizeLoopsPass();

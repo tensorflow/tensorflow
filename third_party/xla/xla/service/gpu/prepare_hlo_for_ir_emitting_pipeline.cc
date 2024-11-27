@@ -32,14 +32,15 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/loop_schedule_linearizer.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 
 HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
-    HloModule& hlo_module,
-    HloDataflowAnalysis::CanShareBuffer can_share_buffer) {
+    HloModule& hlo_module, HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+    const se::DeviceDescription& device_description) {
   const DebugOptions& debug_options = hlo_module.config().debug_options();
 
   // In some cases, we have to place the result of an instruction in a temporary
@@ -83,8 +84,8 @@ HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
   auto& sub_pipeline =
       pipeline.AddPass<HloPassPipeline>("horizontal-loop-fusion-for-copy");
   // To fuse the copy.
-  sub_pipeline.AddPass<CopyFusion>();
-  sub_pipeline.AddPass<HorizontalLoopFusion>("copy_");
+  sub_pipeline.AddPass<CopyFusion>(device_description);
+  sub_pipeline.AddPass<HorizontalLoopFusion>(device_description, "copy_");
   sub_pipeline.AddPass<HloDCE>();
   pipeline.AddPass<SanitizeConstantNames>();
   return pipeline;

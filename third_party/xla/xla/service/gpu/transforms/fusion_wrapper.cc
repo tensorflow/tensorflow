@@ -116,7 +116,9 @@ absl::StatusOr<bool> FusionWrapper::Run(
         auto* fusion_instruction =
             computation->AddInstruction(HloInstruction::CreateFusion(
                 instruction->shape(),
-                ChooseFusionKind(*instruction, *instruction), instruction));
+                ChooseFusionKind(*instruction, *instruction,
+                                 device_description_),
+                instruction));
         const absl::string_view wrapped_opcode =
             HloOpcodeString(instruction->opcode());
         module->SetAndUniquifyInstrName(

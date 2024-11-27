@@ -595,7 +595,8 @@ bool GpuLayoutAssignment::PropagateReductionLayoutToOperand(
   }
   int64_t kept_dimension_size = ShapeUtil::ElementsIn(user->shape());
   return IsUnnestedReductionFasterThanElemental(
-      {/*is_row_reduction=*/true, {1, kept_dimension_size, reduction_size}});
+      {/*is_row_reduction=*/true, {1, kept_dimension_size, reduction_size}},
+      device_description_);
 }
 
 bool GpuLayoutAssignment::InstructionCanChangeLayoutInstance(

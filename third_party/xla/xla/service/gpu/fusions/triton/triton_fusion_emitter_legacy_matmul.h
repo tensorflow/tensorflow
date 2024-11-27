@@ -34,7 +34,7 @@ namespace xla::gpu {
 // Compute the launch dimensions for the given Triton MatMul.
 absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
     const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
-    const TritonGemmConfig& config);
+    const TritonGemmConfig& config, const se::DeviceDescription& device_info);
 
 // Use tiling and execution parameters from 'config'. BlockLevelParameters are
 // ignored.

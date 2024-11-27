@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/fusions/transforms/passes.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 
 int main(int argc, char** argv) {
   mlir::DialectRegistry registry;
@@ -76,7 +77,8 @@ int main(int argc, char** argv) {
           llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)>
               errorHandler) {
         if (!options.empty()) return mlir::failure();
-        xla::gpu::AddLoopTransformationPasses(pm);
+        xla::gpu::AddLoopTransformationPasses(
+            pm, xla::gpu::TestGpuDeviceInfo::RTXA6000DeviceInfo());
         return mlir::success();
       },
       [](llvm::function_ref<void(const mlir::detail::PassOptions&)>) {});

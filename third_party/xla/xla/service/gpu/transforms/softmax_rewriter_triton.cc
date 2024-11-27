@@ -331,9 +331,9 @@ absl::Status RunFusionPipeline(
   // transform reductions.
   reduction_pipeline.AddPass<ReductionDimensionGrouper>();
   reduction_pipeline.AddPass<HloPassFix<ReductionSplitter>>(
+      device_info,
       /*ignore_small_reduce_dims=*/false);
-  reduction_pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(
-      device_info.gpu_compute_capability());
+  reduction_pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(device_info);
 
   TF_RETURN_IF_ERROR(reduction_pipeline.Run(module).status());
 

@@ -176,7 +176,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
       TF_ASSIGN_OR_RETURN(
           launch_dimensions,
-          GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config));
+          GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config,
+                                    analysis_.device_info()));
     }
 
     llvm::Function* impl_fn =
@@ -235,7 +236,8 @@ std::optional<TritonFusion::LaunchConfig> TritonFusion::launch_config() const {
     LaunchConfig launch_config;
     launch_config.launch_dimensions = LaunchDimensions{
         static_cast<uint64_t>(num_blocks),
-        static_cast<uint64_t>(block_level_parameters.num_warps * WarpSize())};
+        static_cast<uint64_t>(block_level_parameters.num_warps *
+                              WarpSize(analysis_.device_info()))};
     launch_config.block_level_parameters = std::move(block_level_parameters);
     return launch_config;
   }

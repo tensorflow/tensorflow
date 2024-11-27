@@ -73,7 +73,8 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
 
   // Returns the launch dimensions for the given tiled HLO computation.
   static LaunchDimensions GetLaunchDimensionsForTiledFusion(
-      const TiledHloComputation& tiled_hlo_computation);
+      const TiledHloComputation& tiled_hlo_computation,
+      const se::DeviceDescription& device_info);
 
   EstimateRunTimeData EstimateRunTimeForFusion(
       const HloFusionAnalysis& fusion_analysis, bool is_coalesced = true);

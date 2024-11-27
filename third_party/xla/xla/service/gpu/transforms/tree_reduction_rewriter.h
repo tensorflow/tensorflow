@@ -75,8 +75,9 @@ namespace gpu {
 //
 class TreeReductionRewriter : public HloModulePass {
  public:
-  explicit TreeReductionRewriter(se::GpuComputeCapability gpu_version)
-      : gpu_version_(gpu_version) {}
+  explicit TreeReductionRewriter(
+      const se::DeviceDescription& device_description)
+      : device_description_(device_description) {}
 
   ~TreeReductionRewriter() override = default;
   absl::string_view name() const override { return "tree-reduction-rewriter"; }
@@ -87,7 +88,7 @@ class TreeReductionRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  se::GpuComputeCapability gpu_version_;
+  const se::DeviceDescription& device_description_;
 };
 
 }  // end namespace gpu

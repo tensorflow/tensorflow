@@ -92,8 +92,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleWithoutTritonFromFusion(
       .mutable_debug_options()
       .clear_xla_gpu_experimental_enable_triton_softmax_priority_fusion();
 
-  TreeReductionRewriter tree_reduction_rewriter(
-      gpu_device_info.gpu_compute_capability());
+  TreeReductionRewriter tree_reduction_rewriter(gpu_device_info);
   TF_RETURN_IF_ERROR(tree_reduction_rewriter.Run(new_module.get()).status());
 
   PriorityFusion fusion_pass(
@@ -102,7 +101,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleWithoutTritonFromFusion(
 
   // If the priority fusion pass above skipped some instructions, turn them
   // into fusions.
-  FusionWrapper fusion_wrapper;
+  FusionWrapper fusion_wrapper(gpu_device_info);
   TF_RETURN_IF_ERROR(fusion_wrapper.Run(new_module.get()).status());
 
   return new_module;
@@ -127,11 +126,9 @@ absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       util.Compile([&](const DebugOptions& opts) {
-        return disable_triton
-                   ? NewHloModuleWithoutTritonFromFusion(
-                         fusion, opts,
-                         config.GetExecutor()->GetDeviceDescription())
-                   : NewHloModuleWithTritonFromFusion(fusion, opts);
+        return disable_triton ? NewHloModuleWithoutTritonFromFusion(
+                                    fusion, opts, config.GetDeviceDescription())
+                              : NewHloModuleWithTritonFromFusion(fusion, opts);
       }));
   if (executable == nullptr) {
     return Internal("Failed to compile Triton fusion.");

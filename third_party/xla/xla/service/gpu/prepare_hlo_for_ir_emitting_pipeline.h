@@ -19,6 +19,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -27,8 +28,8 @@ namespace gpu {
 // pipeline. This pipeline must be run right before IR emission to ensure
 // correctness of the input module.
 HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
-    HloModule& hlo_module,
-    HloDataflowAnalysis::CanShareBuffer can_share_buffer);
+    HloModule& hlo_module, HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+    const se::DeviceDescription& device_description);
 
 }  // namespace gpu
 }  // namespace xla

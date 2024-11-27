@@ -256,7 +256,8 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
 
   std::optional<HloInstructionAdaptor> first_reduce_hero;
   for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
-    if (IsRealReductionHero(root.instruction(), hero.instruction())) {
+    if (IsRealReductionHero(root.instruction(), hero.instruction(),
+                            *device_info_)) {
       first_reduce_hero = hero;
       break;
     }
@@ -268,7 +269,8 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
       if (root == *first_reduce_hero) {
         continue;
       }
-      if (!IsRealReductionHero(root.instruction(), hero.instruction())) {
+      if (!IsRealReductionHero(root.instruction(), hero.instruction(),
+                               *device_info_)) {
         // Needs to have a compatible shape to the reduce operand (compatible
         // meaning same number of elements).
         if (ShapeUtil::ElementsIn(root.shape()) !=
@@ -322,7 +324,8 @@ const HloInstruction* HloFusionAnalysis::FindHeroReduction() const {
   // have the same shape and layout as verified by
   // `IsFusedReductionOutputConsistent()`.
   for (auto [root, hero] : llvm::zip(roots, fusion_heroes_)) {
-    if (IsRealReductionHero(root.instruction(), hero.instruction())) {
+    if (IsRealReductionHero(root.instruction(), hero.instruction(),
+                            *device_info_)) {
       return &hero.instruction();
     }
   }

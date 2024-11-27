@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <variant>
@@ -65,6 +66,8 @@ class GpuIndexingPerformanceModelTest : public HloTestBase {
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
       &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
       &mlir_context_};
+
+  size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
 
   GpuIndexingPerformanceModelTest() : HloTestBase() {}
 };
@@ -644,7 +647,7 @@ ENTRY main {
           .ComputeTiledHloInstructions(/*tile_parameters=*/{9, 9, 9}));
 
   LaunchDimensions launch_dimensions = GpuPerformanceModelWithIndexingAnalysis::
-      GetLaunchDimensionsForTiledFusion(tiled_hlo_computation);
+      GetLaunchDimensionsForTiledFusion(tiled_hlo_computation, device_info_);
   EXPECT_EQ(launch_dimensions.num_blocks(), 1);
 
   // Tile size is 9 * 9 * 9 = 729 that corresponds to 2 warps. But we estimate
@@ -692,7 +695,7 @@ ENTRY main {
           .ComputeTiledHloInstructions(/*tile_parameters=*/{1}));
 
   LaunchDimensions launch_dimensions = GpuPerformanceModelWithIndexingAnalysis::
-      GetLaunchDimensionsForTiledFusion(tiled_hlo_computation);
+      GetLaunchDimensionsForTiledFusion(tiled_hlo_computation, device_info_);
   EXPECT_EQ(launch_dimensions.num_blocks(), 1);
 
   // The largest tile size is 1 * 4096, for which our implementation recommends

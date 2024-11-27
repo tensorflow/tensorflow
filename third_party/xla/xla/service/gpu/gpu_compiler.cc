@@ -989,9 +989,10 @@ absl::Status RunCollectiveOptimizationPasses(
   return collectives_pipeline.Run(hlo_module).status();
 }
 
-absl::Status RunLayoutAssignmentPasses(HloModule* hlo_module,
-                                       se::GpuComputeCapability gpu_version,
-                                       se::dnn::VersionInfo dnn_version) {
+absl::Status RunLayoutAssignmentPasses(
+    HloModule* hlo_module, se::GpuComputeCapability gpu_version,
+    se::dnn::VersionInfo dnn_version,
+    const se::DeviceDescription& device_description) {
   // Run layout assignment in a separate pipeline from
   // "post-layout-assignment" because we want everything after layout
   // assignment to have a layout-sensitive invariant-checker, but
@@ -1005,7 +1006,7 @@ absl::Status RunLayoutAssignmentPasses(HloModule* hlo_module,
   ChannelLayoutConstraints layout_constraints;
   pipeline.AddPass<GpuLayoutAssignment>(
       hlo_module->mutable_entry_computation_layout(), gpu_version, dnn_version,
-      &layout_constraints);
+      device_description, &layout_constraints);
   // Run SubByteNormalization because GpuLayoutAssignment may modify a
   // Layout's element_size_in_bits field.
   pipeline.AddPass<SubByteNormalization>(
@@ -1195,7 +1196,8 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
 absl::Status RunPostFusionSimplificationPasses(
     HloModule* hlo_module,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
-    se::GpuComputeCapability gpu_version) {
+    se::GpuComputeCapability gpu_version,
+    const Compiler::TargetConfig& gpu_target_config) {
   HloPassPipeline pipeline("post-fusion-simplification-pipeline optimization");
   AlgebraicSimplifierOptions options = layout_insensitive_algsimp_opts;
   options.set_is_layout_sensitive(true);
@@ -1210,7 +1212,8 @@ absl::Status RunPostFusionSimplificationPasses(
   if (hlo_module->config()
           .debug_options()
           .xla_gpu_multi_streamed_windowed_einsum()) {
-    pipeline.AddPass<StreamAttributeAnnotator>();
+    pipeline.AddPass<StreamAttributeAnnotator>(
+        gpu_target_config.device_description);
     pipeline.AddPass<StreamAttributeAsyncWrapper>();
   }
 
@@ -1359,7 +1362,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
       gpu_target_config.device_description.runtime_version()));
 
   TF_RETURN_IF_ERROR(
-      RunLayoutAssignmentPasses(hlo_module, gpu_version, dnn_version));
+      RunLayoutAssignmentPasses(hlo_module, gpu_version, dnn_version,
+                                gpu_target_config.device_description));
 
   TF_RETURN_IF_ERROR(RunLayoutNormalizationPasses(hlo_module, gpu_version));
 
@@ -1378,7 +1382,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
       hlo_module, gpu_target_config.device_description, pointer_size_));
   TF_RETURN_IF_ERROR(RunPostFusionCollectiveOptimizationPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
-      hlo_module, layout_insensitive_algsimp_opts, gpu_version));
+      hlo_module, layout_insensitive_algsimp_opts, gpu_version,
+      gpu_target_config));
 
   TF_RETURN_IF_ERROR(RunPostFusionVerificationPasses(
       hlo_module, stream_exec, options, gpu_target_config));
@@ -1401,8 +1406,11 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-absl::Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
-  return PrepareHloModuleForIrEmittingPipeline(*hlo_module, GetCanShareBuffer())
+absl::Status GpuCompiler::PrepareHloModuleForIrEmitting(
+    HloModule* hlo_module, const se::DeviceDescription& device_description) {
+  return PrepareHloModuleForIrEmittingPipeline(
+             *hlo_module, GetCanShareBuffer(device_description),
+             device_description)
       .Run(hlo_module)
       .status();
 }
@@ -1502,7 +1510,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     pipeline.AddPass<ReshapeDecomposer>();
     pipeline.AddPass<ReduceDecomposer>([&](const HloInstruction* r) {
-      return IsReductionFromOrToContiguousDimensions(*r);
+      return IsReductionFromOrToContiguousDimensions(
+          *r, gpu_target_config.device_description);
     });
 
     // Greedy pattern matching for custom kernel fusions. We run it before
@@ -1587,8 +1596,10 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     pipeline.AddPass<ReductionDimensionGrouper>();
     pipeline.AddPass<HloPassFix<ReductionSplitter>>(
+        gpu_target_config.device_description,
         /*ignore_small_reduce_dims=*/false);
-    pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(gpu_version);
+    pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(
+        gpu_target_config.device_description);
     // Normalization passes might have introduced s4 tensors without bit width
     // annotations, this pass will add the annotations.
     pipeline.AddPass<SubByteNormalization>(
@@ -1753,7 +1764,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
                                        is_deviceless ? nullptr : stream_exec,
                                        options, gpu_target_config));
 
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(
+      module.get(), gpu_target_config.device_description));
 
   const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
       &gpu_target_config.device_description.gpu_compute_capability());
@@ -2231,7 +2243,7 @@ GpuCompiler::CompileToBackendResult(
     const se::DeviceDescription& gpu_device_info) {
   tsl::profiler::TraceMe traceme("GpuCompiler::CompileToBackendResult");
 
-  TF_RETURN_IF_ERROR(RunPreSchedulingPasses(module, executor));
+  TF_RETURN_IF_ERROR(RunPreSchedulingPasses(module, executor, gpu_device_info));
   TF_ASSIGN_OR_RETURN(
       ScheduleMetadata schedule_metadata,
       ScheduleGpuModule(module, pointer_size_, gpu_device_info));
@@ -2261,7 +2273,8 @@ GpuCompiler::CompileToBackendResult(
       CompileModuleResults compile_module_results,
       CompileModuleToLlvmIr(module, llvm_context, target_triple_, data_layout_,
                             platform->Name(), platform->id(), gpu_device_info,
-                            GetCanShareBuffer(), BufferSizeBytesFunction(),
+                            GetCanShareBuffer(gpu_device_info),
+                            BufferSizeBytesFunction(),
                             /*split_constants_module=*/use_cache));
 
   if (user_pre_optimization_hook_) {
@@ -2528,9 +2541,10 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
 }
 
 absl::Status GpuCompiler::RunPreSchedulingPasses(
-    HloModule* module, se::StreamExecutor* stream_exec) {
+    HloModule* module, se::StreamExecutor* stream_exec,
+    const se::DeviceDescription& gpu_device_info) {
   HloPassPipeline pipeline("pre-scheduling-passes");
-  pipeline.AddPass<FusionWrapper>();
+  pipeline.AddPass<FusionWrapper>(gpu_device_info);
   return pipeline.Run(module).status();
 }
 
@@ -2598,8 +2612,8 @@ HloRematerialization::Options CreateRematOpts(
 absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloModule* module, int64_t scheduler_mem_limit,
     const se::DeviceDescription& gpu_device_info) const {
-  TF_RETURN_IF_ERROR(
-      RunPostSchedulingCopyInsertion(module, GetCanShareBuffer()));
+  TF_RETURN_IF_ERROR(RunPostSchedulingCopyInsertion(
+      module, GetCanShareBuffer(gpu_device_info)));
   HloPassPipeline main_pipeline("post-scheduling-passes");
 
   // Pipeline for async -> sync conversion on for non-overlapped async ops.
@@ -2633,7 +2647,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
         main_pipeline.AddPass<HloPassPipeline>("remat-pipeline");
 
     pipeline.AddPass<HloRematerialization>(remat_opts, sizes);
-    pipeline.AddPass<StreamAttributeAnnotator>();
+    pipeline.AddPass<StreamAttributeAnnotator>(gpu_device_info);
     pipeline.AddPass<OptimizationBarrierExpander>();
   }
 
@@ -2643,7 +2657,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
   {
     HloPassPipeline& pipeline =
         main_pipeline.AddPass<HloPassPipeline>("fusion-wrapper");
-    pipeline.AddPass<FusionWrapper>();
+    pipeline.AddPass<FusionWrapper>(gpu_device_info);
   }
 
   // Pipeline with passes which wrap a scheduled module into command buffers.

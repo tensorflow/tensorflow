@@ -115,8 +115,8 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis) {
     auto [it, inserted] = disjoint_sets.try_emplace(root, root);
     CHECK(inserted) << "Duplicate root " << root.ToString();  // Crash OK
     reachable_outputs[root].insert(root);
-    result.is_reduction_root.push_back(
-        IsRealReductionHero(root.instruction(), hero.instruction()));
+    result.is_reduction_root.push_back(IsRealReductionHero(
+        root.instruction(), hero.instruction(), analysis.device_info()));
     if (result.is_reduction_root.back()) {
       roots_with_reduction.insert(root);
     } else if (first_non_reduction_root != nullptr) {

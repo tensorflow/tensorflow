@@ -84,7 +84,8 @@ class NVPTXCompiler : public GpuCompiler {
                                       se::StreamExecutor* stream_exec,
                                       BinaryMap* dnn_compiled_graphs) override;
 
-  HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const override;
+  HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer(
+      const se::DeviceDescription& device_description) const override;
 
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,

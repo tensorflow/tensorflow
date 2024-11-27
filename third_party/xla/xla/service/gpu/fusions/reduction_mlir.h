@@ -121,6 +121,10 @@ class MlirReductionFusion : public MlirFusionEmitterBase {
     return IndexingMap::GetUndefined();
   }
 
+  int64_t WarpSize() const {
+    return ::xla::gpu::WarpSize(analysis_.device_info());
+  }
+
   // The reduction heroes for each reduction group.
   std::vector<std::vector<const HloInstruction*>> reduction_heroes_;
   // The roots that have reduction heroes for each reduction group.

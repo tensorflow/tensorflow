@@ -75,7 +75,7 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
       continue;
     }
     HloInstruction* root = fused_computation->root_instruction();
-    if (IsReductionFromOrToContiguousDimensions(*root) ||
+    if (IsReductionFromOrToContiguousDimensions(*root, device_description_) ||
         root->opcode() == HloOpcode::kScatter ||
         (hlo->IsMultiOutputFusion() &&
          absl::c_all_of(root->operands(), [](const HloInstruction* slice) {
@@ -89,7 +89,8 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
       if (copy_user->opcode() == HloOpcode::kGetTupleElement &&
           copy_user->user_count() == 1) {
         if (IsReductionFromOrToContiguousDimensions(
-                *(root->operand(copy_user->tuple_index())))) {
+                *(root->operand(copy_user->tuple_index())),
+                device_description_)) {
           other_users.push_back(user);
           continue;
         }

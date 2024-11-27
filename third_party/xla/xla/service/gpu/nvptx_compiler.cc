@@ -560,8 +560,12 @@ NVPTXCompiler::NVPTXCompiler()
     : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::TargetTriple(),
                   nvptx::DataLayout()) {}
 
-HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() const {
-  return &CanShareBufferHint;
+HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer(
+    const se::DeviceDescription& device_description) const {
+  return [&](const HloInstruction* user, const HloInstruction* operand,
+             const ShapeIndex& user_index) {
+    return CanShareBufferHint(user, operand, user_index, device_description);
+  };
 }
 
 constexpr const uint8_t kPtxPrefix[] = {'P', 'T', 'X', ':', ' '};

@@ -112,6 +112,7 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
   std::vector<int64_t> block_counts_;
   int vector_size_;
   int block_size_;
+  int64_t base_block_size_;
 
   std::vector<const HloInstruction*> shmem_transposes_;
   std::vector<const HloInstruction*> shmem_transpose_roots_;

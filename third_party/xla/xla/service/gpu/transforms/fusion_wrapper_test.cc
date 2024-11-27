@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
 
+#include <cstdint>
 #include <optional>
 
 #include <gtest/gtest.h>
@@ -23,7 +24,25 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class FusionWrapperTest : public HloTestBase {};
+auto MakeDeviceDescription() {
+  stream_executor::DeviceDescription device_description{
+      stream_executor::GpuDeviceInfoProto{}};
+  device_description.set_threads_per_warp(32);
+  return device_description;
+}
+
+class FusionWrapperTest : public HloTestBase {
+ public:
+  using HloTestBase::HloTestBase;
+
+  const stream_executor::DeviceDescription& device_description() const {
+    return device_description_;
+  }
+
+ private:
+  const stream_executor::DeviceDescription device_description_{
+      MakeDeviceDescription()};
+};
 
 TEST_F(FusionWrapperTest, ConvolutionWorks) {
   RunAndFilecheckHloRewrite(R"(HloModule TestModule
@@ -33,7 +52,7 @@ ENTRY TestComputation {
   kernel = f32[20,1,2,1,4,15]{5,4,3,2,1,0} parameter(1)
   ROOT conv = f32[15,1,9,1,7,5]{5,4,3,2,1,0} convolution(input, kernel), dim_labels=0123bf_i0123o->f0123b, window={size=1x2x1x4}
 })",
-                            FusionWrapper(), R"(
+                            FusionWrapper(device_description()), R"(
 // CHECK: %wrapped_convolution_computation (param_0: f32[1,10,1,10,5,20], param_1: f32[20,1,2,1,4,15]) -> f32[15,1,9,1,7,5] {
 // CHECK:   %param_0 = f32[1,10,1,10,5,20]{5,4,3,2,1,0} parameter(0)
 // CHECK:   %param_1 = f32[20,1,2,1,4,15]{5,4,3,2,1,0} parameter(1)
@@ -56,7 +75,7 @@ TEST_F(FusionWrapperTest, SimpleOp) {
         p1 = f16[30,41] parameter(1)
         ROOT result = f16[60, 41] concatenate(p0, p1), dimensions={0}
       })",
-                            FusionWrapper(), R"(
+                            FusionWrapper(device_description()), R"(
 // CHECK: %wrapped_concatenate_computation (param_0: f16[30,41], param_1: f16[30,41]) -> f16[60,41] {
 // CHECK:   %param_0 = f16[30,41]{1,0} parameter(0)
 // CHECK:   %param_1 = f16[30,41]{1,0} parameter(1)
@@ -90,7 +109,7 @@ TEST_F(FusionWrapperTest, Scatter) {
             index_vector_dim=0,
             to_apply=update_s32
       })",
-                            FusionWrapper(), R"(
+                            FusionWrapper(device_description()), R"(
 // CHECK: wrapped_scatter_computation
 // CHECK:   %[[param_0:.*]] = s32[] parameter(0)
 // CHECK:   %[[param_1:.*]] = s32[0]{0} parameter(1)
@@ -119,7 +138,7 @@ TEST_F(FusionWrapperTest, ControlDependency) {
         constant_one = f32[] constant(1)
         ROOT add = f32[] add(param, constant_one), control-predecessors={fusion}
       })",
-                            FusionWrapper(), R"(
+                            FusionWrapper(device_description()), R"(
 // CHECK: ROOT %wrapped_add = f32[] fusion(%param.1, %constant_one),
 // CHECK-SAME: control-predecessors={%fusion})");
 }
@@ -135,7 +154,7 @@ TEST_F(FusionWrapperTest, Copy) {
         %parameter.1 = f32[5]{0} parameter(0)
         ROOT %copy.3 = f32[5]{0} copy(f32[5]{0} %parameter.1)
       })",
-                            FusionWrapper(),
+                            FusionWrapper(device_description()),
                             // No change
                             std::nullopt);
 }
@@ -162,7 +181,7 @@ TEST_F(FusionWrapperTest, While) {
         %tuple = (f32[5]{0}) tuple(f32[5]{0} %copy.3)
         ROOT %while.19 = (f32[5]{0}) while((f32[5]{0}) %tuple), condition=%cond, body=%body
       })",
-                            FusionWrapper(), R"(
+                            FusionWrapper(device_description()), R"(
 // CHECK: %wrapped_broadcast_computation {{.*}} {
 // CHECK:  %param_0 = f32[] parameter(0)
 // CHECK:  ROOT %broadcast.0 = f32[5]{0} broadcast(%param_0), dimensions={}
@@ -212,7 +231,7 @@ TEST_F(FusionWrapperTest, WhileInFusion) {
         %parameter.1 = f32[5]{0} parameter(0)
         ROOT %fusion = (f32[5]{0}) fusion(f32[5]{0} %parameter.1), kind=kLoop, calls=%fusion
       })",
-                            FusionWrapper(),
+                            FusionWrapper(device_description()),
                             // No change
                             std::nullopt);
 }
