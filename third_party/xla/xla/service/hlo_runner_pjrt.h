@@ -21,8 +21,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

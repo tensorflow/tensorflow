@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_INSTRUCTION_FUSION_H_
 #define XLA_SERVICE_INSTRUCTION_FUSION_H_
 
+#include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"

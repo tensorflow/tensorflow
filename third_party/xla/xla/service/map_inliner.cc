@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/service/map_inliner.h"
 
-#include <memory>
-#include <string>
+#include <cstdint>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"

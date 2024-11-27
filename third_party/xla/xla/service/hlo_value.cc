@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 
 #include <algorithm>
-#include <cstdint>
 #include <ostream>
 #include <string>
 #include <utility>

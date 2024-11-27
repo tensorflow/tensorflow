@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_LOCAL_SERVICE_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"

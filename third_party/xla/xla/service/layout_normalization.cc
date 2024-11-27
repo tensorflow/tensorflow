@@ -15,10 +15,8 @@ limitations under the License.
 
 #include "xla/service/layout_normalization.h"
 
-#include <algorithm>
-#include <cstring>
-#include <memory>
-#include <utility>
+#include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/layout_assignment.h"
 
+#include <cstdint>
 #include <initializer_list>
 #include <memory>
 #include <utility>

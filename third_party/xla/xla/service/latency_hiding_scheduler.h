@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 #define XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <limits>

@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <deque>
-#include <map>
 #include <memory>
 #include <ostream>
 #include <set>
