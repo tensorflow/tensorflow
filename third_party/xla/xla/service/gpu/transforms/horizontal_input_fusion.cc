@@ -91,8 +91,10 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
 
   std::sort(fusion_instrs.begin(), fusion_instrs.end(),
             [&](const HloInstruction* a, const HloInstruction* b) {
-              auto tuple_for_op = [](const HloInstruction* op) {
-                Shape shape = GetInputShapeForMultiOutputFusion(*op);
+              Shape shape_a = GetInputShapeForMultiOutputFusion(*a);
+              Shape shape_b = GetInputShapeForMultiOutputFusion(*b);
+              auto tuple_for_op = [](const Shape& shape,
+                                     const HloInstruction* op) {
                 // Sort shapes according to dimensions, so that the same input
                 // shapes will be placed adjacent each other.
                 // Sort `fusion_instrs` according to instruction counts, because
@@ -100,7 +102,7 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
                 return std::tuple{shape.rank(), shape.dimensions(),
                                   GetInstrCountOfFusible(*op), op->unique_id()};
               };
-              return tuple_for_op(a) < tuple_for_op(b);
+              return tuple_for_op(shape_a, a) < tuple_for_op(shape_b, b);
             });
 
   return fusion_instrs;
