@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/debug_options_flags.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -205,16 +206,6 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
     return absl::InvalidArgumentError(error);
   }
 
-  xla::PjRtDeviceType device_type;
-  if (opts.device_type_str == "gpu") {
-    device_type = xla::PjRtDeviceType::kGpu;
-  } else if (opts.device_type_str == "host") {
-    device_type = xla::PjRtDeviceType::kHostCpu;
-  } else {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Unrecognized device type ", opts.device_type_str,
-                     ". Expected \"gpu\" or \"host\""));
-  }
   PreprocessFlags(opts);
 
   TF_ASSIGN_OR_RETURN(
@@ -232,12 +223,24 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   QCHECK(opts.dump_output_literal_to.empty() || argc == 2)
       << "Can only dump output literal when single input file is specified";
 
-  TF_ASSIGN_OR_RETURN(
-      PjRtEnvironment env,
-      GetPjRtEnvironment(
-          device_type, opts.address_str, opts.task_id, opts.num_nodes,
-          opts.enable_mock_nccl,
-          absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
+  PjRtEnvironment env;
+  if (opts.device_type_str == "gpu") {
+    xla::GpuClientOptions gpu_options;
+    gpu_options.node_id = opts.task_id;
+    gpu_options.num_nodes = opts.num_nodes;
+    gpu_options.enable_mock_nccl = opts.enable_mock_nccl;
+    TF_ASSIGN_OR_RETURN(
+        env, xla::GetPjRtEnvironmentForGpu(
+                 opts.address_str, gpu_options,
+                 absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
+  } else if (opts.device_type_str == "host") {
+    TF_ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unrecognized device type ", opts.device_type_str,
+                     ". Expected \"gpu\" or \"host\""));
+  }
+  CHECK(env.client != nullptr);
 
   for (int c = 1; c < argc; c++) {
     const char* filename = argv[c];

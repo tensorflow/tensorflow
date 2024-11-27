@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -288,12 +289,13 @@ TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
 absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   tsl::setenv("CUDA_VISIBLE_DEVICES", std::to_string(node_id).data(),
               /*overwrite=*/true);
+  GpuClientOptions gpu_options;
+  gpu_options.node_id = node_id;
+  gpu_options.num_nodes = kNumNodes;
   TF_ASSIGN_OR_RETURN(
       PjRtEnvironment env,
-      xla::GetPjRtEnvironment(xla::PjRtDeviceType::kGpu, "127.0.0.1:12345",
-                              node_id, kNumNodes,
-                              /*enable_mock_nccl=*/false,
-                              /*init_timeout=*/absl::Seconds(120)));
+      xla::GetPjRtEnvironmentForGpu("127.0.0.1:12345", gpu_options,
+                                    /*init_timeout=*/absl::Seconds(120)));
   CHECK(env.kv_store != nullptr);
   // Make HLO module IDs of multiple_gemm_fusions.hlo differ: the autotuner
   // should not rely on them.
@@ -337,12 +339,9 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   return absl::OkStatus();
 }
 
-TEST_F(FunctionalHloRunnerTest, CanRunWithMockCollectives) {
-  // This test corresponds to:
+absl::Status RunShardedHloWithClient(xla::PjRtClient& client) {
+  // This method corresponds to:
   // --use_spmd_partitioning=true --num_replicas=1 --num_partitions=16
-  if (IsTestingCpu()) {
-    GTEST_SKIP() << "GPU-only test";
-  }
   xla::DebugOptions debug_options;
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
@@ -355,13 +354,38 @@ TEST_F(FunctionalHloRunnerTest, CanRunWithMockCollectives) {
   running_options.module_argument_mode =
       FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
 
+  return FunctionalHloRunner::LoadAndRunAndDump(
+      client, debug_options, preproc_options, raw_compile_options,
+      running_options, {GetHloPath("sharded_16_devices.hlo")},
+      InputFormat::kText);
+}
+
+TEST_F(FunctionalHloRunnerTest, CanRunWithMockCollectives) {
+  if (IsTestingCpu()) {
+    GTEST_SKIP() << "GPU-only test";
+  }
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
                           CreateMockGpuClient(16));
 
-  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
-      *client, debug_options, preproc_options, raw_compile_options,
-      running_options, {GetHloPath("sharded_16_devices.hlo")},
-      InputFormat::kText));
+  TF_EXPECT_OK(RunShardedHloWithClient(*client));
+}
+
+TEST_F(FunctionalHloRunnerTest, CanCreateMockClientInPjRtEnv) {
+  // Tests that the GPU options are propagated correctly to initialize a mock
+  // client.
+  if (IsTestingCpu()) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+
+  GpuClientOptions gpu_options;
+  gpu_options.node_id = 0;
+  gpu_options.num_nodes = 16;
+  gpu_options.enable_mock_nccl = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::PjRtEnvironment env,
+      GetPjRtEnvironmentForGpu("", gpu_options, absl::Seconds(120)));
+
+  TF_EXPECT_OK(RunShardedHloWithClient(*env.client));
 }
 
 }  // namespace
