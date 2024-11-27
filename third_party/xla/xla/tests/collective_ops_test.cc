@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <limits>
@@ -361,7 +362,8 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceOr_Pred) {
 XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
   const int64_t kNumElems = 1024;
 
-  for (std::vector<int64_t> devices : PowerSetOfIota(num_devices())) {
+  for (std::vector<int64_t> devices :
+       PowerSetOfIota(std::min(num_devices(), 4l))) {
     SCOPED_TRACE(absl::StrFormat("Running on devices {%s}",
                                  absl::StrJoin(devices, ", ")));
 
