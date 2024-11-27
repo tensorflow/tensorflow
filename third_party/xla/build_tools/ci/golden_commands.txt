@@ -1,7 +1,7 @@
 # BEGIN BuildType.CPU_ARM64
 $KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
-docker pull us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build-arm64:jax-latest-multi-python
-docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/xla us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build-arm64:jax-latest-multi-python bash
+docker pull us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest
+docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/xla us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest bash
 docker exec xla_ci parallel --ungroup --retries 3 --delay 15 --nonall -- bazel build --build_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd,-not_run:arm --test_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd,-not_run:arm --config=warnings --config=rbe_cross_compile_linux_arm64_xla --config=nonccl --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async --build_tests_only --nobuild -- //xla/... //build_tools/... @local_tsl//tsl/...
 docker exec xla_ci bazel test --build_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd,-not_run:arm --test_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd,-not_run:arm --config=warnings --config=rbe_cross_compile_linux_arm64_xla --config=nonccl --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async --build_tests_only -- //xla/... //build_tools/... @local_tsl//tsl/...
 docker exec xla_ci bazel analyze-profile profile.json.gz
@@ -9,8 +9,8 @@ docker stop xla_ci
 # END BuildType.CPU_ARM64
 # BEGIN BuildType.CPU_X86
 $KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
-parallel --ungroup --retries 3 --delay 15 --nonall -- docker pull gcr.io/tensorflow-sigs/build:latest-python3.11
-docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/xla gcr.io/tensorflow-sigs/build:latest-python3.11 bash
+parallel --ungroup --retries 3 --delay 15 --nonall -- docker pull us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest
+docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/xla us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest bash
 docker exec xla_ci parallel --ungroup --retries 3 --delay 15 --nonall -- bazel build --build_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd --test_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd --config=warnings --config=nonccl --config=rbe_linux_cpu --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async --nobuild -- //xla/... //build_tools/... @local_tsl//tsl/...
 docker exec xla_ci bazel test --build_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd --test_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd --config=warnings --config=nonccl --config=rbe_linux_cpu --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async -- //xla/... //build_tools/... @local_tsl//tsl/...
 docker exec xla_ci bazel analyze-profile profile.json.gz
@@ -19,8 +19,8 @@ docker stop xla_ci
 # BEGIN BuildType.GPU
 $KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 nvidia-smi
-parallel --ungroup --retries 3 --delay 15 --nonall -- docker pull gcr.io/tensorflow-sigs/build:latest-python3.11
-docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/xla gcr.io/tensorflow-sigs/build:latest-python3.11 bash
+parallel --ungroup --retries 3 --delay 15 --nonall -- docker pull us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest
+docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/xla us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest bash
 docker exec xla_ci parallel --ungroup --retries 3 --delay 15 --nonall -- bazel build --build_tag_filters=-no_oss,requires-gpu-nvidia,gpu,-rocm-only --test_tag_filters=-no_oss,requires-gpu-nvidia,gpu,-rocm-only,requires-gpu-sm75-only,requires-gpu-sm60,requires-gpu-sm70,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm90,-requires-gpu-sm90-only,-requires-gpu-sm100,-requires-gpu-sm100-only,-requires-gpu-amd --config=warnings --config=rbe_linux_cuda_nvcc --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute --repo_env=TF_CUDA_COMPUTE_CAPABILITIES=7.5 --@cuda_driver//:enable_forward_compatibility=true --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async --nobuild -- //xla/... //build_tools/... @local_tsl//tsl/...
 docker exec xla_ci bazel test --build_tag_filters=-no_oss,requires-gpu-nvidia,gpu,-rocm-only --test_tag_filters=-no_oss,requires-gpu-nvidia,gpu,-rocm-only,requires-gpu-sm75-only,requires-gpu-sm60,requires-gpu-sm70,-requires-gpu-sm80,-requires-gpu-sm80-only,-requires-gpu-sm90,-requires-gpu-sm90-only,-requires-gpu-sm100,-requires-gpu-sm100-only,-requires-gpu-amd --config=warnings --config=rbe_linux_cuda_nvcc --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute --repo_env=TF_CUDA_COMPUTE_CAPABILITIES=7.5 --@cuda_driver//:enable_forward_compatibility=true --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async -- //xla/... //build_tools/... @local_tsl//tsl/...
 docker exec xla_ci bazel analyze-profile profile.json.gz
@@ -58,8 +58,8 @@ bazel analyze-profile profile.json.gz
 # BEGIN BuildType.TENSORFLOW_CPU
 $KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 git clone --depth=1 https://github.com/tensorflow/tensorflow ./github/tensorflow
-parallel --ungroup --retries 3 --delay 15 --nonall -- docker pull gcr.io/tensorflow-sigs/build:latest-python3.11
-docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/tensorflow gcr.io/tensorflow-sigs/build:latest-python3.11 bash
+parallel --ungroup --retries 3 --delay 15 --nonall -- docker pull us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest
+docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/tensorflow us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest bash
 docker exec xla_ci bazel test --build_tag_filters= --test_tag_filters= --config=release_cpu_linux --config=rbe_linux_cpu --config=linux_cpu_pycpp_test_filters --verbose_failures --test_output=errors --override_repository=xla=/github/xla --profile=profile.json.gz -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/compiler/tensorrt/...
 docker exec xla_ci bazel analyze-profile profile.json.gz
 docker stop xla_ci
@@ -67,8 +67,8 @@ docker stop xla_ci
 # BEGIN BuildType.TENSORFLOW_GPU
 $KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 git clone --depth=1 https://github.com/tensorflow/tensorflow ./github/tensorflow
-parallel --ungroup --retries 3 --delay 15 --nonall -- docker pull gcr.io/tensorflow-sigs/build:latest-python3.11
-docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/tensorflow gcr.io/tensorflow-sigs/build:latest-python3.11 bash
+parallel --ungroup --retries 3 --delay 15 --nonall -- docker pull us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest
+docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/tensorflow us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest bash
 docker exec xla_ci bazel test --build_tag_filters=-no_oss,+gpu --test_tag_filters=-no_oss,+gpu --config=release_gpu_linux --config=rbe_linux_cuda --config=linux_cuda_pycpp_test_filters --verbose_failures --test_output=errors --override_repository=xla=/github/xla --profile=profile.json.gz -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/compiler/tensorrt/...
 docker exec xla_ci bazel analyze-profile profile.json.gz
 docker stop xla_ci
