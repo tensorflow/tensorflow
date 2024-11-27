@@ -62,6 +62,7 @@
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/mem.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -96,7 +97,7 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
   constexpr int kAlignment = 32;
 
   struct Deleter {
-    void operator()(void* p) { free(p); }
+    void operator()(void* p) { tsl::port::AlignedFree(p); }
   };
 
   std::vector<std::unique_ptr<char, Deleter>> operands;
@@ -107,8 +108,8 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
   absl::CordReader reader(operand_buffer);
   for (const auto& spec : xla_host_callback.operands) {
     const int64_t size = xla::ShapeUtil::ByteSizeOf(spec.shape);
-    void* p;
-    CHECK_EQ(posix_memalign(&p, kAlignment, size), 0);
+    void* p = tsl::port::AlignedMalloc(size, kAlignment);
+    CHECK(p != nullptr);
     std::unique_ptr<char, Deleter> buffer(reinterpret_cast<char*>(p));
 
     if (reader.Available() < size) {
@@ -135,12 +136,13 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
 
   for (const auto& spec : xla_host_callback.results) {
     const int64_t size = xla::ShapeUtil::ByteSizeOf(spec.shape);
-    void* data;
-    CHECK_EQ(posix_memalign(&data, kAlignment, size), 0);
+    void* data = tsl::port::AlignedMalloc(size, kAlignment);
+    CHECK(data != nullptr);
 
     result_ptrs.push_back(data);
     result_buffer.AppendExternalMemory(
-        absl::string_view(reinterpret_cast<char*>(data), size), data, &free);
+        absl::string_view(reinterpret_cast<char*>(data), size), data,
+        &tsl::port::AlignedFree);
   }
 
   TF_RETURN_IF_ERROR(

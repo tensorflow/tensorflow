@@ -203,6 +203,7 @@ xla_cc_test(
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:status_matchers",

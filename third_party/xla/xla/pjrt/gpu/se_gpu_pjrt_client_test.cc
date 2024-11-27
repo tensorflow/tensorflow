@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -71,6 +72,7 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/mem.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
@@ -798,15 +800,16 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
 
-  void* dst = aligned_alloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
+  TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
+  void* dst =
+      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
 
-  auto result =
-      buffer->CopyRawToHost(dst, 0, buffer->GetOnDeviceSizeInBytes().value());
+  auto result = buffer->CopyRawToHost(dst, 0, size);
   TF_EXPECT_OK(result.Await());
   EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
   EXPECT_EQ(*(static_cast<float*>(dst) + 1), 42.0f);
 
-  free(dst);
+  tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
 }
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
@@ -817,13 +820,15 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
-  void* dst = aligned_alloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
+  TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
+  void* dst =
+      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
 
   auto result = buffer->CopyRawToHost(dst, 0, sizeof(float));
   TF_EXPECT_OK(result.Await());
   EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
 
-  free(dst);
+  tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
 }
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
@@ -834,13 +839,14 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
-  void* dst = aligned_alloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
+  TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
+  void* dst =
+      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
 
-  auto result =
-      buffer->CopyRawToHost(dst, 1, buffer->GetOnDeviceSizeInBytes().value());
+  auto result = buffer->CopyRawToHost(dst, 1, size);
   EXPECT_THAT(result.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
                                        HasSubstr("invalid offset 1")));
-  free(dst);
+  tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
 }
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
@@ -863,7 +869,9 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
   buffer.reset();
   ready.OnReady([dst_promise = std::move(dst_promise),
                  size](absl::Status status) mutable {
-    dst_promise.Set(aligned_alloc(size, 0));
+    void* dst =
+        tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+    dst_promise.Set(dst);
   });
 
   TF_EXPECT_OK(result.Await());
@@ -871,7 +879,7 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
   EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
   EXPECT_EQ(*(static_cast<float*>(dst) + 1), 42.0f);
 
-  free(dst);
+  tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
 }
 
 TEST(StreamExecutorGpuClientTest, AsyncCopyToDevice) {

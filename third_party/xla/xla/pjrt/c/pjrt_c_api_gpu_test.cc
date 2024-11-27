@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tsl/platform/mem.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -189,32 +190,35 @@ class PjrtCApiGpuBufferTest : public PjrtCApiGpuTest {
 };
 
 TEST_F(PjrtCApiGpuBufferTest, CopyRawToHost) {
-  size_t alignment = buffer_->buffer->GetOnDeviceSizeInBytes().value();
+  size_t size = buffer_->buffer->GetOnDeviceSizeInBytes().value();
   PJRT_Buffer_CopyRawToHost_Args args;
   args.struct_size = PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = buffer_.get();
-  args.dst = aligned_alloc(alignment, 0);
+  args.dst =
+      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
   args.offset = 0;
-  args.transfer_size = alignment;
+  args.transfer_size = size;
   PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
   ASSERT_THAT(error, IsNull());
   xla::PjRtFuture<> copy_to_host_event =
       ConvertCEventToCppFuture(args.event, api_);
   TF_EXPECT_OK(copy_to_host_event.Await());
   EXPECT_EQ(*(static_cast<float*>(args.dst)), 41);
-  free(args.dst);
+  tsl::port::AlignedSizedFree(args.dst, tsl::Allocator::kAllocatorAlignment,
+                              size);
 }
 
 TEST_F(PjrtCApiGpuBufferTest, CopyRawToHostWithInvalidOffset) {
-  size_t alignment = buffer_->buffer->GetOnDeviceSizeInBytes().value();
+  size_t size = buffer_->buffer->GetOnDeviceSizeInBytes().value();
   PJRT_Buffer_CopyRawToHost_Args args;
   args.struct_size = PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = buffer_.get();
-  args.dst = aligned_alloc(alignment, 0);
-  args.offset = alignment + 1;  // offset is invalid
-  args.transfer_size = alignment;
+  args.dst =
+      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+  args.offset = size + 1;  // offset is invalid
+  args.transfer_size = size;
   PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
   ASSERT_EQ(error, nullptr);
   xla::PjRtFuture<> copy_to_host_event =
@@ -223,7 +227,7 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHostWithInvalidOffset) {
   std::string expected_message = absl::StrFormat(
       "Copy raw buffer called on buffer size %lld with "
       "invalid offset %lld, transfer size %lld",
-      alignment, args.offset, args.transfer_size);
+      size, args.offset, args.transfer_size);
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
                                HasSubstr(expected_message)));
   free(args.dst);

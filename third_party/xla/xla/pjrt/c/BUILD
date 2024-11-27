@@ -402,6 +402,7 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
