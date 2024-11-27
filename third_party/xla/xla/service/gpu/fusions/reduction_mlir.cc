@@ -365,7 +365,7 @@ MlirReductionFusion::MlirReductionFusion(const HloFusionAnalysis& analysis)
       << "Non-race-free reductions should have been decomposed. Did "
          "tree_reduction_rewriter run?";
 
-  groups_ = GroupDisjointReductions(analysis, /*for_mlir=*/true);
+  groups_ = GroupDisjointReductions(analysis);
   first_reduce_ = hero_reduction;
 
   const auto& groups = GetGroups();

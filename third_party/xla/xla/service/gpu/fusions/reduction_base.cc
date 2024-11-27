@@ -49,44 +49,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-int GetVectorSize(const HloFusionAnalysis& analysis,
-                  const ReductionDimensions& reduction_dimensions,
-                  int num_threads, Vector3 reduction_tiling) {
-  // If the minor dimension is not divisible by 2, we can't currently vectorize.
-  int64_t minor_dim = reduction_dimensions.dimensions.back();
-  if (minor_dim % 2 != 0) {
-    return 1;
-  }
-
-  // Only enable vectorization if all threads will still have work.
-  if (num_threads * 2 > minor_dim) {
-    return 1;
-  }
-  if (MayPreventVectorization(analysis.fusion())) {
-    return 1;
-  }
-  if (reduction_dimensions.is_row_reduction) {
-    constexpr int kRowMinorReduced =
-        ReductionDimensions::kRowMinorReducedDimension;
-
-    const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-        &analysis.device_info().gpu_compute_capability());
-    if (cuda_cc == nullptr) return 1;
-    if (cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) return 2;
-    if (cuda_cc->IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
-      return analysis.input_output_info().smallest_input_dtype_bits <= 32 &&
-                     reduction_dimensions.dimensions[kRowMinorReduced] %
-                             (reduction_tiling[kRowMinorReduced] *
-                              num_threads) ==
-                         0
-                 ? 2
-                 : 1;
-    }
-    return 1;
-  }
-  return 1;
-}
-
 int GetVectorSizeForMlir(const HloFusionAnalysis& analysis, int64_t minor_dim,
                          int num_threads) {
   // If the minor dimension is not divisible by 2, we can't currently vectorize.
@@ -122,8 +84,7 @@ int GetVectorSizeForMlir(const HloFusionAnalysis& analysis, int64_t minor_dim,
   return minor_dim % 4 == 0 ? 4 : 2;
 }
 
-ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
-                                        bool for_mlir) {
+ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis) {
   const int num_fusion_outputs = analysis.fusion_root_count();
 
   CHECK_NE(0, num_fusion_outputs);
@@ -182,15 +143,8 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
         });
   };
 
-  // The legacy emitter grouping is buggy: it does not visit instructions in the
-  // right order. We fix this only for the MLIR emitters, since we are migrating
-  // to them, and we can't rule out that some models rely on the buggy behavior.
-  if (for_mlir) {
-    for (auto root : roots) {
-      visit({root});
-    }
-  } else {
-    visit(roots);
+  for (auto root : roots) {
+    visit({root});
   }
 
   for (auto instr : instructions) {
