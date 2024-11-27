@@ -528,6 +528,7 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla/backends/cpu/codegen:contiguous_section_memory_manager",
+        "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/service:custom_call_target_registry",
         "//xla/service:llvm_compiler",

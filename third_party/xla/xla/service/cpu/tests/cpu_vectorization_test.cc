@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "llvm-c/Target.h"
+#include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/cpu/cpu_compiler.h"
-#include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
@@ -170,8 +170,8 @@ TEST_P(MaxIsaTest, ShouldEnableFeature) {
   HloComputation::Builder builder(TestName());
   MaxIsaTestSpec spec = GetParam();
 
-  auto max_feature = ISAStringToFeature(spec.max_isa);
-  bool should_enable = ShouldEnableCPUFeature(spec.feature, *max_feature);
+  auto max_feature = CpuFeatureFromString(spec.max_isa);
+  bool should_enable = ShouldEnableCpuFeature(spec.feature, *max_feature);
   EXPECT_EQ(should_enable, spec.should_enable);
 }
 
@@ -235,7 +235,7 @@ TEST_P(JitVectorizationTest, JitUpToIsa) {
   // If the CPU doesn't have the `max_isa` feature, e.g., `max_isa=AVX512` but
   // we are running on an AVX2 machine, update the `check_lines` accordingly.
   using tsl::port::CPUFeature;
-  auto feature = ISAStringToFeature(spec.max_isa);
+  auto feature = CpuFeatureFromString(spec.max_isa);
   if (!tsl::port::TestCPUFeature(*feature)) {
     if (tsl::port::TestCPUFeature(CPUFeature::AVX)) {
       spec.num_vector_elements = 8;

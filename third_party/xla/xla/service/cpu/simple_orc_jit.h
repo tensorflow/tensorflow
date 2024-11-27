@@ -46,6 +46,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Triple.h"
+#include "xla/backends/cpu/codegen/cpu_features.h"  // IWYU pragma: keep
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/service/llvm_compiler.h"
 #include "tsl/platform/cpu_info.h"
@@ -166,24 +167,6 @@ class SimpleOrcJIT : public llvm::JITEventListener {
 
   llvm::JITEventListener* perf_jit_event_listener_;
 };
-
-std::optional<tsl::port::CPUFeature> ISAStringToFeature(
-    absl::string_view feature_string);
-
-bool ShouldEnableCPUFeature(llvm::StringRef feature,
-                            const tsl::port::CPUFeature& max_feature);
-
-struct DetectedMachineAttributes {
-  std::vector<std::string> features;
-  bool features_filtered;
-};
-
-DetectedMachineAttributes DetectMachineAttributes(
-    std::optional<tsl::port::CPUFeature> max_feature);
-
-// TODO(penporn): PJRT's CPU client also calls this function. We should
-// make it get the same filtered attributes according to the `max_isa` setting.
-std::vector<std::string> DetectMachineAttributes();
 
 }  // namespace xla::cpu
 

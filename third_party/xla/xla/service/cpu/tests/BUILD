@@ -328,6 +328,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu/codegen:cpu_features",
         "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:simple_orc_jit",
