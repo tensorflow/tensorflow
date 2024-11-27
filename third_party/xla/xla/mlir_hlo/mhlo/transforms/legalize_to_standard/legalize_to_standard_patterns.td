@@ -44,6 +44,10 @@ def createOverflowNone : NativeCodeCall<
     "::mlir::arith::IntegerOverflowFlagsAttr::get("
       "$_builder.getContext(), ::mlir::arith::IntegerOverflowFlags::none"
     ")">;
+def createDenormalIEEE : NativeCodeCall<
+    "::mlir::arith::DenormalModeAttr::get("
+      "$_builder.getContext(), ::mlir::arith::DenormalMode::ieee"
+    ")">;
 
 
 // Unary Lowering Patterns.
@@ -57,19 +61,19 @@ def : Pat<(MHLO_OrOp MHLO_IntTensor:$l, MHLO_IntTensor:$r),
           (Arith_OrIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(MHLO_AddOp MHLO_FpTensor:$l, MHLO_FpTensor:$r),
-          (Arith_AddFOp $l, $r, (createFastMathNone )),
+          (Arith_AddFOp $l, $r, (createFastMathNone ), (createDenormalIEEE )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(MHLO_SubtractOp MHLO_FpTensor:$l, MHLO_FpTensor:$r),
-          (Arith_SubFOp $l, $r, (createFastMathNone )),
+          (Arith_SubFOp $l, $r, (createFastMathNone ), (createDenormalIEEE )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(MHLO_MulOp MHLO_FpTensor:$l, MHLO_FpTensor:$r),
-          (Arith_MulFOp $l, $r, (createFastMathNone )),
+          (Arith_MulFOp $l, $r, (createFastMathNone ), (createDenormalIEEE )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(MHLO_DivOp MHLO_FpTensor:$l, MHLO_FpTensor:$r),
-          (Arith_DivFOp $l, $r, (createFastMathNone )),
+          (Arith_DivFOp $l, $r, (createFastMathNone ), (createDenormalIEEE )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(MHLO_RemOp MHLO_FpTensor:$l, MHLO_FpTensor:$r),
-          (Arith_RemFOp $l, $r, (createFastMathNone )),
+          (Arith_RemFOp $l, $r, (createFastMathNone ), (createDenormalIEEE )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(MHLO_AddOp MHLO_IntTensor:$l, MHLO_IntTensor:$r),
           (Arith_AddIOp $l, $r, (createOverflowNone )),

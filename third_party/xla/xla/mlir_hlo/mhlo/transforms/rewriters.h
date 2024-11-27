@@ -24,9 +24,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-namespace bufferization {
-class BufferizeTypeConverter;
-}  // namespace bufferization
 namespace mhlo {
 
 // Rewrite patterns for broadcast to equivalent broadcast_in_dim legalization.
@@ -73,14 +70,14 @@ void populateMhloToStdPatterns(RewritePatternSet *patterns, MLIRContext *ctx);
 
 // Collection of rewrite patterns for lowering all mhlo ops to their
 // lmhlo counterparts.
-void populateDynamicHloToLhloConversionPattern(
-    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
-    RewritePatternSet *patterns);
+void populateDynamicHloToLhloConversionPattern(MLIRContext *context,
+                                               TypeConverter *converter,
+                                               RewritePatternSet *patterns);
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
-void populateHloToLhloConversionPattern(
-    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
-    RewritePatternSet *patterns);
+void populateHloToLhloConversionPattern(MLIRContext *context,
+                                        TypeConverter *converter,
+                                        RewritePatternSet *patterns);
 
 // Collection of rewrite patterns for lowering of HLO to arithmetic dialect.
 void populateHloToArithmeticConversionPatterns(RewritePatternSet *patterns);
