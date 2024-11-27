@@ -396,3 +396,34 @@ xla_cc_test(
         "@local_tsl//tsl/platform:statusor",
     ],
 )
+
+cc_library(
+    name = "while_loop_all_reduce_code_motion_setup",
+    srcs = ["while_loop_all_reduce_code_motion_setup.cc"],
+    hdrs = ["while_loop_all_reduce_code_motion_setup.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms:op_expander_pass",
+        "//xla/service:hlo_creation_utils",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "while_loop_all_reduce_code_motion_setup_test",
+    srcs = ["while_loop_all_reduce_code_motion_setup_test.cc"],
+    deps = [
+        ":while_loop_all_reduce_code_motion_setup",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_matchers",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",  # fixdeps: keep
+    ],
+)
