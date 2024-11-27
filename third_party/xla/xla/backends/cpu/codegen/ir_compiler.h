@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_
-#define XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_
+#ifndef XLA_BACKENDS_CPU_CODEGEN_IR_COMPILER_H_
+#define XLA_BACKENDS_CPU_CODEGEN_IR_COMPILER_H_
 
 #include <cstdint>
 #include <functional>
@@ -34,11 +34,11 @@ limitations under the License.
 
 namespace xla::cpu {
 
-// XLA:CPU IRCompiler for compiling LLVM modules down to an object file.
-//
-// This class responsible for defining the LLVM compilation pipeline for LLVM
-// modules produced by the XLA:CPU via the kernel emitters.
-class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
+// IrCompiler compiles LLVM modules to object files using LLVM compilation
+// pipeline customized for XLA:CPU. Default LLVM compilation pipeline is
+// optimized for compiling LLVM IR produced by Clang, and in XLA we are a lot
+// more constrained and produce a very different IR.
+class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
  public:
   // Returns an instance of `llvm::TargetMachine` for a compilation. It can be
   // a shared `llvm::TargetMachine` if compilation is single threaded, or must
@@ -70,8 +70,8 @@ class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
     std::function<void(const llvm::object::ObjectFile&)> post_codegen;
   };
 
-  CompilerFunctor(TargetMachineBuilder target_machine_builder, Options options,
-                  CompilationHooks hooks);
+  IrCompiler(TargetMachineBuilder target_machine_builder, Options options,
+             CompilationHooks hooks);
 
   // Compiles a `module` to an ObjectFile.
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> operator()(
@@ -90,4 +90,4 @@ class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
 
 }  // namespace xla::cpu
 
-#endif  // XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_
+#endif  // XLA_BACKENDS_CPU_CODEGEN_IR_COMPILER_H_

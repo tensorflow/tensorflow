@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/compiler_functor.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 
 #include <memory>
 #include <utility>
@@ -47,7 +47,7 @@ limitations under the License.
 namespace xla::cpu {
 
 static llvm::OptimizationLevel GetOptimizationLevel(
-    CompilerFunctor::Options options) {
+    IrCompiler::Options options) {
   if (options.optimize_for_size) {
     return llvm::OptimizationLevel::Os;
   }
@@ -66,20 +66,20 @@ static llvm::OptimizationLevel GetOptimizationLevel(
   }
 }
 
-CompilerFunctor::CompilerFunctor(TargetMachineBuilder target_machine_builder,
-                                 Options options, CompilationHooks hooks)
+IrCompiler::IrCompiler(TargetMachineBuilder target_machine_builder,
+                       Options options, CompilationHooks hooks)
     : IRCompiler(llvm::orc::IRSymbolMapper::ManglingOptions()),
       target_machine_builder_(std::move(target_machine_builder)),
       options_(std::move(options)),
       hooks_(std::move(hooks)) {}
 
-llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
+llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
     llvm::Module& module) {
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
 
   // Get a target machine for compilation. If compilations run concurrently on
-  // multiple threads, `CompilerFunctor` user (in most cases `SimpleOrcJIT`)
+  // multiple threads, `IrCompiler` user (in most cases `SimpleOrcJIT`)
   // must guarantee that target machine builder will return a unique
   // TargetMachine for each compilation, as it is not thread safe.
   std::shared_ptr<llvm::TargetMachine> target_machine =

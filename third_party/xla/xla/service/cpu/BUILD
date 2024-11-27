@@ -215,7 +215,6 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         ":buffer_info_util",
-        ":compiler_functor",
         ":conv_canonicalization",
         ":cpu_executable",
         ":cpu_float_support",
@@ -244,6 +243,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/hlo/analysis:hlo_ordering",
@@ -501,7 +501,6 @@ cc_library(
     hdrs = ["simple_orc_jit.h"],
     copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]) + tsl_copts(),
     deps = [
-        ":compiler_functor",
         ":cpu_runtime",
         ":onednn_convolution",
         ":onednn_layer_norm",
@@ -529,6 +528,7 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla/backends/cpu/codegen:contiguous_section_memory_manager",
+        "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/service:custom_call_target_registry",
         "//xla/service:llvm_compiler",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1000,35 +1000,6 @@ xla_cc_binary(
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
-    ],
-)
-
-cc_library(
-    name = "compiler_functor",
-    srcs = ["compiler_functor.cc"],
-    hdrs = ["compiler_functor.h"],
-    deps = [
-        ":cpu_runtime",
-        "//xla:types",
-        "//xla:util",
-        "//xla/backends/cpu/codegen:polynomial_approximations",
-        "//xla/service:llvm_compiler",
-        "//xla/service/llvm_ir:llvm_util",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-        "@llvm-project//llvm:Analysis",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Instrumentation",
-        "@llvm-project//llvm:MC",
-        "@llvm-project//llvm:Object",
-        "@llvm-project//llvm:OrcJIT",
-        "@llvm-project//llvm:Passes",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:Target",
-        "@llvm-project//llvm:TargetParser",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 

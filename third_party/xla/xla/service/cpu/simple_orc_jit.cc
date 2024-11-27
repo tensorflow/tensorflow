@@ -57,7 +57,7 @@ limitations under the License.
 #include "llvm/TargetParser/Host.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
-#include "xla/service/cpu/compiler_functor.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/orc_jit_memory_mapper.h"
 #include "xla/service/cpu/runtime_conv2d.h"
@@ -255,7 +255,7 @@ SimpleOrcJIT::InferTargetMachineForJIT(
   return target_machine;
 }
 
-static CompilerFunctor::TargetMachineBuilder CreateTargetMachineBuilder(
+static IrCompiler::TargetMachineBuilder CreateTargetMachineBuilder(
     llvm::TargetOptions target_options, llvm::CodeGenOptLevel opt_level,
     absl::string_view max_cpu_isa) {
   return [target_options, opt_level, max_cpu_isa]() {
@@ -288,16 +288,16 @@ SimpleOrcJIT::SimpleOrcJIT(
                     }),
       compile_layer_(
           *execution_session_, object_layer_,
-          std::make_unique<CompilerFunctor>(
+          std::make_unique<IrCompiler>(
               target_machine_builder_,
-              CompilerFunctor::Options{
+              IrCompiler::Options{
                   /*optimization_level=*/static_cast<int32_t>(opt_level),
                   /*optimize_for_size=*/optimize_for_size,
                   /*fast_math_flags=*/fast_math_flags,
                   /*disable_expensive_passes=*/disable_expensive_passes,
                   /*disable_slp_vectorizer=*/disable_slp_vectorizer,
               },
-              CompilerFunctor::CompilationHooks{
+              IrCompiler::CompilationHooks{
                   std::move(pre_optimization_hook),
                   std::move(post_optimization_hook),
                   std::move(post_codegen_hook),

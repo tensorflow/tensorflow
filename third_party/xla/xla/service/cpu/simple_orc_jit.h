@@ -46,7 +46,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Triple.h"
-#include "xla/service/cpu/compiler_functor.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/service/llvm_compiler.h"
 #include "tsl/platform/cpu_info.h"
 
@@ -138,7 +138,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
 
   // Target machine builder that is used to construct target machines for this
   // instance of SimpleOrcJIT, and to construct `target_machine_`.
-  CompilerFunctor::TargetMachineBuilder target_machine_builder_;
+  IrCompiler::TargetMachineBuilder target_machine_builder_;
   std::shared_ptr<llvm::TargetMachine> target_machine_;
 
   llvm::Triple target_triple_;

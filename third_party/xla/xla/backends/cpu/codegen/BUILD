@@ -39,6 +39,31 @@ cc_library(
 )
 
 cc_library(
+    name = "ir_compiler",
+    srcs = ["ir_compiler.cc"],
+    hdrs = ["ir_compiler.h"],
+    deps = [
+        ":polynomial_approximations",
+        "//xla:util",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Instrumentation",
+        "@llvm-project//llvm:MC",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:Passes",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
     name = "jit_compiler",
     srcs = ["jit_compiler.cc"],
     hdrs = ["jit_compiler.h"],
