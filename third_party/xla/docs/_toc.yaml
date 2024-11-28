@@ -23,6 +23,8 @@ toc:
     path: /xla/copybara
   - title: Determinism
     path: /xla/determinism
+  - title: Emitters
+    path: /xla/emitters
   - title: Hermetic CUDA overview
     path: /xla/hermetic_cuda
   - title: Indexing Analysis
