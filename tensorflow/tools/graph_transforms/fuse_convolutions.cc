@@ -25,9 +25,9 @@ limitations under the License.
 namespace tensorflow {
 namespace graph_transforms {
 
-Status FuseResizePadAndConv(const GraphDef& input_graph_def,
-                            const TransformFuncContext& context,
-                            GraphDef* output_graph_def) {
+absl::Status FuseResizePadAndConv(const GraphDef& input_graph_def,
+                                  const TransformFuncContext& context,
+                                  GraphDef* output_graph_def) {
   GraphDef replaced_graph_def;
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def,  // clang-format off
@@ -72,16 +72,16 @@ Status FuseResizePadAndConv(const GraphDef& input_graph_def,
         CopyNodeAttr(conv_node, "strides", "strides", &fused_conv);
         new_nodes->push_back(fused_conv);
 
-        return OkStatus();
+        return absl::OkStatus();
       },
       {}, &replaced_graph_def));
   *output_graph_def = replaced_graph_def;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status FuseResizeAndConv(const GraphDef& input_graph_def,
-                         const TransformFuncContext& context,
-                         GraphDef* output_graph_def) {
+absl::Status FuseResizeAndConv(const GraphDef& input_graph_def,
+                               const TransformFuncContext& context,
+                               GraphDef* output_graph_def) {
   GraphDef replaced_graph_def;
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def,  // clang-format off
@@ -127,16 +127,16 @@ Status FuseResizeAndConv(const GraphDef& input_graph_def,
         CopyNodeAttr(conv_node, "strides", "strides", &fused_conv);
         new_nodes->push_back(fused_conv);
 
-        return OkStatus();
+        return absl::OkStatus();
       },
       {}, &replaced_graph_def));
   *output_graph_def = replaced_graph_def;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status FusePadAndConv(const GraphDef& input_graph_def,
-                      const TransformFuncContext& context,
-                      GraphDef* output_graph_def) {
+absl::Status FusePadAndConv(const GraphDef& input_graph_def,
+                            const TransformFuncContext& context,
+                            GraphDef* output_graph_def) {
   GraphDef replaced_graph_def;
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def,  // clang-format off
@@ -181,11 +181,11 @@ Status FusePadAndConv(const GraphDef& input_graph_def,
         CopyNodeAttr(conv_node, "strides", "strides", &fused_conv);
         new_nodes->push_back(fused_conv);
 
-        return OkStatus();
+        return absl::OkStatus();
       },
       {}, &replaced_graph_def));
   *output_graph_def = replaced_graph_def;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("fuse_resize_pad_and_conv", FuseResizePadAndConv);
