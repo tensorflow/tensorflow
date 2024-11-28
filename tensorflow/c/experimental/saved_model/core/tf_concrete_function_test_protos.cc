@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/tf_concrete_function_test_protos.h"
 
-#include <string>
-
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
