@@ -78,6 +78,7 @@ class GpuHloScheduleTest : public HloTestBase {
 
   HloModuleConfig GetModuleConfig(bool enable_latency_hiding_scheduler,
                                   bool enable_gpu_async_tracker = false,
+                                  bool enable_pipelined_p2p = false,
                                   absl::string_view fdo_profile = "") {
     HloModuleConfig config;
     DebugOptions debug_options = GetDebugOptionsForTest();
@@ -85,6 +86,7 @@ class GpuHloScheduleTest : public HloTestBase {
         enable_latency_hiding_scheduler);
     debug_options.set_xla_gpu_lhs_enable_gpu_async_tracker(
         enable_gpu_async_tracker);
+    debug_options.set_xla_gpu_enable_pipelined_p2p(enable_pipelined_p2p);
     config.set_debug_options(debug_options);
     config.set_fdo_profile(fdo_profile);
     return config;
@@ -500,6 +502,7 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModel) {
         ParseAndReturnVerifiedModule(
             hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
                                       /*enable_gpu_async_tracker=*/true,
+                                      /*enable_pipelined_p2p=*/false,
                                       /*fdo_profile=*/subtest.profile)));
     SequentialHloOrdering order = BuildHloOrdering(module.get());
 
@@ -562,6 +565,7 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelFailsWithIncompleteProfile) {
       ParseAndReturnVerifiedModule(
           kHloString, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
                                       /*enable_gpu_async_tracker=*/true,
+                                      /*enable_pipelined_p2p=*/false,
                                       /*fdo_profile=*/kProfile)));
 
   HloModuleConfig config(module->config());
@@ -622,6 +626,7 @@ TEST_F(
       ParseAndReturnVerifiedModule(
           kHloString, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
                                       /*enable_gpu_async_tracker=*/true,
+                                      /*enable_pipelined_p2p=*/false,
                                       /*fdo_profile=*/kProfile)));
 
   // `dot1` and `ar-start1` are missing from the profile but we disable the
@@ -680,6 +685,7 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelWithRematData) {
           hlo_text,
           GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
                           /*enable_gpu_async_tracker=*/true,
+                          /*enable_pipelined_p2p=*/false,
                           /*fdo_profile=*/ar_long_latency_proto_text)));
   SequentialHloOrdering order = BuildHloOrdering(module.get());
 
@@ -759,14 +765,17 @@ TEST_F(GpuHloScheduleTest, LHSSendRecv) {
     while_init = (u32[], f32[1, 1024, 1024]) tuple(c0, init)
     while_result = (u32[], f32[1, 1024, 1024]) while(while_init),
       body=while_body, condition=while_cond
-    ROOT entry_result = f32[1, 1024, 1024] get-tuple-element(while_result), index=1
+    ROOT entry_result = f32[1, 1024, 1024] get-tuple-element(while_result),
+      index=1
   }
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(
-          hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true)));
+          hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
+                                    /*enable_gpu_async_tracker=*/false,
+                                    /*enable_pipelined_p2p=*/true)));
   SequentialHloOrdering order = BuildHloOrdering(module.get());
   HloComputation* while_body = module->GetComputationWithName("while_body");
   const std::vector<HloInstruction*>& instruction_sequence =
@@ -859,7 +868,8 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
       auto module,
       ParseAndReturnVerifiedModule(
           hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
-                                    /*enable_gpu_async_tracker=*/true)));
+                                    /*enable_gpu_async_tracker=*/true,
+                                    /*enable_pipelined_p2p=*/true)));
   SequentialHloOrdering order = BuildHloOrdering(module.get());
   HloComputation* while_body = module->GetComputationWithName("while_body");
   const std::vector<HloInstruction*>& instruction_sequence =
@@ -954,7 +964,8 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvAllReduce) {
       auto module,
       ParseAndReturnVerifiedModule(
           hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
-                                    /*enable_gpu_async_tracker=*/true)));
+                                    /*enable_gpu_async_tracker=*/true,
+                                    /*enable_pipelined_p2p=*/true)));
   SequentialHloOrdering order = BuildHloOrdering(module.get());
   HloComputation* while_body = module->GetComputationWithName("while_body");
   const std::vector<HloInstruction*>& instruction_sequence =
@@ -1074,7 +1085,8 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined1) {
       auto module,
       ParseAndReturnVerifiedModule(
           hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
-                                    /*enable_gpu_async_tracker=*/true)));
+                                    /*enable_gpu_async_tracker=*/true,
+                                    /*enable_pipelined_p2p=*/true)));
   SequentialHloOrdering order = BuildHloOrdering(module.get());
   const std::vector<HloInstruction*>& while_body =
       order.SequentialOrder(*module->GetComputationWithName("while_body"))
@@ -1268,7 +1280,8 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPipelined2) {
       auto module,
       ParseAndReturnVerifiedModule(
           hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
-                                    /*enable_gpu_async_tracker=*/true)));
+                                    /*enable_gpu_async_tracker=*/true,
+                                    /*enable_pipelined_p2p=*/true)));
   SequentialHloOrdering order = BuildHloOrdering(module.get());
   const std::vector<HloInstruction*>& while_body =
       order.SequentialOrder(*module->GetComputationWithName("while_body"))
@@ -1394,6 +1407,7 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelWithForceEarliestSchedule) {
                           // Post processing should work even with
                           // GpuAsyncTrackerBase.
                           /*enable_gpu_async_tracker=*/false,
+                          /*enable_pipelined_p2p=*/false,
                           /*fdo_profile=*/ar_long_latency_proto_binary)));
   SequentialHloOrdering order = BuildHloOrdering(module.get());
 
