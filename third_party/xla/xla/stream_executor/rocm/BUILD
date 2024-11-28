@@ -296,6 +296,7 @@ cc_library(
         "//xla/stream_executor/gpu:scoped_activate_context",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
+        "//xla/stream_executor/gpu:gpu_blas_lt_gemm_runner",
         "//xla/tsl/util:determinism_hdr_lib",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
