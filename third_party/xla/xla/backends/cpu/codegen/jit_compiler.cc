@@ -33,6 +33,7 @@ limitations under the License.
 #include "llvm/TargetParser/Host.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/function_library.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
 
@@ -90,6 +91,14 @@ JitCompiler::InferTargetMachine(
   }
 
   return std::move(target_machine);
+}
+
+IrCompiler::TargetMachineBuilder JitCompiler::InferTargetMachineBuilder(
+    const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
+    std::optional<tsl::port::CPUFeature> max_cpu_feature) {
+  return [target_options, opt_level, max_cpu_feature] {
+    return InferTargetMachine(target_options, opt_level, max_cpu_feature);
+  };
 }
 
 absl::StatusOr<std::unique_ptr<JitCompiler>> JitCompiler::Create(

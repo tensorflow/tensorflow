@@ -64,6 +64,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Core",
@@ -86,6 +87,7 @@ cc_library(
     deps = [
         ":cpu_features",
         ":function_library",
+        ":ir_compiler",
         "//xla:util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

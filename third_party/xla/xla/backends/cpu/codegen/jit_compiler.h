@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "xla/backends/cpu/codegen/function_library.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
@@ -53,6 +54,13 @@ class JitCompiler {
   InferTargetMachine(const llvm::TargetOptions& target_options,
                      llvm::CodeGenOptLevel opt_level,
                      std::optional<tsl::port::CPUFeature> max_cpu_feature);
+
+  // Returns a target machine builder that uses `InferTargetMachine` defined
+  // above to infer the target machine for the given options.
+  static IrCompiler::TargetMachineBuilder InferTargetMachineBuilder(
+      const llvm::TargetOptions& target_options,
+      llvm::CodeGenOptLevel opt_level,
+      std::optional<tsl::port::CPUFeature> max_cpu_feature);
 
   struct Options {
     // Maximum CPU instruction set for wich the compiler should generate code.

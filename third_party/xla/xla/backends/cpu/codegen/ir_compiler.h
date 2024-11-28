@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/IR/FMF.h"
@@ -47,7 +48,7 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
   //
   // See `llvm::orc::ConcurrentIRCompiler` to see corresponding API in ORC.
   using TargetMachineBuilder =
-      std::function<std::shared_ptr<llvm::TargetMachine>()>;
+      std::function<absl::StatusOr<std::shared_ptr<llvm::TargetMachine>>()>;
 
   // Options for configuring the LLVM compilation pipeline and optimizations.
   struct Options {

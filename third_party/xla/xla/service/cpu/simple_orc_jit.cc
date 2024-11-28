@@ -102,17 +102,6 @@ extern "C" uint16_t __truncdfbf2(double);
 
 namespace xla::cpu {
 
-static IrCompiler::TargetMachineBuilder CreateTargetMachineBuilder(
-    llvm::TargetOptions target_options, llvm::CodeGenOptLevel opt_level,
-    absl::string_view max_cpu_isa) {
-  return [target_options, opt_level, max_cpu_isa]() {
-    auto target_machine = JitCompiler::InferTargetMachine(
-        target_options, opt_level, CpuFeatureFromString(max_cpu_isa));
-    CHECK_OK(target_machine) << "Failed to infer target machine";
-    return std::move(*target_machine);
-  };
-}
-
 SimpleOrcJIT::SimpleOrcJIT(
     std::unique_ptr<llvm::orc::ExecutorProcessControl> target_process_control,
     std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
@@ -123,9 +112,9 @@ SimpleOrcJIT::SimpleOrcJIT(
     LLVMCompiler::ModuleHook post_optimization_hook,
     std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook,
     size_t num_jit_dylibs, absl::string_view max_cpu_isa)
-    : target_machine_builder_(
-          CreateTargetMachineBuilder(target_options, opt_level, max_cpu_isa)),
-      target_machine_(target_machine_builder_()),
+    : target_machine_builder_(JitCompiler::InferTargetMachineBuilder(
+          target_options, opt_level, CpuFeatureFromString(max_cpu_isa))),
+      target_machine_(target_machine_builder_().value()),
       target_triple_(target_machine_->getTargetTriple()),
       data_layout_(target_machine_->createDataLayout()),
       target_process_control_(std::move(target_process_control)),
