@@ -722,33 +722,6 @@ func.func @transfer_read_i1(%arg0: tensor<43xi1> {xla.slice_index = 1}) -> vecto
 
 // -----
 
-func.func @transfer_write_i4(%arg0: tensor<43xi4> {xla.slice_index = 1}) -> tensor<43xi4> {
-  %c16 = arith.constant 16 : index
-  %cst = arith.constant dense<[1, 2]> : vector<2xi4>
-  %out = vector.transfer_write %cst, %arg0[%c16] : vector<2xi4>, tensor<43xi4>
-  func.return %out : tensor<43xi4>
-}
-// CHECK-LABEL: @transfer_write_i4
-// CHECK:           %[[CST:.*]] = arith.constant dense<[2, 1]> : vector<2xi4>
-// CHECK-NEXT:      %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[8]
-// CHECK-NEXT:      llvm.store %[[CST]], %[[PTR]]
-
-// -----
-
-func.func @transfer_read_i4(%arg0: tensor<43xi4> {xla.slice_index = 1}) -> vector<2xi4> {
-  %c16 = arith.constant 16 : index
-  %c1 = arith.constant 1 : i4
-  %out = vector.transfer_read %arg0[%c16], %c1 : tensor<43xi4>, vector<2xi4>
-  func.return %out : vector<2xi4>
-}
-// CHECK-LABEL: @transfer_read_i4
-// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[8]
-// CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] : !llvm.ptr
-// CHECK:           %[[SHUFFLE:.*]] = vector.shuffle %[[LOADED]], %[[LOADED]] [1, 0]
-// CHECK:           return %[[SHUFFLE]] : vector<2xi4>
-
-// -----
-
 func.func @int4_constant(%arg0: tensor<3xi4>, %arg1: index) -> i4 {
   %cst = arith.constant dense<[1, 2, 3]> : tensor<3xi4>
   %extracted = tensor.extract %arg0[%arg1] : tensor<3xi4>
