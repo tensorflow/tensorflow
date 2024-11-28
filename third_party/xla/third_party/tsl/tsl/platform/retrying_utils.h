@@ -15,8 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_RETRYING_UTILS_H_
 #define TENSORFLOW_TSL_PLATFORM_RETRYING_UTILS_H_
 
+#include <cstdint>
 #include <functional>
 
+#include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "tsl/platform/status.h"
 

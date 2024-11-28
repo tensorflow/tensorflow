@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tsl/platform/stringprintf.h"
 
-#include <string>
+#include <cerrno>
+#include <clocale>
+#include <cstring>
 
 #include "tsl/platform/test.h"
 

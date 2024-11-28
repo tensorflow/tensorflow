@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tsl/platform/tstring.h"
 
-#include <memory>
+#include <cstddef>
+#include <sstream>
 #include <string>
+#include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "tsl/platform/cord.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/stringpiece.h"

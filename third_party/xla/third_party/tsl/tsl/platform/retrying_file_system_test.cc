@@ -15,8 +15,16 @@ limitations under the License.
 
 #include "tsl/platform/retrying_file_system.h"
 
-#include <fstream>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <tuple>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/test.h"

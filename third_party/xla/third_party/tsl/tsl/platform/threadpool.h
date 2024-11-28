@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_THREADPOOL_H_
 #define TENSORFLOW_TSL_PLATFORM_THREADPOOL_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "tsl/platform/env.h"

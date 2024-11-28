@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"

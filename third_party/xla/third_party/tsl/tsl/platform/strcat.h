@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_STRCAT_H_
 #define TENSORFLOW_TSL_PLATFORM_STRCAT_H_
 
+#include <initializer_list>
 #include <string>
 
 #include "tsl/platform/macros.h"

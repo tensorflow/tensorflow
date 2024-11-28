@@ -12,6 +12,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tsl/platform/status.h"
 
+#include <cstddef>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -19,6 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
 #include "tsl/platform/errors.h"

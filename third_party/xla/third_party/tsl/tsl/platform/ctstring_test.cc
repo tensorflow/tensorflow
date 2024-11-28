@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tsl/platform/ctstring.h"
 
-#include <memory>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <string>
 
 #include "tsl/platform/ctstring_internal.h"

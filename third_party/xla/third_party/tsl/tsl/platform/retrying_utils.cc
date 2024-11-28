@@ -17,8 +17,10 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <limits>
 
+#include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"

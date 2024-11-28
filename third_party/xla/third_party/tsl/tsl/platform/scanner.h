@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/strip.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/stringpiece.h"

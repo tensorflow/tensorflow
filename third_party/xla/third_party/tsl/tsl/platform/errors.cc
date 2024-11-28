@@ -18,6 +18,7 @@ limitations under the License.
 #include <errno.h>
 #include <string.h>
 
+#include "absl/status/status.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/strcat.h"
 

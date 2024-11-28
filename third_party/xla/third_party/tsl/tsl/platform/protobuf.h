@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_PROTOBUF_H_
 #define TENSORFLOW_TSL_PLATFORM_PROTOBUF_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <string>
+#include <utility>
 
+#include "absl/strings/cord.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/types.h"
 

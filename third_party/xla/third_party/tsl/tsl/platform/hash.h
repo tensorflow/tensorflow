@@ -21,8 +21,12 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <cstddef>
+#include <cstring>
 #include <functional>
 #include <string>
+#include <type_traits>
+#include <utility>
 
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/types.h"
