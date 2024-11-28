@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/status_macros.h"
 
-#include <algorithm>
 #include <string>
 
 #include "absl/base/attributes.h"
