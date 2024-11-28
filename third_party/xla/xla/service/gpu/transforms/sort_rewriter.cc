@@ -31,8 +31,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/transforms/expanders/stable_sort_expander.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/runtime/cub_sort_thunk.h"
 #include "xla/shape.h"
@@ -100,98 +98,12 @@ std::optional<SortComputationAnalysis> AnalyzeCompareOp(
   return SortComputationAnalysis{first_index / 2, descending != reverse};
 }
 
-// Detects a sort with these properties:
-// - Has two operands -- one is an iota op
-// - Has a comparison computation that takes 4 inputs and compares them
-// hierarchically, so that the iota inputs are the final tie-breaker.
-//
-// The above is equivalent to a stable sort where the iota operand is completely
-// ignored. That simpler comparator is the one detected in AnalyzeCompareOp, but
-// that's insufficient, because the StableSortExpander pass expands it into the
-// more complex version detected below.
-std::optional<SortComputationAnalysis> AnalyzeComplexSortComputation(
-    const HloSortInstruction& sort_op) {
-  auto computation = sort_op.called_computations().front();
-  if (computation->num_parameters() != 4) {
-    return std::nullopt;
-  }
-
-  int64_t iota_operand_index =
-      StableSortExpander::IotaOperandIndexForStableSort(sort_op);
-  if (iota_operand_index < 0) {
-    return std::nullopt;
-  }
-
-  auto root = computation->root_instruction();
-  if (root->opcode() != HloOpcode::kSelect) {
-    return std::nullopt;
-  }
-
-  // Check that the middle operand of the select compares the iota input.
-  auto iota_cmp = DynCast<HloCompareInstruction>(root->operand(1));
-  auto [iotap0, iotap1] = ParametersFromCmpOperands(iota_cmp);
-  if (iota_cmp == nullptr ||
-      iota_cmp->direction() != ComparisonDirection::kLt ||
-      iotap0 != iota_operand_index * 2 ||
-      iotap1 != iota_operand_index * 2 + 1) {
-    return std::nullopt;
-  }
-
-  // Check that the first operand of the select is an EQ comparison of the
-  // values (non-iota) input.
-  auto eq_cmp = DynCast<HloCompareInstruction>(root->operand(0));
-  if (eq_cmp == nullptr || eq_cmp->direction() != ComparisonDirection::kEq) {
-    return std::nullopt;
-  }
-
-  // EQ comparison case 1: direct comparison of parameters
-  auto [p0, p1] = ParametersFromCmpOperands(eq_cmp);
-  if (p0 < 0 || p1 < 0) {
-    // EQ comparison case 2: comparison of comparisons. This is what
-    // the StableSortExpander pass currently generates.
-    auto cmp = DynCast<HloCompareInstruction>(eq_cmp->operand(0));
-    auto cmp_reverse = DynCast<HloCompareInstruction>(eq_cmp->operand(1));
-    auto [a, b] = ParametersFromCmpOperands(cmp);
-    auto [p, q] = ParametersFromCmpOperands(cmp_reverse);
-    if (cmp == nullptr || cmp_reverse == nullptr || a < 0 || b < 0 || a != q ||
-        b != p || cmp->direction() != cmp_reverse->direction() ||
-        cmp->direction() == Comparison::Direction::kEq ||
-        cmp->direction() == Comparison::Direction::kNe) {
-      return std::nullopt;
-    }
-  }
-
-  // At this point only the last operand of the select needs to be verified.
-  return AnalyzeCompareOp(root->operand(2));
-}
-
 std::optional<SortComputationAnalysis> AnalyzeSortOp(
     const HloSortInstruction& sort_op) {
   auto computation = sort_op.called_computations().front();
 
-  // First, check if the computation is a simple compare op on the operands.
-  auto result = AnalyzeCompareOp(computation->root_instruction());
-  if (!result.has_value()) {
-    // If the above fails, check if the sort instruction and comparer are more
-    // complex, like what is produced by the StableSortExpander pass.
-    result = AnalyzeComplexSortComputation(sort_op);
-  }
-  return result;
-}
-
-// Whether a specific sort output is used. If `sort_op` is a root, we assume all
-// of the sort outputs are used.
-bool SortOutputIsUsed(const HloSortInstruction* sort_op, int output_index) {
-  if (sort_op->IsRoot()) {
-    return true;
-  }
-  for (const HloInstruction* user : sort_op->users()) {
-    if (user->opcode() != HloOpcode::kGetTupleElement ||
-        user->tuple_index() == output_index) {
-      return true;
-    }
-  }
-  return false;
+  // Check if the computation is a simple compare op on the operands.
+  return AnalyzeCompareOp(computation->root_instruction());
 }
 
 // Create runner for CUB sort operation.
@@ -201,7 +113,7 @@ absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateRunner(
   int value_index = 1 - sort_analysis.key_operand;
   return CubSortRunnerInterface::Create(
       sort_op->operand(sort_analysis.key_operand)->shape().element_type(),
-      sort_op->operand_count() == 2 && SortOutputIsUsed(sort_op, value_index)
+      sort_op->operand_count() == 2
           ? std::optional(sort_op->operand(value_index)->shape().element_type())
           : std::nullopt);
 }
@@ -247,7 +159,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   HloInstruction* keys = sort_op->mutable_operand(sort_analysis.key_operand);
   HloInstruction* values = nullptr;
   int value_index = 1 - sort_analysis.key_operand;
-  if (sort_op->operand_count() == 2 && SortOutputIsUsed(sort_op, value_index)) {
+  if (sort_op->operand_count() == 2) {
     values = sort_op->mutable_operand(value_index);
   }
 
@@ -272,28 +184,18 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
 
   // Build the replacement instruction.
   HloInstruction* replacement;
-  if (sort_op->operand_count() == 1 || values == nullptr) {
-    replacement = sort_op->AddInstruction(
-        HloInstruction::CreateGetTupleElement(keys->shape(), custom_call, 0));
+  if (sort_op->operand_count() == 1) {
+    replacement =
+        sort_op->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
+            sort_op->shape(), custom_call, 0));
   } else {
     replacement = UnpackResultPair(sort_op, custom_call,
                                    /*swap=*/sort_analysis.key_operand == 1);
   }
 
-  if (sort_op->operand_count() == 2 && values == nullptr) {
-    // We have already verified in SortOutputIsUsed() that there is no user of
-    // the output corresponding to the `values` operand.
-    for (HloInstruction* user : sort_op->users()) {
-      CHECK_EQ(user->opcode(), HloOpcode::kGetTupleElement);
-      CHECK_EQ(user->tuple_index(), sort_analysis.key_operand);
-      TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(replacement));
-      TF_RETURN_IF_ERROR(
-          user->parent()->RemoveInstructionAndUnusedOperands(user));
-    }
-  } else {
-    TF_RETURN_IF_ERROR(
-        sort_op->parent()->ReplaceInstruction(sort_op, replacement));
-  }
+  // Replace sort operation with custom call followed by GTE.
+  TF_RETURN_IF_ERROR(
+      sort_op->parent()->ReplaceInstruction(sort_op, replacement));
   return true;
 }
 

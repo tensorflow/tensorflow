@@ -676,6 +676,10 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<RngExpander>();
   pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
+  if (hlo_module->config().debug_options().xla_gpu_enable_cub_radix_sort()) {
+    pipeline.AddPass<SortRewriter>();
+  }
+
   // Comparison total order expander
   pipeline.AddPass<ComparisonExpander>(std::array{std::make_pair(BF16, F32)});
 
