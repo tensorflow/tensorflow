@@ -18,6 +18,7 @@ temporary_patch_list = [
     "//third_party/triton:temporary/replace_unreachable_by_abort.patch",
     "//third_party/triton:temporary/block_k_16_fix.patch",
     "//third_party/triton:temporary/index_cast_ui_axis_info.patch",
-    "//third_party/triton:temporary/reduce_with_slice.patch",
+    "//third_party/triton:temporary/reduce_with_slice.patch",  # Already part of the current integration. Remove in the current integration.
+    "//third_party/triton:temporary/chain_dot_warps.patch",  # Fix is in https://github.com/triton-lang/triton/pull/5277 which is still open at the moment of writing. Remove when this lands and is included in integration.
     # Add new patches just above this line
 ]
