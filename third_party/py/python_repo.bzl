@@ -9,20 +9,31 @@ To set wheel name, add "--repo_env=WHEEL_NAME=tensorflow_cpu"
 DEFAULT_VERSION = "3.11"
 
 def _python_repository_impl(ctx):
-    version = _get_python_version(ctx)
+    version, py_kind = _get_python_version(ctx)
+    version_and_kind = "%s-%s" % (version, py_kind) if py_kind else version
 
     ctx.file("BUILD", "")
     wheel_name = ctx.os.environ.get("WHEEL_NAME", "tensorflow")
     wheel_collab = ctx.os.environ.get("WHEEL_COLLAB", False)
     macos_deployment_target = ctx.os.environ.get("MACOSX_DEPLOYMENT_TARGET", "")
+    hermetic_url = ctx.os.environ.get("HERMETIC_PYTHON_URL", "")
+    hermetic_sha256 = ctx.os.environ.get("HERMETIC_PYTHON_SHA256", "")
+    hermetic_prefix = ctx.os.environ.get("HERMETIC_PYTHON_PREFIX", "python")
+    custom_requirements = ctx.os.environ.get("HERMETIC_REQUIREMENTS_LOCK", None)
 
+    if not (hermetic_url + hermetic_sha256) and (hermetic_url or hermetic_sha256):
+        fail("""
+Please either specify both HERMETIC_PYTHON_URL and HERMETIC_PYTHON_SHA256
+to set up a custom python interpreter, or none of them to rely on default ones.
+""")
     requirements = None
-    for i in range(0, len(ctx.attr.requirements_locks)):
-        if ctx.attr.requirements_versions[i] == version:
-            requirements = ctx.attr.requirements_locks[i]
-            break
-
     if not requirements:
+        for i in range(0, len(ctx.attr.requirements_locks)):
+            if ctx.attr.requirements_versions[i] == version_and_kind:
+                requirements = ctx.attr.requirements_locks[i]
+                break
+
+    if not requirements and not custom_requirements:
         fail("""
 Could not find requirements_lock.txt file matching specified Python version.
 Specified python version: {version}
@@ -33,9 +44,17 @@ Please check python_init_repositories() in your WORKSPACE file.
             versions = ", ".join(ctx.attr.requirements_versions),
         ))
 
-    requirements_with_local_wheels = str(requirements)
-
-    if ctx.attr.local_wheel_workspaces:
+    if custom_requirements:
+        custom_requirements_path = ctx.path(custom_requirements)
+        requirements_with_local_wheels = "@{repo}//:{label}".format(
+            repo = ctx.name,
+            label = custom_requirements_path.basename,
+        )
+        ctx.file(
+            custom_requirements_path.basename,
+            ctx.read(custom_requirements_path),
+        )
+    elif ctx.attr.local_wheel_workspaces:
         local_wheel_requirements = _get_injected_local_wheels(
             ctx,
             version,
@@ -48,11 +67,12 @@ Please check python_init_repositories() in your WORKSPACE file.
             repo = ctx.name,
             label = requirements.name,
         )
-
         ctx.file(
             requirements.name,
             merged_requirements_content,
         )
+    else:
+        requirements_with_local_wheels = str(requirements)
 
     use_pywrap_rules = bool(
         ctx.os.environ.get("USE_PYWRAP_RULES", False),
@@ -60,6 +80,26 @@ Please check python_init_repositories() in your WORKSPACE file.
 
     if use_pywrap_rules:
         print("!!!Using pywrap rules instead of directly creating .so objects!!!")  # buildifier: disable=print
+
+    interpreter_type = "\"default\" (provided by rules_python)"
+    if hermetic_url:
+        interpreter_type = "\"custom\" (pulled from %s)" % hermetic_url
+    print(
+        """
+=============================
+Hermetic Python configuration:
+Version: "{version}"
+Kind: "{py_kind}"
+Interpreter: {interpreter_type}
+Requirements_lock label: "{requirements_lock_label}"
+=====================================
+""".format(
+            version = version,
+            py_kind = py_kind,
+            interpreter_type = interpreter_type,
+            requirements_lock_label = requirements_with_local_wheels,
+        ),
+    )  # buildifier: disable=print
 
     ctx.file(
         "py_version.bzl",
@@ -72,6 +112,9 @@ REQUIREMENTS = "{requirements}"
 REQUIREMENTS_WITH_LOCAL_WHEELS = "{requirements_with_local_wheels}"
 USE_PYWRAP_RULES = {use_pywrap_rules}
 MACOSX_DEPLOYMENT_TARGET = "{macos_deployment_target}"
+HERMETIC_PYTHON_URL = "{hermetic_url}"
+HERMETIC_PYTHON_SHA256 = "{hermetic_sha256}"
+HERMETIC_PYTHON_PREFIX = "{hermetic_prefix}"
 """.format(
             version = version,
             wheel_name = wheel_name,
@@ -80,6 +123,9 @@ MACOSX_DEPLOYMENT_TARGET = "{macos_deployment_target}"
             requirements_with_local_wheels = requirements_with_local_wheels,
             use_pywrap_rules = use_pywrap_rules,
             macos_deployment_target = macos_deployment_target,
+            hermetic_url = hermetic_url,
+            hermetic_sha256 = hermetic_sha256,
+            hermetic_prefix = hermetic_prefix,
         ),
     )
 
@@ -102,7 +148,7 @@ System Python was not found.""")
         else:
             version = ctx.attr.default_python_version
 
-    version = _parse_python_version(version)
+    version, kind = _parse_python_version(version)
 
     if print_warning:
         print("""
@@ -115,15 +161,15 @@ OR pass it as an argument to bazel command directly or inside your .bazelrc
 file:
   --repo_env=HERMETIC_PYTHON_VERSION=3.12
 """.format(version))  # buildifier: disable=print
-
-    print("Using hermetic Python %s" % version)  # buildifier: disable=print
-    return version
+    return version, kind
 
 def _parse_python_version(version_str):
     if version_str.startswith("Python "):
         py_ver_chunks = version_str[7:].split(".")
-        return "%s.%s" % (py_ver_chunks[0], py_ver_chunks[1])
-    return version_str
+        return "%s.%s" % (py_ver_chunks[0], py_ver_chunks[1]), ""
+    elif "-" in version_str:
+        return version_str.split("-")
+    return version_str, ""
 
 def _get_injected_local_wheels(
         ctx,
@@ -195,9 +241,14 @@ python_repository = repository_rule(
     environ = [
         "TF_PYTHON_VERSION",
         "HERMETIC_PYTHON_VERSION",
+        "HERMETIC_PYTHON_URL",
+        "HERMETIC_PYTHON_SHA256",
+        "HERMETIC_REQUIREMENTS_LOCK",
+        "HERMETIC_PYTHON_PREFIX",
         "WHEEL_NAME",
         "WHEEL_COLLAB",
         "USE_PYWRAP_RULES",
+        "MACOSX_DEPLOYMENT_TARGET",
     ],
     local = True,
 )
