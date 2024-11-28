@@ -48,11 +48,10 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
           return DoBlasGemmImpl<float>(
               stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
               beta, c, ldc, numeric_options, context, scratch_allocator);
-        case blas::DataType::kDouble:
-          return DoBlasGemmImpl<double>(
+        case blas::DataType::kBF16:
+          return DoBlasGemmImpl<Eigen::bfloat16>(
               stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
               beta, c, ldc, numeric_options, context, scratch_allocator);
-
         default:
           return absl::FailedPreconditionError("Unknown type");
       };
