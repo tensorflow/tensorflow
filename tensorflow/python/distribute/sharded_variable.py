@@ -75,7 +75,7 @@ class Partitioner(object):
 
     Returns:
       A list of integers representing the number of partitions on each axis,
-      where i-th value correponds to i-th axis.
+      where i-th value corresponds to i-th axis.
     """
     raise NotImplementedError
 
@@ -620,7 +620,7 @@ class ShardedVariableMixin(trackable.Trackable):
     actual_first_dim = [v.shape.as_list()[0] for v in self._variables]
     if expect_first_dim != actual_first_dim:
       raise NotImplementedError(
-          'scater_xxx ops are not supported in ShardedVariale that does not '
+          'scater_xxx ops are not supported in Sharded Variable that does not '
           'conform to "div" sharding'
       )
 
@@ -964,7 +964,7 @@ def _var_to_tensor(var, dtype=None, name=None, as_ref=False):
   # with ShardedVariable. This requires embedding_lookup ops to raise TypeError
   # when called with ShardedVariable. However since ShardedVariable can be
   # converted to a tensor via concat, embedding_lookup ops would silently
-  # do the convertion and never raise a TypeError. To be able to properly
+  # do the conversion and never raise a TypeError. To be able to properly
   # raise a TypeError, namescope is used to detect if this method is called
   # within a embedding_lookup op.
   # NOTE: This doesn't work in eager mode since op namescope is always cleared
