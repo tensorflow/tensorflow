@@ -50,7 +50,8 @@ void Pack2DPatches(const T* conv_matrix, const int depth, const int height,
                    const int width, const int filter_h, const int filter_w,
                    const int pad_top, const int pad_bottom, const int pad_left,
                    const int pad_right, const int stride_h, const int stride_w,
-                   T* __restrict out_im_data) {
+                   const int feature_group_number,
+                   const int feature_group_count, T* __restrict out_im_data) {
   int w_patches_number =
       (width + filter_w - pad_left - pad_right - 2) / stride_w + 1;
   int h_patches_number =
@@ -58,8 +59,11 @@ void Pack2DPatches(const T* conv_matrix, const int depth, const int height,
 
   const int filter_spatial_size = filter_h * filter_w;
 
+  // Depth per feature group.
+  const int conv_matrix_depth = depth / feature_group_count;
+
   int w_patch_begin = pad_left - filter_w + 1;
-  conv_matrix += depth * (filter_spatial_size - 1);
+  conv_matrix += conv_matrix_depth * (filter_spatial_size - 1);
   for (int w = 0; w < w_patches_number; ++w) {
     int h_patch_begin = pad_top - filter_h + 1;
     for (int h = 0; h < h_patches_number; ++h) {
@@ -76,18 +80,23 @@ void Pack2DPatches(const T* conv_matrix, const int depth, const int height,
           // This loop body covers 1 spatial point with coordinates (iw, ih)
           // in the output buffer, at all depths
           if (iw >= 0 && iw < width && ih >= 0 && ih < height) {
-            for (int i = 0; i < depth; ++i) {
-              out_im_patch_data[i] += conv_matrix[i];
+            for (int i = 0; i < conv_matrix_depth; ++i) {
+              out_im_patch_data[i + feature_group_number * conv_matrix_depth] +=
+                  conv_matrix[i];
             }
           }
+
+          // Advance pointers. They have different depths - 'conv_matrix'
+          // contains data for one feature group, while 'out_im_patch_data'
+          // contains data for all feature groups.
           out_im_patch_data += depth;
-          conv_matrix -= depth;
+          conv_matrix -= conv_matrix_depth;
         }
         // Jump over remaining number of depth.
         out_im_patch_data += depth * (height - filter_h);
       }
 
-      conv_matrix += 2 * depth * filter_spatial_size;
+      conv_matrix += 2 * conv_matrix_depth * filter_spatial_size;
       h_patch_begin += stride_h;
     }
     w_patch_begin += stride_w;
@@ -98,7 +107,6 @@ void Pack2DPatches(const T* conv_matrix, const int depth, const int height,
 // TODO(adambanas): There are other variants of this algorithm, 10% performance
 // improvement was observed on 1D case when not using parallel contraction.
 // Explore these alternatives.
-// TODO(adambanas): Add support for feature group count.
 template <typename EigenDevice, typename ScalarType>
 bool EigenTransposedConv2D(
     const EigenDevice& device, ScalarType* out, ScalarType* lhs,
@@ -109,27 +117,25 @@ bool EigenTransposedConv2D(
     Eigen::Index padding_x_before, Eigen::Index padding_x_after,
     Eigen::Index padding_y_before, Eigen::Index padding_y_after,
     Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
-    std::function<void()> done_callback, bool use_thunk_runtime) {
-  // Grouped convolutions are not supported yet.
-  CHECK(kernel_channels == input_channels);
-
-  using TensorMap2D =
-      Eigen::TensorMap<Eigen::Tensor<ScalarType, 2, Eigen::RowMajor>,
+    Eigen::Index feature_group_count, std::function<void()> done_callback,
+    bool use_thunk_runtime) {
+  using TensorMap3D =
+      Eigen::TensorMap<Eigen::Tensor<ScalarType, 3, Eigen::RowMajor>,
                        Eigen::Unaligned>;
-  using ConstTensorMap3D =
-      Eigen::TensorMap<Eigen::Tensor<const ScalarType, 3, Eigen::RowMajor>,
-                       Eigen::Aligned>;
-  using ConstTensorMap2D =
-      Eigen::TensorMap<Eigen::Tensor<const ScalarType, 2, Eigen::RowMajor>,
+  using ConstTensorMap4D =
+      Eigen::TensorMap<Eigen::Tensor<const ScalarType, 4, Eigen::RowMajor>,
                        Eigen::Aligned>;
 
   // Total spatial dimensions.
   const int input_image_size = input_x * input_y;
   const int output_image_size = output_x * output_y;
-  // Kernel dimensions per input channel.
+  // Kernel dimensions per input channel. This is also patch size.
   const int kernel_total_size = kernel_x * kernel_y * kernel_filters;
 
-  // Intermediate buffer (convolution matrix)
+  // Intermediate buffer (convolution matrix). This buffer is passed to
+  // pack_patches callback, which outlives the current scope. Since multiple
+  // instances of this callback exist, std::move is not an option here, so we
+  // use a shared pointer instead.
   const size_t buffer_size = input_batch * input_image_size * kernel_total_size;
   if (buffer_size * sizeof(ScalarType) > kMaxConvMatrixSize) {
     LOG(WARNING)
@@ -140,7 +146,9 @@ bool EigenTransposedConv2D(
         << " bytes).";
     return false;
   }
-  auto conv_matrix = std::make_unique<ScalarType[]>(buffer_size);
+  // TODO(adambanas): Replace with std::make_shared once we move to C++20
+  // (make_shared is not supported for array types in pre-C++20).
+  std::shared_ptr<ScalarType[]> conv_matrix(new ScalarType[buffer_size]);
   ScalarType* conv_matrix_data = conv_matrix.get();
 
   // Initialize output to zero.
@@ -152,14 +160,17 @@ bool EigenTransposedConv2D(
   // Initialize contraction dims (we need to transpose 'B' below, the dimension
   // we need to contract is 'kernel_channels').
   Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_dims = {
-      Eigen::IndexPair<Eigen::DenseIndex>(1, 1)};
+      Eigen::IndexPair<Eigen::DenseIndex>(2, 1)};
 
   // Compute intermediate results (convolution matrix) into conv_matrix.
-  TensorMap2D C(conv_matrix_data, input_batch * input_image_size,
-                kernel_total_size);
+  TensorMap3D C(conv_matrix_data, feature_group_count,
+                input_batch * input_image_size,
+                kernel_total_size / feature_group_count);
 
-  ConstTensorMap2D A(lhs, input_batch * input_image_size, input_channels);
-  ConstTensorMap3D B(rhs, kernel_x * kernel_y, kernel_channels, kernel_filters);
+  ConstTensorMap4D A(lhs, input_batch, input_image_size, feature_group_count,
+                     input_channels / feature_group_count);
+  ConstTensorMap4D B(rhs, kernel_x * kernel_y, kernel_channels,
+                     feature_group_count, kernel_filters / feature_group_count);
 
   // Use concurrent execution if we have a thread pool device.
   constexpr bool use_thread_pool =
@@ -172,16 +183,18 @@ bool EigenTransposedConv2D(
     CHECK_EQ(use_thread_pool, static_cast<bool>(done_callback));  // Crash OK
   }
 
-  const int input_offset = input_image_size * kernel_total_size;
-  const int output_offset = output_image_size * kernel_filters;
+  const int conv_matrix_offset_per_batch =
+      input_image_size * kernel_total_size / feature_group_count;
+  const int output_offset_per_batch = output_image_size * kernel_filters;
+  const int conv_matrix_offset_per_feature_group =
+      input_batch * conv_matrix_offset_per_batch;
 
   // Pack the calculated patches into the output buffer.
-  // NOTE: The ownership of the conv_matrix is transferred to the lambda without
-  // data copy or reallocation. Thanks to that, conv_matrix_data pointer remains
-  // valid, and that is important because 'C' matrix is referencing it.
-  auto pack_patches = [=, conv_matrix = std::move(conv_matrix)]() {
+  auto pack_patches = [=](int feature_group_id) {
     // Using local pointers to buffers, because lambda is not mutable.
-    const ScalarType* conv_matrix_data = conv_matrix.get();
+    const ScalarType* conv_matrix_data =
+        conv_matrix.get() +
+        feature_group_id * conv_matrix_offset_per_feature_group;
     ScalarType* local_out_data = out_data;
 
     // TODO(adambanas): Run this part in parallel.
@@ -189,10 +202,11 @@ bool EigenTransposedConv2D(
       Pack2DPatches<ScalarType>(
           conv_matrix_data, kernel_filters, output_y, output_x, kernel_y,
           kernel_x, padding_y_before, padding_y_after, padding_x_before,
-          padding_x_after, lhs_y_dilation, lhs_x_dilation, local_out_data);
+          padding_x_after, lhs_y_dilation, lhs_x_dilation, feature_group_id,
+          feature_group_count, local_out_data);
 
-      conv_matrix_data += input_offset;
-      local_out_data += output_offset;
+      conv_matrix_data += conv_matrix_offset_per_batch;
+      local_out_data += output_offset_per_batch;
     }
 
     // If done callback is provided, we need to call it after all the work is
@@ -209,27 +223,71 @@ bool EigenTransposedConv2D(
   // - the major dimension (dims[0]): everything else
   Eigen::DSizes<Eigen::Index, 2> post_contract_dims;
   post_contract_dims[0] = input_batch * input_image_size;
-  post_contract_dims[1] = kernel_total_size;
+  post_contract_dims[1] = kernel_total_size / feature_group_count;
 
-  if (done_callback) {
-    // Schedule the work in the thread pool and return.
-    C.device(device, std::move(pack_patches)) =
-        A.contract(B, contract_dims).reshape(post_contract_dims);
+  // Constructs convolution and output expressions for a given group index.
+  auto convolve_group = [=](int64_t feature_group_id) mutable {
+    auto convolved = A.chip(feature_group_id, 2)
+                         .contract(B.chip(feature_group_id, 2), contract_dims)
+                         .reshape(post_contract_dims);
+    auto intermediate = C.chip(feature_group_id, 0);
+    return std::make_pair(intermediate, convolved);
+  };
+
+  if constexpr (use_thread_pool) {
+    // Although we schedule at most one tasks for each thread, individual
+    // convolution might also schedule more tasks into the same thread pool.
+    auto max_tasks = static_cast<Eigen::Index>(device.numThreads());
+    auto task_size = Eigen::numext::div_ceil(feature_group_count, max_tasks);
+    auto num_tasks = Eigen::numext::div_ceil(feature_group_count, task_size);
+
+    if (use_thunk_runtime) {
+      // Schedule the work in the thread pool and return.
+      ScheduleAll(
+          &device, num_tasks, [=, &device](Eigen::Index task_index) mutable {
+            Eigen::Index start = task_index * task_size;
+            Eigen::Index end = std::min(start + task_size, feature_group_count);
+            for (Eigen::Index i = start; i < end; ++i) {
+              auto [intermediate, convolved] = convolve_group(i);
+              intermediate.device(
+                  device, [pack_patches, i]() { pack_patches(i); }) = convolved;
+            }
+          });
+    } else {
+      Eigen::Barrier barrier(num_tasks);
+      ScheduleAll(&device, num_tasks,
+                  [=, &device, &barrier](Eigen::Index task_index) mutable {
+                    Eigen::Index start = task_index * task_size;
+                    Eigen::Index end =
+                        std::min(start + task_size, feature_group_count);
+                    for (Eigen::Index i = start; i < end; ++i) {
+                      auto [intermediate, convolved] = convolve_group(i);
+                      intermediate.device(device) = convolved;
+                      pack_patches(i);
+                    }
+                    barrier.Notify();
+                  });
+      barrier.Wait();
+    }
   } else {
-    // Run synchronously in the current thread.
-    C.device(device) = A.contract(B, contract_dims).reshape(post_contract_dims);
-    pack_patches();
+    // Convolve all feature groups sequentially in the caller thread.
+    for (int i = 0; i < feature_group_count; ++i) {
+      auto [intermediate, convolved] = convolve_group(i);
+      intermediate.device(device) = convolved;
+      pack_patches(i);
+    }
   }
   return true;
 }
 
-inline bool CanUseCustomTransposedConv(
-    Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index lhs_x_dilation,
-    Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
-    Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count) {
+inline bool CanUseCustomTransposedConv(Eigen::Index x_stride,
+                                       Eigen::Index y_stride,
+                                       Eigen::Index lhs_x_dilation,
+                                       Eigen::Index lhs_y_dilation,
+                                       Eigen::Index rhs_x_dilation,
+                                       Eigen::Index rhs_y_dilation) {
   return (lhs_x_dilation > 1 || lhs_y_dilation > 1) && rhs_x_dilation == 1 &&
-         rhs_y_dilation == 1 && feature_group_count == 1 && x_stride == 1 &&
-         y_stride == 1;
+         rhs_y_dilation == 1 && x_stride == 1 && y_stride == 1;
 }
 
 // Algorithm that works for all types of 2D convolutions. Even though it works
@@ -384,14 +442,14 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
                  Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
                  std::function<void()> done_callback, bool use_thunk_runtime) {
   if (CanUseCustomTransposedConv(x_stride, y_stride, lhs_x_dilation,
-                                 lhs_y_dilation, rhs_x_dilation, rhs_y_dilation,
-                                 feature_group_count)) {
+                                 lhs_y_dilation, rhs_x_dilation,
+                                 rhs_y_dilation)) {
     if (EigenTransposedConv2D(
             device, out, lhs, rhs, input_batch, input_x, input_y,
             input_channels, kernel_x, kernel_y, kernel_channels, kernel_filters,
             output_x, output_y, padding_x_before, padding_x_after,
             padding_y_before, padding_y_after, lhs_x_dilation, lhs_y_dilation,
-            done_callback, use_thunk_runtime)) {
+            feature_group_count, done_callback, use_thunk_runtime)) {
       return;
     }
     // Transposed convolution failed, fallback to generic implementation.
