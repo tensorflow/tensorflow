@@ -50,6 +50,8 @@ namespace xla::cpu {
 // has another pre-fabricated ORC JIT stack called `llvm::orc::LLJIT`.
 class JitCompiler {
  public:
+  using Symbol = FunctionLibrary::Symbol;
+
   JitCompiler(JitCompiler&&) = default;
   JitCompiler& operator=(JitCompiler&&) = default;
 
@@ -99,16 +101,17 @@ class JitCompiler {
 
   // Compiles all added LLVM modules into the FunctionLibrary by resolving all
   // symbols in `symbols`. After this method returns, the FunctionLibrary will
-  // contain compiled functions that can be invoked via function calls.
+  // contain compiled functions that can be invoked via function calls. Returned
+  // FunctionLibrary track type ids of the resolved symbols, but the compiler
+  // doesn't verify that LLVM IR function signature matches the type id.
   //
-  // TODO(ezhulenev): Add an option to pass symbol (function) types together
-  // with names and type-check the LLVM function signature against the function
-  // type to make the compilation type-safe. Currently we resolve all symbols as
-  // type-erased `void*` pointers and hope that function library user does not
-  // cast to the wrong type. Using the wrong function type will lead to
-  // undefined behavior and crashes.
+  // TODO(ezhulenev): Add an option to pass symbol (function) types at compile
+  // time together with names and type-check LLVM function signature against the
+  // function type to make compilation process type safe. Currently we only keep
+  // track of type ids, but we don't track function signatures for type ids, and
+  // have a simple run-time type checking inside of the FunctionLibrary.
   absl::StatusOr<std::unique_ptr<FunctionLibrary>> Compile(
-      absl::Span<const std::string> symbols) &&;
+      absl::Span<const Symbol> symbols) &&;
 
  private:
   JitCompiler(IrCompiler::TargetMachineBuilder target_machine_builder,
@@ -119,9 +122,14 @@ class JitCompiler {
   // Function library constructed from the set of jit-compiled symbols.
   class CompiledFunctionLibrary : public FunctionLibrary {
    public:
+    struct ResolvedSymbol {
+      TypeId type_id;
+      void* ptr;
+    };
+
     CompiledFunctionLibrary(
         std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
-        absl::flat_hash_map<std::string, void*> symbols_map);
+        absl::flat_hash_map<std::string, ResolvedSymbol> symbols_map);
 
     ~CompiledFunctionLibrary() final;
 
@@ -130,7 +138,7 @@ class JitCompiler {
 
    private:
     std::unique_ptr<llvm::orc::ExecutionSession> execution_session_;
-    absl::flat_hash_map<std::string, void*> symbols_map_;
+    absl::flat_hash_map<std::string, ResolvedSymbol> symbols_map_;
   };
 
   // Target machine builder that is used to construct target machines for this

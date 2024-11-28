@@ -17,8 +17,10 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_FUNCTION_LIBRARY_H_
 
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 #include "absl/status/statusor.h"
 #include "xla/tsl/lib/gtl/int_type.h"
@@ -37,11 +39,21 @@ namespace xla::cpu {
 // `std::sort` library call.
 class FunctionLibrary {
  public:
+  virtual ~FunctionLibrary() = default;
+
   // We use a `TypeId` to distinguish functions of different type at run time.
   TSL_LIB_GTL_DEFINE_INT_TYPE(TypeId, int64_t);
   static constexpr TypeId kUnknownTypeId = TypeId(0);
 
-  virtual ~FunctionLibrary() = default;
+  struct Symbol {
+    TypeId type_id;
+    std::string name;
+  };
+
+  template <typename F, std::enable_if_t<std::is_function_v<F>>* = nullptr>
+  static Symbol Sym(std::string name) {
+    return Symbol{GetTypeId<F>(), std::move(name)};
+  }
 
   template <typename F, std::enable_if_t<std::is_function_v<F>>* = nullptr>
   absl::StatusOr<F*> ResolveFunction(std::string_view name) {

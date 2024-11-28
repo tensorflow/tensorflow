@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Target/TargetOptions.h"
+#include "xla/backends/cpu/codegen/function_library.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -60,13 +61,16 @@ TEST(JitCompilerTest, Compile) {
   llvm::orc::ThreadSafeModule tsm(std::move(module), std::move(context));
   TF_ASSERT_OK(compiler.AddModule(std::move(tsm)));
 
-  std::vector<std::string> function_names = {"AddInplace"};
+  using AddInPlace = void(float*);
+  std::vector<FunctionLibrary::Symbol> symbols = {
+      FunctionLibrary::Sym<AddInPlace>("AddInplace")};
+
   TF_ASSERT_OK_AND_ASSIGN(auto function_library,
-                          std::move(compiler).Compile(function_names));
+                          std::move(compiler).Compile(symbols));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto* add_in_place,
-      function_library->ResolveFunction<void(float*)>("AddInplace"));
+      function_library->ResolveFunction<AddInPlace>("AddInplace"));
 
   float value = 1.0f;
   add_in_place(&value);

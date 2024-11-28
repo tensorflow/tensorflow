@@ -133,6 +133,7 @@ xla_cc_test(
     name = "jit_compiler_test",
     srcs = ["jit_compiler_test.cc"],
     deps = [
+        ":function_library",
         ":jit_compiler",
         "//xla/tsl/lib/core:status_test_util",
         "@llvm-project//llvm:AsmParser",

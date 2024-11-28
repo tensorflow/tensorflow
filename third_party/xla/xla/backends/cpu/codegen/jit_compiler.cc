@@ -201,7 +201,7 @@ absl::Status JitCompiler::AddModule(llvm::orc::ThreadSafeModule module,
 }
 
 absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
-    absl::Span<const std::string> symbols) && {
+    absl::Span<const Symbol> symbols) && {
   // Mangle symbol names for the target machine data layout.
   llvm::DataLayout data_layout = target_machine_->createDataLayout();
   auto mangle = [&](std::string_view name) {
@@ -211,22 +211,24 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
   };
 
   // Resolve type-erased symbol pointers.
-  absl::flat_hash_map<std::string, void*> symbols_map;
+  using ResolvedSymbol = CompiledFunctionLibrary::ResolvedSymbol;
+  absl::flat_hash_map<std::string, ResolvedSymbol> symbols_map;
 
   // TODO(ezhulenev): Use task runner to parallelize symbol lookups.
-  for (std::string_view symbol : symbols) {
-    std::string mangled = mangle(symbol);
-    VLOG(3) << absl::StreamFormat("Look up symbol: %s (mangled: %s)", symbol,
-                                  mangled);
+  for (const auto& symbol : symbols) {
+    std::string mangled = mangle(symbol.name);
+    VLOG(3) << absl::StreamFormat("Look up symbol: %s (mangled: %s)",
+                                  symbol.name, mangled);
 
     auto symbol_def = execution_session_->lookup(dylibs_, mangled);
     if (auto err = symbol_def.takeError()) {
-      return Internal("Failed to look up symbol %s: %s", symbol,
+      return Internal("Failed to lookup symbol %s: %s", symbol.name,
                       llvm::toString(std::move(err)));
     }
 
     llvm::orc::ExecutorAddr addr = symbol_def->getAddress();
-    symbols_map[symbol] = reinterpret_cast<void*>(addr.getValue());
+    void* ptr = reinterpret_cast<void*>(addr.getValue());
+    symbols_map[symbol.name] = ResolvedSymbol{symbol.type_id, ptr};
   }
 
   return std::make_unique<CompiledFunctionLibrary>(
@@ -235,7 +237,7 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
 
 JitCompiler::CompiledFunctionLibrary::CompiledFunctionLibrary(
     std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
-    absl::flat_hash_map<std::string, void*> symbols_map)
+    absl::flat_hash_map<std::string, ResolvedSymbol> symbols_map)
     : execution_session_(std::move(execution_session)),
       symbols_map_(std::move(symbols_map)) {
   DCHECK(execution_session_) << "Execution session must not be null";
@@ -250,7 +252,11 @@ JitCompiler::CompiledFunctionLibrary::~CompiledFunctionLibrary() {
 absl::StatusOr<void*> JitCompiler::CompiledFunctionLibrary::ResolveFunction(
     TypeId type_id, std::string_view name) {
   if (auto it = symbols_map_.find(name); it != symbols_map_.end()) {
-    return it->second;
+    if (it->second.type_id != type_id) {
+      return Internal("Symbol %s has type id %d, expected %d", name,
+                      it->second.type_id.value(), type_id.value());
+    }
+    return it->second.ptr;
   }
   return NotFound("Function %s not found (type id: %d)", name, type_id.value());
 }
