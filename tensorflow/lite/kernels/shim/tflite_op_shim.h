@@ -15,10 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_SHIM_TFLITE_OP_SHIM_H_
 #define TENSORFLOW_LITE_KERNELS_SHIM_TFLITE_OP_SHIM_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
