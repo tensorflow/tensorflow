@@ -162,6 +162,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
   llvm::raw_svector_ostream ostream(mc_stream_buffer);
 
   VLOG(2) << "IR after optimizations";
+  XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
 
   {  // Synchronize access to user-defined hooks.
     absl::MutexLock lock(&mutex_);

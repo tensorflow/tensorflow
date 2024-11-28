@@ -20,10 +20,17 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
+#include <string_view>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "llvm/ExecutionEngine/JITEventListener.h"
+#include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
@@ -43,7 +50,10 @@ namespace xla::cpu {
 // has another pre-fabricated ORC JIT stack called `llvm::orc::LLJIT`.
 class JitCompiler {
  public:
-  virtual ~JitCompiler() = default;
+  JitCompiler(JitCompiler&&) = default;
+  JitCompiler& operator=(JitCompiler&&) = default;
+
+  ~JitCompiler();
 
   // Infers the `llvm::TargetMachine` for the current host. If `max_cpu_feature`
   // is provided, it will be used to constrain the set of features that LLVM
@@ -63,27 +73,80 @@ class JitCompiler {
       std::optional<tsl::port::CPUFeature> max_cpu_feature);
 
   struct Options {
+    // Options for the underlying IR compiler instance.
+    IrCompiler::Options ir_compiler_options;
+    IrCompiler::CompilationHooks ir_compiler_hooks;
+
+    // The number of dynamic libraries to create for the jit compiler instance.
+    // We compile XLA:CPU program into multiple LLVM modules, and by using
+    // multiple dynamic libraries we enable parallel compilation.
+    size_t num_dylibs = 1;
+
     // Maximum CPU instruction set for wich the compiler should generate code.
     // If instruction set is empty, compiler will generate code for all ISA
     // extensions detected on the current machine.
-    std::string max_cpu_isa;
+    std::optional<tsl::port::CPUFeature> max_cpu_feature;
   };
 
   // Creates a new instance of the JitCompiler.
-  static absl::StatusOr<std::unique_ptr<JitCompiler>> Create(
-      llvm::TargetOptions target_options, llvm::CodeGenOptLevel opt_level,
-      const Options& options);
+  static absl::StatusOr<JitCompiler> Create(llvm::TargetOptions target_options,
+                                            llvm::CodeGenOptLevel opt_level,
+                                            Options options);
 
   // Adds a LLVM module to the dynamic library at `dylib_index`.
-  virtual absl::Status AddModule(llvm::orc::ThreadSafeModule module,
-                                 size_t dylib_index) = 0;
+  absl::Status AddModule(llvm::orc::ThreadSafeModule module,
+                         size_t dylib_index = 0);
 
-  absl::Status AddModule(llvm::orc::ThreadSafeModule module) {
-    return AddModule(std::move(module), 0);
-  }
+  // Compiles all added LLVM modules into the FunctionLibrary by resolving all
+  // symbols in `symbols`. After this method returns, the FunctionLibrary will
+  // contain compiled functions that can be invoked via function calls.
+  //
+  // TODO(ezhulenev): Add an option to pass symbol (function) types together
+  // with names and type-check the LLVM function signature against the function
+  // type to make the compilation type-safe. Currently we resolve all symbols as
+  // type-erased `void*` pointers and hope that function library user does not
+  // cast to the wrong type. Using the wrong function type will lead to
+  // undefined behavior and crashes.
+  absl::StatusOr<std::unique_ptr<FunctionLibrary>> Compile(
+      absl::Span<const std::string> symbols) &&;
 
-  // Compiles all added LLVM modules into the FunctionLibrary.
-  virtual absl::StatusOr<std::unique_ptr<FunctionLibrary>> Compile() && = 0;
+ private:
+  JitCompiler(IrCompiler::TargetMachineBuilder target_machine_builder,
+              std::shared_ptr<llvm::TargetMachine> target_machine,
+              std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
+              std::unique_ptr<IrCompiler> ir_compiler, size_t num_dylibs);
+
+  // Function library constructed from the set of jit-compiled symbols.
+  class CompiledFunctionLibrary : public FunctionLibrary {
+   public:
+    CompiledFunctionLibrary(
+        std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
+        absl::flat_hash_map<std::string, void*> symbols_map);
+
+    ~CompiledFunctionLibrary() final;
+
+    absl::StatusOr<void*> ResolveFunction(TypeId type_id,
+                                          std::string_view name) final;
+
+   private:
+    std::unique_ptr<llvm::orc::ExecutionSession> execution_session_;
+    absl::flat_hash_map<std::string, void*> symbols_map_;
+  };
+
+  // Target machine builder that is used to construct target machines for this
+  // instance of `JitCompiler` (when compiling LLVM modules in parallel).
+  IrCompiler::TargetMachineBuilder target_machine_builder_;
+  std::shared_ptr<llvm::TargetMachine> target_machine_;
+
+  std::unique_ptr<llvm::orc::ExecutionSession> execution_session_;
+  std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer> object_linking_layer_;
+  std::unique_ptr<llvm::orc::IRCompileLayer> compile_layer_;
+
+  std::vector<llvm::orc::JITDylib*> dylibs_;
+
+  // Non owning pointer to JIT event listeners for gdb and perf.
+  llvm::JITEventListener* gdb_;   // not owned
+  llvm::JITEventListener* perf_;  // not owned
 };
 
 }  // namespace xla::cpu

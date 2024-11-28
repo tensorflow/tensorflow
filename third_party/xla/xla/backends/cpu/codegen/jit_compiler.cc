@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -22,44 +23,38 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
+#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/IR/Mangler.h"
 #include "llvm/Support/CodeGen.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
+#include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/function_library.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
+#include "xla/service/cpu/orc_jit_memory_mapper.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
-namespace {
-
-// XLA JIT compiler built on top of LLVM ORC APIs.
-class LlvmOrcJitCompiler : public JitCompiler {
- public:
-  LlvmOrcJitCompiler(llvm::TargetOptions target_options,
-                     llvm::CodeGenOptLevel opt_level, const Options& options);
-
-  absl::Status AddModule(llvm::orc::ThreadSafeModule module,
-                         size_t dylib_index) final;
-
-  absl::StatusOr<std::unique_ptr<FunctionLibrary>> Compile() && final;
-
- private:
-};
-
-// XLA function library compiled from LLVM module(s) using ORC APIs.
-class LlvmOrcFunctionLibrary : public FunctionLibrary {
- public:
-};
-
-}  // namespace
 
 absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
 JitCompiler::InferTargetMachine(
@@ -67,8 +62,8 @@ JitCompiler::InferTargetMachine(
     std::optional<tsl::port::CPUFeature> max_cpu_feature) {
   // Detect machine attributes for the target CPU.
   auto result = DetectMachineAttributes(max_cpu_feature);
-  llvm::SmallVector<std::string, 0> attrs(result.features.begin(),
-                                          result.features.end());
+  llvm::SmallVector<std::string> attrs(result.features.begin(),
+                                       result.features.end());
 
   // If `max_cpu_feature` is newer than the host CPU, we should keep the host
   // CPU name, e.g., we don't want to set the target CPU to Skylake when we are
@@ -101,25 +96,163 @@ IrCompiler::TargetMachineBuilder JitCompiler::InferTargetMachineBuilder(
   };
 }
 
-absl::StatusOr<std::unique_ptr<JitCompiler>> JitCompiler::Create(
+absl::StatusOr<JitCompiler> JitCompiler::Create(
     llvm::TargetOptions target_options, llvm::CodeGenOptLevel opt_level,
-    const Options& options) {
-  return std::make_unique<LlvmOrcJitCompiler>(std::move(target_options),
-                                              opt_level, options);
+    Options options) {
+  // Initialize LLVM the first time `JitCompiler` is created.
+  static bool llvm_initialized = [] {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    return true;
+  }();
+  CHECK(llvm_initialized) << "LLVM must be initialized";
+
+  // Infer target machine from the current host CPU.
+  IrCompiler::TargetMachineBuilder target_machine_builder =
+      InferTargetMachineBuilder(std::move(target_options), opt_level,
+                                options.max_cpu_feature);
+  TF_ASSIGN_OR_RETURN(auto target_machine, target_machine_builder());
+
+  // LLVM execution session that holds jit-compiled functions.
+  auto execution_session = std::make_unique<llvm::orc::ExecutionSession>(
+      std::make_unique<llvm::orc::UnsupportedExecutorProcessControl>());
+
+  // Create an instance of IrCompiler for lowering LLVM modules to machine code.
+  auto ir_compiler = std::make_unique<IrCompiler>(
+      target_machine_builder, std::move(options.ir_compiler_options),
+      std::move(options.ir_compiler_hooks));
+
+  return JitCompiler(std::move(target_machine_builder),
+                     std::move(target_machine), std::move(execution_session),
+                     std::move(ir_compiler), options.num_dylibs);
 }
 
-LlvmOrcJitCompiler::LlvmOrcJitCompiler(llvm::TargetOptions target_options,
-                                       llvm::CodeGenOptLevel opt_level,
-                                       const Options& options) {}
+static std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer>
+CreateObjectLinkingLayer(llvm::orc::ExecutionSession& execution_session) {
+  return std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
+      execution_session, [] {
+        return std::make_unique<ContiguousSectionMemoryManager>(
+            orc_jit_memory_mapper::GetInstance());
+      });
+}
 
-absl::Status LlvmOrcJitCompiler::AddModule(llvm::orc::ThreadSafeModule module,
-                                           size_t dylib_index) {
+static std::unique_ptr<llvm::orc::IRCompileLayer> CreateCompileLayer(
+    llvm::orc::ExecutionSession& execution_session,
+    llvm::orc::RTDyldObjectLinkingLayer& object_linking_layer,
+    std::unique_ptr<IrCompiler> ir_compiler) {
+  return std::make_unique<llvm::orc::IRCompileLayer>(
+      execution_session, object_linking_layer, std::move(ir_compiler));
+}
+
+JitCompiler::JitCompiler(
+    IrCompiler::TargetMachineBuilder target_machine_builder,
+    std::shared_ptr<llvm::TargetMachine> target_machine,
+    std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
+    std::unique_ptr<IrCompiler> ir_compiler, size_t num_dylibs)
+    : target_machine_builder_(std::move(target_machine_builder)),
+      target_machine_(std::move(target_machine)),
+      execution_session_(std::move(execution_session)),
+      object_linking_layer_(CreateObjectLinkingLayer(*execution_session_)),
+      compile_layer_(CreateCompileLayer(
+          *execution_session_, *object_linking_layer_, std::move(ir_compiler))),
+      gdb_(llvm::JITEventListener::createGDBRegistrationListener()),
+      perf_(llvm::JITEventListener::createPerfJITEventListener()) {
+  // Create at least one dynamic library for the given jit compiler.
+  dylibs_.resize(std::max<size_t>(1, num_dylibs));
+  for (size_t i = 0; i < dylibs_.size(); ++i) {
+    dylibs_[i] = &execution_session_->createBareJITDylib(
+        absl::StrCat("<xla_jit_dylib_", i, ">"));
+  }
+
+  // Register GDB and perf event listeners with the object linking layer.
+  if (gdb_) object_linking_layer_->registerJITEventListener(*gdb_);
+  if (perf_) object_linking_layer_->registerJITEventListener(*perf_);
+}
+
+JitCompiler::~JitCompiler() {
+  if (execution_session_) {
+    if (auto err = execution_session_->endSession()) {
+      execution_session_->reportError(std::move(err));
+    }
+  }
+}
+
+absl::Status JitCompiler::AddModule(llvm::orc::ThreadSafeModule module,
+                                    size_t dylib_index) {
+  if (dylib_index >= dylibs_.size()) {
+    return Internal("Invalid dylib index %d (num dylibs: %d))", dylib_index,
+                    dylibs_.size());
+  }
+
+  // Set up module for codegen for the target machine at hand.
+  module.withModuleDo([&](llvm::Module& m) {
+    m.setDataLayout(target_machine_->createDataLayout());
+    m.setTargetTriple(target_machine_->getTargetTriple().getTriple());
+  });
+
+  // Add module to the selected dynamic library.
+  llvm::orc::JITDylib* dylib = dylibs_[dylib_index];
+  if (auto err = compile_layer_->add(*dylib, std::move(module))) {
+    return Internal("Failed to add module to dylib %d: %s", dylib_index,
+                    llvm::toString(std::move(err)));
+  }
+
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<FunctionLibrary>>
-LlvmOrcJitCompiler::Compile() && {
-  return Unimplemented("Not implemented yet");
+absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
+    absl::Span<const std::string> symbols) && {
+  // Mangle symbol names for the target machine data layout.
+  llvm::DataLayout data_layout = target_machine_->createDataLayout();
+  auto mangle = [&](std::string_view name) {
+    llvm::SmallVector<char, 40> mangled;
+    llvm::Mangler::getNameWithPrefix(mangled, name, data_layout);
+    return std::string(mangled.begin(), mangled.end());
+  };
+
+  // Resolve type-erased symbol pointers.
+  absl::flat_hash_map<std::string, void*> symbols_map;
+
+  // TODO(ezhulenev): Use task runner to parallelize symbol lookups.
+  for (std::string_view symbol : symbols) {
+    std::string mangled = mangle(symbol);
+    VLOG(3) << absl::StreamFormat("Look up symbol: %s (mangled: %s)", symbol,
+                                  mangled);
+
+    auto symbol_def = execution_session_->lookup(dylibs_, mangled);
+    if (auto err = symbol_def.takeError()) {
+      return Internal("Failed to look up symbol %s: %s", symbol,
+                      llvm::toString(std::move(err)));
+    }
+
+    llvm::orc::ExecutorAddr addr = symbol_def->getAddress();
+    symbols_map[symbol] = reinterpret_cast<void*>(addr.getValue());
+  }
+
+  return std::make_unique<CompiledFunctionLibrary>(
+      std::move(execution_session_), std::move(symbols_map));
+}
+
+JitCompiler::CompiledFunctionLibrary::CompiledFunctionLibrary(
+    std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
+    absl::flat_hash_map<std::string, void*> symbols_map)
+    : execution_session_(std::move(execution_session)),
+      symbols_map_(std::move(symbols_map)) {
+  DCHECK(execution_session_) << "Execution session must not be null";
+}
+
+JitCompiler::CompiledFunctionLibrary::~CompiledFunctionLibrary() {
+  if (auto err = execution_session_->endSession()) {
+    execution_session_->reportError(std::move(err));
+  }
+}
+
+absl::StatusOr<void*> JitCompiler::CompiledFunctionLibrary::ResolveFunction(
+    TypeId type_id, std::string_view name) {
+  if (auto it = symbols_map_.find(name); it != symbols_map_.end()) {
+    return it->second;
+  }
+  return NotFound("Function %s not found (type id: %d)", name, type_id.value());
 }
 
 }  // namespace xla::cpu

@@ -1,4 +1,11 @@
 load("//xla:xla.bzl", "xla_cc_test")
+load(
+    "//xla/tsl/platform:build_config_root.bzl",
+    "if_llvm_aarch64_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -46,11 +53,13 @@ cc_library(
 
 cc_library(
     name = "function_library",
+    srcs = ["function_library.cc"],
     hdrs = ["function_library.h"],
     deps = [
         "//xla:util",
-        "//xla/backends/cpu/runtime:kernel_c_api",
+        "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -85,19 +94,39 @@ cc_library(
     srcs = ["jit_compiler.cc"],
     hdrs = ["jit_compiler.h"],
     deps = [
+        ":contiguous_section_memory_manager",
         ":cpu_features",
         ":function_library",
         ":ir_compiler",
         "//xla:util",
+        "//xla/service/cpu:orc_jit_memory_mapper",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:ExecutionEngine",
+        "@llvm-project//llvm:MC",
         "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:OrcShared",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
+        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
-    ],
+        "@local_tsl//tsl/platform:statusor",
+    ] + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
+    ]) + if_llvm_powerpc_available([
+        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+    ]) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+    ]),
 )
 
 xla_cc_test(
@@ -105,6 +134,7 @@ xla_cc_test(
     srcs = ["jit_compiler_test.cc"],
     deps = [
         ":jit_compiler",
+        "//xla/tsl/lib/core:status_test_util",
         "@llvm-project//llvm:AsmParser",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:OrcJIT",

@@ -16,25 +16,55 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_FUNCTION_LIBRARY_H_
 #define XLA_BACKENDS_CPU_CODEGEN_FUNCTION_LIBRARY_H_
 
+#include <cstdint>
 #include <string_view>
+#include <type_traits>
 
 #include "absl/status/statusor.h"
-#include "xla/backends/cpu/runtime/kernel_c_api.h"
-#include "xla/util.h"
+#include "xla/tsl/lib/gtl/int_type.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
-// A library of compiled functions required by the XLA:CPU runtime to execute
-// an XLA program.
+// A library of functions required by the XLA:CPU runtime to execute an XLA
+// program.
+//
+// XLA:CPU program compiles to a collection of functions that are dispatched by
+// the runtime. The most common type of compiled function is an XLA CPU Kernel,
+// however some operations can be compiled to auxiliary functions that are
+// invoked by operation-specific Thunks, e.g. `sort` operation comparator
+// compiles to a separate function used by a SortThunk in combination with an
+// `std::sort` library call.
 class FunctionLibrary {
  public:
+  // We use a `TypeId` to distinguish functions of different type at run time.
+  TSL_LIB_GTL_DEFINE_INT_TYPE(TypeId, int64_t);
+  static constexpr TypeId kUnknownTypeId = TypeId(0);
+
   virtual ~FunctionLibrary() = default;
 
-  using Kernel = XLA_CPU_Kernel*;
-
-  virtual absl::StatusOr<Kernel> FindKernel(std::string_view name) const {
-    return Unimplemented("Kernel %s not found", name);
+  template <typename F, std::enable_if_t<std::is_function_v<F>>* = nullptr>
+  absl::StatusOr<F*> ResolveFunction(std::string_view name) {
+    TF_ASSIGN_OR_RETURN(void* ptr, ResolveFunction(GetTypeId<F>(), name));
+    return reinterpret_cast<F*>(ptr);
   }
+
+ protected:
+  // Returns a type-erased pointer to the function with the given name and type
+  // id. Implementation might choose not to verify the type id and then it is up
+  // to the caller to ensure the resolved function is of the correct type.
+  virtual absl::StatusOr<void*> ResolveFunction(TypeId type_id,
+                                                std::string_view name) = 0;
+
+ private:
+  // Returns a type id for a given function type.
+  template <typename F, std::enable_if_t<std::is_function_v<F>>* = nullptr>
+  static TypeId GetTypeId() {
+    static const TypeId id = GetNextTypeId();
+    return id;
+  }
+
+  static TypeId GetNextTypeId();
 };
 
 }  // namespace xla::cpu
