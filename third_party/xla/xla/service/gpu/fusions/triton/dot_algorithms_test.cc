@@ -406,8 +406,11 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
           rhs_contracting_dims={0}
     }
   )";
-  const std::string pattern =
-      R"(CHECK: "algorithm":"ALG_DOT_TF32_TF32_F32_X3")";
+  const std::string pattern = R"(
+      CHECK: custom_call_target="__cublas$gemm"{{.*}}"algorithm":"ALG_DOT_TF32_TF32_F32"
+      CHECK: custom_call_target="__cublas$gemm"{{.*}}"algorithm":"ALG_DOT_TF32_TF32_F32"
+      CHECK: custom_call_target="__cublas$gemm"{{.*}}"algorithm":"ALG_DOT_TF32_TF32_F32"
+  )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
   ASSERT_TRUE(ok);
@@ -429,16 +432,14 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
                    << kernel_names[0];
       break;
     case CudaComputeCapabilities::AMPERE:
-      // There is no support for TF32_TF32_F32_X3 on Ampere. We use F32_F32_F32.
-      EXPECT_THAT(
-          kernel_names,
-          ::testing::Contains(::testing::HasSubstr("ampere_sgemm_128x64_nn")));
+      EXPECT_THAT(kernel_names, ::testing::Contains(::testing::HasSubstr(
+                                    "bitcast_convert_subtract")));
       break;
     case CudaComputeCapabilities::HOPPER:
-      // There is no support for TF32_TF32_F32_X3 on Hopper. We use F32_F32_F32.
-      EXPECT_THAT(
-          kernel_names,
-          ::testing::Contains(::testing::HasSubstr("gemm_f32f32_f32f32_f32")));
+      EXPECT_THAT(kernel_names,
+                  ::testing::UnorderedElementsAre(
+                      ::testing::HasSubstr("bitcast_convert_subtract"),
+                      ::testing::HasSubstr("tf32f32")));
       break;
     default:
       GTEST_SKIP() << "Unsupported compute capability: " << cc.major
@@ -853,16 +854,18 @@ TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32) {
     HloModule Algorithm_TF32_TF32_F32
 
     ENTRY main {
-      lhs = f32[128,1]{1,0} parameter(0)
-      rhs = f32[1,128]{1,0} parameter(1)
+      lhs = f32[128,256]{1,0} parameter(0)
+      rhs = f32[256,128]{1,0} parameter(1)
       ROOT dot = f32[128,128]{1,0} dot(lhs, rhs),
           algorithm=dot_tf32_tf32_f32,
           lhs_contracting_dims={1},
           rhs_contracting_dims={0}
     }
   )";
-  const std::string pattern =
-      R"(CHECK: "kind":"__triton_gemm","triton_gemm_config")";
+  const std::string pattern = R"(
+    CHECK: algorithm=dot_tf32_tf32_f32
+    CHECK: "kind":"__triton_gemm","triton_gemm_config"
+  )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
   EXPECT_TRUE(ok);
@@ -888,7 +891,8 @@ TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
       R"(CHECK: "kind":"__triton_gemm","triton_gemm_config")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
-  EXPECT_TRUE(ok);
+  // TODO(loislo): Enable this test once the algorithm is fixed for inf*1.0.
+  EXPECT_FALSE(ok);
 }
 
 TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32) {
@@ -1277,6 +1281,9 @@ TEST_P(BlasCanHandle, PrecisionCheck) {
 }
 
 TEST_P(TritonCanHandle, Infinity) {
+  // The test proves that Triton can handle dot for one x infinity inputs.
+  // It is the tricky cases for X3 and X6 algorithms. They should mask the NaN
+  // intermediate results.
   std::string hlo_text = HloText();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(hlo_text));
@@ -1320,7 +1327,8 @@ TEST_P(TritonCanHandle, InputsWithLargeExponent) {
 }
 
 INSTANTIATE_TEST_SUITE_P(BlasCanHandle, BlasCanHandle,
-                         Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X3,
+                         Combine(Values(PC::ALG_DOT_TF32_TF32_F32_X3,
+                                        PC::ALG_DOT_BF16_BF16_F32_X3,
                                         PC::ALG_DOT_BF16_BF16_F32_X6)),
                          CanHandleTestParamsToString);
 
@@ -1594,8 +1602,8 @@ INSTANTIATE_TEST_SUITE_P(
     AlgorithmsSupportTest, AlgorithmsSupportTest,
     Combine(Values(PC::ALG_DOT_BF16_BF16_F32, PC::ALG_DOT_BF16_BF16_F32_X3,
                    PC::ALG_DOT_BF16_BF16_F32_X6, PC::ALG_DOT_F32_F32_F32,
-                   PC::ALG_DOT_TF32_TF32_F32_X3, PC::ALG_DOT_F64_F64_F64,
-                   PC::ALG_UNSET)),
+                   PC::ALG_DOT_TF32_TF32_F32, PC::ALG_DOT_TF32_TF32_F32_X3,
+                   PC::ALG_DOT_F64_F64_F64, PC::ALG_UNSET)),
     CanHandleTestParamsToString);
 
 }  // namespace

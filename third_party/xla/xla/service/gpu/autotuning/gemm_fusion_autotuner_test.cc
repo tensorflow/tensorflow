@@ -274,28 +274,19 @@ constexpr absl::string_view kHloDotFusionWithAlgorithm = R"(
   }
 )";
 
-TEST_F(StatelessAutotunerTest, NoCublasFallbackForTf32Tf32F32X3Algorithm) {
-  // There is no cublas implementation for dot_tf32_tf32_f32_x3 at the moment.
-  // At the same time cublas f32 is faster than triton for this algorithm.
-  // But we don't want to fallback to cuBLAS in this case because we lose the
-  // precision guarantees.
+TEST_F(StatelessAutotunerTest, CublasFallbackForTf32Tf32F32X3Algorithm) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(absl::Substitute(
                        kHloDotFusionWithAlgorithm, "dot_tf32_tf32_f32_x3")));
 
   TF_ASSERT_OK_AND_ASSIGN(auto configs,
                           GetPossibleMatmulAutotuneConfigs(*module));
-  EXPECT_FALSE(hasCublasConfig(configs))
-      << "There is no cublas implementation for dot_tf32_tf32_f32_x3. That is "
-         "why we don't want to fallback to cublas.";
+  EXPECT_TRUE(hasCublasConfig(configs))
+      << "There is dot_algorithm_rewrite that supports fallback to cublas "
+         "implementation for dot_tf32_tf32_f32_x3.";
 }
 
-TEST_F(StatelessAutotunerTest,
-       NoCublasFallbackForBf16Bf16F32AlgorithmOnHopper) {
-  // There is no cublas implementation for dot_bf16_bf16_f32 at the moment.
-  // At the same time cublas f32 is faster than triton for this algorithm.
-  // But we don't want to fallback to cuBLAS in this case because we lose the
-  // precision guarantees.
+TEST_F(StatelessAutotunerTest, CublasFallbackForBf16Bf16F32Algorithm) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(absl::Substitute(
                        kHloDotFusionWithAlgorithm, "dot_bf16_bf16_f32")));
@@ -306,12 +297,12 @@ TEST_F(StatelessAutotunerTest,
     switch (GetCudaComputeCapability().major) {
       case se::CudaComputeCapability::AMPERE:
         EXPECT_TRUE(hasCublasConfig(configs))
-            << "There is a cublas implementation for dot_bf16_bf16_f32 on "
+            << "There should be a cublas fallback for dot_bf16_bf16_f32 on "
                "Ampere";
         break;
       case se::CudaComputeCapability::HOPPER:
         EXPECT_TRUE(hasCublasConfig(configs))
-            << "There is a cublas implementation for dot_bf16_bf16_f32 on "
+            << "There should be a cublas fallback for dot_bf16_bf16_f32 on "
                "Hopper";
         break;
       default:
