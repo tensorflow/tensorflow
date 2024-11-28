@@ -127,9 +127,10 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusible) {
   HloInstruction* binary1 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      binary1, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, /*channel_id=*/0, /*is_host_transfer=*/false));
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
@@ -326,9 +327,10 @@ TEST_F(InstructionFusionTest, AllowUnaryDuplication) {
   HloInstruction* unary1 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kFloor, param0));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(unary1, token, 0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      unary1, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, /*channel_id=*/0, /*is_host_transfer=*/false));
   HloInstruction* unary2 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, unary1));
 
@@ -354,9 +356,10 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
   HloInstruction* binary1 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, broadcast, param1));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      binary1, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, /*channel_id=*/0, /*is_host_transfer=*/false));
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 

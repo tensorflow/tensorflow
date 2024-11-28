@@ -329,6 +329,11 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         << " operands but sees " << proto.operand_ids_size();
   }
 
+  std::optional<int64_t> channel_id;
+  if (proto.channel_id() > 0) {
+    channel_id = proto.channel_id();
+  }
+
   switch (opcode) {
     // Ops migrated to subclasses.
     case HloOpcode::kBatchNormTraining:
@@ -459,22 +464,24 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kSend:
-      instruction = CreateSend(operands(0), operands(1), proto.channel_id(),
+      instruction = CreateSend(operands(0), operands(1), channel_id,
                                proto.is_host_transfer());
       break;
     case HloOpcode::kSendDone:
       TF_RET_CHECK(DynCast<HloSendInstruction>(operands(0)) != nullptr)
           << "SendDone must take the context operand from Send";
-      instruction = CreateSendDone(operands(0), proto.is_host_transfer());
+      instruction =
+          CreateSendDone(operands(0), channel_id, proto.is_host_transfer());
       break;
     case HloOpcode::kRecv:
-      instruction = CreateRecv(shape.tuple_shapes(0), operands(0),
-                               proto.channel_id(), proto.is_host_transfer());
+      instruction = CreateRecv(shape.tuple_shapes(0), operands(0), channel_id,
+                               proto.is_host_transfer());
       break;
     case HloOpcode::kRecvDone:
       TF_RET_CHECK(DynCast<HloRecvInstruction>(operands(0)) != nullptr)
           << "RecvDone must take the context operand from Recv";
-      instruction = CreateRecvDone(operands(0), proto.is_host_transfer());
+      instruction =
+          CreateRecvDone(operands(0), channel_id, proto.is_host_transfer());
       break;
     case HloOpcode::kReverse:
       instruction =
@@ -1844,45 +1851,29 @@ HloInstruction::CreateCollectivePermuteStart(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
-    HloInstruction* operand, HloInstruction* token, int64_t channel_id,
-    bool is_host_transfer) {
+    HloInstruction* operand, HloInstruction* token,
+    std::optional<int64_t> channel_id, bool is_host_transfer) {
   return std::make_unique<HloSendInstruction>(operand, token, channel_id,
                                               is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSendDone(
-    HloInstruction* operand, bool is_host_transfer) {
-  auto send_operand = DynCast<HloSendInstruction>(operand);
-  CHECK(send_operand != nullptr)
-      << "SendDone must take the context operand from Send";
-  return std::make_unique<HloSendDoneInstruction>(send_operand,
-                                                  is_host_transfer);
-}
-
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSendDone(
-    HloInstruction* operand, int64_t channel_id, bool is_host_transfer) {
+    HloInstruction* operand, std::optional<int64_t> channel_id,
+    bool is_host_transfer) {
   return std::make_unique<HloSendDoneInstruction>(operand, channel_id,
                                                   is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecv(
-    const Shape& shape, HloInstruction* token, int64_t channel_id,
-    bool is_host_transfer) {
+    const Shape& shape, HloInstruction* token,
+    std::optional<int64_t> channel_id, bool is_host_transfer) {
   return std::make_unique<HloRecvInstruction>(shape, token, channel_id,
                                               is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecvDone(
-    HloInstruction* operand, bool is_host_transfer) {
-  auto recv_operand = DynCast<HloRecvInstruction>(operand);
-  CHECK(recv_operand != nullptr)
-      << "RecvDone must take the context operand from Recv";
-  return std::make_unique<HloRecvDoneInstruction>(recv_operand,
-                                                  is_host_transfer);
-}
-
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecvDone(
-    HloInstruction* operand, int64_t channel_id, bool is_host_transfer) {
+    HloInstruction* operand, std::optional<int64_t> channel_id,
+    bool is_host_transfer) {
   return std::make_unique<HloRecvDoneInstruction>(operand, channel_id,
                                                   is_host_transfer);
 }

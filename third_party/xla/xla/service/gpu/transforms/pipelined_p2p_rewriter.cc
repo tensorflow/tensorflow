@@ -424,9 +424,9 @@ void CopyInstructionInfo(const HloInstruction* old_op, HloInstruction* new_op) {
 HloInstruction* CreateRecvDoneFrom(const HloInstruction* old_recv_done,
                                    HloInstruction* recv,
                                    HloComputation* computation) {
-  HloInstruction* recv_done =
-      computation->AddInstruction(HloInstruction::CreateRecvDone(
-          recv, old_recv_done->channel_id().value()));
+  HloInstruction* recv_done = computation->AddInstruction(
+      HloInstruction::CreateRecvDone(recv, old_recv_done->channel_id().value(),
+                                     /*is_host_transfer=*/false));
   CopyInstructionInfo(old_recv_done, recv_done);
   return recv_done;
 }
@@ -434,9 +434,9 @@ HloInstruction* CreateRecvDoneFrom(const HloInstruction* old_recv_done,
 HloInstruction* CreateSendDoneFrom(const HloInstruction* old_send_done,
                                    HloInstruction* send,
                                    HloComputation* computation) {
-  HloInstruction* send_done =
-      computation->AddInstruction(HloInstruction::CreateSendDone(
-          send, old_send_done->channel_id().value()));
+  HloInstruction* send_done = computation->AddInstruction(
+      HloInstruction::CreateSendDone(send, old_send_done->channel_id().value(),
+                                     /*is_host_transfer=*/false));
   CopyInstructionInfo(old_send_done, send_done);
   return send_done;
 }
@@ -583,8 +583,9 @@ absl::Status TransformLoop(
       // Create the new RecvDone using the new while-op result.
       HloInstruction* recv = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(new_while_op, i));
-      HloInstruction* recv_done = computation->AddInstruction(
-          HloInstruction::CreateRecvDone(recv, op->channel_id().value()));
+      HloInstruction* recv_done =
+          computation->AddInstruction(HloInstruction::CreateRecvDone(
+              recv, op->channel_id().value(), /*is_host_transfer=*/false));
       new_recv_dones.push_back(recv_done);
       CopyInstructionInfo(op, recv_done);
       continue;
@@ -593,8 +594,9 @@ absl::Status TransformLoop(
     //  Create the new SendDone using the new while-op result.
     HloInstruction* send = computation->AddInstruction(
         HloInstruction::CreateGetTupleElement(new_while_op, i));
-    HloInstruction* send_done = computation->AddInstruction(
-        HloInstruction::CreateSendDone(send, op->channel_id().value()));
+    HloInstruction* send_done =
+        computation->AddInstruction(HloInstruction::CreateSendDone(
+            send, op->channel_id().value(), /*is_host_transfer=*/false));
     new_send_dones.push_back(send_done);
     CopyInstructionInfo(op, send_done);
   }

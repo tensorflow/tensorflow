@@ -1286,9 +1286,10 @@ TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send = builder.AddInstruction(
-      HloInstruction::CreateSend(param, token, /*channel_id=*/0));
-  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      param, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, send->channel_id(), /*is_host_transfer=*/false));
   module_->AddEntryComputation(builder.Build());
   SCOPED_TRACE(module_->ToString());
 
@@ -1335,9 +1336,10 @@ TEST_P(HloDataflowAnalysisTest, RecvAndRecvDone) {
   // {0} of the output.
   auto builder = HloComputation::Builder(TestName());
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto recv = builder.AddInstruction(
-      HloInstruction::CreateRecv(scalar_shape_, token, /*channel_id=*/0));
-  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
+  auto recv = builder.AddInstruction(HloInstruction::CreateRecv(
+      scalar_shape_, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(
+      recv, recv->channel_id(), /*is_host_transfer=*/false));
   module_->AddEntryComputation(builder.Build());
   SCOPED_TRACE(module_->ToString());
 

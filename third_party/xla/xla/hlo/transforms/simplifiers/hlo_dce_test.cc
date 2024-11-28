@@ -82,9 +82,10 @@ TEST_F(HloDceTest, InstructionsWithSideEffect) {
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send = builder.AddInstruction(
-      HloInstruction::CreateSend(constant, token, /*channel_id=*/0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      constant, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, send->channel_id(), /*is_host_transfer=*/false));
   builder.AddInstruction(HloInstruction::CreateTuple({}));
 
   auto module = CreateNewVerifiedModule();
