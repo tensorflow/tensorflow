@@ -177,7 +177,7 @@ struct BlasLtGemmRunner {
 
     auto res = ContiguousStrides(a, b, c, batch_count);
     if (res.ok()) {
-      auto strides = std::move(res.ValueOrDie());
+      auto strides = std::move(res.value());
       return RunStridedBatchedImpl(
           stream, trans_a, trans_b, m, n, k, Convert(alpha), type, *a[0], lda,
           strides[0] / sizeof(T), type, *b[0], ldb, strides[1] / sizeof(T),
@@ -232,10 +232,28 @@ struct BlasLtGemmRunner {
       DeviceMemoryBase* c, int64_t ldc, int64_t stride_c, int64_t batch_count,
       ScratchAllocator* allocator);
 
-  //   absl::StatusOr< std::array< uint64_t, 3 >> ContiguousStrides(
-  //   const port::ArraySlice<DeviceMemoryBase *>& a,
-  //     const port::ArraySlice<DeviceMemoryBase *>& b,
-  //   const port::ArraySlice<DeviceMemoryBase *>& c, int64_t batch_count);
+  template <typename T>
+  using ArraySlice = absl::Span<const T>;
+
+  template <typename T>
+  absl::StatusOr<std::array<int64_t, 3>> ContiguousStrides(
+      const ArraySlice<DeviceMemory<T>*>& a,
+      const ArraySlice<DeviceMemory<T>*>& b,
+      const ArraySlice<DeviceMemory<T>*>& c, int64_t batch_count) {
+    int64_t bsa = 0, bsb = 0, bsc = 0;
+    using CT = const uint8_t;
+    for (int64_t i = 0; i < batch_count - 1; i++) {
+      int64_t da = (CT*)a[i + 1]->opaque() - (CT*)a[i]->opaque(),
+              db = (CT*)b[i + 1]->opaque() - (CT*)b[i]->opaque(),
+              dc = (CT*)c[i + 1]->opaque() - (CT*)c[i]->opaque();
+      if (i == 0) {
+        bsa = da, bsb = db, bsc = dc;
+      } else if (!(bsa == da && bsb == db && bsc == dc)) {  // strides mismatch
+        return absl::InternalError("Strides are not consistent!");
+      }
+    }
+    return std::array<int64_t, 3>{bsa, bsb, bsc};
+  }
 
   std::unique_ptr<absl::Mutex> mutex_;
 

@@ -119,27 +119,6 @@ absl::StatusOr<gpu::BlasLt::MatmulAlgorithm> BlasLtGemmRunner::Autotune(
   return best_algo;
 }
 
-// absl::StatusOr< std::array< int64_t, 3 >>
-// BlasLtGemmRunner::ContiguousStrides(
-//     const port::ArraySlice<DeviceMemoryBase *>& a,
-//           const port::ArraySlice<DeviceMemoryBase *>& b,
-//     const port::ArraySlice<DeviceMemoryBase *>& c, int64_t batch_count) {
-
-//     int64_t bsa = 0, bsb = 0, bsc = 0;
-//     using CT = const uint8_t;
-//     for(int64_t i = 0; i < batch_count-1; i++) {
-//       int64_t da = (CT *)a[i + 1]->opaque() - (CT *)a[i]->opaque(),
-//          db = (CT *)b[i + 1]->opaque() - (CT *)b[i]->opaque(),
-//          dc = (CT *)c[i + 1]->opaque() - (CT *)c[i]->opaque();
-//           if(i == 0) {
-//         bsa = da, bsb = db, bsc = dc;
-//       } else if(!(bsa == da && bsb == db && bsc == dc)) { // strides mismatch
-//         return absl::InternalError("Strides are not consistent!");
-//       }
-//     }
-//     return std::array< int64_t, 3 >{ bsa, bsb, bsc };
-// }
-
 absl::Status BlasLtGemmRunner::RunBatchedImpl(
     Stream& stream, blas::Transpose trans_a, blas::Transpose trans_b, int64_t m,
     int64_t n, int64_t k, const void* alpha, blas::DataType type_a,
