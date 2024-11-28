@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SHARDING_OP_UTIL_H_
 #define XLA_SHARDING_OP_UTIL_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 

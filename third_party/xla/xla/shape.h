@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SHAPE_H_
 #define XLA_SHAPE_H_
 
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <ostream>
