@@ -489,14 +489,13 @@ xla_test(
         "gpu_h100",
         "gpu_amd_any",
     ] + if_oss(["gpu_b100"]),
-    shard_count = 20,
+    shard_count = 30,
     tags = [
         "no_mac",
     ],
     deps = [
         ":kernel_name_tracer",
         ":triton_test_utils",
-        "//xla:array2d",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
         "//xla:literal",
@@ -515,6 +514,7 @@ xla_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

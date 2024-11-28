@@ -747,6 +747,7 @@ absl::StatusOr<Decision> CreateDotFusion(
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32 ||
       algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32 ||
+      algorithm == PrecisionConfig::ALG_DOT_F32_F32_F32 ||
       dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any() ||
       dot.sparse_operands()) {
     return Decision::Allow();

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -1403,8 +1404,7 @@ class CSVWriter {
 };
 
 class AlgorithmsSupportTest
-    : public CanHandleArguments,
-      public WithParamInterface<CanHandleTestsParams::TupleType>,
+    : public WithParamInterface<CanHandleTestsParams::TupleType>,
       public AlgorithmTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
@@ -1596,6 +1596,76 @@ TEST_P(AlgorithmsSupportTest, DotNC) {
     }
   }
   DumpResults(csv, "backend_support_matrix");
+}
+
+TEST_P(AlgorithmsSupportTest, IsDotAlgorithmSupportedByTriton) {
+  // Here we test which dot algorithm is supported by triton.
+  // In case of a change you need to update the expected results.
+  const std::string kHloText = R"(
+    HloModule ${module_name}
+
+    ENTRY e {
+      p0 = f32[${m},${k}] parameter(0)
+      p1 = f32[${k},${n}] parameter(1)
+      ROOT dot = f32[${m},${n}] dot(p0, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0},
+        algorithm=${algorithm}
+    }
+  )";
+  auto m = 128;
+  auto n = 128;
+  auto k = 128;
+  auto run = [&](std::string backend, std::string_view pattern,
+                 const DebugOptions& options) -> absl::StatusOr<bool> {
+    auto test_name = absl::StrReplaceAll(TestName(), {{"/", "_"}});
+    auto module_name = absl::StrCat(test_name, "_", backend, "_", m, "_", kMaxK,
+                                    "_", n, "_", algorithm_);
+    auto module = GetModule(kHloText,
+                            {{"${module_name}", module_name},
+                             {"${algorithm}", algorithm_},
+                             {"${m}", absl::StrCat(m)},
+                             {"${n}", absl::StrCat(n)},
+                             {"${k}", absl::StrCat(k)}},
+                            options);
+    if (!module.ok()) {
+      return module.status();
+    }
+    std::string module_text = module.value()->ToString();
+    if (!Run(std::move(module.value()), false)) {
+      return absl::InternalError("failed to run module");
+    }
+    return absl::StrContains(module_text, pattern);
+  };
+
+  auto result_or_status = run("triton", kTritonGemmPattern, triton_options_);
+  switch (std::get<0>(GetParam())) {
+    case PC::ALG_UNSET:
+    case PC::ALG_DOT_TF32_TF32_F32:
+    case PC::ALG_DOT_BF16_BF16_F32:
+    case PC::ALG_DOT_BF16_BF16_F32_X3:
+    case PC::ALG_DOT_BF16_BF16_F32_X6:
+    case PC::ALG_DOT_F32_F32_F32:
+      EXPECT_TRUE(result_or_status.status().ok())
+          << "failed to compile " << algorithm_;
+      EXPECT_TRUE(result_or_status.value())
+          << "wrong result for " << algorithm_;
+      break;
+    case PC::ALG_DOT_F64_F64_F64:
+      EXPECT_EQ(result_or_status.status().code(),
+                absl::StatusCode::kUnimplemented);
+      break;
+    // TODO(loislo): Triton implementation needs a fix for dot(inf, 1.0) case.
+    case PC::ALG_DOT_TF32_TF32_F32_X3:
+      EXPECT_TRUE(result_or_status.status().ok());  // is supported
+      EXPECT_FALSE(result_or_status.value())        // but not by triton
+          << "wrong result for " << algorithm_;
+
+      break;
+    default:
+      EXPECT_TRUE(false) << "Uncovered algorithm. Please fix: " << algorithm_;
+      break;
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
