@@ -17,11 +17,7 @@
 #include <alloca.h>
 #include <stdio.h>
 
-#include <cstddef>
 #include <cstdint>
-#include <memory>
-#include <string>
-#include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
