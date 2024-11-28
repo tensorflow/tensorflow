@@ -176,6 +176,7 @@ cc_test(
     name = "proto_to_flatbuffer_test",
     srcs = ["proto_to_flatbuffer_test.cc"],
     deps = [
+        ":configuration_cc_proto",
         ":proto_to_flatbuffer",
         "@com_google_googletest//:gtest_main",
     ],

@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/acceleration/configuration/flatbuffer_to_proto.h"
 
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/acceleration/configuration/configuration.pb.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
