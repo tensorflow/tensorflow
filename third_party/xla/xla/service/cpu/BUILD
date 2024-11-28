@@ -494,21 +494,20 @@ cc_library(
 )
 
 cc_library(
-    name = "simple_orc_jit",
+    name = "runtime_symbol_generator",
     srcs = [
-        "simple_orc_jit.cc",
+        "runtime_symbol_generator.cc",
         "windows_compatibility.cc",
         "windows_compatibility.h",
     ],
-    hdrs = ["simple_orc_jit.h"],
-    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]) + tsl_copts(),
+    hdrs = ["runtime_symbol_generator.h"],
+    copts = tsl_copts(),
     deps = [
         ":cpu_runtime",
         ":onednn_convolution",
         ":onednn_layer_norm",
         ":onednn_matmul",
         ":onednn_softmax",
-        ":orc_jit_memory_mapper",
         ":runtime_conv2d",
         ":runtime_conv2d_acl",
         ":runtime_conv2d_mkl",
@@ -527,6 +526,26 @@ cc_library(
         ":runtime_single_threaded_fft",
         ":runtime_single_threaded_matmul",
         ":runtime_topk",
+        "//xla/service:custom_call_target_registry",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:OrcShared",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:mlir_c_runner_utils",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
+    name = "simple_orc_jit",
+    srcs = ["simple_orc_jit.cc"],
+    hdrs = ["simple_orc_jit.h"],
+    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]) + tsl_copts(),
+    deps = [
+        ":orc_jit_memory_mapper",
+        ":runtime_symbol_generator",
         "//xla:types",
         "//xla:util",
         "//xla/backends/cpu/codegen:contiguous_section_memory_manager",
@@ -551,7 +570,6 @@ cc_library(
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
     ] + xla_internal(["service/cpu:named_orc_jit_memory_mapper"]),
 )
 

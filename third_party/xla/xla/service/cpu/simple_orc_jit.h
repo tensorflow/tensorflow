@@ -20,15 +20,12 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
@@ -49,7 +46,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/cpu_features.h"  // IWYU pragma: keep
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/service/llvm_compiler.h"
-#include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 
@@ -123,8 +119,6 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   }
 
  private:
-  llvm::orc::ExecutorSymbolDef ResolveRuntimeSymbol(llvm::StringRef name);
-
   void notifyObjectLoaded(
       llvm::JITEventListener::ObjectKey key,
       const llvm::object::ObjectFile& object,
