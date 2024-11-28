@@ -1384,6 +1384,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       std::move(ir_compiler_options),
       std::move(ir_compiler_hooks),
       /*num_dylibs=*/parallel_codegen_split_count,
+      /*definition_generator=*/nullptr,
       /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
   };
 
@@ -2130,6 +2131,7 @@ CpuExecutableAotCompilationResult::LoadExecutable(
       std::move(ir_compiler_options),
       IrCompiler::CompilationHooks{},
       /*num_dylibs=*/1,
+      /*definition_generator=*/nullptr,
       /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
   };
 

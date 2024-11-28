@@ -25,11 +25,21 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "llvm/AsmParser/Parser.h"
+#include "llvm/ExecutionEngine/JITSymbol.h"
+#include "llvm/ExecutionEngine/Orc/AbsoluteSymbols.h"
+#include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/CoreContainers.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/CodeGen.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "xla/backends/cpu/codegen/function_library.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -41,6 +51,31 @@ limitations under the License.
 #include "tsl/platform/threadpool.h"
 
 namespace xla::cpu {
+
+// We use static function to compile the function library, because we transfer
+// compiler object into the function and make sure that it gets destroyed before
+// returning the function library to the caller, as we test that we don't
+// accidentally reference freed objects owned by the compiler.
+static absl::StatusOr<std::unique_ptr<FunctionLibrary>> Compile(
+    JitCompiler compiler, absl::Span<const FunctionLibrary::Symbol> symbols) {
+  return std::move(compiler).Compile(symbols);
+};
+
+// Parses the LLVM IR into a ThreadSafeModule.
+static absl::StatusOr<llvm::orc::ThreadSafeModule> ParseModule(
+    llvm::orc::ThreadSafeContext& context, std::string_view ir,
+    std::string_view name) {
+  llvm::SMDiagnostic diagnostic;
+  llvm::MemoryBufferRef ir_buffer(ir, name);
+
+  auto m = llvm::parseAssembly(ir_buffer, diagnostic, *context.getContext());
+  if (m == nullptr) {
+    return Internal("Failed to parse LLVM IR: %s",
+                    diagnostic.getMessage().str());
+  }
+
+  return llvm::orc::ThreadSafeModule(std::move(m), context);
+}
 
 TEST(JitCompilerTest, Compile) {
   auto context = std::make_unique<llvm::LLVMContext>();
@@ -80,18 +115,9 @@ TEST(JitCompilerTest, Compile) {
 
   auto add_module = [&](std::string_view ir, std::string_view name,
                         size_t dylib_index) -> absl::Status {
-    llvm::SMDiagnostic diagnostic;
-    llvm::MemoryBufferRef ir_buffer(ir, name);
-
-    auto m = llvm::parseAssembly(ir_buffer, diagnostic, *tsc.getContext());
-    if (m == nullptr) {
-      return Internal("Failed to parse LLVM IR: %s",
-                      diagnostic.getMessage().str());
-    }
-
-    llvm::orc::ThreadSafeModule tsm(std::move(m), tsc);
+    TF_ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
+                        ParseModule(tsc, ir, name));
     TF_RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
-
     return absl::OkStatus();
   };
 
@@ -104,7 +130,7 @@ TEST(JitCompilerTest, Compile) {
       FunctionLibrary::Sym<ScalarFn>("MulInplace")};
 
   TF_ASSERT_OK_AND_ASSIGN(auto function_library,
-                          std::move(compiler).Compile(symbols));
+                          Compile(std::move(compiler), symbols));
 
   EXPECT_GE(num_tasks, 2);
 
@@ -125,6 +151,72 @@ TEST(JitCompilerTest, Compile) {
 
   mul_in_place(&value);
   EXPECT_EQ(value, 4.0f);
+}
+
+class ExternalDefinitionGenerator : public llvm::orc::DefinitionGenerator {
+ public:
+  static void AddInplace(float* value) { *value += *value; }
+
+  llvm::Error tryToGenerate(llvm::orc::LookupState&, llvm::orc::LookupKind,
+                            llvm::orc::JITDylib& jit_dylib,
+                            llvm::orc::JITDylibLookupFlags,
+                            const llvm::orc::SymbolLookupSet& names) final {
+    llvm::orc::SymbolMap new_defs;
+    for (auto& [name, flags] : names) {
+      if (*name == "__external_fn") {
+        new_defs[name] = llvm::orc::ExecutorSymbolDef{
+            llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(&AddInplace)),
+            llvm::JITSymbolFlags::None};
+      }
+    }
+
+    cantFail(jit_dylib.define(llvm::orc::absoluteSymbols(std::move(new_defs))));
+    return llvm::Error::success();
+  }
+};
+
+TEST(JitCompilerTest, ExternalDefinitionGenerator) {
+  auto context = std::make_unique<llvm::LLVMContext>();
+  llvm::orc::ThreadSafeContext tsc(std::move(context));
+
+  JitCompiler::Options options;
+  options.definition_generator = [](llvm::TargetMachine*) {
+    return std::make_unique<ExternalDefinitionGenerator>();
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto compiler,
+      JitCompiler::Create(llvm::TargetOptions(), llvm::CodeGenOptLevel::None,
+                          std::move(options), /*task_runner=*/nullptr));
+
+  constexpr std::string_view call_external_fn_ir = R"(
+    declare void @__external_fn(ptr %arg)
+
+    define void @CallExternalFn(ptr %arg) {
+      call void @__external_fn(ptr %arg)
+      ret void
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      llvm::orc::ThreadSafeModule tsm,
+      ParseModule(tsc, call_external_fn_ir, "CallExternalFn"));
+
+  TF_ASSERT_OK(compiler.AddModule(std::move(tsm)));
+
+  using ScalarFn = void(float*);
+  std::vector<FunctionLibrary::Symbol> symbols = {
+      FunctionLibrary::Sym<ScalarFn>("CallExternalFn")};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto function_library,
+                          Compile(std::move(compiler), symbols));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScalarFn * call_external_fn,
+      function_library->ResolveFunction<ScalarFn>("CallExternalFn"));
+
+  float value = 1.0f;
+  call_external_fn(&value);
+  EXPECT_EQ(value, 2.0f);
 }
 
 }  // namespace xla::cpu

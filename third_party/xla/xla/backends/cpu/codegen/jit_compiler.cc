@@ -127,6 +127,10 @@ absl::StatusOr<JitCompiler> JitCompiler::Create(
           /*SSP=*/nullptr,
           std::make_unique<TaskDispatcher>(std::move(task_runner))));
 
+  execution_session->setErrorReporter([](llvm::Error err) {
+    LOG(ERROR) << "LLVM compilation error: " << llvm::toString(std::move(err));
+  });
+
   // Create an instance of IrCompiler for lowering LLVM modules to machine code.
   auto ir_compiler = std::make_unique<IrCompiler>(
       target_machine_builder, std::move(options.ir_compiler_options),
@@ -134,7 +138,8 @@ absl::StatusOr<JitCompiler> JitCompiler::Create(
 
   return JitCompiler(std::move(target_machine_builder),
                      std::move(target_machine), std::move(execution_session),
-                     std::move(ir_compiler), options.num_dylibs);
+                     std::move(ir_compiler), options.num_dylibs,
+                     std::move(options.definition_generator));
 }
 
 static std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer>
@@ -148,23 +153,24 @@ CreateObjectLinkingLayer(llvm::orc::ExecutionSession& execution_session) {
 
 static std::unique_ptr<llvm::orc::IRCompileLayer> CreateCompileLayer(
     llvm::orc::ExecutionSession& execution_session,
-    llvm::orc::RTDyldObjectLinkingLayer& object_linking_layer,
+    llvm::orc::RTDyldObjectLinkingLayer& object_layer,
     std::unique_ptr<IrCompiler> ir_compiler) {
   return std::make_unique<llvm::orc::IRCompileLayer>(
-      execution_session, object_linking_layer, std::move(ir_compiler));
+      execution_session, object_layer, std::move(ir_compiler));
 }
 
 JitCompiler::JitCompiler(
     IrCompiler::TargetMachineBuilder target_machine_builder,
     std::shared_ptr<llvm::TargetMachine> target_machine,
     std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
-    std::unique_ptr<IrCompiler> ir_compiler, size_t num_dylibs)
+    std::unique_ptr<IrCompiler> ir_compiler, size_t num_dylibs,
+    DefinitionGenerator definition_generator)
     : target_machine_builder_(std::move(target_machine_builder)),
       target_machine_(std::move(target_machine)),
       execution_session_(std::move(execution_session)),
-      object_linking_layer_(CreateObjectLinkingLayer(*execution_session_)),
-      compile_layer_(CreateCompileLayer(
-          *execution_session_, *object_linking_layer_, std::move(ir_compiler))),
+      object_layer_(CreateObjectLinkingLayer(*execution_session_)),
+      compile_layer_(CreateCompileLayer(*execution_session_, *object_layer_,
+                                        std::move(ir_compiler))),
       gdb_(llvm::JITEventListener::createGDBRegistrationListener()),
       perf_(llvm::JITEventListener::createPerfJITEventListener()) {
   // Create at least one dynamic library for the given jit compiler.
@@ -172,11 +178,14 @@ JitCompiler::JitCompiler(
   for (size_t i = 0; i < dylibs_.size(); ++i) {
     dylibs_[i] = &execution_session_->createBareJITDylib(
         absl::StrCat("<xla_jit_dylib_", i, ">"));
+    if (definition_generator) {
+      dylibs_[i]->addGenerator(definition_generator(target_machine_.get()));
+    }
   }
 
   // Register GDB and perf event listeners with the object linking layer.
-  if (gdb_) object_linking_layer_->registerJITEventListener(*gdb_);
-  if (perf_) object_linking_layer_->registerJITEventListener(*perf_);
+  if (gdb_) object_layer_->registerJITEventListener(*gdb_);
+  if (perf_) object_layer_->registerJITEventListener(*perf_);
 }
 
 JitCompiler::~JitCompiler() {
@@ -204,6 +213,22 @@ absl::Status JitCompiler::AddModule(llvm::orc::ThreadSafeModule module,
   llvm::orc::JITDylib* dylib = dylibs_[dylib_index];
   if (auto err = compile_layer_->add(*dylib, std::move(module))) {
     return Internal("Failed to add module to dylib %d: %s", dylib_index,
+                    llvm::toString(std::move(err)));
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status JitCompiler::AddObjFile(
+    std::unique_ptr<llvm::MemoryBuffer> obj_file, size_t dylib_index) {
+  if (dylib_index >= dylibs_.size()) {
+    return Internal("Invalid dylib index %d (num dylibs: %d))", dylib_index,
+                    dylibs_.size());
+  }
+
+  llvm::orc::JITDylib* dylib = dylibs_[dylib_index];
+  if (auto err = object_layer_->add(*dylib, std::move(obj_file))) {
+    return Internal("Failed to add object file to dylib %d: %s", dylib_index,
                     llvm::toString(std::move(err)));
   }
 
@@ -243,8 +268,7 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
   auto symbol_map = execution_session_->lookup(std::move(search_order),
                                                std::move(lookup_set));
   if (auto err = symbol_map.takeError()) {
-    return Internal("Failed to lookup symbols: %s",
-                    llvm::toString(std::move(err)));
+    return Internal("%s", llvm::toString(std::move(err)));
   }
 
   // Resolve type-erased symbol pointers from the symbol map.
@@ -260,17 +284,14 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
   }
 
   return std::make_unique<CompiledFunctionLibrary>(
-      std::move(execution_session_), std::move(resolved_map));
+      std::move(execution_session_), std::move(object_layer_),
+      std::move(resolved_map));
 }
 
 JitCompiler::TaskDispatcher::TaskDispatcher(TaskRunner task_runner)
     : task_runner_(std::move(task_runner)) {}
 
-JitCompiler::TaskDispatcher::~TaskDispatcher() {
-  absl::MutexLock lock(&mu_);
-  DCHECK(num_dispatched_tasks_ == 0)
-      << "TaskDispatcher is still dispatching tasks";
-}
+JitCompiler::TaskDispatcher::~TaskDispatcher() { shutdown(); }
 
 void JitCompiler::TaskDispatcher::dispatch(
     std::unique_ptr<llvm::orc::Task> task) {
@@ -309,8 +330,10 @@ void JitCompiler::TaskDispatcher::shutdown() {
 
 JitCompiler::CompiledFunctionLibrary::CompiledFunctionLibrary(
     std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
+    std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer> object_layer,
     absl::flat_hash_map<std::string, ResolvedSymbol> symbols_map)
     : execution_session_(std::move(execution_session)),
+      object_layer_(std::move(object_layer)),
       symbols_map_(std::move(symbols_map)) {
   DCHECK(execution_session_) << "Execution session must not be null";
 }
