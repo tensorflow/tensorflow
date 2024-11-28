@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/debug_options_flags.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
@@ -98,6 +99,7 @@ struct HloRunnerConfig {
   int32_t num_repeats = 1;
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
+  float gpu_client_mem_fraction = xla::GpuAllocatorConfig{}.memory_fraction;
 };
 
 }  // namespace
@@ -223,12 +225,16 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   QCHECK(opts.dump_output_literal_to.empty() || argc == 2)
       << "Can only dump output literal when single input file is specified";
 
+  QCHECK_GT(opts.gpu_client_mem_fraction, 0.0);
+  QCHECK_LT(opts.gpu_client_mem_fraction, 1.0);
+
   PjRtEnvironment env;
   if (opts.device_type_str == "gpu") {
     xla::GpuClientOptions gpu_options;
     gpu_options.node_id = opts.task_id;
     gpu_options.num_nodes = opts.num_nodes;
     gpu_options.enable_mock_nccl = opts.enable_mock_nccl;
+    gpu_options.allocator_config.memory_fraction = opts.gpu_client_mem_fraction;
     TF_ASSIGN_OR_RETURN(
         env, xla::GetPjRtEnvironmentForGpu(
                  opts.address_str, gpu_options,
@@ -326,7 +332,11 @@ int main(int argc, char** argv) {
       tsl::Flag("gpu_client_initialization_timeout_sec",
                 &opts.gpu_client_initialization_timeout_sec,
                 "A timeout, in seconds, for the GPU client initialization. "
-                "Only used for multi-node GPU runs")};
+                "Only used for multi-node GPU runs"),
+      tsl::Flag("gpu_client_mem_fraction", &opts.gpu_client_mem_fraction,
+                "The maximum fraction of available memory to allocate in range "
+                "of (0.0, 1.0). Same as XLA_CLIENT_MEM_FRACTION in the Python "
+                "client. Only used with the BFC allocator.")};
 
   xla::AppendDebugOptionsFlags(&flag_list);
 
