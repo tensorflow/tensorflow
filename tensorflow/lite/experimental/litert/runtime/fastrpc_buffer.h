@@ -15,6 +15,8 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_FASTRPC_BUFFER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_FASTRPC_BUFFER_H_
 
+#include <cstddef>
+
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 namespace litert {
