@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
 
+#include <cstdint>
 #include <utility>
 
 #include "absl/status/status.h"
