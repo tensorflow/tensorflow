@@ -25,9 +25,9 @@ limitations under the License.
 namespace tensorflow {
 namespace graph_transforms {
 
-Status RenameAttribute(const GraphDef& input_graph_def,
-                       const TransformFuncContext& context,
-                       GraphDef* output_graph_def) {
+absl::Status RenameAttribute(const GraphDef& input_graph_def,
+                             const TransformFuncContext& context,
+                             GraphDef* output_graph_def) {
   if (!context.params.count("old_attribute_name") ||
       (context.params.at("old_attribute_name").size() != 1) ||
       !context.params.count("new_attribute_name") ||
@@ -59,7 +59,7 @@ Status RenameAttribute(const GraphDef& input_graph_def,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("rename_attribute", RenameAttribute);
