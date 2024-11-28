@@ -6,7 +6,7 @@ MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 ARG ROCM_DEB_REPO=https://repo.radeon.com/rocm/apt/6.2/
 ARG ROCM_BUILD_NAME=ubuntu
 ARG ROCM_BUILD_NUM=main
-ARG ROCM_PATH=/opt/rocm-6.2.0
+ARG ROCM_PATH=/opt/rocm/
 ARG GPU_DEVICE_TARGETS="gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030 gfx1100"
 
 ARG DEBIAN_FRONTEND=noninteractive
