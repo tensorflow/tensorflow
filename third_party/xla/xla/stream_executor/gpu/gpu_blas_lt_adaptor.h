@@ -27,8 +27,7 @@ namespace stream_executor::gpu {
 template <typename TBlasSupport>
 struct GpuBlasLtAdaptor final : TBlasSupport {
   template <typename... TArgs>
-  explicit GpuBlasLtAdaptor(TArgs... args)
-      : TBlasSupport{std::forward(args)...} {}
+  explicit GpuBlasLtAdaptor(TArgs... args) : TBlasSupport{args...} {}
 
   bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
                          blas::Transpose transb, uint64_t m, uint64_t n,
@@ -52,7 +51,9 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
 
  private:
   bool CheckStatus(absl::Status status) {
-    return status.code() == absl::StatusCode::kOk;
+    if (status.code() == absl::StatusCode::kOk) return true;
+    LOG(ERROR) << status;
+    return false;
   }
 
   bool IsGpuBlasLtEnabled() { return false; }
