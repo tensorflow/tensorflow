@@ -196,10 +196,6 @@ tf_proto_library(
         "core_platform_payloads.proto",
         "fingerprint.proto",
     ],
-    local_defines = [
-        "PROTOBUF_USE_DLLS",
-        "LIBPROTOBUF_EXPORTS",
-    ],
     make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto_impl",
