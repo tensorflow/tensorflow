@@ -17,20 +17,25 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_JIT_COMPILER_H_
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/Orc/TaskDispatch.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
@@ -51,6 +56,10 @@ namespace xla::cpu {
 class JitCompiler {
  public:
   using Symbol = FunctionLibrary::Symbol;
+
+  // Task and a TaskRunner are used to run compilation tasks in parallel.
+  using Task = std::function<void()>;  // NOLINT (must be copyable)
+  using TaskRunner = absl::AnyInvocable<void(Task)>;
 
   JitCompiler(JitCompiler&&) = default;
   JitCompiler& operator=(JitCompiler&&) = default;
@@ -93,7 +102,8 @@ class JitCompiler {
   // Creates a new instance of the JitCompiler.
   static absl::StatusOr<JitCompiler> Create(llvm::TargetOptions target_options,
                                             llvm::CodeGenOptLevel opt_level,
-                                            Options options);
+                                            Options options,
+                                            TaskRunner task_runner);
 
   // Adds a LLVM module to the dynamic library at `dylib_index`.
   absl::Status AddModule(llvm::orc::ThreadSafeModule module,
@@ -118,6 +128,23 @@ class JitCompiler {
               std::shared_ptr<llvm::TargetMachine> target_machine,
               std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
               std::unique_ptr<IrCompiler> ir_compiler, size_t num_dylibs);
+
+  // LLVM ORC task dispatcher that uses `TaskRunner` to run compilation tasks.
+  class TaskDispatcher : public llvm::orc::TaskDispatcher {
+   public:
+    explicit TaskDispatcher(TaskRunner task_runner);
+    ~TaskDispatcher() final;
+
+    void dispatch(std::unique_ptr<llvm::orc::Task> T) final;
+    void shutdown() final;
+
+   private:
+    TaskRunner task_runner_;
+
+    absl::Mutex mu_;
+    absl::CondVar cv_;
+    size_t num_dispatched_tasks_ ABSL_GUARDED_BY(mu_) = 0;
+  };
 
   // Function library constructed from the set of jit-compiled symbols.
   class CompiledFunctionLibrary : public FunctionLibrary {

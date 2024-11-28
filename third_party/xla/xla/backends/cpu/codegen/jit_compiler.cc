@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
@@ -36,6 +37,8 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/ExecutionEngine/Orc/TaskDispatch.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/CodeGen.h"
@@ -53,8 +56,13 @@ limitations under the License.
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
 
 namespace xla::cpu {
+
+using tsl::profiler::TraceMe;
+using tsl::profiler::TraceMeEncode;
 
 absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
 JitCompiler::InferTargetMachine(
@@ -98,7 +106,7 @@ IrCompiler::TargetMachineBuilder JitCompiler::InferTargetMachineBuilder(
 
 absl::StatusOr<JitCompiler> JitCompiler::Create(
     llvm::TargetOptions target_options, llvm::CodeGenOptLevel opt_level,
-    Options options) {
+    Options options, TaskRunner task_runner) {
   // Initialize LLVM the first time `JitCompiler` is created.
   static bool llvm_initialized = [] {
     llvm::InitializeNativeTarget();
@@ -115,7 +123,9 @@ absl::StatusOr<JitCompiler> JitCompiler::Create(
 
   // LLVM execution session that holds jit-compiled functions.
   auto execution_session = std::make_unique<llvm::orc::ExecutionSession>(
-      std::make_unique<llvm::orc::UnsupportedExecutorProcessControl>());
+      std::make_unique<llvm::orc::UnsupportedExecutorProcessControl>(
+          /*SSP=*/nullptr,
+          std::make_unique<TaskDispatcher>(std::move(task_runner))));
 
   // Create an instance of IrCompiler for lowering LLVM modules to machine code.
   auto ir_compiler = std::make_unique<IrCompiler>(
@@ -202,6 +212,11 @@ absl::Status JitCompiler::AddModule(llvm::orc::ThreadSafeModule module,
 
 absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
     absl::Span<const Symbol> symbols) && {
+  TraceMe trace([&] {
+    return TraceMeEncode("JitCompiler::Compile",
+                         {{"num_symbols", symbols.size()}});
+  });
+
   // Mangle symbol names for the target machine data layout.
   llvm::DataLayout data_layout = target_machine_->createDataLayout();
   auto mangle = [&](std::string_view name) {
@@ -210,29 +225,86 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
     return std::string(mangled.begin(), mangled.end());
   };
 
-  // Resolve type-erased symbol pointers.
-  using ResolvedSymbol = CompiledFunctionLibrary::ResolvedSymbol;
-  absl::flat_hash_map<std::string, ResolvedSymbol> symbols_map;
-
-  // TODO(ezhulenev): Use task runner to parallelize symbol lookups.
+  // Build a symbol lookup set.
+  llvm::orc::SymbolLookupSet lookup_set;
   for (const auto& symbol : symbols) {
-    std::string mangled = mangle(symbol.name);
-    VLOG(3) << absl::StreamFormat("Look up symbol: %s (mangled: %s)",
-                                  symbol.name, mangled);
+    VLOG(5) << absl::StreamFormat(" - look up symbol: %s", symbol.name);
+    lookup_set.add(execution_session_->intern(mangle(symbol.name)));
+  }
 
-    auto symbol_def = execution_session_->lookup(dylibs_, mangled);
-    if (auto err = symbol_def.takeError()) {
-      return Internal("Failed to lookup symbol %s: %s", symbol.name,
-                      llvm::toString(std::move(err)));
-    }
+  // Build a search order for the dynamic libraries.
+  llvm::orc::JITDylibSearchOrder search_order(dylibs_.size());
+  for (size_t i = 0; i < dylibs_.size(); ++i) {
+    search_order[i] = std::make_pair(
+        dylibs_[i], llvm::orc::JITDylibLookupFlags::MatchExportedSymbolsOnly);
+  }
 
-    llvm::orc::ExecutorAddr addr = symbol_def->getAddress();
-    void* ptr = reinterpret_cast<void*>(addr.getValue());
-    symbols_map[symbol.name] = ResolvedSymbol{symbol.type_id, ptr};
+  // Look up all requested symbols in the execution session.
+  auto symbol_map = execution_session_->lookup(std::move(search_order),
+                                               std::move(lookup_set));
+  if (auto err = symbol_map.takeError()) {
+    return Internal("Failed to lookup symbols: %s",
+                    llvm::toString(std::move(err)));
+  }
+
+  // Resolve type-erased symbol pointers from the symbol map.
+  using ResolvedSymbol = CompiledFunctionLibrary::ResolvedSymbol;
+  absl::flat_hash_map<std::string, ResolvedSymbol> resolved_map;
+
+  for (const auto& symbol : symbols) {
+    auto symbol_name = execution_session_->intern(mangle(symbol.name));
+    llvm::orc::ExecutorSymbolDef symbol_def = symbol_map->at(symbol_name);
+    llvm::orc::ExecutorAddr symbol_addr = symbol_def.getAddress();
+    void* ptr = reinterpret_cast<void*>(symbol_addr.getValue());
+    resolved_map[symbol.name] = ResolvedSymbol{symbol.type_id, ptr};
   }
 
   return std::make_unique<CompiledFunctionLibrary>(
-      std::move(execution_session_), std::move(symbols_map));
+      std::move(execution_session_), std::move(resolved_map));
+}
+
+JitCompiler::TaskDispatcher::TaskDispatcher(TaskRunner task_runner)
+    : task_runner_(std::move(task_runner)) {}
+
+JitCompiler::TaskDispatcher::~TaskDispatcher() {
+  absl::MutexLock lock(&mu_);
+  DCHECK(num_dispatched_tasks_ == 0)
+      << "TaskDispatcher is still dispatching tasks";
+}
+
+void JitCompiler::TaskDispatcher::dispatch(
+    std::unique_ptr<llvm::orc::Task> task) {
+  // Dispatch task in the current thread if no task runner is provided.
+  if (task_runner_ == nullptr) {
+    task->run();
+    return;
+  }
+
+  // Dispatch task using user-provided task runner.
+  absl::MutexLock lock(&mu_);
+  ++num_dispatched_tasks_;
+
+  task_runner_([this, task = std::shared_ptr<llvm::orc::Task>(
+                          std::move(task))]() mutable {
+    TraceMe trace("TaskDispatcher::dispatch");
+
+    // We run and explicitly destroy the task before decrementing the counter
+    // and notifying the condition variable, to ensure that the task is fully
+    // executed and cleaned up before task dispatcher shut down.
+    task->run();
+    task.reset();
+
+    absl::MutexLock lock(&mu_);
+    --num_dispatched_tasks_;
+    cv_.SignalAll();
+  });
+}
+
+void JitCompiler::TaskDispatcher::shutdown() {
+  absl::MutexLock lock(&mu_);
+  while (num_dispatched_tasks_ > 0) {
+    cv_.Wait(&mu_);
+  }
 }
 
 JitCompiler::CompiledFunctionLibrary::CompiledFunctionLibrary(
@@ -247,6 +319,11 @@ JitCompiler::CompiledFunctionLibrary::~CompiledFunctionLibrary() {
   if (auto err = execution_session_->endSession()) {
     execution_session_->reportError(std::move(err));
   }
+  // Explicitly destroy the execution session to ensure that all tasks are
+  // finished, because otherwise object layer materialization running inside the
+  // task dispatched triggers use-after-free errors. This is super fishy, and we
+  // don't really understand why this is happening.
+  execution_session_.reset();
 }
 
 absl::StatusOr<void*> JitCompiler::CompiledFunctionLibrary::ResolveFunction(
