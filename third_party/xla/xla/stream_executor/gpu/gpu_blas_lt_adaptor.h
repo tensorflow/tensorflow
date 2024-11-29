@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_BLAS_LT_ADAPTOR_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_BLAS_LT_ADAPTOR_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
@@ -29,7 +28,7 @@ class WorkspaceScratchAllocator : public tensorflow::se::ScratchAllocator {
   using Stream = tensorflow::se::Stream;
   using DeviceMemoryBytes = tensorflow::se::DeviceMemory<uint8>;
 
-  explicit WorkspaceScratchAllocator(DeviceMemoryBytes workspace)
+  explicit WorkspaceScratchAllocator(DeviceMemoryBase workspace)
       : workspace_{workspace}, bytes_allocated_{} {}
 
   int64_t GetMemoryLimitInBytes() override { return workspace_.size(); }
@@ -69,8 +68,7 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
                           blas::CallContext context) override {
     if (IsGpuBlasLtEnabled()) {
       auto &runner = gpu::BlasLtGemmRunner::i(stream);
-      auto workspace =
-          static_cast<DeviceMemory<uint8> *>(TBlasSupport::GetWorkspace());
+      auto workspace = TBlasSupport::GetWorkspace();
       WorkspaceScratchAllocator allocator{*workspace};
       switch (dtype) {
         case blas::DataType::kFloat:
@@ -110,6 +108,15 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
           batch_count, numeric_options, scratch_allocator, context);
     }
   }
+
+  absl::Status DoBlasGemmStridedBatched(
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, blas::DataType dtype, const void *alpha,
+      const DeviceMemoryBase &a, int lda, int64_t stride_a,
+      const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,
+      DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count,
+      const NumericOptions &numeric_options,
+      blas::CallContext context) override {}
 
  private:
   template <typename T>

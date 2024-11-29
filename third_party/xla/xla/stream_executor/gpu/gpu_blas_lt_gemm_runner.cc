@@ -30,7 +30,7 @@ bool AutotuneEnabled() {
   static std::atomic_bool result{[] {
     bool value = false;
     tsl::ReadBoolFromEnvVar("TF_MATMUL_AUTOTUNE_ENABLE",
-                            /*default_value=*/false, &value);
+                            /*default_val=*/false, &value);
     return value;
   }()};
   return result;
@@ -62,7 +62,7 @@ BlasLtGemmRunner::BlasLtGemmRunner(StreamExecutor* parent)
 
 {}
 
-BlasLtGemmRunner::~BlasLtGemmRunner() {}
+BlasLtGemmRunner::~BlasLtGemmRunner() = default;
 
 /*static*/ BlasLtGemmRunner& BlasLtGemmRunner::i(const Stream* stream) {
   static absl::Mutex m(absl::kConstInit);
