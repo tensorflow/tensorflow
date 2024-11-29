@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "llvm/Support/raw_ostream.h"
@@ -38,13 +39,13 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
@@ -54,6 +55,8 @@ namespace xla {
 namespace gpu {
 namespace mlir_converter {
 namespace {
+
+using ::testing::HasSubstr;
 
 class ElementalHloToMlirTest : public HloTestBase {
  public:
@@ -1564,6 +1567,21 @@ TEST_F(ElementalHloToMlirTest, DynamicSliceUnsignedIndices) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, DynamicSliceIndexIsNotCanonical_NotSupported) {
+  auto status = Run(R"(
+    ENTRY main {
+      in = f32[20,30] parameter(0)
+      idx = s32[2] parameter(1)
+      ROOT slice = f32[4,5] dynamic-slice(in, idx), dynamic_slice_sizes={4,5}
+    })",
+                    "");
+
+  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(status.message(),
+              HasSubstr("Dynamic indexing instruction with non-scalar index is "
+                        "not supported."));
+}
+
 TEST_F(ElementalHloToMlirTest, DynamicUpdateSlice) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {
@@ -1636,6 +1654,23 @@ TEST_F(ElementalHloToMlirTest, DynamicUpdateSliceUnsigned) {
     // CHECK:        } else {
     // CHECK:          %[[VAL1:.*]] = tensor.extract %[[ARG0]][%[[X]]
   )"));
+}
+
+TEST_F(ElementalHloToMlirTest,
+       DynamicUpdateSliceIndexIsNotCanonical_NotSupported) {
+  auto status = Run(R"(
+    ENTRY main {
+      in = f32[20,30] parameter(0)
+      updates = f32[5,6] parameter(1)
+      idx = s32[2] parameter(2)
+      ROOT updated = f32[20,30] dynamic-update-slice(in, updates, idx)
+    })",
+                    "");
+
+  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
+  EXPECT_THAT(status.message(),
+              HasSubstr("Dynamic indexing instruction with non-scalar index is "
+                        "not supported."));
 }
 
 TEST_F(ElementalHloToMlirTest, IotaUnsigned) {

@@ -439,6 +439,8 @@ cc_library(
     deps = [
         ":stats_calculator_portable",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
