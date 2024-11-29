@@ -738,15 +738,11 @@ absl::StatusOr<Decision> CreateDotFusion(
 
   const PrecisionConfig::Algorithm algorithm =
       dot.precision_config().algorithm();
-  if (algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3) {
-    return Decision::Deny(
-        "Triton native implementation of TF32_TF32_F32_X3 algorithm does not "
-        "work correctly with inf*1.0 case.");
-  }
   if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32 ||
       algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32 ||
+      algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3 ||
       algorithm == PrecisionConfig::ALG_DOT_F32_F32_F32 ||
       dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any() ||
       dot.sparse_operands()) {

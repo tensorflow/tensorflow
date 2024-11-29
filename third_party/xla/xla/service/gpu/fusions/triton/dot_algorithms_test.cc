@@ -892,8 +892,7 @@ TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
       R"(CHECK: "kind":"__triton_gemm","triton_gemm_config")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
-  // TODO(loislo): Enable this test once the algorithm is fixed for inf*1.0.
-  EXPECT_FALSE(ok);
+  EXPECT_TRUE(ok);
 }
 
 TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32) {
@@ -1335,7 +1334,8 @@ INSTANTIATE_TEST_SUITE_P(BlasCanHandle, BlasCanHandle,
 
 INSTANTIATE_TEST_SUITE_P(TritonCanHandle, TritonCanHandle,
                          Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X3,
-                                        PC::ALG_DOT_BF16_BF16_F32_X6)),
+                                        PC::ALG_DOT_BF16_BF16_F32_X6,
+                                        PC::ALG_DOT_TF32_TF32_F32_X3)),
                          CanHandleTestParamsToString);
 
 // Collects the results of a test. The results can be dumped in CSV format.
@@ -1642,6 +1642,7 @@ TEST_P(AlgorithmsSupportTest, IsDotAlgorithmSupportedByTriton) {
   switch (std::get<0>(GetParam())) {
     case PC::ALG_UNSET:
     case PC::ALG_DOT_TF32_TF32_F32:
+    case PC::ALG_DOT_TF32_TF32_F32_X3:
     case PC::ALG_DOT_BF16_BF16_F32:
     case PC::ALG_DOT_BF16_BF16_F32_X3:
     case PC::ALG_DOT_BF16_BF16_F32_X6:
@@ -1654,13 +1655,6 @@ TEST_P(AlgorithmsSupportTest, IsDotAlgorithmSupportedByTriton) {
     case PC::ALG_DOT_F64_F64_F64:
       EXPECT_EQ(result_or_status.status().code(),
                 absl::StatusCode::kUnimplemented);
-      break;
-    // TODO(loislo): Triton implementation needs a fix for dot(inf, 1.0) case.
-    case PC::ALG_DOT_TF32_TF32_F32_X3:
-      EXPECT_TRUE(result_or_status.status().ok());  // is supported
-      EXPECT_FALSE(result_or_status.value())        // but not by triton
-          << "wrong result for " << algorithm_;
-
       break;
     default:
       EXPECT_TRUE(false) << "Uncovered algorithm. Please fix: " << algorithm_;
