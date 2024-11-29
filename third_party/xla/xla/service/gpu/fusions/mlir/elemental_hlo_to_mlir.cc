@@ -80,6 +80,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -295,9 +296,27 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConcat(
   return generate_concat(0, instr->operand_count());
 }
 
+absl::Status ValidateDynamicIndexIsCanonical(const HloInstruction* instr) {
+  const HloDynamicIndexInstruction* dynamic_index_instruction =
+      Cast<HloDynamicIndexInstruction>(instr);
+  if (!absl::c_all_of(dynamic_index_instruction->index_operands(),
+                      [](const HloInstruction* operand) {
+                        return ShapeUtil::IsScalar(operand->shape());
+                      })) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Dynamic indexing instruction with non-scalar index is "
+                     "not supported. Make sure that 'dynamic-index-splitter' "
+                     "pass was exectuted to canonicalize the indices: ",
+                     instr->ToString()));
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<SmallVector<Value, 1>> EmitDynamicSlice(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
+  TF_RETURN_IF_ERROR(ValidateDynamicIndexIsCanonical(instr));
+
   SmallVector<Value, 3> input_indices(indices);
 
   const auto& input_shape = instr->operand(0)->shape();
@@ -318,6 +337,8 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDynamicSlice(
 absl::StatusOr<SmallVector<Value, 1>> EmitDynamicUpdateSlice(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider, ImplicitLocOpBuilder& b) {
+  TF_RETURN_IF_ERROR(ValidateDynamicIndexIsCanonical(instr));
+
   auto result_element_type =
       PrimitiveTypeToMlirType(instr->shape().element_type(), b);
   Value is_in_bounds = b.create<ConstantOp>(b.getIntegerAttr(b.getI1Type(), 1));
