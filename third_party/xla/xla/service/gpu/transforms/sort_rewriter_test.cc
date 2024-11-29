@@ -39,7 +39,8 @@ class SortRewriterTest : public HloTestBase {
  public:
   void SetUp() override {
     HloTestBase::SetUp();
-    SortRewriter::SetSortSizeThresholdForTestingOnly(1000);
+    SortRewriter::SetSortSizeThresholdForTestingOnly(
+        0);  // Always use CUB sort.
   }
 
   bool RunModuleAndPass(HloModule* module) {
@@ -307,6 +308,7 @@ ENTRY %main {
 
 // Small shapes do not see improvement from CUB sort.
 TEST_F(SortRewriterTest, NoRewriteSmallSize) {
+  SortRewriter::SetSortSizeThresholdForTestingOnly(16385);
   constexpr char kHlo[] = R"(
 HloModule TestModule
 
@@ -398,8 +400,8 @@ ENTRY %main {
   RunAndFilecheckHloRewrite(kHlo, SortRewriter(), kExpectedPattern);
 }
 
-TEST_F(SortRewriterTest, SortSizeThresholdIsSet) {
-  EXPECT_EQ(SortRewriter::SortSizeThreshold(), 1000);
+TEST_F(SortRewriterTest, AlwaysUsesCubSort) {
+  EXPECT_EQ(SortRewriter::SortSizeThreshold(), 0);
 }
 
 }  // namespace
