@@ -97,16 +97,24 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
                          int batch_count, const NumericOptions &numeric_options,
                          ScratchAllocator *scratch_allocator,
                          blas::CallContext context) override {
-    if (IsGpuBlasLtEnabled()) {
-      auto &runner = gpu::BlasLtGemmRunner::i(stream);
-      return CheckStatus(runner.RunBatched(*stream, transa, transb, m, n, k,
-                                           alpha, a, lda, b, ldb, beta, c, ldc,
-                                           batch_count, scratch_allocator));
-    } else {
-      return TBlasSupport::DoBlasGemmBatched(
-          stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-          batch_count, numeric_options, scratch_allocator, context);
-    }
+    return DoBlasGemmBatchedImple<float>(
+        stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
+        batch_count, numeric_options, scratch_allocator, context);
+  }
+
+  bool DoBlasGemmBatched(Stream *stream, blas::Transpose transa,
+                         blas::Transpose transb, uint64_t m, uint64_t n,
+                         uint64 k, float alpha,
+                         DeviceMemorySlice<Eigen::bfloat16> a, int lda,
+                         DeviceMemorySlice<Eigen::bfloat16> b, int ldb,
+                         float beta, DeviceMemorySlice<Eigen::bfloat16> c,
+                         int ldc, int batch_count,
+                         const NumericOptions &numeric_options,
+                         ScratchAllocator *scratch_allocator,
+                         blas::CallContext context) {
+    return DoBlasGemmBatchedImple<Eigen::bfloat16>(
+        stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
+        batch_count, numeric_options, scratch_allocator, context);
   }
 
   absl::Status DoBlasGemmStridedBatched(
@@ -185,6 +193,28 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
     if (status.code() == absl::StatusCode::kOk) return true;
     LOG(ERROR) << status;
     return false;
+  }
+
+  template <typename T, typename TScaler>
+  bool DoBlasGemmBatchedImple(Stream *stream, blas::Transpose transa,
+                              blas::Transpose transb, uint64_t m, uint64_t n,
+                              uint64 k, TScaler alpha, DeviceMemorySlice<T> a,
+                              int lda, DeviceMemorySlice<T> b, int ldb,
+                              TScaler beta, DeviceMemorySlice<T> c, int ldc,
+                              int batch_count,
+                              const NumericOptions &numeric_options,
+                              ScratchAllocator *scratch_allocator,
+                              blas::CallContext context) {
+    if (IsGpuBlasLtEnabled()) {
+      auto &runner = gpu::BlasLtGemmRunner::i(stream);
+      return CheckStatus(runner.RunBatched(*stream, transa, transb, m, n, k,
+                                           alpha, a, lda, b, ldb, beta, c, ldc,
+                                           batch_count, scratch_allocator));
+    } else {
+      return TBlasSupport::DoBlasGemmBatched(
+          stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
+          batch_count, numeric_options, scratch_allocator, context);
+    }
   }
 
   bool IsGpuBlasLtEnabled() { return false; }
