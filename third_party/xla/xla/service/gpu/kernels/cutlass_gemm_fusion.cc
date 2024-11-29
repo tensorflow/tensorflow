@@ -126,14 +126,14 @@ absl::Status MatchRowMajorGemm(HloDotInstruction* dot) {
       dot_dims.lhs_contracting_dimensions()[0]) {
     return absl::InternalError(
         "Lhs contracting dimension should be along the minor axis (elements "
-        "that are stored contigous in memory).");
+        "that are stored contiguous in memory).");
   }
 
   if (dot->operand(1)->shape().layout().minor_to_major(1) !=
       dot_dims.rhs_contracting_dimensions()[0]) {
     return absl::InternalError(
         "Rhs contracting dimension should be along the major axis (elements "
-        "that are NOT stored contigous in memory).");
+        "that are NOT stored contiguous in memory).");
   }
 
   return absl::OkStatus();
