@@ -1385,9 +1385,11 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
 
     auto triton_module =
         mlir::parseSourceString<mlir::ModuleOp>(call.ir, &mlir_context);
-    TF_RET_CHECK(triton_module);
+    TF_RET_CHECK(triton_module) << "Failed to parse Triton module: " << call.ir;
     auto triton_fn =
         triton_module->lookupSymbol<mlir::triton::FuncOp>(call.name);
+    TF_RET_CHECK(triton_fn)
+        << "Call name not found in the Triton module: " << call.name;
     triton_fn.setName(kernel_name);
     size_t arg_size = triton_fn.getNumArguments();
 
