@@ -4296,18 +4296,10 @@ class Subgraph {
                              -1);
           return kTfLiteError;
         }
-        // TODO(b/340399245) - Remove the flags parameter once we have a better
-        // solution for delegating to `qp8_f32_qc4w` GEMM kernels.
-        const size_t convert_flags =
-            (filter_datatype == xnn_datatype_qcint4 &&
-             (filter_tensor.params.zero_point == 0 ||
-              filter_tensor.params.zero_point == 8))
-                ? 0x00000080 /*XNN_FLAG_MAYBE_PACK_FOR_GEMM*/
-                : 0;
         status = xnn_define_convert(
             subgraph,
             /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
-            dq_quantized_id, convert_flags);
+            dq_quantized_id, /*flags=*/0);
         if (status != xnn_status_success) {
           TF_LITE_KERNEL_LOG(
               logging_context, "failed to delegate %s node #%d",
