@@ -1571,7 +1571,7 @@ class DefaultExecutorRegistrar {
                              const Graph& graph,
                              std::unique_ptr<Executor>* out_executor) override {
       Executor* ret = nullptr;
-      TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(graph), &ret));
+      TF_RETURN_IF_ERROR(NewLocalExecutor(params, graph, &ret));
       out_executor->reset(ret);
       return absl::OkStatus();
     }
