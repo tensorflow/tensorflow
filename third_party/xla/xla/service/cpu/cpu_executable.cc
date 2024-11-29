@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_executable.h"
 
+#include "xla/service/hlo_profile_printer_data.pb.h"
+
 #define EIGEN_USE_THREADS
 
 #include <stdint.h>
@@ -24,7 +26,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -42,7 +43,6 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/Error.h"
-#include "xla/backends/cpu/codegen/function_library.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -58,8 +58,6 @@ limitations under the License.
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
-#include "xla/service/hlo_execution_profile.h"
-#include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/service_executable_run_options.h"
@@ -84,21 +82,40 @@ namespace cpu {
 using ConstantAllocation = CpuExecutable::ConstantAllocation;
 using FunctionRegistry = CpuExecutable::FunctionRegistry;
 
-FunctionRegistry::FunctionRegistry(FunctionLibrary* function_library)
-    : function_library_(function_library) {}
+FunctionRegistry::FunctionRegistry(SimpleOrcJIT* jit) : jit_(jit) {}
+
+std::string FunctionRegistry::Mangle(std::string_view name) {
+  llvm::SmallVector<char, 40> mangled;
+  llvm::Mangler::getNameWithPrefix(mangled, name, jit_->data_layout());
+  return std::string(mangled.begin(), mangled.end());
+}
 
 absl::StatusOr<FunctionRegistry::Kernel> FunctionRegistry::FindKernel(
     std::string_view name) {
   VLOG(3) << "Find host kernel with a name " << name;
-  using F = std::remove_pointer_t<Kernel>;
-  return function_library_->ResolveFunction<F>(name);
+
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
+      jit_->FindCompiledSymbol(Mangle(name));
+  if (!sym) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't resolve host kernel with a name ", name,
+                     " in the jit compiled module."));
+  }
+  return reinterpret_cast<Kernel>(sym->getAddress().getValue());
 }
 
 absl::StatusOr<FunctionRegistry::Comparator> FunctionRegistry::FindComparator(
     std::string_view name) {
   VLOG(3) << "Find comparator with a name " << name;
-  using F = std::remove_pointer_t<Comparator>;
-  return function_library_->ResolveFunction<F>(name);
+
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
+      jit_->FindCompiledSymbol(Mangle(name));
+  if (!sym) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't resolve comparator with a name ", name,
+                     " in the jit compiled module."));
+  }
+  return reinterpret_cast<Comparator>(sym->getAddress().getValue());
 }
 
 se::DeviceMemoryBase ConstantAllocation::AsDeviceMemoryBase() const {
@@ -118,7 +135,7 @@ se::DeviceMemoryBase ConstantAllocation::AsDeviceMemoryBase() const {
 }
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
-    std::unique_ptr<FunctionLibrary> function_library,
+    std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module,
     const std::string& entry_function_name,
@@ -130,23 +147,31 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
   std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
       std::move(hlo_profile_index_map), std::move(assignment)));
-  executable->function_library_ = std::move(function_library);
+  executable->jit_ = std::move(jit);
   executable->module_name_ = entry_function_name;
 
-  TF_ASSIGN_OR_RETURN(
-      executable->compute_function_,
-      executable->function_library_
-          ->ResolveFunction<std::remove_pointer_t<ComputeFunctionType>>(
-              entry_function_name));
-
+  // Resolve symbols in the constructor rather than at execution time to avoid
+  // races because FindSymbol is not thread safe.
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
+      executable->jit_->FindCompiledSymbol(entry_function_name);
+  // We expect to find the symbol provided with entry_function_name; otherwise
+  // this is an internal error.
+  if (!sym) {
+    return absl::NotFoundError(
+        absl::StrCat("Symbol ", entry_function_name, " not found."));
+  }
+  // getAddress can do work under the hood in the jit, so it needs to be
+  // guarded by the mutex.
+  executable->compute_function_ =
+      reinterpret_cast<ComputeFunctionType>(sym->getAddress().getValue());
   VLOG(1) << "compute_function_ at address "
           << reinterpret_cast<void*>(executable->compute_function_);
-
+  executable->jit_->DoneCompiling();
   return executable;
 }
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
-    std::unique_ptr<FunctionLibrary> function_library,
+    std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
     std::vector<ConstantAllocation> constants,
@@ -159,8 +184,9 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
       std::move(hlo_profile_index_map), std::move(assignment)));
 
-  executable->function_registry_ = FunctionRegistry(function_library.get());
-  executable->function_library_ = std::move(function_library);
+  executable->jit_ = std::move(jit);
+  executable->jit_->DoneCompiling();
+  executable->function_registry_ = FunctionRegistry(executable->jit_.get());
 
   TF_ASSIGN_OR_RETURN(executable->thunks_,
                       ThunkExecutor::Create(std::move(thunks)));
@@ -565,8 +591,7 @@ const InstructionValueSet& CpuExecutable::GetRootValueSet() const {
 }
 
 int64_t CpuExecutable::SizeOfGeneratedCodeInBytes() const {
-  // TODO(ezhulenev): Delete this function, it's not really used anywhere.
-  return 0;
+  return jit_ ? jit_->SizeOfGeneratedCodeInBytes() : 0;
 }
 
 }  // namespace cpu

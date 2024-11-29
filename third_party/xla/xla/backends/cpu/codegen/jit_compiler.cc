@@ -121,15 +121,11 @@ absl::StatusOr<JitCompiler> JitCompiler::Create(
                                 options.max_cpu_feature);
   TF_ASSIGN_OR_RETURN(auto target_machine, target_machine_builder());
 
-  // Dispatch compilation tasks using the provided task runner.
-  auto task_dispatcher =
-      std::make_unique<TaskDispatcher>(std::move(task_runner));
-  TaskDispatcher* task_dispatcher_ptr = task_dispatcher.get();
-
   // LLVM execution session that holds jit-compiled functions.
   auto execution_session = std::make_unique<llvm::orc::ExecutionSession>(
       std::make_unique<llvm::orc::UnsupportedExecutorProcessControl>(
-          /*SSP=*/nullptr, std::move(task_dispatcher)));
+          /*SSP=*/nullptr,
+          std::make_unique<TaskDispatcher>(std::move(task_runner))));
 
   execution_session->setErrorReporter([](llvm::Error err) {
     LOG(ERROR) << "LLVM compilation error: " << llvm::toString(std::move(err));
@@ -140,10 +136,10 @@ absl::StatusOr<JitCompiler> JitCompiler::Create(
       target_machine_builder, std::move(options.ir_compiler_options),
       std::move(options.ir_compiler_hooks));
 
-  return JitCompiler(
-      std::move(target_machine_builder), std::move(target_machine),
-      task_dispatcher_ptr, std::move(execution_session), std::move(ir_compiler),
-      options.num_dylibs, std::move(options.definition_generator));
+  return JitCompiler(std::move(target_machine_builder),
+                     std::move(target_machine), std::move(execution_session),
+                     std::move(ir_compiler), options.num_dylibs,
+                     std::move(options.definition_generator));
 }
 
 static std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer>
@@ -166,13 +162,11 @@ static std::unique_ptr<llvm::orc::IRCompileLayer> CreateCompileLayer(
 JitCompiler::JitCompiler(
     IrCompiler::TargetMachineBuilder target_machine_builder,
     std::shared_ptr<llvm::TargetMachine> target_machine,
-    TaskDispatcher* task_dispatcher,
     std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
     std::unique_ptr<IrCompiler> ir_compiler, size_t num_dylibs,
     DefinitionGenerator definition_generator)
     : target_machine_builder_(std::move(target_machine_builder)),
       target_machine_(std::move(target_machine)),
-      task_dispatcher_(task_dispatcher),
       execution_session_(std::move(execution_session)),
       object_layer_(CreateObjectLinkingLayer(*execution_session_)),
       compile_layer_(CreateCompileLayer(*execution_session_, *object_layer_,
@@ -273,10 +267,6 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
   // Look up all requested symbols in the execution session.
   auto symbol_map = execution_session_->lookup(std::move(search_order),
                                                std::move(lookup_set));
-
-  // Wait for all compilation tasks to finish.
-  task_dispatcher_->shutdown();
-
   if (auto err = symbol_map.takeError()) {
     return Internal("%s", llvm::toString(std::move(err)));
   }
@@ -352,6 +342,11 @@ JitCompiler::CompiledFunctionLibrary::~CompiledFunctionLibrary() {
   if (auto err = execution_session_->endSession()) {
     execution_session_->reportError(std::move(err));
   }
+  // Explicitly destroy the execution session to ensure that all tasks are
+  // finished, because otherwise object layer materialization running inside the
+  // task dispatched triggers use-after-free errors. This is super fishy, and we
+  // don't really understand why this is happening.
+  execution_session_.reset();
 }
 
 absl::StatusOr<void*> JitCompiler::CompiledFunctionLibrary::ResolveFunction(

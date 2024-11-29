@@ -760,8 +760,8 @@ XLA_TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
   EXPECT_EQ(2, executables.size());
 }
 
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
-                                       SizeOfGeneratedCodeInBytes))) {
+XLA_TEST_F(LocalClientExecuteTest,
+           DISABLED_ON_INTERPRETER(SizeOfGeneratedCodeInBytes)) {
   if (IsMlirLoweringEnabled()) {
     // SizeOfGeneratedCodeInBytes is not supported by the MLIR pipeline.
     GTEST_SKIP();

@@ -1,4 +1,4 @@
-load("//xla:xla.bzl", "xla_cc_test", "xla_internal")
+load("//xla:xla.bzl", "xla_cc_test")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "if_llvm_aarch64_available",
@@ -131,7 +131,7 @@ cc_library(
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]) + if_llvm_x86_available([
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-    ]) + xla_internal(["service/cpu:named_orc_jit_memory_mapper"]),
+    ]),
 )
 
 xla_cc_test(

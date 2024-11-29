@@ -20,8 +20,8 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
@@ -68,19 +68,23 @@ limitations under the License.
 
 namespace xla::cpu {
 
-RuntimeSymbolGenerator::RuntimeSymbolGenerator(llvm::DataLayout data_layout)
-    : data_layout_(std::move(data_layout)) {}
+RuntimeSymbolGenerator::RuntimeSymbolGenerator(
+    llvm::DataLayout data_layout,
+    absl::AnyInvocable<bool(std::string_view)> is_kernel_symbol)
+    : data_layout_(std::move(data_layout)),
+      is_kernel_symbol_(std::move(is_kernel_symbol)) {}
 
 llvm::Error RuntimeSymbolGenerator::tryToGenerate(
-    llvm::orc::LookupState&, llvm::orc::LookupKind kind,
+    llvm::orc::LookupState&, llvm::orc::LookupKind,
     llvm::orc::JITDylib& jit_dylib, llvm::orc::JITDylibLookupFlags,
     const llvm::orc::SymbolLookupSet& names) {
   llvm::orc::SymbolMap new_defs;
 
   for (const auto& kv : names) {
     const auto& name = kv.first;
-    if (auto symbol = ResolveRuntimeSymbol(*name)) {
-      new_defs[name] = *symbol;
+    llvm::orc::ExecutorSymbolDef symbol = ResolveRuntimeSymbol(*name);
+    if (symbol.getAddress()) {
+      new_defs[name] = symbol;
     }
   }
 
@@ -88,8 +92,8 @@ llvm::Error RuntimeSymbolGenerator::tryToGenerate(
   return llvm::Error::success();
 }
 
-std::optional<llvm::orc::ExecutorSymbolDef>
-RuntimeSymbolGenerator::ResolveRuntimeSymbol(llvm::StringRef name) {
+llvm::orc::ExecutorSymbolDef RuntimeSymbolGenerator::ResolveRuntimeSymbol(
+    llvm::StringRef name) {
   void* fn_addr = nullptr;
   if (name.size() > 1 && name.front() == data_layout_.getGlobalPrefix()) {
     // On Mac OS X, 'name' may have a leading underscore prefix, even though the
@@ -100,9 +104,20 @@ RuntimeSymbolGenerator::ResolveRuntimeSymbol(llvm::StringRef name) {
     fn_addr = CustomCallTargetRegistry::Global()->Lookup(name.str(), "Host");
   }
 
-  return llvm::orc::ExecutorSymbolDef{
-      llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(fn_addr)),
-      llvm::JITSymbolFlags::None};
+  if (fn_addr == nullptr) {
+    // If symbol corresponds to a kernel function, then it must be defined in
+    // another LLVM module part (another dylib).
+    if (is_kernel_symbol_ && !is_kernel_symbol_(name.str())) {
+      LOG(ERROR)
+          << "Unable to resolve runtime symbol: `" << name.str()
+          << "'. Hint: if the symbol a custom call target, make sure you've "
+             "registered it with the JIT using "
+             "XLA_CPU_REGISTER_CUSTOM_CALL_TARGET.";
+    }
+    return {};
+  }
+  return {llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(fn_addr)),
+          llvm::JITSymbolFlags::None};
 }
 
 //===----------------------------------------------------------------------===//

@@ -108,8 +108,11 @@ SimpleOrcJIT::SimpleOrcJIT(
   for (size_t i = 0; i < num_jit_dylibs; ++i) {
     jit_dylibs_[i] = &execution_session_->createBareJITDylib(
         absl::StrCat("<xla_jit_dylib_", i, ">"));
-    jit_dylibs_[i]->addGenerator(
-        std::make_unique<RuntimeSymbolGenerator>(data_layout_));
+    jit_dylibs_[i]->addGenerator(std::make_unique<RuntimeSymbolGenerator>(
+        data_layout_,
+        /*is_kernel_symbol=*/[&](std::string_view name) {
+          return kernel_symbols_.contains(name);
+        }));
   }
 
   object_layer_.registerJITEventListener(*this);
