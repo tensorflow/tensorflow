@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_SYMBOL_GENERATOR_H_
 #define XLA_SERVICE_CPU_RUNTIME_SYMBOL_GENERATOR_H_
 
-#include <string_view>
+#include <optional>
 
-#include "absl/functional/any_invocable.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
@@ -31,9 +30,7 @@ namespace xla::cpu {
 // the compiled XLA kernels.
 class RuntimeSymbolGenerator : public llvm::orc::DefinitionGenerator {
  public:
-  RuntimeSymbolGenerator(
-      llvm::DataLayout data_layout,
-      absl::AnyInvocable<bool(std::string_view)> is_kernel_symbol);
+  explicit RuntimeSymbolGenerator(llvm::DataLayout data_layout);
 
   llvm::Error tryToGenerate(llvm::orc::LookupState&, llvm::orc::LookupKind,
                             llvm::orc::JITDylib& jit_dylib,
@@ -41,10 +38,10 @@ class RuntimeSymbolGenerator : public llvm::orc::DefinitionGenerator {
                             const llvm::orc::SymbolLookupSet& names) final;
 
  private:
-  llvm::orc::ExecutorSymbolDef ResolveRuntimeSymbol(llvm::StringRef name);
+  std::optional<llvm::orc::ExecutorSymbolDef> ResolveRuntimeSymbol(
+      llvm::StringRef name);
 
   llvm::DataLayout data_layout_;
-  absl::AnyInvocable<bool(std::string_view)> is_kernel_symbol_;
 };
 
 }  // namespace xla::cpu
