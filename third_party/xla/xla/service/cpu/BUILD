@@ -1696,6 +1696,7 @@ xla_cc_test(
     size = "small",
     srcs = ["vectorized_reduce_with_no_vector_registers_test.cc"],
     tags = ["not_run:arm"],
+    target_compatible_with = ["@platforms//cpu:x86_64"],
     deps = [
         ":cpu_compiler",
         ":cpu_transfer_manager",
