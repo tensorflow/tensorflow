@@ -700,6 +700,7 @@ cc_library(
         "//xla:autotune_results_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/stream_executor:scratch_allocator",
+        "//xla:debug_options_flags",
         ":gpu_blas_lt",
     ]),
 )

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt_gemm_runner.h"
+#include "xla/debug_options_flags.h"
 
 namespace stream_executor::gpu {
 class WorkspaceScratchAllocator : public tensorflow::se::ScratchAllocator {
@@ -97,7 +98,7 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
                          int batch_count, const NumericOptions &numeric_options,
                          ScratchAllocator *scratch_allocator,
                          blas::CallContext context) override {
-    return DoBlasGemmBatchedImple<float>(
+    return DoBlasGemmBatchedImpl<float>(
         stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
         batch_count, numeric_options, scratch_allocator, context);
   }
@@ -110,7 +111,7 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
                          int batch_count, const NumericOptions &numeric_options,
                          ScratchAllocator *scratch_allocator,
                          blas::CallContext context) override {
-    return DoBlasGemmBatchedImple<double>(
+    return DoBlasGemmBatchedImpl<double>(
         stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
         batch_count, numeric_options, scratch_allocator, context);
   }
@@ -125,7 +126,7 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
                          const NumericOptions &numeric_options,
                          ScratchAllocator *scratch_allocator,
                          blas::CallContext context) override {
-    return DoBlasGemmBatchedImple<Eigen::bfloat16>(
+    return DoBlasGemmBatchedImpl<Eigen::bfloat16>(
         stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
         batch_count, numeric_options, scratch_allocator, context);
   }
@@ -139,7 +140,7 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
                          int batch_count, const NumericOptions &numeric_options,
                          ScratchAllocator *scratch_allocator,
                          blas::CallContext context) override {
-    return DoBlasGemmBatchedImple<Eigen::half>(
+    return DoBlasGemmBatchedImpl<Eigen::half>(
         stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
         batch_count, numeric_options, scratch_allocator, context);
   }
@@ -154,7 +155,7 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
                          int batch_count, const NumericOptions &numeric_options,
                          ScratchAllocator *scratch_allocator,
                          blas::CallContext context) override {
-    return DoBlasGemmBatchedImple<std::complex<float>>(
+    return DoBlasGemmBatchedImpl<std::complex<float>>(
         stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
         batch_count, numeric_options, scratch_allocator, context);
   }
@@ -169,7 +170,7 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
                          int batch_count, const NumericOptions &numeric_options,
                          ScratchAllocator *scratch_allocator,
                          blas::CallContext context) override {
-    return DoBlasGemmBatchedImple<std::complex<double>>(
+    return DoBlasGemmBatchedImpl<std::complex<double>>(
         stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
         batch_count, numeric_options, scratch_allocator, context);
   }
@@ -253,15 +254,15 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
   }
 
   template <typename T, typename TScaler>
-  bool DoBlasGemmBatchedImple(Stream *stream, blas::Transpose transa,
-                              blas::Transpose transb, uint64_t m, uint64_t n,
-                              uint64 k, TScaler alpha, DeviceMemorySlice<T> a,
-                              int lda, DeviceMemorySlice<T> b, int ldb,
-                              TScaler beta, DeviceMemorySlice<T> c, int ldc,
-                              int batch_count,
-                              const NumericOptions &numeric_options,
-                              ScratchAllocator *scratch_allocator,
-                              blas::CallContext context) {
+  bool DoBlasGemmBatchedImpl(Stream *stream, blas::Transpose transa,
+                             blas::Transpose transb, uint64_t m, uint64_t n,
+                             uint64 k, TScaler alpha, DeviceMemorySlice<T> a,
+                             int lda, DeviceMemorySlice<T> b, int ldb,
+                             TScaler beta, DeviceMemorySlice<T> c, int ldc,
+                             int batch_count,
+                             const NumericOptions &numeric_options,
+                             ScratchAllocator *scratch_allocator,
+                             blas::CallContext context) {
     if (IsGpuBlasLtEnabled()) {
       auto &runner = gpu::BlasLtGemmRunner::i(stream);
       return CheckStatus(runner.RunBatched(*stream, transa, transb, m, n, k,
@@ -274,7 +275,11 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
     }
   }
 
-  bool IsGpuBlasLtEnabled() { return false; }
+  bool IsGpuBlasLtEnabled() {
+    static const std::atomic_bool result =
+        xla::GetDebugOptionsFromFlags().xla_gpu_enable_cublaslt();
+    return result;
+  }
 };
 
 }  // namespace stream_executor::gpu
