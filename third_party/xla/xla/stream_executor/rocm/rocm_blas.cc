@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt_adaptor.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform/port.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/gpu/gpu_blas_lt_adaptor.h"
 #include "xla/tsl/util/determinism.h"
 #include "tsl/platform/logging.h"
 using tsl::OpDeterminismRequired;
@@ -458,8 +458,7 @@ absl::Status ROCMBlas::DoBlasGemm(
     uint64_t n, uint64_t k, blas::DataType dtype, const void *alpha,
     const DeviceMemoryBase &a, int lda, const DeviceMemoryBase &b, int ldb,
     const void *beta, DeviceMemoryBase *c, int ldc,
-    const NumericOptions &numeric_options, blas::CallContext context,
-    ScratchAllocator *) {
+    const NumericOptions &numeric_options, blas::CallContext context) {
   MaybeLogGemmOp(GemmCallTrace::GemmType::kPlain, context,
                  m * k * DtypeSize(dtype), n * k * DtypeSize(dtype));
 
@@ -546,8 +545,7 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
     blas::DataType type_b, int ldb, const void *beta, DeviceMemoryBase *c,
     blas::DataType type_c, int ldc, blas::ComputationType computation_type,
     blas::AlgorithmType algorithm, const NumericOptions &numeric_options,
-    blas::ProfileResult *profile_result, blas::CallContext context,
-    ScratchAllocator *scratch_allocator) {
+    blas::ProfileResult *profile_result, blas::CallContext context) {
   if (type_a != type_b) {
     return absl::InternalError(absl::StrFormat(
         "DoBlasGemmWithAlgorithm: different "
@@ -564,7 +562,7 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
   if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
     TF_RETURN_IF_ERROR(DoBlasGemm(stream, transa, transb, m, n, k, type_a,
                                   alpha, a, lda, b, ldb, beta, c, ldc,
-                                  numeric_options, context, scratch_allocator));
+                                  numeric_options, context));
 
   } else {
     MaybeLogGemmOp(GemmCallTrace::GemmType::kPlain, context,

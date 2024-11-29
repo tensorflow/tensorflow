@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_BLAS_LT_ADAPTOR_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_BLAS_LT_ADAPTOR_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
@@ -23,6 +24,32 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_blas_lt_gemm_runner.h"
 
 namespace stream_executor::gpu {
+class WorkspaceScratchAllocator : public tensorflow::se::ScratchAllocator {
+ public:
+  using Stream = tensorflow::se::Stream;
+  using DeviceMemoryBytes = tensorflow::se::DeviceMemory<uint8>;
+
+  explicit WorkspaceScratchAllocator(DeviceMemoryBytes workspace)
+      : workspace_{workspace}, bytes_allocated_{} {}
+
+  int64_t GetMemoryLimitInBytes() override { return workspace_.size(); }
+  tsl::StatusOr<DeviceMemoryBytes> AllocateBytes(int64_t byte_size) override {
+    if ((workspace_.size() - bytes_allocated_) < byte_size) {
+      return tsl::Status{absl::StatusCode::kUnavailable,
+                         absl::StrCat("Requested memory size (", byte_size,
+                                      ") exceeds the memory limit (",
+                                      workspace_.size(), ").")};
+    }
+
+    auto result = workspace_.GetSlice(bytes_allocated_, byte_size);
+    bytes_allocated_ += byte_size;
+    return result;
+  }
+
+ private:
+  DeviceMemoryBytes workspace_;
+  int64_t bytes_allocated_;
+};
 
 template <typename TBlasSupport>
 struct GpuBlasLtAdaptor final : TBlasSupport {
@@ -39,26 +66,28 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
                           const DeviceMemoryBase &b, int ldb, const void *beta,
                           DeviceMemoryBase *c, int ldc,
                           const NumericOptions &numeric_options,
-                          blas::CallContext context,
-                          ScratchAllocator *scratch_allocator) override {
+                          blas::CallContext context) override {
     if (IsGpuBlasLtEnabled()) {
       auto &runner = gpu::BlasLtGemmRunner::i(stream);
+      auto workspace =
+          static_cast<DeviceMemory<uint8> *>(TBlasSupport::GetWorkspace());
+      WorkspaceScratchAllocator allocator{*workspace};
       switch (dtype) {
         case blas::DataType::kFloat:
-          return DoBlasGemmImpl<float>(
-              stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
-              beta, c, ldc, numeric_options, context, scratch_allocator);
+          return DoBlasGemmImpl<float>(stream, transa, transb, m, n, k, dtype,
+                                       alpha, a, lda, b, ldb, beta, c, ldc,
+                                       numeric_options, context, &allocator);
         case blas::DataType::kBF16:
           return DoBlasGemmImpl<Eigen::bfloat16>(
               stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
-              beta, c, ldc, numeric_options, context, scratch_allocator);
+              beta, c, ldc, numeric_options, context, &allocator);
         default:
           return absl::FailedPreconditionError("Unknown type");
       };
     } else {
-      return TBlasSupport::DoBlasGemm(
-          stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb, beta,
-          c, ldc, numeric_options, context, scratch_allocator);
+      return TBlasSupport::DoBlasGemm(stream, transa, transb, m, n, k, dtype,
+                                      alpha, a, lda, b, ldb, beta, c, ldc,
+                                      numeric_options, context);
     }
   }
 

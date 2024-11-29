@@ -209,8 +209,9 @@ constexpr bool is_any_of() {
 // the system. Any operation that a user attempts to perform by enqueueing BLAS
 // operations on a thread not-associated with the CUDA-context has unknown
 // behavior at the current time; see b/13176597
-struct BlasSupport {
-  virtual ~BlasSupport() = default;
+class BlasSupport {
+ public:
+  virtual ~BlasSupport() {}
 
   virtual gpu::BlasLt *GetBlasLt() = 0;
 
@@ -282,8 +283,7 @@ struct BlasSupport {
       uint64_t m, uint64 n, uint64_t k, DataType dtype, const void *alpha,
       const DeviceMemoryBase &a, int lda, const DeviceMemoryBase &b, int ldb,
       const void *beta, DeviceMemoryBase *c, int ldc,
-      const NumericOptions &numeric_options, blas::CallContext context,
-      ScratchAllocator *scratch_allocator) = 0;
+      const NumericOptions &numeric_options, blas::CallContext context) = 0;
 
   // Gets a list of supported algorithms for DoBlasGemmWithAlgorithm.
   virtual bool GetBlasGemmAlgorithms(
@@ -311,8 +311,7 @@ struct BlasSupport {
       DeviceMemoryBase *c, DataType type_c, int ldc,
       ComputationType computation_type, AlgorithmType algorithm,
       const NumericOptions &numeric_options,
-      ProfileResult *output_profile_result, blas::CallContext context,
-      ScratchAllocator *scratch_allocator) = 0;
+      ProfileResult *output_profile_result, blas::CallContext context) = 0;
   virtual absl::Status DoBlasGemmStridedBatchedWithAlgorithm(
       Stream *stream, blas::Transpose transa, blas::Transpose transb,
       uint64_t m, uint64_t n, uint64 k, const void *alpha,
@@ -718,6 +717,32 @@ struct BlasSupport {
   void operator=(const BlasSupport &) = delete;
 };
 
+// struct GpuBlasLtAdaptor : public BlasSupport {
+//   absl::Status DoBlasGemmBatched(Stream *stream, blas::Transpose transa, 
+//                                 blas::Transpose transb, uint64_t m, 
+//                                 uint64_t n, uint64 k, float alpha, 
+//                                 DeviceMemorySlice<float> a, int lda, 
+//                                 DeviceMemorySlice<float> b, int ldb, float beta,
+//                                 DeviceMemorySlice<float> c, int ldc, int batch_count,
+//                                 const NumericOptions &numeric_options,
+//                                 ScratchAllocator *scratch_allocator, 
+//                                 blas::CallContext context) override {
+                            
+//     if (gpuBlasLtEnabled()) {
+//       auto& r = gpu::BlasLtGemmRunner::i(this);          
+//       CheckStatus(r.RunBatched(*this, transa, transb, m, n, k, alpha, 
+//                   a, lda, b, ldb, beta, c, ldc, batch_count, allocator));
+//       return *this;
+//     } else {
+//       DoBlasGemmBatched(stream, transa, transb, m, n, k,
+//                         alpha, a, lda, b, ldb, beta, c, ldc,
+//                         numeric_options, scratch_allocator,
+//                         context);
+//       return absl::OkStatus();
+//     }
+//   }
+// };
+
 // Macro used to quickly declare overrides for abstract virtuals in the
 // BlasSupport base class.
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES                  \
@@ -760,8 +785,8 @@ struct BlasSupport {
       uint64_t m, uint64 n, uint64 k, blas::DataType dtype, const void *alpha, \
       const DeviceMemoryBase &a, int lda, const DeviceMemoryBase &b, int ldb,  \
       const void *beta, DeviceMemoryBase *c, int ldc,                          \
-      const NumericOptions &numeric_options, blas::CallContext context,        \
-      ScratchAllocator *scratch_allocator) override;                           \
+      const NumericOptions &numeric_options, blas::CallContext context)        \
+      override;                                                                \
   bool GetBlasGemmAlgorithms(                                                  \
       Stream *stream, const gpu::MatrixDescriptor &a,                          \
       const gpu::MatrixDescriptor &b, gpu::OutputMatrixDescriptor *c,          \
@@ -775,8 +800,8 @@ struct BlasSupport {
       const void *beta, DeviceMemoryBase *c, blas::DataType type_c, int ldc,   \
       blas::ComputationType computation_type, blas::AlgorithmType algorithm,   \
       const NumericOptions &numeric_options,                                   \
-      blas::ProfileResult *output_profile_result, blas::CallContext context,   \
-      ScratchAllocator *scratch_allocator) override;                           \
+      blas::ProfileResult *output_profile_result, blas::CallContext context)   \
+      override;                                                                \
   bool DoBlasGemmBatched(                                                      \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
       uint64_t m, uint64 n, uint64 k, float alpha,                             \
