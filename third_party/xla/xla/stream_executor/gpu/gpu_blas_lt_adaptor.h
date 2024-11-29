@@ -116,7 +116,30 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
       const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,
       DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count,
       const NumericOptions &numeric_options,
-      blas::CallContext context) override {}
+      blas::CallContext context) override {
+    if (IsGpuBlasLtEnabled()) {
+      auto &runner = gpu::BlasLtGemmRunner::i(stream);
+      switch (dtype) {
+        case blas::DataType::kFloat:
+          return DoBlasGemmStridedBatchedImpl<float>(
+              stream, transa, transb, m, n, k, alpha, a, lda, stride_a, b, ldb,
+              stride_b, beta, c, ldc, stride_c, batch_count, numeric_options,
+              context);
+        case blas::DataType::kBF16:
+          return DoBlasGemmStridedBatchedImpl<Eigen::bfloat16>(
+              stream, transa, transb, m, n, k, alpha, a, lda, stride_a, b, ldb,
+              stride_b, beta, c, ldc, stride_c, batch_count, numeric_options,
+              context);
+        default:
+          return absl::FailedPreconditionError("Unknown type");
+      };
+    } else {
+      return TBlasSupport::DoBlasGemmStridedBatched(
+          stream, transa, transb, m, n, k, dtype, alpha, a, lda, stride_a, b,
+          ldb, stride_b, beta, c, ldc, stride_c, batch_count, numeric_options,
+          context);
+    }
+  }
 
  private:
   template <typename T>
@@ -132,10 +155,30 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
     auto &runner = gpu::BlasLtGemmRunner::i(stream);
     auto alpha_v = *static_cast<const T *>(alpha);
     auto beta_v = *static_cast<const T *>(beta);
-    return runner.Run(
-        *stream, transa, transb, m, n, k, alpha_v,
-        static_cast<DeviceMemory<T>>(a), lda, static_cast<DeviceMemory<T>>(b),
-        ldb, beta_v, static_cast<DeviceMemory<T> *>(c), ldc, scratch_allocator);
+    auto memory_c = DeviceMemory<T>(*c);
+    return runner.Run(*stream, transa, transb, m, n, k, alpha_v,
+                      DeviceMemory<T>(a), lda, DeviceMemory<T>(b), ldb, beta_v,
+                      &memory_c, ldc, scratch_allocator);
+  }
+
+  template <typename T>
+  absl::Status DoBlasGemmStridedBatchedImpl(
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64_t k, const void *alpha,
+      const DeviceMemoryBase &a, int lda, int64_t stride_a,
+      const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,
+      DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count,
+      const NumericOptions &numeric_options, blas::CallContext context) {
+    auto workspace = TBlasSupport::GetWorkspace();
+    WorkspaceScratchAllocator allocator{*workspace};
+    auto &runner = gpu::BlasLtGemmRunner::i(stream);
+    auto memory_c = DeviceMemory<T>(*c);
+    auto alpha_v = *static_cast<const T *>(alpha);
+    auto beta_v = *static_cast<const T *>(beta);
+    return runner.RunStridedBatched(
+        *stream, transa, transb, m, n, k, alpha_v, DeviceMemory<T>(a), lda,
+        stride_a, DeviceMemory<T>(b), ldb, stride_b, beta_v, &memory_c, ldc,
+        stride_c, batch_count, &allocator);
   }
 
   bool CheckStatus(absl::Status status) {
