@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/codegen/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/executable_run_options.h"
@@ -68,7 +69,7 @@ class CpuExecutable : public Executable {
   // Creates a CpuExecutable from JIT compiled cpu function by resolving
   // `entry_function_name` in the `jit`.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
-      std::unique_ptr<SimpleOrcJIT> jit,
+      std::unique_ptr<FunctionLibrary> function_library,
       std::unique_ptr<const BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module,
       const std::string& entry_function_name,
@@ -77,7 +78,7 @@ class CpuExecutable : public Executable {
 
   // Creates a CpuExecutable from a thunk sequence.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
-      std::unique_ptr<SimpleOrcJIT> jit,
+      std::unique_ptr<FunctionLibrary> function_library,
       std::unique_ptr<const BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
       std::vector<ConstantAllocation> constants,
@@ -139,18 +140,16 @@ class CpuExecutable : public Executable {
     return assignment_->Allocations();
   }
 
-  // A Thunk::FunctionRegistry implementation that jit-compiles functions on
-  // demand using the SimpleOrcJIT instance owned by the CpuExecutable.
+  // A Thunk::FunctionRegistry implementation that looks up functions in the
+  // FunctionLibrary.
   class FunctionRegistry : public Thunk::FunctionRegistry {
    public:
-    explicit FunctionRegistry(SimpleOrcJIT* jit);
+    explicit FunctionRegistry(FunctionLibrary* function_library);
     absl::StatusOr<Kernel> FindKernel(std::string_view name) final;
     absl::StatusOr<Comparator> FindComparator(std::string_view name) final;
 
    private:
-    std::string Mangle(std::string_view name);
-
-    SimpleOrcJIT* jit_;
+    FunctionLibrary* function_library_;
   };
 
   Thunk::FunctionRegistry& function_registry() { return *function_registry_; }
@@ -190,11 +189,11 @@ class CpuExecutable : public Executable {
   // computation. Uses dataflow analysis from buffer assignment.
   const InstructionValueSet& GetRootValueSet() const;
 
-  // The JIT containing compiled modules.
-  std::unique_ptr<SimpleOrcJIT> jit_;
+  // The FunctionLibrary containing compiled modules.
+  std::unique_ptr<FunctionLibrary> function_library_;
 
   // Object files (machine code) compiled from an HLO module by the JIT
-  // compiler. We capture all object files created by SimpleOrcJIT so we can
+  // compiler. We capture all object files created by JitCompiler so we can
   // export them to AOT compilation result.
   std::vector<std::string> obj_files_;
 
