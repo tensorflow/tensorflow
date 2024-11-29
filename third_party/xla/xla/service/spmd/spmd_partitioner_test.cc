@@ -11572,17 +11572,29 @@ ENTRY %module {
     collapsed_slice_dims={0,1}, start_index_map={1,0}, index_vector_dim=0,
     slice_sizes={1,1,2,2}, sharding={replicated}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
-  VLOG(1) << module->ToString();
-  const auto root = module->entry_computation()->root_instruction();
-  auto operand = AllOf(op::Shape("s32[2,4,2,2]"), op::Parameter());
-  auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
-  auto gather = AllOf(op::Shape("s32[2,2,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(
-      root, op::AllReduce(op::DynamicUpdateSlice(
-                _, op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)),
-                _, _, _, _)));
+  for (const PartitioningMethod& method :
+       {PartitioningMethod::kIndexParallel,
+        PartitioningMethod::kIndexPassthrough}) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/8,
+                             /*conv_halo_exchange_always_on_lhs=*/true,
+                             /*choose_faster_windowed_einsum=*/false,
+                             /*unroll_windowed_einsum=*/false,
+                             /*bidirectional_windowed_einsum=*/false,
+                             /*threshold_for_windowed_einsum_mib=*/-1, method,
+                             method));
+    VLOG(1) << module->ToString();
+    auto operand = AllOf(op::Shape("s32[2,4,2,2]"), op::Parameter());
+    auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
+    auto gather =
+        AllOf(op::Shape("s32[2,2,2,2]"), op::Gather(operand, indices));
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction(),
+        op::AllReduce(op::DynamicUpdateSlice(
+            _, op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)), _,
+            _, _, _)));
+  }
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -12553,17 +12565,29 @@ ENTRY %module {
     scatter_dims_to_operand_dims={1,0},
     index_vector_dim=0, sharding={replicated}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/8));
-  VLOG(1) << module->ToString();
-  const auto root = module->entry_computation()->root_instruction();
-  auto operand = AllOf(op::Shape("s32[2,4,2,2]"), op::Select());
-  auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
-  auto update = AllOf(op::Shape("s32[2,2,2,2]"), op::DynamicSlice());
-  auto scatter =
-      AllOf(op::Shape("s32[2,4,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root, op::AllReduce(op::DynamicUpdateSlice(
-                        _, op::AllReduce(scatter), _, _, _, _)));
+
+  for (const PartitioningMethod& method :
+       {PartitioningMethod::kIndexParallel,
+        PartitioningMethod::kIndexPassthrough}) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/8,
+                             /*conv_halo_exchange_always_on_lhs=*/true,
+                             /*choose_faster_windowed_einsum=*/false,
+                             /*unroll_windowed_einsum=*/false,
+                             /*bidirectional_windowed_einsum=*/false,
+                             /*threshold_for_windowed_einsum_mib=*/-1, method,
+                             method));
+    VLOG(1) << module->ToString();
+    auto operand = AllOf(op::Shape("s32[2,4,2,2]"), op::Select());
+    auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
+    auto update = AllOf(op::Shape("s32[2,2,2,2]"), op::DynamicSlice());
+    auto scatter =
+        AllOf(op::Shape("s32[2,4,2,2]"), op::Scatter(operand, indices, update));
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                op::AllReduce(op::DynamicUpdateSlice(_, op::AllReduce(scatter),
+                                                     _, _, _, _)));
+  }
 }
 
 TEST_P(SpmdPartitioningTest,

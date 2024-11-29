@@ -168,15 +168,13 @@ bool ContainsTileSharding(const HloModule& module);
 
 // Returns the preferred output sharding for a gather op based on the sharding
 // of the indices.
-HloSharding GatherOutputShardingFromIndex(
-    const HloSharding& index_sharding, const HloInstruction* hlo,
-    bool consider_explicit_batch_dims = true);
+HloSharding GatherOutputShardingFromIndex(const HloSharding& index_sharding,
+                                          const HloInstruction* hlo);
 
 // Returns the preferred index sharding for a gather op based on the sharding
 // of the output.
-HloSharding GatherIndexShardingFromOutput(
-    const HloSharding& output_sharding, const HloInstruction* hlo,
-    bool consider_explicit_batch_dims = true);
+HloSharding GatherIndexShardingFromOutput(const HloSharding& output_sharding,
+                                          const HloInstruction* hlo);
 
 // Returns a new HloSharding for a gather op so that only non offset dimensions
 // are sharded. Assume "result" is returned by this function. It is ensured that
@@ -187,14 +185,12 @@ HloSharding GatherEffectiveOutputSharding(const HloInstruction& hlo);
 // Returns the preferred index sharding for a scatter op based on the sharding
 // of the data.
 HloSharding ScatterIndexShardingFromUpdate(
-    const HloSharding& update_sharding, const HloScatterInstruction* scatter,
-    bool consider_explicit_batch_dims = true);
+    const HloSharding& update_sharding, const HloScatterInstruction* scatter);
 
 // Returns the preferred data sharding for a scatter op based on the sharding
 // of the index.
 HloSharding ScatterUpdateShardingFromIndex(
-    const HloSharding& index_sharding, const HloScatterInstruction* scatter,
-    bool consider_explicit_batch_dims = true);
+    const HloSharding& index_sharding, const HloScatterInstruction* scatter);
 
 // Returns a new index sharding for a scatter op so that we only shard on first
 // "number of scatter_window_dims" dimensions. Assume "result" is returned by
@@ -383,12 +379,18 @@ absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughUpdateDims(
     absl::Span<const int64_t> slice_sizes);
 
 // Returns the dims along which sharding can be propagated between indices and
-// output/update for gather/scatter operations.
+// output/update for gather/scatter operations. `excluded_indices_dims` are
+// excluded from the result.
 GatherScatterDims GetGatherConnectedDimsAcrossIndicesAndOutput(
-    int64_t indices_rank, int64_t index_vector_dim,
-    absl::Span<const int64_t> indices_batching_dims, int64_t output_rank,
+    int64_t indices_rank, int64_t index_vector_dim, int64_t output_rank,
     absl::Span<const int64_t> offset_dims,
-    bool consider_explicit_batch_dims = true);
+    absl::Span<const int64_t> excluded_indices_dims = {});
+
+// Returns the index pass-through dimensions, which are defined by
+// GetGatherConnectedDimsAcrossIndicesAndOutput - ExplictBatchDims -
+// GetGatherScatterBatchParallelDims.
+GatherScatterDims GetGatherScatterIndexPassThroughDims(
+    const HloInstruction& hlo, const CallGraph& call_graph);
 
 // Infer output sharding on index parallel dimensions for gather/scatter from
 // gather operand/indices or scatter operands/indices/updates.
