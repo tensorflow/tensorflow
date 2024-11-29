@@ -89,6 +89,13 @@ SmallVector<NamedAttribute> getExistingFrontendAttributes(
 void addFrontendAttribute(SmallVector<NamedAttribute>& existingAttributes,
                           StringRef name, Attribute value) {
   mlir::OpBuilder builder(value.getContext());
+  for (auto attr : existingAttributes) {
+    if (attr.getName() == name &&
+        attr.getValue() == getStringAttribute(value, builder)) {
+      return;
+    }
+  }
+
   existingAttributes.emplace_back(NamedAttribute(
       builder.getStringAttr(name), getStringAttribute(value, builder)));
 }
