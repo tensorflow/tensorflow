@@ -35,7 +35,8 @@ namespace tensorflow {
 int64_t GetWorkspaceLimit(int64_t default_value_in_bytes);
 
 struct BlasLtMatmulPlanParams {
-  std::string ToString() const;
+
+  std::string ToString() const { return "NOP"; }
   bool operator==(const BlasLtMatmulPlanParams& other) const;
 
   se::blas::DataType dtype;
@@ -48,26 +49,6 @@ struct BlasLtMatmulPlanParams {
   bool broadcast_a = false;
   bool broadcast_b = false;
   se::gpu::BlasLt::Epilogue epilogue = se::gpu::BlasLt::Epilogue::kDefault;
-};
-
-struct PlanAndAlgorithms {
-  
-  static StatusOr<const PlanAndAlgorithms*> GetOrCreate(
-    se::Stream* stream, const BlasLtMatmulPlanParams& params, absl::Mutex** pmu,
-    std::optional<int> max_algorithm_count = std::nullopt
-  );
-
-  Status ExecuteOnStream(se::Stream* stream, 
-                    const se::DeviceMemoryBase& a,
-                    const se::DeviceMemoryBase& b, 
-                    se::DeviceMemoryBase& c,
-                    size_t algorithm_idx, 
-                    se::ScratchAllocator& scratch_allocator,
-                    const se::DeviceMemoryBase& bias = se::DeviceMemoryBase{},
-                    se::blas::ProfileResult* profile_result = nullptr) const;
-
-  se::gpu::BlasLt::MatmulPlanPtr plan;
-  std::vector<se::gpu::BlasLt::MatmulAlgorithm> algorithms;
 };
 
 namespace internal {
@@ -84,6 +65,40 @@ template <typename H>
 H AbslHashValue(H h, const BlasLtMatmulPlanParams& params) {
   return H::combine(std::move(h), internal::AsTuple(params));
 }
+
+struct BlasLtMatmulPlanCache {
+  struct Entry { 
+    se::gpu::BlasLt::MatmulPlanPtr plan;
+    std::vector< se::gpu::BlasLt::MatmulAlgorithm > algorithms;
+  };
+
+  static StatusOr<const Entry *> GetOrCreate(
+    se::Stream* stream, const BlasLtMatmulPlanParams& params, absl::Mutex** pmu,
+    std::optional<int> max_algorithm_count = std::nullopt
+  );
+
+  // helper function for plan execution
+  static Status ExecuteOnStream(se::Stream* stream, 
+                      const Entry& entry,
+                      const se::DeviceMemoryBase& a,
+                      const se::DeviceMemoryBase& b, 
+                      se::DeviceMemoryBase& c,
+                      size_t algorithm_idx, 
+                      se::ScratchAllocator& scratch_allocator,
+                      const se::DeviceMemoryBase& bias,
+                      se::blas::ProfileResult* profile_result = nullptr);
+
+  BlasLtMatmulPlanCache() : mutex_(new absl::Mutex) {
+  }
+
+private:
+  static BlasLtMatmulPlanCache& i(se::Stream *stream);
+
+  std::unique_ptr<absl::Mutex> mutex_;
+  absl::node_hash_map<BlasLtMatmulPlanParams, Entry> map_
+       ABSL_GUARDED_BY(mutex_);
+
+}; // BlasLtMatmulPlanCache
 
 }  // namespace tensorflow
 
