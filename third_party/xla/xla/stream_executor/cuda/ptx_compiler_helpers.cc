@@ -56,4 +56,32 @@ absl::Status CreateErrorFromPTXASLog(std::string_view log,
   return absl::OkStatus();
 }
 
+// Warns if the ptxas version should be upgraded.
+// Only prints the warning upon the first invocation.
+void WarnIfBadPtxasVersion(std::string_view method,
+                           const CudaComputeCapability& cc,
+                           SemanticVersion compiler_version) {
+  static absl::once_flag run_once;
+  absl::call_once(run_once, [&] {
+    // nvbug 4826023: Occurs on Hopper+ in CUDA versions 12.x up to and
+    // including CUDA 12.6.2; the earliest ptxas release that corresponds to
+    // CUDA 12.6.3 is 12.6.85.
+    if (cc.major >= 9 && compiler_version >= SemanticVersion{12, 0, 0} &&
+        compiler_version < SemanticVersion{12, 6, 85}) {
+      LOG(ERROR)
+          << "*** WARNING *** Invoking " << method << " with version "
+          << compiler_version
+          << ", which corresponds to a CUDA version <=12.6.2. CUDA versions "
+             "12.x.y up to and including 12.6.2 miscompile certain edge "
+             "cases around clamping.\nPlease upgrade to CUDA 12.6.3 or newer.";
+      if (method != "ptxas" && compiler_version.major() == 12 &&
+          compiler_version.minor() == 6) {
+        LOG(ERROR) << "(Note that this warning may be shown spuriously for "
+                      "CUDA 12.6.y, since "
+                   << method << " does not report patch versions.)";
+      }
+    }
+  });
+}
+
 }  // namespace stream_executor

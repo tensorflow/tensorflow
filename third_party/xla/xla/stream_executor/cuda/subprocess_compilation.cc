@@ -263,6 +263,9 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     std::string_view ptxas_path, const CudaComputeCapability& cc,
     std::string_view ptx, GpuAsmOpts options, bool cancel_if_reg_spill) {
+  TF_ASSIGN_OR_RETURN(auto version, GetToolVersion(ptxas_path));
+  WarnIfBadPtxasVersion("ptxas", cc, version);
+
   // Write ptx into a temporary file.
   std::string ptx_path;
   auto env = tsl::Env::Default();
