@@ -1,3 +1,22 @@
+diff --ruN a/stablehlo/docs/interpreter_status.md b/stablehlo/docs/interpreter_status.md
+--- stablehlo/docs/interpreter_status.md
++++ stablehlo/docs/interpreter_status.md
+@@ -237,15 +237,6 @@
+ ### Convert Not In HLO Ops
+ 
+ ```sh
+-# broadcast
+-mlir-hlo-opt -mhlo-legalize-broadcast-to-broadcast-in-dim <path/to/input>
+-
+-# create_token
+-mlir-hlo-opt -mhlo-legalize-create-token-to-after-all <path/to/input>
+-
+-# cross-replica-sum
+-mlir-hlo-opt -mhlo-legalize-cross-replica-sum-to-all-reduce <path/to/input>
+-
+ # dot
+ mlir-hlo-opt -mhlo-legalize-dot-to-dot-general <path/to/input>
+ 
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir

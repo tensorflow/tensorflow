@@ -26,10 +26,6 @@ set(LLVM_TARGET_DEFINITIONS lower_complex/lower_complex_patterns.td)
 mlir_tablegen(lower_complex/generated_lower_complex.inc -gen-rewriters)
 add_public_tablegen_target(MLIRMhloLowerComplexIncGen)
 
-set(LLVM_TARGET_DEFINITIONS legalize_to_standard/legalize_to_standard_patterns.td)
-mlir_tablegen(legalize_to_standard/generated_legalize_to_standard.inc -gen-rewriters)
-add_public_tablegen_target(MLIRMhloLegalizeToStandardIncGen)
-
 set(LLVM_TARGET_DEFINITIONS chlo_legalize_to_hlo/chlo_legalize_to_hlo_patterns.td)
 mlir_tablegen(chlo_legalize_to_hlo/generated_chlo_legalize_to_hlo.inc -gen-rewriters)
 add_public_tablegen_target(MLIRChloLegalizeToHloIncGen)
@@ -39,19 +35,13 @@ add_public_tablegen_target(MLIRChloLegalizeToHloIncGen)
 add_mlir_library(MhloPasses
   broadcast_propagation/broadcast_propagation.cc
   collapse_elementwise_map/collapse_elementwise_map.cc
-  constraint_fusion/constraint_fusion_pass.cc
   convert_to_signless/convert_to_signless_pass.cc
   expand_hlo_tuples/expand_hlo_tuples.cc
   expand_ops_simplifier/expand_ops_simplifier.cc
   group_reduction_dimensions/group_reduction_dimensions.cc
-  legalize_broadcast_to_broadcast_in_dim/legalize_broadcast_to_broadcast_in_dim.cc
-  legalize_create_token_to_after_all/legalize_create_token_to_after_all.cc
-  legalize_cross_replica_sum_to_all_reduce/legalize_cross_replica_sum_to_all_reduce.cc
   legalize_dot_general_to_dot/legalize_dot_general_to_dot.cc
   legalize_dot_to_dot_general/legalize_dot_to_dot_general.cc
   legalize_einsum_to_dot_general/legalize_einsum_to_dot_general.cc
-  legalize_gather_to_torch_index_select/legalize_gather_to_torch_index_select.cc
-  legalize_shape_computations/legalize_shape_computations.cc
   legalize_torch_index_select_to_gather/legalize_torch_index_select_to_gather.cc
   legalize_trigonometric_to_approximation/legalize_trigonometric_to_approximation.cc
   lower_complex/lower_complex.cc
@@ -62,15 +52,11 @@ add_mlir_library(MhloPasses
   merge_assuming_ops/merge_assuming_ops.cc
   mhlo_canonicalize_dot/mhlo_canonicalize_dot.cc
   mhlo_canonicalize_gather/mhlo_canonicalize_gather.cc
-  mhlo_canonicalize_reduction/mhlo_canonicalize_reduction.cc
   mhlo_canonicalize_scatter/mhlo_canonicalize_scatter.cc
   mhlo_flatten_tuple/mhlo_flatten_tuple.cc
   prepare_for_export/prepare_for_export.cc
   optimize_mhlo/optimize_mhlo.cc
-  optimize_mhlo/optimize_mhlo_pass.cc
-  restrict_max_rank/restrict_max_rank.cc
   shape_legalize_to_hlo/shape_legalize_to_hlo.cc
-  shape_reification/shape_reification_pass.cc
   shape_simplification/shape_simplification.cc
   sink_constants_to_control_flow/sink_constants_to_control_flow.cc
   symbolic_shape_optimization/symbolic_shape_optimization.cc
@@ -146,12 +132,9 @@ add_mlir_library(MhloToArithmeticConversion
 
 add_mlir_library(MhloToStandard
   legalize_control_flow/legalize_control_flow.cc
-  legalize_sort/legalize_sort.cc
-  legalize_to_standard/legalize_to_standard.cc
 
   DEPENDS
   MLIRhlo_opsIncGen
-  MLIRMhloLegalizeToStandardIncGen
   MLIRMhloPassIncGen
   MhloTypeConversion
 
