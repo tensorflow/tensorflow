@@ -90,7 +90,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/cpu_xfeed.h"
-#include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/dump.h"

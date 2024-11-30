@@ -11,7 +11,6 @@ load(
     "//xla:xla.bzl",
     "xla_cc_binary",
     "xla_cc_test",
-    "xla_internal",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tf_openmp_copts", "tsl_copts")
@@ -231,7 +230,6 @@ cc_library(
         ":onednn_ops_rewriter",
         ":parallel_task_assignment",
         ":runtime_symbol_generator",
-        ":simple_orc_jit",
         ":thunk_emitter",
         ":xla_framework",
         "//xla:cpu_function_runtime",
@@ -541,41 +539,6 @@ cc_library(
 )
 
 cc_library(
-    name = "simple_orc_jit",
-    srcs = ["simple_orc_jit.cc"],
-    hdrs = ["simple_orc_jit.h"],
-    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]) + tsl_copts(),
-    deps = [
-        ":orc_jit_memory_mapper",
-        ":runtime_symbol_generator",
-        "//xla:types",
-        "//xla:util",
-        "//xla/backends/cpu/codegen:contiguous_section_memory_manager",
-        "//xla/backends/cpu/codegen:cpu_features",
-        "//xla/backends/cpu/codegen:ir_compiler",
-        "//xla/backends/cpu/codegen:jit_compiler",
-        "//xla/service:custom_call_target_registry",
-        "//xla/service:llvm_compiler",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:ExecutionEngine",
-        "@llvm-project//llvm:MC",  # fixdeps: keep
-        "@llvm-project//llvm:OrcJIT",
-        "@llvm-project//llvm:OrcShared",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:Target",  # fixdeps: keep
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//mlir:mlir_c_runner_utils",
-        "@local_tsl//tsl/platform:logging",
-    ] + xla_internal(["service/cpu:named_orc_jit_memory_mapper"]),
-)
-
-cc_library(
     name = "runtime_lightweight_check",
     hdrs = ["runtime_lightweight_check.h"],
     compatible_with = get_compatible_with_portable(),
@@ -617,7 +580,6 @@ cc_library(
     hdrs = ["cpu_executable.h"],
     deps = [
         ":cpu_runtime",
-        ":simple_orc_jit",
         "//xla:executable_run_options",
         "//xla:literal",
         "//xla:shape_tree",

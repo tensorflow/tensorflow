@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
