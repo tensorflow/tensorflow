@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
@@ -84,9 +85,8 @@ class SortThunk final : public Thunk {
   std::string comparator_name_;
 
   // Lazily resolved LessThan comparator function.
-  absl::Mutex mutex_;
-  std::optional<LessThan> less_than_ ABSL_GUARDED_BY(mutex_);
-  std::atomic<LessThan*> less_than_ptr_;  // pointer to `less_than_`
+  absl::once_flag less_than_init_flag_;
+  absl::StatusOr<LessThan> less_than_;
 };
 
 }  // namespace xla::cpu

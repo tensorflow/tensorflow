@@ -27,12 +27,11 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
+#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
@@ -120,9 +119,8 @@ class KernelThunk : public Thunk {
   bool call_once_;
 
   // Lazily loaded host kernel corresponding to `kernel_name_`.
-  absl::Mutex mutex_;
-  std::optional<Kernel> kernel_ ABSL_GUARDED_BY(mutex_);
-  std::atomic<Kernel*> kernel_ptr_;  // pointer to `kernel_`
+  absl::once_flag kernel_init_flag_;
+  absl::StatusOr<Kernel> kernel_;
 
   // Pre-initialized kernel arguments that are updated with memory addresses
   // before the kernel launch.

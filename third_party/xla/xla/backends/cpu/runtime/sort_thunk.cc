@@ -31,6 +31,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/layout_util.h"
@@ -115,8 +115,7 @@ SortThunk::SortThunk(Info info, absl::Span<const Input> inputs,
       dimension_(dimension),
       is_stable_(is_stable),
       direction_(direction),
-      less_than_(std::move(less_than)),
-      less_than_ptr_(&*less_than_) {}
+      less_than_(std::move(less_than)) {}
 
 SortThunk::SortThunk(Info info, absl::Span<const Input> inputs,
                      int64_t dimension, bool is_stable,
@@ -127,8 +126,7 @@ SortThunk::SortThunk(Info info, absl::Span<const Input> inputs,
       dimension_(dimension),
       is_stable_(is_stable),
       direction_(direction),
-      comparator_name_(std::move(comparator_name)),
-      less_than_ptr_(nullptr) {}
+      comparator_name_(std::move(comparator_name)) {}
 
 namespace {
 
@@ -789,25 +787,31 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
                                   input.slice.ToString(), data.back().opaque());
   }
 
-  LessThan* less_than = less_than_ptr_.load();
-
   // Because thunks are owned by a parent CpuExecutable, we can safely assume
   // that comparator pointer will not change after we find it the first time,
   // and we can create a comparator adaptor to a LessThan function.
-  if (ABSL_PREDICT_FALSE(less_than == nullptr)) {
-    TF_ASSIGN_OR_RETURN(
-        FunctionRegistry::Comparator comparator,
-        params.function_registry->FindComparator(comparator_name_));
+  absl::call_once(less_than_init_flag_, [&]() {
+    if (less_than_.ok()) {
+      // `less_than_` may already be initialized in the constructor.
+      return;
+    }
+    absl::StatusOr<FunctionRegistry::Comparator> comparator =
+        params.function_registry->FindComparator(comparator_name_);
 
-    absl::MutexLock lock(&mutex_);
-    less_than_ = [comparator](const void** data) {
-      bool result;
-      comparator(&result, nullptr, data, nullptr, nullptr, nullptr);
-      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&result, sizeof(result));
-      return result;
-    };
-    less_than_ptr_.store(less_than = &*less_than_);
-  }
+    if (ABSL_PREDICT_TRUE(comparator.ok())) {
+      less_than_ = [comparator](const void** data) {
+        bool result;
+        (*comparator)(&result, nullptr, data, nullptr, nullptr, nullptr);
+        ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&result, sizeof(result));
+        return result;
+      };
+    } else {
+      less_than_ = std::move(comparator.status());
+    }
+  });
+
+  TF_RETURN_IF_ERROR(less_than_.status());
+  LessThan* less_than = &less_than_.value();
 
   TF_RETURN_IF_ERROR(SortInplace(absl::MakeSpan(data), shapes, dimension_,
                                  is_stable_, less_than, direction_));
