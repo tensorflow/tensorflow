@@ -1101,8 +1101,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
             ordinal_and_device.second->local_hardware_id().value()));
     DeviceProto* device_proto = local_topology.add_devices();
     device_proto->set_local_device_ordinal(ordinal_and_device.first);
-    device_proto->set_name(desc->name());
-    device_proto->set_vendor(desc->device_vendor());
+    device_proto->set_name(std::string{desc->name()});
+    device_proto->set_vendor(std::string{desc->device_vendor()});
     device_proto->set_compute_capability(
         MakeComputeCapabilityString(desc.get()));
     device_proto->set_core_count(desc->core_count());
@@ -1366,8 +1366,8 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
         ordinal_and_device.second->executor()->GetDeviceDescription();
     auto device = std::make_unique<StreamExecutorGpuDevice>(
         ordinal_and_device.first, std::move(ordinal_and_device.second),
-        desc.name(), desc.device_vendor(), MakeComputeCapabilityString(&desc),
-        desc.core_count(), node_id);
+        std::string{desc.name()}, std::string{desc.device_vendor()},
+        MakeComputeCapabilityString(&desc), desc.core_count(), node_id);
     devices.push_back(std::move(device));
   }
   return devices;

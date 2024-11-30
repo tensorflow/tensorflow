@@ -106,7 +106,7 @@ Status PopulateConvMap(
   for (int i = 0; i < platform->VisibleDeviceCount(); i++) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<se::DeviceDescription> device_desc,
                         platform->DescriptionForDevice(i));
-    device_descs.push_back(device_desc->model_str());
+    device_descs.push_back(std::string{device_desc->model_str()});
   }
 
   std::set<std::string> unmatched_device_descs;
@@ -136,7 +136,7 @@ Status PopulateConvMap(
 
     bool devices_matched = false;
     for (int ordinal = 0; ordinal < device_descs.size(); ordinal++) {
-      const std::string &desc_str = device_descs[ordinal];
+      absl::string_view desc_str = device_descs[ordinal];
       if (desc_str != params_proto.device_identifier()) {
         continue;
       }
