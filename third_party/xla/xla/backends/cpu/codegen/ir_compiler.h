@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_IR_COMPILER_H_
 #define XLA_BACKENDS_CPU_CODEGEN_IR_COMPILER_H_
 
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -30,6 +29,7 @@ limitations under the License.
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Target/TargetMachine.h"
 
@@ -52,7 +52,7 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
 
   // Options for configuring the LLVM compilation pipeline and optimizations.
   struct Options {
-    int32_t optimization_level = 0;
+    llvm::CodeGenOptLevel opt_level = llvm::CodeGenOptLevel::None;
     bool optimize_for_size = false;
 
     llvm::FastMathFlags fast_math_flags;

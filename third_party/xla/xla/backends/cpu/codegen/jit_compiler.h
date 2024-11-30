@@ -112,7 +112,6 @@ class JitCompiler {
 
   // Creates a new instance of the JitCompiler.
   static absl::StatusOr<JitCompiler> Create(llvm::TargetOptions target_options,
-                                            llvm::CodeGenOptLevel opt_level,
                                             Options options,
                                             TaskRunner task_runner);
 

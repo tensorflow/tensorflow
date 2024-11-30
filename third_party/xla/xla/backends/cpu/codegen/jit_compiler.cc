@@ -105,8 +105,8 @@ IrCompiler::TargetMachineBuilder JitCompiler::InferTargetMachineBuilder(
 }
 
 absl::StatusOr<JitCompiler> JitCompiler::Create(
-    llvm::TargetOptions target_options, llvm::CodeGenOptLevel opt_level,
-    Options options, TaskRunner task_runner) {
+    llvm::TargetOptions target_options, Options options,
+    TaskRunner task_runner) {
   // Initialize LLVM the first time `JitCompiler` is created.
   static bool llvm_initialized = [] {
     llvm::InitializeNativeTarget();
@@ -117,7 +117,8 @@ absl::StatusOr<JitCompiler> JitCompiler::Create(
 
   // Infer target machine from the current host CPU.
   IrCompiler::TargetMachineBuilder target_machine_builder =
-      InferTargetMachineBuilder(std::move(target_options), opt_level,
+      InferTargetMachineBuilder(std::move(target_options),
+                                options.ir_compiler_options.opt_level,
                                 options.max_cpu_feature);
   TF_ASSIGN_OR_RETURN(auto target_machine, target_machine_builder());
 

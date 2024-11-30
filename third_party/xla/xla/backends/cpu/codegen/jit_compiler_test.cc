@@ -94,8 +94,8 @@ TEST(JitCompilerTest, Compile) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto compiler,
-      JitCompiler::Create(llvm::TargetOptions(), llvm::CodeGenOptLevel::None,
-                          std::move(options), std::move(task_runner)));
+      JitCompiler::Create(llvm::TargetOptions(), std::move(options),
+                          std::move(task_runner)));
 
   constexpr std::string_view add_in_place_ir = R"(
     define void @AddInplace(ptr %arg) {
@@ -186,8 +186,8 @@ TEST(JitCompilerTest, ExternalDefinitionGenerator) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto compiler,
-      JitCompiler::Create(llvm::TargetOptions(), llvm::CodeGenOptLevel::None,
-                          std::move(options), /*task_runner=*/nullptr));
+      JitCompiler::Create(llvm::TargetOptions(), std::move(options),
+                          /*task_runner=*/nullptr));
 
   constexpr std::string_view call_external_fn_ir = R"(
     declare void @__external_fn(ptr %arg)

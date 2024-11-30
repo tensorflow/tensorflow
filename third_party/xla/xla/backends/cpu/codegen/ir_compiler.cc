@@ -33,6 +33,7 @@ limitations under the License.
 #include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Errc.h"
 #include "llvm/Support/Error.h"
@@ -55,17 +56,15 @@ static llvm::OptimizationLevel GetOptimizationLevel(
     return llvm::OptimizationLevel::Os;
   }
 
-  switch (options.optimization_level) {
-    case 0:
+  switch (options.opt_level) {
+    case llvm::CodeGenOptLevel::None:
       return llvm::OptimizationLevel::O0;
-    case 1:
+    case llvm::CodeGenOptLevel::Less:
       return llvm::OptimizationLevel::O1;
-    case 2:
+    case llvm::CodeGenOptLevel::Default:
       return llvm::OptimizationLevel::O2;
-    case 3:
+    case llvm::CodeGenOptLevel::Aggressive:
       return llvm::OptimizationLevel::O3;
-    default:
-      return llvm::OptimizationLevel::O0;
   }
 }
 
