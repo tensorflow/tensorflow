@@ -18,13 +18,14 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <vector>
 
 #include "Eigen/Core"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -186,48 +186,34 @@ absl::StatusOr<bool> BufferComparator::CompareEqual(
   ComparisonParams params{relative_tol_, verbose_, &shape_,
                           stream,        current,  expected};
 
-  switch (shape_.element_type()) {
-#if GOOGLE_CUDA  // not available for ROCm yet..
-    case xla::F8E4M3FN:
-      return CompareEqualParameterized<tsl::float8_e4m3fn, float>(
-          "fp8_e4m3fn_comparison", buffer_comparator::fp8_e4m3fn_comparison(),
-          params);
-    case xla::F8E5M2:
-      return CompareEqualParameterized<tsl::float8_e5m2, float>(
-          "fp8_e5m2_comparison", buffer_comparator::fp8_e5m2_comparison(),
-          params);
-#endif  // GOOGLE_CUDA
-#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
-    case xla::F8E4M3FNUZ:
-      return CompareEqualParameterized<tsl::float8_e4m3fnuz, float>(
-          "fp8_e4m3fnuz_comparison",
-          buffer_comparator::fp8_e4m3fnuz_comparison(), params);
-    case xla::F8E5M2FNUZ:
-      return CompareEqualParameterized<tsl::float8_e5m2fnuz, float>(
-          "fp8_e5m2fnuz_comparison",
-          buffer_comparator::fp8_e5m2fnuz_comparison(), params);
-#endif  // TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
-    case xla::F16:
-      return CompareEqualParameterized<Eigen::half, float>(
-          "fp16_comparison", buffer_comparator::fp16_comparison(), params);
-    case xla::BF16:
-      return CompareEqualParameterized<Eigen::bfloat16, float>(
-          "bf16_comparison", buffer_comparator::bf16_comparison(), params);
-    case xla::F32:
-      return CompareEqualParameterized<float, float>(
-          "fp32_comparison", buffer_comparator::fp32_comparison(), params);
-    case xla::F64:
-      return CompareEqualParameterized<double, double>(
-          "fp64_comparison", buffer_comparator::fp64_comparison(), params);
-    case xla::S8:
-      return CompareEqualParameterized<int8_t, float>(
-          "int8_comparison", buffer_comparator::int8_comparison(), params);
-    case xla::S32:
-      return CompareEqualParameterized<int32_t, float>(
-          "int32_comparison", buffer_comparator::int32_comparison(), params);
-    default:
-      return Unimplemented("Unimplemented element type");
+  void* kernel_symbol = buffer_comparator::comparison_fn(shape_.element_type());
+  if (kernel_symbol == nullptr) {
+    return Unimplemented("Unimplemented element type for device kernel");
   }
+
+  std::string kernel_name = absl::StrCat(
+      primitive_util::LowercasePrimitiveTypeName(shape_.element_type()),
+      "_comparison");
+
+  auto do_compare = [&](auto cst_type) {
+    using ElementT = primitive_util::NativeTypeOf<cst_type>;
+    using ComparisonT =
+        std::conditional_t<std::is_same_v<ElementT, double>, double, float>;
+    return CompareEqualParameterized<ElementT, ComparisonT>(
+        kernel_name, kernel_symbol, params);
+  };
+
+  if (primitive_util::IsFloatingPointType(shape_.element_type())) {
+    return xla::primitive_util::FloatingPointTypeSwitch<absl::StatusOr<bool>>(
+        do_compare, shape_.element_type());
+  }
+
+  if (primitive_util::IsIntegralType(shape_.element_type())) {
+    return xla::primitive_util::IntegralTypeSwitch<absl::StatusOr<bool>>(
+        do_compare, shape_.element_type());
+  }
+
+  return Unimplemented("Unimplemented element type for host function");
 }
 
 BufferComparator::BufferComparator(const Shape& shape, double tolerance,

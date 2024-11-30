@@ -2503,11 +2503,10 @@ gpu_kernel_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    deps = if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    deps = [
+        "//xla:shape_util",
+        "//xla:types",
+    ],
 )
 
 xla_test(
