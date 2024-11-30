@@ -40,8 +40,8 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "xla/backends/cpu/codegen/function_library.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
+#include "xla/backends/cpu/runtime/function_library.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {

@@ -121,6 +121,18 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "function_library",
+    srcs = ["function_library.cc"],
+    hdrs = ["function_library.h"],
+    deps = [
+        "//xla:util",
+        "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "thunk",
     srcs = ["thunk.cc"],
     hdrs = ["thunk.h"],

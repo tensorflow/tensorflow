@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_CODEGEN_FUNCTION_LIBRARY_H_
-#define XLA_BACKENDS_CPU_CODEGEN_FUNCTION_LIBRARY_H_
+#ifndef XLA_BACKENDS_CPU_RUNTIME_FUNCTION_LIBRARY_H_
+#define XLA_BACKENDS_CPU_RUNTIME_FUNCTION_LIBRARY_H_
 
 #include <cstdint>
 #include <string>
@@ -81,4 +81,4 @@ class FunctionLibrary {
 
 }  // namespace xla::cpu
 
-#endif  // XLA_BACKENDS_CPU_CODEGEN_FUNCTION_LIBRARY_H_
+#endif  // XLA_BACKENDS_CPU_RUNTIME_FUNCTION_LIBRARY_H_

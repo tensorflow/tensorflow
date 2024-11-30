@@ -41,7 +41,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "xla/backends/cpu/codegen/function_library.h"
+#include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"

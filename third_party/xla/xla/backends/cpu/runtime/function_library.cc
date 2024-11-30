@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/codegen/function_library.h"
+#include "xla/backends/cpu/runtime/function_library.h"
 
 #include <atomic>
 #include <cstdint>
