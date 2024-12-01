@@ -3162,9 +3162,9 @@ xla_cc_test(
     deps = [
         ":gpu_all_gather_combiner",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
         "//xla/service:collective_utils",
         "//xla/stream_executor:device_description",
-        "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
