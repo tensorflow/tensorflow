@@ -15,9 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PARTITIONING_UTILS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PARTITIONING_UTILS_H_
 
+#include <functional>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/status.h"
