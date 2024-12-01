@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+
+#include "absl/container/inlined_vector.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/common_runtime/local_device.h"

@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 
+#include <utility>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/graph.pb.h"
 
 namespace tensorflow {
 

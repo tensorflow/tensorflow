@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_OPTIMIZER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_OPTIMIZER_H_
 
+#include <functional>
+#include <memory>
+#include <unordered_map>
+#include <vector>
+
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"

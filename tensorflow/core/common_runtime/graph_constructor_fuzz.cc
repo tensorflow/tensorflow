@@ -15,13 +15,17 @@ limitations under the License.
 
 #include <fuzzer/FuzzedDataProvider.h>
 
-#include <iostream>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "fuzztest/fuzztest.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow::fuzzing {

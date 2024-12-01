@@ -14,9 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 
-#include <set>
-#include <string>
-
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
