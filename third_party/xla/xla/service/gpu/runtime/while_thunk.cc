@@ -35,9 +35,13 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
+
+using ::tsl::profiler::TraceMe;
+using ::tsl::profiler::TraceMeEncode;
 
 static std::list<int64_t>& LoopCounters() {
   // TODO(b/343294327): Do not rely on thread-local storage.
@@ -117,6 +121,8 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
   }();
 
   while (true) {
+    TraceMe trace(
+        [&] { return TraceMeEncode("While", {{"iteration:", iter}}); });
     VLOG(3) << "Executing WhileThunk condition computation; iter=" << iter;
     TF_RETURN_IF_ERROR(condition_thunk_sequence_->ExecuteOnStream(params));
 
