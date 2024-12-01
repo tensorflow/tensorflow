@@ -45,7 +45,7 @@ const llvm::StringSet<>& GetSharedNameGenerationCompatibleOps() {
 
 }  // namespace
 
-Status GenerateResourceSharedNameIfEmpty(
+absl::Status GenerateResourceSharedNameIfEmpty(
     GraphDef& gdef, const OpRegistryInterface* default_registry) {
   auto is_resource_op_with_empty_shared_name = [](const NodeDef& node_def,
                                                   const OpDef& op_def) {
@@ -128,8 +128,9 @@ bool IsCompiledNode(const Node* n) {
          n->attrs().Find(tensorflow::kCompileDeviceTypeAttr);
 }
 
-Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
-                          bool restrict_functionalization_to_compiled_nodes) {
+absl::Status UpgradeLegacyGraph(
+    Graph* graph, FunctionLibraryDefinition* flib_def,
+    bool restrict_functionalization_to_compiled_nodes) {
   NodeFilter node_filter = restrict_functionalization_to_compiled_nodes
                                ? IsCompiledNode
                                : NodeFilter{};

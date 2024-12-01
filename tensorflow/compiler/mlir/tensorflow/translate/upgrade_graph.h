@@ -27,13 +27,14 @@ class MetaGraphDef;
 // Generate the shared_name for resource handle ops in the graph and functions
 // if their shared_names are empty. Resource handle ops with empty shared_name
 // may have undesired semantics.
-Status GenerateResourceSharedNameIfEmpty(
+absl::Status GenerateResourceSharedNameIfEmpty(
     GraphDef& gdef, const OpRegistryInterface* default_registry);
 
 // Upgrade the `graph` and `flib_def` by applying control flow
 // functionalization.
-Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
-                          bool restrict_functionalization_to_compiled_nodes);
+absl::Status UpgradeLegacyGraph(
+    Graph* graph, FunctionLibraryDefinition* flib_def,
+    bool restrict_functionalization_to_compiled_nodes);
 
 }  // namespace tensorflow
 

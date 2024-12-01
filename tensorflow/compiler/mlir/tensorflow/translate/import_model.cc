@@ -210,9 +210,9 @@ bool HasNonPrimaryOutputInUse(const GraphDef& graph_def,
 // the inputs. Returns an error if non primary output of the LegacyFedInput node
 // is in use and therefore can not be replaced by the Placeholder node that only
 // has a single output.
-Status UpdateLegacyFedInputNode(const GraphDef& graph_def,
-                                const GraphImportConfig::InputArrays& inputs,
-                                NodeDef* node) {
+absl::Status UpdateLegacyFedInputNode(
+    const GraphDef& graph_def, const GraphImportConfig::InputArrays& inputs,
+    NodeDef* node) {
   const std::string& node_name = node->name();
   auto it = inputs.find(node_name);
 
@@ -246,7 +246,8 @@ Status UpdateLegacyFedInputNode(const GraphDef& graph_def,
 //   the GraphDef.
 // - Replacing LegacyFedInput nodes with Placeholder nodes if
 //   convert_legacy_fed_inputs option is enabled.
-Status PreprocessGraphDef(const GraphImportConfig* specs, GraphDef* graph_def) {
+absl::Status PreprocessGraphDef(const GraphImportConfig* specs,
+                                GraphDef* graph_def) {
   for (auto& node_def : *graph_def->mutable_node()) {
     // TODO(hinsu): Completely deprecate support for LegacyFedInput ops. One
     // solution could be have a tool to let users upgrade old serialized graphs.
@@ -266,9 +267,6 @@ Status PreprocessGraphDef(const GraphImportConfig* specs, GraphDef* graph_def) {
   }
   return absl::OkStatus();
 }
-
-
-
 
 // Determines the names used to reference objects in the SavedObjectGraph.
 class ObjectNames {
@@ -498,8 +496,8 @@ FindSerializedTensorInTrackable(
   return nullptr;
 }
 
-Status DiagnoseMultipleConcreteFunctions(const SavedObjectGraph& object_graph,
-                                         const ObjectNames& object_names) {
+absl::Status DiagnoseMultipleConcreteFunctions(
+    const SavedObjectGraph& object_graph, const ObjectNames& object_names) {
   for (int node_id = 0; node_id < object_graph.nodes_size(); node_id++) {
     const SavedObject& object = object_graph.nodes(node_id);
     if (object_names.GetExportedNames(node_id).empty()) {
@@ -808,7 +806,7 @@ void SortSavedModelModule(mlir::ModuleOp module) {
   }
 }
 
-Status CreateSavedModelIR(
+absl::Status CreateSavedModelIR(
     const ObjectNames& object_names, mlir::ModuleOp module,
     const SavedObjectGraph& object_graph,
     const std::unordered_map<std::string, std::string>& tf_name_to_mlir_name,
@@ -1246,8 +1244,8 @@ class SavedModelSignatureDefImporterLite {
   // Converts the SavedModel to the SavedModel dialect. Creates an MLIR function
   // for each signature.
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSignatures();
-  Status ConvertSignature(const std::string& sig_def_key,
-                          const SignatureDef& signature_def);
+  absl::Status ConvertSignature(const std::string& sig_def_key,
+                                const SignatureDef& signature_def);
 
   struct AssetInfo {
     std::string tensor_name;
@@ -1258,9 +1256,9 @@ class SavedModelSignatureDefImporterLite {
   // Converts the initialization graph in the SavedModel to an MLIR function.
   // Attaches `tf_saved_model.initializer_type` attribute with value
   // `initializer_type` to the created function.
-  Status ConvertInitializer(const std::string& target_node_name,
-                            const std::vector<AssetInfo>& assets,
-                            llvm::StringRef initializer_type);
+  absl::Status ConvertInitializer(const std::string& target_node_name,
+                                  const std::vector<AssetInfo>& assets,
+                                  llvm::StringRef initializer_type);
 
   // Converts a graph with feeds and fetches to an MLIR function.
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraph(
@@ -1272,7 +1270,7 @@ class SavedModelSignatureDefImporterLite {
 
   // Moves the functions in `sub_module` to `module_` and skips the duplicate
   // functions.
-  Status MoveConvertedFunctionsToModule(
+  absl::Status MoveConvertedFunctionsToModule(
       absl::string_view name, mlir::ModuleOp sub_module,
       const std::unordered_map<std::string, std::string>& tf_name_to_mlir_name);
 
@@ -1317,7 +1315,7 @@ SavedModelSignatureDefImporterLite::ConvertAssets() {
   return results;
 }
 
-Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
+absl::Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
     absl::string_view name, mlir::ModuleOp sub_module,
     const std::unordered_map<std::string, std::string>& tf_name_to_mlir_name) {
   mlir::Builder builder(sub_module.getContext());
@@ -1361,7 +1359,7 @@ Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
   return absl::OkStatus();
 }
 
-Status SavedModelSignatureDefImporterLite::ConvertInitializer(
+absl::Status SavedModelSignatureDefImporterLite::ConvertInitializer(
     const std::string& target_node_name, const std::vector<AssetInfo>& assets,
     llvm::StringRef initializer_type) {
   std::vector<std::pair<std::string, TensorInfo>> inputs;
@@ -1441,7 +1439,7 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
       module_->getContext(), tf_name_to_mlir_name);
 }
 
-Status SavedModelSignatureDefImporterLite::ConvertSignature(
+absl::Status SavedModelSignatureDefImporterLite::ConvertSignature(
     const std::string& sig_def_key, const SignatureDef& signature_def) {
   // Create local vectors for the input and output and sort them to be
   // deterministic. We don't want anyone to really depend on the order, client
@@ -1550,7 +1548,7 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
   }
 
   absl::Mutex error_status_mu;  // Needed since `error_status` is non-atomic.
-  tensorflow::Status error_status;
+  absl::Status error_status;
   {
     // Start a threadpool to convert signatures, since signature conversion can
     // be time consuming especially for large models. Threadpool destructor
@@ -1678,13 +1676,13 @@ class SavedModelSignatureDefImporter {
   // `tf_saved_model::SessionInitializerOp`) by running the
   // `RemoveVariablesInSessionInitializerPass`, regardless of whether
   // `lift_variable_ops_to_args` is true or not.
-  static Status LiftVariables(const SavedModelBundle& bundle,
-                              mlir::ModuleOp module,
-                              bool lift_varhandle_ops_to_args,
-                              bool include_variables_in_initializers);
+  static absl::Status LiftVariables(const SavedModelBundle& bundle,
+                                    mlir::ModuleOp module,
+                                    bool lift_varhandle_ops_to_args,
+                                    bool include_variables_in_initializers);
 };
 
-Status SavedModelSignatureDefImporter::LiftVariables(
+absl::Status SavedModelSignatureDefImporter::LiftVariables(
     const SavedModelBundle& bundle, mlir::ModuleOp module,
     const bool lift_varhandle_ops_to_args,
     const bool include_variables_in_initializers) {

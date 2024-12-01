@@ -29,7 +29,7 @@ namespace tensorflow {
 
 // Extracts the attributes of a MLIR operation and populates the converted
 // attributes in a proto map<string, AttrValue>.
-Status GetAttrValuesFromOperation(
+absl::Status GetAttrValuesFromOperation(
     mlir::Operation* inst, llvm::StringRef name,
     const tensorflow::OpRegistrationData* op_reg_data,
     bool ignore_unregistered_attrs, AttrValueMap* attributes);
