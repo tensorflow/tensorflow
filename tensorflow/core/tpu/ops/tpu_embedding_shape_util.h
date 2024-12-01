@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
