@@ -279,7 +279,7 @@ def ApplyIndexingOp : XLAGPU_Op<"apply_indexing", [Pure]> {
   ];
   let extraClassDeclaration = [{
     // Returns the indexing map constructed from IndexingMapAttr.
-    xla::gpu::IndexingMap getIndexingMap();
+    xla::IndexingMap getIndexingMap();
     // Extracts the affine map from the attribute.
     mlir::AffineMap getAffineMap() { return getIndexingMapAttr().getMap(); }
   }];
@@ -344,7 +344,7 @@ def LoopOp : XLAGPU_Op<"loop", [
              mlir::ValueRange, mlir::ValueRange)>;
 
     // Returns the indexing map constructed from IndexingMapAttr.
-    xla::gpu::IndexingMap getIndexingMap();
+    xla::IndexingMap getIndexingMap();
     int64_t getNumInductionVars() {
       return getBody()->getNumArguments() - getIndexingMapAttr().getNumResults()
         - getNumResults();

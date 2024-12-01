@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/indexing_map_serialization.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
 
 #include <algorithm>
 #include <cctype>
@@ -41,10 +41,9 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using llvm::SmallVector;
@@ -933,5 +932,4 @@ SmallVector<std::string> GetSymbolVarNames(const IndexingMap& map) {
   return symbol_names;
 }
 
-}  // namespace gpu
 }  // namespace xla
