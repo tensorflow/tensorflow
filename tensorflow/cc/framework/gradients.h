@@ -29,18 +29,18 @@ namespace tensorflow {
 /// derivatives of some loss function 'L' w.r.t 'outputs'), adds gradient nodes
 /// to the graph associated with 'scope', which compute (and return in
 /// 'grad_outputs') the symbolic partial derivatives of 'L' w.r.t 'inputs'.
-Status AddSymbolicGradients(const Scope& scope,
-                            const std::vector<Output>& outputs,
-                            const std::vector<Output>& inputs,
-                            const std::vector<Output>& grad_inputs,
-                            std::vector<Output>* grad_outputs);
+absl::Status AddSymbolicGradients(const Scope& scope,
+                                  const std::vector<Output>& outputs,
+                                  const std::vector<Output>& inputs,
+                                  const std::vector<Output>& grad_inputs,
+                                  std::vector<Output>* grad_outputs);
 
 // Same as above, but uses 'OnesLike' for all shapes in
 // 'outputs' as grad_inputs.
-Status AddSymbolicGradients(const Scope& scope,
-                            const std::vector<Output>& outputs,
-                            const std::vector<Output>& inputs,
-                            std::vector<Output>* grad_outputs);
+absl::Status AddSymbolicGradients(const Scope& scope,
+                                  const std::vector<Output>& outputs,
+                                  const std::vector<Output>& inputs,
+                                  std::vector<Output>* grad_outputs);
 
 /// Returns a sentinel Output that represents 'no gradient' (i.e. no gradient
 /// flows along some graph edge during backpropagation).

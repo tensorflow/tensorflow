@@ -1318,6 +1318,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_gpu_dump_llvmir),
                 debug_options->xla_gpu_dump_llvmir(), "Dump LLVM IR."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_dump_hlo_unoptimized_snapshots",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_dump_hlo_unoptimized_snapshots),
+      debug_options->xla_gpu_dump_hlo_unoptimized_snapshots(),
+      "Every time an HLO module is run, dumps an HloUnoptimizedSnapshot to the "
+      "directory specified by --xla_dump_to."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_cudnn_frontend",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_frontend),
       debug_options->xla_gpu_enable_cudnn_frontend(),

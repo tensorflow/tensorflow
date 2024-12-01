@@ -176,7 +176,7 @@ class Scope {
   /// Note: The status object is shared between all children of this scope.
   /// If the resulting status is not OkStatus() and exit_on_error_ is set on
   /// this scope, this function exits by calling LOG(FATAL).
-  void UpdateStatus(const Status& s) const;
+  void UpdateStatus(const absl::Status& s) const;
 
   // START_SKIP_DOXYGEN
 
@@ -196,14 +196,15 @@ class Scope {
   // TODO(skyewm): Graph is not part of public API
   std::shared_ptr<Graph> graph_as_shared_ptr() const;
 
-  Status status() const;
+  absl::Status status() const;
 
   /// If status() is ok, convert the Graph object stored in this scope
   /// to a GraphDef proto and return an ok Status. Otherwise, return the error
   /// status as is without performing GraphDef conversion. If
   /// `include_debug_info` is true, populate the `debug_info` field of the
   /// GraphDef from stack traces in this Graph.
-  Status ToGraphDef(GraphDef* gdef, bool include_debug_info = false) const;
+  absl::Status ToGraphDef(GraphDef* gdef,
+                          bool include_debug_info = false) const;
 
   // START_SKIP_DOXYGEN
 
@@ -214,14 +215,14 @@ class Scope {
   // Graph->GraphDef->Graph.  This cleans up the graph (e.g. adds
   // edges from the source and to the sink node, resolves back edges
   // by name), and makes sure the resulting graph is valid.
-  Status ToGraph(
+  absl::Status ToGraph(
       Graph* g, GraphConstructorOptions opts = GraphConstructorOptions{}) const;
 
   // Calls AddNode() using this scope's ShapeRefiner. This exists in the public
   // API to prevent custom op wrappers from needing access to shape_refiner.h or
   // scope_internal.h.
   // TODO(skyewm): remove this from public API
-  Status DoShapeInference(Node* node) const;
+  absl::Status DoShapeInference(Node* node) const;
 
   // Creates a new root scope that causes all DoShapeInference() calls to return
   // OkStatus() (on the returned scope and any subscopes). Used for testing.
@@ -259,9 +260,9 @@ struct CompositeOpScopes {
 // Creates a node of the given operation, with the given inputs, and assigns the
 // result to output. This does not support the ability to add additional
 // attributes.
-Status CreateOutputWithScope(string op_name,
-                             absl::Span<const ::tensorflow::Input> inputs,
-                             const Scope& scope, Output* output);
+absl::Status CreateOutputWithScope(string op_name,
+                                   absl::Span<const ::tensorflow::Input> inputs,
+                                   const Scope& scope, Output* output);
 /// @}
 
 }  // namespace tensorflow
