@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 
+#include <complex>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/base/casts.h"
-#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/APFloat.h"
@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 
 namespace tensorflow {

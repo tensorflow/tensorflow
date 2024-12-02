@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_graph.h"
 
+#include <cstdint>
+
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
