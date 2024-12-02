@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/gpu/model/indexing_map_serialization.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 

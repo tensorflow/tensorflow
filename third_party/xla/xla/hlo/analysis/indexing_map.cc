@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map.h"
 
 #include <algorithm>
 #include <cassert>
@@ -48,7 +48,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using llvm::ArrayRef;
@@ -1940,5 +1939,4 @@ IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
   return new_indexing_map;
 }
 
-}  // namespace gpu
 }  // namespace xla

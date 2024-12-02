@@ -907,7 +907,7 @@ d2 in [0, 124]
 
 where `s0` refers to the inner-most dimension of the input.
 
-For more examples see [indexing_analysis_test.cc](https://github.com/openxla/xla/blob/main/xla/service/gpu/model/indexing_analysis_test.cc).
+For more examples see [indexing_analysis_test.cc](https://github.com/openxla/xla/blob/main/xla/hlo/analysis/indexing_analysis_test.cc).
 
 ## Indexing Map Simplifier
 
@@ -955,4 +955,4 @@ for `d0 in [0, 5]` and `s0 in [1, 3]` are eliminated.
 map above.
 
 
-For more examples see [indexing_map_test.cc](https://github.com/openxla/xla/blob/main/xla/service/gpu/model/indexing_map_test.cc).
+For more examples see [indexing_map_test.cc](https://github.com/openxla/xla/blob/main/xla/hlo/analysis/indexing_map_test.cc).
