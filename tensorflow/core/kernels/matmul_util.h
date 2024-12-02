@@ -21,7 +21,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/container/node_hash_map.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "tensorflow/core/framework/types.h"
@@ -35,7 +35,8 @@ namespace tensorflow {
 int64_t GetWorkspaceLimit(int64_t default_value_in_bytes);
 
 struct BlasLtMatmulPlanParams {
-  std::string ToString() const;
+
+  std::string ToString() const { return "NOP"; }
   bool operator==(const BlasLtMatmulPlanParams& other) const;
 
   se::blas::DataType dtype;
@@ -48,12 +49,6 @@ struct BlasLtMatmulPlanParams {
   bool broadcast_a = false;
   bool broadcast_b = false;
   se::gpu::BlasLt::Epilogue epilogue = se::gpu::BlasLt::Epilogue::kDefault;
-};
-
-struct PlanAndAlgorithms {
-  se::gpu::BlasLt::MatmulPlanPtr plan;
-  std::vector<se::gpu::BlasLt::MatmulAlgorithm> algorithms;
-  se::blas::DataType scale_type;  // this is needed for half / bf16 treatment
 };
 
 namespace internal {
@@ -71,37 +66,42 @@ H AbslHashValue(H h, const BlasLtMatmulPlanParams& params) {
   return H::combine(std::move(h), internal::AsTuple(params));
 }
 
-StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
+struct BlasLtMatmulPlanCache {
+  struct Entry { 
+    se::gpu::BlasLt::MatmulPlanPtr plan;
+    std::vector< se::gpu::BlasLt::MatmulAlgorithm > algorithms;
+  };
+
+  static StatusOr<const Entry *> GetOrCreate(
     se::Stream* stream, const BlasLtMatmulPlanParams& params, absl::Mutex** pmu,
-    std::optional<int> max_algorithm_count = std::nullopt);
+    std::optional<int> max_algorithm_count = std::nullopt
+  );
 
-template <typename T>
-Status DoBlasLtMatmul(se::Stream* stream, const PlanAndAlgorithms& paa,
-                      const se::DeviceMemory<T>& a,
-                      const se::DeviceMemory<T>& b, se::DeviceMemory<T>& c,
-                      size_t alg_idx, se::ScratchAllocator& scratch_allocator,
-                      const se::DeviceMemory<T>& bias = {},
-                      se::blas::ProfileResult* profile_result = nullptr) {
-  se::DeviceMemory<T> aux{};  // We don't use the auxilary buffers.
-  const auto& algorithm = paa.algorithms[alg_idx];
+  // helper function for plan execution
+  static Status ExecuteOnStream(se::Stream* stream, 
+                      const Entry& entry,
+                      const se::DeviceMemoryBase& a,
+                      const se::DeviceMemoryBase& b, 
+                      se::DeviceMemoryBase& c,
+                      size_t algorithm_idx, 
+                      se::ScratchAllocator& scratch_allocator,
+                      const se::DeviceMemoryBase& bias,
+                      se::blas::ProfileResult* profile_result = nullptr);
 
-  // The scale type may be f32 if the data type is f16 and bf16.
-  if constexpr (std::is_same_v<T, Eigen::half> ||
-                std::is_same_v<T, Eigen::bfloat16>) {
-    if (paa.scale_type == se::blas::DataType::kFloat) {
-      return paa.plan->DoMatmul(stream, se::HostOrDeviceScalar<float>(1.0), b,
-                                a, se::HostOrDeviceScalar<float>(0.0), c, c,
-                                algorithm, scratch_allocator, bias, aux,
-                                profile_result);
-    }
+  BlasLtMatmulPlanCache() : mutex_(new absl::Mutex) {
   }
-  return paa.plan->DoMatmul(stream, se::HostOrDeviceScalar<T>(T(1.0)), b, a,
-                            se::HostOrDeviceScalar<T>(T(0.0)), c, c, algorithm,
-                            scratch_allocator, bias, aux, profile_result);
-}
+
+private:
+  static BlasLtMatmulPlanCache& i(se::Stream *stream);
+
+  std::unique_ptr<absl::Mutex> mutex_;
+  absl::node_hash_map<BlasLtMatmulPlanParams, Entry> map_
+       ABSL_GUARDED_BY(mutex_);
+
+}; // BlasLtMatmulPlanCache
 
 }  // namespace tensorflow
 
-#endif
+#endif // GOOGLE_CUDA || TF_HIPBLASLT
 
 #endif  // TENSORFLOW_CORE_KERNELS_MATMUL_UTIL_H_

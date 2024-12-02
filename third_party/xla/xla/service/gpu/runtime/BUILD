@@ -728,6 +728,8 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu/autotuning:autotuner_util",
+        "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
         "//xla/stream_executor/gpu:gpu_blas_lt",

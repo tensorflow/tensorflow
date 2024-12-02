@@ -3630,7 +3630,7 @@ cc_library(
     features = ["-layering_check"],
     local_defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
     deps = if_cuda_or_rocm([
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/stream_executor/gpu:gpu_blas_lt",
