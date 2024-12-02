@@ -155,6 +155,7 @@ py_strict_library(
         "wrap_converter.py",
     ],
     srcs_version = "PY3",
+    visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_converter_api",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
