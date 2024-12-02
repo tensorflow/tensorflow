@@ -66,6 +66,13 @@ absl::StatusOr<bool> GpuAllReduceCombiner::Run(
     return AllReduceCombiner::Run(module, execution_threads);
   }
 
+  // If there are no pipelined instructions in the IR, the optimizations below
+  // do not kick in anyway.
+  // Exit early so we do not perform expensive scheduling dry run below.
+  if (!ContainsPipelinedInstruction(*module)) {
+    return AllReduceCombiner::Run(module, execution_threads);
+  }
+
   // Combine as much as possible for pipelined collectives.
   int previous_combiner_threshold = combine_threshold_in_bytes_;
   combine_threshold_in_bytes_ = ComputeSuggestedCombinerThreshold(
