@@ -984,6 +984,10 @@ class PjRtClient {
     return this->BufferFromHostLiteral(literal, memory_space);
   }
 
+  virtual bool SupportsBufferFromHostLiteralWithDeviceLayout() const {
+    return false;
+  }
+
   // Creates a PjRtBuffer that is a non-owned view of an on-device
   // buffer (typically allocated by another library).
   // on_delete_callback is called when the PjRtBuffer is done with the on-device

@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/primitive_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
@@ -1306,15 +1307,29 @@ FunctionalHloRunner::CopyArgumentsToDevice(
     TF_RET_CHECK(!shape.IsTuple()) << "Param tuple without flattened_arguments";
     return non_tuple_memory_space(shape);
   };
+  TF_ASSIGN_OR_RETURN(const std::vector<std::unique_ptr<PjRtLayout>>&
+                          executable_parameter_pjrt_layouts,
+                      executable->GetParameterLayouts());
+  std::vector<Layout> executable_parameter_layouts;
+  executable_parameter_layouts.reserve(
+      executable_parameter_pjrt_layouts.size());
+  for (const std::unique_ptr<PjRtLayout>& pjrt_layout :
+       executable_parameter_pjrt_layouts) {
+    executable_parameter_layouts.push_back(
+        xla::GetXlaLayoutUnsafe(pjrt_layout));
+  }
   auto buffer_from_host_literal =
-      [&client, &argument_memory_space, &running_options](
+      [&client, &argument_memory_space, &executable_parameter_layouts](
           const HloModule* module, PjRtDevice* device, int arg_i,
           const Literal& literal)
       -> absl::StatusOr<std::unique_ptr<PjRtBuffer>> {
+    // Use the layout as specified in the executable rather than the layout of
+    // the host-side literal, as literal objects do not respect the
+    // "packedness" of layouts for sub-byte data types. See
+    // go/xla-packed-types.
     const Layout* layout = nullptr;
-    if (running_options.use_argument_host_layout &&
-        literal.shape().has_layout()) {
-      layout = &literal.shape().layout();
+    if (client.SupportsBufferFromHostLiteralWithDeviceLayout()) {
+      layout = &executable_parameter_layouts[arg_i];
     }
     if (client.memory_spaces().empty()) {
       return client.BufferFromHostLiteral(literal, device, layout);
