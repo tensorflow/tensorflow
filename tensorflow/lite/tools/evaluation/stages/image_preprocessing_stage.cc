@@ -21,7 +21,6 @@ limitations under the License.
 #include <ios>
 #include <iterator>
 #include <memory>
-#include <streambuf>
 #include <string>
 #include <vector>
 
