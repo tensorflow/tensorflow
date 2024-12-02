@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_PARALLEL_LOOP_EMITTER_H_
 #define XLA_SERVICE_CPU_PARALLEL_LOOP_EMITTER_H_
 
+#include <vector>
+
+#include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/service/cpu/ir_emission_utils.h"

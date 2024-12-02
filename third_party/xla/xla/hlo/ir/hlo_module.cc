@@ -25,7 +25,6 @@ limitations under the License.
 #include <stack>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -76,16 +75,14 @@ HloModule::HloModule(const std::string& name, HloModuleConfig config)
 
 HloModule::HloModule(const std::string& name, HloModuleConfig config,
                      std::unique_ptr<CompilationEnvironments> comp_envs)
-    : HloModule(name, std::make_unique<HloModuleConfig>(std::move(config)),
+    : HloModule(name, std::make_shared<HloModuleConfig>(std::move(config)),
                 std::move(comp_envs)) {}
 
 HloModule::HloModule(const std::string& name,
-                     std::variant<std::unique_ptr<HloModuleConfig>,
-                                  std::shared_ptr<const HloModuleConfig>>
-                         config,
+                     std::shared_ptr<const HloModuleConfig> config,
                      std::unique_ptr<CompilationEnvironments> comp_envs)
     : name_(NameUniquer::GetSanitizedName(name)),
-      config_(std::move(config)),
+      config_(config),
       unique_id_(next_unique_module_id_++),
       metadata_(tsl::Env::Default()),
       autofdo_fingerprint_(""),
@@ -102,7 +99,7 @@ absl::Status HloModule::set_schedule(HloSchedule schedule) {
 
 void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
   entry_computation_ = entry_computation;
-  config_.get_mutable().SetDefaultComputationLayout(
+  mutable_config().SetDefaultComputationLayout(
       entry_computation_->ComputeProgramShape());
   input_output_alias_config_ = HloInputOutputAliasConfig(
       entry_computation_->root_instruction()->shape());
@@ -139,12 +136,12 @@ HloComputation* HloModule::AddComputationInternal(
     entry_computation_ = computation.get();
 
     if (preserve_entry_layouts) {
-      config_.get_mutable().SetComputationLayoutIfExists(
+      mutable_config().SetComputationLayoutIfExists(
           entry_computation_->ComputeProgramShape());
-    } else if (!config_.get().has_entry_computation_layout()) {
+    } else if (!config().has_entry_computation_layout()) {
       // If the module configuration has no entry layout computation set, create
       // a default one based on the program shape.
-      config_.get_mutable().SetDefaultComputationLayout(
+      mutable_config().SetDefaultComputationLayout(
           entry_computation_->ComputeProgramShape());
     }
     input_output_alias_config_ = HloInputOutputAliasConfig(
@@ -375,7 +372,8 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
     printer->Append(std::move(serialized_buffer_donor));
     printer->Append(" }");
   }
-  const auto& config = config_.get();
+
+  const HloModuleConfig& config = this->config();
   if (config.alias_passthrough_params()) {
     printer->Append(", alias_passthrough_params=true");
   }
@@ -505,9 +503,9 @@ HloModuleProto HloModule::ToProto() const {
     profile_info_proto.set_compilation_event(profile_info.compilation_event());
     profile_info_proto.set_fingerprint(profile_info.fingerprint());
   }
-  if (config_.get().has_static_device_assignment()) {
+  if (config().has_static_device_assignment()) {
     DeviceAssignmentProto device_assignment;
-    config_.get().static_device_assignment().Serialize(&device_assignment);
+    config().static_device_assignment().Serialize(&device_assignment);
     (*proto.mutable_device_assignment()) = device_assignment;
   }
 
@@ -519,7 +517,7 @@ HloModuleProto HloModule::ToProto() const {
 
 HloModuleProtoWithConfig HloModule::ToProtoWithConfig() const {
   HloModuleProtoWithConfig result;
-  *result.mutable_config() = config_.get().ToProto();
+  *result.mutable_config() = config().ToProto();
   *result.mutable_hlo_module() = ToProto();
   return result;
 }
@@ -680,12 +678,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     module->add_profile_info(profile_info);
   }
   if (proto.has_device_assignment()) {
-    if (!module->config_.get().has_static_device_assignment()) {
+    if (!module->config().has_static_device_assignment()) {
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<DeviceAssignment> device_assignment,
           DeviceAssignment::Deserialize(proto.device_assignment()));
-      module->config_.get_mutable().set_static_device_assignment(
-          *device_assignment);
+      module->mutable_config().set_static_device_assignment(*device_assignment);
     }
   }
 
@@ -1066,22 +1063,27 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted(
   return result;
 }
 
-std::unique_ptr<HloModule> HloModule::Clone(const std::string& suffix) const {
-  return Clone(config_.FreezeAndShare(), suffix);
+namespace {
+std::unique_ptr<HloModule> CreateModule(
+    absl::string_view suffix, std::optional<const HloModuleConfig> config_in,
+    const HloModule& source) {
+  std::string div = suffix.empty() ? "" : "-";
+  std::string new_name = absl::StrCat(source.name(), div, suffix);
+  VLOG(1) << "Cloning module :" << source.name() << " --> " << new_name << "\n";
+  std::shared_ptr<const HloModuleConfig> new_config =
+      config_in.has_value()
+          ? std::make_shared<const HloModuleConfig>(*config_in)
+          : source.shared_config();
+  return std::make_unique<HloModule>(
+      new_name, new_config,
+      std::make_unique<CompilationEnvironments>(source.comp_envs()));
 }
-
-std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
-                                            const std::string& suffix) const {
-  return Clone(std::make_shared<const HloModuleConfig>(config), suffix);
-}
+}  // namespace
 
 std::unique_ptr<HloModule> HloModule::Clone(
-    std::shared_ptr<const HloModuleConfig> config,
-    const std::string& suffix) const {
-  VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = std::make_unique<HloModule>(
-      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), std::move(config),
-      std::make_unique<CompilationEnvironments>(*comp_envs_));
+    const std::string& suffix,
+    std::optional<const HloModuleConfig> config_in) const {
+  auto module = CreateModule(suffix, config_in, *this);
 
   HloCloneContext context(module.get(), suffix);
   if (entry_computation_) {

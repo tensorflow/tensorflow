@@ -40,6 +40,8 @@ default_visibility = [
     "//waymo/ml/deploy/benchmark:__subpackages__",
     # copybara:uncomment #internal tuning service,
     # copybara:uncomment "//third_party/odml/experimental:__subpackages__",
+    #internal nexus library,
+    #internal nexus library tests,
 ]
 
 package(
@@ -720,7 +722,6 @@ cc_library(
         "//learning/brain/experimental/jax_pst/grpc/tf:__pkg__",
         "//learning/brain/google/data/core/kernels:__pkg__",
         "//learning/brain/google/data/core/parse_proto:__pkg__",
-        "//learning/deepmind/tensorflow/queues:__pkg__",
         "//learning/deepmind/tensorflow/sstable:__pkg__",
         "//learning/deepmind/video/tensorflow:__pkg__",
         "//learning/sibyl/tfx/state/kernels:__pkg__",

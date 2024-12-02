@@ -154,6 +154,7 @@ target_link_libraries(tensorflow-lite-test-external-main
   tensorflow-lite-test-base
   -Wl,--no-whole-archive
   gtest
+  absl::log
 )
 
 macro(add_kernel_test TEST_SRC TEST_LIB)

@@ -474,6 +474,7 @@ enum BuiltinOperator : int32 {
   STABLEHLO_COMPOSITE = 206, // WARNING: No runtime support
   STABLEHLO_SHIFT_LEFT = 207,
   STABLEHLO_CBRT = 208, // WARNING: No runtime support
+  STABLEHLO_CASE = 209,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -633,6 +634,7 @@ union BuiltinOptions2{
   ReduceWindowOptions (deprecated),
   StableHLOCompositeOptions,
   StablehloShiftLeftOptions,
+  StablehloCaseOptions,
 }
 
 table StablehloGatherOptions{
@@ -775,6 +777,10 @@ table StablehloScatterOptions {
   index_vector_dim: long;
   unique_indices: bool;
   update_computation_subgraph_index: int;
+}
+
+table StablehloCaseOptions{
+  branch_subgraph_indices : [int];
 }
 
 enum RngAlgorithm : byte {

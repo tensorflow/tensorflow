@@ -15,9 +15,18 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime_fork_join.h"
 
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/base/attributes.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+
 #define EIGEN_USE_THREADS
 
-#include "absl/base/dynamic_annotations.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "unsupported/Eigen/CXX11/Tensor"

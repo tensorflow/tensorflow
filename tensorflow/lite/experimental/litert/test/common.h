@@ -54,7 +54,7 @@ std::string GetTestFilePath(absl::string_view filename);
 
 absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename);
 
-UniqueLiteRtModel LoadTestFileModel(absl::string_view filename);
+internal::UniqueLiteRtModel LoadTestFileModel(absl::string_view filename);
 
 void TouchTestFile(absl::string_view filename, absl::string_view dir);
 

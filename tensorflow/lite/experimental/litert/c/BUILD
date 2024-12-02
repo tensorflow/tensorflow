@@ -74,7 +74,7 @@ cc_library(
     deps = [
         ":litert_c_api",
         ":litert_logging",
-        "//tensorflow/lite/experimental/litert/core:tensor_buffer",
+        "//tensorflow/lite/experimental/litert/runtime:tensor_buffer",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
@@ -93,7 +93,7 @@ cc_test(
     deps = [
         ":litert_c_api",
         ":litert_tensor_buffer",
-        "//tensorflow/lite/experimental/litert/core:tensor_buffer",
+        "//tensorflow/lite/experimental/litert/runtime:tensor_buffer",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -126,6 +126,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
+        "//tensorflow/lite/experimental/litert/runtime/dispatch:dispatch_delegate",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
     ],
 )

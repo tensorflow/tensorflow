@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -324,12 +325,22 @@ std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
     bool allow_intervening_reshape, int64_t min_rank,
     HloPredicate match_partition_id, HloPredicate match_replica_id,
     bool allow_intervening_bitcast, bool allow_multiple_users) {
-  return MatchWithDynamicSlice(
+  auto spec = MatchWithDynamicSlice(
       ag, num_partitions, num_replicas, allow_multiple_split_dims,
       allow_intervening_reshape, min_rank, match_partition_id, match_replica_id,
       ag->constrain_layout(), ag->use_global_device_ids(),
       ag->channel_id() && ag->opcode() == HloOpcode::kAllGather,
       allow_intervening_bitcast, allow_multiple_users);
+
+  if (!spec.has_value() ||
+      (spec->dynamic_slice && spec->split_dim != ag->all_gather_dimension())) {
+    VLOG(2) << "Mismatch AG and DS: AG: " << ag->ToString()
+            << ", DS: " << spec->dynamic_slice->ToString()
+            << ", ag_dim: " << ag->all_gather_dimension()
+            << ", ds_dim: " << spec->split_dim;
+    return std::nullopt;
+  }
+  return spec;
 }
 
 std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
@@ -407,9 +418,10 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   }
 
   if (user->opcode() != HloOpcode::kDynamicSlice) {
-    VLOG(2) << "All-reduce user is not dynamic slice " << user->ToString();
+    VLOG(2) << "AG or AR user is not dynamic slice " << user->ToString();
     return std::nullopt;
   }
+
   ReduceScatterSpec spec;
   int64_t group_size;
   MapIdToTableOffset map_id;

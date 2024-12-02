@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_IR_LLVM_LOOP_H_
 #define XLA_SERVICE_LLVM_IR_LLVM_LOOP_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"

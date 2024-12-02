@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate_with_control_flow.h"
 
+#include <cstring>
 #include <memory>
 #include <utility>
 #include <vector>

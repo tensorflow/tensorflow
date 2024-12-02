@@ -52,6 +52,7 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         "//xla:xla_data_proto",
+        "//xla/service:metrics_proto",
     ] + if_google(["@com_google_protobuf//:any"]),
     visibility = ["//visibility:public"],
 )
@@ -77,6 +78,7 @@ tf_proto_library(
 tf_proto_library(
     name = "metrics_proto",
     srcs = ["metrics.proto"],
+    make_default_target_header_only = True,
     protodeps = if_google([
         "@com_google_protobuf//:any",
         "@com_google_protobuf//:duration",
@@ -113,8 +115,8 @@ cc_library(
 cc_library(
     name = "async_collective_creator",
     hdrs = ["async_collective_creator.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:async_collective_creator instead.",
-    deps = ["//xla/hlo/transforms:async_collective_creator"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/collectives:async_collective_creator instead.",
+    deps = ["//xla/hlo/transforms/collectives:async_collective_creator"],
 )
 
 cc_library(
@@ -313,8 +315,8 @@ xla_cc_test(
 cc_library(
     name = "convert_async_collectives_to_sync",
     hdrs = ["convert_async_collectives_to_sync.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:convert_async_collectives_to_sync instead.",
-    deps = ["//xla/hlo/transforms:convert_async_collectives_to_sync"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/collectives:convert_async_collectives_to_sync instead.",
+    deps = ["//xla/hlo/transforms/collectives:convert_async_collectives_to_sync"],
 )
 
 cc_library(
@@ -410,8 +412,8 @@ xla_cc_test(
 cc_library(
     name = "collective_quantizer",
     hdrs = ["collective_quantizer.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:collective_quantizer instead.",
-    deps = ["//xla/hlo/transforms:collective_quantizer"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/collectives:collective_quantizer instead.",
+    deps = ["//xla/hlo/transforms/collectives:collective_quantizer"],
 )
 
 cc_library(
@@ -1161,7 +1163,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:async_collective_creator",
+        "//xla/hlo/transforms/collectives:async_collective_creator",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
@@ -2306,8 +2308,8 @@ cc_library(
 cc_library(
     name = "collectives_schedule_linearizer",
     hdrs = ["collectives_schedule_linearizer.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:collectives_schedule_linearizer instead.",
-    deps = ["//xla/hlo/transforms:collectives_schedule_linearizer"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/collectives:collectives_schedule_linearizer instead.",
+    deps = ["//xla/hlo/transforms/collectives:collectives_schedule_linearizer"],
 )
 
 cc_library(
@@ -2347,8 +2349,8 @@ cc_library(
 cc_library(
     name = "all_gather_broadcast_reorder",
     hdrs = ["all_gather_broadcast_reorder.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:all_gather_broadcast_reorder instead.",
-    deps = ["//xla/hlo/transforms:all_gather_broadcast_reorder"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/collectives:all_gather_broadcast_reorder instead.",
+    deps = ["//xla/hlo/transforms/collectives:all_gather_broadcast_reorder"],
 )
 
 cc_library(
@@ -2361,22 +2363,22 @@ cc_library(
 cc_library(
     name = "all_gather_combiner",
     hdrs = ["all_gather_combiner.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:all_gather_combiner instead.",
-    deps = ["//xla/hlo/transforms:all_gather_combiner"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/collectives:all_gather_combiner instead.",
+    deps = ["//xla/hlo/transforms/collectives:all_gather_combiner"],
 )
 
 cc_library(
     name = "all_reduce_combiner",
     hdrs = ["all_reduce_combiner.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:all_reduce_combiner instead.",
-    deps = ["//xla/hlo/transforms:all_reduce_combiner"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/collectives:all_reduce_combiner instead.",
+    deps = ["//xla/hlo/transforms/collectives:all_reduce_combiner"],
 )
 
 cc_library(
     name = "all_reduce_contiguous",
     hdrs = ["all_reduce_contiguous.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:all_reduce_contiguous instead.",
-    deps = ["//xla/hlo/transforms:all_reduce_contiguous"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/collectives:all_reduce_contiguous instead.",
+    deps = ["//xla/hlo/transforms/collectives:all_reduce_contiguous"],
 )
 
 cc_library(
@@ -5371,8 +5373,8 @@ cc_library(
 cc_library(
     name = "collective_transformation_reorderer",
     hdrs = ["collective_transformation_reorderer.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:collective_transformation_reorderer instead.",
-    deps = ["//xla/hlo/transforms:collective_transformation_reorderer"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/collectives:collective_transformation_reorderer instead.",
+    deps = ["//xla/hlo/transforms/collectives:collective_transformation_reorderer"],
 )
 
 xla_cc_test(
@@ -6212,8 +6214,8 @@ xla_cc_test(
 cc_library(
     name = "infeed_token_propagation",
     hdrs = ["infeed_token_propagation.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms:infeed_token_propagation instead.",
-    deps = ["//xla/hlo/transforms:infeed_token_propagation"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/transforms/collectives:infeed_token_propagation instead.",
+    deps = ["//xla/hlo/transforms/collectives:infeed_token_propagation"],
 )
 
 cc_library(

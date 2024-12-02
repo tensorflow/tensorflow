@@ -63,6 +63,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "requires-gpu-sm70-only": "Requires exactly sm70.",
     "requires-gpu-sm80-only": "Requires exactly sm80.",
     "requires-gpu-sm90-only": "Requires exactly sm90.",
+    "requires-gpu-sm100-only": "Requires exactly sm100.",
     "gpu": "Catch-all tag for targets that should be built/tested on GPU CI",
     "cpu": "Catch-all tag for targets that should be built/tested on CPU CI.",
     "cuda-only": "Targets that require the CUDA backend to be enabled.",
@@ -80,6 +81,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_gpu_v100": "Runs on a v100.",
     "xla_gpu_a100": "Runs on an a100.",
     "xla_gpu_h100": "Runs on an h100.",
+    "xla_gpu_b100": "Runs on an b100.",
     # Below tags are consumed by `xla_test`.
     "test_xla_cpu_thunks": (
         "Internally, `xla_test` sets `--xla_cpu_use_thunk_runtime`. Unused on"

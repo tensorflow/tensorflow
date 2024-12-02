@@ -639,6 +639,17 @@ TFL_CAPI_EXPORT
 TfLiteStatus TfLiteOpaqueContextGetSizeOfType(TfLiteOpaqueContext* context,
                                               TfLiteType type, size_t* bytes);
 
+/// Retrieves named metadata buffer from the TFLite model.
+/// Returns kTfLiteOk if metadata is successfully obtained from the flatbuffer
+/// model. That is, there exists a `metadata` entry with given `name` string.
+/// (see TFLite's schema.fbs).
+/// The corresponding `buffer` information is populated in `ptr` & `bytes`.
+/// The data from `ptr` is valid for the lifetime of the Interpreter.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueContextGetMetadata(TfLiteOpaqueContext* context,
+                                            const char* name, const char** ptr,
+                                            size_t* bytes);
+
 /// Reports an error message formed by using the provided 'format' string in
 /// combination with the data provided via the unnamed arguments following
 /// the 'format' parameter ('...').  The intended usage and behavior is the same

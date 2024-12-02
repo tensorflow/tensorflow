@@ -601,6 +601,7 @@ cc_library(
     hdrs = ["command_buffer.h"],
     visibility = [":internal"],
     deps = [
+        ":bit_pattern",
         ":device_memory",
         ":kernel",
         ":launch_dim",
@@ -938,6 +939,24 @@ xla_cc_test(
         "//xla:test",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "bit_pattern",
+    srcs = ["bit_pattern.cc"],
+    hdrs = ["bit_pattern.h"],
+    deps = ["@com_google_absl//absl/strings"],
+)
+
+cc_test(
+    name = "bit_pattern_test",
+    srcs = ["bit_pattern_test.cc"],
+    deps = [
+        ":bit_pattern",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],

@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime_conv2d.h"
 
-#include <optional>
+#include <cstdint>
+
+#include "absl/base/attributes.h"
 
 #define EIGEN_USE_THREADS
 
-#include "absl/base/dynamic_annotations.h"
 #include "xla/backends/cpu/runtime/convolution_thunk_internal.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"

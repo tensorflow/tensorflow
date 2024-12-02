@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_TARGET_MACHINE_FEATURES_H_
 #define XLA_SERVICE_CPU_TARGET_MACHINE_FEATURES_H_
 
+#include <cstdint>
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Target/TargetMachine.h"

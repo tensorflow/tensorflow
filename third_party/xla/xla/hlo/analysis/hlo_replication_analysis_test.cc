@@ -673,6 +673,122 @@ ENTRY entry {
       FindInstruction(module.get(), "dynamic-slice"), {}, replica_groups_2));
 }
 
+TEST_F(HloReplicationAnalysisTest,
+       PartiallyReplicatedAllGatherFlattenedIDReplicaAnalysis) {
+  const std::string module_str = R"(
+HloModule PartiallyReplicatedAllGatherFlattenedIDReplicaAnalysis
+
+ENTRY entry {
+  param = s32[2] parameter(0)
+  all-gather0 = s32[4] all-gather(param), dimensions={0}, replica_groups={{0,2},{4,6},{1,3},{5,7}}, channel_id=1, use_global_device_ids=true
+  all-gather1 = s32[4] all-gather(param), dimensions={0}, replica_groups={{0,4},{2,6},{1,5},{3,7}}, channel_id=2, use_global_device_ids=true
+  ROOT tuple = (s32[4], s32[4]) tuple(all-gather0, all-gather1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module_replica_analysis,
+      ParseAndReturnVerifiedModule(module_str, /*replica_count=*/4,
+                                   /*num_partitions=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloReplicationAnalysis> replica_analysis,
+      HloReplicationAnalysis::RunWithPartialReplication(
+          module_replica_analysis.get(),
+          /*cross_partition_spmd=*/false));
+
+  std::array<ReplicaGroup, 2> replica_groups0;
+  replica_groups0[0].add_replica_ids(0);
+  replica_groups0[0].add_replica_ids(1);
+  replica_groups0[1].add_replica_ids(2);
+  replica_groups0[1].add_replica_ids(3);
+
+  std::array<ReplicaGroup, 2> replica_groups1;
+  replica_groups1[0].add_replica_ids(0);
+  replica_groups1[0].add_replica_ids(2);
+  replica_groups1[1].add_replica_ids(1);
+  replica_groups1[1].add_replica_ids(3);
+
+  EXPECT_FALSE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module_replica_analysis.get(), "all-gather0"), {}));
+
+  EXPECT_TRUE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module_replica_analysis.get(), "all-gather0"), {},
+      replica_groups0));
+
+  EXPECT_FALSE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module_replica_analysis.get(), "all-gather0"), {},
+      replica_groups1));
+
+  EXPECT_FALSE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module_replica_analysis.get(), "all-gather1"), {}));
+
+  EXPECT_TRUE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module_replica_analysis.get(), "all-gather1"), {},
+      replica_groups1));
+
+  EXPECT_FALSE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module_replica_analysis.get(), "all-gather1"), {},
+      replica_groups0));
+}
+
+TEST_F(HloReplicationAnalysisTest,
+       PartiallyReplicatedAllGatherFlattenedIDPartitionAnalysis) {
+  const std::string module_str = R"(
+HloModule PartiallyReplicatedAllGatherFlattenedIDPartitionAnalysis
+
+ENTRY entry {
+  param = s32[2] parameter(0)
+  all-gather0 = s32[4] all-gather(param), dimensions={0}, replica_groups={{0,1},{2,3},{4,5},{6,7}}, channel_id=1, use_global_device_ids=true
+  all-gather1 = s32[4] all-gather(param), dimensions={0}, replica_groups={{0,2},{1,3},{4,6},{5,7}}, channel_id=2, use_global_device_ids=true
+  ROOT tuple = (s32[4], s32[4]) tuple(all-gather0, all-gather1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module_partition_analysis,
+      ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2,
+                                   /*num_partitions=*/4));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloReplicationAnalysis> partition_analysis,
+      HloReplicationAnalysis::RunWithPartialReplication(
+          module_partition_analysis.get(),
+          /*cross_partition_spmd=*/true));
+
+  std::array<ReplicaGroup, 2> replica_groups0;
+  replica_groups0[0].add_replica_ids(0);
+  replica_groups0[0].add_replica_ids(1);
+  replica_groups0[1].add_replica_ids(2);
+  replica_groups0[1].add_replica_ids(3);
+
+  std::array<ReplicaGroup, 2> replica_groups1;
+  replica_groups1[0].add_replica_ids(0);
+  replica_groups1[0].add_replica_ids(2);
+  replica_groups1[1].add_replica_ids(1);
+  replica_groups1[1].add_replica_ids(3);
+
+  EXPECT_FALSE(partition_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module_partition_analysis.get(), "all-gather0"), {}));
+
+  EXPECT_TRUE(partition_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module_partition_analysis.get(), "all-gather0"), {},
+      replica_groups0));
+
+  EXPECT_FALSE(partition_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module_partition_analysis.get(), "all-gather0"), {},
+      replica_groups1));
+
+  EXPECT_FALSE(partition_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module_partition_analysis.get(), "all-gather1"), {}));
+
+  EXPECT_TRUE(partition_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module_partition_analysis.get(), "all-gather1"), {},
+      replica_groups1));
+
+  EXPECT_FALSE(partition_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module_partition_analysis.get(), "all-gather1"), {},
+      replica_groups0));
+}
+
 TEST_F(HloReplicationAnalysisTest, OptimizationBarrier) {
   const std::string module_str = R"(
 HloModule OptimizationBarrier

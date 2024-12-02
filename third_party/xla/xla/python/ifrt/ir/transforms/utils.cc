@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {

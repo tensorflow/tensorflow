@@ -58,8 +58,8 @@ NodeDef CreateScalarConstNodeHelper(
   return node;
 }
 
-Status OptimizeWithMapFusion(const GrapplerItem& item, GraphDef* output,
-                             bool autotune) {
+absl::Status OptimizeWithMapFusion(const GrapplerItem& item, GraphDef* output,
+                                   bool autotune) {
   MapFusion optimizer;
   RewriterConfig_CustomGraphOptimizer config;
   if (autotune) {

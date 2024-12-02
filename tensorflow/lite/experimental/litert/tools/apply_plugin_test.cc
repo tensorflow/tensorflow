@@ -25,18 +25,27 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/core/graph_tools.h"
 #include "tensorflow/lite/experimental/litert/core/litert_model_init.h"
-#include "tensorflow/lite/experimental/litert/core/litert_model_serialize.h"
 #include "tensorflow/lite/experimental/litert/core/model.h"
+#include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
-namespace {
+using litert::BufferRef;
+using litert::internal::GetMetadata;
+using litert::internal::kByteCodeMetadataKey;
+using litert::internal::kLiteRtBuildStampKey;
+using litert::internal::ParseBuildStamp;
+using litert::internal::ParseByteCodePlaceholder;
+using litert::internal::ParseExecInfo;
+using litert::internal::Serialization;
+using litert::tools::ApplyPlugin;
+using litert::tools::ApplyPluginRun;
+using testing::HasSubstr;
 
-using ::graph_tools::GetMetadata;
-using ::litert::tools::ApplyPlugin;
-using ::litert::tools::ApplyPluginRun;
-using ::testing::HasSubstr;
+namespace {
 
 static constexpr absl::string_view kPluginSearchPath =
     "third_party/tensorflow/lite/experimental/litert/vendors/examples";
@@ -100,10 +109,10 @@ TEST(TestApplyPluginTool, TestNoop) {
   ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
   LiteRtModel model;
-  ASSERT_STATUS_OK(
-      LoadModel(reinterpret_cast<const uint8_t*>(out.view().data()),
-                out.view().size(), &model));
-  UniqueLiteRtModel u_model(model);
+  ASSERT_STATUS_OK(litert::internal::LoadModel(
+      reinterpret_cast<const uint8_t*>(out.view().data()), out.view().size(),
+      &model));
+  litert::internal::UniqueLiteRtModel u_model(model);
 
   EXPECT_EQ(model->subgraphs.size(), 1);
 }
@@ -152,23 +161,81 @@ TEST(TestApplyPluginTool, TestApply) {
   run->outs.push_back(out);
   ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  LiteRtModel model;
-  ASSERT_STATUS_OK(
-      LoadModel(reinterpret_cast<const uint8_t*>(out.view().data()),
-                out.view().size(), &model));
-  UniqueLiteRtModel u_model(model);
+  ASSERT_RESULT_OK_MOVE(
+      auto model, litert::internal::LoadModel(
+                      BufferRef<uint8_t>(out.str().data(), out.str().size())));
   EXPECT_EQ(model->subgraphs.size(), 1);
 
-  ASSERT_RESULT_OK_ASSIGN(auto byte_code_buffer,
-                          GetMetadata(model, kLiteRtMetadataByteCodeKey));
-  EXPECT_THAT(byte_code_buffer.StrView(), HasSubstr("Partition_0_with_1_muls"));
+  {
+    ASSERT_RESULT_OK_ASSIGN(auto stamp_buffer,
+                            GetMetadata(model.get(), kLiteRtBuildStampKey));
+    ASSERT_RESULT_OK_ASSIGN(auto stamp, ParseBuildStamp(stamp_buffer));
+    auto [man, soc_model, serial] = stamp;
+    EXPECT_EQ(man, kSocManufacturer);
+    EXPECT_EQ(soc_model, kSocModel);
+    EXPECT_EQ(serial, Serialization::kMetadata);
+  }
 
-  ASSERT_RESULT_OK_ASSIGN(auto tag_buffer,
-                          GetMetadata(model, kLiteRtBuildTagKey));
-  EXPECT_EQ(tag_buffer.StrView(),
-            "soc_man:ExampleSocManufacturer,soc_model:ExampleSocModel,"
-            "serialization_strategy:"
-            "METADATA");
+  {
+    auto custom_op = model->subgraphs.front().ops.front();
+    ASSERT_EQ(custom_op->op_code, kLiteRtOpCodeTflCustom);
+    EXPECT_EQ(custom_op->custom_options.StrView(), "Partition_0");
+  }
+
+  {
+    ASSERT_RESULT_OK_ASSIGN(auto byte_code_buffer,
+                            GetMetadata(model.get(), kByteCodeMetadataKey));
+    EXPECT_THAT(byte_code_buffer.StrView(),
+                HasSubstr("Partition_0_with_1_muls"));
+  }
 }
+
+// NOLINTBEGIN
+TEST(TestApplyPluginTool, TestApplyWithAppendSerialization) {
+#ifndef NDEBUG
+  GTEST_SKIP() << "Flatbuffers assertion will fail in append mode\n";
+#endif
+  std::stringstream out;
+  {
+    auto run = MakeBaseRun(ApplyPluginRun::Cmd::APPLY);
+    run->serialization = Serialization::kAppend;
+    run->outs.push_back(out);
+    ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
+  }
+
+  BufferRef<uint8_t> serialized(out.str().data(), out.str().size());
+
+  ASSERT_RESULT_OK_MOVE(auto model, litert::internal::LoadModel(serialized));
+  EXPECT_EQ(model->subgraphs.size(), 1);
+
+  {
+    ASSERT_RESULT_OK_ASSIGN(auto stamp_buffer,
+                            GetMetadata(model.get(), kLiteRtBuildStampKey));
+    ASSERT_RESULT_OK_ASSIGN(auto stamp, ParseBuildStamp(stamp_buffer));
+    auto [man, model, serial] = stamp;
+    EXPECT_EQ(man, kSocManufacturer);
+    EXPECT_EQ(model, kSocModel);
+    EXPECT_EQ(serial, Serialization::kAppend);
+  }
+
+  {
+    auto custom_op = model->subgraphs.front().ops.front();
+    ASSERT_EQ(custom_op->op_code, kLiteRtOpCodeTflCustom);
+
+    ASSERT_RESULT_OK_ASSIGN(auto options,
+                            ParseExecInfo(custom_op->custom_options));
+    auto [entry_point, metadata_key] = options;
+    EXPECT_EQ(entry_point, "Partition_0");
+
+    ASSERT_RESULT_OK_ASSIGN(auto metadata, model->FindMetadata(metadata_key));
+    ASSERT_RESULT_OK_ASSIGN(auto byte_code_info,
+                            ParseByteCodePlaceholder(metadata));
+    auto [offset, size] = byte_code_info;
+
+    EXPECT_EQ(serialized.StrView().substr(offset, size),
+              "Partition_0_with_1_muls:");
+  }
+}
+// NOLINTEND
 
 }  // namespace

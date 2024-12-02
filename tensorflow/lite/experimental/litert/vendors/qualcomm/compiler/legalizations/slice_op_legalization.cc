@@ -25,9 +25,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/c/litert_support.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_op.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_support.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_tensor.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/graph_tools.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_op.h"
@@ -50,13 +48,13 @@ static constexpr int kSliceOpParamSize = 1;
 static constexpr int kRangesParamArgSize = 3;
 static constexpr int kRangesParamRank = 2;
 
-LiteRtStatus SliceOpLegalization::LegalizeOp(LiteRtOpManager& src,
+LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
                                              Qnn_OpConfig_t& dest,
                                              GraphMapper& graph_mapper) {
   if (src.Code() != kLiteRtOpCodeTflSlice) {
     return kLiteRtStatusLegalizeNoMatch;
   }
-  DumpLegalization(*src.Op());
+  DumpLegalization(*src.Get());
   std::string op_name = absl::StrFormat(kSliceOpFmt, op_counter_++);
   LITERT_RETURN_STATUS_IF_NOT_OK(SetOpInfo(op_name.c_str(),
                                            kDefaultQnnOpPackageName.data(),
@@ -64,7 +62,7 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(LiteRtOpManager& src,
 
   // QNN strided slice op expects 1 input tensor.
   LITERT_ASSIGN_OR_RETURN_STATUS(auto op_ins,
-                                 ::graph_tools::GetOpIns(src.Op()));
+                                 litert::internal::GetOpIns(src.Get()));
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, kSliceOpInputSize,
                      QNN_TENSOR_INIT);
   LITERT_RETURN_STATUS_IF_NOT_OK(
@@ -72,7 +70,7 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(LiteRtOpManager& src,
 
   // QNN strided slice op expects 1 output tensor.
   LITERT_ASSIGN_OR_RETURN_STATUS(auto op_outs,
-                                 ::graph_tools::GetOpOuts(src.Op()));
+                                 litert::internal::GetOpOuts(src.Get()));
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs, kSliceOpOutputSize,
                      QNN_TENSOR_INIT);
   LITERT_RETURN_STATUS_IF_NOT_OK(
@@ -80,13 +78,15 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(LiteRtOpManager& src,
   LITERT_RETURN_STATUS_IF_NOT_OK(
       graph_mapper.PushToScope(op_outs[0], qnn_op_outs[0]));
 
-  LiteRtTensorManager::Unique src_input_tensor;
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      LiteRtTensorManager::MakeFromTensor(op_ins[0], src_input_tensor));
+  litert::Tensor src_input_tensor(op_ins[0]);
+  auto src_input_tensor_rank =
+      src_input_tensor.RankedTensorType().Layout().Rank();
 
   // Prepare qnn strided slice parameters.
-  auto src_begin_indices = graph_tools::GetWeights<int32_t>(op_ins[1]).Value();
-  auto src_size_indices = graph_tools::GetWeights<int32_t>(op_ins[2]).Value();
+  auto src_begin_indices =
+      litert::internal::GetWeights<int32_t>(op_ins[1]).Value();
+  auto src_size_indices =
+      litert::internal::GetWeights<int32_t>(op_ins[2]).Value();
 
   // Check if src_begin_indices and src_size_indices are weights tensors.
   if (src_begin_indices.empty() || src_size_indices.empty()) {
@@ -94,9 +94,9 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(LiteRtOpManager& src,
   }
 
   LITERT_STACK_ARRAY(int32_t, range_tensor_data,
-                     src_input_tensor->Rank() * kRangesParamArgSize,
+                     src_input_tensor_rank* kRangesParamArgSize,
                      /*init value*/ 0);
-  for (int i = 0; i < src_input_tensor->Rank(); ++i) {
+  for (int i = 0; i < src_input_tensor_rank; ++i) {
     // Copy begin, end, and stride values from src_begin_indices and
     // src_size_indices to range_tensor_data. Stride is always 1.
     range_tensor_data[i * kRangesParamArgSize] = src_begin_indices[i];
@@ -107,7 +107,7 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(LiteRtOpManager& src,
   Qnn_ClientBuffer_t range_tensor_client_buf = BuildDefaultClientBuffer();
   range_tensor_client_buf.data = range_tensor_data;
   range_tensor_client_buf.dataSize =
-      src_input_tensor->Rank() * kRangesParamArgSize * sizeof(int32_t);
+      src_input_tensor_rank * kRangesParamArgSize * sizeof(int32_t);
 
   // Construct the const tensor "ranges".
   Qnn_Tensor_t range_tensor = BuildDefaultTensor();
@@ -116,7 +116,7 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(LiteRtOpManager& src,
   range_tensor.v2.type = QNN_TENSOR_TYPE_STATIC;
   range_tensor.v2.rank = kRangesParamRank;
   range_tensor.v2.dimensions = new uint32_t[kRangesParamRank];
-  range_tensor.v2.dimensions[0] = src_input_tensor->Rank();
+  range_tensor.v2.dimensions[0] = src_input_tensor_rank;
   range_tensor.v2.dimensions[1] = kRangesParamArgSize;
   range_tensor.v2.memType = QNN_TENSORMEMTYPE_RAW;
   range_tensor.v2.clientBuf = range_tensor_client_buf;

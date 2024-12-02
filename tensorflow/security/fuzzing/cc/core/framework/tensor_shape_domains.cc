@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <tuple>
-#include <utility>
 #include <vector>
 
 #include "fuzztest/fuzztest.h"

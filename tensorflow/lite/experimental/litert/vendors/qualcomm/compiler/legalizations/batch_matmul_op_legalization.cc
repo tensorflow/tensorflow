@@ -23,7 +23,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/c/litert_support.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_op.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/util.h"
@@ -34,7 +34,7 @@ static constexpr absl::string_view kQnnBatchMatmulOpTypeName = "MatMul";
 static constexpr absl::string_view kDefaultQnnOpPackageName = "qti.aisw";
 static constexpr absl::string_view kBatchMatmulOpFmt = "batch_matmul_%d";
 
-LiteRtStatus BatchMatmulOpLegalization::LegalizeOp(LiteRtOpManager& src,
+LiteRtStatus BatchMatmulOpLegalization::LegalizeOp(const litert::Op& src,
                                                    Qnn_OpConfig_t& dest,
                                                    GraphMapper& graph_mapper) {
   if (src.Code() != kLiteRtOpCodeTflBatchMatmul) {

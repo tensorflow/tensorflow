@@ -42,7 +42,7 @@ TEST(DispatchApi, GoogleTensor) {
   EXPECT_EQ(LiteRtDispatchGetBuildId(&build_id), kLiteRtStatusOk);
   ABSL_LOG(INFO) << "build_id: " << build_id;
 
-  LiteRtDispatchApiVersion api_version;
+  LiteRtApiVersion api_version;
   EXPECT_EQ(LiteRtDispatchGetApiVersion(&api_version), kLiteRtStatusOk);
   ABSL_LOG(INFO) << "api_version: " << api_version.major << "."
                  << api_version.minor << "." << api_version.patch;
@@ -84,7 +84,7 @@ TEST(DispatchApi, GoogleTensor) {
                 invocation_context, /*input_index=*/0, &kInput0TensorType,
                 &input_0_tensor_buffer_requirements),
             kLiteRtStatusOk);
-  EXPECT_EQ(LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+  EXPECT_EQ(LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
                 input_0_tensor_buffer_requirements, &num_tensor_buffer_types),
             kLiteRtStatusOk);
   EXPECT_GE(num_tensor_buffer_types, 1);
@@ -106,7 +106,7 @@ TEST(DispatchApi, GoogleTensor) {
                 invocation_context, /*input_index=*/1, &kInput1TensorType,
                 &input_1_tensor_buffer_requirements),
             kLiteRtStatusOk);
-  EXPECT_EQ(LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+  EXPECT_EQ(LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
                 input_1_tensor_buffer_requirements, &num_tensor_buffer_types),
             kLiteRtStatusOk);
   EXPECT_GE(num_tensor_buffer_types, 1);
@@ -128,7 +128,7 @@ TEST(DispatchApi, GoogleTensor) {
                 invocation_context, /*output_index=*/0, &kOutputTensorType,
                 &output_tensor_buffer_requirements),
             kLiteRtStatusOk);
-  EXPECT_EQ(LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+  EXPECT_EQ(LiteRtGetNumTensorBufferRequirementsSupportedBufferTypes(
                 output_tensor_buffer_requirements, &num_tensor_buffer_types),
             kLiteRtStatusOk);
   EXPECT_GE(num_tensor_buffer_types, 1);

@@ -122,7 +122,8 @@ TEST(CompilerPluginTest, CompileModel) {
   EXPECT_EQ(plugins.front().SocManufacturer(), kTestManufacturer);
 
   auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
-  ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto subgraph,
+                          litert::internal::GetSubgraph(model.get()));
 
   std::ostringstream byte_code_out;
   std::vector<std::string> call_info_out;

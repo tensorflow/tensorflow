@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/conversion/conversion.h"
 
+#include <cassert>
 #include <utility>
 
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"

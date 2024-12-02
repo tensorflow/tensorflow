@@ -74,17 +74,6 @@ void CleanUpHloModuleForGraphviz(HloModule* hlo_module) {
   }
 }
 
-// In ModelExplorer's logic, id of a layer is a nested namespace:
-// <section_layer_name>/<computation_layer_name>/<instruction_layer_name>
-// 1. for fusion instruction:
-// <parent_computation_name>/<instruction_name>___group___.
-// 2. for computation: <computation_name>___group___.
-// Since the `section` layer in ME concept is formed on client, we are not able
-// to encode that into the nested namespace here if the section will exist.
-std::string GetLayerId(absl::string_view namespace_name) {
-  return absl::StrCat(namespace_name, "___group___");
-}
-
 #ifdef PLATFORM_GOOGLE
 // Add a custom group node on the graph level, for the center node chosen by the
 // user set its attributes like `id`, `name` or `opcode` in `graph_json`.
@@ -106,10 +95,15 @@ void AddGraphMetadata(std::string& graph_json_str,
                       const HloInstruction& instr) {
 #ifdef PLATFORM_GOOGLE
   nlohmann::json graph_json = nlohmann::json::parse(graph_json_str);
-  auto id =
-      instr.opcode() == xla::HloOpcode::kFusion
-          ? GetLayerId(absl::StrCat(instr.parent()->name(), "/", instr.name()))
-          : absl::StrCat(instr.unique_id());
+  // Name for computation/instruction should be distinct under a module.
+  // 1. Fusion instruction is represented as a layer on client, use its
+  // pinned node as the center node, and use the name of the fused computation
+  // as the node id.
+  // 2. Other instructions are represented as nodes on client, use it as the
+  // center node directly, and name of the instructions as the node id.
+  std::string id = instr.opcode() == xla::HloOpcode::kFusion
+                       ? std::string(instr.called_computations()[0]->name())
+                       : absl::StrCat(instr.name());
   AddCenterNodeMetadata(graph_json, id, instr.name(),
                         HloOpcodeString(instr.opcode()));
   graph_json_str = graph_json.dump();
@@ -119,7 +113,9 @@ void AddGraphMetadata(std::string& graph_json_str,
 void AddGraphMetadata(std::string& graph_json_str, const HloComputation& comp) {
 #ifdef PLATFORM_GOOGLE
   nlohmann::json graph_json = nlohmann::json::parse(graph_json_str);
-  AddCenterNodeMetadata(graph_json, GetLayerId(comp.name()), comp.name(), "");
+  // Computation is represented as a node on client, use name of the computation
+  // as the center node id.
+  AddCenterNodeMetadata(graph_json, absl::StrCat(comp.name()), comp.name(), "");
   graph_json_str = graph_json.dump();
 #endif  // PLATFORM_GOOGLE
 }

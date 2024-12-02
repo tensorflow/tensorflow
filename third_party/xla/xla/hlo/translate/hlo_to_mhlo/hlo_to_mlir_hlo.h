@@ -66,10 +66,6 @@ absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
                                  bool import_all_computations = false,
                                  bool flatten_computation_args_result = false);
 
-// Entrypoint for HLO to StableHLO conversion.
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
-    mlir::MLIRContext& ctx, const xla::HloModule* hlo_module);
-
 }  // namespace xla
 
 #endif  // XLA_HLO_TRANSLATE_HLO_TO_MHLO_HLO_TO_MLIR_HLO_H_

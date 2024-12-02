@@ -667,6 +667,13 @@ absl::StatusOr<bool> ProcessComputation(
                                      instruction_sequence, hlo));
     changed = true;
   }
+  // After processing all the operations, if nothing set the flag
+  // collective_in_computation[computation] to true, then there must be no
+  // collective in this computation.
+  if (collective_in_computation.find(computation) ==
+      collective_in_computation.end()) {
+    collective_in_computation[computation] = false;
+  }
   return changed;
 }
 }  // namespace
@@ -681,11 +688,9 @@ absl::StatusOr<bool> PipelinedP2PRewriter::Run(
   // while-body is processed before while-op.
   for (auto* computation :
        module->MakeComputationPostOrder(execution_threads)) {
-    if (computation->IsFusionComputation()) {
-      collective_in_computation[computation] = false;
-      continue;
-    }
-
+    // For both fusions and non-fusion computations, we assume that if there is
+    // a collective in the body of the called computations then the operation
+    // may invoke collectives.
     TF_ASSIGN_OR_RETURN(
         bool cur_changed,
         ProcessComputation(module, computation, collective_in_computation));

@@ -287,23 +287,6 @@ int64_t GpuPerformanceModelBase::GetSharedOperandBytesAccessed(
 }
 
 /*static*/
-absl::Duration GpuPerformanceModelBase::ReadTime(
-    const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
-    int64_t n_bytes_net, int64_t n_bytes_total) {
-  float bandwidth = gpu_device_info.memory_bandwidth();
-  if (n_bytes_net < gpu_device_info.l2_cache_size()) {
-    bandwidth *= kL2CacheSpeedup;
-    if (n_bytes_net <
-        gpu_device_info.l1_cache_size_per_SM() * gpu_device_info.core_count()) {
-      bandwidth *= kL1CacheSpeedup;
-    }
-  }
-
-  bandwidth = AdjustBandwidth(gpu_device_info, bandwidth, num_blocks);
-  return absl::Seconds(n_bytes_total / bandwidth);
-}
-
-/*static*/
 absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
     const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
     int64_t n_bytes_net, int64_t n_bytes_total, PrimitiveType element_type,
@@ -340,47 +323,6 @@ absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
 
   return absl::Seconds(n_bytes_read_dram / dram_bandwidth) +
          absl::Seconds(n_bytes_read_cache / rest_bandwidth);
-}
-
-/*static*/ absl::Duration GpuPerformanceModelBase::ProducerInputAccessTime(
-    const GpuHloCostAnalysis* cost_analysis,
-    const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
-    const HloInstruction* producer, const HloFusionAnalysis& fusion_analysis,
-    const GpuPerformanceModelOptions& config,
-    const HloInstruction* fused_consumer) {
-  absl::Duration ret = absl::ZeroDuration();
-  float producer_output_utilization =
-      fused_consumer
-          ? GetOperandUtilization(cost_analysis, fused_consumer, producer)
-          : 1.f;
-
-  for (int i = 0; i < producer->operand_count(); ++i) {
-    // Information about data read taking into account utilization.
-    // If `operand_utilization` is 0, `operand_bytes_accessed` should be also 0.
-    int64_t operand_bytes_accessed =
-        cost_analysis->operand_bytes_accessed(*producer, i);
-    float operand_utilization =
-        cost_analysis->operand_utilization(*producer, i);
-
-    // An estimate how much data would need to fit into L1/L2 cache to speed up
-    // the operand access.
-    // If `operand_utilization` < 1, only a part of the full operand size should
-    // be read. Otherwise, `operand_bytes_accessed / operand_utilization` is the
-    // size of the operand without reuse.
-    int64_t n_bytes_net = std::llround(operand_bytes_accessed /
-                                       std::max(operand_utilization, 1.0f));
-
-    // Look if common operand of producer and consumer will be accessed more
-    // efficiently on merge.
-    float common_utilization = GetCommonUtilization(
-        cost_analysis, producer, /*producer_idx_of_operand=*/i, fused_consumer);
-
-    CHECK_LE(common_utilization, producer_output_utilization);
-    float n_bytes_total = operand_bytes_accessed *
-                          (producer_output_utilization - common_utilization);
-    ret += ReadTime(gpu_device_info, num_blocks, n_bytes_net, n_bytes_total);
-  }
-  return ret;
 }
 
 /*static*/

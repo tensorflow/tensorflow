@@ -51,13 +51,13 @@ class TestOptimizer : public CustomGraphOptimizer {
   string name() const override { return "test_optimizer"; }
   bool UsesFunctionLibrary() const override { return false; }
 
-  Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer* config =
-                  nullptr) override {
+  absl::Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer*
+                        config = nullptr) override {
     return absl::OkStatus();
   }
 
-  Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* optimized_graph) override {
+  absl::Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                        GraphDef* optimized_graph) override {
     optimized_ = true;
     *optimized_graph = item.graph;
     return absl::OkStatus();
@@ -80,7 +80,7 @@ REGISTER_GRAPH_OPTIMIZER(TestGraphOptimizer);
 
 class TestOptimizerWithParams : public TestOptimizer {
  public:
-  Status Init(
+  absl::Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     CHECK(config != nullptr);
     return absl::OkStatus();
@@ -105,13 +105,13 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
   }
   bool UsesFunctionLibrary() const override { return false; }
 
-  Status Init(
+  absl::Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return absl::OkStatus();
   }
 
-  Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* optimized_graph) override {
+  absl::Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                        GraphDef* optimized_graph) override {
     *optimized_graph = item.graph;
     if (optimization_options_) {
       optimization_options_->insert({item.id, item.optimization_options()});
@@ -145,7 +145,7 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizer) {
 
   MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
-  const Status status = optimizer.Optimize(nullptr, item, &output);
+  const absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   EXPECT_TRUE(TestOptimizer::IsOptimized());
 }
@@ -166,7 +166,7 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizerWithParams) {
 
   MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
-  const Status status = optimizer.Optimize(nullptr, item, &output);
+  const absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   EXPECT_TRUE(TestOptimizer::IsOptimized());
 }
@@ -188,7 +188,7 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizerAndCustomGraphOptimizer) {
 
   MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
-  const Status status = optimizer.Optimize(nullptr, item, &output);
+  const absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   EXPECT_TRUE(TestOptimizer::IsOptimized());
   EXPECT_TRUE(TestGraphOptimizer::IsOptimized());
@@ -213,7 +213,7 @@ TEST_F(MetaOptimizerTest, RunsPluginOptimizer) {
 
   MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
-  const Status status = optimizer.Optimize(nullptr, item, &output);
+  const absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   EXPECT_TRUE(TestOptimizer::IsOptimized());
 }
@@ -231,7 +231,7 @@ TEST_F(MetaOptimizerTest, RunOptimizersTwice) {
 
   MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
-  const Status status = optimizer.Optimize(nullptr, item, &output);
+  const absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 }
 
@@ -250,7 +250,7 @@ TEST_F(MetaOptimizerTest, RunToggleOptimizersAndCustomGraphOptimizerTwice) {
 
   MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
-  const Status status = optimizer.Optimize(nullptr, item, &output);
+  const absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   EXPECT_TRUE(TestGraphOptimizer::IsOptimized());
 }
@@ -709,13 +709,13 @@ class SleepingOptimizer : public CustomGraphOptimizer {
   string name() const override { return "test_optimizer"; }
   bool UsesFunctionLibrary() const override { return false; }
 
-  Status Init(
+  absl::Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return absl::OkStatus();
   }
 
-  Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* optimized_graph) override {
+  absl::Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                        GraphDef* optimized_graph) override {
     *optimized_graph = item.graph;
     Env::Default()->SleepForMicroseconds(1000000);
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
@@ -741,7 +741,7 @@ TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
 
   GraphDef output;
   GraphDef original = item.graph;
-  const Status status =
+  const absl::Status status =
       RunMetaOptimizer(std::move(item), config, nullptr, nullptr, &output);
   EXPECT_EQ(status.message(), "meta_optimizer exceeded deadline.");
   // Make sure the graph was reverted to the original regardless of when the
@@ -764,7 +764,7 @@ TEST_F(MetaOptimizerTest, MetaOptimizerTimesOut) {
 
   GraphDef output;
   const int original_node_size = item.graph.node_size();
-  const Status status =
+  const absl::Status status =
       RunMetaOptimizer(std::move(item), config, nullptr, nullptr, &output);
   EXPECT_EQ(status.message(), "meta_optimizer exceeded deadline.");
   // The meta optimizer should manage to finish one iteration.
@@ -785,7 +785,7 @@ TEST_F(MetaOptimizerTest, OptimizerDoesNotTimeOut) {
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   GraphDef output;
   const int original_node_size = item.graph.node_size();
-  const Status status =
+  const absl::Status status =
       RunMetaOptimizer(std::move(item), config, nullptr, nullptr, &output);
   TF_EXPECT_OK(status);
   // The meta optimizer should manage to finish two iterations.
@@ -806,7 +806,7 @@ TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnValidGraph) {
 
   MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
-  const Status status = optimizer.Optimize(nullptr, item, &output);
+  const absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 }
 
@@ -824,7 +824,7 @@ TEST_F(MetaOptimizerTest, RunInterOptimizerVerifiersOnValidGraph) {
 
   MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
-  const Status status = optimizer.Optimize(nullptr, item, &output);
+  const absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 }
 
@@ -894,7 +894,7 @@ TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnInvalidGraph) {
   post_optimization_verifier_config.set_structure_verifier(VerifierConfig::ON);
 
   MetaOptimizer optimizer_with_post_verifiers(nullptr, config_proto);
-  Status status =
+  absl::Status status =
       optimizer_with_post_verifiers.Optimize(nullptr, item, &output);
   EXPECT_TRUE(errors::IsInvalidArgument(status));
   EXPECT_TRUE(absl::StrContains(
@@ -969,7 +969,7 @@ TEST_F(MetaOptimizerTest, RunInterOptimizerVerifiersOnInvalidGraph) {
   inter_optimizer_verifier_config.set_structure_verifier(VerifierConfig::ON);
 
   MetaOptimizer optimizer_with_inter_verifiers(nullptr, config_proto);
-  Status status =
+  absl::Status status =
       optimizer_with_inter_verifiers.Optimize(nullptr, item, &output);
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE(absl::StrContains(
@@ -1088,7 +1088,7 @@ TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
       ->set_experimental_conditional_code_motion(RewriterConfig::OFF);
 
   MetaOptimizer optimizer(nullptr, config_proto);
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   EXPECT_TRUE(status.ok());
   EXPECT_EQ(output.library().function_size(), 1);
   // One of the arguments was removed.
@@ -1163,7 +1163,7 @@ TEST_F(MetaOptimizerTest, TestTFGControlFlowSink) {
   ConfigProto config_proto;
 
   MetaOptimizer optimizer(nullptr, config_proto);
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   EXPECT_EQ(output.library().function_size(), 2);
 
@@ -1199,13 +1199,13 @@ class TfDataTestOptimizer : public CustomGraphOptimizer {
   std::string name() const override { return "tf_data_test_optimizer"; }
   bool UsesFunctionLibrary() const override { return false; }
 
-  Status Init(
+  absl::Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return absl::OkStatus();
   }
 
-  Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* optimized_graph) override {
+  absl::Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                        GraphDef* optimized_graph) override {
     ++count_;
     *optimized_graph = item.graph;
     return absl::OkStatus();
@@ -1346,7 +1346,7 @@ TEST_P(TfDataTestFixture, TfDataTests) {
 
   MetaOptimizer optimizer(nullptr, config_proto);
   GraphDef output;
-  const Status status = optimizer.Optimize(nullptr, item, &output);
+  const absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
   // We expect one graph optimization + one optimization for each non-tf.data

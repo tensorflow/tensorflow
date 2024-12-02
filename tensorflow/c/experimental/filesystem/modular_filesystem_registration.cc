@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/filesystem/modular_filesystem_registration.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <memory>
+#include <utility>
 
 #include "absl/log/log.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"

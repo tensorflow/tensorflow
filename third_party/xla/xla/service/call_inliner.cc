@@ -148,8 +148,8 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
 bool InlineUnderShardy(HloInstruction* instruction) {
   return !(instruction->GetModule()->config().use_shardy_partitioner() &&
            (absl::StrContains(instruction->to_apply()->name(), "shmap_body") ||
-            absl::StartsWith(instruction->to_apply()->name(),
-                             sdy::kManualComputationBodyFuncName.str())));
+            absl::StrContains(instruction->to_apply()->name(),
+                              sdy::kManualComputationBodyFuncName.str())));
 }
 
 bool InlineComposites(

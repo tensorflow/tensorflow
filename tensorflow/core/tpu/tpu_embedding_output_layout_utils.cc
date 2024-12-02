@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-Status ComputeOutputTensorShapes(
+absl::Status ComputeOutputTensorShapes(
     const tensorflow::tpu::TPUEmbeddingConfiguration& config,
     std::vector<TensorShapeProto>* shapes) {
   int64_t core_count_per_replica = 1;

@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 293
+_version = 294
 
 # Version number for MLIR:Python components.
 mlir_api_version = 57
@@ -532,6 +532,7 @@ SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
 PjRtLayout = _xla.PjRtLayout
+AutotuneCacheMode = _xla.AutotuneCacheMode
 
 
 def LoadedExecutable_execute(self, arguments, device=None):

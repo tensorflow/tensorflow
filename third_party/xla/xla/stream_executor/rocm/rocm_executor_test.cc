@@ -15,15 +15,27 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_executor.h"
 
+#include <memory>
+#include <variant>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
-using testing::Ge;
 using testing::IsEmpty;
 using testing::Not;
+using ::tsl::testing::IsOkAndHolds;
+using ::tsl::testing::StatusIs;
 
 TEST(RocmExecutorTest, CreateDeviceDescription) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeviceDescription> result,
@@ -43,6 +55,27 @@ TEST(RocmExecutorTest, CreateDeviceDescription) {
       std::get_if<RocmComputeCapability>(&result->gpu_compute_capability())
           ->gcn_arch_name(),
       Not(IsEmpty()));
+}
+
+TEST(RocmExecutorTest, GetRocmKernel) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("ROCM"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
+                          executor->LoadKernel(GetAddI32KernelSpec()));
+
+  auto rocm_executor = dynamic_cast<RocmExecutor*>(executor);
+  ASSERT_NE(rocm_executor, nullptr);
+  EXPECT_THAT(rocm_executor->GetRocmKernel(kernel.get()),
+              IsOkAndHolds(kernel.get()));
+
+  rocm_executor->UnloadKernel(kernel.get());
+  EXPECT_THAT(rocm_executor->GetRocmKernel(kernel.get()),
+              StatusIs(absl::StatusCode::kNotFound));
+
+  EXPECT_THAT(rocm_executor->GetRocmKernel(nullptr),
+              StatusIs(absl::StatusCode::kNotFound));
 }
 
 }  // namespace

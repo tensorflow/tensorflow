@@ -8,7 +8,7 @@ load(
     "if_gpu_is_configured",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_google")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -94,6 +94,7 @@ cc_library(
         "//xla/service/gpu/fusions/ir:xla_gpu",
         "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
         "//xla/service/gpu/fusions/transforms:passes",
+        "//xla/service/gpu/fusions/triton:xla_triton",
         "//xla/service/gpu/model:indexing_analysis",
         "//xla/service/gpu/model:symbolic_tile_analysis",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
@@ -166,6 +167,8 @@ cc_library(
     ),
     hdrs = ["triton_fusion_emitter_legacy_matmul.h"],
     deps = [
+        ":emitter_helpers",
+        ":xla_triton",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:shape_util",
@@ -183,7 +186,6 @@ cc_library(
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:matmul_indexing_utils",
         "//xla/service/gpu:matmul_utils",
-        "//xla/service/gpu:target_util",
         "//xla/service/gpu:triton_fusion_analysis",
         "//xla/service/gpu:triton_tiling_propagation",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
@@ -202,7 +204,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MathDialect",
@@ -294,6 +295,7 @@ cc_library(
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
+        ":xla_triton",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:GPUCommonTransforms",
@@ -415,7 +417,7 @@ xla_test(
         "gpu_a100",
         "gpu_h100",
         "gpu_amd_any",
-    ],
+    ] + if_oss(["gpu_b100"]),
     shard_count = 20,
     tags = [
         "no_mac",
@@ -467,7 +469,7 @@ xla_test(
         "gpu_a100",
         "gpu_h100",
         "gpu_amd_any",
-    ],
+    ] + if_oss(["gpu_b100"]),
     tags = [
         "no_mac",
     ],
@@ -489,6 +491,7 @@ xla_test(
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",
@@ -503,7 +506,7 @@ xla_test(
         "gpu_a100",
         "gpu_h100",
         "gpu_amd_any",
-    ],
+    ] + if_oss(["gpu_b100"]),
     tags = [
         "no_mac",
     ],
@@ -644,7 +647,7 @@ xla_test(
         "gpu_a100",
         "gpu_h100",
         "gpu_amd_any",
-    ],
+    ] + if_oss(["gpu_b100"]),
     tags = [
         "large",
         "no_mac",
@@ -671,7 +674,7 @@ xla_test(
         "gpu_a100",
         "gpu_h100",
         "gpu_amd_any",
-    ],
+    ] + if_oss(["gpu_b100"]),
     shard_count = 10,
     tags = ["no_mac",
             "cuda-only"],  # TODO(rocm) 240729
@@ -760,7 +763,7 @@ xla_test(
         "gpu_a100",
         "gpu_h100",
         "gpu_amd_any",
-    ],
+    ] + if_oss(["gpu_b100"]),
     tags = ["no_mac",
             "cuda-only"], # TODO(rocm) 240729
     deps = [

@@ -1262,6 +1262,53 @@ ENTRY entry {
   LiteralTestUtil::ExpectR1Equal<float>({8., 8.}, results[1]);
 }
 
+TEST_F(CollectiveOpsTestE2E, AllGatherQuantizeCollectiveQuantizer) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule module, entry_computation_layout={(f32[2], f32[1])->bf16[4]}, num_partitions=4
+max {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT max = f32[] maximum(a, b)
+  }
+
+ENTRY entry {
+  param = f32[2] parameter(0)
+  all-gather = f32[4] all-gather(param), dimensions={0}, replica_groups={{0,1},{2,3}}, channel_id=1, use_global_device_ids=true
+  scale = f32[1] parameter(1), sharding={devices=[4]<=[4]}
+  scalar_scale = f32[] reshape(scale)
+  all_reduced_scale = f32[] all-reduce(scalar_scale), to_apply=max, replica_groups={{0,1},{2,3}}, channel_id=2, use_global_device_ids=true
+  scale_bcast = f32[4] broadcast(all_reduced_scale), dimensions={}
+  divide = f32[4] divide(all-gather, scale_bcast)
+  clamp_lower = f32[] constant(-448.0)
+  clamp_lower_bcast = f32[4] broadcast(clamp_lower), dimensions={}
+  clamp_upper = f32[] constant(448.0)
+  clamp_upper_bcast = f32[4] broadcast(clamp_upper), dimensions={}
+  clamp = f32[4] clamp(clamp_lower_bcast, divide, clamp_upper_bcast)
+  ROOT convert = bf16[4] convert(clamp)
+}
+)";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 4;
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.set_num_partitions(kNumPartitions);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(std::move(module),
+                                           /*run_hlo_passes=*/true));
+  EXPECT_TRUE(executable->has_module());
+  HloInstruction* all_gather =
+      FindInstruction(&executable->module(), HloOpcode::kAllGatherStart);
+
+  EXPECT_THAT(all_gather, NotNull());
+  EXPECT_EQ(all_gather->shape().tuple_shapes(0).element_type(), BF16);
+  EXPECT_EQ(all_gather->shape().tuple_shapes(1).element_type(), BF16);
+}
+
 TEST_F(CollectiveOpsTestE2E, NoErrorOnDuplicateChannelId) {
   absl::string_view kModuleReplicatedStr = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f32[4,32,128]{2,1,0})->(f32[4,32,128]{2,1,0}, f32[4,32,128]{2,1,0})}, num_partitions=4

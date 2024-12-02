@@ -164,7 +164,8 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   absl::StatusOr<Literal> EvaluateWithSubstitutions(
       const HloInstruction* instruction,
       const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
-          substitutions);
+          substitutions,
+      bool recursively_evaluate_nonconstant_operands = false);
 
   absl::StatusOr<Literal> EvaluateElementwiseBinaryOp(HloOpcode opcode,
                                                       const Literal& lhs,

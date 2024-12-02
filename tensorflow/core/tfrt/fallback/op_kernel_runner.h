@@ -44,7 +44,8 @@ class OpKernelRunner {
   static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, absl::string_view node_name,
       absl::string_view device_name, int num_args,
-      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const std::function<absl::Status(tensorflow::AttrValueMap*)>&
+          attr_builder,
       const tensorflow::DeviceMgr& device_manager,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime);
@@ -52,7 +53,8 @@ class OpKernelRunner {
   ABSL_DEPRECATED("Please use the Create() method that takes node_name.")
   static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, absl::string_view device_name, int num_args,
-      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const std::function<absl::Status(tensorflow::AttrValueMap*)>&
+          attr_builder,
       const tensorflow::DeviceMgr& device_manager,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime) {
@@ -63,7 +65,8 @@ class OpKernelRunner {
 
   static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, absl::string_view node_name, int num_args,
-      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const std::function<absl::Status(tensorflow::AttrValueMap*)>&
+          attr_builder,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime,
       tensorflow::Device* device);
@@ -71,7 +74,8 @@ class OpKernelRunner {
   ABSL_DEPRECATED("Please use the Create() method that takes node_name.")
   static absl::StatusOr<OpKernelRunner> Create(
       absl::string_view op_name, int num_args,
-      const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+      const std::function<absl::Status(tensorflow::AttrValueMap*)>&
+          attr_builder,
       const tensorflow::ProcessFunctionLibraryRuntime&
           process_function_library_runtime,
       tensorflow::Device* device) {

@@ -194,8 +194,7 @@ absl::StatusOr<HloComputation*> CallComputationAndGetIthOutputWithBinaryParams(
 }
 
 int64_t ScatterIndicesCount(const HloScatterInstruction* scatter) {
-  // Compute the trip count for the while loop to be used for scatter. This
-  // should be the number of indices we should scatter into the operand.
+  // Compute the number of indices we should scatter into the operand.
   const HloInstruction* scatter_indices = scatter->scatter_indices();
   const Shape& scatter_indices_shape = scatter_indices->shape();
   const ScatterDimensionNumbers& dim_numbers =
@@ -235,6 +234,9 @@ bool IsScatterDeterministic(const HloScatterInstruction* scatter) {
     return true;
   }
   if (IsScatterCombinerAssociative(scatter->to_apply())) {
+    return true;
+  }
+  if (ScatterIndicesCount(scatter) == 1) {
     return true;
   }
   return false;

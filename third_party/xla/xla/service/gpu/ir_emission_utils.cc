@@ -82,13 +82,6 @@ bool IsRank1(const Shape& shape, int64_t batch_dimensions_size) {
   return shape.rank() == batch_dimensions_size + 1;
 }
 
-bool IsMlirTransposeEmitterEnabled(const HloInstruction& hlo) {
-  return hlo.GetModule()
-             ->config()
-             .debug_options()
-             .xla_gpu_mlir_emitter_level() >= 3;
-}
-
 }  // namespace
 
 bool IsMatrixMultiplication(const HloInstruction& dot) {
@@ -558,42 +551,24 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   absl::InlinedVector<int64_t, 3> dimensions(hero.shape().dimensions().begin(),
                                              hero.shape().dimensions().end());
   int64_t operand_most_minor_dim = hero.operand(0)->shape().dimensions().back();
-  if (IsMlirTransposeEmitterEnabled(hero)) {
-    if (permutation.back() == dimensions.size() - 1) {
-      operand_most_minor_dim =
-          hero.operand(0)->shape().dimensions(dimensions.size() - 2);
-      auto byte_width = primitive_util::ByteWidth(hero.shape().element_type());
-      if (byte_width * dimensions.back() <= kMaxBytesInMostMinorDimension &&
-          byte_width * dimensions.back() *
-                  std::min(operand_most_minor_dim,
-                           dimensions[dimensions.size() - 2]) >=
-              kMinDimensionToTransposeTiled) {
-        return TransposeDescription{&hero, dimensions, permutation};
-      }
-    } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
-                dimensions.back() >= kMinDimensionToTransposeTiled) ||
-               (operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
-                dimensions.back() >= kMinDimensionToTransposeTiled2 &&
-                operand_most_minor_dim * dimensions.back() >=
-                    kMinTotalDimensionsToTransposeTiled)) {
+  if (permutation.back() == dimensions.size() - 1) {
+    operand_most_minor_dim =
+        hero.operand(0)->shape().dimensions(dimensions.size() - 2);
+    auto byte_width = primitive_util::ByteWidth(hero.shape().element_type());
+    if (byte_width * dimensions.back() <= kMaxBytesInMostMinorDimension &&
+        byte_width * dimensions.back() *
+                std::min(operand_most_minor_dim,
+                         dimensions[dimensions.size() - 2]) >=
+            kMinDimensionToTransposeTiled) {
       return TransposeDescription{&hero, dimensions, permutation};
     }
-  } else if (permutation == absl::InlinedVector<int64_t, 3>{1, 0} ||
-             permutation == absl::InlinedVector<int64_t, 3>{0, 2, 1} ||
-             permutation == absl::InlinedVector<int64_t, 3>{2, 1, 0}) {
-    // The old emitter needs a normalization to rank 3.
-    if (permutation.size() == 2) {
-      permutation = {0, 2, 1};
-      dimensions.insert(dimensions.begin(), 1);
-    }
-    if ((dimensions.back() >= kMinDimensionToTransposeTiled &&
-         operand_most_minor_dim >= kMinDimensionToTransposeTiled) ||
-        (dimensions.back() >= kMinDimensionToTransposeTiled2 &&
-         operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
-         dimensions.back() * operand_most_minor_dim >=
-             kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&hero, dimensions, permutation};
-    }
+  } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
+              dimensions.back() >= kMinDimensionToTransposeTiled) ||
+             (operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
+              dimensions.back() >= kMinDimensionToTransposeTiled2 &&
+              operand_most_minor_dim * dimensions.back() >=
+                  kMinTotalDimensionsToTransposeTiled)) {
+    return TransposeDescription{&hero, dimensions, permutation};
   }
   return std::nullopt;
 }
@@ -775,10 +750,6 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
 
 bool IsAMDGPU(const llvm::Module* module) {
   return llvm::Triple(module->getTargetTriple()).isAMDGPU();
-}
-
-bool IsSPIR(const llvm::Module* module) {
-  return llvm::Triple(module->getTargetTriple()).isSPIR();
 }
 
 absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(

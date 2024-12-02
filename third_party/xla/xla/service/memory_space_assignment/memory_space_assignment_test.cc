@@ -1171,6 +1171,50 @@ ENTRY %entry (p0.2: f32[10,2,3], p1: f32[10,2,3], p2: pred[]) -> f32[10,2,3] {
                             tuple->operand(1)));
 }
 
+// Added for b/376344953 that was introduced when we tried to
+// convert a sync copy that was used by a conditional into an async copy.
+TEST_F(MemorySpaceAssignmentTest, ConditionalCopyReplacement) {
+  absl::string_view hlo_string = R"(
+  HloModule CondAllocation, is_scheduled=true
+
+  true_computation {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg1 = f32[3]{0} negate(gte)
+  }
+
+  false_computation {
+    p0 = (f32[3]{0}) parameter(0)
+    gte = f32[3]{0} get-tuple-element(p0), index=0
+    ROOT neg2 = f32[3]{0} negate(gte)
+  }
+
+  ENTRY entry {
+    p0_main = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    copy = f32[3]{0} copy(p0_main)
+    tuple = (f32[3]{0}) tuple(copy)
+    ROOT conditional = f32[3]{0} conditional(p1, tuple, tuple), true_computation=true_computation, false_computation=false_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_sync_copy_replacement = true;
+  AssignMemorySpace(module.get(), options);
+  auto conditional =
+      module->GetComputationWithName("entry")->GetInstructionWithName(
+          "conditional");
+  CHECK_NE(conditional, nullptr);
+  auto p0 = module->GetComputationWithName("entry")->GetInstructionWithName(
+      "p0_main");
+  CHECK_NE(p0, nullptr);
+  auto copy = conditional->operand(1)->operand(0);
+  CHECK_NE(copy, nullptr);
+  EXPECT_THAT(copy,
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace, p0));
+}
+
 TEST_F(MemorySpaceAssignmentTest, AlwaysSpillJitPrefetchTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.

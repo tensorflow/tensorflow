@@ -38,7 +38,7 @@ namespace internal {
 
 // Performs shape inference on the body of `graph`. Shapes for arguments
 // are taken from `metadata` and `arg_shapes`.
-Status RunShapeInferenceOnComputation(
+absl::Status RunShapeInferenceOnComputation(
     const tpu::TPUCompileMetadataProto& metadata,
     const std::vector<PartialTensorShape>& arg_shapes, Graph* graph,
     FunctionLibraryRuntime* flr, GraphShapeInfo* shape_info);
@@ -46,7 +46,7 @@ Status RunShapeInferenceOnComputation(
 
 // Converts a TF Function into XLA HLO, stores generated HLO module and
 // accompanying metadata in CompilationResult.
-Status CompileTFFunctionToHlo(
+absl::Status CompileTFFunctionToHlo(
     const FunctionLibraryDefinition& flib_def, int graph_def_version,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     const std::vector<TensorShape>& arg_shapes, const DeviceType& device_type,
@@ -59,7 +59,7 @@ Status CompileTFFunctionToHlo(
 
 // Gets information regarding how input arguments are sharded across multiple
 // cores.
-Status GetShardingInfo(
+absl::Status GetShardingInfo(
     const tpu::TPUCompileMetadataProto& metadata,
     absl::Span<const TensorShape> arg_shapes,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,

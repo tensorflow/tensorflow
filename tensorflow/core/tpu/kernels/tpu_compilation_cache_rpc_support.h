@@ -71,7 +71,8 @@ class CacheWrapper : public CompilationCacheEntryRef {
                                     /*core_index=*/0);
   }
 
-  Status ToSubEntryRef(CompilationCacheFetchTarget fetch_target) override {
+  absl::Status ToSubEntryRef(
+      CompilationCacheFetchTarget fetch_target) override {
     LOG(FATAL) << "Not implemented by designed.";
   }
 
@@ -85,7 +86,7 @@ std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials();
 // Fills an uinitialized `CacheEntry` from `GetTpuProgramResponse` proto. The
 // `cache_entry` will be instantiated by the function.
 template <typename ResponseType>
-Status DeserializeRpcResponseToCacheEntry(
+absl::Status DeserializeRpcResponseToCacheEntry(
     absl::string_view local_proto_key, ResponseType* response,
     std::shared_ptr<CacheEntry>* cache_entry);
 

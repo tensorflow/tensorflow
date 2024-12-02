@@ -663,7 +663,7 @@ LiteRtStatus AttachInputEvent(
   }
 
   int input_fence_fd;
-  if (auto status = LiteRtEventGetSyncFenceFd(input_event, &input_fence_fd);
+  if (auto status = LiteRtGetEventSyncFenceFd(input_event, &input_fence_fd);
       status != kLiteRtStatusOk) {
     return status;
   }
@@ -718,7 +718,7 @@ LiteRtStatus GetOutputEvent(LiteRtDispatchInvocationContext invocation_context,
     return kLiteRtStatusErrorRuntimeFailure;
   }
 
-  if (auto status = LiteRtEventCreateFromSyncFenceFd(
+  if (auto status = LiteRtCreateEventFromSyncFenceFd(
           output_fence_fd, /*owns_fd=*/false, output_event);
       status != kLiteRtStatusOk) {
     return status;

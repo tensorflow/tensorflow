@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 
-#include <algorithm>
+#include <cstddef>
 #include <functional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "llvm/IR/BasicBlock.h"

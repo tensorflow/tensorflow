@@ -875,8 +875,8 @@ class HloComputation {
   bool OnlyContainsSendRecv() {
     for (const HloInstruction* instruction : this->instructions()) {
       if (!HloPredicateIsOp<HloOpcode::kSend, HloOpcode::kRecv,
-                            HloOpcode::kParameter, HloOpcode::kTuple>(
-              instruction)) {
+                            HloOpcode::kBitcast, HloOpcode::kParameter,
+                            HloOpcode::kTuple>(instruction)) {
         return false;
       }
     }

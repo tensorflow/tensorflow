@@ -980,12 +980,26 @@ bool HloEvaluator::TryEvaluate(const HloInstruction* instruction,
 absl::StatusOr<Literal> HloEvaluator::EvaluateWithSubstitutions(
     const HloInstruction* instruction,
     const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
-        substitutions) {
+        substitutions,
+    bool recursively_evaluate_nonconstant_operands) {
   std::vector<std::unique_ptr<HloInstruction>> owned_operands;
   for (const HloInstruction* operand : instruction->operands()) {
     auto it = substitutions.find(operand);
     if (it == substitutions.end()) {
-      owned_operands.push_back(operand->Clone());
+      if (recursively_evaluate_nonconstant_operands) {
+        TF_ASSIGN_OR_RETURN(Literal value,
+                            EvaluateWithSubstitutions(
+                                operand, substitutions,
+                                recursively_evaluate_nonconstant_operands));
+        owned_operands.push_back(HloInstruction::CreateConstant(value.Clone()));
+      } else {
+        if (!operand->IsConstant()) {
+          VLOG(2) << "EvaluateWithSubstitutions called when not all operands "
+                     "are constant. Consider calling it with "
+                     "`recursively_evaluate_non_constant_operands` true.";
+        }
+        owned_operands.push_back(operand->Clone());
+      }
     } else {
       owned_operands.push_back(
           HloInstruction::CreateConstant(it->second->Clone()));

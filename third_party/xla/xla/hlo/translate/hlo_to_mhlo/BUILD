@@ -150,7 +150,6 @@ cc_library(
     hdrs = ["hlo_to_mlir_hlo.h"],
     deps = [
         ":hlo_module_importer",
-        "//xla:status_macros",
         "//xla/mlir/utils:error_util",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/service/llvm_ir:llvm_util",
@@ -247,7 +246,7 @@ cc_library(
     deps = [
         ":hlo_to_mlir_hlo",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/mlir_hlo",
+        "//xla/hlo/translate:stablehlo",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/service:hlo_proto_cc",
         "//xla/service/llvm_ir:llvm_util",

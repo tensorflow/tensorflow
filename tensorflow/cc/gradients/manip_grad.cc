@@ -22,9 +22,9 @@ namespace tensorflow {
 namespace ops {
 namespace {
 
-Status RollGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status RollGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   auto shift = op.input(1);
   auto axis = op.input(2);
   auto grad_op = Roll(scope, grad_inputs[0], Neg(scope, shift), axis);

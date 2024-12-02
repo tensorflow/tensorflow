@@ -19,11 +19,16 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -33,6 +38,8 @@ using testing::Ge;
 using testing::IsEmpty;
 using testing::Not;
 using testing::VariantWith;
+using ::tsl::testing::IsOkAndHolds;
+using ::tsl::testing::StatusIs;
 
 TEST(CudaExecutorTest, CreateDeviceDescription) {
   CudaPlatform platform;
@@ -54,6 +61,33 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
   EXPECT_THAT(
       result->gpu_compute_capability(),
       VariantWith<CudaComputeCapability>(Ge(CudaComputeCapability{1, 0})));
+}
+
+TEST(CudaExecutorTest, GetCudaKernel) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+
+  auto cuda_executor = dynamic_cast<CudaExecutor*>(executor);
+  ASSERT_NE(cuda_executor, nullptr);
+
+  auto verify_kernel = [&](const MultiKernelLoaderSpec& spec) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
+                            executor->LoadKernel(spec));
+    EXPECT_THAT(cuda_executor->GetCudaKernel(kernel.get()),
+                IsOkAndHolds(kernel.get()));
+
+    cuda_executor->UnloadKernel(kernel.get());
+    EXPECT_THAT(cuda_executor->GetCudaKernel(kernel.get()),
+                StatusIs(absl::StatusCode::kNotFound));
+
+    EXPECT_THAT(cuda_executor->GetCudaKernel(nullptr),
+                StatusIs(absl::StatusCode::kNotFound));
+  };
+
+  verify_kernel(GetAddI32KernelSpec());
+  verify_kernel(GetAddI32PtxKernelSpec());
 }
 
 }  // namespace

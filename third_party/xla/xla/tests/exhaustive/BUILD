@@ -8,18 +8,8 @@ load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = ["//xla:friends"],
     licenses = ["notice"],
-)
-
-package_group(
-    name = "friends",
-    includes = [
-        "//xla:friends",
-    ],
-    packages = [
-        "//platforms/testing/tests/...",
-    ],
 )
 
 filegroup(

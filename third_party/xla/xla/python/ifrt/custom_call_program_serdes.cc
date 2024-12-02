@@ -48,7 +48,8 @@ class CustomCallProgramSerDes
     return "xla::ifrt::CustomCallProgram";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     const CustomCallProgram& program =
         llvm::cast<CustomCallProgram>(serializable);
     CustomCallProgramProto proto;
@@ -124,7 +125,8 @@ class CustomCallCompileOptionsSerDes
     return "xla::ifrt::CustomCallCompileOptions";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     return "";
   }
 

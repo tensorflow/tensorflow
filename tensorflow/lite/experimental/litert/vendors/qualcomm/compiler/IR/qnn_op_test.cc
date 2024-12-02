@@ -31,8 +31,9 @@ TEST(TestInitQnnOp, BuildDefaultOp) {
 TEST(TestLegalizeOp, SimpleSupportedOp) {
   auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                          ::graph_tools::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, ::graph_tools::GetSubgraphOps(subgraph));
+                          ::litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops,
+                          ::litert::internal::GetSubgraphOps(subgraph));
 
   Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();
   ASSERT_STATUS_OK(litert::qnn::LegalizeOp(ops[0], qnn_op));
@@ -51,8 +52,9 @@ TEST(TestLegalizeOp, SimpleSupportedOp) {
 TEST(TestLegalizeOp, UnsupportedOp) {
   auto model = litert::testing::LoadTestFileModel("simple_floor_mod_op.tflite");
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
-                          ::graph_tools::GetSubgraph(model.get()));
-  ASSERT_RESULT_OK_ASSIGN(auto ops, ::graph_tools::GetSubgraphOps(subgraph));
+                          ::litert::internal::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops,
+                          ::litert::internal::GetSubgraphOps(subgraph));
 
   Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();
   ASSERT_STATUS_HAS_CODE(litert::qnn::LegalizeOp(ops[0], qnn_op),

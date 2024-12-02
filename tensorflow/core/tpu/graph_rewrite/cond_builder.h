@@ -56,9 +56,9 @@ class CondBuilder {
 
   // Returns the Switch node to feed a value of the given type into the
   // conditional.
-  Status AddInput(const std::string& input_name, const DataType& type,
-                  const std::string& device, const NodeDebugInfo& debug,
-                  Node** input);
+  absl::Status AddInput(const std::string& input_name, const DataType& type,
+                        const std::string& device, const NodeDebugInfo& debug,
+                        Node** input);
 
  private:
   Node* control_successor_;

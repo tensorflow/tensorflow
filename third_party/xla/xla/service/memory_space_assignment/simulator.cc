@@ -181,8 +181,8 @@ float RuntimeSimulator::SimulateAsyncCopyLikeDone(
       copy_like_start_instruction, alternate_memory_space_);
   if (direction == MemoryTransferDirection::kUnsupported) {
     // The memory access is not a default <-> alternate memory copy.
-    LOG(WARNING) << "Unsupported memory transfer direction for copy-done: "
-                 << copy_like_done_instruction->ToString();
+    VLOG(1) << "Unsupported memory transfer direction for copy-done: "
+            << copy_like_done_instruction->ToString();
     return 0.0;
   }
   std::list<OutstandingAsyncCopyLike>& same_direction_queue =

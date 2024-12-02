@@ -1061,6 +1061,8 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       int partition, const RunId& run_id, const ExecuteOptions& options,
       bool fill_future, PjRtDevice* device = nullptr) const;
 
+  absl::Status VerifyCompatibleDevices() const;
+
   // Create shared pointers so we can free them after the execution: with
   // asynchronous execution, the process being executed can outlive the
   // executable itself.

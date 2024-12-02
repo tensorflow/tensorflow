@@ -451,6 +451,7 @@ def build_conversion_flags(
     enable_composite_direct_lowering=False,
     model_origin_framework=lite_constants.UNSET,
     canonicalizing_inf_as_min_max_float=True,
+    serialize_debug_metadata=False,
     **_,
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -586,6 +587,8 @@ def build_conversion_flags(
       model. Can be {TENSORFLOW, KERAS, JAX, PYTORCH}
     canonicalizing_inf_as_min_max_float: When set to true, convert +Inf/-Inf to
       MIN/MAX float value and output of converter only contains finite values.
+    serialize_debug_metadata: When set to true, serialize debug metadata in the
+      flatbuffer.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -717,6 +720,9 @@ def build_conversion_flags(
   conversion_flags.canonicalizing_inf_as_min_max_float = (
       canonicalizing_inf_as_min_max_float
   )
+
+  conversion_flags.serialize_debug_metadata = serialize_debug_metadata
+
   return conversion_flags
 
 

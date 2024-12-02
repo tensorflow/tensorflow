@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/graph_rewrite/tpu_embedding_rewrite_pass_utils.h"
@@ -181,7 +180,8 @@ absl::StatusOr<NodeDef> MakeSendGradientsNodeDef(
     absl::Span<const NodeDefBuilder::NodeOut> data_inputs,
     absl::Span<const std::string> control_inputs) {
   tpu::TPUEmbeddingConfiguration tpu_embedding_config;
-  if (!tpu_embedding_config.ParseFromString(tpu_embedding_config_str)) {
+  if (!tpu_embedding_config.ParseFromString(
+          std::string(tpu_embedding_config_str))) {
     return absl::InvalidArgumentError(
         "Malformed config attribute in the SendTPUEmbeddingGradients node.");
   }

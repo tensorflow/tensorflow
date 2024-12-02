@@ -10,6 +10,8 @@ glob_lit_tests(
     data = [":test_utilities"],
     default_tags = [
         "gpu",
+        "nomsan",
+        "notsan",
     ],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
     hermetic_cuda_data_dir = "%S/../../../../../../../../cuda_nvcc",

@@ -179,14 +179,15 @@ absl::StatusOr<bool> HorizontalInputFusion::RunOnComputation(
 absl::StatusOr<bool> HorizontalInputFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  bool changed = false;
+  bool any_changed = false;
   VLOG(2) << "Run horizontal input fusion.";
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(changed, RunOnComputation(comp));
+    TF_ASSIGN_OR_RETURN(bool changed, RunOnComputation(comp));
+    any_changed |= changed;
   }
 
-  return changed;
+  return any_changed;
 }
 
 }  // namespace gpu

@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 
 #include <cstdint>
-#include <cstring>
 #include <vector>
 
 #include "mlir/IR/Builders.h"

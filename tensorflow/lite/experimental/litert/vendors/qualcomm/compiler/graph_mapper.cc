@@ -77,9 +77,18 @@ LiteRtStatus GraphMapper::LookupInScope(LiteRtTensor litert_tensor,
   // If we go in topological order, this should never happen. TODO: add
   // "internal error" status code.
   const auto qnn_id = CurrentScope().find(litert_tensor);
-  LITERT_ENSURE(qnn_id != CurrentScope().end(), kLiteRtStatusErrorNotFound,
-                "Couldn't find tensor in current_scope.");
-
+  // when qnn_id is not found, the tensor is a constant tensor thats not been
+  // added qnn graph.
+  if (qnn_id == CurrentScope().end()) {
+    LITERT_LOG(LITERT_INFO, "Adding constant tensor %s to qnn graph",
+               qnn_tensor.v2.name);
+    LITERT_RETURN_STATUS_IF_NOT_OK(
+        LegalizeAndRegister(litert_tensor, qnn_tensor));
+    LITERT_RETURN_STATUS_IF_NOT_OK(PushToScope(litert_tensor, qnn_tensor));
+    // }
+    return kLiteRtStatusOk;
+  }
+  LITERT_LOG(LITERT_INFO, "Found tensor %d in current_scope.", qnn_id->second);
   ResetTensor(qnn_tensor);
   qnn_tensor.v2.id = qnn_id->second;
 
@@ -98,7 +107,8 @@ Qnn_GraphHandle_t& GraphMapper::QnnGraph() { return qnn_graph_; }
 
 LiteRtStatus GraphMapper::LegalizeAndRegister(LiteRtTensor litert_tensor,
                                               Qnn_Tensor_t& qnn_tensor) {
-  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeTensor(litert_tensor, qnn_tensor));
+  litert::Tensor tensor(litert_tensor);
+  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeTensor(tensor, qnn_tensor));
   LITERT_RETURN_STATUS_IF_NOT_OK(AssignTensorName(qnn_tensor));
   LITERT_RETURN_STATUS_IF_QNN_NOT_OK(
       qnn_.Api()->tensorCreateGraphTensor(QnnGraph(), &qnn_tensor));
@@ -110,18 +120,18 @@ LiteRtStatus GraphMapper::LegalizeAndRegister(LiteRtTensor litert_tensor,
 }
 
 LiteRtStatus GraphMapper::ParseLiteRtSubgraph() {
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto inputs,
-                                 graph_tools::GetSubgraphInputs(Subgraph()));
+  LITERT_ASSIGN_OR_RETURN_STATUS(
+      auto inputs, litert::internal::GetSubgraphInputs(Subgraph()));
   litert_subgraph_inputs_ =
       absl::MakeSpan(const_cast<LiteRtTensor*>(inputs.data()), inputs.size());
 
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto outputs,
-                                 graph_tools::GetSubgraphOutputs(Subgraph()));
+  LITERT_ASSIGN_OR_RETURN_STATUS(
+      auto outputs, litert::internal::GetSubgraphOutputs(Subgraph()));
   litert_subgraph_outputs_ =
       absl::MakeSpan(const_cast<LiteRtTensor*>(outputs.data()), outputs.size());
 
   LITERT_ASSIGN_OR_RETURN_STATUS(auto ops,
-                                 graph_tools::GetSubgraphOps(Subgraph()));
+                                 litert::internal::GetSubgraphOps(Subgraph()));
   litert_subgraph_ops_ =
       absl::MakeSpan(const_cast<LiteRtOp*>(ops.data()), ops.size());
 
@@ -132,12 +142,6 @@ LiteRtStatus GraphMapper::IsLiteRtSubgraphSupported() {
   LITERT_ENSURE_SUPPORTED(
       LiteRtSubgraphInputs().size() < 4,
       "Only subgraphs with less than 4 inputs currently supported.");
-
-  LITERT_ENSURE_SUPPORTED(LiteRtSubgraphOutputs().size() == 1,
-                          "Only subgraphs with 1 output currently supported.");
-
-  LITERT_ENSURE_SUPPORTED(LiteRtSubgraphOps().size() == 1,
-                          "Only subgraphs with 1 op currently supported.");
 
   return kLiteRtStatusOk;
 }

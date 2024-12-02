@@ -266,8 +266,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleParameter(HloInstruction* parameter) override;
   absl::Status HandleReduce(HloInstruction* reduce) override;
   absl::Status HandleReduceWindow(HloInstruction* reduce_window) override;
-  absl::Status HandleSelectAndScatter(
-      HloInstruction* select_and_scatter) override;
   absl::Status HandleSend(HloInstruction* send) override;
   absl::Status HandleSendDone(HloInstruction* send_done) override;
   absl::Status HandleSlice(HloInstruction* slice) override;
@@ -307,11 +305,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                          const llvm_ir::IrArray& operand_array,
                          const llvm_ir::IrArray& padding_value_array,
                          const llvm_ir::IrArray& output_array);
-
-  absl::Status HandleSelectAndScatter(HloInstruction* select_and_scatter,
-                                      const llvm_ir::IrArray& operand_array,
-                                      const llvm_ir::IrArray& source_array,
-                                      const llvm_ir::IrArray& output_array);
 
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   BufferAllocation::Slice GetAllocationSlice(

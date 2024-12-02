@@ -215,9 +215,6 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
 // Whether the module's target is an AMD GPU.
 bool IsAMDGPU(const llvm::Module* module);
 
-// Whether the module's target is a SPIR.
-bool IsSPIR(const llvm::Module* module);
-
 // This class stores either a non-owning reference or owns data that represents
 // a dense array in XLA format. It is used for intermediate storage during IR
 // constant emission.
@@ -253,15 +250,6 @@ absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
 // Returns a deterministic encoded string representation of the proto message.
 absl::StatusOr<std::string> GetProtoFingerprint(
     const tsl::protobuf::MessageLite&);
-
-// Returns a deterministic encoded string representation of the backend config.
-template <typename ConfigType>
-absl::StatusOr<std::string> GetBackendConfigFingerprint(
-    const BackendConfigWrapper& wrapper) {
-  ConfigType proto;
-  TF_RETURN_IF_ERROR(wrapper.GetProto(&proto));
-  return GetProtoFingerprint(proto);
-}
 
 // Returns concatenated fingerprint of an HLO instruction without its backend
 // config and its backend config's deterministic fingerprint.

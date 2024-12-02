@@ -149,19 +149,6 @@ class ManualComputationPattern
     auto getMeshAttr = [&](TensorShardingAttr) { return mesh; };
 
     StringAttr fullyManualSharding = getStringAttr(HloSharding::Manual());
-    auto partialManualSharding = [&](mlir::Type type) {
-      int64_t rank = 0;
-      if (auto tensorType = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
-        rank = tensorType.getRank();
-      }
-
-      TensorShardingAttr fullyOpen =
-          TensorShardingAttr::getFullyOpen(context, rank, meshName);
-      HloSharding hloSharding =
-          convertToHloSharding(fullyOpen, getMeshAttr, regionManualAxes);
-      return getStringAttr(hloSharding);
-    };
-
     auto createAttributes =
         [&](StringRef callTargetName) -> SmallVector<NamedAttribute, 2> {
       return {rewriter.getNamedAttr("call_target_name",
@@ -215,17 +202,20 @@ class ManualComputationPattern
     // Add copy and custom_call @SPMDFullToShardShape for each operand. The
     // copy corresponds to custom_call @Sharding before sharding propagation.
     SmallVector<Value> fullToShardResults;
-    for (auto [globalOperand, localArgumentType, inSharding] :
-         llvm::zip_equal(adaptor.getOperands(), op.getBody().getArgumentTypes(),
-                         adaptor.getInShardings().getShardings())) {
+    for (auto [operand_index, args] : llvm::enumerate(llvm::zip_equal(
+             adaptor.getOperands(), op.getBody().getArgumentTypes(),
+             adaptor.getInShardings().getShardings()))) {
+      auto [globalOperand, localArgumentType, inSharding] = args;
       auto copy = rewriter.create<CopyOp>(loc, globalOperand);
       copy->setAttr(kXlaShardingAttr,
                     getStringAttr(convertToHloSharding(inSharding, getMeshAttr,
                                                        parentManualAxes)));
-      if (!fullyManual) {
-        fullToShardAttributes.back() = rewriter.getNamedAttr(
-            kXlaShardingAttr, partialManualSharding(localArgumentType));
-      }
+      fullToShardAttributes.back() = rewriter.getNamedAttr(
+          kXlaShardingAttr,
+          fullyManual ? fullyManualSharding
+                      : getStringAttr(convertToHloSharding(
+                            op.getInShardingWithoutManualAxes(operand_index),
+                            getMeshAttr, regionManualAxes)));
       auto fullToShard = rewriter.create<CustomCallOp>(
           loc, localArgumentType, copy.getResult(), fullToShardAttributes);
       fullToShardResults.push_back(fullToShard.getResult(0));
@@ -236,13 +226,15 @@ class ManualComputationPattern
     // Add custom_call @SPMDShardToFullShape and copy for each operand of
     // terminator.
     for (auto [terminatorOperand, opResult, outSharding] :
-         llvm::zip_equal(terminator->getOperands(), op.getResults(),
+         llvm::zip_equal(terminator->getOpOperands(), op.getResults(),
                          adaptor.getOutShardings().getShardings())) {
-      auto copy = rewriter.create<CopyOp>(loc, terminatorOperand);
+      auto copy = rewriter.create<CopyOp>(loc, terminatorOperand.get());
       copy->setAttr(kXlaShardingAttr,
-                    fullyManual
-                        ? fullyManualSharding
-                        : partialManualSharding(copy.getResult().getType()));
+                    fullyManual ? fullyManualSharding
+                                : getStringAttr(convertToHloSharding(
+                                      op.getOutShardingWithoutManualAxes(
+                                          terminatorOperand.getOperandNumber()),
+                                      getMeshAttr, regionManualAxes)));
       shardToFullAttributes.back() = rewriter.getNamedAttr(
           kXlaShardingAttr, getStringAttr(convertToHloSharding(
                                 outSharding, getMeshAttr, parentManualAxes)));
@@ -301,7 +293,7 @@ class ShardMapExportPass
   }
 
   StringRef getArgument() const override {
-    return "xla-mhlo-round-trip-shard-map-export";
+    return "xla-sdy-mhlo-round-trip-shard-map-export";
   }
 
   StringRef getDescription() const override {

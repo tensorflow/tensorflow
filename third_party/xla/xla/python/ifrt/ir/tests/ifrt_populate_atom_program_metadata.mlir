@@ -1,9 +1,10 @@
 // RUN: ifrt-opt %s -ifrt-populate-atom-program-metadata -ifrt-duplicated-callee-elimination -symbol-dce -split-input-file | FileCheck %s
 
 !array = !ifrt.array<tensor<2x2xi32>,
-                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
-// CHECK-LABEL: @populate_arg_sharding
-module @populate_arg_sharding {
+                     #ifrt.sharding_param<2x1 to [0] on 2>, [0,1],
+                     memory_kind = "device">
+// CHECK-LABEL: @populate_arg_metadata
+module @populate_arg_metadata {
   func.func @main(%arg0: !array) attributes {ifrt.function} {
     // CHECK: ifrt.Call @[[CALLEE:.+]]::@main(%arg0)
     %ctrl_0 = ifrt.Call @callee::@main(%arg0) on devices [0,1] : (!array) -> ()
@@ -17,6 +18,7 @@ module @populate_arg_sharding {
   // CHECK-SAME: }
   // CHECK: func.func private @main
   // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG: ifrt.memory_kind = "device"
   // CHECK-NOT: ifrt
   module @callee attributes {sym_visibility = "private"} {
     func.func private @main(%arg0: tensor<2x2xi32>) {
@@ -27,13 +29,14 @@ module @populate_arg_sharding {
 
 // -----
 
-// CHECK-LABEL: @populate_result_sharding
-module @populate_result_sharding {
+// CHECK-LABEL: @populate_result_metadata
+module @populate_result_metadata {
   func.func @main() attributes {ifrt.function} {
     // CHECK: ifrt.Call @[[CALLEE:.+]]::@main()
     %0, %ctrl_0 = ifrt.Call @callee::@main() on devices [0,1]
         : () -> (!ifrt.array<tensor<2x2xi32>,
-                             #ifrt.sharding_param<2x1 to [0] on 2>, [1,0]>)
+                             #ifrt.sharding_param<2x1 to [0] on 2>, [1,0],
+                             memory_kind = "device">)
     return
   }
 
@@ -44,6 +47,7 @@ module @populate_result_sharding {
   // CHECK-SAME: }
   // CHECK: func.func private @main
   // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG: ifrt.memory_kind = "device"
   // CHECK-NOT: ifrt
   module @callee attributes {sym_visibility = "private"} {
     func.func private @main() -> tensor<2x2xi32> {

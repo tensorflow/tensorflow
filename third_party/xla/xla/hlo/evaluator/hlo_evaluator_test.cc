@@ -3358,6 +3358,55 @@ TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutions) {
       LiteralUtil::CreateR1<float>({11, 22, 33, 44}), result));
 }
 
+TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsRecursive) {
+  const char* hlo = R"(
+  HloModule test
+
+  ENTRY main {
+    param = s32[] parameter(0)
+    c1 = s32[] constant(1)
+    c2 = s32[] constant(2)
+    add.1 = s32[] add(c1, c2)
+    ROOT add.2 = s32[] add(param, add.1)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  Literal param_value = LiteralUtil::CreateR0(PrimitiveType::S32, 3);
+  HloInstruction* param = module->entry_computation()->parameter_instruction(0);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result,
+      evaluator_.EvaluateWithSubstitutions(
+          /*instruction=*/module->entry_computation()->root_instruction(),
+          /*substitutions=*/{{param, &param_value}},
+          /*recursively_evaluate_nonconstant_operands=*/true));
+  EXPECT_EQ(result, LiteralUtil::CreateR0(PrimitiveType::S32, 1 + 2 + 3));
+}
+
+TEST_F(HloEvaluatorTest,
+       EvaluateWithSubstitutionsRecursiveWithDeepSubstitutions) {
+  const char* hlo = R"(
+  HloModule test
+  ENTRY main {
+    param = s32[] parameter(0)
+    c1 = s32[] constant(1)
+    c2 = s32[] constant(2)
+    add.1 = s32[] add(param, c1)
+    add.2 = s32[] add(add.1, c2)
+    ROOT add.3 = s32[] add(add.2, c1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  Literal param_value = LiteralUtil::CreateR0(PrimitiveType::S32, 4);
+  HloInstruction* param = module->entry_computation()->parameter_instruction(0);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator_.EvaluateWithSubstitutions(
+          /*instruction=*/module->entry_computation()->root_instruction(),
+          /*substitutions=*/{{param, &param_value}},
+          /*recursively_evaluate_nonconstant_operands=*/true));
+  EXPECT_EQ(result, LiteralUtil::CreateR0(PrimitiveType::S32, 4 + 1 + 2 + 1));
+}
+
 // Check that EvaluateWithSubstitutions works if one of the operands to the op
 // we're evaluating is a constant.
 TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutionsWithConstantOperand) {

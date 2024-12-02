@@ -534,8 +534,8 @@ bool CanGenerateOp(const OpDef& op_def, const ApiDef& api_def) {
 
 }  // namespace
 
-Status OpGenerator::Run(const OpList& op_list, const string& base_package,
-                        const string& output_dir) {
+absl::Status OpGenerator::Run(const OpList& op_list, const string& base_package,
+                              const string& output_dir) {
   ApiDefMap api_map(op_list);
   if (!api_dirs_.empty()) {
     // Only load api files that correspond to the requested "op_list"

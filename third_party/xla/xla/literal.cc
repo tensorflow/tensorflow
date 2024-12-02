@@ -290,8 +290,7 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays,
 }
 
 Literal::Literal(const Shape& shape, bool allocate_arrays,
-                 ArrayValueState leaf_array_value_state)
-    : MutableLiteralBase() {
+                 ArrayValueState leaf_array_value_state) {
   SetShape(shape);
   CHECK(leaf_array_value_state != ArrayValueState::kKnown ||
         LayoutUtil::HasLayout(*shape_));
@@ -310,9 +309,7 @@ void Literal::DeallocateBuffers() {
       });
 }
 
-Literal::Literal(Literal&& other) : MutableLiteralBase() {
-  *this = std::move(other);
-}
+Literal::Literal(Literal&& other) { *this = std::move(other); }
 
 Literal& Literal::operator=(Literal&& other) {
   DCHECK(&other.root_piece_.subshape() == other.shape_.get());
@@ -2654,8 +2651,7 @@ void MutableBorrowingLiteral::CopyPieceSubtree(const Shape& shape,
 MutableLiteralBase::~MutableLiteralBase() = default;
 
 MutableBorrowingLiteral::MutableBorrowingLiteral(
-    const MutableBorrowingLiteral& literal)
-    : MutableLiteralBase() {
+    const MutableBorrowingLiteral& literal) {
   shape_ = literal.shape_.Clone();
   CHECK(LayoutUtil::HasLayout(*shape_));
 
@@ -2678,8 +2674,7 @@ MutableBorrowingLiteral& MutableBorrowingLiteral::operator=(
   return *this;
 }
 
-MutableBorrowingLiteral::MutableBorrowingLiteral(MutableLiteralBase* literal)
-    : MutableLiteralBase() {
+MutableBorrowingLiteral::MutableBorrowingLiteral(MutableLiteralBase* literal) {
   shape_ = literal->shape_.Clone();
   CHECK(LayoutUtil::HasLayout(*shape_));
 
@@ -2690,8 +2685,7 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(MutableLiteralBase* literal)
 }
 
 MutableBorrowingLiteral::MutableBorrowingLiteral(
-    MutableBorrowingLiteral literal, const ShapeIndex& view_root)
-    : MutableLiteralBase() {
+    MutableBorrowingLiteral literal, const ShapeIndex& view_root) {
   shape_ = std::make_unique<Shape>(literal.piece(view_root).subshape());
   CHECK(LayoutUtil::HasLayout(*shape_));
 
@@ -2702,8 +2696,7 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(
 }
 
 MutableBorrowingLiteral::MutableBorrowingLiteral(const char* src_buf_ptr,
-                                                 const Shape& shape)
-    : MutableLiteralBase() {
+                                                 const Shape& shape) {
   shape_ = std::make_unique<Shape>(shape);
   CHECK(LayoutUtil::HasLayout(*shape_));
   CHECK(!shape_->IsTuple());
@@ -2714,8 +2707,7 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(const char* src_buf_ptr,
 }
 
 MutableBorrowingLiteral::MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs,
-                                                 const Shape& shape)
-    : MutableLiteralBase() {
+                                                 const Shape& shape) {
   shape_ = std::make_unique<Shape>(shape);
   if (!shape_->IsTuple()) {
     CHECK_EQ(src_buf_ptrs.size(), 1);
@@ -2739,8 +2731,8 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs,
   }
 }
 
-MutableBorrowingLiteral::MutableBorrowingLiteral(ShapeTree<char*> src_buf_ptrs)
-    : MutableLiteralBase() {
+MutableBorrowingLiteral::MutableBorrowingLiteral(
+    ShapeTree<char*> src_buf_ptrs) {
   shape_ = std::make_unique<Shape>(src_buf_ptrs.shape());
 
   root_piece_ = new Piece();
@@ -2765,14 +2757,14 @@ MutableBorrowingLiteral::~MutableBorrowingLiteral() {
 }
 
 LiteralSlice::LiteralSlice(const LiteralBase& literal)
-    : LiteralBase(), root_piece_(&literal.root_piece()) {}
+    : root_piece_(&literal.root_piece()) {}
 
 LiteralSlice::LiteralSlice(const LiteralBase& literal,
                            const ShapeIndex& view_root)
-    : LiteralBase(), root_piece_(&literal.piece(view_root)) {}
+    : root_piece_(&literal.piece(view_root)) {}
 
 BorrowingLiteral::BorrowingLiteral(const char* src_buf_ptr, const Shape& shape)
-    : LiteralBase(), shape_(std::make_unique<Shape>(shape)) {
+    : shape_(std::make_unique<Shape>(shape)) {
   CHECK(shape_->IsArray());
   CHECK(LayoutUtil::HasLayout(*shape_));
 

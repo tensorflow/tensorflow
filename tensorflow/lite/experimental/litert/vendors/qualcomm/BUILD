@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "litert_lib", "litert_test")
-load("//tensorflow/lite/experimental/litert/vendors/qualcomm:qualcomm_build_defs.bzl", "litert_lib_with_qnn")
+load("//tensorflow/lite/experimental/litert/vendors/qualcomm:qualcomm_build_defs.bzl", "litert_cc_lib_with_qnn")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -26,6 +26,7 @@ cc_library(
     deps = [
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
     ],
 )
 
@@ -58,7 +59,7 @@ cc_library(
     ],
 )
 
-litert_lib_with_qnn(
+litert_cc_lib_with_qnn(
     name = "qnn_manager",
     srcs = [
         "qnn_manager.cc",

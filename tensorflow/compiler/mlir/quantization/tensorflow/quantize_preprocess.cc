@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "mhlo/transforms/passes.h"
 #include "absl/container/flat_hash_set.h"

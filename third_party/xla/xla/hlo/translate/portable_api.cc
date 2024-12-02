@@ -28,6 +28,7 @@ limitations under the License.
 #include "stablehlo/dialect/Register.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "tsl/platform/statusor.h"
 

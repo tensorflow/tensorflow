@@ -392,7 +392,7 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
 
 // Helper functions for CHECK_OP macro.
 // We use the full name Check_EQ, Check_NE, etc. in case the file including
-// base/logging.h provides its own #defines for the simpler names EQ, NE, etc.
+// absl/log/log.h provides its own #defines for the simpler names EQ, NE, etc.
 // This happens if, for example, those are used as token names in a
 // yacc grammar.
 // The (int, int) overload works around the issue that the compiler
@@ -557,7 +557,7 @@ int MaxVLogLevelFromEnv();
 
 }  // namespace internal
 
-// LogSink support adapted from //base/logging.h
+// LogSink support adapted from absl/log/log.h
 //
 // `LogSink` is an interface which can be extended to intercept and process
 // all log messages. LogSink implementations must be thread-safe. A single

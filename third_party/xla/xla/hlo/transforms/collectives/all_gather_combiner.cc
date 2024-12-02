@@ -207,11 +207,13 @@ AllGatherCombiner::CombineKey(const HloInstruction* instruction,
 AllGatherCombiner::AllGatherCombiner(int64_t combine_threshold_in_bytes,
                                      int64_t combine_threshold_count,
                                      bool combine_by_dim,
-                                     bool combine_different_dtypes)
+                                     bool combine_different_dtypes,
+                                     bool combine_while_loops)
     : combine_threshold_in_bytes_(combine_threshold_in_bytes),
       combine_threshold_count_(combine_threshold_count),
       combine_by_dim_(combine_by_dim),
-      combine_different_dtypes_(combine_different_dtypes) {}
+      combine_different_dtypes_(combine_different_dtypes),
+      combine_while_loops_(combine_while_loops) {}
 
 absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
     HloModule* module,
@@ -237,6 +239,12 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
+    if (!combine_while_loops_ && computation->IsWhileBodyComputation()) {
+      VLOG(2) << "Skipping this computation because the computation is a while "
+                 "loop body: "
+              << computation->ToString();
+      continue;
+    }
     TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&](const HloInstruction* instruction) {

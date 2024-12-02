@@ -138,6 +138,10 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
 
+  Future<> CopyToStringHostBuffer(
+      void* data, std::optional<absl::Span<const int64_t>> byte_strides,
+      ArrayCopySemantics semantics);
+
   // Not owned. Used only for implementing `client()` interface method. Note
   // that `client()` will still return the pointer even if the pointed-to memory
   // is freed; this unfortunate behavior currently exists in all IFRT

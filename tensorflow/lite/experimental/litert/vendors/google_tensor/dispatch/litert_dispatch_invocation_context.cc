@@ -58,7 +58,8 @@ absl::StatusOr<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
   LiteRtTensorBufferRequirements requirements;
   if (auto status = LiteRtCreateTensorBufferRequirements(
           num_supported_tensor_buffer_types, supported_tensor_buffer_types,
-          padded_buffer_size, &requirements);
+          padded_buffer_size, /*num_strides=*/0, /*strides=*/nullptr,
+          &requirements);
       status != kLiteRtStatusOk) {
     return absl::InternalError("Not implemented");
   }

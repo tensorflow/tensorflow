@@ -113,8 +113,8 @@ void DumpComputationInput(
   DumpRawStringToFile("legalize_tf_reproducer.textproto", string_reproducer);
 }
 
-Status DumpHloCompilationResult(std::string_view name,
-                                XlaCompilationResult* compilation_result) {
+absl::Status DumpHloCompilationResult(
+    std::string_view name, XlaCompilationResult* compilation_result) {
   if (!VLOG_IS_ON(2) &&
       !DEBUG_DATA_DUMPER()->ShouldDump(std::string(name), kDebugGroupMain)) {
     return absl::OkStatus();

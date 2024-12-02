@@ -130,34 +130,26 @@ struct GpuPerformanceModelOptions {
   // be assumed. If 1.0, assume perfect parallelism (the run time is the maximum
   // of both times). If 0.0, assume no parallelism (the run time is the sum of
   // both times).
-  double memory_compute_parallelism = 1.0;
+  //
+  // This constant was chosen empirically in early 2024, based on runtime
+  // performance on a set of benchmarks internal to Google. Intuitively, we
+  // expect it to be close to 1, but not quite 1 (i.e., sometimes, compute
+  // or memory accesses will be stalled waiting for the other, but usually
+  // they won't).
+  double memory_compute_parallelism = 0.95;
 
   // If present, use this to retrieve fusion analyses.
   HloFusionAnalysisCache* fusion_analysis_cache = nullptr;
 
   GpuPerformanceModelCache* gpu_performance_model_cache = nullptr;
 
-  static GpuPerformanceModelOptions Default() {
-    return GpuPerformanceModelOptions();
-  }
-
-  static GpuPerformanceModelOptions PriorityFusion(
+  static GpuPerformanceModelOptions Default(
       HloFusionAnalysisCache* fusion_analysis_cache = nullptr,
       GpuPerformanceModelCache* gpu_performance_model_cache = nullptr) {
     GpuPerformanceModelOptions config;
     config.fusion_analysis_cache = fusion_analysis_cache;
     config.gpu_performance_model_cache = gpu_performance_model_cache;
-    // This constant was chosen empirically in early 2024, based on runtime
-    // performance on a set of benchmarks internal to Google. Intuitively, we
-    // expect it to be close to 1, but not quite 1 (i.e., sometimes, compute
-    // or memory accesses will be stalled waiting for the other, but usually
-    // they won't).
-    config.memory_compute_parallelism = 0.95;
     return config;
-  }
-
-  static GpuPerformanceModelOptions ForModule(const HloModule* module) {
-    return PriorityFusion();
   }
 };
 
@@ -214,13 +206,6 @@ class GpuPerformanceModelBase {
       const HloInstruction* consumer, const HloInstruction* operand);
 
   // Estimate read time of n_bytes_total bytes from global memory on a
-  // given GPU. Account for L1 / L2 cache speedup if the input's nominal size
-  // n_bytes_net is small.
-  static absl::Duration ReadTime(const se::DeviceDescription& gpu_device_info,
-                                 int64_t num_blocks, int64_t n_bytes_net,
-                                 int64_t n_bytes_total);
-
-  // Estimate read time of n_bytes_total bytes from global memory on a
   // given GPU.
   //
   // Assumes that the first n_bytes_net are always read from DRAM, but next
@@ -230,16 +215,6 @@ class GpuPerformanceModelBase {
       const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
       int64_t n_bytes_net, int64_t n_bytes_total, PrimitiveType element_type,
       double hbm_bandwidth_utilization_rate);
-
-  // Tells input access time of the producer alone if fused_consumer
-  // is not specified. Otherwise estimates the access time to producer's
-  // inputs as if it is fused into the consumer.
-  static absl::Duration ProducerInputAccessTime(
-      const GpuHloCostAnalysis* cost_analysis,
-      const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
-      const HloInstruction* producer, const HloFusionAnalysis& fusion_analysis,
-      const GpuPerformanceModelOptions& config,
-      const HloInstruction* fused_consumer = nullptr);
 
   static absl::Duration WriteTime(const se::DeviceDescription& gpu_device_info,
                                   int64_t bytes_written);

@@ -16,24 +16,50 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_HANDLE_H_
 
 #include <memory>
+#include <type_traits>
 
 namespace litert {
 namespace internal {
+
+template <typename H>
+inline void DummyDeleter(H) {}
 
 // This class is used to wrap and manage the lifetime of opaque handles from the
 // C API into an equivalent C++ object. The class is a wrapper on
 // std::unique_ptr<> that has a default constructor and doesn't crash if the
 // deleter is null.
-template <typename T>
-class Handle : public std::unique_ptr<T, void (*)(T*)> {
+template <typename H, void (*deleter)(H)>
+class Handle {
  public:
-  Handle() : std::unique_ptr<T, void (*)(T*)>(nullptr, DummyDeleter) {}
-  Handle(T* ptr, void (*deleter)(T*))
-      : std::unique_ptr<T, void (*)(T*)>(ptr,
-                                         deleter ? deleter : DummyDeleter) {}
+  Handle() = default;
+  explicit Handle(H handle, bool owned) noexcept
+      : ptr_(handle, owned ? deleter : DummyDeleter<H>) {}
+
+  Handle(Handle&& other) noexcept { *this = std::move(other); }
+
+  Handle& operator=(Handle&& other) noexcept {
+    std::swap(ptr_, other.ptr_);
+    return *this;
+  }
+
+  // Return true if the underlying LiteRtTensorBuffer handle is valid.
+  explicit operator bool() const noexcept { return static_cast<bool>(ptr_); }
+
+  // Return the underlying LiteRtTensorBuffer handle.
+  H Get() const noexcept { return ptr_.get(); }
 
  private:
-  static void DummyDeleter(T*) {}
+  std::unique_ptr<std::remove_pointer_t<H>, void (*)(H)> ptr_ = {nullptr,
+                                                                 DummyDeleter};
+};
+
+// This class is similar to Handle, but the managed opaque handle is not owned
+// (i.e., it will not be destroyed).
+template <typename H>
+class NonOwnedHandle : public Handle<H, DummyDeleter<H>> {
+ public:
+  explicit NonOwnedHandle(H handle) noexcept
+      : Handle<H, DummyDeleter<H>>(handle, /*owned=*/false) {}
 };
 
 }  // namespace internal

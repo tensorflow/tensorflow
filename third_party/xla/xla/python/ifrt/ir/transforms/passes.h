@@ -62,7 +62,7 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtReshardToCopyArraysPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtLowerShardingToXlaPass();
+CreateIfrtLowerAtomProgramMetadataToXlaPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtRemoveIfrtAttrsPass();
@@ -112,6 +112,14 @@ CreateIfrtCompileAndPropagateShardingsPass(
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options,
     std::shared_ptr<AtomExecutableMap> atom_executable_map);
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtPrecompileAtomProgramPreprocessingPass(
+    IfrtPrecompileAtomProgramPreprocessingPassOptions options = {});
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtVerifyDeviceTypeConsistencyPass(
+    IfrtVerifyDeviceTypeConsistencyPassOptions options = {});
 
 // Generated definitions. This should be placed after all Pass creations.
 #define GEN_PASS_REGISTRATION

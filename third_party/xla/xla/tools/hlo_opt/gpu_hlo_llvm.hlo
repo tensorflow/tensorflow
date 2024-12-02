@@ -1,4 +1,4 @@
-// RUN: hlo-opt %s --platform=gpu --xla_gpu_mlir_emitter_level=0 --stage=llvm --xla_gpu_target_config_filename=%S/gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck --check-prefixes=CHECK,CHECK-%{PTX} %s
+// RUN: hlo-opt %s --platform=gpu --stage=llvm --xla_gpu_target_config_filename=%S/gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck --check-prefixes=CHECK,CHECK-%{PTX} %s
 
 HloModule m
 
@@ -10,7 +10,7 @@ add {
 
 
 // CHECK-LABEL: fusion
-// CHECK: 2 x half
+// CHECK: 4 x half
 ENTRY e {
  p1 = f16[1048576] parameter(0)
  i = f16[] constant(0)

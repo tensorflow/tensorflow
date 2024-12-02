@@ -19,6 +19,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -44,7 +46,7 @@ std::string CompiledResult::BytesT::String() const {
 LiteRtResult<CompiledResult::BytesT> CompiledResult::ByteCode() const {
   BytesT byte_code;
   LITERT_RETURN_RESULT_IF_NOT_OK(
-      allocating_plugin_api_.compiled_result_get_byte_code(
+      allocating_plugin_api_.get_compiled_result_byte_code(
           compiled_result_handle_,
           reinterpret_cast<const void**>(&byte_code.data), &byte_code.size),
       BytesT);
@@ -54,7 +56,7 @@ LiteRtResult<CompiledResult::BytesT> CompiledResult::ByteCode() const {
 LiteRtResult<LiteRtParamIndex> CompiledResult::NumCalls() const {
   LiteRtParamIndex call_idx;
   LITERT_RETURN_RESULT_IF_NOT_OK(
-      allocating_plugin_api_.compiled_result_get_num_calls(
+      allocating_plugin_api_.get_compiled_result_num_calls(
           compiled_result_handle_, &call_idx),
       LiteRtParamIndex);
   return LiteRtResult<LiteRtParamIndex>::FromValue(call_idx);
@@ -64,7 +66,7 @@ LiteRtResult<std::string> CompiledResult::CallInfo(
     LiteRtParamIndex call_idx) const {
   BytesT call_info;
   LITERT_RETURN_RESULT_IF_NOT_OK(
-      allocating_plugin_api_.compiled_result_get_call_info(
+      allocating_plugin_api_.get_compiled_result_call_info(
           compiled_result_handle_, call_idx,
           reinterpret_cast<const void**>(&call_info.data), &call_info.size),
       std::string);
@@ -72,7 +74,7 @@ LiteRtResult<std::string> CompiledResult::CallInfo(
 }
 
 CompiledResult::~CompiledResult() {
-  allocating_plugin_api_.compiled_result_destroy(compiled_result_handle_);
+  allocating_plugin_api_.destroy_compiled_result(compiled_result_handle_);
 }
 
 //
@@ -81,51 +83,52 @@ CompiledResult::~CompiledResult() {
 
 namespace {
 
-#define RESOLVE_API_FUNC(ty, name, dest) \
-  LITERT_RETURN_STATUS_IF_NOT_OK(ResolveLibSymbol<ty>(lib_handle, name, &dest));
+#define RESOLVE_API_FUNC(name, dest) \
+  LITERT_RETURN_STATUS_IF_NOT_OK(    \
+      ResolveLibSymbol<decltype(dest)>(lib_handle, name, &dest));
 
 LiteRtStatus ResolvePluginApi(void* lib_handle,
                               LiteRtCompilerPluginApi& result) {
-  RESOLVE_API_FUNC(LiteRtPluginApiSocManufacturer,
-                   "LiteRtPluginSocManufacturer", result.soc_manufacturer);
-  RESOLVE_API_FUNC(LiteRtPluginApiNumSupportedModels,
-                   "LiteRtPluginNumSupportedSocModels",
-                   result.num_supported_models);
-  RESOLVE_API_FUNC(LiteRtPluginApiGetSupportedSocModel,
-                   "LiteRtPluginGetSupportedSocModel",
-                   result.get_supported_soc_model);
+  RESOLVE_API_FUNC("LiteRtGetCompilerPluginVersion",
+                   result.get_compiler_plugin_version);
+  RESOLVE_API_FUNC("LiteRtGetCompilerPluginSocManufacturer",
+                   result.get_compiler_plugin_soc_manufacturer);
+  RESOLVE_API_FUNC("LiteRtGetNumCompilerPluginSupportedSocModels",
+                   result.get_num_compiler_plugin_supported_models);
+  RESOLVE_API_FUNC("LiteRtGetCompilerPluginSupportedSocModel",
+                   result.get_compiler_plugin_supported_soc_model);
 
-  RESOLVE_API_FUNC(LiteRtPluginApiInit, "LiteRtPluginInit", result.init);
-  RESOLVE_API_FUNC(LiteRtPluginApiDestroy, "LiteRtPluginDestroy",
-                   result.destroy);
+  RESOLVE_API_FUNC("LiteRtCreateCompilerPlugin", result.create_compiler_plugin);
+  RESOLVE_API_FUNC("LiteRtDestroyCompilerPlugin",
+                   result.destroy_compiler_plugin);
 
-  RESOLVE_API_FUNC(LiteRtPluginApiPartitionModel, "LiteRtPluginPartitionModel",
-                   result.partition_model);
-  RESOLVE_API_FUNC(LiteRtPluginApiCompile, "LiteRtPluginCompile",
-                   result.compile);
+  RESOLVE_API_FUNC("LiteRtCompilerPluginPartitionModel",
+                   result.compiler_plugin_partition_model);
+  RESOLVE_API_FUNC("LiteRtCompilerPluginCompile",
+                   result.compiler_plugin_compile);
 
-  RESOLVE_API_FUNC(LiteRtCompiledResultApiDestroy,
-                   "LiteRtCompiledResultDestroy",
-                   result.compiled_result_destroy);
-  RESOLVE_API_FUNC(LiteRtCompiledResultApiGetByteCode,
-                   "LiteRtCompiledResultGetByteCode",
-                   result.compiled_result_get_byte_code);
-  RESOLVE_API_FUNC(LiteRtCompiledResultApiGetCallInfo,
-                   "LiteRtCompiledResultGetCallInfo",
-                   result.compiled_result_get_call_info);
-  RESOLVE_API_FUNC(LiteRtCompiledResultApiGetNumCalls,
-                   "LiteRtCompiledResultGetNumCalls",
-                   result.compiled_result_get_num_calls);
+  RESOLVE_API_FUNC("LiteRtDestroyCompiledResult",
+                   result.destroy_compiled_result);
+  RESOLVE_API_FUNC("LiteRtGetCompiledResultByteCode",
+                   result.get_compiled_result_byte_code);
+  RESOLVE_API_FUNC("LiteRtGetCompiledResultCallInfo",
+                   result.get_compiled_result_call_info);
+  RESOLVE_API_FUNC("LiteRtGetNumCompiledResultCalls",
+                   result.get_compiled_result_num_calls);
   return kLiteRtStatusOk;
 }
 
-std::vector<std::string> GetSocModels(const LiteRtCompilerPluginApi& api,
-                                      LiteRtCompilerPlugin plugin_handle) {
+absl::StatusOr<std::vector<std::string>> GetSocModels(
+    const LiteRtCompilerPluginApi& api, LiteRtCompilerPlugin plugin_handle) {
   std::vector<std::string> soc_models;
-  const LiteRtParamIndex num_models = api.num_supported_models(plugin_handle);
+  LiteRtParamIndex num_models;
+  if (api.get_num_compiler_plugin_supported_models(
+          plugin_handle, &num_models) != kLiteRtStatusOk) {
+    return absl::InternalError("Failed to get number of supported SoC models");
+  }
   for (LiteRtParamIndex i = 0; i < num_models; ++i) {
     const char* model;
-    if (api.get_supported_soc_model(plugin_handle, i, &model) !=
+    if (api.get_compiler_plugin_supported_soc_model(plugin_handle, i, &model) !=
         kLiteRtStatusOk) {
       continue;
     }
@@ -145,6 +148,7 @@ CompilerPlugin::ResultT CompilerPlugin::LoadPlugin(
     LITERT_LOG(LITERT_WARNING, "Failed to load plugin at: %s", lib_path.data());
     return ResultT::FromStatus(kLiteRtStatusErrorDynamicLoading);
   }
+  LITERT_LOG(LITERT_INFO, "Loaded plugin at: %s", lib_path.data());
 
   if (ResolvePluginApi(plugin.lib_handle_, plugin.plugin_api_) !=
       kLiteRtStatusOk) {
@@ -152,8 +156,10 @@ CompilerPlugin::ResultT CompilerPlugin::LoadPlugin(
                lib_path.data());
     return ResultT::FromStatus(kLiteRtStatusErrorDynamicLoading);
   }
+  LITERT_LOG(LITERT_INFO, "Resolved plugin api at: %s", lib_path.data());
 
-  if (plugin.plugin_api_.init(&plugin.plugin_handle_) != kLiteRtStatusOk) {
+  if (plugin.plugin_api_.create_compiler_plugin(&plugin.plugin_handle_) !=
+      kLiteRtStatusOk) {
     LITERT_LOG(LITERT_WARNING, "Failed to initialize plugin at: %s",
                lib_path.data());
     if (CloseLib(plugin.lib_handle_) != kLiteRtStatusOk) {
@@ -163,9 +169,28 @@ CompilerPlugin::ResultT CompilerPlugin::LoadPlugin(
     return ResultT::FromStatus(kLiteRtStatusErrorDynamicLoading);
   }
 
+  if (auto api_version = plugin.ApiVersion();
+      api_version.Status() != kLiteRtStatusOk) {
+    return ResultT::FromStatus(api_version.Status());
+  } else if (api_version.Value().major != LITERT_API_VERSION_MAJOR) {
+    LITERT_LOG(
+        LITERT_ERROR,
+        "Unsupported Compiler Plugin version, found version %d.%d.%d and "
+        "expected version %d.%d.%d",
+        api_version.Value().major, api_version.Value().minor,
+        api_version.Value().patch, LITERT_API_VERSION_MAJOR,
+        LITERT_API_VERSION_MINOR, LITERT_API_VERSION_PATCH);
+    return ResultT::FromStatus(kLiteRtStatusErrorRuntimeFailure);
+  }
+
   // This should never change throughout the lifetime of the compiler
   // plugin so save to avoid recalling.
-  plugin.soc_models_ = GetSocModels(plugin.plugin_api_, plugin.plugin_handle_);
+  if (auto soc_models = GetSocModels(plugin.plugin_api_, plugin.plugin_handle_);
+      soc_models.ok()) {
+    plugin.soc_models_ = *soc_models;
+  } else {
+    return ResultT::FromStatus(kLiteRtStatusErrorRuntimeFailure);
+  }
 
   return ResultT::TakeValue(std::move(plugin));
 }
@@ -223,7 +248,7 @@ CompilerPlugin& CompilerPlugin::operator=(CompilerPlugin&& other) {
 
 CompilerPlugin::~CompilerPlugin() {
   if (plugin_handle_ != nullptr) {
-    plugin_api_.destroy(plugin_handle_);
+    plugin_api_.destroy_compiler_plugin(plugin_handle_);
   }
   if (lib_handle_ != nullptr) {
     if (kLiteRtStatusOk != CloseLib(lib_handle_)) {
@@ -232,14 +257,21 @@ CompilerPlugin::~CompilerPlugin() {
   }
 }
 
+LiteRtResult<LiteRtApiVersion> CompilerPlugin::ApiVersion() const {
+  LiteRtApiVersion api_version;
+  LITERT_RETURN_RESULT_IF_NOT_OK(
+      plugin_api_.get_compiler_plugin_version(&api_version), LiteRtApiVersion);
+  return LiteRtResult<LiteRtApiVersion>::FromValue(api_version);
+}
+
 LiteRtResult<std::vector<LiteRtOp>> CompilerPlugin::PartitionModel(
     const LiteRtModelT& model) {
   LiteRtOpListT ops;
   // TODO: Use const where appropriate in the C compiler plugin api.
   LiteRtModel c_model = const_cast<LiteRtModel>(&model);
-  LITERT_RETURN_RESULT_IF_NOT_OK(
-      plugin_api_.partition_model(plugin_handle_, c_model, &ops),
-      std::vector<LiteRtOp>);
+  LITERT_RETURN_RESULT_IF_NOT_OK(plugin_api_.compiler_plugin_partition_model(
+                                     plugin_handle_, c_model, &ops),
+                                 std::vector<LiteRtOp>);
   return LiteRtResult<std::vector<LiteRtOp>>::TakeValue(ops.Vec());
 }
 
@@ -253,9 +285,9 @@ LiteRtStatus CompilerPlugin::Compile(
   // TODO: Use const where appropriate in the C compiler plugin api.
   LiteRtSubgraphArray partitions_arr =
       const_cast<LiteRtSubgraphArray>(partitions.data());
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      plugin_api_.compile(plugin_handle_, soc_model.data(), partitions_arr,
-                          partitions.size(), &result.compiled_result_handle_));
+  LITERT_RETURN_STATUS_IF_NOT_OK(plugin_api_.compiler_plugin_compile(
+      plugin_handle_, soc_model.data(), partitions_arr, partitions.size(),
+      &result.compiled_result_handle_));
 
   // Parse call info from the result.
   {

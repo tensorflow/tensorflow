@@ -45,6 +45,8 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core:model",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin_api",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",

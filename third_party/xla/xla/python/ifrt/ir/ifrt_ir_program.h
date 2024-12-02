@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/program.h"
 
 namespace xla {
@@ -64,10 +65,12 @@ struct IfrtIRCompileOptions
           loaded_exec_binding = {},
       std::shared_ptr<absl::flat_hash_map<
           std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
-          compile_options_overrides = {})
+          compile_options_overrides = {},
+      bool propagate_shardings = false)
       : device_assignments(std::move(device_assignments)),
         loaded_exec_binding(std::move(loaded_exec_binding)),
-        compile_options_overrides(std::move(compile_options_overrides)) {}
+        compile_options_overrides(std::move(compile_options_overrides)),
+        propagate_shardings(propagate_shardings) {}
 
   // Mapping from logical device ids in IFRT IR MLIR module to runtime device
   // ids obtained from IFRT client.
@@ -85,6 +88,17 @@ struct IfrtIRCompileOptions
   std::shared_ptr<absl::flat_hash_map<
       std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
       compile_options_overrides;
+
+  // Whether to propagate shardings from atom program executables for
+  // unspecified shardings.
+  bool propagate_shardings;
+
+  // Constructs `IfrtIRCompileOptions` from `IfrtIrCompileOptionsProto`.
+  static absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> FromProto(
+      const IfrtIrCompileOptionsProto& proto);
+
+  // Returns a `IfrtIrCompileOptionsProto` representation.
+  absl::StatusOr<IfrtIrCompileOptionsProto> ToProto() const;
 
   static char ID;  // NOLINT
 };

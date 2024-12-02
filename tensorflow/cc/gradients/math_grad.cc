@@ -54,27 +54,27 @@ Output ConjugateHelper(const Scope& scope, const Output& out) {
 
 // TODO(andydavis) Add control dependencies to gradient functions (as needed).
 
-Status AbsGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status AbsGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   // dx = dy * sign(x)
   grad_outputs->push_back(Mul(scope, grad_inputs[0], Sign(scope, op.input(0))));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Abs", AbsGrad);
 
-Status NegGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status NegGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   // dx = -dy;
   grad_outputs->push_back(Neg(scope, grad_inputs[0]));
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Neg", NegGrad);
 
-Status InvGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status InvGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   // Use the built-in operator.
   grad_outputs->push_back(
       internal::ReciprocalGrad(scope, op.output(0), grad_inputs[0]));
@@ -83,9 +83,9 @@ Status InvGrad(const Scope& scope, const Operation& op,
 REGISTER_GRADIENT_OP("Inv", InvGrad);
 REGISTER_GRADIENT_OP("Reciprocal", InvGrad);
 
-Status SquareGrad(const Scope& scope, const Operation& op,
-                  const std::vector<Output>& grad_inputs,
-                  std::vector<Output>* grad_outputs) {
+absl::Status SquareGrad(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs) {
   // dy/dx = (2 * x)
   auto two = Cast(scope, Const(scope, 2), op.input(0).type());
   auto dydx = Mul(scope, two, op.input(0));
@@ -96,9 +96,9 @@ Status SquareGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Square", SquareGrad);
 
-Status SqrtGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status SqrtGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   // Use the built-in operator.
   grad_outputs->push_back(
       internal::SqrtGrad(scope, op.output(0), grad_inputs[0]));
@@ -106,9 +106,9 @@ Status SqrtGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Sqrt", SqrtGrad);
 
-Status RsqrtGrad(const Scope& scope, const Operation& op,
-                 const std::vector<Output>& grad_inputs,
-                 std::vector<Output>* grad_outputs) {
+absl::Status RsqrtGrad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
   // Use the built-in operator.
   grad_outputs->push_back(
       internal::RsqrtGrad(scope, op.output(0), grad_inputs[0]));
@@ -116,9 +116,9 @@ Status RsqrtGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Rsqrt", RsqrtGrad);
 
-Status ExpGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status ExpGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   // dy/dx = exp(x) = y
   // grad(x) = grad(y) * conj(dy/dx)
   //         = grad(y) * conj(y)
@@ -128,9 +128,9 @@ Status ExpGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Exp", ExpGrad);
 
-Status Expm1Grad(const Scope& scope, const Operation& op,
-                 const std::vector<Output>& grad_inputs,
-                 std::vector<Output>* grad_outputs) {
+absl::Status Expm1Grad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
   // y = expm1(x)
   // dy/dx = exp(x)
   auto dydx = Exp(scope, op.input(0));
@@ -141,9 +141,9 @@ Status Expm1Grad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Expm1", Expm1Grad);
 
-Status LogGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status LogGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   // y = log(x)
   // dy/dx = 1 / x
   auto dydx = Reciprocal(scope, op.input(0));
@@ -154,9 +154,9 @@ Status LogGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Log", LogGrad);
 
-Status Log1pGrad(const Scope& scope, const Operation& op,
-                 const std::vector<Output>& grad_inputs,
-                 std::vector<Output>* grad_outputs) {
+absl::Status Log1pGrad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
   // y = log1p(x)
   // dy/dx = 1 / (1 + x)
   auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
@@ -168,9 +168,9 @@ Status Log1pGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Log1p", Log1pGrad);
 
-Status SinhGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status SinhGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   // y = sinh(x)
   // dy/dx = cosh(x)
   auto dydx = Cosh(scope, op.input(0));
@@ -181,9 +181,9 @@ Status SinhGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Sinh", SinhGrad);
 
-Status CoshGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status CoshGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   // y = cosh(x)
   // dy/dx = sinh(x)
   auto dydx = Sinh(scope, op.input(0));
@@ -194,9 +194,9 @@ Status CoshGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Cosh", CoshGrad);
 
-Status TanhGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status TanhGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   // Use the built-in operator.
   // Note that the built-in operator does not return the conjugate of
   // the gradient.
@@ -210,9 +210,9 @@ Status TanhGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Tanh", TanhGrad);
 
-Status AsinhGrad(const Scope& scope, const Operation& op,
-                 const std::vector<Output>& grad_inputs,
-                 std::vector<Output>* grad_outputs) {
+absl::Status AsinhGrad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
   // y = asinh(x)
   // dy/dx = 1 / cosh(y)
   auto dydx = Reciprocal(scope, Cosh(scope, op.output(0)));
@@ -223,9 +223,9 @@ Status AsinhGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Asinh", AsinhGrad);
 
-Status AcoshGrad(const Scope& scope, const Operation& op,
-                 const std::vector<Output>& grad_inputs,
-                 std::vector<Output>* grad_outputs) {
+absl::Status AcoshGrad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
   // y = acosh(x)
   // dy/dx = 1 / sinh(y)
   auto dydx = Reciprocal(scope, Sinh(scope, op.output(0)));
@@ -236,9 +236,9 @@ Status AcoshGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Acosh", AcoshGrad);
 
-Status AtanhGrad(const Scope& scope, const Operation& op,
-                 const std::vector<Output>& grad_inputs,
-                 std::vector<Output>* grad_outputs) {
+absl::Status AtanhGrad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
   // y = atanh(x)
   // dy/dx = 1 / (1 - x^2)
   auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
@@ -250,9 +250,9 @@ Status AtanhGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Atanh", AtanhGrad);
 
-Status SigmoidGrad(const Scope& scope, const Operation& op,
-                   const std::vector<Output>& grad_inputs,
-                   std::vector<Output>* grad_outputs) {
+absl::Status SigmoidGrad(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
   // Use the built-in operator.
   // Note that the built-in operator does not return the conjugate of
   // the gradient.
@@ -266,9 +266,9 @@ Status SigmoidGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Sigmoid", SigmoidGrad);
 
-Status SignGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status SignGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   auto shape = Shape(scope, op.input(0));
   auto zero = Cast(scope, Const(scope, 0.0), op.input(0).type());
   auto dx = Fill(scope, shape, zero);
@@ -277,9 +277,9 @@ Status SignGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Sign", SignGrad);
 
-Status SinGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status SinGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   // y = sin(x)
   // dy/dx = cos(x)
   auto dydx = Cos(scope, op.input(0));
@@ -290,9 +290,9 @@ Status SinGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Sin", SinGrad);
 
-Status CosGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status CosGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   // y = cos(x)
   // dy/dx = -sin(x)
   auto dydx = Neg(scope, Sin(scope, op.input(0)));
@@ -303,9 +303,9 @@ Status CosGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Cos", CosGrad);
 
-Status AsinGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status AsinGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   // y = asin(x)
   // dy/dx = 1 / sqrt(1 - x^2)
   auto x2 = Square(scope, op.input(0));
@@ -318,9 +318,9 @@ Status AsinGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Asin", AsinGrad);
 
-Status AcosGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status AcosGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   // y = acos(x)
   // dy/dx = - 1 / (1 - x * x)^1/2
   // dx = dy * (- 1 / (1 - x * x)^1/2)
@@ -333,9 +333,9 @@ Status AcosGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Acos", AcosGrad);
 
-Status TanGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status TanGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   // y = tan(x)
   // dy/dx = sec(x)^2 = 1 / cos(x)^2
   auto dydx = Square(scope, Reciprocal(scope, Cos(scope, op.input(0))));
@@ -346,9 +346,9 @@ Status TanGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Tan", TanGrad);
 
-Status AtanGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status AtanGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   // y = arctan(x)
   // dy/dx = 1 / (1 + x^2)
   // dx = dy * (1 / (1 + x^2)
@@ -360,9 +360,9 @@ Status AtanGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Atan", AtanGrad);
 
-Status Atan2Grad(const Scope& scope, const Operation& op,
-                 const std::vector<Output>& grad_inputs,
-                 std::vector<Output>* grad_outputs) {
+absl::Status Atan2Grad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
   auto y = op.input(0);
   auto x = op.input(1);
   Output grad_inv = Div(scope, grad_inputs[0],
@@ -375,9 +375,9 @@ REGISTER_GRADIENT_OP("Atan2", Atan2Grad);
 
 // BinaryGradCommon handles the setup for binary ops that broadcast
 // their inputs.
-Status BinaryGradCommon(const Scope& scope, const Operation& op,
-                        std::vector<Output>* grad_outputs, const Output& gx_1,
-                        const Output& gx_2) {
+absl::Status BinaryGradCommon(const Scope& scope, const Operation& op,
+                              std::vector<Output>* grad_outputs,
+                              const Output& gx_1, const Output& gx_2) {
   auto sx_1 = Shape(scope, op.input(0));
   auto sx_2 = Shape(scope, op.input(1));
   auto rx = internal::BroadcastGradientArgs(scope, sx_1, sx_2);
@@ -388,9 +388,9 @@ Status BinaryGradCommon(const Scope& scope, const Operation& op,
   return scope.status();
 }
 
-Status AddGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status AddGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   // y = x_1 + x_2
   // dy/dx_1 = dy/dx_2 = 1
   auto gx_1 = Identity(scope, grad_inputs[0]);
@@ -400,9 +400,9 @@ Status AddGrad(const Scope& scope, const Operation& op,
 REGISTER_GRADIENT_OP("Add", AddGrad);
 REGISTER_GRADIENT_OP("AddV2", AddGrad);
 
-Status SubGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status SubGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   // y = x_1 - x_2
   // dy/dx_1 = 1
   // dy/dx_2 = -1
@@ -412,9 +412,9 @@ Status SubGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Sub", SubGrad);
 
-Status MulGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status MulGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   auto x_1 = ConjugateHelper(scope, op.input(0));
   auto x_2 = ConjugateHelper(scope, op.input(1));
   // y = x_1 * x_2
@@ -426,9 +426,9 @@ Status MulGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Mul", MulGrad);
 
-Status DivGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status DivGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   auto x_1 = ConjugateHelper(scope, op.input(0));
   auto x_2 = ConjugateHelper(scope, op.input(1));
   // y = x_1 / x_2
@@ -441,9 +441,9 @@ Status DivGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Div", DivGrad);
 
-Status RealDivGrad(const Scope& scope, const Operation& op,
-                   const std::vector<Output>& grad_inputs,
-                   std::vector<Output>* grad_outputs) {
+absl::Status RealDivGrad(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
   auto x_1 = ConjugateHelper(scope, op.input(0));
   auto x_2 = ConjugateHelper(scope, op.input(1));
   // y = x_1 / x_2
@@ -456,9 +456,9 @@ Status RealDivGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("RealDiv", RealDivGrad);
 
-Status DivNoNanGrad(const Scope& scope, const Operation& op,
-                    const std::vector<Output>& grad_inputs,
-                    std::vector<Output>* grad_outputs) {
+absl::Status DivNoNanGrad(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
   auto x_1 = ConjugateHelper(scope, op.input(0));
   auto x_2 = ConjugateHelper(scope, op.input(1));
   // y = x_1 / x_2
@@ -471,9 +471,9 @@ Status DivNoNanGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("DivNoNan", DivNoNanGrad);
 
-Status SquaredDifferenceGrad(const Scope& scope, const Operation& op,
-                             const std::vector<Output>& grad_inputs,
-                             std::vector<Output>* grad_outputs) {
+absl::Status SquaredDifferenceGrad(const Scope& scope, const Operation& op,
+                                   const std::vector<Output>& grad_inputs,
+                                   std::vector<Output>* grad_outputs) {
   auto x_1 = ConjugateHelper(scope, op.input(0));
   auto x_2 = ConjugateHelper(scope, op.input(1));
   // y = (x_1 - x_2)^2
@@ -486,9 +486,9 @@ Status SquaredDifferenceGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("SquaredDifference", SquaredDifferenceGrad);
 
-Status AddNGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status AddNGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   // AddN doesn't support broadcasting, so all the inputs must be the
   // same shape.
   // Note:
@@ -504,9 +504,9 @@ Status AddNGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("AddN", AddNGrad);
 
-Status PowGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status PowGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   auto x = ConjugateHelper(scope, op.input(0));
   auto y = ConjugateHelper(scope, op.input(1));
   auto z = ConjugateHelper(scope, op.output(0));
@@ -536,10 +536,10 @@ REGISTER_GRADIENT_OP("Pow", PowGrad);
 
 // MaximumMinimumGradCommon adds shared ops to calculate gradients for
 // the binary Maximum and Minimum ops.
-Status MaximumMinimumGradCommon(const Scope& scope, const Operation& op,
-                                const std::vector<Output>& grad_inputs,
-                                std::vector<Output>* grad_outputs,
-                                const Output& comparator) {
+absl::Status MaximumMinimumGradCommon(const Scope& scope, const Operation& op,
+                                      const std::vector<Output>& grad_inputs,
+                                      std::vector<Output>* grad_outputs,
+                                      const Output& comparator) {
   // comparator is a boolean tensor, with
   // y = x_1 at points where comparator is true, and x_2 otherwise
   // Therefore
@@ -552,27 +552,27 @@ Status MaximumMinimumGradCommon(const Scope& scope, const Operation& op,
   return BinaryGradCommon(scope, op, grad_outputs, gx_1, gx_2);
 }
 
-Status MaximumGrad(const Scope& scope, const Operation& op,
-                   const std::vector<Output>& grad_inputs,
-                   std::vector<Output>* grad_outputs) {
+absl::Status MaximumGrad(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
   auto comparator = GreaterEqual(scope, op.input(0), op.input(1));
   return MaximumMinimumGradCommon(scope, op, grad_inputs, grad_outputs,
                                   comparator);
 }
 REGISTER_GRADIENT_OP("Maximum", MaximumGrad);
 
-Status MinimumGrad(const Scope& scope, const Operation& op,
-                   const std::vector<Output>& grad_inputs,
-                   std::vector<Output>* grad_outputs) {
+absl::Status MinimumGrad(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
   auto comparator = LessEqual(scope, op.input(0), op.input(1));
   return MaximumMinimumGradCommon(scope, op, grad_inputs, grad_outputs,
                                   comparator);
 }
 REGISTER_GRADIENT_OP("Minimum", MinimumGrad);
 
-Status RealGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status RealGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   auto zero = Cast(scope, Const(scope, 0.0), op.output(0).type());
   auto dx = Complex(scope, grad_inputs[0], zero);
   grad_outputs->push_back(dx);
@@ -580,9 +580,9 @@ Status RealGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Real", RealGrad);
 
-Status ImagGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status ImagGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   auto zero = Cast(scope, Const(scope, 0.0), op.output(0).type());
   auto dx = Complex(scope, zero, grad_inputs[0]);
   grad_outputs->push_back(dx);
@@ -590,18 +590,18 @@ Status ImagGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Imag", ImagGrad);
 
-Status ComplexGrad(const Scope& scope, const Operation& op,
-                   const std::vector<Output>& grad_inputs,
-                   std::vector<Output>* grad_outputs) {
+absl::Status ComplexGrad(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
   auto gx_1 = Real(scope, grad_inputs[0]);
   auto gx_2 = Imag(scope, grad_inputs[0]);
   return BinaryGradCommon(scope, op, grad_outputs, gx_1, gx_2);
 }
 REGISTER_GRADIENT_OP("Complex", ComplexGrad);
 
-Status AngleGrad(const Scope& scope, const Operation& op,
-                 const std::vector<Output>& grad_inputs,
-                 std::vector<Output>* grad_outputs) {
+absl::Status AngleGrad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
   // y = Angle(x)
   // dx = -dy / (Im(x) + iRe(x)) = -dy * z
   auto re = Real(scope, op.input(0));
@@ -615,9 +615,9 @@ Status AngleGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Angle", AngleGrad);
 
-Status ConjGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status ConjGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(Conj(scope, grad_inputs[0]));
   return scope.status();
 }
@@ -667,9 +667,9 @@ Output SumGradHelper(const Scope& scope, const Operation& op,
   return Tile(scope, grad, tile_scaling);
 }
 
-Status SumGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status SumGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   grad_outputs->push_back(SumGradHelper(scope, op, grad_inputs));
 
   // Stop propagation along reduction_indices
@@ -678,9 +678,9 @@ Status SumGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Sum", SumGrad);
 
-Status MeanGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status MeanGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   // The Mean gradient is just like the Sum gradient, except that
   // all gradients are also divided by the size of reduced groups.
   auto sum_grad = SumGradHelper(scope, op, grad_inputs);
@@ -705,9 +705,9 @@ Status MeanGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Mean", MeanGrad);
 
-Status ErfGrad(const Scope& scope, const Operation& op,
-               const std::vector<Output>& grad_inputs,
-               std::vector<Output>* grad_outputs) {
+absl::Status ErfGrad(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
   auto grad = grad_inputs[0];
   auto two_over_root_pi =
       Cast(scope, Const(scope, 2 / std::sqrt(M_PI)), grad.type());
@@ -721,9 +721,9 @@ Status ErfGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Erf", ErfGrad);
 
-Status ErfinvGrad(const Scope& scope, const Operation& op,
-                  const std::vector<Output>& grad_inputs,
-                  std::vector<Output>* grad_outputs) {
+absl::Status ErfinvGrad(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs) {
   auto grad = grad_inputs[0];
   auto root_pi_over_two =
       Cast(scope, Const(scope, std::sqrt(M_PI) / 2), grad.type());
@@ -737,9 +737,9 @@ Status ErfinvGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Erfinv", ErfinvGrad);
 
-Status NdtriGrad(const Scope& scope, const Operation& op,
-                 const std::vector<Output>& grad_inputs,
-                 std::vector<Output>* grad_outputs) {
+absl::Status NdtriGrad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
   auto grad = grad_inputs[0];
   auto root_two_pi =
       Cast(scope, Const(scope, std::sqrt(2 * M_PI)), grad.type());
@@ -755,9 +755,9 @@ Status NdtriGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Ndtri", NdtriGrad);
 
-Status LgammaGrad(const Scope& scope, const Operation& op,
-                  const std::vector<Output>& grad_inputs,
-                  std::vector<Output>* grad_outputs) {
+absl::Status LgammaGrad(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs) {
   auto grad = grad_inputs[0];
   Scope grad_scope = scope.WithControlDependencies(grad);
   auto x = ConjugateHelper(grad_scope, op.input(0));
@@ -767,9 +767,9 @@ Status LgammaGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Lgamma", LgammaGrad);
 
-Status MinOrMaxGrad(const Scope& scope, const Operation& op,
-                    const std::vector<Output>& grad_inputs,
-                    std::vector<Output>* grad_outputs) {
+absl::Status MinOrMaxGrad(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
   // The partial derivative for any input along a "reduced" dimension
   // is 1 when it is the min (or max) and 0 everywhere else. So the
   // gradient calculation is identical for both operators.
@@ -833,9 +833,9 @@ Status MinOrMaxGrad(const Scope& scope, const Operation& op,
 REGISTER_GRADIENT_OP("Min", MinOrMaxGrad);
 REGISTER_GRADIENT_OP("Max", MinOrMaxGrad);
 
-Status ProdGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status ProdGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   auto zero = Const(scope, 0);
   auto one = Const(scope, 1);
 
@@ -1010,9 +1010,9 @@ Status ProdGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Prod", ProdGrad);
 
-Status SegmentSumGrad(const Scope& scope, const Operation& op,
-                      const std::vector<Output>& grad_inputs,
-                      std::vector<Output>* grad_outputs) {
+absl::Status SegmentSumGrad(const Scope& scope, const Operation& op,
+                            const std::vector<Output>& grad_inputs,
+                            std::vector<Output>* grad_outputs) {
   // The SegmentSum operation sums segments of the Tensor that have the same
   // index in the segment_ids parameter.
   // i.e z = [2, 3, 4, 5], segment_ids [0, 0, 0, 1]
@@ -1032,12 +1032,13 @@ REGISTER_GRADIENT_OP("SegmentSum", SegmentSumGrad);
 
 // MatMulGrad helper function used to compute two MatMul operations
 // based on input matrix transposition combinations.
-Status MatMulGradHelper(const Scope& scope, const bool is_batch,
-                        const Output& x0, const bool adj_x0, const Output& x1,
-                        const bool adj_x1, const DataType x_data_type,
-                        const Output& y0, const bool adj_y0, const Output& y1,
-                        const bool adj_y1, const DataType y_data_type,
-                        std::vector<Output>* grad_outputs) {
+absl::Status MatMulGradHelper(const Scope& scope, const bool is_batch,
+                              const Output& x0, const bool adj_x0,
+                              const Output& x1, const bool adj_x1,
+                              const DataType x_data_type, const Output& y0,
+                              const bool adj_y0, const Output& y1,
+                              const bool adj_y1, const DataType y_data_type,
+                              std::vector<Output>* grad_outputs) {
   if (is_batch == false) {
     auto dx =
         MatMul(scope, x0, x1, MatMul::TransposeA(adj_x0).TransposeB(adj_x1));
@@ -1059,11 +1060,12 @@ Status MatMulGradHelper(const Scope& scope, const bool is_batch,
 // MatMulGrad common used to read and check node attr state, and determine
 // proper MatMul products for gradients based on input matrix transposition
 // combinations.
-Status MatMulGradCommon(const Scope& scope, const Operation& op,
-                        const bool is_batch,
-                        const std::vector<Output>& grad_inputs,
-                        const string& attr_adj_x, const string& attr_adj_y,
-                        std::vector<Output>* grad_outputs) {
+absl::Status MatMulGradCommon(const Scope& scope, const Operation& op,
+                              const bool is_batch,
+                              const std::vector<Output>& grad_inputs,
+                              const string& attr_adj_x,
+                              const string& attr_adj_y,
+                              std::vector<Output>* grad_outputs) {
   auto a = op.input(0);
   auto b = op.input(1);
   // Use conjugate of the inputs for MatMul
@@ -1096,25 +1098,25 @@ Status MatMulGradCommon(const Scope& scope, const Operation& op,
                           grad_outputs);
 }
 
-Status MatMulGrad(const Scope& scope, const Operation& op,
-                  const std::vector<Output>& grad_inputs,
-                  std::vector<Output>* grad_outputs) {
+absl::Status MatMulGrad(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs) {
   return MatMulGradCommon(scope, op, false, grad_inputs, "transpose_a",
                           "transpose_b", grad_outputs);
 }
 REGISTER_GRADIENT_OP("MatMul", MatMulGrad);
 
-Status BatchMatMulGrad(const Scope& scope, const Operation& op,
-                       const std::vector<Output>& grad_inputs,
-                       std::vector<Output>* grad_outputs) {
+absl::Status BatchMatMulGrad(const Scope& scope, const Operation& op,
+                             const std::vector<Output>& grad_inputs,
+                             std::vector<Output>* grad_outputs) {
   return MatMulGradCommon(scope, op, true, grad_inputs, "adj_x", "adj_y",
                           grad_outputs);
 }
 REGISTER_GRADIENT_OP("BatchMatMul", BatchMatMulGrad);
 
-Status BatchMatMulV2Grad(const Scope& scope, const Operation& op,
-                         const std::vector<Output>& grad_inputs,
-                         std::vector<Output>* grad_outputs) {
+absl::Status BatchMatMulV2Grad(const Scope& scope, const Operation& op,
+                               const std::vector<Output>& grad_inputs,
+                               std::vector<Output>* grad_outputs) {
   TF_RETURN_IF_ERROR(MatMulGradCommon(scope, op, true, grad_inputs, "adj_x",
                                       "adj_y", grad_outputs));
 
@@ -1136,9 +1138,9 @@ Status BatchMatMulV2Grad(const Scope& scope, const Operation& op,
 REGISTER_GRADIENT_OP("BatchMatMulV2", BatchMatMulV2Grad);
 REGISTER_GRADIENT_OP("BatchMatMulV3", BatchMatMulV2Grad);
 
-Status CumsumGrad(const Scope& scope, const Operation& op,
-                  const std::vector<Output>& grad_inputs,
-                  std::vector<Output>* grad_outputs) {
+absl::Status CumsumGrad(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 2) {
     return errors::InvalidArgument("Cumsum requires 2 arguments");
   }
@@ -1168,9 +1170,9 @@ bool IsFloatingPointDtype(DataType dtype) {
          std::end(valid_dtypes);
 }
 
-Status CastGrad(const Scope& scope, const Operation& op,
-                const std::vector<Output>& grad_inputs,
-                std::vector<Output>* grad_outputs) {
+absl::Status CastGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 1) {
     return errors::InvalidArgument("Cast requires 2 arguments");
   }
@@ -1189,9 +1191,9 @@ Status CastGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Cast", CastGrad);
 
-Status SelectGrad(const Scope& scope, const Operation& op,
-                  const std::vector<Output>& grad_inputs,
-                  std::vector<Output>* grad_outputs) {
+absl::Status SelectGrad(const Scope& scope, const Operation& op,
+                        const std::vector<Output>& grad_inputs,
+                        std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 3) {
     return errors::InvalidArgument("Select requires 3 arguments");
   }
@@ -1208,9 +1210,9 @@ Status SelectGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Select", SelectGrad);
 
-Status SelectV2Grad(const Scope& scope, const Operation& op,
-                    const std::vector<Output>& grad_inputs,
-                    std::vector<Output>* grad_outputs) {
+absl::Status SelectV2Grad(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 3) {
     return errors::InvalidArgument("Select requires 3 arguments");
   }
@@ -1286,9 +1288,10 @@ Output GatherDropNegatives(const Scope& scope, const Output& params,
   return SelectV2(scope, is_positive, gathered, zero_slice);
 }
 
-Status UnsortedSegmentMinOrMaxGrad(const Scope& scope, const Operation& op,
-                                   const std::vector<Output>& grad_inputs,
-                                   std::vector<Output>* grad_outputs) {
+absl::Status UnsortedSegmentMinOrMaxGrad(const Scope& scope,
+                                         const Operation& op,
+                                         const std::vector<Output>& grad_inputs,
+                                         std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 3) {
     return errors::InvalidArgument("UnsortedSegmentMax requires 3 arguments");
   }
@@ -1323,9 +1326,9 @@ Status UnsortedSegmentMinOrMaxGrad(const Scope& scope, const Operation& op,
 REGISTER_GRADIENT_OP("UnsortedSegmentMax", UnsortedSegmentMinOrMaxGrad);
 REGISTER_GRADIENT_OP("UnsortedSegmentMin", UnsortedSegmentMinOrMaxGrad);
 
-Status UnsortedSegmentSumGrad(const Scope& scope, const Operation& op,
-                              const std::vector<Output>& grad_inputs,
-                              std::vector<Output>* grad_outputs) {
+absl::Status UnsortedSegmentSumGrad(const Scope& scope, const Operation& op,
+                                    const std::vector<Output>& grad_inputs,
+                                    std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 3) {
     return errors::InvalidArgument("UnsortedSegmentSum requires 3 arguments");
   }
@@ -1346,9 +1349,9 @@ Status UnsortedSegmentSumGrad(const Scope& scope, const Operation& op,
 
 REGISTER_GRADIENT_OP("UnsortedSegmentSum", UnsortedSegmentSumGrad);
 
-Status ClipByValueGrad(const Scope& scope, const Operation& op,
-                       const std::vector<Output>& grad_inputs,
-                       std::vector<Output>* grad_outputs) {
+absl::Status ClipByValueGrad(const Scope& scope, const Operation& op,
+                             const std::vector<Output>& grad_inputs,
+                             std::vector<Output>* grad_outputs) {
   if (op.num_inputs() != 3) {
     return absl::InvalidArgumentError("ClipByValue requires 3 arguments");
   }

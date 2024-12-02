@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cctype>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "absl/strings/ascii.h"

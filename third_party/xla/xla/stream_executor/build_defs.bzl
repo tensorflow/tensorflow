@@ -14,6 +14,9 @@ load(
 def stream_executor_friends():
     return ["//..."]
 
+def stream_executor_gpu_friends():
+    return ["//..."]
+
 def stream_executor_internal():
     return ["//..."]
 

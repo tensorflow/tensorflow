@@ -63,7 +63,8 @@ module {
         xla::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
-    TF_ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program));
+    TF_ASSERT_OK_AND_ASSIGN(serialized,
+                            Serialize(*program, /*options=*/nullptr));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -101,7 +102,7 @@ module {
         xla::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
-    EXPECT_THAT(Serialize(*program),
+    EXPECT_THAT(Serialize(*program, /*options=*/nullptr),
                 StatusIs(Not(absl::StatusCode::kOk),
                          HasSubstr("Failed to serialize StableHLO")));
   }
@@ -123,7 +124,8 @@ module {
         xla::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
-    TF_ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program));
+    TF_ASSERT_OK_AND_ASSIGN(serialized,
+                            Serialize(*program, /*options=*/nullptr));
   }
 
   serialized.set_data("invalid data");

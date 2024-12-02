@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/sub_byte_normalization.h"
 #include "xla/layout_util.h"
-#include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
@@ -149,7 +148,8 @@ bool IsFusibleCandidate(const HloInstruction& instr) {
     return false;
   }
 
-  if (IsNestableVariadicReduction(instr)) {
+  if (IsNestableVariadicReduction(instr) ||
+      IsNestableVariadicReduceWindow(instr)) {
     return false;
   }
 
@@ -232,27 +232,6 @@ bool IsProfitableFusionCandidate(const HloInstruction& instr,
   return true;
 }
 
-// Returns whether `fusion_instr` has only row-major layouts.
-// The horizontal fusion excludes computations with non-row-major layouts,
-// because fusing computations with different layouts can result in uncoalesced
-// memory accesses and cause great performance overhead.
-bool HasOnlyRowMajorLayout(const HloInstruction& instr) {
-  if (instr.opcode() != HloOpcode::kFusion) {
-    return LayoutUtil::IsMonotonicWithDim0Major(instr.shape().layout());
-  }
-
-  auto fused_instrs = instr.fused_instructions_computation()->instructions();
-  for (HloInstruction* i : fused_instrs) {
-    if (!LayoutUtil::IsDenseArray(i->shape())) {
-      continue;
-    }
-    if (!LayoutUtil::IsMonotonicWithDim0Major(i->shape().layout())) {
-      return false;
-    }
-  }
-  return true;
-}
-
 // Returns whether any operand of `instr` is a parameter instruction that
 // is shared with `fusion_instrs`.
 bool AnyOpndIsParamSharedAmongFusions(
@@ -295,11 +274,8 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
               << " rejects may-not-be profitable fusion instr"
               << instr->ToString();
       continue;
-    } else if (!HasOnlyRowMajorLayout(*instr)) {
-      VLOG(2) << "sliced_input_fusion=" << sliced_input_fusion_
-              << " rejects non-row-major fusion instr " << instr->ToString();
-      continue;
-    } else if (AnyOpndIsParamSharedAmongFusions(instr, fusible_candidates)) {
+    } else if (sliced_input_fusion_ &&
+               AnyOpndIsParamSharedAmongFusions(instr, fusible_candidates)) {
       // Don't fuse fusions whose operands are parameter instructions that are
       // shared among fusions because we cannot i/o alias the produced
       // horizontal fusion due to the concat insertion.
@@ -316,10 +292,9 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
 
   // Sort `fusible_instrs_` according to output types, the number of outputs,
   // instruction counts, output tensor element count. For sliced input fusion,
-  // we only fuse instructions with the same number/type of outputs and whose
-  // computations have the same instruction count. For kLoop fusion, we requires
-  // the fused instructions to have the same number/type of outputs and also the
-  // same output shape. We did a sort here so the fusion candidates is
+  // we only fuse instructions with the same number/type of outputs.
+  // For kLoop fusion, we in addition require the same output shape.
+  // We did a sort here so the fusion candidates is
   // populating a continuous span.
   std::stable_sort(
       fusible_instrs_.begin(), fusible_instrs_.end(),
@@ -384,15 +359,6 @@ HorizontalLoopFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
         GetOutputSizeOfFusible(*fusible_instrs_[right])) {
       // Cannot fuse computations who have different numbers of outputs.
       VLOG(2) << "different number of outputs";
-      break;
-    }
-    if (GetInstrCountOfFusible(*fusible_instrs_[left]) !=
-        GetInstrCountOfFusible(*fusible_instrs_[right])) {
-      // Do not fuse computations of different instruction counts as it may
-      // introduce control divergence. This is a very simple heuristic to avoid
-      // fusing computations with too much discrepancy and we may improve it
-      // when the needs arise.
-      VLOG(2) << "different instruction count";
       break;
     }
     if (!sliced_input_fusion_ &&
@@ -553,6 +519,13 @@ absl::Status HorizontalLoopFusionImpl::CreateFusedComputation(
         if (new_output->shape().dimensions_size() == 1) {
           instr_outputs[j] = new_output;
         } else {
+          if (!LayoutUtil::IsMonotonicWithDim0Major(
+                  new_output->shape().layout())) {
+            new_output = comp->AddInstruction(HloInstruction::CreateBitcast(
+                ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+                    new_output->shape()),
+                new_output));
+          }
           Shape new_shape = ShapeUtil::MakeShapeWithDenseLayout(
               new_output->shape().element_type(),
               {ShapeUtil::ElementsIn(new_output->shape())},
@@ -714,7 +687,7 @@ absl::StatusOr<bool> HorizontalLoopFusionImpl::Run() {
         bool loop_fusion_changed,
         FuseConsumerOperands(consumer, false, to_fuse_candidates));
 
-    // for the remaining operands with diffent shape, we further try fuse them
+    // for the remaining operands with different shape, we further try fuse them
     // into kInput fusion instruction.
     TF_ASSIGN_OR_RETURN(
         bool sliced_input_fusion_changed,
@@ -738,11 +711,14 @@ absl::StatusOr<bool> HorizontalLoopFusion::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Run horizontal fusion.";
 
-  // Run on the entry computation is actually enough.
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      RunOnComputation(module->entry_computation()));
+  bool any_changed = false;
+  for (HloComputation* computation :
+       GetFusibleComputations(*module, execution_threads)) {
+    TF_ASSIGN_OR_RETURN(bool changed, RunOnComputation(computation));
+    any_changed |= changed;
+  }
 
-  if (changed) {
+  if (any_changed) {
     // Correctly set element_size_in_bits for any sub-byte added slice and
     // concatenate instructions
     TF_ASSIGN_OR_RETURN(
@@ -751,7 +727,7 @@ absl::StatusOr<bool> HorizontalLoopFusion::Run(
             module));
   }
 
-  return changed;
+  return any_changed;
 }
 
 }  // namespace gpu

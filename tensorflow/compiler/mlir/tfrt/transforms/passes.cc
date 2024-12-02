@@ -226,7 +226,7 @@ void CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
       options.hoist_invariant_ops, options.fuse_get_resource_ops_in_hoisting));
 }
 
-Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
+absl::Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
   if (options.target_tpurt && options.target_gpu) {
     return tensorflow::errors::Internal(
         "Invalid pipeline options. Targeting both TPU and GPU is not "
@@ -235,7 +235,7 @@ Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
   return absl::OkStatus();
 }
 
-Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
+absl::Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
     mlir::PassManager &pm, const TfrtPipelineOptions &options) {
   TF_RETURN_IF_ERROR(ValidateTfrtPipelineOptions(options));
   if (VLOG_IS_ON(1)) {

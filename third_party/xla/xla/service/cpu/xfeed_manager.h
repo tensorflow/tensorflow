@@ -20,7 +20,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_XFEED_MANAGER_H_
 #define XLA_SERVICE_CPU_XFEED_MANAGER_H_
 
+#include <cstdint>
 #include <deque>
+#include <string>
 
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"

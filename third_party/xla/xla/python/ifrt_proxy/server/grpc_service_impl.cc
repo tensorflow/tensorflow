@@ -75,7 +75,8 @@ namespace proxy {
   const uint64_t session_id =
       next_session_id_.fetch_add(1, std::memory_order_relaxed);
 
-  VLOG(0) << "Starting a new IFRT session with session_id=" << session_id;
+  VLOG(0) << "Starting a new IFRT session with session_id=" << session_id
+          << ", version=" << metadata.version().ShortDebugString();
 
   // Create a host buffer store for the session.
   auto host_buffer_store =

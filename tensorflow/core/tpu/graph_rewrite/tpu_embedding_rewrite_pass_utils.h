@@ -24,11 +24,12 @@ namespace tensorflow {
 
 // Adds a new TensorFlow graph node, with the output convention matching most TF
 // code rather than the order used by Graph::AddNode().
-Status AddNode(const NodeDef& n_def, Node** n, Graph* graph);
+absl::Status AddNode(const NodeDef& n_def, Node** n, Graph* graph);
 
 // Replaces one TensorFlow graph node with another (specified by a NodeDef),
 // moving all the edges.
-Status ReplaceNode(const NodeDef& to_def, Node* from, Node** to, Graph* graph);
+absl::Status ReplaceNode(const NodeDef& to_def, Node* from, Node** to,
+                         Graph* graph);
 
 }  // namespace tensorflow
 

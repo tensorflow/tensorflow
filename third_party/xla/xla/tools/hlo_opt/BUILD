@@ -31,16 +31,10 @@ cc_library(
     srcs = ["opt_lib.cc"],
     hdrs = ["opt_lib.h"],
     deps = [
-        "//xla:debug_options_flags",
-        "//xla:types",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/service:compiler",
-        "//xla/service:executable",
         "//xla/service:hlo_graph_dumper",
         "//xla/service:platform_util",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
@@ -53,12 +47,33 @@ cc_library(
 )
 
 cc_library(
+    name = "compiled_opt_lib",
+    srcs = ["compiled_opt_lib.cc"],
+    hdrs = ["compiled_opt_lib.h"],
+    deps = [
+        ":opt_lib",
+        "//xla:debug_options_flags",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "gpu_opt",
     testonly = True,
     srcs = if_gpu_is_configured(["gpu_opt.cc"]),
     tags = ["gpu"],
     deps = [
-        ":opt_lib",
+        ":compiled_opt_lib",
         "//xla:debug_options_flags",
         "//xla:types",
         "//xla/hlo/ir:hlo",
@@ -99,7 +114,7 @@ cc_library(
     testonly = True,
     srcs = ["cpu_opt.cc"],
     deps = [
-        ":opt_lib",
+        ":compiled_opt_lib",
         "//xla/hlo/ir:hlo",
         "//xla/service:cpu_plugin",
         "//xla/service:executable",
@@ -119,7 +134,7 @@ cc_library(
     testonly = True,
     srcs = ["opt_main.cc"],
     deps = [
-        "cpu_opt",
+        ":cpu_opt",
         ":opt_lib",
         "//xla:debug_options_flags",
         "//xla/hlo/ir:hlo",
@@ -161,6 +176,7 @@ lit_test_suite(
             "gpu_hlo_llvm.hlo",
             "gpu_hlo_ptx.hlo",
             "gpu_hlo_unoptimized_llvm.hlo",
+            "gpu_hlo_html.hlo",
         ],
         include = [
             "*.hlo",

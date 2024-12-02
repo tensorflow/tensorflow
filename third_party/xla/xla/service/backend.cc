@@ -208,7 +208,7 @@ absl::StatusOr<se::StreamExecutor*> Backend::stream_executor(
 }
 
 absl::StatusOr<bool> Backend::devices_equivalent(int device_ordinal_a,
-                                                 int device_ordinal_b) {
+                                                 int device_ordinal_b) const {
   // Use the name from device description to determine equivalence. This is a
   // bit crude but works for GPUs which is the important case where we compile
   // an executable for one GPU and want to know if it will run (well) on

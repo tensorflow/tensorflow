@@ -62,8 +62,8 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
-                                tpu::TpuMeshStateInterface** state) {
+absl::Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
+                                      tpu::TpuMeshStateInterface** state) {
   if (!rmgr->Lookup(rmgr->default_container(),
                     tpu::kTpuMeshStateInterfaceResourceName, state)
            .ok()) {
@@ -73,7 +73,7 @@ Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
   return absl::OkStatus();
 }
 
-Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
+absl::Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
   VLOG(1) << "CreateTpuFingerprintLookup";
   tpu::TpuFingerprintLookup* fingerprint_lookup;
   TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<tpu::TpuFingerprintLookup>(
@@ -91,10 +91,10 @@ Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
 // Returns OK if the deletion succeeded, or if the resource was not found. Else
 // return the deletion error.
 template <class ResourceT>
-Status DeleteIfExists(ResourceMgr* resource_manager,
-                      const char* resource_name) {
+absl::Status DeleteIfExists(ResourceMgr* resource_manager,
+                            const char* resource_name) {
   VLOG(1) << "Removing resource " << resource_name << " if it exists";
-  Status status = resource_manager->Delete<ResourceT>(
+  absl::Status status = resource_manager->Delete<ResourceT>(
       resource_manager->default_container(), resource_name);
   if (status.ok()) {
     VLOG(1) << "Removed existing resource " << resource_name;
@@ -109,7 +109,7 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
 }
 }  // namespace
 
-Status CreateTpuCompilationCache(
+absl::Status CreateTpuCompilationCache(
     ResourceMgr* rmgr, tpu::TpuCompilationCacheInterface** compilation_cache) {
   return rmgr->LookupOrCreate<tpu::TpuCompilationCacheInterface>(
       rmgr->default_container(), tpu::kCompilationCacheResourceName,
@@ -325,9 +325,9 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
                           tpu_cancellation_closes_chips_));
 
   tpu::TpuCompilationCacheInterface* local_compilation_cache;
-  Status s = rmgr->Lookup(rmgr->default_container(),
-                          tpu::kCompilationCacheResourceName,
-                          &local_compilation_cache);
+  absl::Status s = rmgr->Lookup(rmgr->default_container(),
+                                tpu::kCompilationCacheResourceName,
+                                &local_compilation_cache);
   if (!s.ok()) {
     local_compilation_cache = nullptr;
   }

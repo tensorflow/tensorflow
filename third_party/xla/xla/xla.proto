@@ -832,20 +832,9 @@ message DebugOptions {
   int64 xla_gpu_nccl_p2p_max_nchannels = 274;
 
   reserved 275;  // was xla_gpu_enable_mlir_emitters
-
-  // Choose the level of mlir emitters that are enabled.
-  // Current levels:
-  // 0: Disabled.
-  // 1: Loop emitter
-  // 2: + Loop-like emitters
-  // 3: + Transpose
-  // 4: + Reduce
-  int64 xla_gpu_mlir_emitter_level = 303;
-  // The maximum number of kernels to emit with MLIR. Unlimited if 0.
   reserved 281;  // was xla_gpu_max_mlir_kernels
-  // The number of initial kernels to not emit with MLIR. Only supported kernels
-  // are counted.
   reserved 282;  // was xla_gpu_skip_mlir_kernels
+  reserved 303;  // was xla_gpu_mlir_emitter_level
 
   // Threshold to rewrite matmul to cuBLAS or Triton (minimum combined number of
   // elements of both matrices in non-batch dimensions to be considered for a
@@ -894,9 +883,6 @@ message DebugOptions {
   // Excludes non-deterministic ops from compiled executables.
   // Unlike --xla_gpu_deterministic_ops does not disable autotuning - the
   // compilation itself can be non-deterministic.
-  // At present, the HLO op SelectAndScatter does not have a
-  // deterministic XLA:GPU implementation.
-  // Compilation errors out if SelectAndScatter is encountered.
   // Scatter ops can non-deterministic by default; these get converted to
   // a deterministic implementation.
   bool xla_gpu_exclude_nondeterministic_ops = 297;

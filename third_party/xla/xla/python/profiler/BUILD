@@ -13,7 +13,6 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     visibility = [
-        "//perftools/accelerators/xprof/api/python:__pkg__",
         "//xla/python:__pkg__",
     ],
     deps = [

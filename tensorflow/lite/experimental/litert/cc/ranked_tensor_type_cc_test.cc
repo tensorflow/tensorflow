@@ -61,5 +61,5 @@ TEST(Layout, NotEqual) {
       /*.element_type=*/kLiteRtElementTypeFloat16,
       /*.layout=*/kLayout,
   });
-  ASSERT_TRUE(tensor_type1 != tensor_type2);
+  ASSERT_FALSE(tensor_type1 == tensor_type2);
 }

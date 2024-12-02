@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 
 #include <algorithm>
+#include <string>
 
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"

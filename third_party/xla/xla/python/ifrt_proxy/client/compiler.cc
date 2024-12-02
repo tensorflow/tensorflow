@@ -57,7 +57,8 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
     std::unique_ptr<Program> program,
     std::unique_ptr<xla::ifrt::CompileOptions> options) {
   auto request = std::make_unique<CompileRequest>();
-  TF_ASSIGN_OR_RETURN(*request->mutable_program(), Serialize(*program));
+  TF_ASSIGN_OR_RETURN(*request->mutable_program(),
+                      Serialize(*program, /*options=*/nullptr));
 
   // Extract host callbacks from the XLA compile options. `XlaCompileOptions`'s
   // SerDes fails when it contains host callbacks, so the following
@@ -91,7 +92,8 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
     loaded_host_callbacks.swap(xla_options->loaded_host_callbacks);
   }
 
-  TF_ASSIGN_OR_RETURN(*request->mutable_compile_options(), Serialize(*options));
+  TF_ASSIGN_OR_RETURN(*request->mutable_compile_options(),
+                      Serialize(*options, /*options=*/nullptr));
 
   // TODO(b/266635130): Avoid blocking the caller.
   TF_ASSIGN_OR_RETURN(std::shared_ptr<CompileResponse> response,

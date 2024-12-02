@@ -26,6 +26,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_CPU_RUNTIME_H_
 #define XLA_SERVICE_CPU_CPU_RUNTIME_H_
 
+#include <cstdint>
+
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/xfeed_manager.h"
 

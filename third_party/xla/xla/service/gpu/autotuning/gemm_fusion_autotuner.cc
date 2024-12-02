@@ -333,7 +333,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
   // don't use cuBlas in the end. This assumes that the substituting algorithm
   // has result which are close enough for the check in this file.
   if (dot->precision_config().algorithm() ==
-          PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3) {
+      PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3) {
     dot->mutable_precision_config()->set_algorithm(
         PrecisionConfig::ALG_DOT_F32_F32_F32);
   }
@@ -1039,7 +1039,7 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
           absl::StatusOr<bool> has_executable =
               compile(fusion, config, gemm_config_set.size() > 1);
           TF_CHECK_OK(has_executable.status())
-              << "Failure occured when compiling fusion " << fusion->name()
+              << " - Failure occured when compiling fusion " << fusion->name()
               << " with config '" << ToString(config)
               << "'\nFused HLO computation:\n"
               << fusion->fused_instructions_computation()->ToString();
@@ -1111,37 +1111,35 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
     AutotuneResult res = FromConfig(candidate.config);
 
     std::optional<ProfilingOutput> profiling_output;
-    if (IsAutotuningEnabled()) {
-      TF_ASSIGN_OR_RETURN(
-          profiling_output,
-          compile_util.ProfileExecutable(candidate.executable.get(), stream,
-                                         rz_buffers.input_buffers(),
-                                         rz_buffers.input_shapes()));
-      if (std::holds_alternative<CuBlasConfig>(candidate.config) &&
-          config_.should_check_correctness()) {
-        reference_buffer = std::move(profiling_output->output);
-      }
-
-      int ran_so_far = results.size() + 1;
-      if (ran_so_far % log_every_n == 0) {
-        VLOG(2) << "Ran " << ran_so_far << " configs of " << candidates.size()
-                << ".";
-      }
-      if (!profiling_output) {
-        VLOG(5) << "Skipping this tiling.";
-        continue;
-      }
-
-      VLOG(5) << "Running the kernel took: " << profiling_output->duration;
-      if (profiling_output->duration >= absl::Seconds(1)) {
-        LOG(WARNING) << "Slow kernel for "
-                     << fusion.called_computations()[0]->ToString()
-                     << " took: " << profiling_output->duration << ". "
-                     << ToString(candidate.config);
-      }
-      *res.mutable_run_time() =
-          tsl::proto_utils::ToDurationProto(profiling_output->duration);
+    TF_ASSIGN_OR_RETURN(
+        profiling_output,
+        compile_util.ProfileExecutable(candidate.executable.get(), stream,
+                                       rz_buffers.input_buffers(),
+                                       rz_buffers.input_shapes()));
+    if (std::holds_alternative<CuBlasConfig>(candidate.config) &&
+        config_.should_check_correctness()) {
+      reference_buffer = std::move(profiling_output->output);
     }
+
+    int ran_so_far = results.size() + 1;
+    if (ran_so_far % log_every_n == 0) {
+      VLOG(2) << "Ran " << ran_so_far << " configs of " << candidates.size()
+              << ".";
+    }
+    if (!profiling_output) {
+      VLOG(5) << "Skipping this tiling.";
+      continue;
+    }
+
+    VLOG(5) << "Running the kernel took: " << profiling_output->duration;
+    if (profiling_output->duration >= absl::Seconds(1)) {
+      LOG(WARNING) << "Slow kernel for "
+                   << fusion.called_computations()[0]->ToString()
+                   << " took: " << profiling_output->duration << ". "
+                   << ToString(candidate.config);
+    }
+    *res.mutable_run_time() =
+        tsl::proto_utils::ToDurationProto(profiling_output->duration);
 
     // Reference buffer is available when `config.should_check_correctness()`
     // is set and reference executable was compiled.

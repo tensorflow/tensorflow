@@ -351,9 +351,9 @@ std::string UniqueNodeName(absl::string_view prefix, Graph* graph) {
   return graph->NewName(absl::StrCat(prefix, "/_", internal::GetNodeId()));
 }
 
-Status SetNodeDeviceForTPUCommunication(DeviceNameUtils::ParsedName device,
-                                        const std::string& target_device_type,
-                                        Node* node) {
+absl::Status SetNodeDeviceForTPUCommunication(
+    DeviceNameUtils::ParsedName device, const std::string& target_device_type,
+    Node* node) {
   TF_RET_CHECK(device.has_type && device.type == DEVICE_TPU_NODE);
   TF_RET_CHECK(device.has_id);
   TF_RET_CHECK(HasNodeAttr(node->def(), kXlaHasHostTransferAttrName));
@@ -372,7 +372,7 @@ Status SetNodeDeviceForTPUCommunication(DeviceNameUtils::ParsedName device,
 
 // Iterate over the nodes in the original graph and find all the TPUReplicate
 // nodes, and all the nodes that are part of outside_compilation clusters.
-Status FindTaggedNodes(
+absl::Status FindTaggedNodes(
     Graph* graph, std::vector<Node*>* replicate_nodes,
     std::map<std::string, DistributedTPURewritePass::OutsideCompilationNodeMap>*
         outside_compilation_nodes,
@@ -555,7 +555,7 @@ class TensorDevicePlacer {
   std::vector<int64_t> sizes_;
 };
 
-Status ValidateCoreNumber(int64_t core, int64_t num_cores_per_replica) {
+absl::Status ValidateCoreNumber(int64_t core, int64_t num_cores_per_replica) {
   if (core < 0 || core >= num_cores_per_replica) {
     return absl::InvalidArgumentError(
         absl::StrCat("Invalid core ID: ", core, ". The valid core IDs are [0..",
@@ -564,7 +564,7 @@ Status ValidateCoreNumber(int64_t core, int64_t num_cores_per_replica) {
   return absl::OkStatus();
 }
 
-Status FindHostComputeKeyPlaceholderNodes(
+absl::Status FindHostComputeKeyPlaceholderNodes(
     const Graph* graph, const std::vector<Node*>& replicate_nodes,
     std::unordered_map<std::string, Node*>* host_compute_key_placeholder_map) {
   host_compute_key_placeholder_map->clear();
@@ -598,7 +598,8 @@ Status FindHostComputeKeyPlaceholderNodes(
   return absl::OkStatus();
 }
 
-Status ReplaceCompilationResultNodeWithIdentity(Graph* graph, Node** node) {
+absl::Status ReplaceCompilationResultNodeWithIdentity(Graph* graph,
+                                                      Node** node) {
   Node* old_node = *node;
   // We want to replace the node with an identity node with the same name.
   const std::string& node_name = old_node->name();
@@ -633,8 +634,9 @@ Status ReplaceCompilationResultNodeWithIdentity(Graph* graph, Node** node) {
   return absl::OkStatus();
 }
 
-Status GetStepMarkerLocation(const Node& replicate_node,
-                             xla::DebugOptions::StepMarkerLocation* location) {
+absl::Status GetStepMarkerLocation(
+    const Node& replicate_node,
+    xla::DebugOptions::StepMarkerLocation* location) {
   std::string step_marker_location_attr;
   TF_RETURN_IF_ERROR(GetNodeAttr(replicate_node.attrs(), "step_marker_location",
                                  &step_marker_location_attr));
@@ -653,9 +655,9 @@ Status GetStepMarkerLocation(const Node& replicate_node,
 // Updates contents of the function with `function_name` in function library
 // definition `flib_def` to `new_graph`. This is required when graph
 // transformation happens inside a function call body.
-Status UpdateFunctionLibDefinition(const Graph& new_graph,
-                                   const std::string& function_name,
-                                   FunctionLibraryDefinition* flib_def) {
+absl::Status UpdateFunctionLibDefinition(const Graph& new_graph,
+                                         const std::string& function_name,
+                                         FunctionLibraryDefinition* flib_def) {
   FunctionDef graph_fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(new_graph, function_name, &graph_fdef));
   TF_RETURN_IF_ERROR(flib_def->ReplaceFunction(function_name, graph_fdef));
@@ -706,7 +708,7 @@ absl::StatusOr<Node*> CreatePadNode(const int padding, const int num_dims,
                                     Node* control_predecessor, Node* split_node,
                                     const int split_index, Graph* graph) {
   // Add paddings node.
-  Status s;
+  absl::Status s;
   NodeDef paddings_def;
   paddings_def.set_name(
       graph->NewName(absl::StrCat(split_node->name(), "/paddings")));
@@ -1195,7 +1197,7 @@ absl::StatusOr<Node*> CreateSliceNode(DataType dtype,
                                       Node* concat_node,
                                       const int concat_out_index, Graph* graph,
                                       absl::string_view device) {
-  Status s;
+  absl::Status s;
   // Add begin node for concat.
   NodeDef begin_def;
   begin_def.set_name(
@@ -1343,7 +1345,7 @@ absl::StatusOr<Node*> CreateXlaConcatNode(
 // inputs are on TPUs, the padding ops will be placed on TPUs and XLA on demand
 // mode will be triggered, so we don't need to copy the data back to the host
 // to do the padding.
-Status SetPaddingNodesDevices(Graph* graph) {
+absl::Status SetPaddingNodesDevices(Graph* graph) {
   for (Node* n : graph->op_nodes()) {
     bool tpu_padding_attr;
     if (n->type_string() == "Pad" &&
@@ -1416,10 +1418,10 @@ struct NodeAndSharding {
 
 // Validate sharding configuration derived from XlaSharding attribute.
 // Infer the core id from the OpSharding, if necessary.
-Status ParseAndValidateSharding(const NodeAndSharding& node_and_sharding,
-                                const int num_cores_per_replica,
-                                int64_t* inferred_core_id,
-                                std::optional<NodeAndSharding>* result) {
+absl::Status ParseAndValidateSharding(const NodeAndSharding& node_and_sharding,
+                                      const int num_cores_per_replica,
+                                      int64_t* inferred_core_id,
+                                      std::optional<NodeAndSharding>* result) {
   if (node_and_sharding.sharding.type() == xla::OpSharding::MAXIMAL) {
     int64_t core_annotation =
         node_and_sharding.sharding.tile_assignment_devices(0);
@@ -1520,7 +1522,7 @@ ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
 //  1) Parsing XlaSharding attribute from neighboring node.
 //  2) If argument node is a resource, then by parsing adjacent nodes
 //     of the connected ReadVariable op.
-Status ParseAndValidateShardingFromNeighbors(
+absl::Status ParseAndValidateShardingFromNeighbors(
     const int num_cores_per_replica, const std::string& arg_node_name,
     const Node& neighbor_node, int64_t* inferred_core_id, bool* is_fast_mem,
     std::optional<NodeAndSharding>* result) {
@@ -1579,7 +1581,7 @@ Status ParseAndValidateShardingFromNeighbors(
 //   num_tpus_per_task: the number of TPUs in each task. Verifies that all tasks
 //     have the same number of TPU devices.
 //   tpu_devices: the TPU devices, indexed by [task][device].
-static Status GetTPUDeviceNames(
+static absl::Status GetTPUDeviceNames(
     const std::string& replication_spec_string, const DeviceSet& device_set,
     std::string* tpu_compilation_device, int* num_tpus_per_task,
     std::vector<std::vector<Device*>>* tpu_devices) {
@@ -1606,10 +1608,10 @@ static Status GetTPUDeviceNames(
 
 // Parses the topology attribute of TPUReplicate, and populates *topology with
 // a physical mesh coordinate to (task, device) mapping.
-static Status ParseTopologyAttr(const std::string& topology_attr,
-                                const tpu::TpuTopologyExternal& tpu_topology,
-                                int num_tasks, int num_tpus_per_task,
-                                xla::Array4D<std::pair<int, int>>* topology) {
+static absl::Status ParseTopologyAttr(
+    const std::string& topology_attr,
+    const tpu::TpuTopologyExternal& tpu_topology, int num_tasks,
+    int num_tpus_per_task, xla::Array4D<std::pair<int, int>>* topology) {
   static_assert(4 == kTPUTopologyRank, "Assumes the topology rank is 4");
   tpu::TopologyProto proto;
   proto.ParseFromString(topology_attr);
@@ -1666,7 +1668,7 @@ static Status ParseTopologyAttr(const std::string& topology_attr,
 // Parses the value of the device_assignment attribute to TPUReplicate.
 // Populates *device_assignment; *device_assignment must be a 2D array with
 // shape (num_replicas, num_cores_per_replica).
-static Status ParseDeviceAssignmentAttr(
+static absl::Status ParseDeviceAssignmentAttr(
     absl::Span<const int> device_assignment_attr,
     const tpu::TpuTopologyExternal& tpu_topology, int num_replicas,
     int num_cores_per_replica,
@@ -1727,7 +1729,7 @@ static Status ParseDeviceAssignmentAttr(
 // Builds TensorFlow device assignments for the special case of a single core
 // computation that is replicated to every core in the mesh.
 // LINT.IfChange
-static Status BuildFullMeshDeviceAssignment(
+static absl::Status BuildFullMeshDeviceAssignment(
     int num_replicas, const std::vector<std::vector<Device*>>& tpu_devices,
     int num_tasks, int num_tpus_per_task,
     std::vector<std::vector<std::string>>* tf_device_assignment,
@@ -1750,7 +1752,7 @@ static Status BuildFullMeshDeviceAssignment(
 
 // Builds TensorFlow device assignments for a replicated computation and convert
 // device_assignment into xla_device_assignment.
-static Status BuildGeneralDeviceAssignment(
+static absl::Status BuildGeneralDeviceAssignment(
     int num_replicas, int num_cores_per_replica,
     const std::vector<std::vector<Device*>>& tpu_devices,
     const xla::Array2D<tpu::TpuCoreLocationExternal>& device_assignment,
@@ -1790,7 +1792,7 @@ static Status BuildGeneralDeviceAssignment(
   return absl::OkStatus();
 }
 
-/*static*/ Status DistributedTPURewritePass::BuildDeviceAssignment(
+/*static*/ absl::Status DistributedTPURewritePass::BuildDeviceAssignment(
     const tpu::TpuTopologyExternal& tpu_topology, int num_tpus_per_task,
     const std::vector<std::vector<Device*>>& tpu_devices, int num_replicas,
     int num_cores_per_replica, const std::string& topology_attr,
@@ -1889,7 +1891,7 @@ static Status BuildGeneralDeviceAssignment(
       topology, tf_device_assignment, devices_to_lock, xla_device_assignment);
 }
 
-Status DistributedTPURewritePass::GetComputationForTPUReplicateOp(
+absl::Status DistributedTPURewritePass::GetComputationForTPUReplicateOp(
     const NameAttrList& function, FunctionLibraryRuntime* flr,
     Graph* computation, DataTypeVector* arg_types,
     DataTypeVector* retval_types) {
@@ -1907,8 +1909,8 @@ Status DistributedTPURewritePass::GetComputationForTPUReplicateOp(
 }
 
 // Grab the InferredShape corresponding to an edge input.
-static Status GetEdgeShape(const GraphShapeInfo& shape_info, const Edge& edge,
-                           const InferredShape** info) {
+static absl::Status GetEdgeShape(const GraphShapeInfo& shape_info,
+                                 const Edge& edge, const InferredShape** info) {
   auto it = shape_info.find(edge.src()->name());
   if (it == shape_info.end()) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -1920,7 +1922,7 @@ static Status GetEdgeShape(const GraphShapeInfo& shape_info, const Edge& edge,
   return absl::OkStatus();
 }
 
-Status DistributedTPURewritePass::GetArgAndRetvalShapes(
+absl::Status DistributedTPURewritePass::GetArgAndRetvalShapes(
     const GraphShapeInfo& shape_info, const Node& node,
     const ParameterInfo& params_info, std::vector<InferredShape>* arg_shapes,
     std::vector<InferredShape>* retval_shapes) {
@@ -1938,7 +1940,7 @@ Status DistributedTPURewritePass::GetArgAndRetvalShapes(
   // Determines the shapes of the per-replica arguments and checks that all
   // replicas have identical shapes.
   int64_t edge_pos = 0;
-  auto check_shape = [&](int input_index) -> Status {
+  auto check_shape = [&](int input_index) -> absl::Status {
     const InferredShape* info;
     TF_RETURN_IF_ERROR(GetEdgeShape(shape_info, *input_edges[edge_pos], &info));
     ++edge_pos;
@@ -2041,8 +2043,8 @@ Status DistributedTPURewritePass::GetArgAndRetvalShapes(
 }
 
 // Verifies that all nodes have legal sharding.
-static Status ValidateCoreNumbers(const Graph& graph,
-                                  int num_cores_per_replica) {
+static absl::Status ValidateCoreNumbers(const Graph& graph,
+                                        int num_cores_per_replica) {
   for (Node* n : graph.nodes()) {
     TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                         ParseShardingFromDevice(*n, num_cores_per_replica,
@@ -2051,7 +2053,7 @@ static Status ValidateCoreNumbers(const Graph& graph,
   return absl::OkStatus();
 }
 
-static Status InferXlaShardingFromNeighbors(
+static absl::Status InferXlaShardingFromNeighbors(
     const Node& n, int num_cores_per_replica, FunctionLibraryRuntime* flr,
     CachedFunctionHandles* cached_function_handles,
     std::optional<NodeAndSharding>* output_node_and_sharding,
@@ -2074,8 +2076,8 @@ static Status InferXlaShardingFromNeighbors(
     // The nodes deciding this arg's device assignment might be in
     // FunctionDef. Instantiate FunctionDefs associated with this node
     // and check nodes using this arg.
-    std::function<Status(const Edge* call_edge)> parse_sharding_from_function =
-        [&](const Edge* call_edge) {
+    std::function<absl::Status(const Edge* call_edge)>
+        parse_sharding_from_function = [&](const Edge* call_edge) {
           auto associated_functions = GetAssociatedFunctions(
               *call_edge->dst(), flr->GetFunctionLibraryDefinition());
           for (auto& associated_function : associated_functions) {
@@ -2139,7 +2141,7 @@ std::string FormatNodeAndShardingMsg(
                       " sharding '", escaped_sharding_str, "'");
 }
 
-Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
+absl::Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     int num_cores_per_replica, const ParameterInfo& params_info,
     const DataTypeVector& arg_types,
     const std::vector<InferredShape>& arg_shapes,
@@ -2480,7 +2482,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
 
 // Builds Shape nodes that compute the shapes of arguments whose shapes are not
 // statically known.
-/* static */ Status DistributedTPURewritePass::BuildDynamicShapeNodes(
+/* static */ absl::Status DistributedTPURewritePass::BuildDynamicShapeNodes(
     const Node& replicate_node, const std::vector<InferredShape>& arg_shapes,
     const ParameterInfo& params_info, const std::vector<Node*>& variable_reads,
     Graph* graph, std::vector<Node*>* dynamic_shape_nodes) {
@@ -2614,7 +2616,7 @@ bool EnableXlaParamBroadcast(
 
 // Builds a TPUCompile node that compiles the bodies of the function call
 // `nodes`.
-Status DistributedTPURewritePass::BuildCompileNode(
+absl::Status DistributedTPURewritePass::BuildCompileNode(
     const Node* replicate_node, const NameAttrList& function,
     uint64_t library_fingerprint, const ParameterInfo& params_info,
     const std::vector<InferredShape>& arg_shapes,
@@ -2770,7 +2772,7 @@ Status DistributedTPURewritePass::BuildCompileNode(
   return absl::OkStatus();
 }
 
-Status DistributedTPURewritePass::FindGuaranteedConstantInputs(
+absl::Status DistributedTPURewritePass::FindGuaranteedConstantInputs(
     const Node& node, const NameRangeMap& input_range_map,
     std::vector<Node*>* guaranteed_constants) {
   std::vector<const Edge*> input_edges;
@@ -2783,7 +2785,7 @@ Status DistributedTPURewritePass::FindGuaranteedConstantInputs(
   return absl::OkStatus();
 }
 
-Status DistributedTPURewritePass::FindVariableInputs(
+absl::Status DistributedTPURewritePass::FindVariableInputs(
     const Node& node, const NameRangeMap& input_range_map,
     std::vector<VariableInput>* variables) {
   std::vector<const Edge*> input_edges;
@@ -2840,9 +2842,9 @@ Status DistributedTPURewritePass::FindVariableInputs(
 }
 
 // Builds a NoOp node, used for building control dependencies.
-static Status BuildNoopNode(const Node& source, absl::string_view name,
-                            const std::string& device, Graph* graph,
-                            Node** node) {
+static absl::Status BuildNoopNode(const Node& source, absl::string_view name,
+                                  const std::string& device, Graph* graph,
+                                  Node** node) {
   NodeDefBuilder builder(name, "NoOp", NodeDebugInfo(source));
   if (!device.empty()) {
     builder.Device(device);
@@ -2857,7 +2859,7 @@ static Status BuildNoopNode(const Node& source, absl::string_view name,
   return absl::OkStatus();
 }
 
-Status DistributedTPURewritePass::ConnectHostComputeNodes(
+absl::Status DistributedTPURewritePass::ConnectHostComputeNodes(
     Node* compile_node, Node* key_placeholder_node, Graph* graph) {
   // First find all the downstream nodes of the key placeholder node, since we
   // want to delete the connecting edges from key_placeholder_node which would
@@ -2894,7 +2896,7 @@ Status DistributedTPURewritePass::ConnectHostComputeNodes(
   return absl::OkStatus();
 }
 
-Status DistributedTPURewritePass::BuildVariableReads(
+absl::Status DistributedTPURewritePass::BuildVariableReads(
     absl::Span<const VariableInput> variables, Node* control_predecessor,
     Graph* graph, std::vector<Node*>* variable_reads) {
   variable_reads->resize(variables.size());
@@ -2945,7 +2947,7 @@ bool DistributedTPURewritePass::ContainsResourceWriteOp(
   return false;
 }
 
-Status DistributedTPURewritePass::BuildVariableWrites(
+absl::Status DistributedTPURewritePass::BuildVariableWrites(
     absl::Span<const VariableInput> variables, Node* control_successor,
     absl::Span<const VariableWrite> variable_writes, Graph* graph) {
   CHECK_EQ(variables.size(), variable_writes.size());
@@ -3000,8 +3002,8 @@ Status DistributedTPURewritePass::BuildVariableWrites(
 namespace {
 
 // Computes the shape of the sharded tensor and modifies in place.
-Status ComputeShardedArgShapes(TensorShape* shape,
-                               const xla::OpSharding& sharding) {
+absl::Status ComputeShardedArgShapes(TensorShape* shape,
+                                     const xla::OpSharding& sharding) {
   if (sharding.type() != xla::OpSharding::OTHER) {
     return absl::OkStatus();
   }
@@ -3032,7 +3034,7 @@ absl::StatusOr<Node*> CreateTpuExecuteDummyArg(
     const TensorShape& var_shape, const DataType& dtype,
     const std::string& host_cpu_device, Node* var_read, int replica_id,
     Graph* graph) {
-  Status status;
+  absl::Status status;
 
   // Const - shape_as_tensor
   const std::string name_prefix =
@@ -3102,7 +3104,7 @@ absl::StatusOr<Node*> CreateTpuExecuteDummyArg(
 
 // Creates dummy inputs for partitioned variables that are using XLA broadcast
 // for inputs.
-Status CreatePartitionedDummyVarArgs(
+absl::Status CreatePartitionedDummyVarArgs(
     const xla::OpSharding& sharding, const int num_replicas,
     const int replica_id, const InferredShape& raw_shape, Node* orig_var_read,
     const int orig_arg_num, DataType dtype, const std::string& device,
@@ -3266,7 +3268,7 @@ absl::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
 
 }  // namespace
 
-Status DistributedTPURewritePass::BuildExecuteNodes(
+absl::Status DistributedTPURewritePass::BuildExecuteNodes(
     const ParameterInfo& params_info, int num_tasks, int num_cores_per_replica,
     const Node& replicate_node, const std::vector<std::string>& arg_names,
     const DataTypeVector& arg_types,
@@ -3516,7 +3518,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
     // If the producer name was set during inference, propagate the information
     // to the TPUExecute op so it can be accessed during metric collection.
     std::string producer_name;
-    Status status =
+    absl::Status status =
         GetNodeAttr(replicate_node.attrs(), "_producer_name", &producer_name);
     if (status.ok()) {
       AddNodeAttr("_producer_name", producer_name, &def);
@@ -3951,7 +3953,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   return absl::OkStatus();
 }  // NOLINT(readability/fn_size)
 
-/* static */ Status DistributedTPURewritePass::CopyOutsideCompilationNodes(
+/* static */ absl::Status
+DistributedTPURewritePass::CopyOutsideCompilationNodes(
     int replica_index, const std::vector<Node*>& outside_compilation_nodes,
     const DeviceNameUtils::ParsedName& tpu_device,
     const DeviceNameUtils::ParsedName& partial_device,
@@ -3994,7 +3997,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   return absl::OkStatus();
 }
 
-/* static */ Status DistributedTPURewritePass::ReplicateOutsideCompilationNodes(
+/* static */ absl::Status
+DistributedTPURewritePass::ReplicateOutsideCompilationNodes(
     const std::vector<std::vector<std::string>>& tf_device_assignment,
     const HostComputeCoreMap& host_compute_core,
     const OutsideCompilationNodeMap& outside_compilation_nodes,
@@ -4044,7 +4048,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   return absl::OkStatus();
 }
 
-/* static */ Status DistributedTPURewritePass::CopyOutsideCompilationEdges(
+/* static */ absl::Status
+DistributedTPURewritePass::CopyOutsideCompilationEdges(
     const std::vector<Node*>& outside_compilation_nodes,
     const NodeToNodeReplicasMap& node_images,
     const std::unordered_map<std::string, Node*> outside_compilation_inputs,
@@ -4172,7 +4177,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   return absl::OkStatus();
 }
 
-/* static */ Status DistributedTPURewritePass::ReplicateOutsideCompilationEdges(
+/* static */ absl::Status
+DistributedTPURewritePass::ReplicateOutsideCompilationEdges(
     const OutsideCompilationNodeMap& outside_compilation_nodes,
     const NodeToNodeReplicasMap& node_images,
     const std::unordered_map<std::string, Node*> outside_compilation_inputs,
@@ -4185,7 +4191,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   return absl::OkStatus();
 }
 
-/* static */ Status DistributedTPURewritePass::RemoveOutsideCompilationNodes(
+/* static */ absl::Status
+DistributedTPURewritePass::RemoveOutsideCompilationNodes(
     const NodeToNodeReplicasMap& node_images, Graph* graph) {
   for (const auto& iter : node_images) {
     if (iter.second.size() > 1) {
@@ -4197,7 +4204,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
   return absl::OkStatus();
 }
 
-/* static */ Status
+/* static */ absl::Status
 DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
     Graph* g, FunctionLibraryDefinition& flib_def,
     const TPUReplicateDeviceNamesMapping& tpu_replicate_device_names_mapping) {
@@ -4229,7 +4236,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
 
     modified = !nodes_to_lower.empty();
 
-    auto lower_functional_node = [&flib_def, &g](Node* n) -> Status {
+    auto lower_functional_node = [&flib_def, &g](Node* n) -> absl::Status {
       // Clear device assignment. Otherwise all lowered nodes will have
       // device assignment, which is not what we want.
       n->set_requested_device("");
@@ -4385,7 +4392,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   return absl::OkStatus();
 }
 
-/* static */ Status DistributedTPURewritePass::ParseHostComputeCores(
+/* static */ absl::Status DistributedTPURewritePass::ParseHostComputeCores(
     const Node& replicate_node,
     const OutsideCompilationNodeMap& outside_compilation_nodes,
     HostComputeCoreMap* host_compute_core) {
@@ -4404,7 +4411,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   return absl::OkStatus();
 }
 
-/* static */ Status DistributedTPURewritePass::GetDeviceTopology(
+/* static */ absl::Status DistributedTPURewritePass::GetDeviceTopology(
     const DeviceSet& device_set, const Node& replicate_node, int* num_replicas,
     int* num_cores_per_replica, int* num_tasks,
     std::vector<std::vector<std::string>>* tf_device_assignment,
@@ -4458,7 +4465,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   return absl::OkStatus();
 }
 
-/* static */ Status DistributedTPURewritePass::GetIOTypes(
+/* static */ absl::Status DistributedTPURewritePass::GetIOTypes(
     int num_replicas, const Node& replicate_node, FunctionLibraryRuntime* flr,
     Graph* graph, NameRangeMap* input_name_map, const NameAttrList** function,
     std::unique_ptr<Graph>* computation, DataTypeVector* arg_types,
@@ -4533,7 +4540,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   return absl::OkStatus();
 }
 
-/* static */ Status DistributedTPURewritePass::BuildSequencingNodes(
+/* static */ absl::Status DistributedTPURewritePass::BuildSequencingNodes(
     const std::string& tpu_compilation_device, const Node& replicate_node,
     Graph* graph, Node** host_transfer_sequencer, Node** control_before,
     Node** control_after) {
@@ -4582,7 +4589,8 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   return absl::OkStatus();
 }
 
-/* static */ Status DistributedTPURewritePass::DealWithConstantsAndVariables(
+/* static */ absl::Status
+DistributedTPURewritePass::DealWithConstantsAndVariables(
     const Node& replicate_node, const NameRangeMap& input_name_map,
     Graph* graph, Node* host_transfer_sequencer, Node* control_before,
     Node* control_after, absl::Span<const VariableInput> variable_nodes,
@@ -4600,7 +4608,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   return absl::OkStatus();
 }
 
-/* static */ Status
+/* static */ absl::Status
 DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
     Node* replicate_node, Node* compile_node,
     absl::Span<const int> devices_to_lock, Node** control_after_compilation,
@@ -4711,7 +4719,8 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
 // Updates the head and tail outside compiled nodes so that nodes have the
 // correct device and removes the replication and outside compilation attributes
 // so that these nodes do not trigger further graph optimization passes.
-/* static */ Status DistributedTPURewritePass::UpdateHeadTailOutsideCompilation(
+/* static */ absl::Status
+DistributedTPURewritePass::UpdateHeadTailOutsideCompilation(
     const std::vector<std::vector<std::string>>& tf_device_assignment,
     const std::vector<Node*>& head_tail_outside_compilation_nodes) {
   for (Node* node : head_tail_outside_compilation_nodes) {
@@ -4742,7 +4751,7 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
 }
 
 // Performs the rewrite on a single TPUReplicate node.
-/* static */ Status DistributedTPURewritePass::RewriteTPUReplicateNode(
+/* static */ absl::Status DistributedTPURewritePass::RewriteTPUReplicateNode(
     const std::string& session_handle, const DeviceSet& device_set,
     Node* replicate_node, FunctionLibraryDefinition* flib_def,
     FunctionLibraryRuntime* flr, Node* host_compute_key_placeholder_node,
@@ -4910,12 +4919,12 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
 //
 // For any host training loop found in the graph, TPUVariableReshard ops
 // are inserted to match the best layout chosen by the XLA.
-/* static */ Status
+/* static */ absl::Status
 DistributedTPURewritePass::PerformHostTrainingLoopOptimization(
     Graph* graph, FunctionLibraryDefinition* flib_def,
     FunctionLibraryRuntime* flr) {
   std::vector<tpu::HostTrainingLoopInfo> host_training_loops_info;
-  Status s = tpu::DetectHostTrainingLoop(
+  absl::Status s = tpu::DetectHostTrainingLoop(
       /*current_function_name=*/nullptr,
       /*current_function_attr=*/nullptr, flib_def, graph, flr,
       &host_training_loops_info);
@@ -4955,21 +4964,22 @@ DistributedTPURewritePass::PerformHostTrainingLoopOptimization(
   return absl::OkStatus();
 }
 
-Status DistributedTPURewritePass::PlaceUnassignedDeviceNodesOnTPUIfPossible(
+absl::Status
+DistributedTPURewritePass::PlaceUnassignedDeviceNodesOnTPUIfPossible(
     Graph* graph) {
   PropagateDevices(CanAcceptTPUDevicePropagation, IsTpuDevice, graph);
   return absl::OkStatus();
 }
 
-Status DistributedTPURewritePass::Run(
+absl::Status DistributedTPURewritePass::Run(
     const GraphOptimizationPassOptions& options) {
-  Status status = InternalRun(options);
+  absl::Status status = InternalRun(options);
   tsl::OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::TF_XLA_BRIDGE, status);
   return status;
 }
 
-Status DistributedTPURewritePass::InternalRun(
+absl::Status DistributedTPURewritePass::InternalRun(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "DistributedTPURewritePass::Run";
 

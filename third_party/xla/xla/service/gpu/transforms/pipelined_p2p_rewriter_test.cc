@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -667,6 +668,59 @@ TEST_F(PipelinedP2pRewriterTest, SendRecvPipelined2) {
   EXPECT_TRUE(changed);
 
   DoFileCheck(module.get(), kExpected);
+}
+
+TEST_F(PipelinedP2pRewriterTest, NoCrashOnSortOperation) {
+  const char* kModuleStr = R"(
+  HloModule test, is_scheduled=true
+  comp2 {
+    p0 = u32[] parameter(0)
+    p1 = u32[] parameter(1)
+    p2 = s32[] parameter(2)
+    p3 = s32[] parameter(3)
+    ROOT tmp_4 = pred[] compare(u32[] p0, u32[] p1), direction=LT
+  }
+  ENTRY main {
+    p0 = u32[32] parameter(0)
+    p1 = s32[32] parameter(1)
+    ROOT sort = (u32[32]{0}, s32[32]{0}) sort(u32[32]{0} p0, s32[32]{0} p1), dimensions={0}, is_stable=true, to_apply=comp2
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  PipelinedP2PRewriter rewriter;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(PipelinedP2pRewriterTest, NoCrashOnDynamicSliceFusion) {
+  const char* kModuleStr = R"(
+  HloModule test, is_scheduled=true, entry_computation_layout={(s32[8,32]{1,0})->s32[2,32]{1,0}}, replica_count=2
+
+  %add (p0: s32[], p1: s32[]) -> s32[] {
+    %p1 = s32[] parameter(1)
+    %p0 = s32[] parameter(0)
+    ROOT %add.3 = s32[] add(s32[] %p0, s32[] %p1)
+  }
+
+  %dynamic-slice-fusion (p0.1: s32[8,32]) -> s32[2,32] {
+    %p0.1 = s32[8,32]{1,0} parameter(0)
+    %slice = s32[4,32]{1,0} slice(s32[8,32]{1,0} %p0.1), slice={[0:4], [0:32]}
+    ROOT %rs = s32[2,32]{1,0} reduce-scatter(s32[4,32]{1,0} %slice), channel_id=10, replica_groups={{0,1}}, dimensions={0}, to_apply=%add
+  }
+
+  ENTRY %main (data.1: s32[8,32]) -> s32[2,32] {
+    %data.1 = s32[8,32]{1,0} parameter(0)
+    ROOT %address-computation.1 = s32[2,32]{1,0} fusion(s32[8,32]{1,0} %data.1), kind=kCustom, calls=%dynamic-slice-fusion, 
+            backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}}}
+  })";
+
+  // There are some `HloSchedule` errors with the verifier in the HLO above.
+  // Because of these errors, we are using ParseAndReturnUnverifiedModule velow
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  PipelinedP2PRewriter rewriter;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

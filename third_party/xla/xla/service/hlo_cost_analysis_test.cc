@@ -1834,7 +1834,6 @@ constexpr auto kBytesAccessedKey = HloCostAnalysis::kBytesAccessedKey;
 constexpr auto kOptimalSecondsKey = HloCostAnalysis::kOptimalSecondsKey;
 constexpr auto kUtilizationKey = HloCostAnalysis::kUtilizationKey;
 constexpr auto kReserved0Key = HloCostAnalysis::kReserved0Key;
-constexpr auto kReserved1Key = HloCostAnalysis::kReserved1Key;
 
 TEST(HloCostAnalysisProperties, ZeroWhenInitialized) {
   Properties p;
@@ -1844,7 +1843,6 @@ TEST(HloCostAnalysisProperties, ZeroWhenInitialized) {
   EXPECT_EQ(0, p[kOptimalSecondsKey]);
   EXPECT_EQ(0, p[kUtilizationKey]);
   EXPECT_EQ(0, p[kReserved0Key]);
-  EXPECT_EQ(0, p[kReserved1Key]);
 
   EXPECT_EQ(0, p.operand_utilization(0, {}));
   EXPECT_EQ(0, p.operand_utilization(1, {}));
@@ -1891,14 +1889,12 @@ TEST(HloCostAnalysisProperties, SetValues) {
   p[kOptimalSecondsKey] = 4;
   p[kUtilizationKey] = 5;
   p[kReserved0Key] = 6;
-  p[kReserved1Key] = 7;
   EXPECT_EQ(1, p[kFlopsKey]);
   EXPECT_EQ(2, p[kTranscendentalsKey]);
   EXPECT_EQ(3, p[kBytesAccessedKey]);
   EXPECT_EQ(4, p[kOptimalSecondsKey]);
   EXPECT_EQ(5, p[kUtilizationKey]);
   EXPECT_EQ(6, p[kReserved0Key]);
-  EXPECT_EQ(7, p[kReserved1Key]);
 
   p.set_operand_utilization(0, {}, 10);
   p.set_operand_utilization(1, {}, 11);

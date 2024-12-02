@@ -144,10 +144,11 @@ absl::StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
 
 }  // namespace
 
-Status ConvertTfMlirToRuntimeExecutable(
+absl::Status ConvertTfMlirToRuntimeExecutable(
     const TfrtCompileOptions& options, mlir::ModuleOp module,
-    absl::FunctionRef<Status(mlir::PassManager&, mlir::ModuleOp,
-                             const tensorflow::TfrtPipelineOptions& options)>
+    absl::FunctionRef<
+        absl::Status(mlir::PassManager&, mlir::ModuleOp,
+                     const tensorflow::TfrtPipelineOptions& options)>
         emit_executable,
     tfrt_stub::ModelRuntimeContext& model_context,
     tfrt_stub::FallbackState* fallback_state,
@@ -274,11 +275,11 @@ Status ConvertTfMlirToRuntimeExecutable(
   return status;
 }
 
-Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
-                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
-                          tfrt_stub::ModelRuntimeContext& model_context,
-                          tfrt_stub::FallbackState* fallback_state,
-                          std::vector<std::string>* added_xla_function_names) {
+absl::Status ConvertTfMlirToBef(
+    const TfrtCompileOptions& options, mlir::ModuleOp module,
+    tfrt::BefBuffer* bef_buffer, tfrt_stub::ModelRuntimeContext& model_context,
+    tfrt_stub::FallbackState* fallback_state,
+    std::vector<std::string>* added_xla_function_names) {
   return ConvertTfMlirToRuntimeExecutable(
       options, module,
       [bef_buffer](mlir::PassManager& pm, mlir::ModuleOp module,
@@ -351,7 +352,7 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   return pipeline_options;
 }
 
-tensorflow::Status AddXlaFunctions(
+absl::Status AddXlaFunctions(
     tfrt_stub::FallbackState* fallback_state, mlir::ModuleOp mlir_module,
     std::vector<std::string>* added_xla_function_names) {
   if (fallback_state != nullptr) {

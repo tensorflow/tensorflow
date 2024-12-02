@@ -208,11 +208,9 @@ FusionDecision ProducerCandidateIsFusible(
     return FusionDecision::Forbid("will generate too large IR");
   }
 
-  GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      &producer, device_info, cost_analysis,
-      GpuPerformanceModelOptions::Default(),
-      /*fused_consumers=*/{&consumer},
-      /*multi_output=*/true);
+  GpuPerformanceModel::RunTimes t =
+      GpuPerformanceModel::EstimateRunTimesForMultiOutputFusion(
+          &producer, &consumer, device_info, cost_analysis);
   if (t.time_fused > t.time_unfused) {
     return FusionDecision::Forbid("will execute slower if fused");
   }

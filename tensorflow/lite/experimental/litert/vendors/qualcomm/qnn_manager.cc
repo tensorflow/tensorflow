@@ -54,7 +54,7 @@ typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn_t)(
 absl::Span<const QnnInterface_t*> LoadProvidersFromLib(void* lib_so) {
   QnnInterfaceGetProvidersFn_t get_providers = nullptr;
   LITERT_RETURN_VAL_IF_NOT_OK(
-      litert::ResolveLibSymbol<QnnInterfaceGetProvidersFn_t>(
+      litert::internal::ResolveLibSymbol<QnnInterfaceGetProvidersFn_t>(
           lib_so, kLibQnnGetProvidersSymbol, &get_providers),
       {});
 
@@ -72,7 +72,7 @@ absl::Span<const QnnSystemInterface_t*> LoadSystemProvidersFromLib(
     void* lib_so) {
   QnnSystemInterfaceGetProvidersFn_t get_providers = nullptr;
   LITERT_RETURN_VAL_IF_NOT_OK(
-      litert::ResolveLibSymbol<QnnSystemInterfaceGetProvidersFn_t>(
+      litert::internal::ResolveLibSymbol<QnnSystemInterfaceGetProvidersFn_t>(
           lib_so, kLibQnnSystemGetProvidersSymbol, &get_providers),
       {});
 
@@ -95,12 +95,16 @@ QnnManager::~QnnManager() {
 }
 
 LiteRtStatus QnnManager::LoadLib(absl::string_view path) {
-  LITERT_RETURN_STATUS_IF_NOT_OK(litert::OpenLib(path, &lib_so_));
+  LITERT_LOG(LITERT_INFO, "Loading qnn shared library from \"%s\"",
+             path.data());
+  LITERT_RETURN_STATUS_IF_NOT_OK(litert::internal::OpenLib(path, &lib_so_));
+  LITERT_LOG(LITERT_INFO, "Loaded qnn shared library", "");
   return kLiteRtStatusOk;
 }
 
 LiteRtStatus QnnManager::LoadSystemLib(absl::string_view path) {
-  LITERT_RETURN_STATUS_IF_NOT_OK(litert::OpenLib(path, &lib_system_so_));
+  LITERT_RETURN_STATUS_IF_NOT_OK(
+      litert::internal::OpenLib(path, &lib_system_so_));
   return kLiteRtStatusOk;
 }
 

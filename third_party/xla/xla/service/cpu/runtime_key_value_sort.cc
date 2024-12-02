@@ -15,11 +15,13 @@ limitations under the License.
 #include "xla/service/cpu/runtime_key_value_sort.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <numeric>
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/base/dynamic_annotations.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 

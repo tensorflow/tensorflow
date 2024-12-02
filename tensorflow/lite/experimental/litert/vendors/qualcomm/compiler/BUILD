@@ -25,7 +25,7 @@ litert_dynamic_lib(
     hdrs = ["//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin.h"],
     export_litert_only = True,
     shared_lib_name = "qnn_compiler_plugin_so",
-    so_name = "libLiteRtQnnCompilerPlugin.so",
+    so_name = "libLiteRtCompilerPlugin_Qualcomm.so",
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",
@@ -89,8 +89,6 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
-        "//tensorflow/lite/experimental/litert/cc:litert_op",
-        "//tensorflow/lite/experimental/litert/cc:litert_tensor",
         "//tensorflow/lite/experimental/litert/core:graph_tools",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
@@ -98,6 +96,7 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_tensor",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:add_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:batch_matmul_op_legalization",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:concatenation_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:div_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:mul_op_legalization",
@@ -105,6 +104,7 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:rsqrt_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:slice_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:sub_op_legalization",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:sum_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:tanh_op_legalization",
     ],
 )
@@ -128,8 +128,6 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
-        "//tensorflow/lite/experimental/litert/cc:litert_op",
-        "//tensorflow/lite/experimental/litert/cc:litert_tensor",
         "//tensorflow/lite/experimental/litert/core:graph_tools",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",

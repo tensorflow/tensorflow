@@ -126,22 +126,7 @@ absl::Status LocalExecutable::ValidateExecutionOptions(
                              ? run_options.stream()->parent()->device_ordinal()
                              : backend_->default_device_ordinal();
   }
-  TF_ASSIGN_OR_RETURN(bool devices_equivalent,
-                      backend_->devices_equivalent(
-                          run_device_ordinal, build_options_.device_ordinal()));
-  if (!devices_equivalent) {
-    TF_ASSIGN_OR_RETURN(se::StreamExecutor * run_executor,
-                        backend_->stream_executor(run_device_ordinal));
-    TF_ASSIGN_OR_RETURN(se::StreamExecutor * build_executor,
-                        backend_->stream_executor(build_device_ordinal()));
-    return InvalidArgument(
-        "executable is built for device %s of type \"%s\"; cannot run it on "
-        "device %s of type \"%s\"",
-        backend_->device_name(build_device_ordinal()),
-        build_executor->GetDeviceDescription().name(),
-        backend_->device_name(run_device_ordinal),
-        run_executor->GetDeviceDescription().name());
-  }
+  TF_RETURN_IF_ERROR(VerifyRunDeviceCompatible(run_device_ordinal));
 
   if (!run_options.allocator()) {
     return InvalidArgument("an allocator must be provided to ExecuteLocally");
@@ -155,6 +140,25 @@ absl::Status LocalExecutable::ValidateExecutionOptions(
   }
 
   return absl::OkStatus();
+}
+
+absl::Status LocalExecutable::VerifyRunDeviceCompatible(
+    int run_device_ordinal) const {
+  TF_ASSIGN_OR_RETURN(bool devices_equivalent,
+                      backend_->devices_equivalent(
+                          run_device_ordinal, build_options_.device_ordinal()));
+  if (devices_equivalent) return absl::OkStatus();
+  TF_ASSIGN_OR_RETURN(se::StreamExecutor * run_executor,
+                      backend_->stream_executor(run_device_ordinal));
+  TF_ASSIGN_OR_RETURN(se::StreamExecutor * build_executor,
+                      backend_->stream_executor(build_device_ordinal()));
+  return InvalidArgument(
+      "executable is built for device %s of type \"%s\"; cannot run it on "
+      "device %s of type \"%s\"",
+      backend_->device_name(build_device_ordinal()),
+      build_executor->GetDeviceDescription().name(),
+      backend_->device_name(run_device_ordinal),
+      run_executor->GetDeviceDescription().name());
 }
 
 absl::StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>>

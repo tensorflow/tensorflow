@@ -22,8 +22,11 @@
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 
 namespace litert::tools {
+
+using ::litert::internal::Serialization;
 
 struct ApplyPluginRun {
   // NOTE: All StrFlagT are expected to have static storage duration.
@@ -112,7 +115,7 @@ struct ApplyPluginRun {
     // "soc_models": Required, at least one.
     // "out": Required, must be size equal to "soc_models".
     // "dump_out": Optional.
-    // "serialization": Required.
+    // "serialization": Ignored.
     //
     // TODO: Support multi target compilation.
     COMPILE,
@@ -151,28 +154,21 @@ struct ApplyPluginRun {
   OptOutStreamT dump_out = std::cerr;
 
   // Dictates how the final model with compiled assets should be serialized.
-  // Only relevant to runs with a compilation step.
-  enum class Serialization {
-    // Write the compiled module into a metadata buffer using the
-    // soc_manufacturer as a key. This is for testing and debugging as it allows
-    // the contents of the byte code to be rendered by exisitng flatbuffer
-    // tooling. Custom op options will contain only a string identifying the
-    // respective entry point.
-    METADATA,
-
-    // Appends the compiled byte code to the end of the ".tflite" file. Custom
-    // op options will contain both an entry point string and an offset into the
-    // file where the byte code starts. Options will be a string of the form
-    // "\"<entry_point_name:<byte_offset>\"". byte_offset is a size_t offset
-    // where the compiled module starts in the file. Currently only single
-    // shared byte code modules are supported and so all ops will have the same
-    // offset.
-    // TODO: Implement.
-    APPEND,
-  };
-
-  // Serialization strategy to use, see above.
-  Serialization serialization = Serialization::METADATA;
+  // Only relevant to the "apply" function.
+  //
+  // [METADATA] Write the compiled module into a metadata buffer using the
+  // soc_manufacturer as a key. This is for testing and debugging as it allows
+  // the contents of the byte code to be rendered by exisitng flatbuffer
+  // tooling. Custom op options will contain only a string identifying the
+  // respective entry point.
+  //
+  // [APPEND] Appends the compiled byte code to the end of the ".tflite" file.
+  // Custom options will contain both an entry point name, and an optional
+  // metadata lookup key. This facilitates per-op metadata while allowing
+  // multiple ops to share the same metadata if needed. Any instances of this
+  // metadata are pairs indicating the offset into the file where the byte code
+  // starts as well as the size of the byte code.
+  Serialization serialization = Serialization::kMetadata;
 };
 
 LiteRtStatus ApplyPlugin(ApplyPluginRun::Ptr run);

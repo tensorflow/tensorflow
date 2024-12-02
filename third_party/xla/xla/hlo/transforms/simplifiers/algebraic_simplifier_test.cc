@@ -9470,6 +9470,20 @@ TEST_F(AlgebraicSimplifierTest, CanDisableDotToMultiplyRewrite) {
   ASSERT_FALSE(AlgebraicSimplifier(opts).Run(m2.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       NoDotToMultiplyRewriteWithPrecisionConfigAlgorithm) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test
+    ENTRY dot {
+      a = f32[128]{0} parameter(0)
+      b = f32[128]{0} parameter(1)
+      ROOT dot = f32[128,128]{1,0} dot(a, b), algorithm=dot_tf32_tf32_f32
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, RemainderOfIota) {
   const char* kModuleStr = R"(
     HloModule m
@@ -10415,6 +10429,20 @@ TEST_F(AlgebraicSimplifierTest, MultipleDotStrengthReductions) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_EQ(3, m->computation_count());
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       NoDotStrengthReductionWithPrecisionConfigAlgorithm) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test
+    ENTRY dot {
+      a = f32[128,2]{1,0} parameter(0)
+      b = f32[2]{0} parameter(1)
+      ROOT dot = f32[128]{0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_tf32_tf32_f32
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduce) {

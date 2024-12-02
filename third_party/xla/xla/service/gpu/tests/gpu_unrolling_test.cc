@@ -88,7 +88,7 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
                      /*match_optimized_ir=*/true);
 }
 
-TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
+TEST_F(GpuUnrollingTest, UnrollUnfusedSine) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
   config.set_debug_options(debug_options);
@@ -105,33 +105,9 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK: }
-      )",
-                     /*match_optimized_ir=*/true);
-}
-
-TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
-  HloModuleConfig config;
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  config.set_debug_options(debug_options);
-
-  const char *const kUnfusedAddModule = R"(
-    HloModule test_module
-
-    ENTRY SineFunc {
-      p0 = f32[1600000]{0} parameter(0)
-      ROOT s = f32[1600000]{0} cosine(p0)
-    })";
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
-
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK: }
+; CHECK: load <4 x float>
+; CHECK-NOT: load <4 x float>
+; CHECK: store <4 x float>
       )",
                      /*match_optimized_ir=*/true);
 }

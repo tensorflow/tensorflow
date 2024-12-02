@@ -170,9 +170,7 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
                                      *literal));
 }
 
-// TODO: (b/375454646) Eanble once frameworks have bugfix:
-// https://github.com/openxla/xla/commit/2f99455cdf99e844ddad17de9f4714997023d243
-TEST(PjRtClientTest, DISABLED_CompileUsesStableHloVersion) {
+TEST(PjRtClientTest, CompileUsesStableHloVersion) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* c_api, pjrt::PjrtApi("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -184,7 +182,10 @@ TEST(PjRtClientTest, DISABLED_CompileUsesStableHloVersion) {
                           ParseMlirModuleString(kProgram, context));
   const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile =
       [](PJRT_Client_Compile_Args* args) -> PJRT_Error* {
-    mlir::vhlo::Version version = mlir::vhlo::Version::getCurrentVersion();
+    // TODO: (b/375454646) Eanble once frameworks have bugfix:
+    // https://github.com/openxla/xla/commit/2f99455cdf99e844ddad17de9f4714997023d243
+    // mlir::vhlo::Version version = mlir::vhlo::Version::getCurrentVersion();
+    mlir::vhlo::Version version = mlir::vhlo::Version(1, 7, 0);
     std::string version_string = absl::StrFormat(
         "%d.%d.%d", version.getMajor(), version.getMinor(), version.getPatch());
     // MLIR doesn't have any functionality for retrieving the producer of
@@ -196,43 +197,6 @@ TEST(PjRtClientTest, DISABLED_CompileUsesStableHloVersion) {
   std::unique_ptr<PjRtLoadedExecutable> executable =
       client->Compile(*module, CompileOptions()).value();
   const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile = PJRT_Client_Compile_Orig;
-}
-
-TEST(PjRtClientTest, DeserializeExecutableWithDifferentDeviceAssignment) {
-  SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
-  ASSERT_GT(client->addressable_devices().size(), 1);
-
-  XlaBuilder builder("Identity");
-  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
-  auto input = Parameter(&builder, 0, shape, "input");
-  auto computation = builder.Build(input).value();
-
-  auto compile_options_for_device = [](int id) -> xla::CompileOptions {
-    xla::DeviceAssignment device_assignment(1, 1);
-    device_assignment(0, 0) = id;
-    xla::CompileOptions options;
-    options.executable_build_options.set_device_assignment(device_assignment);
-    return options;
-  };
-
-  // Compile the executable for device 0 and serialize it.
-  std::unique_ptr<PjRtLoadedExecutable> executable =
-      client->Compile(computation, compile_options_for_device(0)).value();
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
-                          executable->SerializeExecutable());
-
-  // Deserialize the executable for device 1.
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto deserialized_executable,
-      client->DeserializeExecutable(serialized_executable,
-                                    compile_options_for_device(1)));
-
-  // Check that the executable's compile options were overridden
-  // with device id 1.
-  EXPECT_EQ(
-      deserialized_executable->addressable_devices()[0]->global_device_id(), 1);
 }
 
 }  // namespace

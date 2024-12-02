@@ -68,7 +68,6 @@ ifrt_proxy_cc_test(
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
         "//xla/python/ifrt:test_util",
-        "//xla/python/ifrt/ir/tests:executable_impl_test_lib",
         "//xla/python/pjrt_ifrt:xla_executable_impl_test_lib",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",

@@ -3,15 +3,19 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/pjrt/gpu:package_groups.bzl", "xla_gpu_internal_packages")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 
+# Integrate with PJRT rather than the GPU client directly.
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility(["//xla:internal"]),
+    default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
+
+xla_gpu_internal_packages()
 
 cc_library(
     name = "gpu_helpers",
@@ -45,7 +49,7 @@ cc_library(
     srcs = ["se_gpu_pjrt_client.cc"],
     hdrs = ["se_gpu_pjrt_client.h"],
     defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
-    visibility = internal_visibility(["//xla/pjrt:friends"]),
+    visibility = internal_visibility(["//xla/pjrt/gpu:legacy_gpu_client_users"]),
     deps = [
         ":gpu_helpers",
         ":gpu_metrics",
@@ -247,6 +251,7 @@ cc_library(
     name = "gpu_topology",
     srcs = ["gpu_topology.cc"],
     hdrs = ["gpu_topology.h"],
+    visibility = internal_visibility(["//xla/pjrt/gpu:legacy_gpu_topology_users"]),
     deps = [
         ":gpu_topology_proto_cc",
         "@com_google_absl//absl/strings:string_view",
@@ -258,6 +263,7 @@ cc_library(
     srcs = ["se_gpu_pjrt_compiler.cc"],
     hdrs = ["se_gpu_pjrt_compiler.h"],
     defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
+    visibility = internal_visibility(["//xla/pjrt/gpu:legacy_se_gpu_pjrt_compiler_users"]),
     deps = [
         ":se_gpu_pjrt_client",
         "//xla:status_macros",
@@ -304,6 +310,7 @@ cc_library(
     name = "gpu_metrics",
     srcs = ["gpu_metrics.cc"],
     hdrs = ["gpu_metrics.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//xla/tsl/lib/monitoring:gauge",
         "@com_google_absl//absl/strings",

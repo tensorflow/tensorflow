@@ -532,6 +532,8 @@ TEST(FfiTest, AnyBufferArgument) {
     EXPECT_EQ(buffer.untyped_data(), storage.data());
     EXPECT_EQ(buffer.typed_data<float>(),
               reinterpret_cast<float*>(storage.data()));
+    EXPECT_EQ(buffer.reinterpret_data<int32_t>(),
+              reinterpret_cast<int32_t*>(storage.data()));
     AnyBuffer::Dimensions dimensions = buffer.dimensions();
     EXPECT_EQ(dimensions.size(), 2);
     EXPECT_EQ(dimensions[0], 2);

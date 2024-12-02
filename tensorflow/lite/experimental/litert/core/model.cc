@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -25,21 +26,22 @@
 #include "tensorflow/lite/experimental/litert/core/util/buffer_ref.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
-using ::litert::MutableBufferRef;
+using litert::BufferRef;
+using litert::MutableBufferRef;
 
 //
 // Model
 //
 
-LiteRtStatus GetModelNumSubgraphs(LiteRtModel model,
-                                  LiteRtParamIndex* num_subgraphs) {
+LiteRtStatus LiteRtGetNumModelSubgraphs(LiteRtModel model,
+                                        LiteRtParamIndex* num_subgraphs) {
   *num_subgraphs = model->subgraphs.size();
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus GetModelSubgraph(LiteRtModel model,
-                              LiteRtParamIndex subgraph_index,
-                              LiteRtSubgraph* subgraph) {
+LiteRtStatus LiteRtGetModelSubgraph(LiteRtModel model,
+                                    LiteRtParamIndex subgraph_index,
+                                    LiteRtSubgraph* subgraph) {
   if (subgraph_index >= model->subgraphs.size()) {
     return kLiteRtStatusErrorIndexOOB;
   }
@@ -47,14 +49,14 @@ LiteRtStatus GetModelSubgraph(LiteRtModel model,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus GetModelMainSubgraph(LiteRtModel model,
-                                  LiteRtParamIndex* main_subgraph_index) {
+LiteRtStatus LiteRtGetMainModelSubgraphIndex(
+    LiteRtModel model, LiteRtParamIndex* main_subgraph_index) {
   // TODO replace this with signature.
   *main_subgraph_index = 0;
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtModelGetMetadata(LiteRtModel model, const char* metadata_key,
+LiteRtStatus LiteRtGetModelMetadata(LiteRtModel model, const char* metadata_key,
                                     const void** metadata_buffer,
                                     size_t* metadata_buffer_size) {
   LITERT_ASSIGN_OR_RETURN_STATUS(auto m_buf, model->FindMetadata(metadata_key));
@@ -63,21 +65,13 @@ LiteRtStatus LiteRtModelGetMetadata(LiteRtModel model, const char* metadata_key,
   return kLiteRtStatusOk;
 }
 
-void ModelDestroy(LiteRtModel model) {
-  if (model != nullptr) {
-    delete model;
-  }
-}
-
-LiteRtStatus PushOp(LiteRtOpList op_list, LiteRtOp op) {
+LiteRtStatus LiteRtPushOp(LiteRtOpList op_list, LiteRtOp op) {
   op_list->Push(op);
   return kLiteRtStatusOk;
 }
 
-LiteRtResult<MutableBufferRef<uint8_t>> LiteRtModelT::FindMetadata(
-    const absl::string_view key) const {
-  using ResT = LiteRtResult<MutableBufferRef<uint8_t>>;
-
+LiteRtStatus LiteRtModelT::FindMetadataInd(absl::string_view key,
+                                           uint32_t& ind) const {
   tflite::MetadataT* fb_metadata = nullptr;
   for (auto& m : flatbuffer_model->metadata) {
     if (m->name == key) {
@@ -86,41 +80,75 @@ LiteRtResult<MutableBufferRef<uint8_t>> LiteRtModelT::FindMetadata(
     }
   }
   if (fb_metadata == nullptr) {
-    return ResT::FromStatus(kLiteRtStatusErrorNotFound);
+    return kLiteRtStatusErrorNotFound;
   }
 
-  const uint32_t m_buffer_idx = fb_metadata->buffer;
+  ind = fb_metadata->buffer;
+  return kLiteRtStatusOk;
+}
+
+LiteRtResult<MutableBufferRef<uint8_t>> LiteRtModelT::FindMetadata(
+    const absl::string_view key) const {
+  using ResT = MutableBufferRef<uint8_t>;
+
+  uint32_t m_buffer_idx;
+  LITERT_RETURN_RESULT_IF_NOT_OK(FindMetadataInd(key, m_buffer_idx), ResT);
+
   if (m_buffer_idx >= flatbuffer_model->buffers.size()) {
-    return ResT::FromStatus(kLiteRtStatusErrorIndexOOB);
+    return LiteRtResult<ResT>::FromStatus(kLiteRtStatusErrorIndexOOB);
   }
   tflite::BufferT* m_buffer = flatbuffer_model->buffers.at(m_buffer_idx).get();
 
-  return ResT::FromValue(
+  return LiteRtResult<ResT>::FromValue(
       MutableBufferRef(m_buffer->data.data(), m_buffer->data.size()));
+}
+
+LiteRtStatus LiteRtModelT::PushMetadata(absl::string_view key,
+                                        BufferRef<uint8_t> data) {
+  {
+    uint32_t m_buffer_ind;
+    if (FindMetadataInd(key, m_buffer_ind) == kLiteRtStatusOk) {
+      return kLiteRtStatusErrorNotFound;
+    }
+  }
+
+  auto& new_metadata = flatbuffer_model->metadata.emplace_back(
+      std::make_unique<tflite::MetadataT>());
+  new_metadata->name.assign(key.data(), key.size());
+
+  const size_t new_m_buffer_ind = flatbuffer_model->buffers.size();
+  new_metadata->buffer = new_m_buffer_ind;
+
+  auto& new_buffer = flatbuffer_model->buffers.emplace_back(
+      std::make_unique<tflite::BufferT>());
+  new_buffer->data.assign(data.Data(), data.Data() + data.Size());
+
+  return kLiteRtStatusOk;
 }
 
 //
 // Subgraph
 //
 
-LiteRtStatus GetSubgraphInputs(LiteRtSubgraph subgraph,
-                               LiteRtParamIndex* num_inputs,
-                               LiteRtTensorArray* inputs) {
+LiteRtStatus LiteRtGetSubgraphInputs(LiteRtSubgraph subgraph,
+                                     LiteRtParamIndex* num_inputs,
+                                     LiteRtTensorArray* inputs) {
   *num_inputs = subgraph->inputs.size();
   *inputs = subgraph->inputs.data();
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus GetSubgraphOutputs(LiteRtSubgraph subgraph,
-                                LiteRtParamIndex* num_outputs,
-                                LiteRtTensorArray* outputs) {
+LiteRtStatus LiteRtGetSubgraphOutputs(LiteRtSubgraph subgraph,
+                                      LiteRtParamIndex* num_outputs,
+                                      LiteRtTensorArray* outputs) {
   *num_outputs = subgraph->outputs.size();
   *outputs = subgraph->outputs.data();
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus GetSubgraphOps(LiteRtSubgraph subgraph, LiteRtParamIndex* num_ops,
-                            LiteRtOpArray* ops) {
+LiteRtStatus LiteRtGetSubgraphOps(LiteRtSubgraph subgraph,
+                                  LiteRtParamIndex* num_ops,
+                                  LiteRtOpArray* ops) {
   *num_ops = subgraph->ops.size();
   *ops = subgraph->ops.data();
   return kLiteRtStatusOk;
@@ -130,21 +158,21 @@ LiteRtStatus GetSubgraphOps(LiteRtSubgraph subgraph, LiteRtParamIndex* num_ops,
 // Op
 //
 
-LiteRtStatus GetOpOutputs(LiteRtOp op, LiteRtParamIndex* num_outputs,
-                          LiteRtTensorArray* outputs) {
+LiteRtStatus LiteRtGetOpOutputs(LiteRtOp op, LiteRtParamIndex* num_outputs,
+                                LiteRtTensorArray* outputs) {
   *num_outputs = op->outputs.size();
   *outputs = op->outputs.data();
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus GetOpInputs(LiteRtOp op, LiteRtParamIndex* num_inputs,
-                         LiteRtTensorArray* inputs) {
+LiteRtStatus LiteRtGetOpInputs(LiteRtOp op, LiteRtParamIndex* num_inputs,
+                               LiteRtTensorArray* inputs) {
   *num_inputs = op->inputs.size();
   *inputs = op->inputs.data();
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus GetOpCode(LiteRtOp op, LiteRtOpCode* code) {
+LiteRtStatus LiteRtGetOpCode(LiteRtOp op, LiteRtOpCode* code) {
   *code = op->op_code;
   return kLiteRtStatusOk;
 }
@@ -153,26 +181,28 @@ LiteRtStatus GetOpCode(LiteRtOp op, LiteRtOpCode* code) {
 // Tensor
 //
 
-LiteRtStatus GetWeightsInfo(LiteRtWeights weights, size_t* size,
-                            const void** addr) {
+LiteRtStatus LiteRtGetWeightsBytes(LiteRtWeights weights, const void** addr,
+                                   size_t* size) {
   if (weights->fb_buffer == nullptr) {
-    *size = 0;
     *addr = nullptr;
+    *size = 0;
   } else {
-    *size = weights->fb_buffer->data.size();
     *addr = weights->fb_buffer->data.data();
+    *size = weights->fb_buffer->data.size();
   }
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus GetTensorWeights(LiteRtTensor tensor, LiteRtWeights* weights) {
+LiteRtStatus LiteRtGetTensorWeights(LiteRtTensor tensor,
+                                    LiteRtWeights* weights) {
   *weights = &tensor->weights;
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus GetTensorUses(LiteRtTensor tensor, LiteRtParamIndex* num_uses,
-                           LiteRtOpArray* use_users,
-                           LiteRtParamIndex** use_user_arg_inds) {
+LiteRtStatus LiteRtGetTensorUses(LiteRtTensor tensor,
+                                 LiteRtParamIndex* num_uses,
+                                 LiteRtOpArray* use_users,
+                                 LiteRtParamIndex** use_user_arg_inds) {
   *num_uses = tensor->users.size();
   *use_users = tensor->users.data();
   *use_user_arg_inds = tensor->user_arg_inds.data();
@@ -180,22 +210,26 @@ LiteRtStatus GetTensorUses(LiteRtTensor tensor, LiteRtParamIndex* num_uses,
 }
 
 // Null if subgraph input or constant.
-LiteRtStatus GetTensorDefiningOp(
-    LiteRtTensor tensor, LiteRtOp* maybe_defining_op,
-    LiteRtParamIndex* maybe_defining_op_output_ind) {
+LiteRtStatus LiteRtGetTensorDefiningOp(LiteRtTensor tensor,
+                                       bool* has_defining_op,
+                                       LiteRtTensorDefiningOp* defining_op) {
   if (tensor->defining_op != nullptr) {
-    *maybe_defining_op = tensor->defining_op;
-    *maybe_defining_op_output_ind = tensor->defining_op_out_ind;
+    *has_defining_op = true;
+    defining_op->op = tensor->defining_op;
+    defining_op->op_output_index = tensor->defining_op_out_ind;
+  } else {
+    *has_defining_op = false;
   }
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus GetTensorTypeId(LiteRtTensor tensor, LiteRtTensorTypeId* type_id) {
+LiteRtStatus LiteRtGetTensorTypeId(LiteRtTensor tensor,
+                                   LiteRtTensorTypeId* type_id) {
   *type_id = tensor->type_id;
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus GetUrankedTensorType(
+LiteRtStatus LiteRtGetUnrankedTensorType(
     LiteRtTensor tensor, LiteRtUnrankedTensorType* unranked_tensor_type) {
   if (tensor->type_id != kLiteRtUnrankedTensorType) {
     return kLiteRtStatusErrorInvalidIrType;
@@ -204,8 +238,8 @@ LiteRtStatus GetUrankedTensorType(
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus GetRankedTensorType(LiteRtTensor tensor,
-                                 LiteRtRankedTensorType* ranked_tensor_type) {
+LiteRtStatus LiteRtGetRankedTensorType(
+    LiteRtTensor tensor, LiteRtRankedTensorType* ranked_tensor_type) {
   if (tensor->type_id != kLiteRtRankedTensorType) {
     return kLiteRtStatusErrorInvalidIrType;
   }

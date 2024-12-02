@@ -271,6 +271,9 @@ static bool IsCommand(const HloInstruction* hlo,
   if (auto* sort = DynCast<HloSortInstruction>(hlo))
     return config.enabled_commands.contains(DebugOptions::FUSION);
 
+  if (hlo->opcode() == HloOpcode::kCopy)
+    return config.enabled_commands.contains(DebugOptions::FUSION);
+
   if (hlo->opcode() == HloOpcode::kPartitionId ||
       hlo->opcode() == HloOpcode::kReplicaId) {
     return config.enabled_commands.contains(DebugOptions::FUSION);

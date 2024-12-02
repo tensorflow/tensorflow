@@ -20,9 +20,9 @@ limitations under the License.
 namespace tensorflow {
 namespace test {
 
-Status CallGradFunction(const Scope& scope, const Operation& op,
-                        const std::vector<Output>& grad_inputs,
-                        std::vector<Output>* grad_outputs) {
+absl::Status CallGradFunction(const Scope& scope, const Operation& op,
+                              const std::vector<Output>& grad_inputs,
+                              std::vector<Output>* grad_outputs) {
   ops::GradFunc grad_fn;
   TF_RETURN_IF_ERROR(ops::GradOpRegistry::Global()->Lookup(
       op.node()->type_string(), &grad_fn));

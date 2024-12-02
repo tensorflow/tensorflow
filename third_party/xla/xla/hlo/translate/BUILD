@@ -18,6 +18,7 @@ cc_library(
     hdrs = ["portable_api.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":stablehlo",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "//xla/mlir_hlo:hlo_dialect_registration",
@@ -79,5 +80,33 @@ xla_cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@local_tsl//tsl/platform:platform_port",
         "@stablehlo//:register",
+    ],
+)
+
+cc_library(
+    name = "stablehlo",
+    srcs = ["stablehlo.cc"],
+    hdrs = ["stablehlo.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:debug_options_flags",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_module_importer",
+        "//xla/hlo/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
+        "//xla/hlo/translate/mhlo_to_hlo:module_attributes_exporter",
+        "//xla/mlir/utils:error_util",
+        "//xla/mlir_hlo:mhlo_passes",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )

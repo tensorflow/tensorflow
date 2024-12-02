@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "xla/hlo/builder/lib/sorting.h"
