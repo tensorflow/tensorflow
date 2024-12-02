@@ -14,6 +14,14 @@ package_group(
 )
 
 cc_library(
+    name = "collectives",
+    hdrs = ["collectives.h"],
+    deps = [
+        ":communicator",
+    ],
+)
+
+cc_library(
     name = "communicator",
     hdrs = ["communicator.h"],
 )
