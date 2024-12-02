@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/tf_record_dataset_op.h"
 
 #include <cstdint>
+#include <cstdlib>
 
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/utils.h"
@@ -28,10 +29,20 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
+
+using ::tensorflow::protobuf::internal::WireFormatLite;
+using ::tensorflow::protobuf::io::ArrayInputStream;
+using ::tensorflow::protobuf::io::ArrayOutputStream;
+using ::tensorflow::protobuf::io::CodedInputStream;
+using ::tensorflow::protobuf::io::CodedOutputStream;
+using ::tensorflow::protobuf::io::StringOutputStream;
+using ::tensorflow::protobuf::io::ZeroCopyInputStream;
+using ::tensorflow::protobuf::io::ZeroCopyOutputStream;
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following ops.
@@ -51,6 +62,12 @@ constexpr int64_t kUnspecifiedBufferSize = -1;
 constexpr int64_t kDefaultBufferSize = 256LL << 10;  // 256KB
 constexpr int64_t kCloudTpuBlockSize = 127LL << 20;  // 127MB.
 constexpr int64_t kS3BlockSize = kCloudTpuBlockSize;
+constexpr char kEnableMFPhase2[] = "ENABLE_MF_PHASE_2";
+
+constexpr int kContextFeatureFieldNumber = 1;
+constexpr int kDocumentFeatureFieldNumber = 2;
+constexpr int kFeatureFieldNumber = 1;
+constexpr int kVarIntMaxSize = 10;
 
 bool is_cloud_tpu_gcs_fs() {
 #if (defined(PLATFORM_CLOUD_TPU) && defined(TPU_GCS_FS)) || \
@@ -58,6 +75,79 @@ bool is_cloud_tpu_gcs_fs() {
   return true;
 #endif
   return false;
+}
+
+absl::Status parse(const tstring& tensor, std::deque<tstring>* records) {
+  std::unique_ptr<ZeroCopyInputStream> raw_input =
+      absl::make_unique<ArrayInputStream>(tensor.c_str(), tensor.size());
+
+  std::unique_ptr<CodedInputStream> coded_input =
+      absl::make_unique<CodedInputStream>(raw_input.get());
+  coded_input->PushLimit(tensor.size());
+
+  // TODO(yye): stores bytes as pointers instead of strings to eliminate
+  // addtitional memory copy.
+  string context_protobytes;
+  std::vector<std::string> document_protobytez;
+  while (!coded_input->ExpectAtEnd()) {
+    uint32_t tag = 0;
+    if (!coded_input->ReadVarint32(&tag)) {
+      return absl::Status(absl::StatusCode::kInvalidArgument,
+                          "Cannot parse tag");
+    }
+    if (WireFormatLite::GetTagWireType(tag) !=
+        WireFormatLite::WIRETYPE_LENGTH_DELIMITED) {
+      return absl::Status(absl::StatusCode::kInvalidArgument, "Wrong WireType");
+    }
+
+    int len = 0;
+    if (!coded_input->ReadVarintSizeAsInt(&len)) {
+      return absl::Status(absl::StatusCode::kInvalidArgument,
+                          "Cannot parse length");
+    }
+    int field_number = WireFormatLite::GetTagFieldNumber(tag);
+    switch (field_number) {
+      case kContextFeatureFieldNumber:
+        if (!coded_input->ReadString(&context_protobytes, len)) {
+          return absl::Status(absl::StatusCode::kInvalidArgument,
+                              "Cannot parse String");
+        }
+        break;
+      case kDocumentFeatureFieldNumber:
+        document_protobytez.emplace_back();
+        if (!coded_input->ReadString(&document_protobytez.back(), len)) {
+          return absl::Status(absl::StatusCode::kInvalidArgument,
+                              "Cannot parse String");
+        }
+        break;
+    }
+  }
+  for (const auto& document_bytes : document_protobytez) {
+    records->emplace_back();
+    tstring* record = &records->back();
+    const size_t tag_size = WireFormatLite::TagSize(
+        kFeatureFieldNumber, WireFormatLite::TYPE_MESSAGE);
+    const size_t len_size = CodedOutputStream::VarintSize32(
+        document_bytes.size() + context_protobytes.size());
+    const uint32_t total_size =
+        document_bytes.size() + context_protobytes.size() + tag_size + len_size;
+
+    record->resize(total_size);
+    std::unique_ptr<ZeroCopyOutputStream> raw_output =
+        absl::make_unique<ArrayOutputStream>(record->mdata(), total_size);
+    std::unique_ptr<CodedOutputStream> coded_output =
+        absl::make_unique<CodedOutputStream>(raw_output.get());
+    WireFormatLite::WriteTag(kFeatureFieldNumber,
+                             WireFormatLite::WIRETYPE_LENGTH_DELIMITED,
+                             coded_output.get());
+    coded_output->WriteVarint32(context_protobytes.size() +
+                                document_bytes.size());
+    coded_output->WriteRaw(context_protobytes.data(),
+                           static_cast<int>(context_protobytes.size()));
+    coded_output->WriteRaw(document_bytes.data(),
+                           static_cast<int>(document_bytes.size()));
+  }
+  return absl::OkStatus();
 }
 
 class TFRecordDatasetOp::Dataset : public DatasetBase {
@@ -129,8 +219,10 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
  private:
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    explicit Iterator(const Params& params)
-        : DatasetIterator<Dataset>(params) {}
+    explicit Iterator(const Params& params) : DatasetIterator<Dataset>(params) {
+      const char* enable_mf_phase2 = std::getenv(kEnableMFPhase2);
+      enable_mf_phase2_ = (enable_mf_phase2 != nullptr);
+    }
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
@@ -144,15 +236,33 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
         if (reader_) {
           out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                     TensorShape({}));
-          absl::Status s =
-              reader_->ReadRecord(&out_tensors->back().scalar<tstring>()());
-          if (s.ok()) {
-            static monitoring::CounterCell* bytes_counter =
-                metrics::GetTFDataBytesReadCounter(kDatasetType);
-            bytes_counter->IncrementBy(
-                out_tensors->back().scalar<tstring>()().size());
-            *end_of_sequence = false;
-            return absl::OkStatus();
+          absl::Status s;
+          if (enable_mf_phase2_) {
+            if (buffered_records_.empty()) {
+              tsl::tstring tmp;
+              s = reader_->ReadRecord(&tmp);
+              if (s.ok()) {
+                static monitoring::CounterCell* bytes_counter =
+                    metrics::GetTFDataBytesReadCounter(kDatasetType);
+                bytes_counter->IncrementBy(tmp.size());
+                s = parse(tmp, &buffered_records_);
+              }
+            }
+            if (s.ok()) {
+              out_tensors->back().scalar<tstring>()() = buffered_records_[0];
+              buffered_records_.pop_front();
+              return absl::OkStatus();
+            }
+          } else {
+            s = reader_->ReadRecord(&out_tensors->back().scalar<tstring>()());
+            if (s.ok()) {
+              static monitoring::CounterCell* bytes_counter =
+                  metrics::GetTFDataBytesReadCounter(kDatasetType);
+              bytes_counter->IncrementBy(
+                  out_tensors->back().scalar<tstring>()().size());
+              *end_of_sequence = false;
+              return absl::OkStatus();
+            }
           }
           out_tensors->pop_back();
           if (!errors::IsOutOfRange(s)) {
@@ -301,6 +411,8 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
     // we must destroy `reader_` before `file_`.
     std::unique_ptr<RandomAccessFile> file_ TF_GUARDED_BY(mu_);
     std::unique_ptr<io::SequentialRecordReader> reader_ TF_GUARDED_BY(mu_);
+    bool enable_mf_phase2_;
+    std::deque<tstring> buffered_records_;
   };
 
   const std::vector<string> filenames_;
