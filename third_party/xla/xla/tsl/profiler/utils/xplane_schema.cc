@@ -360,31 +360,31 @@ const StatTypeMap& GetStatTypeMap() {
 }
 
 const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
-  static auto* stat_type_map = new MegaScaleStatTypeMap({
-      {"graph_key", kMegaScaleGraphKey},
-      {"local_device_id", kMegaScaleLocalDeviceId},
-      {"num_actions", kMegaScaleNumActions},
-      {"collective_type", kMegaScaleCollectiveType},
-      {"input_size", kMegaScaleInputSize},
-      {"slack_us", kMegaScaleSlackUs},
-      {"action_type", kMegaScaleActionType},
-      {"start_end_type", kMegaScaleStartEndType},
-      {"action_index", kMegaScaleActionIndex},
-      {"action_duration_ns", kMegaScaleActionDurationNs},
-      {"action_inputs", kMegaScaleActionInputs},
-      {"transfer_source", kMegaScaleTransferSource},
-      {"transfer_destinations", kMegaScaleTransferDestinations},
-      {"buffer_sizes", kMegaScaleBufferSizes},
-      {"compute_operation", kMegaScaleComputeOperation},
-      {"chunk", kMegaScaleChunk},
-      {"launch_id", kMegaScaleLaunchId},
-      {"loop_iteration", kMegaScaleLoopIteration},
-      {"transmission_budget_us", kMegaScaleTransmissionBudgetUs},
-      {"delay_budget_us", kMegaScaleDelayBudgetUs},
-      {"graph_protos", kMegaScaleGraphProtos},
-      {"network_transport_latency_us", kMegaScaleNetworkTransportLatency},
-      {"hlo_module", kMegaScaleHloModule},
-  });
+  static auto* stat_type_map = new MegaScaleStatTypeMap(
+      {{"graph_key", kMegaScaleGraphKey},
+       {"local_device_id", kMegaScaleLocalDeviceId},
+       {"num_actions", kMegaScaleNumActions},
+       {"collective_type", kMegaScaleCollectiveType},
+       {"input_size", kMegaScaleInputSize},
+       {"slack_us", kMegaScaleSlackUs},
+       {"action_type", kMegaScaleActionType},
+       {"start_end_type", kMegaScaleStartEndType},
+       {"action_index", kMegaScaleActionIndex},
+       {"action_duration_ns", kMegaScaleActionDurationNs},
+       {"action_inputs", kMegaScaleActionInputs},
+       {"transfer_source", kMegaScaleTransferSource},
+       {"transfer_destinations", kMegaScaleTransferDestinations},
+       {"buffer_sizes", kMegaScaleBufferSizes},
+       {"compute_operation", kMegaScaleComputeOperation},
+       {"chunk", kMegaScaleChunk},
+       {"launch_id", kMegaScaleLaunchId},
+       {"loop_iteration", kMegaScaleLoopIteration},
+       {"transmission_budget_us", kMegaScaleTransmissionBudgetUs},
+       {"delay_budget_us", kMegaScaleDelayBudgetUs},
+       {"graph_protos", kMegaScaleGraphProtos},
+       {"network_transport_latency_us", kMegaScaleNetworkTransportLatency},
+       {"hlo_module", kMegaScaleHloModule},
+       {"multi_slice_topology", kMegaScaleMultiSliceTopology}});
   DCHECK_EQ(stat_type_map->size(), kNumMegaScaleStatTypes);
   return *stat_type_map;
 }
