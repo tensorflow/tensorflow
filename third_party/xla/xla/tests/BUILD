@@ -137,7 +137,8 @@ cc_library(
     ],
     deps = [
         ":pjrt_client_registry",
-        "//xla/pjrt/cpu:cpu_client",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
     ],
 )
 
