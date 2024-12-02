@@ -58,7 +58,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_autotune_max_solutions(0);
   opts.set_xla_cpu_multi_thread_eigen(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
-  opts.set_xla_gpu_asm_extra_flags("");
+  opts.set_xla_gpu_generate_debug_info(false);
+  opts.set_xla_gpu_generate_line_info(false);
 
   // As of cudnn 8.9.0, runtime fusion creates convolutions that take about 7s
   // seconds to run the first time we call them, at least on Ampere.  In
@@ -968,11 +969,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_disable_gpuasm_optimizations),
       debug_options->xla_gpu_disable_gpuasm_optimizations(),
       "In XLA:GPU run ptxas in -O0 (default is -O3)."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_asm_extra_flags",
-      string_setter_for(&DebugOptions::set_xla_gpu_asm_extra_flags), "",
-      "Pass extra parameters to the GPU assembler tool (i.e., ptxas for CUDA). "
-      "If multiple parameters, separate them by comma."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_generate_debug_info",
+                bool_setter_for(&DebugOptions::set_xla_gpu_generate_debug_info),
+                debug_options->xla_gpu_generate_debug_info(),
+                "Generate debug info for codegened CUDA kernels."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_generate_line_info",
+                bool_setter_for(&DebugOptions::set_xla_gpu_generate_line_info),
+                debug_options->xla_gpu_generate_line_info(),
+                "Generate line info for codegened CUDA kernels."));
   flag_list->push_back(tsl::Flag(
       "xla_fuel", setter_for_xla_fuel, /*default_value_for_display=*/"",
       "Sets compiler fuel, useful for bisecting bugs in passes. Format "

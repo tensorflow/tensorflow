@@ -2406,11 +2406,21 @@ cc_library(
     srcs = ["gpu_asm_opts_util.cc"],
     hdrs = ["gpu_asm_opts_util.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = tsl_copts(),
     deps = [
         "//xla:xla_proto_cc",
         "//xla/stream_executor/gpu:gpu_asm_opts",
-        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_asm_opts_util_test",
+    srcs = ["gpu_asm_opts_util_test.cc"],
+    deps = [
+        ":gpu_asm_opts_util",
+        "//xla:xla_proto_cc",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
