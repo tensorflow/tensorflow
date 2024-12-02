@@ -655,7 +655,6 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   // For legacy custom calls we convert all API versions into the latest
   // status-returning one and pass backend config as an opaque string.
   CustomCallThunk::CustomCallTarget custom_call_target;
-  std::string opaque;
 
   // For XLA FFI handlers we decode opaque backend config into attributes map
   // at IR emission time, so that we do not need to parse MLIR at run time. For
@@ -695,47 +694,48 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
                       custom_call.api_version());
   }
 
-  auto& backend_config_str = custom_call.raw_backend_config_string();
-  switch (custom_call.api_version()) {
-    case CustomCallApiVersion::API_VERSION_ORIGINAL:
-    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
-    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
-      if (!backend_config_str.empty()) {
-        opaque = backend_config_str;
-      }
-      break;
-
-    case CustomCallApiVersion::API_VERSION_TYPED_FFI:
-      if (!backend_config_str.empty()) {
-        mlir::Attribute attr = mlir::parseAttribute(
-            backend_config_str, ir_emitter_context.mlir_context());
-        if (auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr)) {
-          TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
-          break;
-        }
-        return absl::InternalError(
-            "Unsupported backend config. Expected a string parsable into "
-            "dictionary attribute");
-      }
-      break;
-
-    default:
-      return Internal("Unknown custom-call API version enum value: %d",
-                      custom_call.api_version());
+  auto backend_config = custom_call.backend_config<GpuBackendConfig>();
+  if (!backend_config.ok()) {
+    LOG(WARNING) << "Unable to parse backend config for custom call: "
+                 << backend_config.status().message() << "\n"
+                 << "Fall back to parse the raw backend config str.";
   }
 
   std::unique_ptr<Thunk> thunk;
   auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&fusion);
 
-  auto ffi_thunk = [&](Slices ops, Slices res) {
+  auto ffi_thunk =
+      [&](Slices ops,
+          Slices res) -> absl::StatusOr<std::unique_ptr<CustomCallThunk>> {
     auto& called_computations = custom_call.called_computations();
+    auto& backend_config_str =
+        backend_config.ok()
+            ? backend_config->custom_call_backend_config().attributes()
+            : custom_call.raw_backend_config_string();
+    if (!backend_config_str.empty()) {
+      mlir::Attribute attr = mlir::parseAttribute(
+          backend_config_str, ir_emitter_context.mlir_context());
+      auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr);
+      if (dict == nullptr) {
+        return absl::InternalError(
+            "Unsupported backend config. Expected a string parsable into "
+            "dictionary attribute");
+      }
+      TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
+    }
     return CustomCallThunk::Create(
         thunk_info, call_target_name, registration->bundle, std::move(ops),
         std::move(res), std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };
 
-  auto legacy_thunk = [&](Slices ops, Slices res) {
+  auto legacy_thunk =
+      [&](Slices ops,
+          Slices res) -> absl::StatusOr<std::unique_ptr<CustomCallThunk>> {
+    std::string opaque =
+        backend_config.ok()
+            ? backend_config->custom_call_backend_config().opaque()
+            : custom_call.raw_backend_config_string();
     return CustomCallThunk::Create(
         thunk_info, call_target_name, std::move(custom_call_target),
         std::move(ops), std::move(res), std::move(opaque));
