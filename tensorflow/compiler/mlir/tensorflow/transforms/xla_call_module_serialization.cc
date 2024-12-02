@@ -205,11 +205,12 @@ LogicalResult SerializeXlaCallModule(SymbolTableCollection& symbol_table,
   // Use the StableHLO version set during deserialization.
   auto stablehlo_version =
       op->getAttrOfType<StringAttr>(kStablehloVersionAttrName);
-  std::string target_version = stablehlo_version
-                                   ? stablehlo_version.getValue().str()
-                                   : stablehlo::getCurrentVersion();
-  // TODO(gleasonk): Make this required, need to update quantizer machinery.
+  if (!stablehlo_version) {
+    return op->emitError() << "does not have " << kStablehloVersionAttrName
+                           << " attribute";
+  }
 
+  StringRef target_version = stablehlo_version.getValue();
   auto bytecode = SerializeStablehlo(**stablehlo_module, target_version);
   if (failed(bytecode)) {
     return failure();

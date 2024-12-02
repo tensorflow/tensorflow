@@ -182,6 +182,12 @@ void CreateXlaCallModuleOp(ValueRange inputs, ValueRange outputs,
       /*disabled_checks=*/empty_array_attr);
   xla_call_module_op->setAttr(TF::kStablehloEntryFunctionAttrName,
                               SymbolRefAttr::get(stablehlo_func_op));
+  std::string target_version =
+      mlir::vhlo::Version::fromCompatibilityRequirement(
+          vhlo::Version::CompatibilityRequirement::WEEK_4)
+          .toString();
+  xla_call_module_op->setAttr(TF::kStablehloVersionAttrName,
+                              builder.getStringAttr(target_version));
   // Set jax.uses_shape_polymorphism=true to enable shape refinement at runtime.
   // This is needed for native serialization version >= 8.
   xla_call_module_op->setAttr(
