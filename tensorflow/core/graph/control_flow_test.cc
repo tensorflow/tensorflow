@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/graph/control_flow.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/cc/ops/while_loop.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"

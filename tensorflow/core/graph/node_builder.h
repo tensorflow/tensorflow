@@ -16,10 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPH_NODE_BUILDER_H_
 #define TENSORFLOW_CORE_GRAPH_NODE_BUILDER_H_
 
+#include <cstdint>
+#include <initializer_list>
 #include <vector>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
