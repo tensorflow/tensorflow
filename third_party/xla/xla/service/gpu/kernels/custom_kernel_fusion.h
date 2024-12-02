@@ -64,7 +64,7 @@ namespace xla::gpu {
 //     and epilogue fusion are not supported, which means that XLA has to form
 //     smaller fusions or use code generation to compiled a device kernel.
 //
-// (2) Triton: XLA:GPU uses Triton to codegen gemm fusion into devie kernels
+// (2) Triton: XLA:GPU uses Triton to codegen gemm fusion into device kernels
 //     (PTX and CUBIN for NVIDIA gpus).
 //
 // (3) Custom kernel fusion is another mechanism to execute fusion on device,
