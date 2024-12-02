@@ -17,6 +17,8 @@ limitations under the License.
 #include <string_view>
 
 #include "absl/status/status.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
 // Checks whether ptxas log contains errors related to register allocation.
@@ -30,6 +32,11 @@ bool IsPtxRegisterAllocationError(std::string_view);
 absl::Status CreateErrorFromPTXASLog(std::string_view log,
                                      std::string_view architecture,
                                      bool cancel_if_reg_spill);
+
+// Warns if the ptxas version should be upgraded.
+void WarnIfBadPtxasVersion(std::string_view method,
+                           const CudaComputeCapability& cc,
+                           SemanticVersion compiler_version);
 }  // namespace stream_executor
 
 #endif  // XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_HELPERS_H_
