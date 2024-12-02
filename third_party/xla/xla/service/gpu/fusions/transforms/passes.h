@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
-#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {

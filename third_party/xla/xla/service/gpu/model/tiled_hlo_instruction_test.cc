@@ -20,9 +20,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"  // IWYU pragma: keep
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_INDEXING_MAP_SERIALIZATION_H_
-#define XLA_SERVICE_GPU_MODEL_INDEXING_MAP_SERIALIZATION_H_
+#ifndef XLA_HLO_ANALYSIS_INDEXING_MAP_SERIALIZATION_H_
+#define XLA_HLO_ANALYSIS_INDEXING_MAP_SERIALIZATION_H_
 
 #include <optional>
 #include <ostream>
@@ -26,10 +26,9 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map.h"
 
 namespace xla {
-namespace gpu {
 
 // Parses the given string into an IndexingMap.
 std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
@@ -79,7 +78,6 @@ llvm::SmallVector<std::string> GetRTVarNames(const IndexingMap& map);
 // Symbol variable names: concatenation of range and runtime variables.
 llvm::SmallVector<std::string> GetSymbolVarNames(const IndexingMap& map);
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_INDEXING_MAP_SERIALIZATION_H_
+#endif  // XLA_HLO_ANALYSIS_INDEXING_MAP_SERIALIZATION_H_

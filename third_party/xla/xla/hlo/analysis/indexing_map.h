@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_INDEXING_MAP_H_
-#define XLA_SERVICE_GPU_MODEL_INDEXING_MAP_H_
+#ifndef XLA_HLO_ANALYSIS_INDEXING_MAP_H_
+#define XLA_HLO_ANALYSIS_INDEXING_MAP_H_
 
 #include <algorithm>
 #include <cstddef>
@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
-namespace gpu {
 
 enum class VariableKind : char {
   kDefault = 0,
@@ -484,7 +483,6 @@ std::vector<IndexingMap::Variable> DimVarsFromGPUGrid(
 std::vector<IndexingMap::Variable> RangeVarsFromTensorSizes(
     absl::Span<const int64_t> tensor_sizes);
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_INDEXING_MAP_H_
+#endif  // XLA_HLO_ANALYSIS_INDEXING_MAP_H_
