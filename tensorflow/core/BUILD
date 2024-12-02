@@ -68,6 +68,8 @@ load(
     "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
 )
+
+# Placeholder: load java_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
