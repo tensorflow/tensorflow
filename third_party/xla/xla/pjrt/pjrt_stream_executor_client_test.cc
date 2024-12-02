@@ -22,6 +22,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/client_library.h"
 #include "xla/hlo/builder/xla_builder.h"

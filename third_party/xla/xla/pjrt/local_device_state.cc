@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/local_device_state.h"
 
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -23,6 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"

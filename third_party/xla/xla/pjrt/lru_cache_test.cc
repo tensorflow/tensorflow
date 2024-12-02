@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/pjrt/lru_cache.h"
 
+#include <algorithm>
 #include <random>
 
+#include "absl/log/check.h"
 #include "xla/test.h"
 
 namespace xla {

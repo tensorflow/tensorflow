@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/tf_pjrt_client.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,6 +24,8 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/test.h"

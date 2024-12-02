@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_client.h"
 
 namespace xla {
