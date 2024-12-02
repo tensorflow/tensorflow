@@ -46,8 +46,10 @@ limitations under the License.
 namespace xla {
 
 namespace {
+
 using SourceTargetPair = std::pair<int64_t, int64_t>;
 using SourceTargetPairs = std::vector<SourceTargetPair>;
+
 enum class CycleType { kUnknown, kForward, kBackward };
 
 // Returns true if the CollectivePermute instruction has a cycle in its
@@ -59,8 +61,8 @@ CycleType ShouldDecomposeWithCycleType(
     return CycleType::kUnknown;
   }
 
-  const Shape& result_shape = collective_permute.shape();
   // Skip the transformation if there is any context data.
+  const Shape& result_shape = collective_permute.shape();
   if (result_shape.IsTuple()) {
     return CycleType::kUnknown;
   }
