@@ -27,9 +27,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
-#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/test_utils.h"
 #include "tsl/platform/errors.h"
@@ -43,8 +44,9 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                              absl::Span<const Literal* const> args,
                              StrToStrMapping replacements,
                              bool disable_parallel_task_assigner) {
+  xla::CpuClientOptions options;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                      GetTfrtCpuClient(CpuClientOptions()));
+                      xla::GetXlaPjrtCpuClient(options));
   PjRtDevice* device = client->devices().front();
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
