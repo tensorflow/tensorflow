@@ -139,8 +139,28 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_test(
+    name = "cuda_diagnostics_test",
+    srcs = ["cuda_diagnostics_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":cuda_diagnostics",
+        ":cuda_platform",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "@com_google_absl//absl/debugging:leak_check",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:globals",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
