@@ -52,6 +52,8 @@ limitations under the License.
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device_list.h"
@@ -80,7 +82,6 @@ limitations under the License.
 #include "xla/pjrt/cpu/mpi_collectives.h"
 #endif  // !_WIN32 && !PLATFORM_GOOGLE
 
-#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_api.h"
@@ -342,13 +343,13 @@ NB_MODULE(xla_extension, m_nb) {
         std::unique_ptr<ifrt::PjRtClient> ifrt_client;
         {
           nb::gil_scoped_release gil_release;
-          CpuClientOptions options;
+          xla::CpuClientOptions options;
 
           options.asynchronous = asynchronous;
           options.collectives = std::move(collectives);
           options.process_id = node_id;
           std::unique_ptr<PjRtClient> client =
-              xla::ValueOrThrow(GetTfrtCpuClient(std::move(options)));
+              xla::ValueOrThrow(xla::GetXlaPjrtCpuClient(std::move(options)));
           ifrt::PjRtClient::CreateOptions ifrt_options;
           ifrt_options.pjrt_client =
               std::shared_ptr<PjRtClient>(std::move(client));
