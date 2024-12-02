@@ -16,7 +16,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_COREML_BUILDERS_OP_BUILDER_H_
 
 #include <functional>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "mlmodel/format/Model.pb.h"
 #include "mlmodel/format/NeuralNetwork.pb.h"
