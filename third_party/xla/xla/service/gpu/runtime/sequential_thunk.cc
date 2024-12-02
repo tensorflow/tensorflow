@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/service/gpu/runtime/annotation.h"
@@ -81,6 +84,14 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
   }
   return absl::OkStatus();
+}
+
+void SequentialThunk::ForAllThunks(
+    absl::FunctionRef<void(const Thunk*)> fn) const {
+  fn(this);
+  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+    thunk->ForAllThunks(fn);
+  }
 }
 
 }  // namespace gpu

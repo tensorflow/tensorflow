@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
@@ -340,4 +341,11 @@ void CommandBufferThunk::EvictCommandBuffers() {
   }
 }
 
+void CommandBufferThunk::ForAllThunks(
+    absl::FunctionRef<void(const Thunk*)> fn) const {
+  fn(this);
+  if (thunks_ != nullptr) {
+    thunks_->ForAllThunks(fn);
+  }
+}
 }  // namespace xla::gpu

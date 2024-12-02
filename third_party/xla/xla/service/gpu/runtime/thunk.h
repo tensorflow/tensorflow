@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -485,6 +486,9 @@ class Thunk {
 
   // Returns `true` if this thunk requires inter-GPU communication.
   bool IsCollective() const;
+
+  // Invokes `fn` with this thunk and all nested thunks.
+  virtual void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const;
 
  private:
   Kind kind_;

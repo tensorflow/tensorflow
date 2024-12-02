@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/literal.h"
@@ -106,6 +107,8 @@ class DynamicSliceThunk : public Thunk {
   std::vector<std::optional<uint64_t>> get_offset_byte_sizes() const {
     return offset_byte_sizes_;
   }
+
+  void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
 
  private:
   std::unique_ptr<SequentialThunk> embedded_thunk_;

@@ -588,7 +588,6 @@ cc_library(
         "//xla/service:stream_pool",
         "//xla/service:xla_debug_info_manager",
         "//xla/service/gpu/runtime:annotation",
-        "//xla/service/gpu/runtime:for_all_thunks",
         "//xla/service/gpu/runtime:nccl_api",
         "//xla/service/gpu/runtime:nccl_clique",
         "//xla/service/gpu/runtime:sequential_thunk",
@@ -1280,7 +1279,6 @@ cc_library(
     hdrs = [
         "compile_module_to_llvm_ir.h",
     ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":executable_proto_cc",
         ":execution_stream_assignment",
@@ -1304,7 +1302,6 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:logical_buffer",
         "//xla/service/gpu/runtime:sequential_thunk",
-        "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform",
         "//xla/stream_executor/rocm:rocm_platform_id",
