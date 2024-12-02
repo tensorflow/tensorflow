@@ -18,22 +18,42 @@ limitations under the License.
 #include <hip/hip_bfloat16.h>
 #include <hip/hip_fp16.h>
 
-#include <functional>
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <map>
 #include <memory>
+#include <optional>
+#include <set>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "rocm/include/hip/amd_detail/amd_hip_bfloat16.h"
+#include "rocm/include/hip/amd_detail/hip_fp16_gcc.h"
 #include "rocm/include/miopen/miopen.h"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_diagnostics.h"
@@ -43,11 +63,17 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/util/determinism.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/platform/dso_loader.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/macros.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
+
+#ifndef PLATFORM_GOOGLE
+#include "tsl/platform/dso_loader.h"
+#include "tsl/platform/env.h"
+#endif
 
 namespace {
 
@@ -738,7 +764,10 @@ class MIOpenAccess {
   MIOpenHandle GetHandle(StreamExecutor* executor, Stream* stream) {
     auto lock = std::make_unique<absl::MutexLock>(&mutex_);
     mutex_.AssertHeld();
-    hipStream_t hip_stream = stream ? AsGpuStreamValue(stream) : nullptr;
+    hipStream_t hip_stream =
+        stream ? static_cast<hipStream_t>(
+                     stream->platform_specific_handle().stream)
+               : nullptr;
     auto status = wrap::miopenSetStream(handle_, hip_stream);
     CHECK_EQ(status, miopenStatusSuccess) << "Failed to set MIOpen stream.";
     return MIOpenHandle(executor, std::move(lock), handle_);
@@ -4262,8 +4291,9 @@ absl::Status InplaceBiasActivation(
       typename std::conditional<std::is_same_v<Tbias, Eigen::bfloat16>,
                                 hip_bfloat16, Tbias>::type>::type CTbias;
   launchInplaceBiasActivation<CT, CTbias>(
-      AsGpuStreamValue(stream), c_data.opaque(), bias_data.opaque(),
-      side_input_data.opaque(), side_input_scale,
+      static_cast<hipStream_t>(stream->platform_specific_handle().stream),
+      c_data.opaque(), bias_data.opaque(), side_input_data.opaque(),
+      side_input_scale,
       static_cast<int>(activation_mode) + (transpose ? 10 : 0), batch, m, n,
       ldc, param);
   return absl::OkStatus();

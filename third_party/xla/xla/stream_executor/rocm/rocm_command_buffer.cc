@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -366,7 +366,8 @@ absl::Status RocmCommandBuffer::Trace(
   VLOG(5) << "Trace into GPU command buffer graph " << graph_
           << " on a stream: " << stream;
 
-  hipStream_t stream_handle = AsGpuStreamValue(stream);
+  hipStream_t stream_handle =
+      static_cast<hipStream_t>(stream->platform_specific_handle().stream);
 
   // Switch stream into the capture mode.
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
@@ -411,7 +412,9 @@ absl::Status RocmCommandBuffer::SetNodeExecutionEnabled(
 absl::Status RocmCommandBuffer::LaunchGraph(Stream* stream) {
   VLOG(3) << "Launch command buffer executable graph " << exec_
           << " on a stream: " << stream;
-  return ToStatus(wrap::hipGraphLaunch(exec_, AsGpuStreamValue(stream)),
+  return ToStatus(wrap::hipGraphLaunch(
+                      exec_, static_cast<hipStream_t>(
+                                 stream->platform_specific_handle().stream)),
                   "Failed to launch HIP graph");
 }
 absl::StatusOr<size_t> RocmCommandBuffer::GetNodeCount() const {
