@@ -285,6 +285,7 @@ void AddPostQuantizationStableHloToTfPasses(
 
   if (pass_config.enable_composite_direct_lowering) {
     pass_manager.addPass(mlir::odml::CreateCompositeLoweringPass());
+    pass_manager.addPass(mlir::createSymbolDCEPass());
   }
 
   // TFLite dialect passes.
