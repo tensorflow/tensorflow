@@ -42,11 +42,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -54,6 +54,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
@@ -126,7 +127,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_to_all_thunk.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/nccl_collective_broadcast_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_permute_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
@@ -147,7 +147,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
-#include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/service/llvm_ir/sort_util.h"
@@ -1459,6 +1458,16 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
       for (const auto& [arg, input] : llvm::zip(impl_fn->args(), inputs)) {
         arg.replaceAllUsesWith(input.GetBasePointer());
       }
+      // Triton's kernel ABI expects an additional scratchpad global memory.
+      // For now it is only used for on-device creation of TMA descriptors,
+      // which we do not use yet, so we are just replacing this argument with a
+      // null pointer.
+      // TODO: b/381242007 - Allocate a proper buffer if we want to use
+      // device-side TMA APIs.
+      auto scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 1);
+      scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
+          llvm::cast<llvm::PointerType>(scratchpad_arg->getType())));
+
       impl_fn->eraseFromParent();
 
       for (auto& arg : prototype_func->args()) {

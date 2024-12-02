@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -62,6 +63,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace gpu {
@@ -87,6 +89,11 @@ using mlir::ValueRange;
 namespace arith = ::mlir::arith;
 namespace scf = ::mlir::scf;
 namespace ml = ::mlir::LLVM;
+
+bool IsAMD(const se::DeviceDescription& device_description) {
+  return std::holds_alternative<se::RocmComputeCapability>(
+      device_description.gpu_compute_capability());
+}
 
 Value GetDestinationBuffer(Value dest) {
   while (dest.getDefiningOp()) {
@@ -643,11 +650,10 @@ Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type ty) {
 
 class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
  public:
-  RewriteAtomicRMW(mlir::MLIRContext* context, bool is_amd,
-                   const std::string& gpu_arch)
+  RewriteAtomicRMW(mlir::MLIRContext* context,
+                   const se::DeviceDescription* device_description)
       : mlir::OpRewritePattern<AtomicRMWOp>(context),
-        is_amd_(is_amd),
-        gpu_arch_(gpu_arch) {}
+        device_description_(device_description) {}
 
   LogicalResult matchAndRewrite(
       AtomicRMWOp op, mlir::PatternRewriter& rewriter) const override {
@@ -739,7 +745,8 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     ml::AtomicBinOp atomic_bin_op = modifier_parameters->second;
 
     Location loc = op.getLoc();
-    llvm::StringRef sync_scope = is_amd_ ? "agent" : "";
+    bool is_amd = IsAMD(*device_description_);
+    llvm::StringRef sync_scope = is_amd ? "agent" : "";
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
     Value addr = CreateGep(op.getInput(), op.getIndices(), b);
 
@@ -764,10 +771,14 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
       }
       case ml::AtomicBinOp::fadd: {
         // TODO(b/336367154): Introduce an atomic_rmw op with the binOp attr.
-        return is_amd_ ? emitAMDAtomicFAdd(loc, modifier_arg, addr, sync_scope,
-                                           gpu_arch_, rewriter)
-                       : emitNVidiaAtomicFAdd(loc, modifier_arg, addr,
-                                              sync_scope, gpu_arch_, rewriter);
+        return is_amd ? emitAMDAtomicFAdd(
+                            loc, modifier_arg, addr, sync_scope,
+                            device_description_->rocm_compute_capability(),
+                            rewriter)
+                      : emitNVidiaAtomicFAdd(
+                            loc, modifier_arg, addr, sync_scope,
+                            device_description_->cuda_compute_capability(),
+                            rewriter);
       }
       case ml::AtomicBinOp::fmax: {
         return rewriteAtomicFMaxAsIntAtomics(loc, modifier_arg, addr,
@@ -779,11 +790,10 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     return success();
   }
 
-  LogicalResult emitNVidiaAtomicFAdd(Location loc, Value modifier_arg,
-                                     Value addr, llvm::StringRef sync_scope,
-                                     llvm::StringRef cuda_arch,
-                                     OpBuilder& b) const {
-    se::CudaComputeCapability cuda_compute_capability(cuda_arch.str());
+  LogicalResult emitNVidiaAtomicFAdd(
+      Location loc, Value modifier_arg, Value addr, llvm::StringRef sync_scope,
+      const se::CudaComputeCapability& cuda_compute_capability,
+      OpBuilder& b) const {
     Type element_type = modifier_arg.getType();
     // "atom.add.f64 requires sm_60 or higher."
     // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-atom
@@ -805,11 +815,10 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     return success();
   }
 
-  LogicalResult emitAMDAtomicFAdd(Location loc, Value modifier_arg, Value addr,
-                                  llvm::StringRef sync_scope,
-                                  llvm::StringRef gcn_arch,
-                                  OpBuilder& b) const {
-    se::RocmComputeCapability rocm_compute_capability(gcn_arch.str());
+  LogicalResult emitAMDAtomicFAdd(
+      Location loc, Value modifier_arg, Value addr, llvm::StringRef sync_scope,
+      const se::RocmComputeCapability& rocm_compute_capability,
+      OpBuilder& b) const {
     Type element_type = modifier_arg.getType();
     bool is_supported_f16_atomic =
         element_type.isF16() &&
@@ -1038,8 +1047,7 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
         });
   }
 
-  bool is_amd_;
-  std::string gpu_arch_;
+  const se::DeviceDescription* device_description_;
 };
 
 class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
@@ -1048,9 +1056,15 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       : LowerTensorsPassBase(options) {}
 
   void runOnOperation() override {
+    se::GpuDeviceInfoProto device_info;
+    CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
+                                                     &device_info));
+    se::DeviceDescription device_description(device_info);
+
     MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet tensor_patterns(mlir_context);
-    tensor_patterns.add<RewriteAtomicRMW>(mlir_context, is_amd_gpu_, gpu_arch_);
+
+    tensor_patterns.add<RewriteAtomicRMW>(mlir_context, &device_description);
     tensor_patterns
         .add<RewriteAllocateShared, RewriteNonScalarConstants,
              RewriteSyncThreads, RewriteTensorExtract, RewriteTransferRead,
@@ -1106,11 +1120,18 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
 }  // namespace
 
 std::unique_ptr<::mlir::Pass> CreateLowerTensorsPass(
-    bool is_amd_gpu, const std::string& gpu_arch) {
+    const std::string& gpu_device_info) {
   LowerTensorsPassOptions options;
-  options.is_amd_gpu_ = is_amd_gpu;
-  options.gpu_arch_ = gpu_arch;
+  options.gpu_device_info_ = gpu_device_info;
   return std::make_unique<LowerTensorsPass>(options);
+}
+
+std::unique_ptr<::mlir::Pass> CreateLowerTensorsPass(
+    const se::DeviceDescription& device_description) {
+  std::string ascii_proto;
+  CHECK(tsl::protobuf::TextFormat::PrintToString(
+      device_description.ToGpuProto(), &ascii_proto));
+  return CreateLowerTensorsPass(ascii_proto);
 }
 
 }  // namespace gpu

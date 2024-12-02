@@ -29,9 +29,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -199,7 +202,15 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     for (const auto& [arg, ir_array] : llvm::zip(impl_fn->args(), inputs)) {
       arg.replaceAllUsesWith(ir_array.GetBasePointer());
     }
-    impl_fn->eraseFromParent();
+    // Triton's kernel ABI expects an additional scratchpad global memory.
+    // For now it is only used for on-device creation of TMA descriptors, which
+    // we do not use yet, so we are just replacing this argument with a null
+    // pointer.
+    // TODO: b/381242007 - Allocate a proper buffer if we want to use
+    // device-side TMA APIs.
+    auto scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 1);
+    scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
+        llvm::cast<llvm::PointerType>(scratchpad_arg->getType())));
 
     return {{kernel->getName().str(), launch_dimensions,
              triton_wrapper_result.cluster_dim,

@@ -43,7 +43,7 @@ namespace xla {
 namespace ifrt {
 
 class Client;
-class CompileOptions;
+struct CompileOptions;
 struct DeserializeExecutableOptions;
 
 // Wraps a computation that has been partially compiled and can be loaded.

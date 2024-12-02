@@ -87,6 +87,8 @@ absl::Status CreateTritonPipeline(
   // check for consistency with the upstream pipeline
   if (ccCuda.IsAtLeastAmpere()) {
     pm.addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
+    pm.addPass(mt::gpu::createTritonGPULoopScheduling(
+        {block_level_parameters.num_stages}));
     pm.addPass(
         mt::gpu::createTritonGPUPipeline({block_level_parameters.num_stages}));
   }
@@ -115,6 +117,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mt::gpu::createAllocateSharedMemoryPass());
+  pm.addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
   pm.addPass(mt_xla::CreateSparseLocalLoadToLLVMPass());
   pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
   // The triton_xla.sparse_dot ops need to be rewritten after
