@@ -17,10 +17,12 @@
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -37,6 +39,8 @@ namespace litert {
 namespace {
 
 using ::litert::testing::MakeRuntimeFromTestFileWithNpuModel;
+using ::testing::FloatNear;
+using ::testing::Pointwise;
 
 static constexpr absl::string_view kNpuFile = kMediaTekModelFileName;
 static constexpr absl::string_view kTfliteFile = "simple_model_npu.tflite";
@@ -98,13 +102,11 @@ TEST(DispatchDelegate, MediaTekCpuBuffer) {
   ASSERT_STREQ(runner->output_names()[0], "tfl.custom");
   auto output_tensor = runner->output_tensor("tfl.custom");
   ASSERT_NE(output_tensor, nullptr);
-  auto* output = output_tensor->data.f;
+  auto output = absl::MakeSpan(output_tensor->data.f, kTestOutputSize);
   for (auto i = 0; i < kTestOutputSize; ++i) {
     ABSL_LOG(INFO) << output[i] << "\t" << kTestOutputTensor[i];
   }
-  for (auto i = 0; i < kTestOutputSize; ++i) {
-    EXPECT_NEAR(output[i], kTestOutputTensor[i], 1e-5);
-  }
+  EXPECT_THAT(output, Pointwise(::testing::FloatNear(1e-5), kTestOutputTensor));
 }
 
 TEST(DispatchDelegate, MediaTekHwBuffer) {
@@ -213,13 +215,12 @@ TEST(DispatchDelegate, MediaTekHwBuffer) {
   {
     auto lock_and_addr = litert::TensorBufferScopedLock::Create(output_buffer);
     ASSERT_TRUE(lock_and_addr);
-    const float* output = reinterpret_cast<const float*>(lock_and_addr->second);
+    auto output = absl::MakeSpan(
+        static_cast<const float*>(lock_and_addr->second), kTestOutputSize);
     for (auto i = 0; i < kTestOutputSize; ++i) {
       ABSL_LOG(INFO) << "Result: " << output[i] << "\t" << kTestOutputTensor[i];
     }
-    for (auto i = 0; i < kTestOutputSize; ++i) {
-      EXPECT_NEAR(output[i], kTestOutputTensor[i], 1e-5);
-    }
+    EXPECT_THAT(output, Pointwise(FloatNear(1e-5), kTestOutputTensor));
   }
 }
 
