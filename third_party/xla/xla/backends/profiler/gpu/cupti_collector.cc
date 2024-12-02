@@ -18,16 +18,19 @@ limitations under the License.
 #include <optional>
 #include <queue>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_occupancy.h"
+#include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/tsl/profiler/utils/parse_annotation.h"
 #include "xla/tsl/profiler/utils/trace_utils.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -52,6 +55,7 @@ using tsl::profiler::FindOrAddMutablePlaneWithName;
 using tsl::profiler::GpuPlaneName;
 using tsl::profiler::kCuptiDriverApiPlaneName;
 using tsl::profiler::kDeviceVendorNvidia;
+using tsl::profiler::kScopeRangeIdTreePlaneName;
 using tsl::profiler::kThreadIdOverhead;
 using tsl::profiler::ParseAnnotationStack;
 using tsl::profiler::StatType;
@@ -179,6 +183,11 @@ class PerDeviceCollector {
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kCorrelationId)),
                           event.correlation_id);
+    }
+    if (event.scope_range_id) {
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kScopeRangeId)),
+                          event.scope_range_id);
     }
     if (!event.nvtx_range.empty()) {
       xevent.AddStatValue(
@@ -549,7 +558,18 @@ class EventInQueue {
 void CuptiTraceCollector::OnTracerCollectedCallbackData(
     std::vector<CallbackAnnotationsAndEvents> callback_annotations_and_events,
     bool need_callback_events) {
-  // Build merged annotation first.
+  // Merge per-thread scope range id tree.
+  for (auto& annotations_and_events : callback_annotations_and_events) {
+    auto& per_thread_scope_range_id_tree =
+        annotations_and_events.scope_range_id_tree();
+    for (const auto [child_id, parent_id] : per_thread_scope_range_id_tree) {
+      scope_range_id_tree_.insert({child_id, parent_id});
+    }
+    // Free resources earlier although it will be freed later if not here.
+    per_thread_scope_range_id_tree.clear();
+  }
+
+  // Build merged annotation.
   std::priority_queue<EventInQueue> min_heap;
   for (auto& annotations_and_events : callback_annotations_and_events) {
     EventInQueue event_in_queue(annotations_and_events.event_queue());
@@ -566,11 +586,12 @@ void CuptiTraceCollector::OnTracerCollectedCallbackData(
             CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice) {
       for (uint32_t device = 0; device < options_.num_gpus; ++device) {
         annotation_map_.Add(device, event.correlation_id, event.annotation,
-                            event.nvtx_range);
+                            event.nvtx_range, event.scope_range_id);
       }
     } else {
       annotation_map_.Add(event.device_id, event.correlation_id,
-                          event.annotation, event.nvtx_range);
+                          event.annotation, event.nvtx_range,
+                          event.scope_range_id);
     }
     // Clear the annotation and nvtx_range of the Callback API events, as they
     // are now in the combined AnnotationMap which will be used by the
@@ -648,6 +669,17 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   }
 
   void Flush() override {}
+  void ExportScopeRangeIdTree(XSpace* space) {
+    XPlaneBuilder plane(
+        FindOrAddMutablePlaneWithName(space, kScopeRangeIdTreePlaneName));
+    // No metadata is used for this plane, we just use the XStat to
+    // transfer the map without break any existing proto.
+    tensorflow::profiler::XStatMetadata metadata;
+    for (const auto& [child_id, parent_id] : scope_range_id_tree_) {
+      metadata.set_id(child_id);
+      plane.AddStatValue(metadata, parent_id);
+    }
+  }
   // Returns true if some GPU events are captured.
   bool Export(XSpace* space, uint64_t end_gpu_ns) override {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
@@ -656,6 +688,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     LOG(INFO) << " GpuTracer max callback_events: "
               << options_.max_activity_api_events
               << ", max activity events: " << options_.max_activity_api_events;
+    ExportScopeRangeIdTree(space);
     size_t num_events = 0;
     XPlaneBuilder host_plane(
         FindOrAddMutablePlaneWithName(space, kCuptiDriverApiPlaneName));

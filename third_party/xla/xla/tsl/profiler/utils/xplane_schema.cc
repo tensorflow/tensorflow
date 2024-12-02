@@ -39,6 +39,8 @@ const char kSparseCorePlaneRegex[] = {
 // migrated.
 const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";
 
+const absl::string_view kScopeRangeIdTreePlaneName =
+    "/host:__ScopeRangeCallStack__";
 const absl::string_view kTpuRuntimePlaneName = "/host:TPU-runtime";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
 const absl::string_view kRoctracerApiPlaneName = "/host:ROCTRACER";
@@ -354,7 +356,8 @@ const StatTypeMap& GetStatTypeMap() {
        {"gpu_device_name", kGpuDeviceName},
        {"source_stack", kSourceStack},
        {"device_offset_ps", kDeviceOffsetPs},
-       {"device_duration_ps", kDeviceDurationPs}});
+       {"device_duration_ps", kDeviceDurationPs},
+       {"scope_range_id", kScopeRangeId}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }

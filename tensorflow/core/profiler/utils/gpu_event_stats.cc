@@ -73,6 +73,9 @@ GpuEventStats::GpuEventStats(const XEventVisitor* event) {
       case StatType::kCudaGraphId:
         cuda_graph_id_for_inner_node = stat.UintValue();
         break;
+      case StatType::kScopeRangeId:
+        scope_range_id = stat.IntValue();
+        break;
       default:
         break;
     }

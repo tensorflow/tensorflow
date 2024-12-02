@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/profiler/utils/group_events.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -33,13 +34,21 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+// Store the mapping from child scope range id to parent scope range id, which
+// logically form a scope range call stack tree/forest.
+typedef absl::flat_hash_map<int64_t /* child_scope_range_id */,
+                            int64_t /* parent_scope_range_id */>
+    ScopeRangeIdTree;
+
 // Helper for deriving XEvents.
 class DerivedXEventBuilder {
  public:
-  DerivedXEventBuilder(XEventBuilder event, std::optional<int64_t> group_id);
+  DerivedXEventBuilder(XEventBuilder event, std::optional<int64_t> group_id,
+                       std::optional<int64_t> scope_range_id = std::nullopt);
 
   bool ShouldExpand(const XEventMetadata& event_metadata,
-                    std::optional<int64_t> group_id) const;
+                    std::optional<int64_t> group_id,
+                    std::optional<int64_t> scope_range_id = std::nullopt) const;
 
   void Expand(tsl::profiler::Timespan event_span);
   tsl::profiler::Timespan GetTimespan() const { return event_.GetTimespan(); }
@@ -55,6 +64,7 @@ class DerivedXEventBuilder {
  private:
   XEventBuilder event_;
   std::optional<int64_t> group_id_;
+  std::optional<int64_t> scope_range_id_;
 };
 
 // Helper for deriving an XLine from events in another XLine.
@@ -72,15 +82,25 @@ class DerivedXLineBuilder {
   //   TF-op, TF name scope: both group_id and low_level_event_name are used.
   //   HLO-op, step: only group_id is used.
   //   HLO module, source: both group_id and low_level_event_name are NOT used.
+  // If scope_range_id is provided, it will be compared with the one in the
+  // event which is to be merged with. If they are different, merging is not
+  // allowed.
   void ExpandOrAddEvent(const XEventMetadata& event_metadata,
                         tsl::profiler::Timespan event_span,
-                        std::optional<int64_t> group_id);
+                        std::optional<int64_t> group_id,
+                        std::optional<int64_t> scope_range_id = std::nullopt);
 
   // The multi-level version of ExpandOrAddEvent. Here, the XEvents at different
   // levels all share the same group_id and low_level_event_name.
+  // Conceptually, the scope_range_ids should be of same length as the
+  // events_metadata_per_level. However, if it is shorter, this function will
+  // assume the missing elements at the end of scope_range_ids vector with the
+  // value of std::nullopt; and if it is longer, the extra elements in
+  // scope_range_ids will be ignored.
   void ExpandOrAddEvents(
       const std::vector<XEventMetadata*>& events_metadata_per_level,
-      tsl::profiler::Timespan event_span, std::optional<int64_t> group_id);
+      tsl::profiler::Timespan event_span, std::optional<int64_t> group_id,
+      absl::Span<std::optional<int64_t>> scope_range_ids = {});
 
   // Reset the last events lower than or equal to the given level.
   void ResetLastEvents(int level = 0);
@@ -110,7 +130,8 @@ class DerivedXLineBuilder {
   // parent event(s).
   void ExpandOrAddLevelEvent(const XEventMetadata& event_metadata,
                              tsl::profiler::Timespan event_span,
-                             std::optional<int64_t> group_id, int level);
+                             std::optional<int64_t> group_id,
+                             std::optional<int64_t> scope_range_id, int level);
   void AdjustDurationForTraceViewer(int level);
 
   const XStatMetadata* group_id_stat_metadata_ = nullptr;
@@ -152,8 +173,9 @@ void DeriveStepEventsFromGroups(
 // stored as XStats in XEvents corresponding to GPU Kernels. Consecutive
 // annotations with the same value are merged into a single event except for XLA
 // modules. The device_trace is both input and output.
-void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
-                                 XPlane* device_trace);
+void DeriveEventsFromAnnotations(
+    const SymbolResolver& symbol_resolver, XPlane* device_trace,
+    const ScopeRangeIdTree* scope_range_id_tree = nullptr);
 
 // Derives "Launch Activities Summary" line from host trace.
 void DeriveEventsFromHostTrace(

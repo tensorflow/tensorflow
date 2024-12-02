@@ -63,6 +63,8 @@ TF_CONST_INIT extern const absl::string_view kPythonTracerPlaneName;
 TF_CONST_INIT extern const absl::string_view kHostCpusPlaneName;
 // Name of XPlane that contains kTrace system calls.
 TF_CONST_INIT extern const absl::string_view kSyscallsPlaneName;
+// Name of XPlane that contains namescope stack tree.
+TF_CONST_INIT extern const absl::string_view kScopeRangeIdTreePlaneName;
 
 // Names of XLines that contain ML-level events.
 TF_CONST_INIT extern const absl::string_view kStepLineName;
@@ -340,7 +342,8 @@ enum StatType {
   kSourceStack,
   kDeviceOffsetPs,
   kDeviceDurationPs,
-  kLastStatType = kDeviceDurationPs,
+  kScopeRangeId,
+  kLastStatType = kScopeRangeId,
 };
 
 enum MegaScaleStatType : uint8_t {

@@ -16,8 +16,10 @@ limitations under the License.
 #define XLA_TSL_PROFILER_BACKENDS_CPU_ANNOTATION_STACK_H_
 
 #include <atomic>
+#include <cstdint>
 #include <string_view>
 
+#include "absl/types/span.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {
@@ -36,6 +38,9 @@ class AnnotationStack {
 
   // Returns the annotation stack for the current thread.
   static const string& Get();
+
+  // Returns the range id sequence for the stack for the current thread.
+  static absl::Span<const int64_t> GetScopeRangeIds();
 
   // Enables or disables the annotation stack.
   static void Enable(bool enable);
