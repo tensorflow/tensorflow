@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/hlo_traversal.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 template <typename F>
@@ -686,5 +685,4 @@ std::vector<HloInstructionAdaptor> HloFindUseChain(HloInstructionAdaptor parent,
   return result;
 }
 
-}  // namespace gpu
 }  // namespace xla

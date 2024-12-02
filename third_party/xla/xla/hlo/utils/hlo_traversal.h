@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_HLO_TRAVERSAL_H_
-#define XLA_SERVICE_GPU_HLO_TRAVERSAL_H_
+#ifndef XLA_HLO_UTILS_HLO_TRAVERSAL_H_
+#define XLA_HLO_UTILS_HLO_TRAVERSAL_H_
 
 #include <functional>
 #include <memory>
@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/shape.h"
 
 namespace xla {
-namespace gpu {
 
 class HloFusionAdaptor;
 
@@ -225,7 +224,6 @@ bool HloAnyOf(const HloFusionAdaptor& fusion, Pred&& pred) {
 std::vector<HloInstructionAdaptor> HloFindUseChain(HloInstructionAdaptor parent,
                                                    HloInstructionAdaptor root);
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_HLO_TRAVERSAL_H_
+#endif  // XLA_HLO_UTILS_HLO_TRAVERSAL_H_

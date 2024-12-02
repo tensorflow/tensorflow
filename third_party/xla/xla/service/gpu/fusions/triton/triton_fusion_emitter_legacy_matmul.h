@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/Builders.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/hlo_traversal.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"

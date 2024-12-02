@@ -15,10 +15,10 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 
 #include <gtest/gtest.h>
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"

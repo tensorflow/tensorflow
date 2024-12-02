@@ -31,8 +31,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/stream_executor/device_description.h"
 

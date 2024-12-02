@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/hlo_traversal.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 
 #include <optional>
 #include <string>
@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 namespace m = ::xla::match;
@@ -707,5 +706,4 @@ TEST_F(HloTraversalTest, HloFindUseChain) {
 }
 
 }  // namespace
-}  // namespace gpu
 }  // namespace xla
