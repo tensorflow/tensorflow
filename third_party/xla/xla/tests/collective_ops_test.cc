@@ -2270,6 +2270,97 @@ body {
                                      results[1]));
 }
 
+// Test send/recv across partitions. In the IR, this is indicated by the absence
+// of the channel ID and the use of replica-id().
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecvCrossReplica)) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    ENTRY computation {
+      rid = u32[] replica-id()
+      c10 = u32[] constant(10)
+      rid_plus_ten = u32[] add(rid, c10)
+      after_all = token[] after-all()
+      send = (u32[], u32[], token[]) send(rid_plus_ten, after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs="{{1,0}}"}
+      recv = (u32[], u32[], token[]) recv(after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs="{{1,0}}"}
+      send_done = token[] send-done(send)
+      recv_done = (u32[], token[]) recv-done(recv)
+      ROOT recv_data = u32[] get-tuple-element(recv_done), index=0
+    }
+  )";
+
+  const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
+
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/1);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
+                        kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<uint32_t>(11), results[0]));
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<uint32_t>(0), results[1]));
+}
+
+// Test send/recv across partitions. In the IR, this is indicated by the
+// presence of the channel ID and the use of partition-id().
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecvCrossPartition)) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    ENTRY computation {
+      rid = u32[] partition-id()
+      c10 = u32[] constant(10)
+      rid_plus_ten = u32[] add(rid, c10)
+      after_all = token[] after-all()
+      send = (u32[], u32[], token[]) send(rid_plus_ten, after_all),
+          channel_id=1,
+          frontend_attributes={_xla_send_recv_source_target_pairs="{{1,0}}"}
+      recv = (u32[], u32[], token[]) recv(after_all), channel_id=1,
+          frontend_attributes={_xla_send_recv_source_target_pairs="{{1,0}}"}
+      send_done = token[] send-done(send), channel_id=1
+      recv_done = (u32[], token[]) recv-done(recv), channel_id=1
+      ROOT recv_data = u32[] get-tuple-element(recv_done), index=0
+    }
+  )";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+
+  // Create device assignment running across partitions.
+  DeviceAssignment device_assignment(/*replica_count=*/kNumReplicas,
+                                     /*computation_count=*/kNumPartitions);
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    device_assignment(0, i) = i;
+  }
+
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
+                        kNumReplicas * kNumPartitions, &device_assignment,
+                        /*run_hlo_passes=*/true, /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas * kNumPartitions);
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<uint32_t>(11), results[0]));
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0<uint32_t>(0), results[1]));
+}
+
 class Fp8CollectiveOpsTest : public CollectiveOpsTest {
  public:
   Fp8CollectiveOpsTest() {

@@ -2326,11 +2326,6 @@ absl::Status IrEmitterUnnested::EmitCopyDoneThunk(const HloInstruction* instr) {
 }
 
 absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
-  // TODO(b/372306903): Do not require channel id for send.
-  if (!instr->channel_id().has_value()) {
-    return absl::InternalError("Unknown send instruction channel id");
-  }
-
   const HloInstruction* src = instr->operand(0);
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
                       GetAllocationSliceForHlo(src, {}));
@@ -2371,6 +2366,11 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
     return absl::OkStatus();
   }
 
+  if (!instr->channel_id().has_value()) {
+    return absl::InternalError(
+        "Unknown channel id in host transfer send instruction");
+  }
+
   AddThunkToThunkSequence(std::make_unique<SendThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), src->shape(), buffer,
       *instr->channel_id(), send_recv_events_,
@@ -2382,13 +2382,13 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
 
 absl::Status IrEmitterUnnested::EmitSendDoneThunk(
     const HloSendDoneInstruction* instr) {
-  // TODO(b/372306903): Do not require channel id for send-done.
-  if (!instr->channel_id().has_value()) {
-    return absl::InternalError("Unknown send done instruction channel id");
-  }
-
   if (!instr->is_host_transfer()) {
     return EmitNcclAsyncDone(Thunk::kNcclSendDone, instr);
+  }
+
+  if (!instr->channel_id().has_value()) {
+    return absl::InternalError(
+        "Unknown channel id in host transfer send done instruction");
   }
 
   AddThunkToThunkSequence(std::make_unique<SendDoneThunk>(
@@ -2399,11 +2399,6 @@ absl::Status IrEmitterUnnested::EmitSendDoneThunk(
 }
 
 absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
-  // TODO(b/372306903): Do not require channel id for recv.
-  if (!instr->channel_id().has_value()) {
-    return absl::InternalError("Unknown recv instruction channel id");
-  }
-
   TF_RET_CHECK(instr->shape().IsTuple());
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
                       GetAllocationSliceForHlo(instr, {0}));
@@ -2446,6 +2441,11 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
     return absl::OkStatus();
   }
 
+  if (!instr->channel_id().has_value()) {
+    return absl::InternalError(
+        "Unknown channel id in host transfer recv instruction");
+  }
+
   AddThunkToThunkSequence(std::make_unique<RecvThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr),
       instr->shape().tuple_shapes()[0], buffer, *instr->channel_id(),
@@ -2458,15 +2458,13 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
 
 absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
     const HloRecvDoneInstruction* instr) {
-  // TODO(b/372306903): Do not require channel id for send-done.
-  if (!instr->channel_id().has_value()) {
-    return absl::InternalError("Unknown recv done instruction channel id");
-  }
-
   if (!instr->is_host_transfer()) {
     return EmitNcclAsyncDone(Thunk::kNcclRecvDone, instr);
   }
-
+  if (!instr->channel_id().has_value()) {
+    return absl::InternalError(
+        "Unknown channel id in host transfer recv done instruction");
+  }
   AddThunkToThunkSequence(std::make_unique<RecvDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
       send_recv_events_, DeviceConstraint(instr)));
