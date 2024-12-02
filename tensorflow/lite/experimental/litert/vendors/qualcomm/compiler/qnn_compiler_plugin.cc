@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
@@ -28,7 +29,6 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/qnn_compose_graph.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
@@ -43,13 +43,15 @@ namespace {
 
 constexpr char kPluginManufacturer[] = "Qualcomm";
 
+// clang-format off
 constexpr std::pair<const char*, QnnHtpDevice_Arch_t> kPluginSocModels[] = {
     {"V68", QNN_HTP_DEVICE_ARCH_V68},
     {"V69", QNN_HTP_DEVICE_ARCH_V69},
     {"V73", QNN_HTP_DEVICE_ARCH_V73},
     {"V75", QNN_HTP_DEVICE_ARCH_V75},
+    {"V79", QNN_HTP_DEVICE_ARCH_V79},
 };
-// clang-format off
+
 constexpr LiteRtOpCode kSupportedOps[] = {
   kLiteRtOpCodeTflAdd,
   kLiteRtOpCodeTflDiv,
