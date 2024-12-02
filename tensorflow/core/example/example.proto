@@ -89,6 +89,11 @@ message Example {
   Features features = 1;
 }
 
+message QueryCollatedExample {
+  Features query_features = 1;
+  repeated Features item_featurez = 2;
+}
+
 // A SequenceExample is an Example representing one or more sequences, and
 // some context.  The context contains features which apply to the entire
 // example. The feature_lists contain a key, value map where each key is
