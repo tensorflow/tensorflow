@@ -68,8 +68,6 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
     mlir::arith::populateArithExpandOpsPatterns(patterns);
     mlir::arith::populateArithToLLVMConversionPatterns(type_converter,
                                                        patterns);
-    mlir::populateMathToLLVMConversionPatterns(type_converter, patterns,
-                                               /* approximateLog1p */ false);
     if (!this->is_amd_gpu_) {
       mlir::populateGpuToNVVMConversionPatterns(type_converter, patterns);
     } else {
@@ -89,12 +87,23 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
       mlir::configureGpuToROCDLConversionLegality(target);
     }
     target.addIllegalDialect<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                             mlir::complex::ComplexDialect,
-                             mlir::math::MathDialect>();
+                             mlir::complex::ComplexDialect>();
     target.addLegalOp<mlir::ModuleOp>();
 
-    if (failed(
-            applyFullConversion(getOperation(), target, std::move(patterns)))) {
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns)))) {
+      signalPassFailure();
+      return;
+    }
+
+    // Cleanup any leftover math ops not handled NVVM or ROCDL lowering
+    mlir::RewritePatternSet mathPatterns(&getContext());
+    mlir::populateMathToLLVMConversionPatterns(type_converter, mathPatterns,
+                                               /* approximateLog1p */ false);
+    target.addIllegalDialect<mlir::math::MathDialect>();
+
+    if (failed(applyFullConversion(getOperation(), target,
+                                   std::move(mathPatterns)))) {
       signalPassFailure();
     }
   }
