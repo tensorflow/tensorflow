@@ -637,7 +637,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         std::optional<int> max_algorithm_count;
         if (!use_autotune) max_algorithm_count = 1;
         absl::Mutex* pmu = nullptr;
-        auto plan_and_algorithms_or = PlanAndAlgorithms::GetOrCreate(
+        auto plan_and_algorithms_or = BlasLtMatmulPlanCache::GetOrCreate(
             stream, matmul_params, &pmu, max_algorithm_count);
         OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
         absl::MutexLock lock(pmu);
@@ -660,8 +660,9 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
             // scratch space is deallocated between runs.
             BlasScratchAllocator scratch_allocator(context, max_scratch_size);
             Status cublas_launch_status =
-                plan_and_algorithms->ExecuteOnStream(stream, *a_ptrs[0],
-                               *b_ptrs[0], *c_ptrs[0], i, scratch_allocator,
+                BlasLtMatmulPlanCache::ExecuteOnStream(stream, 
+                    *plan_and_algorithms,
+                    *a_ptrs[0], *b_ptrs[0], *c_ptrs[0], i, scratch_allocator,
                                se::DeviceMemoryBase{}, &profile_result);
 
             VLOG(4) << "  Autotune algorithm " << i
@@ -702,8 +703,10 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
 
         OP_REQUIRES_OK(
             context,
-            plan_and_algorithms->ExecuteOnStream(stream, *a_ptrs[0], *b_ptrs[0],
-                           *c_ptrs[0], algorithm_idx, scratch_allocator));
+            BlasLtMatmulPlanCache::ExecuteOnStream(stream, 
+            *plan_and_algorithms,
+            *a_ptrs[0], *b_ptrs[0], *c_ptrs[0], 
+            algorithm_idx, scratch_allocator, se::DeviceMemoryBase{}));
       } else {  // requires mixed broadcasting
         const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
         const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();

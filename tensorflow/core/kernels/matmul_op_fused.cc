@@ -597,32 +597,31 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
                                          epilog_op};
     absl::Mutex* pmu;
     auto plan_and_algorithms_or =
-        PlanAndAlgorithms::GetOrCreate(stream, matmul_params, &pmu);
+        BlasLtMatmulPlanCache::GetOrCreate(stream, matmul_params, &pmu);
     OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
     absl::MutexLock lock(pmu);
-    const auto* plan_and_algorithms = std::move(plan_and_algorithms_or).value();
-    const auto& algorithms = plan_and_algorithms->algorithms;
-    OP_REQUIRES(context, algorithms.size() > 0,
+    const auto& entry = *plan_and_algorithms_or.value();
+    OP_REQUIRES(context, entry.algorithms.size() > 0,
                 errors::InvalidArgument("No matmul algorithm returned!"));
 
     auto launch_func = [&](BlasScratchAllocator& scratch_allocator,
                            size_t alg_idx,
                            se::blas::ProfileResult* profile_result) {
-      return plan_and_algorithms->ExecuteOnStream(stream, a_ptr, b_ptr, c_ptr,
-                            alg_idx, scratch_allocator, bias_ptr,
-                            profile_result);
+        return BlasLtMatmulPlanCache::ExecuteOnStream(
+          stream, entry, a_ptr, b_ptr, c_ptr, alg_idx,
+          scratch_allocator, bias_ptr, profile_result);
     };
 
     size_t alg_idx = 0;
     if (use_autotune) {
       auto algorithm_config =
-          AutotuneMatmul(algorithms, matmul_params, context, launch_func);
+          AutotuneMatmul(entry.algorithms, matmul_params, context, launch_func);
 
       alg_idx = algorithm_config.algorithm();
     }
 
     OP_REQUIRES_OK(context, launch_func(scratch_allocator, alg_idx, nullptr));
-#endif
+#endif // GOOGLE_CUDA || TF_HIPBLASLT
   }
 };
 
