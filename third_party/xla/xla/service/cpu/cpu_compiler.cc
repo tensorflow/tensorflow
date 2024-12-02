@@ -1570,16 +1570,16 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     }
 
     // Collect compiled symbols from all LLVM module parts.
-    using Kernel = std::remove_pointer_t<Thunk::FunctionRegistry::Kernel>;
-    using Cmp = std::remove_pointer_t<Thunk::FunctionRegistry::Comparator>;
     std::vector<FunctionLibrary::Symbol> compiled_symbols;
 
     for (const CompiledSymbolsPart& part : compiled_parts) {
       for (const IrEmitter2::KernelInfo& kernel : part.kernels) {
-        compiled_symbols.push_back(FunctionLibrary::Sym<Kernel>(kernel.name));
+        compiled_symbols.push_back(
+            FunctionLibrary::Sym<FunctionLibrary::Kernel>(kernel.name));
       }
       for (const IrEmitter2::ComparatorInfo& comparator : part.comparators) {
-        compiled_symbols.push_back(FunctionLibrary::Sym<Cmp>(comparator.name));
+        compiled_symbols.push_back(
+            FunctionLibrary::Sym<FunctionLibrary::Comparator>(comparator.name));
       }
     }
 
@@ -2136,15 +2136,15 @@ CpuExecutableAotCompilationResult::LoadExecutable(
                         thunk_emitter.EmitEntryComputation(*module));
 
     // Collect compiled symbols from IrEmitter2.
-    using Kernel = std::remove_pointer_t<Thunk::FunctionRegistry::Kernel>;
-    using Cmp = std::remove_pointer_t<Thunk::FunctionRegistry::Comparator>;
     std::vector<FunctionLibrary::Symbol> compiled_symbols;
 
     for (const auto& kernel : ir_emitter2.kernels()) {
-      compiled_symbols.push_back(FunctionLibrary::Sym<Kernel>(kernel.name));
+      compiled_symbols.push_back(
+          FunctionLibrary::Sym<FunctionLibrary::Kernel>(kernel.name));
     }
     for (const auto& comparator : ir_emitter2.comparators()) {
-      compiled_symbols.push_back(FunctionLibrary::Sym<Cmp>(comparator.name));
+      compiled_symbols.push_back(
+          FunctionLibrary::Sym<FunctionLibrary::Comparator>(comparator.name));
     }
 
     VLOG(3) << "Collected " << compiled_symbols.size() << " compiled symbols";

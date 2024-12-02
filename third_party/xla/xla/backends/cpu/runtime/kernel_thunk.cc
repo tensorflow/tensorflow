@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
+#include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -207,8 +208,9 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
   absl::call_once(kernel_init_flag_, [&]() {
     // Because thunks are owned by a parent CpuExecutable, we can safely assume
     // that kernel pointer will not change after we find it the first time.
-    absl::StatusOr<Thunk::FunctionRegistry::Kernel> kernel_fn =
-        params.function_registry->FindKernel(kernel_name_);
+    absl::StatusOr<FunctionLibrary::Kernel*> kernel_fn =
+        params.function_library->ResolveFunction<FunctionLibrary::Kernel>(
+            kernel_name_);
 
     if (ABSL_PREDICT_TRUE(kernel_fn.ok())) {
       kernel_.emplace(num_kernel_args_, *kernel_fn);

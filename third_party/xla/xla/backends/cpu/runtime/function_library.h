@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 #include "tsl/platform/statusor.h"
 
@@ -39,6 +40,18 @@ namespace xla::cpu {
 // `std::sort` library call.
 class FunctionLibrary {
  public:
+  // Compute kernel function type (corresponds to `fusion` operation).
+  using Kernel = XLA_CPU_Kernel;
+
+  // Comparator functor for `sort` operation.
+  //
+  // TODO(ezhulenev): We rely on legacy IrEmitter to emit comparator
+  // functions, and we use legacy compute function ABI. We should emit a
+  // much simpler comparator function that only takes compared values.
+  using Comparator = void(bool* result, const void* run_options,
+                          const void** params, const void* buffer_table,
+                          const void* status, const void* prof_counters);
+
   virtual ~FunctionLibrary() = default;
 
   // We use a `TypeId` to distinguish functions of different type at run time.

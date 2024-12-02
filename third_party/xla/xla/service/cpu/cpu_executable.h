@@ -139,19 +139,7 @@ class CpuExecutable : public Executable {
     return assignment_->Allocations();
   }
 
-  // A Thunk::FunctionRegistry implementation that looks up functions in the
-  // FunctionLibrary.
-  class FunctionRegistry : public Thunk::FunctionRegistry {
-   public:
-    explicit FunctionRegistry(FunctionLibrary* function_library);
-    absl::StatusOr<Kernel> FindKernel(std::string_view name) final;
-    absl::StatusOr<Comparator> FindComparator(std::string_view name) final;
-
-   private:
-    FunctionLibrary* function_library_;
-  };
-
-  Thunk::FunctionRegistry& function_registry() { return *function_registry_; }
+  FunctionLibrary* function_library() const { return function_library_.get(); }
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
@@ -225,8 +213,6 @@ class CpuExecutable : public Executable {
   std::optional<ThunkExecutor> thunks_;
   // Vector indexed by BufferAllocation::Index for efficient access.
   std::vector<ConstantAllocation> constants_;
-  // On-demand JIT compiler for functions required by thunks.
-  std::optional<FunctionRegistry> function_registry_;
 
   // Entry function name for the computation.
   const std::string entry_function_name_;

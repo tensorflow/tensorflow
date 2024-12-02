@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
@@ -795,8 +796,9 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
       // `less_than_` may already be initialized in the constructor.
       return;
     }
-    absl::StatusOr<FunctionRegistry::Comparator> comparator =
-        params.function_registry->FindComparator(comparator_name_);
+    absl::StatusOr<FunctionLibrary::Comparator*> comparator =
+        params.function_library->ResolveFunction<FunctionLibrary::Comparator>(
+            comparator_name_);
 
     if (ABSL_PREDICT_TRUE(comparator.ok())) {
       less_than_ = [comparator](const void** data) {

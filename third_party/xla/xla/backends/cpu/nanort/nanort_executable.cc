@@ -318,7 +318,7 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
 
   cpu::BufferAllocations allocations(std::move(buffers));
   cpu::Thunk::ExecuteParams execute_params = {
-      &executable->function_registry(),
+      executable->function_library(),
       &allocations,
   };
 

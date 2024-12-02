@@ -1637,7 +1637,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           run_options.intra_op_thread_pool()->getPool());
 
       cpu::Thunk::ExecuteParams execute_params = {
-          &cpu_executable->function_registry(),
+          cpu_executable->function_library(),
           &allocations,
           cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
           run_options.intra_op_thread_pool(),
@@ -1774,7 +1774,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
             if (collective_params.ok()) {
               cpu::Thunk::ExecuteParams execute_params = {
-                  &cpu_executable->function_registry(),
+                  cpu_executable->function_library(),
                   &allocations,
                   cpu::runtime::GetXfeedManager(run_options.device_ordinal()),
                   run_options.intra_op_thread_pool(),

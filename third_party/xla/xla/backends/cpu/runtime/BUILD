@@ -125,6 +125,7 @@ cc_library(
     srcs = ["function_library.cc"],
     hdrs = ["function_library.h"],
     deps = [
+        ":kernel_c_api",
         "//xla:util",
         "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/status:statusor",
@@ -138,6 +139,7 @@ cc_library(
     hdrs = ["thunk.h"],
     deps = [
         ":buffer_allocations",
+        ":function_library",
         ":kernel_c_api",
         ":resource_use",
         "//xla:executable_run_options",
@@ -855,6 +857,7 @@ cc_library(
     hdrs = ["kernel_thunk.h"],
     deps = [
         ":buffer_allocations",
+        ":function_library",
         ":kernel",
         ":kernel_c_api",
         ":thunk",
@@ -889,6 +892,7 @@ xla_cc_test(
     srcs = ["kernel_thunk_test.cc"],
     deps = [
         ":buffer_allocations",
+        ":function_library",
         ":kernel_c_api",
         ":kernel_thunk",
         ":thunk",
@@ -959,6 +963,7 @@ cc_library(
     srcs = ["sort_thunk.cc"],
     hdrs = ["sort_thunk.h"],
     deps = [
+        ":function_library",
         ":thunk",
         "//xla:shape_util",
         "//xla:util",
@@ -991,6 +996,7 @@ xla_cc_test(
     srcs = ["sort_thunk_test.cc"],
     deps = [
         ":buffer_allocations",
+        ":function_library",
         ":sort_thunk",
         ":thunk",
         "//xla:shape_util",
