@@ -1758,6 +1758,26 @@ func.func @sum_keep_dims() -> tensor<1x1x2xf32> {
 
 // CHECK-LITERAL: arith.constant dense<[[[1.200000e+01, 1.600000e+01]]]> : tensor<1x1x2xf32>
 
+// CHECK-LABEL: sum_general_reduction_dims
+func.func @sum_general_reduction_dims() -> tensor<3xf32> {
+  %cst = arith.constant dense<[0, 2]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<2.000000e+00> : tensor<1x3x2xf32>
+  %0 = "tfl.sum"(%cst_1, %cst) <{keep_dims = false}> : (tensor<1x3x2xf32>, tensor<2xi32>) -> tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+}
+
+// CHECK: %cst = arith.constant dense<4.000000e+00> : tensor<3xf32>
+
+// CHECK-LABEL: sum_general_reduction_dims_keep_dims
+func.func @sum_general_reduction_dims_keep_dims() -> tensor<1x3x1xf32> {
+  %cst = arith.constant dense<[0, 2]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<2.000000e+00> : tensor<1x3x2xf32>
+  %0 = "tfl.sum"(%cst_1, %cst) <{keep_dims = true}> : (tensor<1x3x2xf32>, tensor<2xi32>) -> tensor<1x3x1xf32>
+  func.return %0 : tensor<1x3x1xf32>
+}
+
+// CHECK: %cst = arith.constant dense<4.000000e+00> : tensor<1x3x1xf32>
+
 // CHECK-LABEL: gather
 func.func @gather() -> (tensor<2x3x4x5xi16>, tensor<2x3x4x5xi16>) {
   %params = arith.constant dense<[
