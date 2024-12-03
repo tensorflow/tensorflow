@@ -347,6 +347,9 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
               user_start_indices != dus_start_indices) {
             return false;
           }
+        } else if (user != dus &&
+                   user.opcode() == HloOpcode::kDynamicUpdateSlice) {
+          return false;
         } else if (user != dus && !user.instruction().IsElementwise() &&
                    user.opcode() != HloOpcode::kBitcast &&
                    user.opcode() != HloOpcode::kTuple) {

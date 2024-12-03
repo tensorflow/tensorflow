@@ -155,6 +155,19 @@ bool IsConcatenationInputFusion(const HloInstruction& instr) {
          instr.fused_expression_root()->opcode() == HloOpcode::kConcatenate;
 }
 
+bool IsDynamicUpdateSliceFusion(const HloInstruction* instr) {
+  if (instr->opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  auto root = instr->fused_expression_root();
+  if (root->opcode() == HloOpcode::kTuple) {
+    return absl::c_any_of(root->operands(), [&](const HloInstruction* operand) {
+      return operand->opcode() == HloOpcode::kDynamicUpdateSlice;
+    });
+  }
+  return root->opcode() == HloOpcode::kDynamicUpdateSlice;
+}
+
 bool IsFusibleCandidate(const HloInstruction& instr,
                         const se::DeviceDescription& device_description) {
   // For now, we do not support fusing instruction with control flow.
@@ -247,16 +260,15 @@ bool IsProfitableFusionCandidate(const HloInstruction& instr,
   return true;
 }
 
-// Returns whether any operand of `instr` is a parameter instruction that
-// is shared with `fusion_instrs`.
-bool AnyOpndIsParamSharedAmongFusions(
+// Returns whether any operand of `instr` is an instruction that is shared with
+// `fusion_instrs`.
+bool AnyOperandIsSharedAmongFusions(
     const HloInstruction* instr,
     const absl::flat_hash_set<HloInstruction*>& fusion_instrs) {
   return absl::c_any_of(instr->operands(), [&](const HloInstruction* opnd) {
-    return opnd->opcode() == HloOpcode::kParameter &&
-           absl::c_any_of(opnd->users(), [&](const HloInstruction* user) {
-             return user != instr && fusion_instrs.contains(user);
-           });
+    return absl::c_any_of(opnd->users(), [&](const HloInstruction* user) {
+      return user != instr && fusion_instrs.contains(user);
+    });
   });
 }
 
@@ -298,11 +310,11 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
               << " rejects may-not-be profitable fusion instr"
               << instr->ToString();
       continue;
-    } else if (sliced_input_fusion_ &&
-               AnyOpndIsParamSharedAmongFusions(instr, fusible_candidates)) {
-      // Don't fuse fusions whose operands are parameter instructions that are
-      // shared among fusions because we cannot i/o alias the produced
-      // horizontal fusion due to the concat insertion.
+    } else if ((sliced_input_fusion_ || IsDynamicUpdateSliceFusion(instr)) &&
+               AnyOperandIsSharedAmongFusions(instr, fusible_candidates)) {
+      // Don't fuse fusions with at least one shared operand because we cannot
+      // i/o alias the produced horizontal fusion due to the concat insertion
+      // (or run into aliasing problems with DynamicUpdateSlice fusions).
       VLOG(2) << "sliced_input_fusion=" << sliced_input_fusion_
               << " rejects the fusion instr because it shares parameter with"
               << " other fusion candidates, instr: " << instr->ToString();

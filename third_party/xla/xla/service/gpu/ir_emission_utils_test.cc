@@ -872,6 +872,49 @@ ENTRY main {
 
 TEST_F(
     IrEmissionUtilsTest,
+    CanEmitFusedDynamicUpdateSliceInPlaceForGpu_HandlesMultiOutputFusionSharedParameter) {  // NOLINT
+  const char* hlo = R"(
+HloModule MultipleInplaceDus, is_scheduled=true, input_output_alias={ {0}: (0, {}), {1}: (2, {}) }
+
+fused_computation {
+  p0 = bf16[10,11,12] parameter(0)
+  p1 = bf16[1,11,12] parameter(1)
+  p2 = bf16[1,11,12] parameter(2)
+  p3 = s32[] parameter(3)
+  c0 = s32[] constant(0)
+  cmp = pred[] compare(p3, c0), direction=EQ
+  broadcast = pred[1,11,12] broadcast(cmp), dimensions={}
+  select = bf16[1,11,12] select(broadcast, p1, p2)
+  dus0 = bf16[10,11,12] dynamic-update-slice(p0, select, c0, c0, c0)
+  dus1 = bf16[10,11,12] dynamic-update-slice(p0, select, c0, c0, c0)
+  ROOT tuple = (bf16[10,11,12], bf16[10,11,12]) tuple(dus0, dus1)
+}
+
+ENTRY main {
+  p0 = bf16[10,11,12] parameter(0)
+  p1 = bf16[1,11,12] parameter(1)
+  p2 = bf16[1,11,12] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT fusion_root_multiple = (bf16[10,11,12], bf16[10,11,12]) fusion(p0, p1, p2, p3), kind=kLoop, calls=fused_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  auto fusion = module->entry_computation()->root_instruction();
+  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation::Slice slice0(&alloc, 0, 10);
+  auto adaptor = HloFusionAdaptor::ForInstruction(fusion);
+  EXPECT_THAT(CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+                  *adaptor,
+                  [&slice0](const HloInstruction*, const ShapeIndex&) {
+                    return slice0;
+                  },
+                  fusion),
+              IsOkAndHolds(false));
+}
+
+TEST_F(
+    IrEmissionUtilsTest,
     CanEmitFusedDynamicUpdateSliceInPlaceForGpu_HandlesMultiOutputFusionWithTransposeBitcasts) {  // NOLINT
   const char* hlo = R"(
 HloModule MultipleInplaceDusWithTransposeBitcastToTheRoot, is_scheduled=true, input_output_alias={ {0}: (0, {}), {1}: (2, {}) }
