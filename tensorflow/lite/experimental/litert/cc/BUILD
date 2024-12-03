@@ -70,6 +70,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/test:common",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],

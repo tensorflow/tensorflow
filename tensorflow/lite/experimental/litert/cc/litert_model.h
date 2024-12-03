@@ -16,9 +16,11 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MODEL_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
