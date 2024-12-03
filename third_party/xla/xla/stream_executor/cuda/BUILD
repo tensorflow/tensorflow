@@ -13,7 +13,9 @@ load(
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
+    # copybara:comment_begin
     "if_cuda_tools",
+    # copybara:comment_end
     "if_google",
     "if_nccl",
     "if_windows",
@@ -162,24 +164,6 @@ xla_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
-)
-
-# Buildozer can not remove dependencies inside select guards, so we have to use
-# an intermediate target.
-cc_library(
-    name = "ptxas_wrapper",
-    data = if_cuda_tools(
-        ["@cuda_nvcc//:ptxas"],
-        [],
-    ),
-)
-
-cc_library(
-    name = "nvlink_wrapper",
-    data = if_cuda_tools(
-        ["@cuda_nvcc//:nvlink"],
-        [],
-    ),
 )
 
 cc_library(
