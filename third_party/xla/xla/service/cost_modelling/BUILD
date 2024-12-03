@@ -52,7 +52,7 @@ xla_cc_test(
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_runner",
         "//xla/service:platform_util",
-        "//xla/tests:new_hlo_test_base",
+        "//xla/tests:hlo_runner_agnostic_test_base",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",

@@ -2618,7 +2618,7 @@ xla_cc_test(
         "//xla/service:instruction_fusion",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
-        "//xla/tests:new_hlo_test_base",
+        "//xla/tests:hlo_runner_agnostic_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",

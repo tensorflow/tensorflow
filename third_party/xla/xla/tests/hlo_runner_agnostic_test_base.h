@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TESTS_NEW_HLO_TEST_BASE_H_
-#define XLA_TESTS_NEW_HLO_TEST_BASE_H_
+#ifndef XLA_TESTS_HLO_RUNNER_AGNOSTIC_TEST_BASE_H_
+#define XLA_TESTS_HLO_RUNNER_AGNOSTIC_TEST_BASE_H_
 
 #include <cstdint>
 #include <functional>
@@ -85,18 +85,18 @@ namespace xla {
 //      "gpu",
 //    ],
 //    deps = [
-//      "//xla/tests:new_hlo_test_base",
+//      "//xla/tests:hlo_runner_agnostic_test_base",
 //      ...
 //    ],
 //  )
 //
 // Unlike HloTestBase, which relies on StreamExecutor via HloRunner, this class
 // relies on HloRunnerInterface. HloRunnerInterface supports HloRunner among
-// other implementations. We plan to incrementally migrate tests this class and
-// away from HloTestBase.
-class NewHloTestBase : public HloHardwareIndependentTestBase {
+// other implementations. We plan to incrementally migrate tests to this class
+// and away from HloTestBase.
+class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
  protected:
-  explicit NewHloTestBase(
+  explicit HloRunnerAgnosticTestBase(
       absl::Nonnull<std::unique_ptr<HloRunnerInterface>> test_runner,
       absl::Nonnull<std::unique_ptr<HloRunnerInterface>> reference_runner,
       bool verifier_layout_sensitive = false,
@@ -357,4 +357,4 @@ class NewHloTestBase : public HloHardwareIndependentTestBase {
 
 }  // namespace xla
 
-#endif  // XLA_TESTS_NEW_HLO_TEST_BASE_H_
+#endif  // XLA_TESTS_HLO_RUNNER_AGNOSTIC_TEST_BASE_H_
