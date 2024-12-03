@@ -39,6 +39,19 @@ cc_library(
 )
 
 cc_library(
+    name = "clique_key",
+    srcs = ["clique_key.cc"],
+    hdrs = ["clique_key.h"],
+    deps = [
+        ":rank_id",
+        "//xla/service:global_device_id",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "rank_id",
     hdrs = ["rank_id.h"],
     deps = [

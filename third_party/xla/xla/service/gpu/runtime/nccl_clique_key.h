@@ -18,14 +18,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/core/collectives/clique_id.h"
-#include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 
@@ -76,7 +75,7 @@ inline NcclStreamId GetStreamId(
 // within a cluster. The stream_id is used to create different NCCL clique and
 // communicators for collectives executed on different streams within an
 // executable.
-class NcclCliqueKey {
+class NcclCliqueKey : public CliqueKey {
  public:
   explicit NcclCliqueKey(
       std::vector<GlobalDeviceId> devices,
@@ -84,35 +83,29 @@ class NcclCliqueKey {
       AsyncStreamKind stream_kind = AsyncStreamKind::kCollective,
       std::vector<std::vector<GlobalDeviceId>> participant_groups = {});
 
-  absl::Span<const GlobalDeviceId> devices() const;
-
   NcclStreamId stream_id() const;
-
-  // Returns the rank of the global device in the clique.
-  std::optional<RankId> rank(GlobalDeviceId id) const;
 
   // Returns true if this clique is a subset of `other`: both cliques have the
   // same `stream_id` and all clique devices are part of `other` clique.
-  bool IsSubsetOf(const NcclCliqueKey& other) const;
+  bool IsSubsetOf(const CliqueKey& other) const final;
 
   // Returns the stream kind for this clique key,
   // stream kind will be used to specify what configuration
   // to pass for each type of operation.
   AsyncStreamKind stream_kind() const { return stream_kind_; }
 
-  std::string ToString() const;
-
-  template <typename H>
-  friend H AbslHashValue(H h, const NcclCliqueKey& k);
+  std::string ToString() const final;
 
   friend bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
   friend bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
   friend bool operator>(const NcclCliqueKey& a, const NcclCliqueKey& b);
 
  private:
-  std::vector<GlobalDeviceId> devices_;
+  void HashValue(absl::HashState state) const final;
+
   NcclStreamId stream_id_;
   AsyncStreamKind stream_kind_;
+
   // The full list of groups across all devices which this clique is a part of.
   // When enable_nccl_comm_splitting is enabled, this is used to distinguish
   // which cliques can be reused from the cache or must be split in order to
@@ -125,12 +118,6 @@ class NcclCliqueKey {
   // particating groups as part of the cache key will prevent such situations
   std::vector<std::vector<GlobalDeviceId>> participant_groups_;
 };
-
-template <typename H>
-H AbslHashValue(H h, const NcclCliqueKey& k) {
-  return H::combine(std::move(h), k.devices_, k.stream_id_,
-                    k.participant_groups_);
-}
 
 bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
 bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
