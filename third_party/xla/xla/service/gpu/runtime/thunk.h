@@ -426,9 +426,6 @@ class Thunk {
 
   //===--------------------------------------------------------------------===//
 
-  // The hlo_instruction argument is meant to be the instruction this thunk was
-  // generated from, but Thunk never uses this argument other than to save it
-  // to Thunk::hlo_instruction, so it can be null.
   Thunk(Kind kind, ThunkInfo thunk_info)
       : kind_(kind),
         profile_annotation_(thunk_info.profile_annotation),
