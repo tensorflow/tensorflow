@@ -129,6 +129,7 @@ class LoadTest(test.TestCase):
     saved = self._v1_single_metagraph_saved_model(use_resource=False)
     imported = load.load(saved)
     fn = imported.signatures["serving_default"]
+    self.assertIn("start", fn.function_type.parameters)
     self.evaluate(lookup_ops.tables_initializer())
     self.evaluate(ops.get_collection("saved_model_initializers"))
     self.assertEqual(
