@@ -195,6 +195,58 @@ TEST_F(GpuIrEmitterUnnestedTest, CanNotEmitTritonCustomCallOnPreAmpereGpu) {
                                "(compute capability 8.0) and up, but got")));
 }
 
+TEST_F(GpuIrEmitterUnnestedTest, FailGracefullyIfTritonModuleIsNotParseable) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton support is only enabled for Ampere GPUs and up.";
+  }
+
+  HloComputation::Builder computation_builder(TestName());
+
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+
+  HloInstruction* param_0 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
+
+  HloInstruction* param_1 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
+
+  computation_builder.AddInstruction(
+      CreateTritonCustomCall(tuple_shape, param_0, param_1,
+                             /*mlir_text=*/"unparseable_mlir", kCallName));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(computation_builder.Build());
+  EXPECT_THAT(Run(std::move(module), /*run_hlo_passes=*/false).message(),
+              HasSubstr("Failed to parse Triton module"));
+}
+
+TEST_F(GpuIrEmitterUnnestedTest, FailGracefullyIfCallNameIsInvalid) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton support is only enabled for Ampere GPUs and up.";
+  }
+
+  HloComputation::Builder computation_builder(TestName());
+
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+
+  HloInstruction* param_0 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
+
+  HloInstruction* param_1 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
+
+  computation_builder.AddInstruction(
+      CreateTritonCustomCall(tuple_shape, param_0, param_1, kMLIRText,
+                             /*call_name=*/"invalid_call_name"));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(computation_builder.Build());
+  EXPECT_THAT(Run(std::move(module), /*run_hlo_passes=*/false).message(),
+              HasSubstr("Call name not found in the Triton module"));
+}
+
 class TritonCustomCallTest : public HloTestBase {};
 
 TEST_F(TritonCustomCallTest, NoArgumentDeduplication) {
@@ -240,66 +292,6 @@ TEST_F(TritonCustomCallTest, NoArgumentDeduplication) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(computation_builder.Build());
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
-}
-
-TEST_F(TritonCustomCallTest, FailGracefullyIfTritonModuleIsNotParseable) {
-  if (auto cc = backend()
-                    .default_stream_executor()
-                    ->GetDeviceDescription()
-                    .cuda_compute_capability();
-      cc.IsAtLeastAmpere()) {
-    GTEST_SKIP() << "Running on Ampere or more recent GPU, skipping.";
-  }
-
-  HloComputation::Builder computation_builder(TestName());
-
-  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
-  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
-
-  HloInstruction* param_0 = computation_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
-
-  HloInstruction* param_1 = computation_builder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
-
-  computation_builder.AddInstruction(
-      CreateTritonCustomCall(tuple_shape, param_0, param_1,
-                             /*mlir_text=*/"unparseable_mlir", kCallName));
-
-  auto module = CreateNewVerifiedModule();
-  module->AddEntryComputation(computation_builder.Build());
-  EXPECT_THAT(Run(std::move(module), /*run_hlo_passes=*/false).message(),
-              HasSubstr("Failed to parse Triton module"));
-}
-
-TEST_F(TritonCustomCallTest, FailGracefullyIfCallNameIsInvalid) {
-  if (auto cc = backend()
-                    .default_stream_executor()
-                    ->GetDeviceDescription()
-                    .cuda_compute_capability();
-      cc.IsAtLeastAmpere()) {
-    GTEST_SKIP() << "Running on Ampere or more recent GPU, skipping.";
-  }
-
-  HloComputation::Builder computation_builder(TestName());
-
-  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
-  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
-
-  HloInstruction* param_0 = computation_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
-
-  HloInstruction* param_1 = computation_builder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape, "arg_1"));
-
-  computation_builder.AddInstruction(
-      CreateTritonCustomCall(tuple_shape, param_0, param_1, kMLIRText,
-                             /*call_name=*/"invalid_call_name"));
-
-  auto module = CreateNewVerifiedModule();
-  module->AddEntryComputation(computation_builder.Build());
-  EXPECT_THAT(Run(std::move(module), /*run_hlo_passes=*/false).message(),
-              HasSubstr("Call name not found in the Triton module"));
 }
 
 }  // namespace gpu
