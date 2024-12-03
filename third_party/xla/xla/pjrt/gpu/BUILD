@@ -2,9 +2,9 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/pjrt/gpu:package_groups.bzl", "xla_gpu_internal_packages")
-load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm", "if_gpu_is_configured")
+load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -150,7 +150,7 @@ cc_library(
 
 xla_cc_test(
     name = "se_gpu_pjrt_client_test",
-    srcs = if_gpu_is_configured(["se_gpu_pjrt_client_test.cc"]),
+    srcs = ["se_gpu_pjrt_client_test.cc"],
     tags = [
         "gpu",
         "no_oss",
@@ -272,51 +272,98 @@ cc_library(
 )
 
 cc_library(
-    name = "se_gpu_pjrt_compiler",
+    name = "se_gpu_pjrt_compiler_impl",
     srcs = ["se_gpu_pjrt_compiler.cc"],
     hdrs = ["se_gpu_pjrt_compiler.h"],
-    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
-    visibility = internal_visibility(["//xla/pjrt/gpu:legacy_se_gpu_pjrt_compiler_users"]),
     deps = [
         ":se_gpu_pjrt_client",
-        "//xla:status_macros",
-        "//xla/client:local_client",
+        "//xla:shape_util",
         "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_group",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
-        "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt:stream_executor_executable",
         "//xla/pjrt:utils",
         "//xla/service:compiler",
         "//xla/service:dump",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_module_util",
-        "//xla/service:hlo_proto_cc",
-        "//xla/service:hlo_proto_util",
-        "//xla/service:local_service",
         "//xla/service:local_service_utils",
+        "//xla/service:platform_util",
         "//xla/service/gpu:executable_proto_cc",
-        "//xla/stream_executor/platform:initialize",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/rocm:rocm_platform_id",
+        "//xla/stream_executor/sycl:sycl_platform_id",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_or_rocm([
-        ":nccl_id_store",
-        "//xla/service/gpu:gpu_compiler",
-    ]) + if_cuda([
-        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cc_library(
+    name = "se_gpu_pjrt_compiler_cuda_registration",
+    srcs = ["se_gpu_pjrt_compiler_cuda_registration.cc"],
+    compatible_with = [],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":se_gpu_pjrt_compiler_impl",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/service/gpu:nvptx_compiler",  # buildcleaner: keep
         "//xla/stream_executor/cuda:cuda_platform_id",
-        "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
-        "//xla/service/gpu:nvptx_compiler_impl",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocm_headers",
+        "//xla/stream_executor/platform:initialize",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "se_gpu_pjrt_compiler_rocm_registration",
+    srcs = ["se_gpu_pjrt_compiler_rocm_registration.cc"],
+    compatible_with = [],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":se_gpu_pjrt_compiler_impl",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/service/gpu:amdgpu_compiler",  # buildcleaner: keep
+        "//xla/stream_executor/platform:initialize",
         "//xla/stream_executor/rocm:rocm_platform_id",
-        "//xla/service/gpu:amdgpu_compiler_impl",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "se_gpu_pjrt_compiler",
+    hdrs = ["se_gpu_pjrt_compiler.h"],
+    # TODO(b/382070262): Migrate users off this target - They should go though the PjRt ABI compatibility layer.
+    visibility = internal_visibility(["//xla/pjrt/gpu:legacy_se_gpu_pjrt_compiler_users"]),
+    deps = [
+        ":se_gpu_pjrt_compiler_impl",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/service:compiler",
+        "//xla/stream_executor:platform",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
+    ] + if_cuda([
+        ":se_gpu_pjrt_compiler_cuda_registration",
+    ]) + if_rocm([
+        ":se_gpu_pjrt_compiler_rocm_registration",
     ]),
-    alwayslink = True,
 )
 
 cc_library(
@@ -333,26 +380,30 @@ cc_library(
 
 xla_test(
     name = "se_gpu_pjrt_compiler_test",
-    srcs = if_gpu_is_configured(["se_gpu_pjrt_compiler_test.cc"]),
+    srcs = ["se_gpu_pjrt_compiler_test.cc"],
     backends = ["gpu"],
-    tags = [
-        "no_oss",
-    ] + if_google(["config-cuda-only"]),
     deps = [
         ":gpu_topology",
         ":se_gpu_pjrt_client",
-        ":se_gpu_pjrt_compiler",
+        ":se_gpu_pjrt_compiler_impl",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:test",
-        "//xla/client:xla_computation",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
         "//xla/mlir_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/service:platform_util",
         "//xla/tests:literal_test_util",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
@@ -362,14 +413,11 @@ xla_test(
 
 xla_test(
     name = "se_gpu_pjrt_compiler_aot_test",
-    srcs = if_gpu_is_configured(["se_gpu_pjrt_compiler_aot_test.cc"]),
+    srcs = ["se_gpu_pjrt_compiler_aot_test.cc"],
     backends = ["gpu"],
-    tags = [
-        "no_oss",
-    ] + if_google(["config-cuda-only"]),
     deps = [
         ":se_gpu_pjrt_client",
-        ":se_gpu_pjrt_compiler",
+        ":se_gpu_pjrt_compiler_impl",
         "//xla:literal",
         "//xla:literal_util",
         "//xla/client:xla_computation",
@@ -379,6 +427,7 @@ xla_test(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/service:compiler",
         "//xla/tests:literal_test_util",
         "@com_google_absl//absl/memory",
@@ -393,11 +442,5 @@ xla_test(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
-    ] + if_cuda([
-        "//xla/service/gpu:nvptx_compiler_impl",
-        "//xla/stream_executor/cuda:cublas_plugin",
-    ]) + if_rocm([
-        "//xla/service/gpu:amdgpu_compiler_impl",
-        "//xla/stream_executor/rocm:rocblas_plugin",
-    ]),
+    ],
 )
