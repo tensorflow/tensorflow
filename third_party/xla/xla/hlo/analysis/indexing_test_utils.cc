@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/indexing_test_utils.h"
+#include "xla/hlo/analysis/indexing_test_utils.h"
 
 #include <cctype>
 #include <cstddef>
@@ -43,14 +43,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/status_macros.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using ::mlir::AffineExpr;
@@ -383,5 +382,4 @@ absl::Status VerifyExprsAreIdentical(
       });
 }
 
-}  // namespace gpu
 }  // namespace xla

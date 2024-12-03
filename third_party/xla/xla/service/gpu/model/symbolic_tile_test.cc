@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/service/gpu/model/affine_map_evaluator.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/model/indexing_map_serialization.h"
-#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

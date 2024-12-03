@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_INDEXING_TEST_UTILS_H_
-#define XLA_SERVICE_GPU_MODEL_INDEXING_TEST_UTILS_H_
+#ifndef XLA_HLO_ANALYSIS_INDEXING_TEST_UTILS_H_
+#define XLA_HLO_ANALYSIS_INDEXING_TEST_UTILS_H_
 
 #include <cstdint>
 #include <functional>
@@ -30,16 +30,15 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 
 namespace xla {
-namespace gpu {
 
 // Matches two strings ignoring whitespaces.
 bool ApproximateMatch(std::string_view lhs, std::string_view rhs);
@@ -126,7 +125,6 @@ absl::Status VerifyExprsAreIdentical(
 // Returns the trip counts for each symbol in the indexing map.
 std::vector<int64_t> GetLoopTripCounts(const IndexingMap& indexing_map);
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_INDEXING_TEST_UTILS_H_
+#endif  // XLA_HLO_ANALYSIS_INDEXING_TEST_UTILS_H_

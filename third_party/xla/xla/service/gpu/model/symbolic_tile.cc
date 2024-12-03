@@ -41,9 +41,9 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/service/gpu/model/affine_map_evaluator.h"
-#include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/gpu/model/indexing_map_serialization.h"
 
 namespace xla {
 namespace gpu {
@@ -828,7 +828,7 @@ void ConstraintExpression::Print(std::ostream& out) const {
     constraint_strings.reserve(disjunction.size());
     for (const auto& [expr, interval] : disjunction) {
       constraint_strings.push_back(
-          absl::StrCat(xla::gpu::ToString(expr), " in ", interval.ToString()));
+          absl::StrCat(xla::ToString(expr), " in ", interval.ToString()));
     }
     std::sort(constraint_strings.begin(), constraint_strings.end());
     conjunction_strings.push_back(absl::StrJoin(constraint_strings, " && "));
@@ -1019,7 +1019,7 @@ void ConstraintExpression::Simplify() {
       stride = -stride;
     } else if (!constant) {
       VLOG(1) << "Unexpected non-constant stride expression: "
-              << xla::gpu::ToString(stride);
+              << xla::ToString(stride);
     }
   }
 

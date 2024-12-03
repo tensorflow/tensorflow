@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
 
 #include <algorithm>
 #include <cassert>
@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -49,14 +50,12 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using llvm::SmallVector;
@@ -450,8 +449,8 @@ HloInstructionIndexing ComputeOutputToInputDotOpIndexing(
   }
 
   // lhs_non_contracting_dims
-  auto lhs_non_contracting_dims =
-      GetNonContractingDims(lhs_shape, lhs_batch_dims, lhs_contracting_dims);
+  auto lhs_non_contracting_dims = gpu::GetNonContractingDims(
+      lhs_shape, lhs_batch_dims, lhs_contracting_dims);
   assert(lhs_non_contracting_dims.ok());
 
   for (int64_t lhs_non_contracting_dim : lhs_non_contracting_dims.value()) {
@@ -460,8 +459,8 @@ HloInstructionIndexing ComputeOutputToInputDotOpIndexing(
   }
 
   // rhs_non_contracting_dims
-  auto rhs_non_contracting_dims =
-      GetNonContractingDims(rhs_shape, rhs_batch_dims, rhs_contracting_dims);
+  auto rhs_non_contracting_dims = gpu::GetNonContractingDims(
+      rhs_shape, rhs_batch_dims, rhs_contracting_dims);
   assert(rhs_non_contracting_dims.ok());
   for (int64_t rhs_non_contracting_dim : rhs_non_contracting_dims.value()) {
     rhs_exprs[rhs_non_contracting_dim] =
@@ -1703,5 +1702,4 @@ IndexingMap ComputeEpilogueInputToOutputIndexing(
   return root_indexing;
 }
 
-}  // namespace gpu
 }  // namespace xla
