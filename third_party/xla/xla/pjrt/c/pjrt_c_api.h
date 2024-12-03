@@ -214,9 +214,9 @@ struct PJRT_Plugin_Attributes_Args {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Plugin_Attributes_Args, attributes);
 
-// Returns an array of plugin attributes which are key-value pairs. One example
-// attribute is the minimum supported StableHLO version.
-// TODO(b/280349977): standardize the list of attributes.
+// Returns an array of plugin attributes which are key-value pairs. Common keys
+// include `xla_version`, `stablehlo_current_version`, and
+// `stablehlo_minimum_version`.
 typedef PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args);
 
 // ---------------------------------- Events -----------------------------------
