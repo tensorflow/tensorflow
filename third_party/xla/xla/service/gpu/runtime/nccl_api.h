@@ -25,10 +25,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -47,7 +48,7 @@ namespace xla::gpu {
 // NCCL library so that no other parts of XLA should include nccl.h header
 // directly (or indirectly).
 
-class NcclApi {
+class NcclApi : public GpuCollectives {
  public:
   virtual ~NcclApi() = default;
 

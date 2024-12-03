@@ -23,48 +23,12 @@ limitations under the License.
 
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/service/global_device_id.h"
-#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
-
-TSL_LIB_GTL_DEFINE_INT_TYPE(NcclStreamId, uint64_t);
-
-// A standalone library without any dependencies on NCCL that allows us to
-// include this header in all of XLA without worrying about NCCL availability.
-
-//===----------------------------------------------------------------------===//
-// AsyncStreamKind
-//===----------------------------------------------------------------------===//
-
-// We include a stream kind into the NCCL clique key because in XLA we do not
-// share communicators for collective operations of different kind (CUDA-graph
-// launched, async collectives, sync collectives) as it can lead to dead locks.
-//
-// We carefully isolate different kinds of collectives using separate
-// communicators and guarantee that all collective operations have a total order
-// that will not create a deadlock.
-//
-// See more details in `nccl_clique` library.
-
-enum class AsyncStreamKind : int64_t {
-  kCollective = 0,  // Stream for asynchronous collective ops.
-  kP2P0 = 1,        // One Stream for P2P Send and Recv ops.
-  kP2P1 = 2,        // Another Stream for P2P Send and Recv ops.
-  kMemCpyP2P = 3,   // Stream for MemCpyP2P
-};
-
-constexpr static int64_t kAsyncStreamTotal =
-    static_cast<int64_t>(AsyncStreamKind::kMemCpyP2P) + 1;
-
-// Assigns a unique ID to a stream for asynchronous or synchronous execution.
-// These IDs can be used, for example, to look up the NCCL communicator.
-inline NcclStreamId GetStreamId(
-    bool is_async, AsyncStreamKind stream_kind = AsyncStreamKind::kCollective) {
-  return NcclStreamId(is_async ? static_cast<uint64_t>(stream_kind) + 1 : 0);
-}
 
 //===----------------------------------------------------------------------===//
 // NcclCliqueKey
@@ -79,11 +43,11 @@ class NcclCliqueKey : public CliqueKey {
  public:
   explicit NcclCliqueKey(
       std::vector<GlobalDeviceId> devices,
-      NcclStreamId stream_id = NcclStreamId(0),
+      CollectiveStreamId stream_id = CollectiveStreamId(0),
       AsyncStreamKind stream_kind = AsyncStreamKind::kCollective,
       std::vector<std::vector<GlobalDeviceId>> participant_groups = {});
 
-  NcclStreamId stream_id() const;
+  CollectiveStreamId stream_id() const;
 
   // Returns true if this clique is a subset of `other`: both cliques have the
   // same `stream_id` and all clique devices are part of `other` clique.
@@ -103,7 +67,7 @@ class NcclCliqueKey : public CliqueKey {
  private:
   void HashValue(absl::HashState state) const final;
 
-  NcclStreamId stream_id_;
+  CollectiveStreamId stream_id_;
   AsyncStreamKind stream_kind_;
 
   // The full list of groups across all devices which this clique is a part of.

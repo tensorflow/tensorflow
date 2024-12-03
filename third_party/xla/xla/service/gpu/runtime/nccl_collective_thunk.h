@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -173,8 +174,8 @@ class NcclCollectiveThunk : public Thunk {
     async_events_ = async_events;
   }
 
-  NcclStreamId nccl_stream_id() const {
-    return xla::gpu::GetStreamId(IsAsync(), GetAsyncStreamKind());
+  CollectiveStreamId nccl_stream_id() const {
+    return xla::gpu::GetCollectiveStreamId(IsAsync(), GetAsyncStreamKind());
   }
 
   ExecutionStreamId nccl_execution_stream_id() const {
@@ -235,7 +236,7 @@ class NcclCollectiveDoneThunk : public Thunk {
   ExecutionStreamId nccl_execution_stream_id() const {
     return ExecutionStreamId(
         execution_stream_id().value() +
-        xla::gpu::GetStreamId(true, async_stream_kind_).value());
+        xla::gpu::GetCollectiveStreamId(true, async_stream_kind_).value());
   }
 
  private:
@@ -284,7 +285,7 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
     const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, NcclStreamId stream_id,
+    CollectiveOpGroupMode group_mode, CollectiveStreamId stream_id,
     AsyncStreamKind stream_kind);
 
 absl::StatusOr<size_t> GetNumLocalParticipants(
@@ -297,7 +298,7 @@ absl::StatusOr<CommunicatorHandle> GetNcclComm(
     const Thunk::CollectiveExecuteParams& params,
     const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, NcclStreamId stream_id,
+    CollectiveOpGroupMode group_mode, CollectiveStreamId stream_id,
     AsyncStreamKind stream_kind);
 
 struct DeviceBufferPair {

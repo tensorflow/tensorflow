@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/buffer_assignment.h"
@@ -1013,8 +1014,8 @@ class CollectiveCmd : public CommandBufferCmd {
     return async_from_stream_id_ != execution_stream_id();
   }
 
-  NcclStreamId nccl_stream_id() {
-    return xla::gpu::GetStreamId(IsAsync(), GetAsyncStreamKind());
+  CollectiveStreamId nccl_stream_id() {
+    return xla::gpu::GetCollectiveStreamId(IsAsync(), GetAsyncStreamKind());
   }
 
   ExecutionStreamId async_from_stream_id() const {
