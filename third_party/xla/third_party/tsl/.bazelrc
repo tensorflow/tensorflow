@@ -341,6 +341,10 @@ build:linux --copt="-Werror=unused-result"
 build:linux --copt="-Wswitch"
 build:linux --copt="-Werror=switch"
 
+# Error on mismatched struct/class tags. This causes linker failures on Windows;
+# better to catch it in other configurations with a helpful compiler error.
+build:linux --copt="-Werror=mismatched-tags"
+
 # Linux ARM64 specific options
 build:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
 
