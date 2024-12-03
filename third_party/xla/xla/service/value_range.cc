@@ -133,6 +133,19 @@ Range RecursivelyIdentifyRange(
       return Range{};
     }
     case HloOpcode::kConstant: {
+      if (instr->shape().element_type() == PRED &&
+          instr->shape().dimensions_size() == 0) {
+        if (instr->literal().IsAll(true)) {
+          return Range{
+              ConstantValue::GetOne(/*bitwidth=*/1, /*is_signed=*/false),
+              ConstantValue::GetOne(/*bitwidth=*/1, /*is_signed=*/false),
+              /*is_linear=*/true};
+        }
+        return Range{
+            ConstantValue::GetZero(/*bitwidth=*/1, /*is_signed=*/false),
+            ConstantValue::GetZero(/*bitwidth=*/1, /*is_signed=*/false),
+            /*is_linear=*/true};
+      }
       if (!instr->shape().IsInteger()) {
         return Range{};
       }
@@ -204,7 +217,7 @@ Range RecursivelyIdentifyRange(
                    lhs.IsLinear() && rhs.IsLinear()};
     }
     case HloOpcode::kSelect: {
-      VLOG(5) << "Handling Select";
+      VLOG(5) << "Handling Select: " << instr->ToString();
       const HloInstruction* cmp = instr->operand(0);
       Range cmp_range =
           RecursivelyIdentifyRange(cmp, predefined_ranges, alias_analysis);

@@ -72,6 +72,13 @@ class Range {
 
   std::string ToString() const;
 
+  bool operator==(const Range& other) const {
+    return min_ == other.min_ && max_ == other.max_ &&
+           IsStepKnown() == other.IsStepKnown() &&
+           (IsStepKnown() ? step_ == other.step_ : true) &&
+           empty_ == other.empty_ && is_linear_ == other.is_linear_;
+  }
+
  private:
   ConstantValue min_;
   ConstantValue max_;
