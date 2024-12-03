@@ -18,6 +18,7 @@
 #include <cstring>
 
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
+#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
@@ -336,5 +337,61 @@ TEST(TensorBuffer, Duplicate) {
     ASSERT_EQ(
         std::memcmp(lock_and_addr->second, kTensorData, sizeof(kTensorData)),
         0);
+  }
+}
+
+TEST(TensorBuffer, ReadWriteBasic) {
+  LiteRtTensorBuffer litert_tensor_buffer;
+  ASSERT_EQ(LiteRtCreateManagedTensorBuffer(kLiteRtTensorBufferTypeHostMemory,
+                                            &kTensorType, sizeof(kTensorData),
+                                            &litert_tensor_buffer),
+            kLiteRtStatusOk);
+
+  litert::TensorBuffer tensor_buffer(litert_tensor_buffer, /*owned=*/true);
+  auto write_success = tensor_buffer.Write<float>(absl::MakeSpan(
+      kTensorData, sizeof(kTensorData) / sizeof(kTensorData[0])));
+  ASSERT_TRUE(write_success);
+  float read_data[sizeof(kTensorData) / sizeof(kTensorData[0])];
+  auto read_success = tensor_buffer.Read<float>(absl::MakeSpan(read_data));
+  ASSERT_TRUE(read_success);
+  ASSERT_EQ(std::memcmp(read_data, kTensorData, sizeof(kTensorData)), 0);
+}
+
+TEST(TensorBuffer, ReadWriteBufferSizeMismatch) {
+  LiteRtTensorBuffer litert_tensor_buffer;
+  ASSERT_EQ(LiteRtCreateManagedTensorBuffer(kLiteRtTensorBufferTypeHostMemory,
+                                            &kTensorType, sizeof(kTensorData),
+                                            &litert_tensor_buffer),
+            kLiteRtStatusOk);
+
+  litert::TensorBuffer tensor_buffer(litert_tensor_buffer, /*owned=*/true);
+  {
+    // Write with smaller size of data.
+    auto write_success =
+        tensor_buffer.Write<float>(absl::MakeSpan(kTensorData, 1));
+    ASSERT_TRUE(write_success);
+  }
+  {
+    constexpr const float big_data[] = {10, 20, 30, 40, 50};
+    // Write with larger size of data.
+    auto write_success =
+        tensor_buffer.Write<float>(absl::MakeSpan(big_data, 5));
+    ASSERT_FALSE(write_success);
+  }
+  auto write_success = tensor_buffer.Write<float>(absl::MakeSpan(
+      kTensorData, sizeof(kTensorData) / sizeof(kTensorData[0])));
+  ASSERT_TRUE(write_success);
+  {
+    // Read with smaller size of buffer.
+    float read_data[1];
+    auto read_success = tensor_buffer.Read<float>(absl::MakeSpan(read_data, 1));
+    ASSERT_TRUE(read_success);
+    ASSERT_EQ(read_data[0], kTensorData[0]);
+  }
+  {
+    // Read with larger size of buffer.
+    float read_data[5];
+    auto read_success = tensor_buffer.Read<float>(absl::MakeSpan(read_data, 5));
+    ASSERT_FALSE(read_success);
   }
 }

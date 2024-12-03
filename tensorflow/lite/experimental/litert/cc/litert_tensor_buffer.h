@@ -16,8 +16,10 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_TENSOR_BUFFER_H_
 
 #include <cstddef>
+#include <cstring>
 #include <utility>
 
+#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -135,6 +137,57 @@ class TensorBuffer
         status != kLiteRtStatusOk) {
       return Unexpected(status, "Failed to unlock the tensor buffer");
     }
+    return {};
+  }
+
+  // Writes data from the user provided Span<const T> to the tensor buffer.
+  // It returns an error if the provided buffer is bigger than the size of the
+  // tensor buffer.
+  template <typename T>
+  Expected<void> Write(absl::Span<const T> data) {
+    auto host_mem_addr = Lock();
+    if (!host_mem_addr) {
+      return host_mem_addr.Error();
+    }
+    auto size = Size();
+    if (!size) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to get TensorBuffer size");
+    }
+    if (*size < data.size() * sizeof(T)) {
+      return Unexpected(
+          kLiteRtStatusErrorRuntimeFailure,
+          "TensorBuffer size is smaller than the given data size");
+    }
+    std::memcpy(*host_mem_addr, data.data(), data.size() * sizeof(T));
+    Unlock();
+    return {};
+  }
+
+  // Reads data into the user provided Span<T> from the tensor buffer.
+  // If the provided buffer is smaller than the size of the tensor buffer, the
+  // data will be read up to the size of the provided buffer.
+  // It returns an error if the provided buffer is bigger than the size of the
+  // tensor buffer.
+  template <typename T>
+  Expected<void> Read(absl::Span<T> data) {
+    auto host_mem_addr = Lock();
+    if (!host_mem_addr) {
+      return host_mem_addr.Error();
+    }
+    auto size = Size();
+    if (!size) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to get TensorBuffer size");
+    }
+    size_t total_read_size = data.size() * sizeof(T);
+    if (*size < total_read_size) {
+      return Unexpected(
+          kLiteRtStatusErrorRuntimeFailure,
+          "TensorBuffer size is smaller than the given data size");
+    }
+    std::memcpy(data.data(), *host_mem_addr, total_read_size);
+    Unlock();
     return {};
   }
 };

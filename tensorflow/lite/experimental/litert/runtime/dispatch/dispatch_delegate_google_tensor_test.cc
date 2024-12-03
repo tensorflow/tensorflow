@@ -193,36 +193,28 @@ TEST(DispatchDelegate, GoogleTensorHwBuffer) {
   // Fill model inputs.
   ASSERT_STREQ(runner->input_names()[0], "arg0");
   auto& input_0_buffer = input_buffers[0];
-  {
-    auto lock_and_addr = litert::TensorBufferScopedLock::Create(input_0_buffer);
-    ASSERT_TRUE(lock_and_addr);
-    std::memcpy(lock_and_addr->second, kTestInput0Tensor,
-                sizeof(kTestInput0Tensor));
-  }
+  input_0_buffer.Write<float>(
+      absl::MakeConstSpan(kTestInput0Tensor, kTestInput0Size));
+
   ASSERT_STREQ(runner->input_names()[1], "arg1");
   auto& input_1_buffer = input_buffers[1];
-  {
-    auto lock_and_addr = litert::TensorBufferScopedLock::Create(input_1_buffer);
-    ASSERT_TRUE(lock_and_addr);
-    std::memcpy(lock_and_addr->second, kTestInput1Tensor,
-                sizeof(kTestInput1Tensor));
-  }
+  input_1_buffer.Write<float>(
+      absl::MakeConstSpan(kTestInput1Tensor, kTestInput1Size));
 
   EXPECT_EQ(runner->Invoke(), kTfLiteOk);
 
   // Check model output.
   ASSERT_STREQ(runner->output_names()[0], "tfl.custom");
   auto& output_buffer = output_buffers[0];
-  {
-    auto lock_and_addr = litert::TensorBufferScopedLock::Create(output_buffer);
-    ASSERT_TRUE(lock_and_addr);
-    auto output = absl::MakeSpan(
-        static_cast<const float*>(lock_and_addr->second), kTestOutputSize);
-    for (auto i = 0; i < kTestOutputSize; ++i) {
-      ABSL_LOG(INFO) << "Result: " << output[i] << "\t" << kTestOutputTensor[i];
-    }
-    EXPECT_THAT(output, Pointwise(FloatNear(1e-5), kTestOutputTensor));
+  float output_buffer_data[kTestOutputSize];
+  auto output_span = absl::MakeSpan(output_buffer_data, kTestOutputSize);
+  auto read_success = output_buffer.Read<float>(output_span);
+  ASSERT_TRUE(read_success);
+  for (auto i = 0; i < kTestOutputSize; ++i) {
+    ABSL_LOG(INFO) << "Result: " << output_span.at(i) << "\t"
+                   << kTestOutputTensor[i];
   }
+  EXPECT_THAT(output_span, Pointwise(FloatNear(1e-5), kTestOutputTensor));
 }
 
 }  // namespace
