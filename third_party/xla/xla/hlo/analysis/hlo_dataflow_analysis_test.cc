@@ -1194,12 +1194,12 @@ TEST_P(HloDataflowAnalysisTest, AsyncCallWithConditional) {
 HloModule AsyncCall
 
 %cond_computation.1 (param_0: f32[4096]) -> f32[4096] {
-  ROOT %param_0 = f32[4096]{0} parameter(0)
+  ROOT %param_0_t = f32[4096]{0} parameter(0)
 }
 
 %cond_computation.2 (param_1: f32[4096]) -> f32[4096] {
-  %param_1 = f32[4096]{0} parameter(0)
-  ROOT %negate_1 = f32[4096]{0} negate(f32[4096]{0} %param_1)
+  %param_0_f = f32[4096]{0} parameter(0)
+  ROOT %negate = f32[4096]{0} negate(f32[4096]{0} %param_0_f)
 }
 
 %called_computation (param_0: pred[], param_1: f32[4096]) -> f32[4096] {
@@ -1223,10 +1223,23 @@ ENTRY %main (a: f32[4096], pred: pred[]) -> f32[4096] {
 
   const HloInstruction* a = FindInstruction(module_.get(), "a");
   const HloInstruction* p = FindInstruction(module_.get(), "p");
-  // const HloInstruction* async_done =
-  //     FindInstruction(module_.get(), "async-done");
+  const HloInstruction* param_0_t = FindInstruction(module_.get(), "param_0_t");
+  EXPECT_THAT(HloValuesAt(param_0_t),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(a)));
+  const HloInstruction* param_0_f = FindInstruction(module_.get(), "param_0_f");
+  EXPECT_THAT(HloValuesAt(param_0_f),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(a)));
+  const HloInstruction* param_0 = FindInstruction(module_.get(), "param_0");
+  EXPECT_THAT(HloValuesAt(param_0),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(p)));
   const HloInstruction* conditional =
       FindInstruction(module_.get(), "conditional");
+  if (ssa_form) {
+    EXPECT_EQ(HloValuesAt(conditional).size(), 1);
+    EXPECT_TRUE(HloValuesAt(conditional)[0]->is_phi());
+  } else {
+    EXPECT_EQ(HloValuesAt(conditional).size(), 2);
+  }
 
   for (std::string async_name : {"async-start", "async-done"}) {
     const HloInstruction* async_op = FindInstruction(module_.get(), async_name);
@@ -1242,12 +1255,6 @@ ENTRY %main (a: f32[4096], pred: pred[]) -> f32[4096] {
     EXPECT_FALSE(analysis.ValueIsDefinedAt(parameter1));
     EXPECT_THAT(HloValuesAt(parameter1),
                 UnorderedElementsAre(&analysis.GetValueDefinedAt(a)));
-    if (ssa_form) {
-      EXPECT_EQ(HloValuesAt(conditional).size(), 1);
-      EXPECT_TRUE(HloValuesAt(conditional)[0]->is_phi());
-    } else {
-      EXPECT_EQ(HloValuesAt(conditional).size(), 2);
-    }
   }
 }
 
