@@ -91,7 +91,7 @@ absl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
 
   MlirToHloArgs mlir_to_hlo_args;
   mlir_to_hlo_args.mlir_module_op = mlir_module_op;
-  Status old_bridge_status = v1::CompileTensorflowGraphToHlo(
+  absl::Status old_bridge_status = v1::CompileTensorflowGraphToHlo(
       mlir_to_hlo_args, metadata, use_tuple_args, shape_determination_fns,
       arg_shapes, tsl::DeviceType(device_type.str()), arg_core_mapping,
       per_core_arg_shapes, client, compilation_result);
