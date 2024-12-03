@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 
@@ -88,7 +89,7 @@ class NcclCliqueKey {
   NcclStreamId stream_id() const;
 
   // Returns the rank of the global device in the clique.
-  std::optional<int64_t> rank(GlobalDeviceId id) const;
+  std::optional<RankId> rank(GlobalDeviceId id) const;
 
   // Returns true if this clique is a subset of `other`: both cliques have the
   // same `stream_id` and all clique devices are part of `other` clique.

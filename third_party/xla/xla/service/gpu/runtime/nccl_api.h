@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/shape_util.h"
@@ -118,11 +119,11 @@ class NcclApi {
   };
 
   struct DeviceRank {
-    DeviceRank(se::StreamExecutor* device, int32_t rank)
+    DeviceRank(se::StreamExecutor* device, RankId rank)
         : device(device), rank(rank) {}
 
     se::StreamExecutor* device;
-    int32_t rank;
+    RankId rank;
   };
 
   // Returns a slice of device memory `buff` containing `count` values of data
@@ -157,7 +158,7 @@ class NcclApi {
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommsplit
   virtual absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommSplit(
       absl::Span<const Communicator* const> comms, int32_t color,
-      absl::Span<const int32_t> keys, std::optional<Config> config) = 0;
+      absl::Span<const RankId> keys, std::optional<Config> config) = 0;
 
   // Abort any uncompleted operations and destroys the communicator. Frees
   // resources that are allocated to a communicator object comm.

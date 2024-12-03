@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
@@ -96,7 +97,7 @@ class NcclApiStub final : public NcclApi {
   }
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommSplit(
-      absl::Span<const Communicator* const>, int32_t, absl::Span<const int32_t>,
+      absl::Span<const Communicator* const>, int32_t, absl::Span<const RankId>,
       std::optional<Config>) final {
     return UnimplementedError();
   }

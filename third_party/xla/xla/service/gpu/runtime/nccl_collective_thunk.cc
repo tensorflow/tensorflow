@@ -34,8 +34,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "mlir/IR/Value.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
@@ -227,8 +226,8 @@ absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
       GetParticipatingDevices(global_device_id, *params.device_assn,
                               replica_groups, group_mode));
 
-  // If splitting is enabled, particpating groups must match in order for a
-  // clique to be reused from the cache. We can ignore the particpating groups
+  // If splitting is enabled, participating groups must match in order for a
+  // clique to be reused from the cache. We can ignore the participating groups
   // otherwise.
   static const int64_t enable_nccl_comm_splitting =
       xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_comm_splitting();
@@ -263,7 +262,7 @@ absl::StatusOr<NcclCommHandleWrapper> GetNcclComm(
                       GetNcclCliqueKey(params, replica_groups, group_mode,
                                        stream_id, stream_kind));
 
-  std::optional<int64_t> rank = clique_key.rank(params.global_device_id);
+  std::optional<RankId> rank = clique_key.rank(params.global_device_id);
   TF_ASSIGN_OR_RETURN(bool is_local,
                       collective_cliques.is_local_clique(clique_key));
   TF_ASSIGN_OR_RETURN(Communicator * comm,
@@ -462,12 +461,13 @@ absl::Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
         params.collective_cliques->num_communicators(clique_key));
 
     auto global_device_id = params.collective_params->global_device_id;
+    RankId rank = clique_key.rank(global_device_id).value_or(RankId(-1));
     VLOG(1) << "Do a rendezvous after a first call to "
             << Thunk::KindToString(kind())
             << "; run_id=" << params.collective_params->run_id.ToInt()
             << "; op_id=" << config().op_id
             << "; num_local_participants=" << num_local_participants
-            << "; rank=" << clique_key.rank(global_device_id).value_or(-1)
+            << "; rank=" << rank.value()
             << "; clique_key=" << clique_key.ToString();
 
     auto rendezvous_key = FirstCallRendezvousKey{std::move(clique_key)};

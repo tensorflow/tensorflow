@@ -249,7 +249,7 @@ class ResourceRequests : public Thunk::ResourceRequests {
     NcclClique::AcquiredCliquesMap cliques_map;
 
     for (const CliqueRequest& r : ordered_cliques) {
-      std::optional<int64_t> rank = r.key.rank(params.global_device_id);
+      std::optional<RankId> rank = r.key.rank(params.global_device_id);
 
       if (!rank.has_value()) {
         return absl::InternalError(absl::StrCat(

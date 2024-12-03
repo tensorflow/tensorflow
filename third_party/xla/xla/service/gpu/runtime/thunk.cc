@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -55,7 +56,7 @@ Thunk::CollectiveCliques::CollectiveCliques(
     : cliques_map_(std::move(cliques_map)) {}
 
 absl::StatusOr<Communicator*> Thunk::CollectiveCliques::GetComm(
-    const NcclCliqueKey& clique_key, int32_t rank) const {
+    const NcclCliqueKey& clique_key, RankId rank) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);
   if (clique == cliques_map_.end()) {
@@ -66,9 +67,9 @@ absl::StatusOr<Communicator*> Thunk::CollectiveCliques::GetComm(
   // Check that clique has a communicator for our rank.
   auto communicator = (*clique->second)->comm(rank);
   if (!communicator.has_value()) {
-    return absl::InternalError(absl::StrCat("Communicator for rank ", rank,
-                                            " not found in a NCCL clique ",
-                                            clique_key.ToString()));
+    return absl::InternalError(
+        absl::StrCat("Communicator for rank ", rank.value(),
+                     " not found in a NCCL clique ", clique_key.ToString()));
   }
 
   return *communicator;

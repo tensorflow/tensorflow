@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -214,7 +215,7 @@ class Thunk {
     explicit CollectiveCliques(NcclClique::AcquiredCliquesMap cliques_map);
 
     absl::StatusOr<Communicator*> GetComm(const NcclCliqueKey& clique_key,
-                                          int32_t rank) const;
+                                          RankId rank) const;
 
     // Returns the number of communicators in a collective clique. Returns error
     // if we do not have an acquired clique for a given key.
