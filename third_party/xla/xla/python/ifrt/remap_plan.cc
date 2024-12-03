@@ -169,37 +169,23 @@ absl::Status RemapPlan::Validate() const {
     return InvalidArgument("Must have at least one input");
   }
 
-  for (int i = 0; i < num_inputs; ++i) {
-    if (input_specs[i].dtype != input_specs.front().dtype) {
-      return InvalidArgument(
-          "Input must have the same dtype: %s (input 0) vs. %s (input "
-          "%d)",
-          input_specs.front().dtype.DebugString(),
-          input_specs[i].dtype.DebugString(), i);
-    }
-  }
-  const int num_outputs = output_specs.size();
-  for (int i = 0; i < num_outputs; ++i) {
-    if (output_specs[i].dtype != input_specs.front().dtype) {
-      return InvalidArgument(
-          "Input and output must have the same dtype: %s (input 0) vs. %s "
-          "(output %d)",
-          output_specs.front().dtype.DebugString(),
-          output_specs[i].dtype.DebugString(), i);
-    }
-  }
-
   std::vector<std::vector<bool>> in_used_buffers_list(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     in_used_buffers_list[i].resize(
         /*count=*/input_specs[i].sharding->devices()->size(),
         /*value=*/false);
   }
+
+  const int num_outputs = output_specs.size();
   std::vector<BasicDeviceList::Devices> out_assigned_devices_list(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     out_assigned_devices_list[i].resize(
         /*n=*/output_specs[i].sharding->devices()->size(),
         /*v=*/nullptr);
+  }
+
+  if (!mappings || mappings->empty()) {
+    return InvalidArgument("Must have at least one mapping");
   }
 
   for (int64_t i = 0; i < mappings->size(); ++i) {
@@ -219,6 +205,15 @@ absl::Status RemapPlan::Validate() const {
           "mappings[%d].from and mappings[%d].to must have the same number of "
           "intervals, but has %d and %d intervals",
           i, i, mapping.from.size(), mapping.to.size());
+    }
+
+    if (input_specs[mapping.in_array].dtype !=
+        output_specs[mapping.out_array].dtype) {
+      return InvalidArgument(
+          "Input and output must have the same dtype: %v (input %d) vs. %v "
+          "(output %d)",
+          input_specs[mapping.in_array].dtype, mapping.in_array,
+          output_specs[mapping.out_array].dtype, mapping.out_array);
     }
 
     std::vector<bool>& in_used_buffers = in_used_buffers_list[mapping.in_array];
