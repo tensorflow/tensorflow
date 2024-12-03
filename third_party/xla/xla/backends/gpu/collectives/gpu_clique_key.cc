@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,7 +25,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/service/global_device_id.h"
 #include "tsl/platform/casts.h"
@@ -32,11 +32,16 @@ limitations under the License.
 
 namespace xla::gpu {
 
-//===----------------------------------------------------------------------===//
-// NcclCliqueKey
-//===----------------------------------------------------------------------===//
+CollectiveStreamId GetCollectiveStreamId(bool is_async,
+                                         AsyncStreamKind stream_kind) {
+  // TODO(ezhulenev): This implementation does not look correct as stream IDs
+  // are not really unique. Figure out if it's the case and fix either the code
+  // or the documentation.
+  int64_t stream_id = static_cast<int64_t>(stream_kind);
+  return CollectiveStreamId(is_async ? stream_id + 1 : 0);
+}
 
-NcclCliqueKey::NcclCliqueKey(
+GpuCliqueKey::GpuCliqueKey(
     std::vector<GlobalDeviceId> devices, CollectiveStreamId stream_id,
     AsyncStreamKind stream_kind,
     std::vector<std::vector<GlobalDeviceId>> participant_groups)
@@ -57,10 +62,10 @@ NcclCliqueKey::NcclCliqueKey(
   absl::c_sort(participant_groups_, compare_groups);
 }
 
-CollectiveStreamId NcclCliqueKey::stream_id() const { return stream_id_; }
+CollectiveStreamId GpuCliqueKey::stream_id() const { return stream_id_; }
 
-bool NcclCliqueKey::IsSubsetOf(const CliqueKey& other) const {
-  auto* other_nccl = tsl::down_cast<const NcclCliqueKey*>(&other);
+bool GpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
+  auto* other_nccl = tsl::down_cast<const GpuCliqueKey*>(&other);
   if (other_nccl == nullptr) return false;
 
   return stream_id_ == other_nccl->stream_id_ &&
@@ -69,7 +74,7 @@ bool NcclCliqueKey::IsSubsetOf(const CliqueKey& other) const {
          });
 }
 
-std::string NcclCliqueKey::ToString() const {
+std::string GpuCliqueKey::ToString() const {
   std::string group_string = "";
   if (!participant_groups_.empty()) {
     std::vector<std::string> values;
@@ -84,17 +89,17 @@ std::string NcclCliqueKey::ToString() const {
                          group_string);
 }
 
-void NcclCliqueKey::HashValue(absl::HashState state) const {
+void GpuCliqueKey::HashValue(absl::HashState state) const {
   absl::HashState::combine(std::move(state), devices(), stream_id_,
                            participant_groups_);
 }
 
-bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b) {
+bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b) {
   return a.devices() == b.devices() && a.stream_id_ == b.stream_id_ &&
          a.participant_groups_ == b.participant_groups_;
 }
 
-bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b) {
+bool operator<(const GpuCliqueKey& a, const GpuCliqueKey& b) {
   if (a.devices().size() < b.devices().size()) return true;
   if (b.devices().size() < a.devices().size()) return false;
 
@@ -104,7 +109,7 @@ bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b) {
   return a.stream_id_.value() < b.stream_id_.value();
 }
 
-bool operator>(const NcclCliqueKey& a, const NcclCliqueKey& b) {
+bool operator>(const GpuCliqueKey& a, const GpuCliqueKey& b) {
   if (a.devices().size() > b.devices().size()) return true;
   if (b.devices().size() > a.devices().size()) return false;
 

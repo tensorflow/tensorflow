@@ -319,10 +319,10 @@ cc_library(
 
 cc_library(
     name = "nccl_clique_key",
-    srcs = ["nccl_clique_key.cc"],
     hdrs = ["nccl_clique_key.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
@@ -340,22 +340,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-xla_cc_test(
-    name = "nccl_clique_key_test",
-    srcs = ["nccl_clique_key_test.cc"],
-    deps = [
-        ":nccl_clique_key",
-        "//xla/backends/gpu/collectives:gpu_collectives",
-        "//xla/core/collectives:clique_id",
-        "//xla/service:global_device_id",
-        "@com_google_absl//absl/container:btree",
-        "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

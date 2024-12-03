@@ -1,4 +1,5 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
@@ -17,12 +18,45 @@ package_group(
 )
 
 cc_library(
+    name = "gpu_clique_key",
+    srcs = ["gpu_clique_key.cc"],
+    hdrs = ["gpu_clique_key.h"],
+    deps = [
+        "//xla/core/collectives",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "//xla/service:global_device_id",
+        "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_clique_key_test",
+    srcs = ["gpu_clique_key_test.cc"],
+    deps = [
+        ":gpu_clique_key",
+        "//xla/core/collectives:clique_id",
+        "//xla/service:global_device_id",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "gpu_collectives",
-    srcs = ["gpu_collectives.cc"],
     hdrs = ["gpu_collectives.h"],
     deps = [
         "//xla/core/collectives",
-        "//xla/tsl/lib/gtl:int_type",
     ],
 )
 
