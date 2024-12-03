@@ -136,13 +136,11 @@ tf_python_pybind_extension(
     ],
     deps = [
         ":profiler_pywrap_impl",
-        "//tensorflow/core/platform:env",
         "//tensorflow/core/profiler/convert:repository",
         "//tensorflow/core/profiler/convert:tool_options",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
         "//tensorflow/core/profiler/rpc:profiler_server_for_pybind",
         "//tensorflow/python/lib/core:pybind11_status",
-        "@com_google_absl//absl/types:variant",
         "@pybind11",
     ],
 )
@@ -171,6 +169,10 @@ cc_library(
     hdrs = ["profiler_pywrap_impl.h"],
     visibility = ["//visibility:private"],
     deps = [
+        # copybara:uncomment "//cloud/ai/platform/tensorboard/webserver/filesystem:hypercomputer_file_system",
+        "@local_xla//xla/tsl/profiler/convert:xplane_to_trace_events",
+        "@local_xla//xla/tsl/profiler/rpc/client:capture_profile",
+        "@local_xla//xla/tsl/profiler/utils:session_manager",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
@@ -183,9 +185,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:variant",
-        "@local_xla//xla/tsl/profiler/convert:xplane_to_trace_events",
-        "@local_xla//xla/tsl/profiler/rpc/client:capture_profile",
-        "@local_xla//xla/tsl/profiler/utils:session_manager",
     ],
 )
 

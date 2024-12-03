@@ -675,10 +675,10 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     actual = file_io.get_registered_schemes()
     # Be flexible about additional schemes that may sometimes be registered when
     # this test is run, while still verifying each scheme appears just once.
-    maybe_expected = ["gs"]
+    maybe_expected = ["gs", "hypercomputer"]
     for scheme in maybe_expected:
       if scheme in actual:
-        expected.append("gs")
+        expected.append(scheme)
     self.assertCountEqual(expected, actual)
 
   def testReadWriteWithEncoding(self):
