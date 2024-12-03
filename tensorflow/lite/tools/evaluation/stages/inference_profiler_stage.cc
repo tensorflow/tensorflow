@@ -15,10 +15,12 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/stages/inference_profiler_stage.h"
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
 #include <random>
+#include <vector>
 
 #include "fp16.h"  // from @FP16
 #include "tensorflow/core/platform/logging.h"
