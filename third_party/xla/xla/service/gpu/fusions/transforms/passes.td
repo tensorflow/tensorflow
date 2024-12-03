@@ -81,10 +81,8 @@ def LowerTensorsPass : Pass<"xla-gpu-lower-tensors", "mlir::ModuleOp"> {
     "xla::gpu::XlaGpuDialect",
   ];
   let options = [
-    Option<"is_amd_gpu_", "is_amd_gpu", "bool", /*default=*/"false",
-           "True if AMD GPU.">,
-    Option<"gpu_arch_", "gpu_arch", "std::string", /*default=*/"",
-           "CUDA or ROCm compute capability.">,
+    Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
+           "Serialized stream_executor::GPUDeviceInfo proto.">,
   ];
   let constructor = "CreateLowerTensorsPass()";
 }
