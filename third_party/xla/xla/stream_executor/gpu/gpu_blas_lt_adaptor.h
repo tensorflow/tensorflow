@@ -75,7 +75,8 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
         case blas::DataType::kFloat:
           return DoBlasGemmImpl<float>(stream, transa, transb, m, n, k, dtype,
                                        alpha, a, lda, b, ldb, beta, c, ldc,
-                                       numeric_options, context, &allocator);
+                                       numeric_options, context,
+                                       workspace ? &allocator : nullptr);
         case blas::DataType::kBF16:
           return DoBlasGemmImpl<Eigen::bfloat16>(
               stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
@@ -244,7 +245,7 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
     return runner.RunStridedBatched(
         *stream, transa, transb, m, n, k, alpha_v, DeviceMemory<T>(a), lda,
         stride_a, DeviceMemory<T>(b), ldb, stride_b, beta_v, &memory_c, ldc,
-        stride_c, batch_count, &allocator);
+        stride_c, batch_count, workspace ? &allocator : nullptr);
   }
 
   bool CheckStatus(absl::Status status) {
