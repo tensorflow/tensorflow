@@ -649,9 +649,7 @@ class HloModule {
   }
 
   bool has_module_autofdo_profiles() const {
-    return !autofdo_profile_keys_.empty() &&
-           // TODO(b/368119768): Remove this check once we rollout Flagnet.
-           !autofdo_profile_keys_.contains(HloModuleProto::INVALID);
+    return !profile_info_list_.empty();
   }
 
   void set_relative_speedup(double relative_speedup) {
