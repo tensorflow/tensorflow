@@ -620,7 +620,7 @@ class ShardedVariableMixin(trackable.Trackable):
     actual_first_dim = [v.shape.as_list()[0] for v in self._variables]
     if expect_first_dim != actual_first_dim:
       raise NotImplementedError(
-          'scater_xxx ops are not supported in Sharded Variable that does not '
+          'scatter_xxx ops are not supported in Sharded Variable that does not '
           'conform to "div" sharding'
       )
 
