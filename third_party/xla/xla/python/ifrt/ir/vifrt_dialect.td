@@ -163,18 +163,20 @@ class Vifrt_TypeDef<string cpp_name, string name, string min_version, string max
   }];
 }
 
-def Vifrt_Array : Vifrt_TypeDef<"VifrtArrayV1", "array_v1", "0.1.0", "current"> {
+def Vifrt_ArrayV1 : Vifrt_TypeDef<"VifrtArrayV1", "array_v1", "0.1.0", "current"> {
   let parameters = (ins
     "::mlir::RankedTensorType":$shape,
     "::mlir::Attribute":$sharding_attr,
     Vifrt_DevicesAttrV1:$devices_attr,
-    "::mlir::StringAttr":$memory_kind_attr);
+    "::mlir::StringAttr":$memory_kind_attr,
+    "::mlir::StringAttr":$layout_attr);
   let genVerifyDecl = 1;
   let extraClassDefinition = [{
     mlir::LogicalResult VifrtArrayV1Type::verify(
         llvm::function_ref<mlir::InFlightDiagnostic ()> err_fn,
         mlir::RankedTensorType shape, mlir::Attribute sharding_attr,
-        VifrtDevicesV1Attr devices_attr, mlir::StringAttr memory_kind_attr) {
+        VifrtDevicesV1Attr devices_attr, mlir::StringAttr memory_kind_attr,
+        mlir::StringAttr layout_attr) {
       if (!isFromVifrt(sharding_attr))
           err_fn() << "expected VIFRT sharding attribute";
       return mlir::success();
@@ -182,11 +184,11 @@ def Vifrt_Array : Vifrt_TypeDef<"VifrtArrayV1", "array_v1", "0.1.0", "current"> 
   }];
   let assemblyFormat = [{
     `<` $shape`,` $sharding_attr `,` $devices_attr `,` `memory_kind` `=`
-        $memory_kind_attr `>`
+        $memory_kind_attr `,` `layout` `=` $layout_attr `>`
   }];
 }
 
-def Vifrt_Control : Vifrt_TypeDef<"VifrtControlV1", "control_v1", "0.1.0", "current">;
+def Vifrt_ControlV1 : Vifrt_TypeDef<"VifrtControlV1", "control_v1", "0.1.0", "current">;
 
 // Equivalent of `mlir::FunctionType`, but with stronger type checking.
 def Vifrt_FunctionV1 : Vifrt_TypeDef<"VifrtFunctionV1", "func_v1", "0.1.0", "current"> {

@@ -438,15 +438,17 @@ VifrtArrayV1Type VifrtBytecodeInterface::readArrayV1Type(
   mlir::Attribute sharding;
   VifrtDevicesV1Attr devices;
   mlir::StringAttr memory_kind;
+  mlir::StringAttr layout;
   if (mlir::failed(reader.readType<mlir::RankedTensorType>(shape)) ||
       mlir::failed(reader.readAttribute(sharding)) ||
       mlir::failed(reader.readAttribute<VifrtDevicesV1Attr>(devices)) ||
-      mlir::failed(reader.readAttribute<mlir::StringAttr>(memory_kind))) {
+      mlir::failed(reader.readAttribute<mlir::StringAttr>(memory_kind)) ||
+      mlir::failed(reader.readAttribute<mlir::StringAttr>(layout))) {
     reader.emitError() << "Failed to read VifrtArrayV1Type";
     return VifrtArrayV1Type();
   }
   return VifrtArrayV1Type::get(getContext(), shape, sharding, devices,
-                               memory_kind);
+                               memory_kind, layout);
 }
 
 void VifrtBytecodeInterface::write(VifrtArrayV1Type type,
@@ -456,6 +458,7 @@ void VifrtBytecodeInterface::write(VifrtArrayV1Type type,
   writer.writeAttribute(type.getShardingAttr());
   writer.writeAttribute(type.getDevicesAttr());
   writer.writeAttribute(type.getMemoryKindAttr());
+  writer.writeAttribute(type.getLayoutAttr());
 }
 
 VifrtControlV1Type VifrtBytecodeInterface::readControlV1Type(

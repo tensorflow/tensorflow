@@ -334,6 +334,7 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
     metrics::RecordTFDataFilename(kDatasetType, filenames[i]);
   }
   LogFilenames(filenames);
+  LogLineage(filenames);
 
   tstring compression_type;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,

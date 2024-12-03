@@ -64,6 +64,8 @@ inline constexpr llvm::StringLiteral kHloShardingAttrName = "mhlo.sharding";
 // Name of StringAttr used to store memory kind.
 inline constexpr llvm::StringLiteral kHloMemoryKindAttrName =
     "mhlo.memory_kind";
+// Name of StringAttr used to store layout mode.
+inline constexpr llvm::StringLiteral kHloLayoutAttrName = "mhlo.layout_mode";
 
 inline constexpr llvm::StringLiteral kIfrtModuleTypeAttrName =
     "ifrt.module_type";

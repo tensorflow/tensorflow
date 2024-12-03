@@ -252,18 +252,21 @@ class VifrtToIfrtTypeConverter : public VifrtTypeConverterBuiltin {
                                 << array.getDevicesAttr() << '\n');
         return {};
       }
-      if (auto memory_kind_attr =
-              llvm::dyn_cast<mlir::StringAttr>(array.getMemoryKindAttr());
-          memory_kind_attr.str() == kVifrtDefaultString) {
+      auto memory_kind_attr =
+          llvm::dyn_cast<mlir::StringAttr>(array.getMemoryKindAttr());
+      if (memory_kind_attr && memory_kind_attr.str() == kVifrtDefaultString) {
         // No memory kind was specified.
-        return IfrtArrayType::get(array.getContext(), array.getShape(),
-                                  sharding_attr, devices_attr,
-                                  /*memory_kind_attr=*/nullptr);
-      } else {
-        return IfrtArrayType::get(array.getContext(), array.getShape(),
-                                  sharding_attr, devices_attr,
-                                  memory_kind_attr);
+        memory_kind_attr = nullptr;
       }
+      auto layout_attr =
+          llvm::dyn_cast<mlir::StringAttr>(array.getLayoutAttr());
+      if (layout_attr && layout_attr.str() == kVifrtDefaultString) {
+        // No layout was specified.
+        layout_attr = nullptr;
+      }
+      return IfrtArrayType::get(array.getContext(), array.getShape(),
+                                sharding_attr, devices_attr, memory_kind_attr,
+                                layout_attr);
     });
     addConversion([](VifrtControlV1Type type) -> mlir::Type {
       return IfrtControlType::get(type.getContext());

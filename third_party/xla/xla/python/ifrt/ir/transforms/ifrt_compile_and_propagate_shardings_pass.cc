@@ -516,7 +516,8 @@ IfrtCompileAndPropagateShardingsPass::PropagateShardings(
           array_type.getShape(),
           IfrtShardingParamAttr::get(builder.getContext(),
                                      input_shardings[idx]),
-          array_type.getDevicesAttr(), array_type.getMemoryKindAttr());
+          array_type.getDevicesAttr(), array_type.getMemoryKindAttr(),
+          array_type.getLayoutAttr());
       input.setType(new_array_type);
     }
   }
@@ -554,7 +555,8 @@ IfrtCompileAndPropagateShardingsPass::PropagateShardings(
           array_type.getShape(),
           IfrtShardingParamAttr::get(builder.getContext(),
                                      output_shardings[idx]),
-          array_type.getDevicesAttr(), array_type.getMemoryKindAttr());
+          array_type.getDevicesAttr(), array_type.getMemoryKindAttr(),
+          array_type.getLayoutAttr());
       new_call_op_result_types.push_back(new_array_type);
     } else {
       new_call_op_result_types.push_back(output.getType());
