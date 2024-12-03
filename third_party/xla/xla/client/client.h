@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CLIENT_CLIENT_H_
 #define XLA_CLIENT_CLIENT_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
