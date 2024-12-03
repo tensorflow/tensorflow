@@ -131,6 +131,7 @@ cc_library(
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ] + if_static([
@@ -193,6 +194,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:stream_executor",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -213,6 +215,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:stream_executor",
+        "@com_google_absl//absl/status",
         "@local_xla//xla/stream_executor:platform_manager",
     ],
     alwayslink = 1,
