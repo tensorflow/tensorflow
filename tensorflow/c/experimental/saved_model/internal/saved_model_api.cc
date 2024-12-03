@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_set>
+#include <utility>
 
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
