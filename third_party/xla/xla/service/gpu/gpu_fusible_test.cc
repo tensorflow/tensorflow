@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/new_hlo_test_base.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -42,13 +42,14 @@ auto MakeDeviceDescription() {
   return device_description;
 }
 
-class GpuFusibleTest : public NewHloTestBase {
+class GpuFusibleTest : public HloRunnerAgnosticTestBase {
  public:
   GpuFusibleTest()
-      : NewHloTestBase(std::make_unique<HloRunner>(
-                           PlatformUtil::GetDefaultPlatform().value()),
-                       std::make_unique<HloRunner>(
-                           PlatformUtil::GetDefaultPlatform().value())),
+      : HloRunnerAgnosticTestBase(
+            std::make_unique<HloRunner>(
+                PlatformUtil::GetDefaultPlatform().value()),
+            std::make_unique<HloRunner>(
+                PlatformUtil::GetDefaultPlatform().value())),
         device_description_(MakeDeviceDescription()) {}
 
   bool IsReduceInputFusion(const HloInstruction& instr) const {

@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/service/hlo_runner_pjrt.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
-#include "xla/tests/new_hlo_test_base.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
@@ -50,9 +50,10 @@ std::unique_ptr<HloRunnerInterface> CreateHloRunner() {
       device_shape_size_fn);
 }
 
-class CpuCompilerTest : public NewHloTestBase {
+class CpuCompilerTest : public HloRunnerAgnosticTestBase {
  public:
-  CpuCompilerTest() : NewHloTestBase(CreateHloRunner(), CreateHloRunner()) {}
+  CpuCompilerTest()
+      : HloRunnerAgnosticTestBase(CreateHloRunner(), CreateHloRunner()) {}
 };
 
 TEST_F(CpuCompilerTest, RecordsStreamzStackTrace) {

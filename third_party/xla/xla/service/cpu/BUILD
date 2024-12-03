@@ -462,7 +462,7 @@ xla_test(
         "//xla/service:hlo_runner_interface",
         "//xla/service:hlo_runner_pjrt",
         "//xla/service:platform_util",
-        "//xla/tests:new_hlo_test_base",
+        "//xla/tests:hlo_runner_agnostic_test_base",
         "//xla/tests:pjrt_client_registry",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/monitoring:collected_metrics",
