@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
@@ -354,10 +356,13 @@ NcclApi* NcclApi::Default() {
 
 bool NcclApi::HasNcclSupport() { return true; }
 
-static_assert(NCCL_UNIQUE_ID_BYTES == NcclCliqueId::kSize,
-              "size of nccl unique id must match the clique id size");
-
-static ncclUniqueId AsNcclUniqueId(const NcclCliqueId& clique_id) {
+static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(
+    const NcclCliqueId& clique_id) {
+  if (clique_id.size() != NCCL_UNIQUE_ID_BYTES) {
+    return Internal(
+        "CliqueId size is not equal to NCCL_UNIQUE_ID_BYTES: %d vs %d",
+        clique_id.size(), NCCL_UNIQUE_ID_BYTES);
+  }
   ncclUniqueId id;
   absl::c_copy(clique_id.data(), id.internal);
   return id;
@@ -367,7 +372,7 @@ absl::StatusOr<NcclCliqueId> DefaultNcclApi::GetUniqueId() {
   VLOG(3) << "Get NCCL unique id";
   ncclUniqueId id;
   XLA_NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
-  return NcclCliqueId(id.internal);
+  return NcclCliqueId(std::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
@@ -400,9 +405,9 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
             << "; fingerprint(id)=" << clique_id.fingerprint();
     auto activate_context = ranks[i].device->Activate();
 
+    TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(clique_id));
     XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankConfig(
-        &comm_handles[i], nranks, AsNcclUniqueId(clique_id), ranks[i].rank,
-        &comm_config));
+        &comm_handles[i], nranks, nccl_unique_id, ranks[i].rank, &comm_config));
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 

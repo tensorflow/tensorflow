@@ -25,3 +25,15 @@ cc_library(
     name = "communicator",
     hdrs = ["communicator.h"],
 )
+
+cc_library(
+    name = "clique_id",
+    srcs = ["clique_id.cc"],
+    hdrs = ["clique_id.h"],
+    deps = [
+        "//xla:util",
+        "@com_google_absl//absl/crc:crc32c",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)

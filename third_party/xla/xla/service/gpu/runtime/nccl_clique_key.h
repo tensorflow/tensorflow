@@ -16,18 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_NCCL_CLIQUE_KEY_H_
 #define XLA_SERVICE_GPU_RUNTIME_NCCL_CLIQUE_KEY_H_
 
-#include <array>
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
-#include "absl/crc/crc32c.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/clique_id.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 
@@ -141,42 +138,8 @@ bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
 // NcclCliqueId
 //===----------------------------------------------------------------------===//
 
-// All collective cliques have a globally unique ID (128 bytes long for NCCL)
-// that allows multiple hosts and devices to find each other and agree who is a
-// member of a clique. It is a user responsibility to redistribute this id to
-// all participating hosts (i.e. JAX uses shared KV store for that). For single
-// host collective operations XLA automatically generates a unique id for local
-// cliques (cliques consisting of devices visible from a process).
-
-// A globally unique collective clique identifier.
-class NcclCliqueId {
- public:
-  static constexpr int32_t kSize = 128;
-
-  static absl::StatusOr<NcclCliqueId> FromString(std::string_view str);
-
-  NcclCliqueId();
-  explicit NcclCliqueId(char bytes[kSize]);
-
-  absl::Span<const char> data() const;
-  std::string ToString() const;
-
-  uint32_t fingerprint() const {
-    return static_cast<uint32_t>(
-        absl::ComputeCrc32c(absl::string_view(data_.data(), kSize)));
-  }
-
-  template <typename H>
-  friend H AbslHashValue(H h, const NcclCliqueId& id);
-
- private:
-  std::array<char, kSize> data_;
-};
-
-template <typename H>
-H AbslHashValue(H h, const NcclCliqueId& id) {
-  return H::combine(std::move(h), id.data());
-}
+// TODO(b/380457503): Remove this alias once we migrate to CliqueId.
+using NcclCliqueId = CliqueId;
 
 // A callback to get a unique clique id (see `ncclUniqueId` documentation).
 using NcclCliqueIdCallback =  // NOLINT

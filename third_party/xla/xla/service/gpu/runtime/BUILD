@@ -213,6 +213,7 @@ cc_library(
     deps = [
         ":nccl_clique_key",
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/collectives:nccl_communicator",
         "//xla/core/collectives:communicator",
@@ -311,6 +312,7 @@ cc_library(
     hdrs = ["nccl_clique_key.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//xla/core/collectives:clique_id",
         "//xla/service:global_device_id",
         "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/algorithm:container",

@@ -121,31 +121,4 @@ bool operator>(const NcclCliqueKey& a, const NcclCliqueKey& b) {
   return a.stream_id_.value() < b.stream_id_.value();
 }
 
-//===----------------------------------------------------------------------===//
-// NcclCliqueId
-//===----------------------------------------------------------------------===//
-
-NcclCliqueId::NcclCliqueId() { std::fill(data_.begin(), data_.end(), 0); }
-
-NcclCliqueId::NcclCliqueId(char bytes[kSize]) {
-  std::copy(bytes, bytes + kSize, data_.data());
-}
-
-absl::StatusOr<NcclCliqueId> NcclCliqueId::FromString(std::string_view str) {
-  if (str.size() != kSize) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Invalid NCCL clique id size: %d , expected %d bytes",
-                        str.size(), kSize));
-  }
-  char bytes[kSize];
-  std::copy(str.data(), str.data() + kSize, bytes);
-  return NcclCliqueId(bytes);
-}
-
-absl::Span<const char> NcclCliqueId::data() const { return data_; }
-
-std::string NcclCliqueId::ToString() const {
-  return std::string(data_.data(), data_.size());
-}
-
 }  // namespace xla::gpu

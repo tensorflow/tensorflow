@@ -48,7 +48,7 @@ absl::StatusOr<gpu::NcclCliqueId> NcclIdStore::GetNcclUniqueId(
   } else {
     TF_ASSIGN_OR_RETURN(std::string id_str,
                         kv_store_->Get(key.ToString(), absl::Minutes(10)));
-    TF_ASSIGN_OR_RETURN(clique_id, gpu::NcclCliqueId::FromString(id_str));
+    clique_id = gpu::NcclCliqueId(id_str);
   }
   absl::MutexLock lock(&mu_);
   auto result = cache_.emplace(key, std::move(clique_id));

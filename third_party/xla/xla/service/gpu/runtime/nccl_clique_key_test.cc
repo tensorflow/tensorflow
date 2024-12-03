@@ -165,9 +165,4 @@ TEST(NcclCliqueIdStringTest, ToString) {
   }
 }
 
-TEST(NcclCliqueIdStringTest, FromInvalidString) {
-  EXPECT_THAT(NcclCliqueId::FromString("123"),
-              StatusIs(absl::StatusCode::kInvalidArgument));
-}
-
 }  // namespace xla::gpu
