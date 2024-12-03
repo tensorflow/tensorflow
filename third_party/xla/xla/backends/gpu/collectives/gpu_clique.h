@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "absl/container/btree_map.h"
+#include "absl/status/status.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/clique.h"
 #include "xla/core/collectives/clique_id.h"
@@ -32,21 +34,22 @@ namespace xla::gpu {
 class GpuClique : public Clique {
  public:
   GpuClique(
-      GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
+      GpuCliqueKey key, std::optional<CliqueId> id,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators);
 
   // Returns true if clique is local: all communicators belong to current
   // process. Non-local cliques spans multiple processes (typically hosts).
-  bool IsLocal() const {
-    return num_communicators() == clique_key_.devices().size();
-  }
+  bool IsLocal() const { return num_communicators() == key_.devices().size(); }
 
-  const GpuCliqueKey& clique_key() const { return clique_key_; }
-  const std::optional<CliqueId>& clique_id() const { return clique_id_; }
+  const GpuCliqueKey& key() const { return key_; }
+  const std::optional<CliqueId>& id() const { return id_; }
+
+  std::string DebugString() const final;
+  absl::Status HealthCheck() const final;
 
  private:
-  GpuCliqueKey clique_key_;
-  std::optional<CliqueId> clique_id_;
+  GpuCliqueKey key_;
+  std::optional<CliqueId> id_;
 };
 
 }  // namespace xla::gpu

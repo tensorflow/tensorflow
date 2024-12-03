@@ -138,7 +138,7 @@ static NcclCliques& GetNcclCliques() {
 // error state. It will free resources that are allocated to a communicator
 // and abort any uncompleted operations before destroying the communicator.
 static absl::Status CheckComm(Communicator* comm) {
-  absl::Status async_err = NcclApi::Default()->CommGetAsyncError(comm);
+  absl::Status async_err = comm->HealthCheck();
   if (!async_err.ok()) {
     LOG(ERROR) << "Aborting communicator: " << comm
                << " due to async NCCL error: " << async_err;
@@ -343,7 +343,7 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
     std::shared_ptr<NcclClique::Lock> parent_clique,
     int32_t num_local_participants, RankId rank, NcclApi::Config& config) {
   // Find our rank in the parent clique.
-  const GpuCliqueKey& parent_clique_key = (*parent_clique)->clique_key();
+  const GpuCliqueKey& parent_clique_key = (*parent_clique)->key();
   RankId parent_rank =
       *parent_clique_key.rank(clique_key.devices()[rank.value()]);
 

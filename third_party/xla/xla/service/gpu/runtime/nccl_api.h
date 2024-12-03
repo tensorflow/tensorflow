@@ -177,11 +177,6 @@ class NcclApi : public GpuCollectives {
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommcount
   virtual absl::StatusOr<int32_t> CommCount(Communicator* comm) = 0;
 
-  // Queries the progress and potential errors of asynchronous operations
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommgetasyncerror
-  virtual absl::Status CommGetAsyncError(Communicator* comm) = 0;
-
   // Starts a group call.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/group.html#ncclgroupstart

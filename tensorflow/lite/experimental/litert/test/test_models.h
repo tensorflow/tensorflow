@@ -18,6 +18,10 @@
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 
+// ///////////////////////////////////////////////////////////////////////////
+// FP32 models.
+// ///////////////////////////////////////////////////////////////////////////
+
 // Attention sub-module of a toy model.
 static constexpr absl::string_view kAttentionModel = "attention.tflite";
 
@@ -49,6 +53,10 @@ static constexpr absl::string_view kSDPAModel = "sdpa.tflite";
 // Transformer block sub-module of a toy LLM.
 static constexpr absl::string_view kTransformerBlockModel =
     "transformer.tflite";
+
+// ///////////////////////////////////////////////////////////////////////////
+// Quantized models.
+// ///////////////////////////////////////////////////////////////////////////
 
 // Quantized model with a single mul op.
 // Mul: <8x100x32x4xint16>, <8x100x32x4xint16> -> <8x100x32x4xint16>
@@ -89,6 +97,19 @@ static constexpr absl::string_view kQSingleDynRsqrt16x8Model =
 // RSQRT: <?x32x32int8> -> <?x32x32int8>
 static constexpr absl::string_view kQSingleDynRsqrt8x8Model =
     "single_rsqrt_default_a8w8_recipe_quantized.tflite";
+
+// Quantized einsum model with i16 activations and i8 weights.
+static constexpr absl::string_view kQQueryEinsum16x8Model =
+    "static_w8_a16_quantized_q_einsum.tflite";
+
+static constexpr absl::string_view kQKeyEinsum16x8Model =
+    "static_w8_a16_quantized_k_einsum.tflite";
+
+static constexpr absl::string_view kQVauleEinsum16x8Model =
+    "static_w8_a16_quantized_v_einsum.tflite";
+
+static constexpr absl::string_view kQAttnVecEinsum16x8Model =
+    "static_w8_a16_quantized_attn_vec_einsum.tflite";
 
 // All the quantized test models.
 static constexpr auto kAllQModels = absl::MakeConstSpan((absl::string_view[]){

@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/platform/subprocess.h"
 #include "xla/util.h"
 #include "tsl/platform/cuda_root_path.h"
 #include "tsl/platform/env.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "tsl/platform/regexp.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/subprocess.h"
 
 namespace stream_executor {
 static absl::StatusOr<std::string> GetToolVersionString(

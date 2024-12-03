@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/service/cpu_gpu_shape_verifier.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -42,14 +44,34 @@ class CpuGpuShapeVerifierTest : public HloTestBase {
   }
 };
 
-TEST_F(CpuGpuShapeVerifierTest, Int4UnsupportedInstruction) {
+TEST_F(CpuGpuShapeVerifierTest, Int4UnsupportedCollectiveInstruction) {
   const char* const hlo_string = R"(
   HloModule Module
 
   ENTRY main {
     p0 = u4[2,5] parameter(0)
-    p1 = u4[] parameter(1)
-    ROOT out = u4[2,6] pad(p0, p1), padding=0_0x0_1
+    ROOT out = u4[2,10] all-gather(p0), dimensions={1}
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string, config));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Int4 is not supported in collective "
+                                          "operations, but got instruction: "));
+}
+
+TEST_F(CpuGpuShapeVerifierTest, InvalidElementSize) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY main {
+    p0 = u8[2,5]{1,0:E(8)} parameter(0)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -57,9 +79,9 @@ TEST_F(CpuGpuShapeVerifierTest, Int4UnsupportedInstruction) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.message(),
-      HasSubstr("u4 is currently only supported in allow-listed instructions"));
+  EXPECT_THAT(status.message(),
+              HasSubstr("The XLA CPU/GPU backend does not support custom "
+                        "element sizes on non-sub-byte types"));
 }
 
 TEST_F(CpuGpuShapeVerifierTest, Int4SupportedInstruction) {

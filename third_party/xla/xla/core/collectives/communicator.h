@@ -19,12 +19,19 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/status/status.h"
+
 namespace xla {
 
 // Collective communicator defines the set of communicating XLA processes.
 class Communicator {
  public:
   virtual ~Communicator() = default;
+
+  // Checks the health of the communicator. It might return an error from the
+  // previously launched asynchronous collective operations, and it does not
+  // have to wait for the completion of scheduled operations.
+  virtual absl::Status HealthCheck() const = 0;
 
   virtual std::string ToString() const = 0;
 };
