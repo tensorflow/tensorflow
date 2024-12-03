@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_INDEXING_ANALYSIS_H_
-#define XLA_SERVICE_GPU_MODEL_INDEXING_ANALYSIS_H_
+#ifndef XLA_HLO_ANALYSIS_INDEXING_ANALYSIS_H_
+#define XLA_HLO_ANALYSIS_INDEXING_ANALYSIS_H_
 
 #include <cstdint>
 #include <ostream>
@@ -29,13 +29,12 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape.h"
 
 namespace xla {
-namespace gpu {
 
 using IndexingMapSet = absl::flat_hash_set<IndexingMap>;
 
@@ -166,7 +165,6 @@ IndexingMap CreateIdentityMap(absl::Span<const int64_t> dimensions,
 llvm::SmallVector<mlir::AffineExpr, 4> DelinearizeInBoundsIndex(
     mlir::AffineExpr linear, absl::Span<const int64_t> sizes);
 
-}  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_INDEXING_ANALYSIS_H_
+#endif  // XLA_HLO_ANALYSIS_INDEXING_ANALYSIS_H_

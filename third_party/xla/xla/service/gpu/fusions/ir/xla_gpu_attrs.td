@@ -29,12 +29,12 @@ def XLAGPU_AffineMapParameter :
 }
 
 def XLAGPU_IndexingMapVariableParameter
-  : ArrayRefParameter<"::xla::gpu::IndexingMap::Variable",
+  : ArrayRefParameter<"::xla::IndexingMap::Variable",
                       "IndexingMapVariableArray"> {
 }
 
 def XLAGPU_ConstraintsParameter :
-    ArrayRefParameter<"::std::pair<::mlir::AffineExpr, ::xla::gpu::Interval>",
+    ArrayRefParameter<"::std::pair<::mlir::AffineExpr, ::xla::Interval>",
                       "ContraintsArray"> {
 }
 
@@ -50,12 +50,12 @@ def XLAGPU_IndexingMapAttr : XLAGPU_Attr<"IndexingMap"> {
                         XLAGPU_ConstraintsParameter:$constraints);
   let hasCustomAssemblyFormat = 1;
   let builders =  [
-    AttrBuilder<(ins "const ::xla::gpu::IndexingMap&":$indexing_map)>,
+    AttrBuilder<(ins "const ::xla::IndexingMap&":$indexing_map)>,
   ];
   let genVerifyDecl = 1;
   let extraClassDeclaration = [{
     // Returns the indexing map constructed from IndexingMapAttr.
-    xla::gpu::IndexingMap getIndexingMap() const;
+    xla::IndexingMap getIndexingMap() const;
 
     // Returns the number of indexing map results.
     int64_t getNumResults() const;

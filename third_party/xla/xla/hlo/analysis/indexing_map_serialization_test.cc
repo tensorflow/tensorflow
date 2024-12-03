@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/indexing_map_serialization.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -21,12 +21,11 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/service/gpu/model/indexing_test_utils.h"
+#include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
-namespace gpu {
 namespace {
 
 using ::testing::HasSubstr;
@@ -188,6 +187,6 @@ TEST_F(IndexingMapSerializationTest, AffineMapPrinterTest) {
               HasSubstr("(d0, d1)[s0, s1, s2, s3] -> "
                         "(d0 + d1 floordiv 8 - s2 * 64, s0 + s1 mod 16 + s3)"));
 }
+
 }  // namespace
-}  // namespace gpu
 }  // namespace xla
