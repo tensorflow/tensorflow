@@ -15,6 +15,8 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CONTEXT_BINARY_INFO_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CONTEXT_BINARY_INFO_H_
 
+#include <cstddef>
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"

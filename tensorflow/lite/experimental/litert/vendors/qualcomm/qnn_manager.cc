@@ -15,7 +15,9 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
 #include <cstdint>
-#include <iostream>
+#include <cstdlib>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_format.h"
