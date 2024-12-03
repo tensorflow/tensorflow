@@ -15,7 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_MODEL_UTILS_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_MODEL_UTILS_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/core/model.h"

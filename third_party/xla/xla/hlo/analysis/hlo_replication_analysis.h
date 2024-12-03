@@ -69,7 +69,8 @@ class HloReplicationAnalysis {
     static HloReplication ReplicatedOnAllDevices();
     static HloReplication UniqueOnAllDevices();
     static HloReplication PartiallyReplicated(
-        absl::Span<const absl::Span<const int64_t>> device_sets);
+        absl::Span<const absl::flat_hash_set<std::vector<int64_t>>>
+            groups_for_replicas);
     HloReplication();
     HloReplication(const HloReplication& other) = default;
     HloReplication(HloReplication&& other) = default;
@@ -87,14 +88,20 @@ class HloReplicationAnalysis {
       kUniqueOnAllDevices = 1,
       kPartiallyReplicated = 2,
     };
-    explicit HloReplication(State state,
-                            absl::Span<const int64_t> device_set_root);
+    explicit HloReplication(
+        State state, absl::Span<const absl::flat_hash_set<std::vector<int64_t>>>
+                         groups_for_replicas);
     State state_;
     // Empty if state_ is kReplicatedOnAllDevices or kUniqueOnAllDevices.
-    // Otherwise, its size equals to the number of devices (either partitions
-    // or replications). Maps each device ID to the smallest device ID in the
-    // set.
-    std::vector<int64_t> device_set_root_;
+    //
+    // If cross_partition_spmd is true, groups_for_replicas_[k] holds the
+    // replica groups for replica k. Each replica group is a vector of partition
+    // IDs across which the HLO instruction is replicated.
+    //
+    // Similarly, if cross_partition_spmd is false, groups_for_replicas_[k]
+    // holds the replica groups for partition k. Each replica group is a vector
+    // of replica IDs across which the HLO instruction is replicated.
+    std::vector<absl::flat_hash_set<std::vector<int64_t>>> groups_for_replicas_;
   };
 
   static HloReplication DetermineHloInstructionIsReplicated(
