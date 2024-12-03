@@ -288,6 +288,7 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/core/collectives:clique",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
         "//xla/core/collectives:communicator",

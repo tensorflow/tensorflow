@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/core/collectives/clique.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
@@ -114,26 +115,12 @@ static bool TerminateOnNcclError() {
 NcclCliqueCommunicators::NcclCliqueCommunicators(
     GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
-    : clique_key_(std::move(clique_key)),
-      clique_id_(std::move(clique_id)),
-      communicators_(std::move(communicators)) {}
-
-std::optional<Communicator*> NcclCliqueCommunicators::comm(RankId rank) {
-  if (auto it = communicators_.find(rank); it != communicators_.end()) {
-    return it->second.get();
-  }
-  return std::nullopt;
-}
+    : Clique(std::move(communicators)),
+      clique_key_(std::move(clique_key)),
+      clique_id_(std::move(clique_id)) {}
 
 bool NcclCliqueCommunicators::IsLocal() const {
-  return communicators_.size() == clique_key_.devices().size();
-}
-
-void NcclCliqueCommunicators::ForEachComm(
-    absl::FunctionRef<void(RankId, Communicator*)> fn) {
-  for (auto& [rank, comm] : communicators_) {
-    fn(rank, comm.get());
-  }
+  return num_communicators() == clique_key_.devices().size();
 }
 
 std::string NcclCliqueCommunicators::DebugString() const {
@@ -141,13 +128,24 @@ std::string NcclCliqueCommunicators::DebugString() const {
       "clique_key: %s; fingerprint(id): %d; size: %d; communicators: ",
       clique_key_.ToString(),
       clique_id_.has_value() ? clique_id_->fingerprint() : 0,
-      communicators_.size());
+      num_communicators());
   int32_t cnt = 0;
-  for (const auto& [rank, comm] : communicators_) {
+  ForEachComm([&](RankId rank, Communicator* comm) {
     if (cnt++) absl::StrAppend(&out, ", ");
-    absl::StrAppendFormat(&out, "[rank=%d, comm=%p]", rank.value(), comm.get());
-  }
+    absl::StrAppendFormat(&out, "[rank=%d, comm=%p]", rank.value(), comm);
+  });
   return out;
+}
+
+absl::Status NcclCliqueCommunicators::HealthCheck() const {
+  absl::Status health_check = absl::OkStatus();
+  ForEachComm([&health_check](RankId rank, Communicator* comm) {
+    if (auto s = NcclApi::Default()->CommGetAsyncError(comm); !s.ok()) {
+      LOG(ERROR) << "NCCL async error (rank " << rank << "): " << s;
+      if (health_check.ok()) health_check = std::move(s);  // return first error
+    }
+  });
+  return health_check;
 }
 
 std::string NcclClique::DebugString() const {
@@ -189,7 +187,7 @@ static absl::Status CheckComm(Communicator* comm) {
 static void CheckClique(const GpuCliqueKey& clique_key,
                         NcclClique& lockable_clique) {
   if (TerminateOnNcclError()) {
-    absl::Status status = lockable_clique.CheckAsyncErrors();
+    absl::Status status = lockable_clique.HealthCheck();
     if (!status.ok()) {
       LOG(FATAL) << "Terminating process due to async NCCL error: " << status;
     }
@@ -552,21 +550,6 @@ absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
                               num_local_participants, rank, config);
 }
 
-absl::Status NcclClique::CheckAsyncErrors() {
-  return async_error_checker_.Check();
-}
-
-absl::Status NcclCliqueCommunicators::AsyncErrorChecker::Check() {
-  absl::Status status = absl::OkStatus();
-  communicators_.ForEachComm([&status](RankId rank, Communicator* comm) {
-    // Do not overwrite previous errors.
-    if (!status.ok()) return;
-    status = NcclApi::Default()->CommGetAsyncError(comm);
-    if (!status.ok()) {
-      LOG(ERROR) << "NCCL async error (rank " << rank << "): " << status;
-    }
-  });
-  return status;
-}
+absl::Status NcclClique::HealthCheck() const { return value().HealthCheck(); }
 
 }  // namespace xla::gpu

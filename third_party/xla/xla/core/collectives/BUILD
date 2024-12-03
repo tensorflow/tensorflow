@@ -15,6 +15,21 @@ package_group(
 )
 
 cc_library(
+    name = "clique",
+    srcs = ["clique.cc"],
+    hdrs = ["clique.h"],
+    deps = [
+        ":clique_id",
+        ":communicator",
+        ":rank_id",
+        "//xla:util",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
     name = "collectives",
     hdrs = ["collectives.h"],
     deps = [

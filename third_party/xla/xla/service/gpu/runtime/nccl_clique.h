@@ -25,11 +25,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/btree_map.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/core/collectives/clique.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -80,49 +80,26 @@ absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
 // easy to get a deadlock, so we take extra care by grouping communicators into
 // cliques and making sure that we have a well defined order of all collective
 // operations that does not lead to deadlocks.
-class NcclCliqueCommunicators {
+class NcclCliqueCommunicators : public Clique {
  public:
-  class AsyncErrorChecker {
-   public:
-    absl::Status Check();
-
-   private:
-    friend class NcclCliqueCommunicators;
-
-    explicit AsyncErrorChecker(NcclCliqueCommunicators& comms)
-        : communicators_(comms) {}
-
-    NcclCliqueCommunicators& communicators_;
-  };
-
   NcclCliqueCommunicators(
       GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators);
-
-  // Returns a NCCL communicator for a given rank if it's in a clique.
-  std::optional<Communicator*> comm(RankId rank);
 
   // Return true if clique is local: all communicators belong to current
   // process. Non-local cliques spans multiple processes (typically hosts).
   bool IsLocal() const;
 
-  // Calls `fn` for each communicator in the clique.
-  void ForEachComm(absl::FunctionRef<void(RankId, Communicator*)> fn);
-
   const GpuCliqueKey& clique_key() const { return clique_key_; }
   const std::optional<CliqueId>& clique_id() const { return clique_id_; }
-  size_t num_communicators() const { return communicators_.size(); }
 
-  std::string DebugString() const;
+  std::string DebugString() const final;
 
-  AsyncErrorChecker GetChecker() { return AsyncErrorChecker(*this); }
+  absl::Status HealthCheck() const final;
 
  private:
   GpuCliqueKey clique_key_;
   std::optional<CliqueId> clique_id_;
-
-  // TODO(ezhulenev): Switch this map to GlobalDeviceId key.
-  absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators_;
 };
 
 struct NcclCliqueName {
@@ -140,25 +117,17 @@ class NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
                       std::greater<GpuCliqueKey>>;
 
   // Construct the lockable clique.
-  // Note that async errors can be checked without acquiring the lock.
-  // To get the lock-free reference to the communicators for the async
-  // error checks, the constructor intentionally leaks the reference
-  // to the communicators from an acquired lock.
   NcclClique(
       GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
-      : Lockable(std::move(clique_key), clique_id, std::move(communicators)),
-        async_error_checker_(Acquire()->GetChecker()) {}
+      : Lockable(std::move(clique_key), clique_id, std::move(communicators)) {}
 
   std::string DebugString() const;
 
   // Checks for async errors for all the communicators in the clique without
   // taking the lock. If at least one of the communicators has an async error,
   // it returns one of the errors.
-  absl::Status CheckAsyncErrors();
-
- private:
-  NcclCliqueCommunicators::AsyncErrorChecker async_error_checker_;
+  absl::Status HealthCheck() const;
 };
 
 // Acquires an shared access to a NCCL clique (NcclClique::Lock collectively
