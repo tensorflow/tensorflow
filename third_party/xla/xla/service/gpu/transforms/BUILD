@@ -2098,7 +2098,6 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
         "//xla/tsl/util:env_var",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

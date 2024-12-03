@@ -24,7 +24,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -304,21 +303,13 @@ bool DotCanSupportShapeWithLayout(const HloInstruction* dot,
       .ok();
 }
 
-bool IsPackedInstruction(const HloInstruction* instruction) {
-  return primitive_util::IsSubByteNonPredType(
-             instruction->shape().element_type()) ||
-         (instruction->opcode() == HloOpcode::kConvert &&
-          primitive_util::IsSubByteNonPredType(
-              instruction->operand(0)->shape().element_type()));
-}
-
 }  // namespace
 
 absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
     LayoutConstraints* constraints, HloDotInstruction* instruction) {
   struct Side {
     size_t operand_no;
-    const HloInstruction* operand;
+    const Shape* shape;
     absl::Span<const int64_t> batch_dims;
     absl::Span<const int64_t> contracting_dims;
     PrimitiveType type;
@@ -327,13 +318,12 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
   auto make_side =
       [&](size_t operand_no, absl::Span<const int64_t> batch_dims,
           absl::Span<const int64_t> contracting_dims) -> absl::StatusOr<Side> {
-    Side side = {operand_no, instruction->operand(operand_no), batch_dims,
-                 contracting_dims};
-    side.type = side.operand->shape().element_type();
-    TF_ASSIGN_OR_RETURN(
-        side.non_contracting_dims,
-        GetNonContractingDims(side.operand->shape(), side.batch_dims,
-                              side.contracting_dims));
+    Side side = {operand_no, &instruction->operand(operand_no)->shape(),
+                 batch_dims, contracting_dims};
+    side.type = side.shape->element_type();
+    TF_ASSIGN_OR_RETURN(side.non_contracting_dims,
+                        GetNonContractingDims(*side.shape, side.batch_dims,
+                                              side.contracting_dims));
     return side;
   };
   const DotDimensionNumbers& dot_dims = instruction->dot_dimension_numbers();
@@ -372,11 +362,11 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
       is_s8_to_s32 || is_fp8_to_fp8;
 
   for (const Side& side : {lhs, rhs}) {
-    if (IsPackedInstruction(side.operand) ||
-        both_operands_require_minor_contraction_dims) {
-      TF_RETURN_IF_ERROR(SetDotOperandLayoutToMinorContracting(
-          instruction, side.operand_no, side.batch_dims, side.contracting_dims,
-          side.non_contracting_dims));
+    if (both_operands_require_minor_contraction_dims) {
+      TF_RETURN_IF_ERROR(SetOperandMajorToMinorLayout(
+          instruction, side.operand_no,
+          /*dim_groups=*/
+          {side.batch_dims, side.non_contracting_dims, side.contracting_dims}));
     } else if (!side.batch_dims.empty() || side.contracting_dims.size() > 1 ||
                side.non_contracting_dims.size() > 1) {
       TF_RETURN_IF_ERROR(SetDotOperandLayout(
@@ -553,42 +543,6 @@ absl::Status GpuLayoutAssignment::SetDotOperandLayout(
   return SetOperandMajorToMinorLayout(
       instruction, operand,
       /*dim_groups=*/{batch_dims, row_dims, col_dims});
-}
-
-absl::Status GpuLayoutAssignment::SetDotOperandLayoutToMinorContracting(
-    const HloInstruction* instruction, int64_t operand,
-    absl::Span<const int64_t> batch_dims,
-    absl::Span<const int64_t> contracting_dims,
-    absl::Span<const int64_t> noncontracting_dims) {
-  Shape shape = instruction->operand(operand)->shape();
-
-  if (shape.has_layout() &&
-      shape.layout().minor_to_major_size() >= contracting_dims.size()) {
-    // Check that the contracting dimensions are physically minor, i.e. check
-    // that minor physical dimensions all point to contracting logical
-    // dimensions.
-    bool contracting_dims_are_minor = true;
-    const auto& minor_to_major = shape.layout().minor_to_major();
-    for (int64_t i = 0; i < contracting_dims.size(); ++i) {
-      if (!absl::c_linear_search(contracting_dims, minor_to_major[i])) {
-        contracting_dims_are_minor = false;
-        break;
-      }
-    }
-
-    // If contracting dims are already minor, and the layout is valid, keep it.
-    if (contracting_dims_are_minor &&
-        MatrixLayout::For(shape, batch_dims, noncontracting_dims,
-                          contracting_dims)
-            .ok()) {
-      // Re-set the operand layout, so it becomes mandatory.
-      return SetOperandLayout(shape, instruction, operand);
-    }
-  }
-  return SetOperandMajorToMinorLayout(
-      instruction, operand,
-      /*dim_groups=*/
-      {batch_dims, noncontracting_dims, contracting_dims});
 }
 
 absl::Status GpuLayoutAssignment::SetOperandMajorToMinorLayout(

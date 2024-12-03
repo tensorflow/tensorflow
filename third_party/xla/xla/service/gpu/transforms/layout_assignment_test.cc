@@ -699,65 +699,6 @@ TEST_F(LayoutAssignmentTest, AutoLayoutE4M3ContractingMinorFirst) {
               .WithShape(F32, {128, 10240}, {1, 0})));
 }
 
-TEST_F(LayoutAssignmentTest, AutoLayoutS4DotContractingMinorLhs) {
-  const char* hlo = R"(
-  HloModule AutoLayoutS4DotContractingMinorLhs
-
-  ENTRY main {
-    p0 = s4[5120,128] parameter(0)
-    p0.c = bf16[5120,128] convert(p0)
-    p1 = bf16[5120,10240] parameter(1)
-    ROOT dot = bf16[128,10240] dot(p0.c, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
-  })";
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> m,
-      ParseAndReturnUnverifiedModule(
-          hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
-  ComputationLayout computation_layout(
-      m->entry_computation()->ComputeProgramShape(),
-      /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
-  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
-  EXPECT_THAT(m->entry_computation()->parameter_instruction(0),
-              GmockMatch(m::Parameter(0).WithShape(S4, {5120, 128}, {0, 1})));
-  EXPECT_THAT(
-      m->entry_computation()->parameter_instruction(1),
-      GmockMatch(m::Parameter(1).WithShape(BF16, {5120, 10240}, {1, 0})));
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Dot().WithShape(BF16, {128, 10240}, {1, 0})));
-}
-
-TEST_F(LayoutAssignmentTest, AutoLayoutS4DotContractingMinorRhs) {
-  const char* hlo = R"(
-  HloModule AutoLayoutS4DotContractingMinorRhs
-
-  ENTRY main {
-    p0 = bf16[5120,128] parameter(0)
-    p1 = s4[5120,10240] parameter(1)
-    p1.c = bf16[5120,10240] convert(p1)
-    ROOT dot = bf16[128,10240] dot(p0, p1.c), lhs_contracting_dims={0}, rhs_contracting_dims={0}
-  })";
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> m,
-      ParseAndReturnUnverifiedModule(
-          hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
-  ComputationLayout computation_layout(
-      m->entry_computation()->ComputeProgramShape(),
-      /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
-  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
-  EXPECT_THAT(m->entry_computation()->parameter_instruction(0),
-              GmockMatch(m::Parameter(0).WithShape(BF16, {5120, 128}, {1, 0})));
-  EXPECT_THAT(m->entry_computation()->parameter_instruction(1),
-              GmockMatch(m::Parameter(1).WithShape(S4, {5120, 10240}, {0, 1})));
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Dot().WithShape(BF16, {128, 10240}, {1, 0})));
-}
-
 TEST_F(LayoutAssignmentTest, VariadicReduceSameOperandLayout) {
   const char* module_str = R"(
 HloModule variadic_reduce
