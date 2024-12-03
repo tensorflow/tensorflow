@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 
 #include <cstdint>
+#include <optional>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/pjrt/layout_mode.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
@@ -201,8 +204,16 @@ llvm::ArrayRef<int> IfrtArrayType::getDevices() const {
 mlir::LogicalResult IfrtArrayType::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
     mlir::RankedTensorType shape, IfrtShardingAttrInterface sharding_attr,
-    IfrtDevicesAttr devices, mlir::StringAttr memory_kind) {
-  return sharding_attr.CanApplyTo(emitError, shape, devices.getIds());
+    IfrtDevicesAttr devices_attr, mlir::StringAttr memory_kind_attr,
+    mlir::StringAttr layout_attr) {
+  if (layout_attr) {
+    auto layout_mode = xla::LayoutMode::FromString(layout_attr.str());
+    if (!layout_mode.ok()) {
+      return emitError() << "Invalid layout mode: "
+                         << layout_mode.status().message();
+    }
+  }
+  return sharding_attr.CanApplyTo(emitError, shape, devices_attr.getIds());
 }
 
 xla::ifrt::MemoryKind IfrtArrayType::MemoryKind() const {
@@ -210,6 +221,134 @@ xla::ifrt::MemoryKind IfrtArrayType::MemoryKind() const {
              ? xla::ifrt::MemoryKind()
              : xla::ifrt::MemoryKind(getMemoryKindAttr().str());
 };
+
+std::optional<xla::LayoutMode> IfrtArrayType::LayoutMode() const {
+  if (auto layout_attr = getLayoutAttr()) {
+    auto layout_mode = xla::LayoutMode::FromString(layout_attr.str());
+    CHECK_OK(layout_mode) << "Invalid layout mode: " << layout_attr.str();
+    return *layout_mode;
+  }
+  return std::nullopt;
+}
+
+void IfrtArrayType::print(mlir::AsmPrinter& odsPrinter) const {
+  mlir::Builder odsBuilder(getContext());
+  odsPrinter << "<";
+  odsPrinter.printStrippedAttrOrType(getShape());
+  odsPrinter << ", ";
+  odsPrinter.printStrippedAttrOrType(getShardingAttr());
+  odsPrinter << ", ";
+  odsPrinter.printStrippedAttrOrType(getDevicesAttr());
+  if (getMemoryKindAttr()) {
+    odsPrinter << ", memory_kind = ";
+    odsPrinter.printStrippedAttrOrType(getMemoryKindAttr());
+  }
+  if (getLayoutAttr()) {
+    odsPrinter << ", layout = ";
+    odsPrinter.printStrippedAttrOrType(getLayoutAttr());
+  }
+  odsPrinter << ">";
+}
+
+mlir::FailureOr<mlir::StringAttr> parseMemoryKindAttr(
+    mlir::AsmParser& odsParser) {
+  if (mlir::failed(odsParser.parseOptionalKeyword("memory_kind")))
+    return mlir::failure();
+  if (mlir::failed(odsParser.parseEqual())) return mlir::failure();
+  auto memory_kind_attr_or =
+      mlir::FieldParser<mlir::StringAttr>::parse(odsParser);
+  if (mlir::failed(memory_kind_attr_or)) {
+    odsParser.emitError(
+        odsParser.getCurrentLocation(),
+        "failed to parse Ifrt_ArrayType parameter 'memory_kind_attr' which "
+        "is to be a `mlir::StringAttr`");
+    return mlir::failure();
+  }
+  return memory_kind_attr_or;
+}
+
+mlir::FailureOr<mlir::StringAttr> parseLayoutAttr(mlir::AsmParser& odsParser) {
+  if (mlir::failed(odsParser.parseOptionalKeyword("layout")))
+    return mlir::failure();
+  if (mlir::failed(odsParser.parseEqual())) return mlir::failure();
+  auto layout_attr_or = mlir::FieldParser<mlir::StringAttr>::parse(odsParser);
+  if (mlir::failed(layout_attr_or)) {
+    odsParser.emitError(
+        odsParser.getCurrentLocation(),
+        "failed to parse Ifrt_ArrayType parameter 'layout_attr' which is to be "
+        "a `mlir::StringAttr`");
+    return mlir::failure();
+  }
+  return layout_attr_or;
+}
+
+mlir::Type IfrtArrayType::parse(mlir::AsmParser& odsParser) {
+  mlir::Builder odsBuilder(odsParser.getContext());
+
+  if (mlir::failed(odsParser.parseLess())) return {};
+
+  auto shape_or = mlir::FieldParser<mlir::RankedTensorType>::parse(odsParser);
+  if (mlir::failed(shape_or)) {
+    odsParser.emitError(odsParser.getCurrentLocation(),
+                        "failed to parse Ifrt_ArrayType parameter 'shape' "
+                        "which is to be a `mlir::RankedTensorType`");
+    return {};
+  }
+
+  if (mlir::failed(odsParser.parseComma())) return {};
+
+  auto sharding_attr_or =
+      mlir::FieldParser<IfrtShardingAttrInterface>::parse(odsParser);
+  if (mlir::failed(sharding_attr_or)) {
+    odsParser.emitError(
+        odsParser.getCurrentLocation(),
+        "failed to parse Ifrt_ArrayType parameter 'sharding_attr' which is to "
+        "be a `IfrtShardingAttrInterface`");
+    return {};
+  }
+
+  if (mlir::failed(odsParser.parseComma())) return {};
+
+  auto devices_attr_or = mlir::FieldParser<IfrtDevicesAttr>::parse(odsParser);
+  if (mlir::failed(devices_attr_or)) {
+    odsParser.emitError(
+        odsParser.getCurrentLocation(),
+        "failed to parse Ifrt_ArrayType parameter 'devices_attr' which is to "
+        "be a `IfrtDevicesAttr`");
+    return {};
+  }
+
+  mlir::FailureOr<mlir::StringAttr> memory_kind_attr_or;
+  mlir::FailureOr<mlir::StringAttr> layout_attr_or;
+  if (mlir::succeeded(odsParser.parseOptionalComma())) {
+    memory_kind_attr_or = parseMemoryKindAttr(odsParser);
+    if (mlir::failed(memory_kind_attr_or)) {
+      layout_attr_or = parseLayoutAttr(odsParser);
+      if (mlir::failed(layout_attr_or)) {
+        odsParser.emitError(
+            odsParser.getCurrentLocation(),
+            "failed to parse Ifrt_ArrayType optional attributes");
+        return {};
+      }
+    }
+    if (mlir::succeeded(odsParser.parseOptionalComma())) {
+      layout_attr_or = parseLayoutAttr(odsParser);
+      if (mlir::failed(layout_attr_or)) {
+        odsParser.emitError(
+            odsParser.getCurrentLocation(),
+            "failed to parse Ifrt_ArrayType `layout` attributes");
+        return {};
+      }
+    }
+  }
+
+  if (mlir::failed(odsParser.parseGreater())) return {};
+
+  return odsParser.getChecked<IfrtArrayType>(
+      odsParser.getCurrentLocation(), odsParser.getContext(), *shape_or,
+      *sharding_attr_or, *devices_attr_or,
+      memory_kind_attr_or.value_or(nullptr), layout_attr_or.value_or(nullptr));
+}
 
 //===----------------------------------------------------------------------===//
 // IfrtDevicesAttr
