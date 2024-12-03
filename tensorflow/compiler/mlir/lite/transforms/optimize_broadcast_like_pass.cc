@@ -24,11 +24,14 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -83,7 +86,26 @@ bool IsRankSupported(Operation* op) {
   return llvm::cast<ShapedType>(op->getResultTypes()[0]).getRank() <= 4;
 }
 
-Value GetBroadcastLikeOpInput(Operation* op) {
+// Returns true if this value is a splat constant op which can be scalarized.
+bool IsScalarizableSplatConstant(Operation* op) {
+  if (!llvm::isa<arith::ConstantOp, TFL::ConstOp>(op)) {
+    return false;
+  }
+  auto const_value = op->getResult(0);
+  DenseElementsAttr elements_attr;
+  if (!matchPattern(const_value, mlir::m_Constant(&elements_attr))) {
+    return false;
+  }
+
+  auto type = mlir::dyn_cast<ShapedType>(const_value.getType());
+  return type && type.hasStaticShape() && (type.getNumElements() > 1) &&
+         elements_attr.isSplat();
+}
+
+// Returns the input of the broadcast-like op. This is the Value that is
+// being broadcasted by the broadcast-like op. This function returns nullptr if
+// the op is not a broadcast-like op.
+Value PrepareBroadcastLikeOpInput(Operation* op, PatternRewriter& rewriter) {
   if (!op) return nullptr;
   if (auto broadcast_to_op = llvm::dyn_cast<TFL::BroadcastToOp>(op)) {
     return broadcast_to_op.getInput();
@@ -91,7 +113,56 @@ Value GetBroadcastLikeOpInput(Operation* op) {
   if (auto fill_op = llvm::dyn_cast<TFL::FillOp>(op)) {
     return fill_op.getInput();
   }
+  if (IsScalarizableSplatConstant(op)) {
+    DenseElementsAttr elements_attr;
+    if (!matchPattern(op->getResult(0), mlir::m_Constant(&elements_attr))) {
+      return nullptr;
+    }
+    auto scalar_elements_attr = DenseElementsAttr::get(
+        RankedTensorType::get({}, elements_attr.getType().getElementType()),
+        elements_attr.getSplatValue<mlir::Attribute>());
+
+    return rewriter.create<arith::ConstantOp>(
+        op->getLoc(), scalar_elements_attr.getType(), scalar_elements_attr);
+  }
   return nullptr;
+}
+
+// Returns true if we can fuse an affine op with consuming binary op.
+bool CanFuseAffineOp(Operation* affine_op, Operation* binary_op) {
+  if (!isa_and_nonnull<TFL::Conv2DOp, TFL::DepthwiseConv2DOp,
+                       TFL::FullyConnectedOp>(affine_op)) {
+    return false;
+  }
+
+  DenseElementsAttr value;
+  // Check that bias are constants if not none.
+  Value bias = affine_op->getOperand(2);
+  if (!mlir::isa<NoneType>(bias.getType()) &&
+      !matchPattern(bias, m_Constant(&value))) {
+    return false;
+  }
+  // If the binary op is mul/div, also check that filter is constant.
+  if (isa<TFL::MulOp, TFL::DivOp>(binary_op) &&
+      !matchPattern(affine_op->getOperand(1), m_Constant(&value))) {
+    return false;
+  }
+
+  // We can only fuse F32/BF16.
+  auto is_fusable_type = [](Type t) {
+    Type element_type = t;
+    if (auto shaped_type = mlir::dyn_cast<ShapedType>(t)) {
+      element_type = shaped_type.getElementType();
+    }
+    return element_type.isBF16() || element_type.isF32();
+  };
+  for (Type t : binary_op->getOperandTypes()) {
+    if (!is_fusable_type(t)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 LogicalResult ConvertResultsBroadcastableShapeOp::matchAndRewrite(
@@ -132,10 +203,17 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
   for (size_t i = 0, e = op->getNumOperands(); i < e; ++i) {
     auto broadcast_like_op = op->getOpOperand(i).get().getDefiningOp();
 
+    // TODO(b/381683763) - Add support for fusing broadcast-like opps with
+    // PReluOp.
+    if (llvm::isa<TFL::PReluOp>(op)) {
+      continue;
+    }
+
     // Get the input of the broadcast-like op. This is the Value that is
-    // being broadcasted by the broadcast-like op. This function returns nullptr
-    // if the op is not a broadcast-like op.
-    auto broadcast_like_op_input = GetBroadcastLikeOpInput(broadcast_like_op);
+    // being broadcasted by the broadcast-like op. This function returns
+    // nullptr if the op is not a broadcast-like op.
+    auto broadcast_like_op_input =
+        PrepareBroadcastLikeOpInput(broadcast_like_op, rewriter);
     if (!broadcast_like_op || !broadcast_like_op_input) {
       continue;
     }
@@ -145,9 +223,18 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
         llvm::cast<ShapedType>(broadcast_like_op_input.getType());
     if (!broadcast_arg_type || !broadcast_arg_type.hasStaticShape()) continue;
 
+    auto other_arg = op->getOpOperand(1 - i).get();
+    // If non-splat operand is not fusable affine ops, then no need to apply
+    // this transformation. Check valid for only binary ops, to prevent future
+    // fusion with other ops from breaking.
+    if (llvm::isa<TFL::AddOp, TFL::SubOp, TFL::MulOp, TFL::DivOp>(op) &&
+        IsScalarizableSplatConstant(broadcast_like_op) &&
+        !CanFuseAffineOp(other_arg.getDefiningOp(), op)) {
+      continue;
+    }
+
     // Check that the other argument has fully defined shape.
-    auto other_arg_type =
-        llvm::cast<ShapedType>(op->getOpOperand(1 - i).get().getType());
+    auto other_arg_type = llvm::cast<ShapedType>(other_arg.getType());
     if (!other_arg_type || !other_arg_type.hasStaticShape()) continue;
 
     // Get the unbroadcasted shapes in the operand order.
