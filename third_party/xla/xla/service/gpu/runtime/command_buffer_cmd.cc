@@ -50,6 +50,8 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/custom_call_status.h"
+#include "xla/service/custom_call_status_internal.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
@@ -64,7 +66,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_collective_broadcast_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/service/gpu/runtime/while_thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -86,13 +87,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/custom_call_status.h"
-#include "xla/service/custom_call_status_internal.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
-#endif
 
 namespace xla::gpu {
 
@@ -1445,11 +1439,9 @@ absl::Status CustomCallCmd::RecordLegacyCustomCall(
       se::TraceCommandBufferFactory::Create(
           execute_params.stream->parent(),
           execute_params.command_buffer_trace_stream, [&](se::Stream* stream) {
-            se::gpu::GpuStreamHandle gpu_stream =
-                se::gpu::AsGpuStreamValue(stream);
             XlaCustomCallStatus custom_call_status;
-            call_target_(gpu_stream, buffers.data(), opaque_.data(),
-                         opaque_.size(), &custom_call_status);
+            call_target_(stream, buffers.data(), opaque_.data(), opaque_.size(),
+                         &custom_call_status);
             auto message = CustomCallStatusGetMessage(&custom_call_status);
             if (message) {
               return absl::InternalError(

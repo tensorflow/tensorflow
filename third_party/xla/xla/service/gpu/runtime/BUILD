@@ -622,9 +622,6 @@ cc_library(
     name = "custom_call_thunk",
     srcs = ["custom_call_thunk.cc"],
     hdrs = ["custom_call_thunk.h"],
-    local_defines = if_cuda_is_configured([
-        "GOOGLE_CUDA=1",
-    ]),
     deps = [
         ":thunk",
         "//xla:executable_run_options",
@@ -643,14 +640,36 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:stream",
-        "//xla/stream_executor/gpu:gpu_stream_header",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+xla_test(
+    name = "custom_call_thunk_test",
+    srcs = ["custom_call_thunk_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":custom_call_thunk",
+        ":thunk",
+        "//xla:executable_run_options",
+        "//xla/service:custom_call_status_public_headers",
+        "//xla/service:executable",
+        "//xla/service:platform_util",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_memory_allocator",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -1305,5 +1324,13 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+cc_library(
+    name = "custom_call_target",
+    hdrs = ["custom_call_target.h"],
+    deps = [
+        "//xla/service:custom_call_status",
     ],
 )

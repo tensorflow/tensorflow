@@ -37,8 +37,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/buffer_assignment.h"
@@ -886,18 +884,11 @@ class CuDnnCmd : public TracedCommandBufferCmd {
 class CustomCallCmd : public CommandBufferCmd {
  public:
   using Slice = CustomCallThunk::Slice;
-  using Stream = CustomCallThunk::Stream;
   using CustomCallTarget = CustomCallThunk::CustomCallTarget;
   using AttributesMap = CustomCallThunk::AttributesMap;
 
   // This is a legacy custom call API that is discouraged, and will be
   // deprecated once XLA:FFI mechanism is ready.
-  //
-  // TODO(b/323534971): We have an ODR violation somewhere in Tensorflow/XLA and
-  // include this header with different set of defines and CustomCallTarget
-  // has different meaning in different translation units. We need to get rid of
-  // GOOGLE_CUDA defines all over XLA to fix this! As a workaround just keep
-  // constructor in a header file.
   CustomCallCmd(ExecutionStreamId execution_stream_id, std::string target_name,
                 CustomCallTarget call_target,
                 std::vector<std::optional<Slice>> operands,
