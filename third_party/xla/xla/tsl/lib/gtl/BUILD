@@ -31,6 +31,7 @@ package(
         "//tensorflow/core/lib/gtl:__subpackages__",
         "//xla/tsl/distributed_runtime/rpc:__pkg__",
         "//xla/tsl/profiler/utils:__pkg__",
+        "//tensorflow/core/profiler/convert:__pkg__",
     ]),
     licenses = ["notice"],
 )

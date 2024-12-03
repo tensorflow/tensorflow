@@ -1156,3 +1156,59 @@ cc_library(
         "@local_xla//xla/tsl/profiler/utils:xplane_visitor",
     ],
 )
+
+cc_library(
+    name = "inference_stats_sampler",
+    srcs = ["inference_stats_sampler.cc"],
+    hdrs = ["inference_stats_sampler.h"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
+        "//tensorflow/core/profiler/utils:math_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "inference_stats_grouping",
+    srcs = ["inference_stats_grouping.cc"],
+    hdrs = ["inference_stats_grouping.h"],
+    deps = [
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@local_xla//xla/tsl/lib/gtl:map_util",
+        "@local_xla//xla/tsl/profiler/utils:timespan",
+    ],
+)
+
+tf_cc_test(
+    name = "inference_stats_grouping_test",
+    srcs = ["inference_stats_grouping_test.cc"],
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        ":inference_stats_grouping",
+        "//tensorflow/core:test",
+        "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
+        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/tests:test_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "inference_stats_sampler_test",
+    srcs = ["inference_stats_sampler_test.cc"],
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        ":inference_stats_sampler",
+        "//tensorflow/core:test",
+        "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/tests:test_utils",
+    ],
+)

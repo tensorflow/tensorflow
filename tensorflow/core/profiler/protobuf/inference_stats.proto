@@ -1,19 +1,14 @@
 // This proto is used for inference-specific analysis.
-edition = "2023";
+syntax = "proto2";
 
 package tensorflow.profiler;
 
-option features.repeated_field_encoding = EXPANDED;
-option features.utf8_validation = NONE;
-
 message TensorEventDetail {
   // The index of the tensor pattern in TensorPatternDatabase.
-  int32 tensor_pattern_index = 1;
+  optional int32 tensor_pattern_index = 1;
 
   // The owner of this TensorEventDetail.
   enum TensorEventOwner {
-    option features.enum_type = CLOSED;
-
     // Unknown. This should not happen in production code.
     UNKNOWN = 0;
 
@@ -32,62 +27,62 @@ message TensorEventDetail {
   // various statistics.
   // If batching is not enabled, the TensorEventDetail will only appear in
   // RequestDetail and the owner will only be REQUEST.
-  TensorEventOwner owner = 2;
+  optional TensorEventOwner owner = 2;
 
   // Total time in picosecs spent on linearize and delinearize tensors.
-  uint64 linearize_delinearize_time_ps = 3;
+  optional uint64 linearize_delinearize_time_ps = 3;
 }
 
 // Detail of a user facing request.
 // Next ID: 22
 message RequestDetail {
   // Request id.
-  int64 request_id = 10 [default = -1];
+  optional int64 request_id = 10 [default = -1];
 
   // An index to the model_id inside InferenceStats below. Storing index
   // instead of string to save space. It will be -1 if the model id is not
   // given.
-  int32 model_id_index = 8 [default = -1];
+  optional int32 model_id_index = 8 [default = -1];
 
   // Start-time of the request in picosecs.
-  uint64 start_time_ps = 1 [default = 0];
+  optional uint64 start_time_ps = 1 [default = 0];
 
   // End-time of the request in picosecs.
-  uint64 end_time_ps = 2 [default = 0];
+  optional uint64 end_time_ps = 2 [default = 0];
 
   // Total time in picosecs in this request spent on device.
-  uint64 device_time_ps = 7 [default = 0];
+  optional uint64 device_time_ps = 7 [default = 0];
 
   // Total time in picosecs in this request spent on writes to device.
-  uint64 write_to_device_time_ps = 5 [default = 0];
+  optional uint64 write_to_device_time_ps = 5 [default = 0];
 
   // Total time in picosecs in this request spent on reads from device.
-  uint64 read_from_device_time_ps = 6 [default = 0];
+  optional uint64 read_from_device_time_ps = 6 [default = 0];
 
   // If this inference request is running in batching mode, record the latency
   // between a request is scheduled and is processed in a batch. Otherwise, it
   // will always be 0.
-  uint64 batching_request_delay_ps = 12 [default = 0];
+  optional uint64 batching_request_delay_ps = 12 [default = 0];
 
   // Batch ids related to this request.
   repeated int64 related_batch_ids = 11;
 
   // If this inference request is running in batching mode, record the size of
   // the request. Otherwise, it will always be 0.
-  int32 batching_request_size = 13;
+  optional int32 batching_request_size = 13;
 
   // Detailed breakdown for host side activities of a request.
   // Total time in picosecs spent on host preprocessing.
-  uint64 host_preprocessing_ps = 14;
+  optional uint64 host_preprocessing_ps = 14;
 
   // Total time in picosecs spent on host batch formation.
-  uint64 host_batch_formation_ps = 15;
+  optional uint64 host_batch_formation_ps = 15;
 
   // Total time in picosecs spent on host runtime.
-  uint64 host_runtime_ps = 16;
+  optional uint64 host_runtime_ps = 16;
 
   // Total time in picosecs spent on host postprocessing.
-  uint64 host_postprocessing_ps = 17;
+  optional uint64 host_postprocessing_ps = 17;
 
   // Tensor event details.
   // One request can have multiple TensorEventDetails because it might be
@@ -95,14 +90,14 @@ message RequestDetail {
   repeated TensorEventDetail tensor_event_details = 18;
 
   // Host index for this request.
-  int32 host_id = 19;
+  optional int32 host_id = 19;
 
   // Percentile of this request in all requests in the profile duration.
-  double percentile = 20;
+  optional double percentile = 20;
 
   // The time no event associated with. It could be that the machine was idle or
   // executing some events which were not traced.
-  double idle_time_ps = 21;
+  optional double idle_time_ps = 21;
 
   // Were device_start_time_ps, device_end_time_ps, session_id
   reserved 3, 4, 9;
@@ -112,40 +107,40 @@ message RequestDetail {
 // Next ID: 12
 message BatchDetail {
   // Batch id.
-  int64 batch_id = 1 [default = -1];
+  optional int64 batch_id = 1 [default = -1];
 
   // Start time of the batch in picosecs.
-  uint64 start_time_ps = 2 [default = 0];
+  optional uint64 start_time_ps = 2 [default = 0];
 
   // End time of the batch in picosecs.
-  uint64 end_time_ps = 3 [default = 0];
+  optional uint64 end_time_ps = 3 [default = 0];
 
   // The latency between "start time of the first request in this batch", and
   // the time this batch is processed.
-  uint64 batch_delay_ps = 5 [default = 0];
+  optional uint64 batch_delay_ps = 5 [default = 0];
 
   // Request ids related to this batch.
   repeated int64 related_request_ids = 4;
 
   // Size of padding.
-  int32 padding_amount = 6;
+  optional int32 padding_amount = 6;
 
   // Size of a batch after padding.
-  int32 batch_size_after_padding = 7;
+  optional int32 batch_size_after_padding = 7;
 
   // Model ID of this batch. This is the same model_id as any of the request in
   // this batch. All the requests from the same batch must share the same
   // model_id.
-  int32 model_id_index = 8;
+  optional int32 model_id_index = 8;
 
   // Tensor event details.
-  TensorEventDetail tensor_event_detail = 9;
+  optional TensorEventDetail tensor_event_detail = 9;
 
   // Host index for this batch.
-  int32 host_id = 10;
+  optional int32 host_id = 10;
 
   // Percentile of this batch in all batches in the profile duration.
-  double percentile = 11;
+  optional double percentile = 11;
 }
 
 // Per-host data for inference analysis.
@@ -168,14 +163,14 @@ message PerHostInferenceStats {
 message TensorTransferAggregatedResult {
   message TensorPatternResult {
     // The index of the tensor pattern in TensorPatternDatabase.
-    int32 tensor_pattern_index = 1;
+    optional int32 tensor_pattern_index = 1;
 
     // The number of occurrence of this tensor pattern in this model.
-    uint64 count = 2;
+    optional uint64 count = 2;
 
     message PercentileTime {
-      double percentile = 1;
-      uint64 time_ps = 2;
+      optional double percentile = 1;
+      optional uint64 time_ps = 2;
     }
 
     // The percentiles of the linearize and delinearize time of this tensor
@@ -188,11 +183,11 @@ message TensorTransferAggregatedResult {
 
 // Aggregated result per batch size.
 message PerBatchSizeAggregatedResult {
-  int32 batch_size = 1;
-  RequestDetail aggregated_request_result = 2;
-  BatchDetail aggregated_batch_result = 3;
-  double request_throughput = 4;
-  double batch_throughput = 5;
+  optional int32 batch_size = 1;
+  optional RequestDetail aggregated_request_result = 2;
+  optional BatchDetail aggregated_batch_result = 3;
+  optional double request_throughput = 4;
+  optional double batch_throughput = 5;
 }
 
 // Per-model data for inference analysis.
@@ -202,29 +197,29 @@ message PerModelInferenceStats {
   repeated RequestDetail request_details = 1;
 
   // Aggregated result from all the <request_details>.
-  RequestDetail aggregated_request_detail = 8;
+  optional RequestDetail aggregated_request_detail = 8;
 
   // Inference requests per second for this model.
-  double request_throughput = 2;
+  optional double request_throughput = 2;
 
   // Average latency in microseconds of the requests in this model.
-  double request_average_latency_us = 3;
+  optional double request_average_latency_us = 3;
 
   // A list of batches selected for inference analysis on this model.
   // This list is in ascending order of the batch duration.
   repeated BatchDetail batch_details = 4;
 
   // Aggregated result from all the <batch_details>.
-  BatchDetail aggregated_batch_detail = 9;
+  optional BatchDetail aggregated_batch_detail = 9;
 
   // Batches per second for this model.
-  double batch_throughput = 5;
+  optional double batch_throughput = 5;
 
   // Average latency in microseconds of the batches in this model.
-  double batch_average_latency_us = 6;
+  optional double batch_average_latency_us = 6;
 
   // The aggregated result of tensor transfer in this model.
-  TensorTransferAggregatedResult tensor_transfer_aggregated_result = 7;
+  optional TensorTransferAggregatedResult tensor_transfer_aggregated_result = 7;
 
   // Aggregated result per batch size.
   repeated PerBatchSizeAggregatedResult per_batch_size_aggregated_result = 10;
@@ -233,19 +228,19 @@ message PerModelInferenceStats {
 // Batching parameters collected from TFstreamz.
 message BatchingParameters {
   // Number of batch threads.
-  int64 num_batch_threads = 1;
+  optional int64 num_batch_threads = 1;
 
   // How long a request can wait before being processed by a batch.
-  int64 batch_timeout_micros = 2;
+  optional int64 batch_timeout_micros = 2;
 
   // Maximum size of a batch.
-  int64 max_batch_size = 3;
+  optional int64 max_batch_size = 3;
 
   // Maximum number of enqueued batches.
-  int64 max_enqueued_batches = 4;
+  optional int64 max_enqueued_batches = 4;
 
   // Sizes that are allowed to form a batch. A list of integers separated by ","
-  string allowed_batch_sizes = 5;
+  optional string allowed_batch_sizes = 5;
 }
 
 // Model ID database. Unknown model id will be "" and won't be stored here. So
@@ -281,10 +276,10 @@ message InferenceStats {
       5;
 
   // A database of model ids.
-  ModelIdDatabase model_id_db = 4;
+  optional ModelIdDatabase model_id_db = 4;
 
   // A database of tensor patterns.
-  TensorPatternDatabase tensor_pattern_db = 6;
+  optional TensorPatternDatabase tensor_pattern_db = 6;
 
   reserved 1, 2;  // were processing_stats, session_run_times
 }
