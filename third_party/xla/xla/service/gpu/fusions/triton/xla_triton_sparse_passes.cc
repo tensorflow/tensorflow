@@ -540,25 +540,111 @@ struct SparseLocalLoadToLLVMPass
   }
 };
 
-using ValueTableV2 = std::map<std::pair<unsigned, unsigned>, Value>;
+using ValueTableV2 = std::map<std::array<int, 3>, Value>;
 
 constexpr int kContractingFactor = 2;  // implied by N:M (2:4)
 constexpr int kCore = 2;               // number of core matrices per batch
 constexpr int kCoreTile = kCore * kContractingFactor;
 
 // ----- Ampere implementation.
-
-ValueTableV2 getValuesFromDotOperandLayoutStruct(SmallVector<Value> elems,
-                                                 int n0, int n1) {
-  int offset = 0;
+// This replicates the logic in the MMAV2 implementation.
+ValueTableV2 getValuesFromDotOperandLayoutStruct(
+    const LLVMTypeConverter *typeConverter, Location loc,
+    ConversionPatternRewriter &rewriter, Value value, int batch, int repOuter,
+    int repK, RankedTensorType type) {
+  auto elems = unpackLLElements(loc, value, rewriter);
+  auto eltTy = typeConverter->convertType(type.getElementType());
+  int offset{};
   ValueTableV2 vals;
-  for (int i = 0; i < n0; ++i) {
-    for (int j = 0; j < n1; ++j) {
-      vals[{kCore * i, kCore * j}] = elems[offset++];
-      vals[{kCore * i + 1, kCore * j}] = elems[offset++];
-      vals[{kCore * i, kCore * j + 1}] = elems[offset++];
-      vals[{kCore * i + 1, kCore * j + 1}] = elems[offset++];
+  auto bitwidth = eltTy.getIntOrFloatBitWidth();
+  auto numElemsPerVec = 32 / bitwidth;
+  auto vecTy = vec_ty(eltTy, numElemsPerVec);
+
+  auto packVec = [&](std::array<int, 3> dstIdx) {
+    Value vec = undef(vecTy);
+    for (auto i = 0; i < numElemsPerVec; ++i) {
+      vec = insert_element(vec, bitcast(elems[offset + i], eltTy), i32_val(i));
     }
+    vals[dstIdx] = bitcast(vec, i32_ty);
+    offset += numElemsPerVec;
+  };
+
+  auto dot = cast<DotOperandEncodingAttr>(type.getEncoding());
+  auto kWidth = dot.getKWidth();
+  auto largeK = bitwidth * kWidth > 32;
+  if (largeK) {
+    // For layouts with a large K dimension, the original register layout needs
+    // to be divided into multiple MMAs, where each MMA has contiguous 32 bits
+    // along the K dimension per thread.
+    // Using kWidth = 8 and bitwidth = 2 as an example,
+    // we split the MMA into 4 sub-MMAs, each with a stride 4 x 32-bit along the
+    // K dimension.
+    llvm::SmallVector<unsigned> si;
+
+    if (dot.getOpIdx() == 0) {
+      // Original register layout:
+      //
+      //   [0, 1, 2, 3, 4, 5, 6, 7], [16, 17, 18, 19, 20, 21, 22, 23, 23]
+      //   [8, 9, 10, 11, 12, 13, 14, 15], [24, 25, 26, 27, 28, 29, 30, 31]
+      //
+      // Each element in the layout is a single bf16.
+      //
+      // To derive four independent MMA operations, a stride of 4 is applied to
+      // the original register layout:
+      //
+      //  1st MMA: [[0, 1], [8, 9], [16, 17], [24, 25]]
+      //  2nd MMA: [[2, 3], [10, 11], [18, 19], [26, 27]]
+      //  3rd MMA: [[4, 5], [12, 13], [20, 21], [28, 29]]
+      //  4th MMA: [[6, 7], [14, 15], [22, 23], [30, 31]]
+      for (size_t kRep = 0; kRep < kWidth / numElemsPerVec; ++kRep)
+        for (size_t tile = 0; tile < 4; ++tile)
+          for (size_t e = 0; e < numElemsPerVec; ++e) {
+            si.push_back(kRep * numElemsPerVec + tile * kWidth + e);
+          }
+    } else {
+      // Original register layout:
+      //
+      //   [0, 1, 2, 3, 4, 5, 6, 7]^T, [8, 9, 10, 11, 12, 13, 14, 15]^T
+      //
+      // A stride of 4 is applied to derive four independent MMA operations:
+      //
+      //  1st MMA: [[0, 1], [8, 9]]
+      //  2nd MMA: [[2, 3], [10, 11]]
+      //  3rd MMA: [[4, 5], [12, 13]]
+      //  4th MMA: [[6, 7], [14, 15]]
+      for (size_t kRep = 0; kRep < kWidth / numElemsPerVec; ++kRep)
+        for (size_t tile = 0; tile < 2; ++tile)
+          for (size_t e = 0; e < numElemsPerVec; ++e) {
+            si.push_back(kRep * numElemsPerVec + tile * kWidth + e);
+          }
+    }
+
+    auto step = si.size();
+    SmallVector<Value> perm(step);
+    for (auto i = 0; i < elems.size() / step; ++i) {
+      for (auto j = 0; j < step; ++j) {
+        perm[j] = elems[i * step + si[j]];
+      }
+      std::copy(perm.begin(), perm.end(), elems.begin() + i * step);
+    }
+  }
+
+  if (dot.getOpIdx() == 0) {
+    for (auto b = 0; b < batch; ++b)
+      for (auto m = 0; m < repOuter; ++m)
+        for (auto k = 0; k < repK; ++k) {
+          packVec({b, 2 * m, 2 * k});
+          packVec({b, 2 * m + 1, 2 * k});
+          packVec({b, 2 * m, 2 * k + 1});
+          packVec({b, 2 * m + 1, 2 * k + 1});
+        }
+  } else {
+    for (auto b = 0; b < batch; ++b)
+      for (auto n = 0; n < repOuter; ++n)
+        for (auto k = 0; k < repK; ++k) {
+          packVec({b, n, 2 * k});
+          packVec({b, n, 2 * k + 1});
+        }
   }
   return vals;
 }
@@ -585,25 +671,23 @@ LogicalResult convertSparseMMA(SparseDotOp op, SparseDotOp::Adaptor adaptor,
 
   int bitwidth = aTensorTy.getElementType().getIntOrFloatBitWidth();
   auto mmaEnc = cast<NvidiaMmaEncodingAttr>(layoutA.getParent());
-  auto repA = mmaEnc.getMMAv2OrV3RepForOperand(
-      triton::gpu::getShapePerCTA(aTensorTy), bitwidth, layoutA.getKWidth(),
-      layoutA.getOpIdx());
-  auto repB = mmaEnc.getMMAv2OrV3RepForOperand(
-      triton::gpu::getShapePerCTA(bTensorTy), bitwidth, layoutB.getKWidth(),
-      layoutB.getOpIdx());
+  auto repA = mmaEnc.getRepForOperand(triton::gpu::getShapePerCTA(aTensorTy),
+                                      bitwidth, layoutA.getOpIdx());
+  auto repB = mmaEnc.getRepForOperand(triton::gpu::getShapePerCTA(bTensorTy),
+                                      bitwidth, layoutB.getOpIdx());
 
   assert(repA[0] == 1 && repB[0] == 1);  // batch size
   assert(repB[1] == repA[2] * kContractingFactor);
   int repM = repA[1], repN = repB[2], repK = repB[1];
-
+  int repBatch = repA[0];
   // Arrange loaded values into positions.
   Location loc = op.getLoc();
   auto ha = getValuesFromDotOperandLayoutStruct(
-      unpackLLElements(loc, adaptor.getA(), rewriter), repM,
-      repK / kContractingFactor);
-  auto hb = getValuesFromDotOperandLayoutStruct(
-      unpackLLElements(loc, adaptor.getB(), rewriter),
-      std::max(repN / kCore, 1), repK);
+      typeConverter, loc, rewriter, adaptor.getA(), repBatch, repM,
+      repK / kContractingFactor, aTensorTy);
+  auto hb = getValuesFromDotOperandLayoutStruct(typeConverter, loc, rewriter,
+                                                adaptor.getB(), repBatch, repN,
+                                                repK, bTensorTy);
 
   // Combine loaded metadata values.
   auto hMeta = unpackLLElements(loc, adaptor.getAMeta(), rewriter);
@@ -619,7 +703,7 @@ LogicalResult convertSparseMMA(SparseDotOp op, SparseDotOp::Adaptor adaptor,
   auto fc = unpackLLElements(loc, adaptor.getC(), rewriter);
 
   // Create `mma.sp` instruction for 4/8 core matrices.
-  auto callMma = [&](unsigned m, unsigned n, unsigned k) {
+  auto callMma = [&](int m, int n, int k) {
     triton::PTXBuilder builder;
     auto &mma =
         *builder.create(getMmaSpPtxInstruction(aTensorTy.getElementType()));
@@ -630,18 +714,19 @@ LogicalResult convertSparseMMA(SparseDotOp op, SparseDotOp::Adaptor adaptor,
     for (int i = 0; i < kCoreTile; ++i) {
       cArgs->listAppend(builder.newOperand(fc[baseIdx + i], std::to_string(i)));
     }
+    int b = 0;
     int i = k / kContractingFactor;
     auto aArgs = builder.newListOperand({
-        {ha[{m, i}], "r"},
-        {ha[{m + 1, i}], "r"},
-        {ha[{m, i + 1}], "r"},
-        {ha[{m + 1, i + 1}], "r"},
+        {ha.at({b, m, i}), "r"},
+        {ha.at({b, m + 1, i}), "r"},
+        {ha.at({b, m, i + 1}), "r"},
+        {ha.at({b, m + 1, i + 1}), "r"},
     });
     auto bArgs = builder.newListOperand({
-        {hb[{n, k}], "r"},
-        {hb[{n, k + 1}], "r"},
-        {hb[{n, k + 2}], "r"},
-        {hb[{n, k + 3}], "r"},
+        {hb.at({b, n, k}), "r"},
+        {hb.at({b, n, k + 1}), "r"},
+        {hb.at({b, n, k + 2}), "r"},
+        {hb.at({b, n, k + 3}), "r"},
     });
     auto metaArg =
         builder.newOperand(hMetaPacked[k / kCoreTile * repM + m / kCore], "r");

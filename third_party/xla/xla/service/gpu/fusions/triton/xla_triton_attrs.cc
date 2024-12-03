@@ -25,6 +25,7 @@ limitations under the License.
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/LinearLayoutConversions.h"
+#include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"
 #include "triton/Tools/LinearLayout.h"
 
 namespace mlir::triton::xla {
@@ -75,6 +76,15 @@ SmallVector<unsigned> SparseDotMetaEncodingAttr::getShapePerCTATile(
 std::optional<LinearLayout> SparseDotMetaEncodingAttr::toLinearLayout(
     ArrayRef<int64_t> shape) const {
   return gpu::toLinearLayout(shape, getParent());
+}
+
+SmallVector<unsigned> SparseDotMetaEncodingAttr::getRepOrder() const {
+  // TODO: b/381422752 - Maybe we should reuse upstream's implementation from
+  // lib/Dialect/TritonGPU/IR/Dialect.cpp, but we would need to make it public
+  // first.
+  if (auto parent = mlir::dyn_cast<gpu::DistributedEncodingTrait>(getParent()))
+    return parent.getRepOrder();
+  llvm::report_fatal_error("Unimplemented usage of getRepOrder");
 }
 
 }  // namespace mlir::triton::xla

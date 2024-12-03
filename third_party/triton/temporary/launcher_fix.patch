@@ -1,0 +1,17 @@
+Merge with third_party/triton/patches/public/launcher.patch on next integrate
+
+--- a/third_party/nvidia/backend/driver.py
++++ b/third_party/nvidia/backend/driver.py
+@@ -112,9 +112,9 @@ def make_launcher(constants : dict[int, 
+                 launch_exit_hook: Callable[..., None],
+                 *args: any) -> None:
+         cuda_utils.launch(grid_dim_x, grid_dim_y, grid_dim_z, stream, kernel,
+-                          global_scratch, packed_metadata, hook_args,
+-                          launch_enter_hook, launch_exit_hook,
+-                          signature_metadata, args)
++                          packed_metadata, hook_args, launch_enter_hook,
++                          launch_exit_hook, signature_metadata, global_scratch,
++                          args)
+     return wrapper
+ 
+ 
