@@ -72,6 +72,7 @@ cc_library(
         ":passes",
         ":triton_fusion_emitter_legacy_matmul",
         ":triton_support",
+        ":xla_triton_passes",
         "//xla:autotuning_proto_cc",
         "//xla:permutation_util",
         "//xla:shape_util",
@@ -288,30 +289,61 @@ cc_library(
     name = "passes",
     srcs = [
         "generalize_kernel_signature.cc",
-        "passes.cc",
-        "prevent_mmav3_loop_unrolling.cc",
-        "sparse_extensions.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:NVVMDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+gentbl_cc_library(
+    name = "xla_triton_passes_inc_gen",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TritonFusionTransforms",
+                "-attrdefs-dialect=triton_xla",
+            ],
+            "xla_triton_passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "xla_triton_passes.td",
+    visibility = ["//visibility:private"],
+    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
+)
+
+cc_library(
+    name = "xla_triton_passes",
+    srcs = [
+        "xla_triton_prevent_mmav3_loop_unrolling_pass.cc",
+        "xla_triton_sparse_passes.cc",
+    ],
+    hdrs = [
+        "xla_triton_passes.h",
+    ],
+    deps = [
         ":xla_triton",
+        ":xla_triton_passes_inc_gen",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:GPUCommonTransforms",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUToNVVMTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
-        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
         "@triton//:TritonAnalysis",
         "@triton//:TritonDialects",
         "@triton//:TritonGPUToLLVM",
