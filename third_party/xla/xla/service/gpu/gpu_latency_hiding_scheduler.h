@@ -41,14 +41,18 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size);
 // the fact that the runtime use a stream to run asynchronous collective
 // operations and two other streams to run P2P Send and Recv operations.
 enum class GpuResourceType {
-  kGpuAsyncStreamSend0 = 0,        // A resource for P2P Send operation.
-  kGpuAsyncStreamSend1 = 1,        // Another resource for P2P Send operation.
-  kGpuAsyncStreamRecv0 = 2,        // A resource for P2P Recv operation.
-  kGpuAsyncStreamRecv1 = 3,        // Another resource for P2P Recv operation.
-  kGpuAsyncStreamCollectives = 4,  // The resource for collective operations.
-  kGpuAsyncStreamComputes = 5,     // The resource for async compute operations.
-  kNumTargetResources = 6,
+  kGpuAsyncStreamSend0 = ResourceTypeToIndex(
+      ResourceType::kTargetDefinedResourceTypeBegin),  // A resource for P2P
+                                                       // Send operation.
+  kGpuAsyncStreamSend1,        // Another resource for P2P Send operation.
+  kGpuAsyncStreamRecv0,        // A resource for P2P Recv operation.
+  kGpuAsyncStreamRecv1,        // Another resource for P2P Recv operation.
+  kGpuAsyncStreamCollectives,  // The resource for collective operations.
+  kGpuAsyncStreamComputes,     // The resource for async compute operations.
+  kGpuResourceTypeEnd,
 };
+
+constexpr int32_t kP2pResourceCount = 4;
 
 // Base GPU async tracker that enables async tracking only for async collectives
 // that are marked for async execution.

@@ -23,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -69,18 +70,18 @@ class ModulePressureState;
 
 enum class ResourceType {
   kNoResource = 0,
-  kAllToAll = 1,
-  kAllGather = 2,
-  kAllReduce = 3,
-  kCollectivePermute = 4,
-  kCopy = 5,
-  kReduceScatter = 6,
-  kSendRecv = 7,
-  kSendHost = 8,
-  kRecvHost = 9,
-  kCollectiveBroadcast = 10,
-  kNumResources = 11,
-  kTargetDefinedResourcesBound = 10000,
+  kAllToAll,
+  kAllGather,
+  kAllReduce,
+  kCollectivePermute,
+  kCopy,
+  kReduceScatter,
+  kSendRecv,
+  kSendHost,
+  kRecvHost,
+  kCollectiveBroadcast,
+  kNumResources,
+  kTargetDefinedResourceTypeBegin,
 };
 
 enum class ResourceUsageType {
@@ -103,7 +104,8 @@ enum class ResourceHazardType {
   kUnshareable = 4,
 };
 
-constexpr int64_t ResourceTypeToIndex(ResourceType resource_type) {
+template <typename T, typename = typename std::enable_if_t<std::is_enum_v<T>>>
+constexpr int64_t ResourceTypeToIndex(T resource_type) {
   return static_cast<int64_t>(resource_type);
 }
 
@@ -249,8 +251,8 @@ class AsyncTracker {
       ResourceUsageType resource_usage_type) const;
 
   // Returns the first target defined resource's id, regardless of if it exits
-  static int64_t GetFirstTargetDefinedResource() {
-    return static_cast<int64_t>(ResourceType::kTargetDefinedResourcesBound) + 1;
+  static int64_t GetTargetDefinedResourceTypeBegin() {
+    return ResourceTypeToIndex(ResourceType::kTargetDefinedResourceTypeBegin);
   }
 
   // Returns the number of target defined resources

@@ -204,26 +204,23 @@ ResourcesVector GpuAsyncTracker::GetResourcesFromInstructionImpl(
                      ? GpuResourceType::kGpuAsyncStreamCollectives
                      : GpuResourceType::kGpuAsyncStreamComputes;
     }
-    return {std::make_pair(
-        GetFirstTargetDefinedResource() + static_cast<int64_t>(resource),
-        usage)};
+    return {std::make_pair(ResourceTypeToIndex(resource), usage)};
   }
   return GpuAsyncTrackerBase::GetResourcesFromInstructionImpl(instr);
 }
 
 int64_t GpuAsyncTracker::GetNumTargetDefinedResources() const {
-  return static_cast<int64_t>(GpuResourceType::kNumTargetResources);
+  return ResourceTypeToIndex(GpuResourceType::kGpuResourceTypeEnd) -
+         ResourceTypeToIndex(ResourceType::kTargetDefinedResourceTypeBegin);
 };
 
 // Returns how many instructions using the given resource_type we can overlap
 int64_t GpuAsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
-  const int64_t first_target_resource = GetFirstTargetDefinedResource();
-  if (resource_type < first_target_resource) {
+  CHECK_LT(resource_type,
+           ResourceTypeToIndex(GpuResourceType::kGpuResourceTypeEnd));
+  if (resource_type < GetTargetDefinedResourceTypeBegin()) {
     return GpuAsyncTrackerBase::GetNumAvailableResources(resource_type);
   }
-  CHECK_LT(resource_type,
-           first_target_resource +
-               static_cast<int64_t>(GpuResourceType::kNumTargetResources));
 
   // We will allow upto 1 outstanding collective on the async stream. This
   // controls the number of collectives in flight in the schedule (a
@@ -239,13 +236,13 @@ int64_t GpuAsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
   // for an async computation operation which will be allocated with
   // a dedicated compute stream. It can run concurrently with
   // another collective.
-  if ((resource_type - first_target_resource) ==
-      static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamComputes)) {
+  if (resource_type ==
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamComputes)) {
     return 2;
   }
 
-  if ((resource_type - first_target_resource) ==
-      static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamCollectives)) {
+  if (resource_type ==
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamCollectives)) {
     return config_.parallel_collective_overlap_limit;
   }
 
@@ -254,13 +251,12 @@ int64_t GpuAsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
 
 absl::string_view GpuAsyncTracker::GetResourceName(
     int64_t resource_type) const {
-  const int64_t first_target_resource = GetFirstTargetDefinedResource();
-  if (resource_type < first_target_resource) {
+  CHECK_LT(resource_type,
+           ResourceTypeToIndex(GpuResourceType::kGpuResourceTypeEnd));
+  if (resource_type < GetTargetDefinedResourceTypeBegin()) {
     return GpuAsyncTrackerBase::GetResourceName(resource_type);
   }
-  CHECK_LE(resource_type,
-           first_target_resource + GetNumTargetDefinedResources());
-  switch (static_cast<GpuResourceType>(resource_type - first_target_resource)) {
+  switch (static_cast<GpuResourceType>(resource_type)) {
     case GpuResourceType::kGpuAsyncStreamSend0:
       return "kGpuAsyncStreamSend0";
     case GpuResourceType::kGpuAsyncStreamSend1:
@@ -280,17 +276,18 @@ absl::string_view GpuAsyncTracker::GetResourceName(
 
 ResourceHazardType GpuAsyncTracker::GetResourceHazardType(
     int64_t resource_type) const {
-  const int64_t first_target_resource = GetFirstTargetDefinedResource();
-  if (resource_type < first_target_resource) {
+  CHECK_LT(resource_type,
+           ResourceTypeToIndex(GpuResourceType::kGpuResourceTypeEnd));
+  if (resource_type < GetTargetDefinedResourceTypeBegin()) {
     return GpuAsyncTrackerBase::GetResourceHazardType(resource_type);
   }
-  CHECK_LE(resource_type,
-           first_target_resource + GetNumTargetDefinedResources());
   return ResourceHazardType::kUnshareable;
 }
 
 int64_t GpuAsyncTracker::GetNumResourcesPerInstruction(
     int64_t resource_type, const HloInstruction& instr) const {
+  CHECK_LT(resource_type,
+           ResourceTypeToIndex(GpuResourceType::kGpuResourceTypeEnd));
   int64_t num_resources =
       GpuAsyncTrackerBase::GetNumResourcesPerInstruction(resource_type, instr);
   if (num_resources <= 0 || instr.opcode() != HloOpcode::kWhile) {
@@ -300,10 +297,9 @@ int64_t GpuAsyncTracker::GetNumResourcesPerInstruction(
   // the Send/Recv resource and then uses the resource. Therefore, subtract 1
   // from num_resources for the relevant resource type.
   int64_t first_p2p_resource =
-      GetFirstTargetDefinedResource() +
-      static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamSend0);
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamSend0);
   if (resource_type < first_p2p_resource ||
-      resource_type > first_p2p_resource + 4) {
+      resource_type > first_p2p_resource + kP2pResourceCount) {
     return num_resources;
   }
   auto find_instruction_for_pipeline = [&](HloOpcode opcode, int64_t pipeline) {
