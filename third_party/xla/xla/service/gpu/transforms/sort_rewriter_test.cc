@@ -400,6 +400,58 @@ ENTRY %main {
   RunAndFilecheckHloRewrite(kHlo, SortRewriter(), kExpectedPattern);
 }
 
+TEST_F(SortRewriterTest, SortNumpyOrderLessThan) {
+  constexpr char kHlo[] = R"(
+numpy_order_comparator {
+  lhs = bf16[] parameter(0)
+  lhs_is_nan = pred[] compare(lhs, lhs), direction=NE
+  c_nan = bf16[] constant(nan)
+  c_zero = bf16[] constant(0)
+  lhs_is_zero = pred[] compare(lhs, c_zero), direction=EQ
+  lhs_no_neg_zero = bf16[] select(lhs_is_zero, c_zero, lhs)
+  lhs_no_neg_zero_or_nan = bf16[] select(lhs_is_nan, c_nan, lhs_no_neg_zero)
+  rhs = bf16[] parameter(1)
+  rhs_is_nan = pred[] compare(rhs, rhs), direction=NE
+  rhs_is_zero = pred[] compare(rhs, c_zero), direction=EQ
+  rhs_no_neg_zero = bf16[] select(rhs_is_zero, c_zero, rhs)
+  rhs_no_neg_zero_or_nan = bf16[] select(rhs_is_nan, c_nan, rhs_no_neg_zero)
+  ROOT compare.20017 = pred[] compare(lhs_no_neg_zero_or_nan, rhs_no_neg_zero_or_nan), direction=LT, type=TOTALORDER
+}
+
+ENTRY main {
+  p = bf16[128] parameter(0)
+  ROOT sort = bf16[128] sort(p), dimensions={0}, is_stable=true, to_apply=numpy_order_comparator
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(RunModuleAndPass(module.get()));
+}
+
+TEST_F(SortRewriterTest, SortNumpyOrderGreaterThan) {
+  constexpr char kHlo[] = R"(
+numpy_order_comparator {
+  lhs = bf16[] parameter(0)
+  lhs_is_nan = pred[] compare(lhs, lhs), direction=NE
+  c_nan = bf16[] constant(nan)
+  c_zero = bf16[] constant(0)
+  lhs_is_zero = pred[] compare(lhs, c_zero), direction=EQ
+  lhs_no_neg_zero = bf16[] select(lhs_is_zero, c_zero, lhs)
+  lhs_no_neg_zero_or_nan = bf16[] select(lhs_is_nan, c_nan, lhs_no_neg_zero)
+  rhs = bf16[] parameter(1)
+  rhs_is_nan = pred[] compare(rhs, rhs), direction=NE
+  rhs_is_zero = pred[] compare(rhs, c_zero), direction=EQ
+  rhs_no_neg_zero = bf16[] select(rhs_is_zero, c_zero, rhs)
+  rhs_no_neg_zero_or_nan = bf16[] select(rhs_is_nan, c_nan, rhs_no_neg_zero)
+  ROOT compare.20017 = pred[] compare(lhs_no_neg_zero_or_nan, rhs_no_neg_zero_or_nan), direction=GT, type=TOTALORDER
+}
+
+ENTRY main {
+  p = bf16[128] parameter(0)
+  ROOT sort = bf16[128] sort(p), dimensions={0}, is_stable=true, to_apply=numpy_order_comparator
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(RunModuleAndPass(module.get()));
+}
+
 TEST_F(SortRewriterTest, AlwaysUsesCubSort) {
   EXPECT_EQ(SortRewriter::SortSizeThreshold(), 0);
 }

@@ -92,6 +92,39 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
 }
 
+TEST_F(CubSortKeysTest, CompareToReferenceNumpyOrderGt) {
+  constexpr char kHlo[] = R"(
+numpy_order_comparator {
+  lhs = bf16[] parameter(0)
+  lhs_is_nan = pred[] compare(lhs, lhs), direction=NE
+  c_nan = bf16[] constant(nan)
+  c_zero = bf16[] constant(0)
+  lhs_is_zero = pred[] compare(lhs, c_zero), direction=EQ
+  lhs_no_neg_zero = bf16[] select(lhs_is_zero, c_zero, lhs)
+  lhs_no_neg_zero_or_nan = bf16[] select(lhs_is_nan, c_nan, lhs_no_neg_zero)
+  rhs = bf16[] parameter(1)
+  rhs_is_nan = pred[] compare(rhs, rhs), direction=NE
+  rhs_is_zero = pred[] compare(rhs, c_zero), direction=EQ
+  rhs_no_neg_zero = bf16[] select(rhs_is_zero, c_zero, rhs)
+  rhs_no_neg_zero_or_nan = bf16[] select(rhs_is_nan, c_nan, rhs_no_neg_zero)
+  ROOT compare.20017 = pred[] compare(lhs_no_neg_zero_or_nan, rhs_no_neg_zero_or_nan), direction=GT, type=TOTALORDER
+}
+
+ENTRY main {
+  p = bf16[8] parameter(0)
+  nans_and_zeros = bf16[8] constant({nan, -nan, nan, -nan, 0.0, -0.0, 0.0, -0.0})
+  values = bf16[16] concatenate(p, nans_and_zeros), dimensions={0}
+  ROOT sort = bf16[16] sort(values), dimensions={0}, is_stable=true, to_apply=numpy_order_comparator
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
+                          GetOptimizedModule(kHlo));
+  EXPECT_TRUE(HloWasRewrittenToUseCubSort(*optimized_hlo_module));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
+}
+
 // This test verifies an issue where sort was launched on the wrong stream,
 // causing subtle timing bugs: b/347239322.
 TEST_P(CubSortKeysTest, SortWithSlice) {
