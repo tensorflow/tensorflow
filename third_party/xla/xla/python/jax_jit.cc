@@ -215,7 +215,8 @@ std::string CallSignature::DebugString() const {
       "jax_enable_x64: %d\n"
       "jax_enable_memories: %d\n"
       "global_extra_jit_context: %s\n"
-      "thread_local_extra_jit_context: %s\n",
+      "thread_local_extra_jit_context: %s\n"
+      "configs: %s\n",
       arg_signature.DebugString(),
       absl::StrJoin(dynamic_arg_signatures, ", ", signature_formatter),
       absl::StrJoin(dynamic_arg_shardings, ", ", py_object_formatter),
@@ -223,7 +224,8 @@ std::string CallSignature::DebugString() const {
       device != nullptr ? device->DebugString() : "nullptr",
       OptionalDebugString(default_device), jax_enable_x64, jax_enable_memories,
       OptionalDebugString(global_extra_jit_context),
-      OptionalDebugString(thread_local_extra_jit_context));
+      OptionalDebugString(thread_local_extra_jit_context),
+      absl::StrJoin(configs, ", ", py_object_formatter));
 }
 
 bool CallSignature::operator==(const CallSignature& other) const {
@@ -260,7 +262,11 @@ bool CallSignature::operator==(const CallSignature& other) const {
        other.thread_local_extra_jit_context.has_value()) &&
       (!thread_local_extra_jit_context.has_value() ||
        thread_local_extra_jit_context->equal(
-           *other.thread_local_extra_jit_context));
+           *other.thread_local_extra_jit_context)) &&
+      configs.size() == other.configs.size() &&
+      absl::c_equal(
+          configs, other.configs,
+          [](const nb::object& a, const nb::object& b) { return a.equal(b); });
 }
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
@@ -273,6 +279,10 @@ absl::Status ParseArguments(
     xla::PyTreeRegistry* pytree_registry, ArgumentSignature& signature,
     absl::InlinedVector<nanobind::object, 2>& flat_dynamic_args) {
   tsl::profiler::TraceMe traceme("ParseArguments");
+
+  DCHECK(absl::c_all_of(static_argnames, [](const nb::str& name) {
+    return PyUnicode_CHECK_INTERNED(name.ptr());
+  }));
 
   flat_dynamic_args.reserve(positional_args.size() + keyword_args.size());
   if (static_argnums.empty()) {
@@ -446,9 +456,20 @@ void BuildJaxjitSubmodule(nb::module_& m) {
         absl::Span<PyObject* const> keyword_args_span =
             absl::MakeSpan(PySequence_Fast_ITEMS(keyword_args_seq.ptr()),
                            PySequence_Fast_GET_SIZE(keyword_args_seq.ptr()));
-        xla::ThrowIfError(ParseArguments(
-            positional_args_span, keyword_args_span, kwnames, static_argnums,
-            static_argnames, pytree_registry, signature, flat_dynamic_args));
+
+        // Intern the static argument names.
+        std::vector<nb::str> static_argnames_interned;
+        static_argnames_interned.reserve(static_argnames.size());
+        for (const nb::str& name : static_argnames) {
+          PyObject* s = name.inc_ref().ptr();
+          PyUnicode_InternInPlace(&s);
+          static_argnames_interned.push_back(nb::steal<nb::str>(s));
+        }
+
+        xla::ThrowIfError(
+            ParseArguments(positional_args_span, keyword_args_span, kwnames,
+                           static_argnums, static_argnames_interned,
+                           pytree_registry, signature, flat_dynamic_args));
         return std::make_pair(std::move(signature),
                               std::move(flat_dynamic_args));
       },

@@ -40,20 +40,6 @@ namespace mhlo {
 /// Lowers HLO control flow ops to SCF.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeControlFlowPass();
 
-/// Lowers sort to SCF & arith.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeSortPass();
-
-/// Lowers from HLO dialect to Standard dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeToStdPass();
-
-// Lowers from sparse ops in CHLO dialect to Linalg dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeSparseOperationsPass(
-    bool legalizeToCustomCalls = true);
-
-// Canonicalize reduction ops to be suitable for codegen.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createHloCanonicalizeReductionPass();
-
 // Expand feature rich mhlo ops to simpler mhlo ops.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createMhloExpandOpsSimplifierPass();
@@ -67,28 +53,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeGatherPass();
 // Rewrites dot operands that contain unit dimension.
 std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeDotPass();
 
-/// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
-/// buffers if necessary.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
-
-/// Lowers from HLO dialect to Memref dialect allocating/deallocating temporary
-/// buffers if necessary.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass();
-
 /// Lowers from HLO dialect to Arithmetic dialect.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToArithmeticPass();
-
-/// Lowers from MHLO dialect to THLO dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass(
-    bool enableExperimentalOps = false);
 
 /// Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeHloToLinalgPass(
     bool enablePrimitiveOps = false);
-
-/// Lowers from HLO dialects dim operations.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeShapeComputationsPass();
 
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
@@ -105,17 +75,10 @@ createLegalizeTrigonometricToApproximationPass();
 // fusions.
 std::unique_ptr<OperationPass<func::FuncOp>> createBroadcastPropagationPass();
 
-// Transformations that helps in restricting maximum rank among tensors in the
-// pass.
-std::unique_ptr<OperationPass<func::FuncOp>> createRestrictMaxRankPass();
-
 // Prepare moving dynamic broadcasts up over element-wise operations and
 // broadcast the operands rather than the result. This will eventually allow for
 // larger fusions.
 std::unique_ptr<OperationPass<func::FuncOp>> createMergeAssumingOpsPass();
-
-// Iteratively reifies all shape computations in the function.
-std::unique_ptr<OperationPass<func::FuncOp>> createShapeReificationPass();
 
 /// Creates a pass to analyze shapes and to use that information for
 /// shape-related optimizations.
@@ -125,32 +88,20 @@ createSymbolicShapeOptimizationPass();
 // Pass to simplify shape ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createShapeSimplification();
 
-// Fuse shape constraints and merge all assuming regions.
-std::unique_ptr<OperationPass<func::FuncOp>> createConstraintFusionPass();
-
 // Group reduction and parallel dimensions of reduction operations and realize
 // them through equivalent 1D or 2D reductions.
 std::unique_ptr<OperationPass<func::FuncOp>> createGroupReductionDimensionsPass(
     bool preferColumnsReductions = true);
 
-std::unique_ptr<OperationPass<func::FuncOp>> createOptimizeMhloPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexPass();
 
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeBroadcastToBroadcastInDimPass();
 std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeCreateTokenToAfterAllPass();
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeCrossReplicaSumToAllReducePass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeDotGeneralToDotPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeDotToDotGeneralPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeEinsumToDotGeneralPass();
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeGatherToTorchIndexSelectPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeTorchIndexSelectToGatherPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createFlattenTuplePass();
@@ -165,9 +116,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createCollapseElementwiseMapPass();
 
 // Pass to replace unsigned types with signless integers.
 std::unique_ptr<OperationPass<ModuleOp>> createConvertToSignlessPass();
-
-/// Creates pass for rewriting sparse mhlo ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createSparseRewritingPass();
 
 // Legalizes from the MHLO dialect to the StableHLO dialect.
 std::unique_ptr<OperationPass<ModuleOp>> createHloLegalizeToStablehloPass();

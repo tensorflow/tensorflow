@@ -61,19 +61,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct BufferSlice {
-  // The root buffer to look at.
-  BufferAllocation::Slice buffer_slice;
-
-  // The global constant name of the buffer, if it's a constant.
-  std::string constant_name;
-
-  // The buffer is modified by the kernel.
-  bool written = false;
-
-  Shape shape;
-};
-
 // Emits LLVM IR for an "unnested computation".
 //
 // An unnested computation is an HloComputation which you run by executing one
@@ -156,9 +143,8 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitFftThunk(const HloFftInstruction* instr);
   absl::Status EmitFusion(const HloFusionInstruction* instr);
+  absl::Status EmitCopy(const HloInstruction* instr);
   absl::Status EmitAsyncCustomCallStart(const HloInstruction* instr);
-  absl::Status EmitSelectAndScatter(
-      const HloSelectAndScatterInstruction* instr);
   absl::Status EmitWhile(const HloInstruction* instr);
   absl::Status EmitInfeed(const HloInfeedInstruction* instr);
   absl::Status EmitOutfeed(const HloOutfeedInstruction* instr);
@@ -189,9 +175,6 @@ class IrEmitterUnnested : public IrEmitter {
   template <typename ThunkType>
   absl::Status EmitReplicaOrPartitionId(const HloInstruction* instr);
 
-  absl::Status EmitCollectiveBroadcast(
-      const HloCollectiveBroadcastInstruction* instr);
-
   absl::Status EmitCollectivePermute(
       const HloCollectivePermuteInstruction* instr);
 
@@ -201,12 +184,19 @@ class IrEmitterUnnested : public IrEmitter {
 
   absl::Status EmitHloInstruction(const HloInstruction* instr);
 
+  absl::Status EmitNcclGroupThunk(const HloInstruction* instr,
+                                  Thunk::Kind kind);
+
   absl::Status EmitTargetElementLoop(
       const HloInstruction& hlo,
       const llvm_ir::ElementGenerator& body_emitter) override;
 
   // Add a owning Thunk object to the thunk sequence.
   void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
+    if (emit_group_thunks_) {
+      scoped_thunk_sequence_.emplace_back(std::move(thunk));
+      return;
+    }
     thunk_sequence_.emplace_back(std::move(thunk));
   }
 
@@ -326,11 +316,6 @@ class IrEmitterUnnested : public IrEmitter {
   //   ```
   absl::Status EmitSliceToDynamic(const HloCustomCallInstruction* instr);
 
-  int64_t ByteSizeOf(const Shape& shape) const {
-    return llvm_ir::ByteSizeOf(
-        shape, ir_emitter_context_->llvm_module()->getDataLayout());
-  }
-
   absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
                            std::vector<llvm_ir::IrArray> /*outputs*/>>
   BuildKernelThunkForNonFusionOp(
@@ -338,20 +323,11 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<const HloInstruction* const> needed_operands,
       const LaunchDimensions& launch_dimensions);
 
-  absl::Status BuildInitializerThunk(const HloInstruction* instr,
-                                     const HloInstruction* init_value);
-
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction.
   absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
       const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info,
       std::optional<int64_t> trip_count);
-
-  // Returns a ConditionalThunk which executes the thunk sequence for the
-  // 'branch_computation' corresponding to the predicate/branch_index of the
-  // given conditional instruction.
-  absl::StatusOr<std::unique_ptr<Thunk>> BuildConditionalThunk(
-      const HloInstruction* conditional);
 
   absl::Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
@@ -364,16 +340,14 @@ class IrEmitterUnnested : public IrEmitter {
 
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
+  ThunkSequence scoped_thunk_sequence_;
+  bool emit_group_thunks_ = false;
 
   // Container for async send/recv events shared by send/recv thunks.
   std::shared_ptr<SendRecvAsyncEvents> send_recv_events_;
 
   // Container for async copy-start/copy-done events.
   std::shared_ptr<CopyThunk::AsyncEvents> copy_events_;
-
-  // Returns the ShapedSlices for the given operands.
-  absl::StatusOr<std::vector<ShapedSlice>> GetShapedSlices(
-      mlir::Operation::operand_range operands);
 
   GpuElementalIrEmitter elemental_emitter_;
 };

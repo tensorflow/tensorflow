@@ -19,12 +19,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_delegate_kernel.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_implementation.h"
 #include "tensorflow/lite/delegates/hexagon/utils.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {

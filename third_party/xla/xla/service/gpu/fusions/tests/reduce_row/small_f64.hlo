@@ -7,7 +7,7 @@ add {
   ROOT add = f64[] add(lhs, rhs)
 }
 
-fused_computation {
+fusion {
   param_0 = f64[100,128] parameter(0)
   param_1 = f64[] parameter(1)
   ROOT reduce = f64[100] reduce(param_0, param_1), dimensions={1}, to_apply=add

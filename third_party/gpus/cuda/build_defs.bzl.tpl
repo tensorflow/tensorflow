@@ -104,9 +104,16 @@ def if_cuda_newer_than(wanted_ver, if_true, if_false = []):
     wanted_major = int(wanted_ver.split('_')[0])
     wanted_minor = int(wanted_ver.split('_')[1])
 
-    configured_version = "%{cuda_version}"
-    configured_major = int(configured_version.split('.')[0])
-    configured_minor = int(configured_version.split('.')[1])
+    # Strip "64_" which appears in the CUDA version on Windows.
+    configured_version = "%{cuda_version}".rsplit("_", 1)[-1]
+    configured_version_parts = configured_version.split('.')
+
+    # On Windows, the major and minor versions are concatenated without a period and the minor only contains one digit.
+    if len(configured_version_parts) == 1:
+        configured_version_parts = [configured_version[0:-1], configured_version[-1:]]
+
+    configured_major = int(configured_version_parts[0])
+    configured_minor = int(configured_version_parts[1])
 
     if %{cuda_is_configured} and (wanted_major, wanted_minor) <= (configured_major, configured_minor):
       return select({"//conditions:default": if_true})
@@ -142,9 +149,16 @@ def cuda_header_library(
         **kwargs
     )
 
-def cuda_library(copts = [], **kwargs):
+def cuda_library(copts = [], tags = [], deps = [], **kwargs):
     """Wrapper over cc_library which adds default CUDA options."""
-    native.cc_library(copts = cuda_default_copts() + copts, **kwargs)
+    native.cc_library(
+        copts = cuda_default_copts() + copts,
+        tags = tags + ["gpu"],
+        deps = deps + if_cuda_is_configured([
+            "@local_config_cuda//cuda:implicit_cuda_headers_dependency",
+        ]),
+        **kwargs
+    )
 
 def cuda_cc_test(copts = [], **kwargs):
     """Wrapper over cc_test which adds default CUDA options."""
@@ -168,3 +182,15 @@ enable_cuda_flag = rule(
     build_setting = config.bool(flag = True),
     attrs = {"enable_override": attr.bool()},
 )
+
+def if_version_equal_or_greater_than(
+        lib_version,
+        dist_version,
+        if_true,
+        if_false = []):
+    if tuple([int(x) for x in lib_version.split(".")]) >= tuple([
+        int(x)
+        for x in dist_version.split(".")
+    ]):
+        return if_true
+    return if_false

@@ -76,7 +76,7 @@ class Mutex : public ResourceBase {
 
   void AcquireAsync(
       OpKernelContext* c,
-      std::function<void(const Status& s, SharedLockReleaser lock)> fn) {
+      std::function<void(const absl::Status& s, SharedLockReleaser lock)> fn) {
     CancellationManager* cm = c->cancellation_manager();
     CancellationToken token{};
     bool* cancelled = nullptr;
@@ -98,7 +98,8 @@ class Mutex : public ResourceBase {
     }
     thread_pool_->Schedule(std::bind(
         [this, cm, cancelled,
-         token](std::function<void(const Status& s, SharedLockReleaser&& lock)>
+         token](std::function<void(const absl::Status& s,
+                                   SharedLockReleaser&& lock)>
                     fn_) {
           bool local_locked;
           {
@@ -158,7 +159,7 @@ class MutexLockOp : public AsyncOpKernel {
         c, std::bind(
                [c, variant, mutex](DoneCallback done_,
                                    // End of bound arguments.
-                                   const Status& s,
+                                   const absl::Status& s,
                                    Mutex::SharedLockReleaser&& lock) {
                  VLOG(2) << "Finished locking mutex " << mutex
                          << " with lock: " << lock.shared_ptr.get()

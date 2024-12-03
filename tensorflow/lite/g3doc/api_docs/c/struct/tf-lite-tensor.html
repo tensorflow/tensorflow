@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLiteTensor Struct Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLiteTensor</h1>
+  <code>#include &lt;common.h&gt;</code>
+  <p>A tensor in the interpreter system which is a wrapper around a buffer of data including a dimensionality (or NULL if not currently defined). </p>
+  <h2>Summary</h2>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1ab5dcd15fd342f9365a599b37e7e5ee18">allocation</a></code>
+      </td>
+      <td>
+        <div>
+          <code>const void *</code>
+        </div>
+        <div>An opaque pointer to a tflite::MMapAllocation. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1a4b21e89c9d432fcde19e5cecdcd18acf">allocation_type</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/common.html#group__common_1gae48332e93fec6c3fe7c4ee4897770d4b">TfLiteAllocationType</a></code>
+        </div>
+        <div>How memory is mapped kTfLiteMmapRo: Memory mapped read only. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1a784b0cd1be5d43ea2292e75f6a15c11b">buffer_handle</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/common.html#group__common_1ga837e524d72cc15f4790178c2e7bf57e1">TfLiteBufferHandle</a></code>
+        </div>
+        <div>An integer buffer handle that can be handled by <code>delegate</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1a65082739eecbd6d52d7d339d43b87606">bytes</a></code>
+      </td>
+      <td>
+        <div>
+          <code>size_t</code>
+        </div>
+        <div>The number of bytes required to store the data of this Tensor. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1a31678fd0752ef9e3b3debb11e7956fb0">data</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/union/tf-lite-ptr-union.html#union_tf_lite_ptr_union">TfLitePtrUnion</a></code>
+        </div>
+        <div>A union of data pointers. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1abbb1c8fb4b382e3ffa1aec69f9a04619">data_is_stale</a></code>
+      </td>
+      <td>
+        <div>
+          <code>bool</code>
+        </div>
+        <div>If the delegate uses its own buffer (e.g. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1a9491f4d29e4e8423cdc1861ac2a4eb74">delegate</a></code>
+      </td>
+      <td>
+        <div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a> *</code>
+        </div>
+        <div>The delegate which knows how to handle <code>buffer_handle</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1a9826437410d81b21035c89847d526c81">dims</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *</code>
+        </div>
+        <div>A pointer to a structure representing the dimensionality interpretation that the buffer should have. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1ace0611c9e0f0683e5075e4b2768d96b8">dims_signature</a></code>
+      </td>
+      <td>
+        <div>
+          <code>const <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *</code>
+        </div>
+        <div>Optional. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1a39290cf2770c0eebc8bd63faf12dac2f">is_variable</a></code>
+      </td>
+      <td>
+        <div>
+          <code>bool</code>
+        </div>
+        <div>True if the tensor is a variable. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1adb13df6dd8e7223f9b3abf318a034209">name</a></code>
+      </td>
+      <td>
+        <div>
+          <code>const char *</code>
+        </div>
+        <div>Null-terminated name of this tensor. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1ad0fbad4e97f0be0a6e4bfa1b2be0e3fe">params</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-quantization-params.html#struct_tf_lite_quantization_params">TfLiteQuantizationParams</a></code>
+        </div>
+        <div>Quantization information. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1aa4efa609d9ad9c78c5f53a592020de9e">quantization</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-quantization.html#struct_tf_lite_quantization">TfLiteQuantization</a></code>
+        </div>
+        <div>Quantization information. Replaces params field above. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1a40010fa2bfbebd59bf060459d95b65c6">sparsity</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-sparsity.html#struct_tf_lite_sparsity">TfLiteSparsity</a> *</code>
+        </div>
+        <div>Parameters used to encode a sparse tensor. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_tensor_1a24d579d439274a598ce79f0ec6bf6f50">type</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a></code>
+        </div>
+        <div>The data type specification for data stored in <code>data</code>. </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="struct_tf_lite_tensor_1ab5dcd15fd342f9365a599b37e7e5ee18">
+    <h3>allocation</h3>
+    <pre class="prettyprint">const void * TfLiteTensor::allocation</pre>
+    <div>
+      <p>An opaque pointer to a tflite::MMapAllocation. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1a4b21e89c9d432fcde19e5cecdcd18acf">
+    <h3>allocation_type</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/common.html#group__common_1gae48332e93fec6c3fe7c4ee4897770d4b">TfLiteAllocationType</a> TfLiteTensor::allocation_type</pre>
+    <div>
+      <p>How memory is mapped kTfLiteMmapRo: Memory mapped read only. </p>
+      <p>i.e. weights kTfLiteArenaRw: Arena allocated read write memory (i.e. temporaries, outputs). </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1a784b0cd1be5d43ea2292e75f6a15c11b">
+    <h3>buffer_handle</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/common.html#group__common_1ga837e524d72cc15f4790178c2e7bf57e1">TfLiteBufferHandle</a> TfLiteTensor::buffer_handle</pre>
+    <div>
+      <p>An integer buffer handle that can be handled by <code>delegate</code>. </p>
+      <p>The value is valid only when delegate is not null.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1a65082739eecbd6d52d7d339d43b87606">
+    <h3>bytes</h3>
+    <pre class="prettyprint">size_t TfLiteTensor::bytes</pre>
+    <div>
+      <p>The number of bytes required to store the data of this Tensor. </p>
+      <p>I.e. (bytes of each element) * dims[0] * ... * dims[n-1]. For example, if type is kTfLiteFloat32 and dims = {3, 2} then bytes = sizeof(float) * 3 * 2 = 4 * 3 * 2 = 24. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1a31678fd0752ef9e3b3debb11e7956fb0">
+    <h3>data</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/union/tf-lite-ptr-union.html#union_tf_lite_ptr_union">TfLitePtrUnion</a> TfLiteTensor::data</pre>
+    <div>
+      <p>A union of data pointers. </p>
+      <p>The appropriate type should be used for a typed tensor based on <code>type</code>. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1abbb1c8fb4b382e3ffa1aec69f9a04619">
+    <h3>data_is_stale</h3>
+    <pre class="prettyprint">bool TfLiteTensor::data_is_stale</pre>
+    <div>
+      <p>If the delegate uses its own buffer (e.g. </p>
+      <p>GPU memory), the delegate is responsible to set data_is_stale to true. <code>delegate->CopyFromBufferHandle</code> can be called to copy the data from delegate buffer.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1a9491f4d29e4e8423cdc1861ac2a4eb74">
+    <h3>delegate</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a> * TfLiteTensor::delegate</pre>
+    <div>
+      <p>The delegate which knows how to handle <code>buffer_handle</code>. </p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1a9826437410d81b21035c89847d526c81">
+    <h3>dims</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> * TfLiteTensor::dims</pre>
+    <div>
+      <p>A pointer to a structure representing the dimensionality interpretation that the buffer should have. </p>
+      <p>NOTE: the product of elements of <code>dims</code> and the element datatype size should be equal to <code>bytes</code> below. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1ace0611c9e0f0683e5075e4b2768d96b8">
+    <h3>dims_signature</h3>
+    <pre class="prettyprint">const <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> * TfLiteTensor::dims_signature</pre>
+    <div>
+      <p>Optional. </p>
+      <p>Encodes shapes with unknown dimensions with -1. This field is only populated when unknown dimensions exist in a read-write tensor (i.e. an input or output tensor). (e.g. <code>dims</code> contains [1, 1, 1, 3] and <code>dims_signature</code> contains [1, -1, -1, 3]). If no unknown dimensions exist then <code>dims_signature</code> is either null, or set to an empty array. Note that this field only exists when TF_LITE_STATIC_MEMORY is not defined. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1a39290cf2770c0eebc8bd63faf12dac2f">
+    <h3>is_variable</h3>
+    <pre class="prettyprint">bool TfLiteTensor::is_variable</pre>
+    <div>
+      <p>True if the tensor is a variable. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1adb13df6dd8e7223f9b3abf318a034209">
+    <h3>name</h3>
+    <pre class="prettyprint">const char * TfLiteTensor::name</pre>
+    <div>
+      <p>Null-terminated name of this tensor. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1ad0fbad4e97f0be0a6e4bfa1b2be0e3fe">
+    <h3>params</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-quantization-params.html#struct_tf_lite_quantization_params">TfLiteQuantizationParams</a> TfLiteTensor::params</pre>
+    <div>
+      <p>Quantization information. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1aa4efa609d9ad9c78c5f53a592020de9e">
+    <h3>quantization</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-quantization.html#struct_tf_lite_quantization">TfLiteQuantization</a> TfLiteTensor::quantization</pre>
+    <div>
+      <p>Quantization information. Replaces params field above. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1a40010fa2bfbebd59bf060459d95b65c6">
+    <h3>sparsity</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-sparsity.html#struct_tf_lite_sparsity">TfLiteSparsity</a> * TfLiteTensor::sparsity</pre>
+    <div>
+      <p>Parameters used to encode a sparse tensor. </p>
+      <p>This is optional. The field is NULL if a tensor is dense.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_tensor_1a24d579d439274a598ce79f0ec6bf6f50">
+    <h3>type</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a> TfLiteTensor::type</pre>
+    <div>
+      <p>The data type specification for data stored in <code>data</code>. </p>
+      <p>This affects what member of <code>data</code> union should be used. </p>
+    </div>
+  </div>
+</body>
+</html>

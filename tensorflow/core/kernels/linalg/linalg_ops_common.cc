@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/linalg/linalg_ops_common.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <initializer_list>
+#include <set>
 #include <utility>
 
 #include "Eigen/Core"  // from @eigen_archive

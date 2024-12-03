@@ -1,0 +1,45 @@
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
+@@ -388,10 +388,10 @@ struct FpToFpOpConversion
+       ptx = "cvt.rz.f16.f32";
+       break;
+     default:
+-      llvm::errs() << "WARNING: unsupported rounding mode for f32->f16 "
+-                      "conversion: "
+-                   << stringifyRoundingMode(rounding) << "\n";
+-      llvm_unreachable("");
++      llvm::report_fatal_error(
++          "WARNING: unsupported rounding mode for f32->f16 "
++          "conversion: " + stringifyRoundingMode(rounding) +
++          "\n");
+     }
+     auto &cvt = *builder.create(ptx.str());
+     auto res = builder.newOperand("=h");
+@@ -448,10 +448,10 @@ struct FpToFpOpConversion
+     }
+     if (computeCapability < 89 &&
+         (srcTy.isFloat8E4M3FN() || dstTy.isFloat8E4M3FN())) {
+-      llvm::errs() << "Conversion from/to f8e4m3nv is only supported on "
+-                      "compute capability >= 89"
+-                   << "\n";
+-      llvm_unreachable("");
++      llvm::report_fatal_error(
++          "Conversion from/to f8e4m3nv is only supported on "
++          "compute capability >= 89"
++          "\n");
+     }
+     auto convDesc = srcMap.lookup(key);
+     return {makeConverterFromPtx(
+@@ -476,9 +476,9 @@ struct FpToFpOpConversion
+       // For now only RTNE is supported for conversions from fp16 to fp8
+       if (!srcElementType.isF32() &&
+           roundingMode.value() != RoundingMode::RTNE) {
+-        llvm::errs() << "Unsupported rounding mode for conversion to fp8: "
+-                     << stringifyRoundingMode(roundingMode.value()) << "\n";
+-        llvm_unreachable("");
++        llvm::report_fatal_error(
++            "Unsupported rounding mode for conversion to fp8: " +
++            stringifyRoundingMode(roundingMode.value()) + "\n");
+       }
+     }
+ 

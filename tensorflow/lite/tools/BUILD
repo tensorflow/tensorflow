@@ -414,6 +414,19 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    copts = tflite_copts(),
+    deps = [
+        ":utils",
+        "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -452,7 +465,6 @@ tflite_portable_test_suite()
 #
 # py_proto_library(
 #     name = "op_kernel_set_py_pb2",
-#     api_version = 2,
 #     deps = [":op_kernel_set_proto"],
 # )
 # copybara:uncomment_end

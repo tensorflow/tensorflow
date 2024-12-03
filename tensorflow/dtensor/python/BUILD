@@ -287,6 +287,7 @@ pytype_strict_library(
         "//tensorflow/python/platform:remote_utils",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/tpu:topology",
+        "//tensorflow/python/util:numpy_compat",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",

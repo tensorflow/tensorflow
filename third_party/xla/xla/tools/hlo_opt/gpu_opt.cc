@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tools/hlo_opt/opt_lib.h"
+#include "xla/tools/hlo_opt/compiled_opt_lib.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -44,8 +44,10 @@ namespace xla {
 
 namespace {
 
-class GpuOptProvider : public OptProvider {
+class GpuOptProvider : public CompiledOptProvider {
  public:
+  GpuOptProvider() : CompiledOptProvider() {}
+
   absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {
     if (s == "llvm-before-optimizations") {
@@ -72,8 +74,9 @@ class GpuOptProvider : public OptProvider {
           ->ToVerboseString(9999);
     } else {
       // Delegate to base class.
-      TF_ASSIGN_OR_RETURN(std::optional<std::string> out,
-                          OptProvider::GenerateStage(std::move(module), s));
+      TF_ASSIGN_OR_RETURN(
+          std::optional<std::string> out,
+          CompiledOptProvider::GenerateStage(std::move(module), s));
       return out;
     }
   }
@@ -81,11 +84,14 @@ class GpuOptProvider : public OptProvider {
   std::string GetPlatformName() override { return "gpu"; }
 
   std::set<std::string> SupportedStages() override {
-    std::set<std::string> supported = OptProvider::SupportedStages();
+    std::set<std::string> supported = CompiledOptProvider::SupportedStages();
     supported.insert({"ptx", "llvm", "buffer-assignment",
                       "llvm-before-optimizations", "llvm-after-optimizations"});
     return supported;
   }
+
+  // Register the GPU provider passes.
+  void RegisterProviderPasses(HloModule& module) override {}
 
  private:
   absl::StatusOr<std::string> LlvmIrBeforeOptimizations(
@@ -119,7 +125,8 @@ class GpuOptProvider : public OptProvider {
         xla::gpu::CompileModuleToLlvmIr(
             optimized_module, &llvm_context, gpu_compiler->GetTargetTriple(),
             gpu_compiler->GetDataLayout(), platform->Name(), platform->id(),
-            target_config.device_description, gpu_compiler->GetCanShareBuffer(),
+            target_config.device_description,
+            gpu_compiler->GetCanShareBuffer(target_config.device_description),
             gpu_compiler->BufferSizeBytesFunction()));
     return llvm_ir::DumpToString(results.llvm_module.get());
   }

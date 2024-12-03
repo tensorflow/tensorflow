@@ -21,8 +21,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
@@ -127,9 +127,10 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusible) {
   HloInstruction* binary1 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      binary1, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, /*channel_id=*/0, /*is_host_transfer=*/false));
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
@@ -326,9 +327,10 @@ TEST_F(InstructionFusionTest, AllowUnaryDuplication) {
   HloInstruction* unary1 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kFloor, param0));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(unary1, token, 0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      unary1, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, /*channel_id=*/0, /*is_host_transfer=*/false));
   HloInstruction* unary2 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, unary1));
 
@@ -354,9 +356,10 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
   HloInstruction* binary1 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, broadcast, param1));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      binary1, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, /*channel_id=*/0, /*is_host_transfer=*/false));
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
@@ -791,20 +794,20 @@ TEST_F(InstructionFusionTest, DontFuseProducerIfInplaceConflict) {
 class FusionDecisionTest : public HloTestBase {};
 
 TEST_F(FusionDecisionTest, NotFusionPossibleDisjunction) {
-  FusionDecision a = {};
-  FusionDecision b = "not possible";
+  FusionDecision a = FusionDecision::Allow();
+  FusionDecision b = FusionDecision::Forbid("not possible");
   EXPECT_TRUE(!a || !b);
 
-  a = "not possible";
-  b = {};
+  a = FusionDecision::Forbid("not possible");
+  b = FusionDecision::Allow();
   EXPECT_TRUE(!a || !b);
 
-  a = "impossible";
-  b = "very impossible";
+  a = FusionDecision::Forbid("impossible");
+  b = FusionDecision::Forbid("very impossible");
   EXPECT_TRUE(!a || !b);
 
-  a = {};
-  b = {};
+  a = FusionDecision::Allow();
+  b = FusionDecision::Allow();
   EXPECT_FALSE(!a || !b);
 }
 

@@ -185,21 +185,28 @@ class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           np.array([[], [], []], dtype=dtype),
           np.array([1, 0], dtype=np.int32),
           np.array([2, 0], dtype=np.int32),
-          expected=np.array([[], []], dtype=dtype))
+          expected=np.array([[], []], dtype=dtype),
+      )
 
       self._testTernary(
           array_ops.slice,
           np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=dtype),
           np.array([0, 1], dtype=np.int32),
           np.array([2, 1], dtype=np.int32),
-          expected=np.array([[2], [5]], dtype=dtype))
+          expected=np.array([[2], [5]], dtype=dtype),
+      )
 
   def testClipByValue(self):
-    for dtype in self.numeric_types - self.complex_types:
+    for dtype in (
+        self.numeric_types - self.complex_types - self.unsigned_int_types
+    ):
       test_cases = [
           (np.array([2, 4, 5], dtype=dtype), dtype(7)),  #
           (dtype(1), np.array([2, 4, 5], dtype=dtype)),  #
-          (np.array([-2, 7, 7], dtype=dtype), np.array([-2, 9, 8], dtype=dtype))
+          (
+              np.array([-2, 7, 7], dtype=dtype),
+              np.array([-2, 9, 8], dtype=dtype),
+          ),
       ]
       x = np.array([-2, 10, 6], dtype=dtype)
       for lower, upper in test_cases:

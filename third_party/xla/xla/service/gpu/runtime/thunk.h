@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <map>
 #include <memory>
 #include <ostream>
@@ -32,7 +31,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/Operation.h"
+#include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,13 +40,12 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 namespace gpu {
@@ -114,7 +113,7 @@ class Thunk {
   static constexpr auto kDefaultExecutionStreamId = ExecutionStreamId(0);
 
   enum Kind {
-    kAddressComputation,
+    kDynamicSlice,
     kCholesky,
     kConditional,
     kConvolution,
@@ -144,6 +143,8 @@ class Thunk {
     kNcclCollectivePermute,
     kNcclCollectivePermuteStart,
     kNcclCollectivePermuteDone,
+    kNcclGroupStart,
+    kNcclGroupDone,
     kNcclReduceScatter,
     kNcclReduceScatterStart,
     kNcclReduceScatterDone,
@@ -213,8 +214,8 @@ class Thunk {
     CollectiveCliques() = default;
     explicit CollectiveCliques(NcclClique::AcquiredCliquesMap cliques_map);
 
-    absl::StatusOr<NcclApi::NcclCommHandle> GetComm(
-        const NcclCliqueKey& clique_key, int32_t rank) const;
+    absl::StatusOr<Communicator*> GetComm(const NcclCliqueKey& clique_key,
+                                          RankId rank) const;
 
     // Returns the number of communicators in a collective clique. Returns error
     // if we do not have an acquired clique for a given key.
@@ -324,6 +325,11 @@ class Thunk {
 
     // XLA FFI execution context.
     const ffi::ExecutionContext* ffi_execution_context = nullptr;
+
+    // Total local device count.
+    int local_device_count = 0;
+
+    bool requires_exclusive_lock_on_gpu = false;
   };
 
   //===--------------------------------------------------------------------===//
@@ -381,6 +387,8 @@ class Thunk {
 
     bool mock_collectives = false;
 
+    bool requires_exclusive_lock_on_gpu = false;
+
    private:
     friend class CommandBufferThunk;
 
@@ -394,7 +402,25 @@ class Thunk {
                   RecvDeviceMemoryFunction* recv_device_memory_function,
                   const ffi::ExecutionContext* ffi_execution_context,
                   ExecutionStreamIdMap additional_compute_streams = {},
-                  bool mock_collectives = false);
+                  bool mock_collectives = false,
+                  bool requires_exclusive_lock_on_gpu = false);
+  };
+
+  //===--------------------------------------------------------------------===//
+  // CleanupParams
+  //===--------------------------------------------------------------------===//
+
+  // Parameters passed to Cleanup. Before returning from executable execution,
+  // thunks may need to clean up any resource allocated or registered through
+  // runtime APIs.
+  struct CleanupParams {
+    se::StreamExecutor* executor = nullptr;
+
+    // Parameters for executing collective operations.
+    CollectiveExecuteParams* collective_params = nullptr;
+
+    // Collective cliques acquired based on resource requests.
+    CollectiveCliques* collective_cliques = nullptr;
   };
 
   //===--------------------------------------------------------------------===//
@@ -440,6 +466,14 @@ class Thunk {
   //
   // Precondition: Initialize(initialize_params) has been called.
   virtual absl::Status ExecuteOnStream(const ExecuteParams& params) = 0;
+
+  // Cleans up any resources after thunk execution.
+  //
+  // This may be called multiple times. Its main purpose is to free up
+  // any resources occupied after initialization and execution.
+  virtual absl::Status Cleanup(const CleanupParams& params) {
+    return absl::OkStatus();
+  }
 
   static absl::string_view KindToString(Thunk::Kind kind);
 

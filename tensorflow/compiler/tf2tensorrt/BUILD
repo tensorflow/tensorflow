@@ -5,7 +5,7 @@
 
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "cuda_rpath_flags",
 )
 load("//tensorflow:strict.default.bzl", "py_strict_library")
@@ -76,7 +76,7 @@ cc_library(
     deps = if_tensorrt([
         "@local_config_tensorrt//:tensorrt_headers",
         "//tensorflow/core:lib",
-        "@local_xla//xla/stream_executor/platform:dso_loader",
+        "@local_tsl//tsl/platform:dso_loader",
     ]),
 )
 
@@ -1029,7 +1029,6 @@ cc_library(
 tf_proto_library(
     name = "trt_engine_instance_proto",
     srcs = ["utils/trt_engine_instance.proto"],
-    cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
 )
 
@@ -1045,7 +1044,6 @@ tf_cuda_library(
         ":common_utils",
         ":tensorrt_lib",
         ":op_converter_registry",
-        "@local_xla//xla/stream_executor/platform:dso_loader",
     ]),
 )
 
@@ -1104,7 +1102,6 @@ pybind_extension(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
-        "@local_xla//xla/stream_executor",
         "@pybind11",
     ],
 )
@@ -1113,7 +1110,6 @@ pybind_extension(
 # py_proto_library(
 #     name = "trt_engine_instance_proto_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     deps = [":trt_engine_instance_proto"],
 # )
 # copybara:uncomment_end

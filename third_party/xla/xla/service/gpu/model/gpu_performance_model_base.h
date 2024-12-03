@@ -17,10 +17,10 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_GPU_PERFORMANCE_MODEL_BASE_H_
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -42,6 +43,33 @@ struct EstimateRunTimeData {
   absl::Duration write_time;
   absl::Duration compute_time;
   absl::Duration exec_time;
+
+  // Returns an estimate that is guaranteed to be zero.
+  static EstimateRunTimeData Zero() {
+    return EstimateRunTimeData{/*flops=*/0,
+                               /*bytes_read=*/0,
+                               /*bytes_written=*/0,
+                               /*read_time=*/absl::ZeroDuration(),
+                               /*write_time=*/absl::ZeroDuration(),
+                               /*compute_time=*/absl::ZeroDuration(),
+                               /*exec_time=*/absl::ZeroDuration()};
+  }
+
+  // Returns an estimate that is guaranteed to be larger than any real runtime.
+  static EstimateRunTimeData Infinite() {
+    return EstimateRunTimeData{
+        /*flops=*/std::numeric_limits<int64_t>::max(),
+        /*bytes_read=*/std::numeric_limits<int64_t>::max(),
+        /*bytes_written=*/std::numeric_limits<int64_t>::max(),
+        /*read_time=*/absl::InfiniteDuration(),
+        /*write_time=*/absl::InfiniteDuration(),
+        /*compute_time=*/absl::InfiniteDuration(),
+        /*exec_time=*/absl::InfiniteDuration()};
+  }
+
+  // Returns true if the estimate is guaranteed to be larger than any real
+  // runtime.
+  bool IsInfinite() const { return exec_time == absl::InfiniteDuration(); }
 
   std::string ToString() const {
     return absl::StrFormat(
@@ -67,7 +95,11 @@ class GpuPerformanceModelCache {
   std::optional<EstimateRunTimeData> Get(const HloInstruction& instruction);
   std::optional<absl::Duration> Get(const HloInstruction& producer,
                                     const HloInstruction& consumer);
-
+  const absl::flat_hash_map<const HloInstruction*, absl::Duration>&
+  // Returns cache entries for all consumers of this producer.
+  GetAllConsumers(const HloInstruction& producer);
+  // Checks if producer-consumer pair cache entries exist for this producer.
+  bool ContainsConsumers(const HloInstruction& producer);
   // Sets cache value for the instruction or producer-consumer pair.
   void Set(const HloInstruction& instruction,
            const EstimateRunTimeData& runtime_data);
@@ -98,36 +130,26 @@ struct GpuPerformanceModelOptions {
   // be assumed. If 1.0, assume perfect parallelism (the run time is the maximum
   // of both times). If 0.0, assume no parallelism (the run time is the sum of
   // both times).
-  double memory_compute_parallelism = 1.0;
+  //
+  // This constant was chosen empirically in early 2024, based on runtime
+  // performance on a set of benchmarks internal to Google. Intuitively, we
+  // expect it to be close to 1, but not quite 1 (i.e., sometimes, compute
+  // or memory accesses will be stalled waiting for the other, but usually
+  // they won't).
+  double memory_compute_parallelism = 0.95;
 
   // If present, use this to retrieve fusion analyses.
   HloFusionAnalysisCache* fusion_analysis_cache = nullptr;
 
   GpuPerformanceModelCache* gpu_performance_model_cache = nullptr;
 
-  static GpuPerformanceModelOptions Default() {
-    return GpuPerformanceModelOptions();
-  }
-
-  static GpuPerformanceModelOptions PriorityFusion(
+  static GpuPerformanceModelOptions Default(
       HloFusionAnalysisCache* fusion_analysis_cache = nullptr,
       GpuPerformanceModelCache* gpu_performance_model_cache = nullptr) {
     GpuPerformanceModelOptions config;
     config.fusion_analysis_cache = fusion_analysis_cache;
     config.gpu_performance_model_cache = gpu_performance_model_cache;
-    // This constant was chosen empirically in early 2024, based on runtime
-    // performance on a set of benchmarks internal to Google. Intuitively, we
-    // expect it to be close to 1, but not quite 1 (i.e., sometimes, compute
-    // or memory accesses will be stalled waiting for the other, but usually
-    // they won't).
-    config.memory_compute_parallelism = 0.95;
     return config;
-  }
-
-  static GpuPerformanceModelOptions ForModule(const HloModule* module) {
-    return module->config().debug_options().xla_gpu_enable_priority_fusion()
-               ? PriorityFusion()  // Only cache within priority fusion.
-               : Default();
   }
 };
 
@@ -184,31 +206,15 @@ class GpuPerformanceModelBase {
       const HloInstruction* consumer, const HloInstruction* operand);
 
   // Estimate read time of n_bytes_total bytes from global memory on a
-  // given GPU. Account for L1 / L2 cache speedup if the input's nominal size
-  // n_bytes_net is small.
-  static absl::Duration ReadTime(const se::DeviceDescription& gpu_device_info,
-                                 int64_t num_blocks, int64_t n_bytes_net,
-                                 int64_t n_bytes_total);
-
-  // Estimate read time of n_bytes_total bytes from global memory on a
   // given GPU.
   //
   // Assumes that the first n_bytes_net are always read from DRAM, but next
-  // reads can be cached. Applies waste factor if read from DRAM is uncoalesced.
+  // reads can be cached. Restricts the effective HBM bandwidth using the
+  // utilization rate passed as a parameter to model not-fully-coalesced reads.
   static absl::Duration ReadTimeWithDRAMHeuristic(
       const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
       int64_t n_bytes_net, int64_t n_bytes_total, PrimitiveType element_type,
-      bool coalesced);
-
-  // Tells input access time of the producer alone if fused_consumer
-  // is not specified. Otherwise estimates the access time to producer's
-  // inputs as if it is fused into the consumer.
-  static absl::Duration ProducerInputAccessTime(
-      const GpuHloCostAnalysis* cost_analysis,
-      const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
-      const HloInstruction* producer, const HloFusionAnalysis& fusion_analysis,
-      const GpuPerformanceModelOptions& config,
-      const HloInstruction* fused_consumer = nullptr);
+      double hbm_bandwidth_utilization_rate);
 
   static absl::Duration WriteTime(const se::DeviceDescription& gpu_device_info,
                                   int64_t bytes_written);
@@ -226,6 +232,17 @@ class GpuPerformanceModelBase {
                               int64_t n_bytes_total, int64_t n_bytes_net,
                               bool coalesced);
 };
+
+// Given an element type and whether the read is coalesced, returns the
+// utilization rate of the HBM bandwidth.
+//
+// TODO(b/332714755): to avoid interfering with the cost model as it exists
+// right now, this duplicates pre-existing logic and doesn't take into account
+// how much of the memory access is actually useful and just assumes the worst
+// possible utilization if the read is uncoalesced.
+double GetCoalescingUtilizationRate(
+    PrimitiveType element_type, const se::DeviceDescription& gpu_device_info,
+    bool coalesced);
 
 }  // namespace gpu
 }  // namespace xla

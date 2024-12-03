@@ -43,7 +43,8 @@ TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
   auto sharding = HloSharding::Create(device_list, MemoryKind("abc"),
                                       /*xla_hlo_sharding=*/xla_hlo_sharding);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
+                          Serialize(*sharding, /*options=*/nullptr));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
@@ -51,7 +52,8 @@ TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
           serialized, std::make_unique<DeserializeShardingOptions>(
                           absl::bind_front(&Client::LookupDevice, client()))));
 
-  EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
+  EXPECT_THAT(out_sharding->devices()->devices(),
+              ElementsAreArray(sharding->devices()->devices()));
   EXPECT_EQ(out_sharding->xla_hlo_sharding(), sharding->xla_hlo_sharding());
 }
 

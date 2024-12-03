@@ -27,7 +27,9 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -156,6 +158,9 @@ LogicalResult MatchBinaryReduceFunction<void>(mlir::Region& function);
 
 // Util that casts 'val' to Int32 by adding a tfl cast Op.
 Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter);
+
+// Replaces `region`'s terminator to TFL::Yield.
+void ReplaceTerminatorWithYield(Region& region, PatternRewriter& rewriter);
 }  // namespace odml
 }  // namespace mlir
 

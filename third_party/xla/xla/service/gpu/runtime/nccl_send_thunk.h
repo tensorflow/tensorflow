@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
@@ -44,7 +45,7 @@ class NcclSendThunk : public NcclCollectiveThunk {
   const NcclCollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
-                                 NcclCommHandleWrapper comm_wrapper) override;
+                                 CommunicatorHandle comm_handle) override;
   AsyncStreamKind GetAsyncStreamKind() const override { return stream_kind_; }
   bool NeedFirstCallRendzevous() const override { return false; }
 
@@ -58,8 +59,8 @@ class NcclSendThunk : public NcclCollectiveThunk {
 absl::Status RunSend(NcclApi* nccl_api,
                      NcclP2PConfig::SourceTargetMapEntry source_target,
                      DeviceBufferPair& buffer, se::Stream& stream,
-                     NcclApi::NcclCommHandle comm,
-                     absl::string_view device_string, int64_t current_id);
+                     Communicator* comm, absl::string_view device_string,
+                     int64_t current_id);
 
 }  // namespace gpu
 }  // namespace xla

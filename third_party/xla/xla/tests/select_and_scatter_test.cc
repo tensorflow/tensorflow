@@ -16,23 +16,24 @@ limitations under the License.
 // Tests the select-and-scatter XLA operation.
 
 // b/194424657: On macs, the compiler hangs when trying to compile this file
+
 #if !defined(__APPLE__)
 
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <vector>
 
+#include "xla/array.h"
 #include "xla/array2d.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/local_client.h"
-#include "xla/client/padding.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
-#include "xla/layout_util.h"
-#include "xla/literal.h"
+#include "xla/array4d.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/padding.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/reference_util.h"
-#include "xla/status_macros.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
@@ -62,6 +63,24 @@ class SelectAndScatterTest
     min_f32_ = CreateScalarMinComputation(F32, &builder_);
   }
 
+  void DoIt() {
+    auto operand_shape = GetParam().operand_shape;
+    Array<float> o(operand_shape);
+    o.FillRandom(1.5f);
+    auto operand = ConstantFromArray(&builder_, o);
+
+    auto source_shape = GetParam().source_shape;
+    Array<float> s(source_shape);
+    s.FillRandom(12.0f);
+    auto source = ConstantFromArray(&builder_, s);
+
+    SelectAndScatter(operand, ge_f32_, GetParam().window_dimensions,
+                     GetParam().window_strides, GetParam().padding_type, source,
+                     ConstantR0<float>(&builder_, 0.0f), add_f32_);
+
+    ComputeAndCompare(&builder_, {}, ErrorSpec(3e-5, 3e-5));
+  }
+
   XlaBuilder builder_;
   XlaComputation ge_s32_;
   XlaComputation add_s32_;
@@ -71,22 +90,12 @@ class SelectAndScatterTest
   XlaComputation min_f32_;
 };
 
-XLA_TEST_P(SelectAndScatterTest, OVERSIZE_ON_GRM(ParamTest)) {
-  auto operand_shape = GetParam().operand_shape;
-  Array<float> o(operand_shape);
-  o.FillRandom(1.5f);
-  auto operand = ConstantFromArray(&builder_, o);
+XLA_TEST_P(SelectAndScatterTest, OVERSIZE_ON_GRM(ParamTest)) { DoIt(); }
 
-  auto source_shape = GetParam().source_shape;
-  Array<float> s(source_shape);
-  s.FillRandom(12.0f);
-  auto source = ConstantFromArray(&builder_, s);
+class SelectAndScatterLarge : public SelectAndScatterTest {};
 
-  SelectAndScatter(operand, ge_f32_, GetParam().window_dimensions,
-                   GetParam().window_strides, GetParam().padding_type, source,
-                   ConstantR0<float>(&builder_, 0.0f), add_f32_);
-
-  ComputeAndCompare(&builder_, {}, ErrorSpec(3e-5, 3e-5));
+XLA_TEST_P(SelectAndScatterLarge, DISABLED_ON_ISS(OVERSIZE_ON_GRM(ParamTest))) {
+  DoIt();
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -208,11 +217,16 @@ INSTANTIATE_TEST_CASE_P(
         SelectAndScatterTestParam{
             {7, 8, 256}, {4, 8, 256}, Padding::kSame, {2, 1, 1}, {2, 1, 1}},
         SelectAndScatterTestParam{{1104}, {551}, Padding::kValid, {3}, {2}},
-        SelectAndScatterTestParam{{1300}, {1171}, Padding::kValid, {130}, {1}},
-        SelectAndScatterTestParam{{3000}, {1701}, Padding::kValid, {1300}, {1}},
-        SelectAndScatterTestParam{{6500}, {5}, Padding::kValid, {1300}, {1300}},
         SelectAndScatterTestParam{
-            {3000}, {401}, Padding::kValid, {2600}, {1}}));
+            {1300}, {1171}, Padding::kValid, {130}, {1}}));
+
+INSTANTIATE_TEST_CASE_P(
+    SelectAndScatterTest_Instantiation, SelectAndScatterLarge,
+    ::testing::Values(
+        SelectAndScatterTestParam{{6500}, {5}, Padding::kValid, {1300}, {1300}},
+        SelectAndScatterTestParam{{3000}, {401}, Padding::kValid, {2600}, {1}},
+        SelectAndScatterTestParam{
+            {3000}, {1701}, Padding::kValid, {1300}, {1}}));
 
 // Test for F32 1D array, with a zero-element input.
 XLA_TEST_F(SelectAndScatterTest, R1S0F32) {

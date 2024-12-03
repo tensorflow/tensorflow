@@ -1,8 +1,8 @@
 # Description:
 #   XLA evaluator implementation.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -52,17 +52,19 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:tuple_points_to_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:call_graph",
         "//xla/service:compilation_environments",
         "//xla/service:dynamic_dimension_inference",
+        "//xla/service:gather_scatter_utils",
         "//xla/service:hlo_module_config",
         "//xla/service:logical_buffer",
         "//xla/service:pattern_matcher",
         "//xla/service:shape_inference",
-        "//xla/service:tuple_points_to_analysis",
         "//xla/service/cpu:runtime_single_threaded_matmul",
+        "//xla/tsl/lib/core:bitmap",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:endian",
@@ -81,7 +83,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/lib/core:bitmap",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -94,6 +95,7 @@ cc_library(
 
 xla_cc_test(
     name = "hlo_evaluator_slow_reduce_window_test",
+    timeout = "long",
     srcs = ["hlo_evaluator_slow_reduce_window_test.cc"],
     tags = [
         # Times out in asan/tsan/zapfhahn.
@@ -106,11 +108,11 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla/hlo/ir:hlo",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",  # fixdeps: keep
     ],
 )
 
@@ -133,16 +135,17 @@ xla_cc_test(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
+        "//xla/hlo/analysis:tuple_points_to_analysis",
+        "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/transforms:hlo_element_type_converter",
+        "//xla/service:call_graph",
         "//xla/service:dynamic_dimension_inference",
-        "//xla/service:hlo_element_type_converter",
         "//xla/service:hlo_module_config",
         "//xla/service:shape_inference",
-        "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:endian",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -156,5 +159,6 @@ xla_cc_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",  # fixdeps: keep
     ],
 )

@@ -17,9 +17,9 @@
 // This file implements the entry point to compile a hlo op to a kernel.
 //
 //===----------------------------------------------------------------------===//
+#include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -49,6 +49,7 @@
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
+#include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -225,6 +226,13 @@ int main(int argc, char** argv) {
 
   mlir::registerPassManagerCLOptions();
   mlir::registerMLIRContextCLOptions();
+
+  // Forward cli options to XLA, as it will reset llvm options internally
+  // during the first invocation.
+  auto& xla_llvm_global_options =
+      xla::llvm_ir::LLVMCommandLineOptionsLock::GetGlobalOptions();
+  xla_llvm_global_options.insert(xla_llvm_global_options.end(), argv + 1,
+                                 argv + argc);
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op kernel generator\n");
 
   auto status = tensorflow::kernel_gen::Run(

@@ -18,16 +18,22 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
+#include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/service/compiler.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/test.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -36,6 +42,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -165,6 +173,21 @@ tf2xla::Config SumConfigVariable() {
   tf2xla::Config config;
   CHECK(protobuf::TextFormat::ParseFromString(text_proto, &config));
   return config;
+}
+
+TEST(XlaJitCompiledCpuFunction, CheckThunkDisabled) {
+  GraphDef graph_def = SumGraph();
+  tf2xla::Config config = SumConfig();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<XlaJitCompiledCpuFunction> jit,
+      XlaJitCompiledCpuFunction::Compile(graph_def, config,
+                                         xla::ExecutableBuildOptions()));
+  ASSERT_TRUE(jit->LocalExecutable().build_options().has_debug_options());
+  ASSERT_FALSE(jit->LocalExecutable()
+                   .build_options()
+                   .debug_options()
+                   .xla_cpu_use_thunk_runtime());
 }
 
 TEST(XlaJitCompiledCpuFunction, Sum) {
@@ -328,11 +351,6 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
 
     absl::StatusOr<se::StreamExecutor*> ExecutorForDevice(
         int ordinal) override {
-      return nullptr;
-    }
-
-    absl::StatusOr<se::StreamExecutor*> GetExecutor(
-        const se::StreamExecutorConfig& config) override {
       return nullptr;
     }
 

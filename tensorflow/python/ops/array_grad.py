@@ -749,7 +749,9 @@ def _GatherNdGrad(op: ops.Operation, grad):
     ref_grad = indexed_slices_lib.IndexedSlices(
         grad, array_ops.squeeze(indices, axis=-1), ref_shape)
   else:
-    ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
+    ref_grad = array_ops.scatter_nd(
+        indices, grad, ref_shape,
+        bad_indices_policy=op.get_attr("bad_indices_policy"))
   return [ref_grad, None]
 
 

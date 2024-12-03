@@ -18,12 +18,13 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "mlir/Transforms/InliningUtils.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
+
+// The order of these includes is important.
+#include "xla/service/gpu/fusions/ir/xla_gpu_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
 #include "xla/service/gpu/fusions/ir/xla_gpu_attrs.cc.inc"
-#undef GET_ATTRDEF_CLASSES
 #define GET_TYPEDEF_CLASSES
 #include "xla/service/gpu/fusions/ir/xla_gpu_types.cc.inc"
-#undef GET_TYPEDEF_CLASSES
 
 namespace xla {
 namespace gpu {
@@ -97,6 +98,13 @@ struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
     // We allow any op from the xla_gpu dialect to be inlined.
     return true;
   }
+  // We don't have any special restrictions on what can be inlined into
+  // destination regions (e.g. while/conditional bodies). Always allow it.
+  bool isLegalToInline(mlir::Region* dest, mlir::Region* src,
+                       bool wouldBeCloned,
+                       mlir::IRMapping& valueMapping) const final {
+    return true;
+  }
 };
 
 struct XlaGpuOpAsmDialectInterface : public mlir::OpAsmDialectInterface {
@@ -105,6 +113,10 @@ struct XlaGpuOpAsmDialectInterface : public mlir::OpAsmDialectInterface {
                        mlir::raw_ostream& os) const final {
     if (llvm::isa<IndexingMapAttr>(attr)) {
       os << "indexing_map";
+      return AliasResult::FinalAlias;
+    }
+    if (llvm::isa<LayoutAttr>(attr)) {
+      os << "layout";
       return AliasResult::FinalAlias;
     }
     return AliasResult::NoAlias;
@@ -117,18 +129,15 @@ void XlaGpuDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.cc.inc"
-#undef GET_OP_LIST
       >();
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "xla/service/gpu/fusions/ir/xla_gpu_attrs.cc.inc"
       >();
-#undef GET_ATTRDEF_LIST
   addInterfaces<XlaGpuInlinerInterface, XlaGpuOpAsmDialectInterface>();
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "xla/service/gpu/fusions/ir/xla_gpu_types.cc.inc"
-#undef GET_TYPEDEF_LIST
       >();
 }
 

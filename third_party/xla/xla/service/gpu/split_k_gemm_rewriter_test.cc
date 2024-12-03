@@ -690,7 +690,7 @@ class SplitKTestWithMorePreciseReduction
     : public HloTestBase,
       public ::testing::WithParamInterface<int> {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(
         true);

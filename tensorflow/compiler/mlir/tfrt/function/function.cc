@@ -33,8 +33,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status CompileTFMLIRToBEF(const TfrtFunctionCompileOptions& options,
-                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer) {
+absl::Status CompileTFMLIRToBEF(const TfrtFunctionCompileOptions& options,
+                                mlir::ModuleOp module,
+                                tfrt::BefBuffer* bef_buffer) {
   mlir::OpPrintingFlags print_flags;
   print_flags.elideLargeElementsAttrs();
 
@@ -71,7 +72,8 @@ Status CompileTFMLIRToBEF(const TfrtFunctionCompileOptions& options,
   pass_options.tpu_fuse_ops = options.tpu_fuse_ops;
   pass_options.tpu_transfer_result_to_host =
       options.tpu_transfer_result_to_host;
-  Status status = tensorflow::CreateTfExecutorToTfrtPipeline(pm, pass_options);
+  absl::Status status =
+      tensorflow::CreateTfExecutorToTfrtPipeline(pm, pass_options);
   if (!status.ok()) {
     return diag_handler.Combine(status);
   }

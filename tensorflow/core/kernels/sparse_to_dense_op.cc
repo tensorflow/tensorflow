@@ -46,10 +46,10 @@ namespace tensorflow {
 
 namespace {
 
-Status CheckSparseToDenseShapes(const Tensor& indices,
-                                const Tensor& output_shape,
-                                const Tensor& sparse_values,
-                                const Tensor& default_value) {
+absl::Status CheckSparseToDenseShapes(const Tensor& indices,
+                                      const Tensor& output_shape,
+                                      const Tensor& sparse_values,
+                                      const Tensor& default_value) {
   // sparse_indices
   if (indices.dims() > 2) {
     return errors::InvalidArgument(
@@ -150,7 +150,7 @@ class SparseToDense : public OpKernel {
     }
 
     // Assume SparseTensor is lexicographically sorted.
-    gtl::InlinedVector<int64_t, 8> order(output->shape().dims());
+    absl::InlinedVector<int64_t, 8UL> order(output->shape().dims());
     std::iota(order.begin(), order.end(), 0);
     sparse::SparseTensor st;
     OP_REQUIRES_OK(

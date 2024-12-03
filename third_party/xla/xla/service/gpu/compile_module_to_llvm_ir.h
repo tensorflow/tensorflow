@@ -25,16 +25,17 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -65,6 +66,9 @@ struct CompileModuleResults {
 
 void ForAllThunks(const std::function<void(Thunk*)>& fn,
                   ThunkSequence* thunk_sequence);
+
+absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
+                       absl::string_view cache_file_path);
 
 absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,

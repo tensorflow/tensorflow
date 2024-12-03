@@ -25,11 +25,10 @@ limitations under the License.
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
-#include <algorithm>
-#include <memory>
+#include <string>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -205,7 +204,7 @@ absl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
 
   std::string version_and_rest = driver_version_file_contents.substr(
       offset + strlen(kDriverFilePrelude), std::string::npos);
-  size_t space_index = version_and_rest.find(" ");
+  size_t space_index = version_and_rest.find(' ');
   auto kernel_version = version_and_rest.substr(0, space_index);
   // TODO(b/22689637): Eliminate the explicit namespace if possible.
   auto stripped_kernel_version = absl::StripSuffix(kernel_version, ".ld64");

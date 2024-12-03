@@ -5,6 +5,7 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@build_bazel_apple_support//lib:repositories.bzl", "apple_support_dependencies")
 load("@build_bazel_rules_apple//apple:repositories.bzl", "apple_rules_dependencies")
 load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
+load("@com_google_benchmark//:bazel/benchmark_deps.bzl", "benchmark_deps")
 load("@local_tsl//:workspace0.bzl", "tsl_workspace0")
 
 def _tf_bind():
@@ -124,6 +125,9 @@ def workspace():
     apple_rules_dependencies()
     swift_rules_dependencies()
     apple_support_dependencies()
+
+    # We only need `benchmark_deps` to be able to have bazel query to work and not complain about missing `@libpfm`.
+    benchmark_deps()
 
     # If a target is bound twice, the later one wins, so we have to do tf bindings
     # at the end of the WORKSPACE file.

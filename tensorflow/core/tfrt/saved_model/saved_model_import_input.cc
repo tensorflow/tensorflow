@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/tfrt/graph_executor/config.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -29,7 +30,8 @@ absl::StatusOr<TfrtSavedModelMLIRImportInput>
 TfrtSavedModelMLIRImportInput::Create(
     const FallbackState& fallback_state, const MetaGraphDef* meta_graph_def,
     const GraphDebugInfo& debug_info,
-    bool run_placer_grappler_on_nested_functions) {
+    bool run_placer_grappler_on_nested_functions,
+    tensorflow::tfrt_stub::RuntimeConfig* runtime_config) {
   DCHECK(meta_graph_def);
 
   TfrtGraphExecutionState::Options options;
@@ -38,7 +40,7 @@ TfrtSavedModelMLIRImportInput::Create(
   TF_ASSIGN_OR_RETURN(
       auto graph_execution_state,
       TfrtGraphExecutionState::Create(options, meta_graph_def->graph_def(),
-                                      fallback_state));
+                                      fallback_state, runtime_config));
 
   return TfrtSavedModelMLIRImportInput(meta_graph_def, debug_info,
                                        std::move(graph_execution_state));

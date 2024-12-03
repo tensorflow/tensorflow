@@ -13,15 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <tuple>
-#include <utility>
 #include <vector>
 
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow::fuzzing {
 namespace {

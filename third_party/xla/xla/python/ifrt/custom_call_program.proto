@@ -24,6 +24,8 @@ import "xla/python/ifrt/device.proto";
 message CustomCallProgramProto {
   string type = 1;
   string name = 2;
+  // TODO(hyeontaek): Use CTYPE=CORD once protobuf generates `absl::Cord`
+  // support on all platforms.
   bytes serialized_program_text = 3;
   DeviceListProto devices = 4;
   repeated ArraySpecProto input_specs = 5;

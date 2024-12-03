@@ -407,7 +407,7 @@ tsl::ProfilerSession::CollectData
 tsl::ProfilerSession::Status
 tsl::ProfilerSession::~ProfilerSession
 
-[//external/local_tsl/tsl/profiler/rpc:profiler_server_impl] # profiler
+[//external/local_xla/xla/tsl/profiler/rpc:profiler_server_impl] # profiler
 tsl::profiler::ProfilerServer::StartProfilerServer
 tsl::profiler::ProfilerServer::~ProfilerServer
 
@@ -420,7 +420,7 @@ tensorflow::profiler::RemoteProfilerSession::GetServiceAddress
 tensorflow::profiler::RemoteProfilerSession::WaitForCompletion
 tensorflow::profiler::RemoteProfilerSession::~RemoteProfilerSession
 
-[//external/local_tsl/tsl/profiler/rpc/client:profiler_client_impl] # profiler
+[//external/local_xla/xla/tsl/profiler/rpc/client:profiler_client_impl] # profiler
 tsl::profiler::ProfileGrpc
 tsl::profiler::NewSessionGrpc
 tsl::profiler::MonitorGrpc

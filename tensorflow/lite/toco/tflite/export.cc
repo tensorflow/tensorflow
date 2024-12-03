@@ -23,7 +23,10 @@ limitations under the License.
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/string.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantize_weights.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -32,8 +35,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/tflite/types.h"
 #include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/lite/tools/optimize/quantize_weights.h"
-#include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
@@ -438,8 +439,8 @@ Offset<Vector<Offset<Buffer>>> ExportBuffers(
   return builder->CreateVector(buffer_vector);
 }
 
-tensorflow::Status Export(const Model& model, std::string* output_file_contents,
-                          const ExportParams& params) {
+absl::Status Export(const Model& model, std::string* output_file_contents,
+                    const ExportParams& params) {
   const auto ops_by_type = BuildOperatorByTypeMap(params.enable_select_tf_ops);
   return Export(model, output_file_contents, params, ops_by_type);
 }
@@ -488,7 +489,7 @@ flatbuffers::Offset<tflite::Metadata> ExportMetadata(
   return metadata;
 }
 
-tensorflow::Status Export(
+absl::Status Export(
     const Model& model, std::string* output_file_contents,
     const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
@@ -670,19 +671,19 @@ tensorflow::Status Export(
     flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
     const uint8_t* buffer = builder.GetBufferPointer();
     const ::tflite::Model* input_model = ::tflite::GetModel(buffer);
-    ::tflite::optimize::BufferType quantized_type;
+    ::mlir::lite::toco_legacy::BufferType quantized_type;
     if (params.quantize_weights == QuantizedBufferType::INT8) {
-      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_INT8;
+      quantized_type = ::mlir::lite::toco_legacy::BufferType::QUANTIZED_INT8;
     } else if (params.quantize_weights == QuantizedBufferType::FLOAT16) {
-      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_FLOAT16;
+      quantized_type = ::mlir::lite::toco_legacy::BufferType::QUANTIZED_FLOAT16;
     } else {
       return tensorflow::errors::InvalidArgument(
           "Quantized type not recognized");
     }
-    if (!::tflite::optimize::QuantizeWeights(
+    if (!::mlir::lite::toco_legacy::QuantizeWeights(
              &q_builder, input_model, quantized_type,
              !params.disable_per_channel,
-             ::tflite::optimize::QuantizerType::OLD_QUANTIZER)
+             ::mlir::lite::toco_legacy::QuantizerType::OLD_QUANTIZER)
              .ok()) {
       return tensorflow::errors::InvalidArgument(
           "Quantize weights transformation failed.");
@@ -690,7 +691,7 @@ tensorflow::Status Export(
     WriteModelToString(q_builder, output_file_contents);
   }
 
-  return tensorflow::Status();
+  return absl::Status();
 }
 
 }  // namespace tflite

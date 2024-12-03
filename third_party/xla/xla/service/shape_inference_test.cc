@@ -30,16 +30,17 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
-#include "xla/client/padding.h"
+#include "xla/hlo/builder/padding.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -239,6 +240,18 @@ TEST_F(ShapeInferenceTest, SelectBadShapes) {
               HasSubstr("Expected array argument for select pred"));
 }
 
+TEST_F(ShapeInferenceTest, SelectPreservesElementSize) {
+  Shape pred_shape = ShapeUtil::MakeShape(PRED, {10});
+  Shape int4_shape = ShapeUtil::MakeShape(S4, {10});
+  int4_shape.mutable_layout()->set_element_size_in_bits(4);
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferTernaryOpShape(HloOpcode::kSelect, pred_shape,
+                                          int4_shape, int4_shape);
+  ASSERT_IS_OK(inferred_shape.status());
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_shape, int4_shape));
+}
+
 TEST_F(ShapeInferenceTest, ClampAllMatrix) {
   const absl::StatusOr<Shape> inferred_shape =
       ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, matrix_64_48_,
@@ -338,6 +351,17 @@ TEST_F(ShapeInferenceTest, ClampBadShapes) {
                    .ok());
 }
 
+TEST_F(ShapeInferenceTest, Atan2FailsWithIntegerInput) {
+  const Shape input = ShapeUtil::MakeScalarShape(S8);
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kAtan2, input, input, {});
+  EXPECT_THAT(
+      inferred_shape.status(),
+      tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                             HasSubstr("Expected input element type to be "
+                                       "floating or complex for atan2")));
+}
+
 TEST_F(ShapeInferenceTest, Complex) {
   const auto complex_shape = [&](const Shape& lhs, const Shape& rhs,
                                  absl::Span<const int64_t> bcast) {
@@ -377,6 +401,17 @@ TEST_F(ShapeInferenceTest, Complex) {
 
   TF_ASSERT_OK_AND_ASSIGN(result, complex_shape(f64_, f64_, {}));
   ASSERT_TRUE(ShapeUtil::Equal(result, ShapeUtil::MakeShape(C128, {})));
+}
+
+TEST_F(ShapeInferenceTest, ComplexCbrtIsNotSupported) {
+  const Shape input = ShapeUtil::MakeScalarShape(C64);
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferUnaryOpShape(HloOpcode::kCbrt, input);
+  EXPECT_THAT(
+      inferred_shape.status(),
+      tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                             HasSubstr("Expected element type in shape to be "
+                                       "floating for cbrt operation")));
 }
 
 TEST_F(ShapeInferenceTest, VariadicOpTuplify) {
@@ -2133,6 +2168,353 @@ TEST_F(ShapeInferenceTest, SparseDotMetadata) {
       ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(U16, {5, 10, 2})));
 }
 
+// <ragged-dot> : [m,k], [g,k,n], [g] -> [m,n]
+TEST_F(ShapeInferenceTest, RaggedDotRaggedNonContracting) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 5, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {3});
+  const Shape output_shape = ShapeUtil::MakeShape(F32, {11, 7});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(0);
+  ragged_dot_dnums.add_rhs_group_dimensions(0);
+
+  const absl::StatusOr<Shape> inferred_shape_match =
+      ShapeInference::InferRaggedDotOpShape(
+          lhs_shape, rhs_shape, group_sizes_shape, ragged_dot_dnums,
+          /*preferred_element_type=*/std::nullopt);
+  ASSERT_IS_OK(inferred_shape_match.status());
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_shape_match, output_shape))
+      << "inferred: " << ShapeUtil::HumanString(*inferred_shape_match)
+      << " expected: " << ShapeUtil::HumanString(output_shape);
+}
+
+// <ragged-dot> : [m,k], [k,n], [g] -> [g,m,n]
+TEST_F(ShapeInferenceTest, RaggedDotRaggedContracting) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {5, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {3});
+  const Shape output_shape = ShapeUtil::MakeShape(F32, {3, 11, 7});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(1);
+
+  const absl::StatusOr<Shape> inferred_shape_match =
+      ShapeInference::InferRaggedDotOpShape(
+          lhs_shape, rhs_shape, group_sizes_shape, ragged_dot_dnums,
+          /*preferred_element_type=*/std::nullopt);
+  ASSERT_IS_OK(inferred_shape_match.status());
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_shape_match, output_shape))
+      << "inferred: " << ShapeUtil::HumanString(*inferred_shape_match)
+      << " expected: " << ShapeUtil::HumanString(output_shape);
+}
+
+// <ragged-dot> : [b,m,k], [b,k,n], [g] -> [b,m,n]
+TEST_F(ShapeInferenceTest, RaggedDotRaggedBatch) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {3, 11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 5, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {3});
+  const Shape output_shape = ShapeUtil::MakeShape(F32, {3, 11, 7});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_lhs_contracting_dimensions(2);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(0);
+
+  const absl::StatusOr<Shape> inferred_shape_match =
+      ShapeInference::InferRaggedDotOpShape(
+          lhs_shape, rhs_shape, group_sizes_shape, ragged_dot_dnums,
+          /*preferred_element_type=*/std::nullopt);
+  ASSERT_IS_OK(inferred_shape_match.status());
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_shape_match, output_shape))
+      << "inferred: " << ShapeUtil::HumanString(*inferred_shape_match)
+      << " expected: " << ShapeUtil::HumanString(output_shape);
+}
+
+// preferred_element_type should be respected
+TEST_F(ShapeInferenceTest, RaggedDotRaggedContractingWithPreferredElementType) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(S8, {11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(S8, {5, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {3});
+  const Shape output_shape = ShapeUtil::MakeShape(S32, {3, 11, 7});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(1);
+
+  const absl::StatusOr<Shape> inferred_shape_match =
+      ShapeInference::InferRaggedDotOpShape(lhs_shape, rhs_shape,
+                                            group_sizes_shape, ragged_dot_dnums,
+                                            /*preferred_element_type=*/S32);
+  ASSERT_IS_OK(inferred_shape_match.status());
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_shape_match, output_shape))
+      << "inferred: " << ShapeUtil::HumanString(*inferred_shape_match)
+      << " expected: " << ShapeUtil::HumanString(output_shape);
+}
+
+// ragged-dot contracting dim (k) must match between lhs and rhs
+TEST_F(ShapeInferenceTest, RaggedDotRaggedNonContractingIncompatibleK) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 2, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {3});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(0);
+  ragged_dot_dnums.add_rhs_group_dimensions(0);
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferRaggedDotOpShape(
+          lhs_shape, rhs_shape, group_sizes_shape, ragged_dot_dnums,
+          /*preferred_element_type=*/std::nullopt);
+
+  EXPECT_FALSE(inferred_shape.ok());
+  EXPECT_THAT(inferred_shape.status().message(),
+              HasSubstr("Contracting dimension sizes are not compatible"));
+}
+
+// ragged-dot contracting dim (k) must match between lhs and rhs
+TEST_F(ShapeInferenceTest, RaggedDotRaggedContractingIncompatibleK) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {2, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {3});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(1);
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferRaggedDotOpShape(
+          lhs_shape, rhs_shape, group_sizes_shape, ragged_dot_dnums,
+          /*preferred_element_type=*/std::nullopt);
+
+  EXPECT_FALSE(inferred_shape.ok());
+  EXPECT_THAT(inferred_shape.status().message(),
+              HasSubstr("Contracting dimension sizes are not compatible"));
+}
+
+// ragged-dot group_sizes must be 1D
+TEST_F(ShapeInferenceTest, RaggedDotGroupSizesIncorrectRank) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 5, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {3, 2});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(0);
+  ragged_dot_dnums.add_rhs_group_dimensions(0);
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferRaggedDotOpShape(
+          lhs_shape, rhs_shape, group_sizes_shape, ragged_dot_dnums,
+          /*preferred_element_type=*/std::nullopt);
+
+  EXPECT_FALSE(inferred_shape.ok());
+  EXPECT_THAT(inferred_shape.status().message(),
+              HasSubstr("group_sizes is expected to have rank=1"));
+}
+
+// ragged-dot should have exactly one lhs ragged dimension
+TEST_F(ShapeInferenceTest, RaggedDotIncorrectNumberOfLhsRaggedDimensions) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 5, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {3});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(0);
+  ragged_dot_dnums.add_lhs_ragged_dimensions(1);
+  ragged_dot_dnums.add_rhs_group_dimensions(0);
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferRaggedDotOpShape(
+          lhs_shape, rhs_shape, group_sizes_shape, ragged_dot_dnums,
+          /*preferred_element_type=*/std::nullopt);
+
+  EXPECT_FALSE(inferred_shape.ok());
+  EXPECT_THAT(inferred_shape.status().message(),
+              HasSubstr("There must be exactly one ragged dimension"));
+}
+
+// ragged-dot rhs group dim should not be a batch dim
+TEST_F(ShapeInferenceTest, RaggedDotRhsGroupDimIsBatch) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {3, 11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 5, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {3});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_lhs_contracting_dimensions(2);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(1);
+  ragged_dot_dnums.add_rhs_group_dimensions(0);
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferRaggedDotOpShape(
+          lhs_shape, rhs_shape, group_sizes_shape, ragged_dot_dnums,
+          /*preferred_element_type=*/std::nullopt);
+
+  EXPECT_FALSE(inferred_shape.ok());
+  EXPECT_THAT(
+      inferred_shape.status().message(),
+      HasSubstr(
+          "rhs group dimension cannot be a batch or contracting dimension"));
+}
+
+// ragged-dot rhs group dim should not be a contracting dim
+TEST_F(ShapeInferenceTest, RaggedDotRhsGroupDimIsContracting) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {11, 3});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 3, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {3});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(0);
+  ragged_dot_dnums.add_rhs_group_dimensions(1);
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferRaggedDotOpShape(
+          lhs_shape, rhs_shape, group_sizes_shape, ragged_dot_dnums,
+          /*preferred_element_type=*/std::nullopt);
+
+  EXPECT_FALSE(inferred_shape.ok());
+  EXPECT_THAT(
+      inferred_shape.status().message(),
+      HasSubstr(
+          "rhs group dimension cannot be a batch or contracting dimension"));
+}
+
+// ragged-dot group_sizes must have as many elements as the rhs group dim
+TEST_F(ShapeInferenceTest, RaggedDotGroupSizesIncorrectShape) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 5, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {2});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(0);
+  ragged_dot_dnums.add_rhs_group_dimensions(0);
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferRaggedDotOpShape(
+          lhs_shape, rhs_shape, group_sizes_shape, ragged_dot_dnums,
+          /*preferred_element_type=*/std::nullopt);
+
+  EXPECT_FALSE(inferred_shape.ok());
+  EXPECT_THAT(inferred_shape.status().message(),
+              HasSubstr("group_sizes is expected to have shape=[3], got [2]"));
+}
+
+// ragged-dot should have zero rhs group dims for ragged batch
+TEST_F(ShapeInferenceTest, RaggedDotRhsGroupDimsForRaggedBatch) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 2, 5, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {3});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(1);
+  dot_dnums.add_lhs_contracting_dimensions(2);
+  dot_dnums.add_rhs_contracting_dimensions(2);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(0);
+  ragged_dot_dnums.add_rhs_group_dimensions(0);
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferRaggedDotOpShape(
+          lhs_shape, rhs_shape, group_sizes_shape, ragged_dot_dnums,
+          /*preferred_element_type=*/std::nullopt);
+
+  EXPECT_FALSE(inferred_shape.ok());
+  EXPECT_THAT(inferred_shape.status().message(),
+              HasSubstr("There must be zero group dimensions in the rhs"));
+}
+
+// ragged-dot should have zero rhs group dims for ragged contracting
+TEST_F(ShapeInferenceTest, RaggedDotRhsGroupDimsForRaggedContracting) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 5, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {3});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(1);
+  ragged_dot_dnums.add_rhs_group_dimensions(0);
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferRaggedDotOpShape(
+          lhs_shape, rhs_shape, group_sizes_shape, ragged_dot_dnums,
+          /*preferred_element_type=*/std::nullopt);
+
+  EXPECT_FALSE(inferred_shape.ok());
+  EXPECT_THAT(inferred_shape.status().message(),
+              HasSubstr("There must be zero group dimensions in the rhs"));
+}
+
+// ragged-dot should have exactly one rhs group dim for ragged non-contracting
+TEST_F(ShapeInferenceTest, RaggedDotRhsGroupDimsForRaggedNonContracting) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {5, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(U32, {3});
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  RaggedDotDimensionNumbers ragged_dot_dnums;
+  *ragged_dot_dnums.mutable_dot_dimension_numbers() = dot_dnums;
+  ragged_dot_dnums.add_lhs_ragged_dimensions(0);
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferRaggedDotOpShape(
+          lhs_shape, rhs_shape, group_sizes_shape, ragged_dot_dnums,
+          /*preferred_element_type=*/std::nullopt);
+
+  EXPECT_FALSE(inferred_shape.ok());
+  EXPECT_THAT(
+      inferred_shape.status().message(),
+      HasSubstr("There must be exactly one group dimension in the rhs"));
+}
+
 TEST_F(ShapeInferenceTest, BinOpBroadcastMatrixVector) {
   // Test variations of broadcasting a vector for a binary add with a
   // matrix.
@@ -2870,6 +3252,24 @@ TEST_F(GatherShapeInferenceTest, TensorFlowGatherV2) {
       << ShapeUtil::HumanString(gather_shape);
 }
 
+TEST_F(GatherShapeInferenceTest, TensorFlowGatherBatchingDims) {
+  TF_ASSERT_OK_AND_ASSIGN(const Shape gather_shape,
+                          ShapeInference::InferGatherShape(
+                              ShapeUtil::MakeShape(F32, {100, 64, 5, 48}),
+                              ShapeUtil::MakeShape(S64, {5, 100, 32}),
+                              HloGatherInstruction::MakeGatherDimNumbers(
+                                  /*offset_dims=*/{3},
+                                  /*collapsed_slice_dims=*/{1},
+                                  /*start_index_map=*/{1},
+                                  /*index_vector_dim=*/3,
+                                  /*operand_batching_dims=*/{0, 2},
+                                  /*start_indices_batching_dims=*/{1, 0}),
+                              /*slice_sizes=*/{1, 1, 1, 8}));
+  EXPECT_TRUE(ShapeUtil::Equal(gather_shape,
+                               ShapeUtil::MakeShape(F32, {5, 100, 32, 8})))
+      << ShapeUtil::HumanString(gather_shape);
+}
+
 TEST_F(GatherShapeInferenceTest, TensorFlowGatherNd) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape gather_shape,
                           ShapeInference::InferGatherShape(
@@ -3473,6 +3873,27 @@ TEST_P(ScatterShapeInferenceTest, TfScatterWithUpdatesBiggerThanInputV2) {
           /*inserted_window_dims=*/{0},
           /*scatter_dims_to_operand_dims=*/{1},
           /*index_vector_dim=*/1));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().message(),
+      HasSubstr("Bounds of the window dimensions of updates must not exceed "
+                "the bounds of the corresponding dimensions of operand."))
+      << statusor.status();
+}
+
+TEST_P(ScatterShapeInferenceTest,
+       TfScatterBatchingDimsWithUpdatesBiggerThanInput) {
+  const auto shapes = CreateShapes({100, 64, 48}, s64_tensor({100, 32}),
+                                   {100, 65, 32}, types());
+  const absl::StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      shapes.ptrs, to_apply(types()),
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{1},
+          /*inserted_window_dims=*/{2},
+          /*scatter_dims_to_operand_dims=*/{1},
+          /*index_vector_dim=*/2,
+          /*input_batching_dims=*/{0},
+          /*scatter_indices_batching_dims=*/{0}));
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(
       statusor.status().message(),

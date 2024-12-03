@@ -129,12 +129,6 @@ bool hasExperimentalFeaturesNotInStablehlo(HloOpTy hloOp) {
 // fit for StableHLO, and are usually accompanied by a StableHLO GitHub ticket.
 template <typename HloOpTy>
 std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
-  // StableHLO doesn't support TanOp yet.
-  // Proposal: https://github.com/openxla/stablehlo/issues/954
-  if constexpr (std::is_same<HloOpTy, mhlo::TanOp>::value) {
-    // Version 1: Initial version for TanOp.
-    return 1;
-  }
   // StableHLO doesn't support TopK yet.
   // Proposal: https://github.com/openxla/stablehlo/pull/1593
   if constexpr (std::is_same<HloOpTy, mhlo::TopKOp>::value) {
@@ -258,6 +252,13 @@ Attribute convertAttr(Attribute hloAttr) {
   }
   // NOTE: We cannot process CustomCallApiVersionAttr here because
   // `dyn_cast<mhlo::CustomCallApiVersionAttr>()` succeeds for IntegerAttr too.
+  if (auto attr = mlir::dyn_cast<mhlo::DotAlgorithmAttr>(hloAttr)) {
+    return stablehlo::DotAlgorithmAttr::get(
+        attr.getContext(), attr.getLhsPrecisionType(),
+        attr.getRhsPrecisionType(), attr.getAccumulationType(),
+        attr.getLhsComponentCount(), attr.getRhsComponentCount(),
+        attr.getNumPrimitiveOperations(), attr.getAllowImpreciseAccumulation());
+  }
   if (auto attr = mlir::dyn_cast<mhlo::DotDimensionNumbersAttr>(hloAttr)) {
     return stablehlo::DotDimensionNumbersAttr::get(
         attr.getContext(), attr.getLhsBatchingDimensions(),
@@ -453,8 +454,7 @@ LogicalResult convertAttributes(ConversionPatternRewriter& rewriter,
     }
 
     // Handle DenseElements --> DenseArray for certain StableHLO ops
-    if constexpr (!std::is_same<HloOpTy, mhlo::TanOp>::value &&
-                  !std::is_same<HloOpTy, mhlo::ErfOp>::value &&
+    if constexpr (!std::is_same<HloOpTy, mhlo::ErfOp>::value &&
                   !std::is_same<HloOpTy, mhlo::TopKOp>::value) {
       if (!stablehloAttr)
         stablehloAttr = convertDenseArray<HloToStablehloOp<HloOpTy>>(
@@ -722,8 +722,7 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
 #include "stablehlo/dialect/StablehloOps.cpp.inc"
       >(patterns, converter, context, allowExperimentalFeatures);
 
-  populateHloToStablehloCustomCallPatterns<mhlo::TanOp, mhlo::TopKOp,
-                                           mhlo::ErfOp>(
+  populateHloToStablehloCustomCallPatterns<mhlo::TopKOp, mhlo::ErfOp>(
       patterns, converter, context, allowExperimentalFeatures);
 }
 

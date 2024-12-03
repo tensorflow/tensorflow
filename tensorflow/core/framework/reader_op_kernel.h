@@ -76,7 +76,7 @@ class ReaderOpKernel : public ResourceOpKernel<ReaderInterface> {
     }
     std::function<ReaderInterface*()> temp = nullptr;
     factory_.swap(temp);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::function<ReaderInterface*()> factory_ TF_GUARDED_BY(mu_);

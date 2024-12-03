@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 
@@ -24,18 +25,19 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/tf_op_utils.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tsl/profiler/utils/tf_op_utils.h"
-#include "tsl/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 
 const absl::string_view kIdle = "IDLE";
+const uint32_t kSparseCoreIndexStart = 1000000;
 
 namespace {
 
@@ -226,6 +228,19 @@ OpMetrics* OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
 void XEventsOpMetricsDbBuilder::AddOpMetric(
     const tsl::profiler::XEventVisitor& event) {
   OpKey key = GetOpKeyFromHloEventMetadata(event.Metadata());
+  std::optional<XStatVisitor> stat = event.GetStat(StatType::kStepIdleTimePs);
+  if (stat.has_value()) {
+    uint64_t idle_time_ps = stat->IntOrUintValue();
+    OpMetrics op_metrics;
+    op_metrics.set_self_time_ps(event.DurationPs() - idle_time_ps);
+    op_metrics.set_name("sparse_core_busy_ops");
+    // TODO: Make it meaningful after SC stats are available.
+    op_metrics.set_category("sparse_core_busy_ops");
+    constexpr uint64_t kMaxProgramId = std::numeric_limits<uint64_t>::max();
+    constexpr uint64_t kMaxSymbolId = std::numeric_limits<uint64_t>::max();
+    flat_op_metric_[kMaxProgramId][kMaxSymbolId] = op_metrics;
+    SetOpMetricsFromHloEvent(event, &op_metrics);
+  }
   if (!key.program_id.has_value() || !key.symbol_id.has_value()) return;
   OpMetricBySymbol& op_metric_by_symbol =
       flat_op_metric_[key.program_id.value()];

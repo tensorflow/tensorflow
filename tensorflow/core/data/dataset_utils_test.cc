@@ -125,7 +125,7 @@ TEST(DatasetUtilsTest, AddToFunctionLibraryWithConflictingSignatures) {
       /*ret_def=*/{{"ret", "arg"}, {"ret2", "arg"}});
 
   FunctionLibraryDefinition flib_0(OpRegistry::Global(), fdef_base);
-  Status s = AddToFunctionLibrary(&flib_0, fdef_to_add);
+  absl::Status s = AddToFunctionLibrary(&flib_0, fdef_to_add);
   EXPECT_EQ(error::Code::INVALID_ARGUMENT, s.code());
   EXPECT_EQ(
       "Cannot add function '0' because a different function with the same "
@@ -199,19 +199,19 @@ TEST(DatasetUtilsTest, BoolConstructor) {
 
 class TestSplitProvider : public SplitProvider {
  public:
-  Status GetNext(Tensor* split, bool* end_of_splits) override {
+  absl::Status GetNext(Tensor* split, bool* end_of_splits) override {
     return absl::OkStatus();
   }
 
-  Status Reset() override { return absl::OkStatus(); }
+  absl::Status Reset() override { return absl::OkStatus(); }
 
-  Status Save(std::function<std::string(std::string)> key_name_fn,
-              IteratorStateWriter* writer) override {
+  absl::Status Save(std::function<std::string(std::string)> key_name_fn,
+                    IteratorStateWriter* writer) override {
     return absl::OkStatus();
   }
 
-  Status Restore(std::function<std::string(std::string)> key_name_fn,
-                 IteratorStateReader* reader) override {
+  absl::Status Restore(std::function<std::string(std::string)> key_name_fn,
+                       IteratorStateReader* reader) override {
     return absl::OkStatus();
   }
 };

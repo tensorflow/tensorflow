@@ -20,11 +20,10 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/types.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -338,6 +337,73 @@ TEST_F(SpaceToBatchConverterTest, DoNotPropagateOnTupleReduce) {
     ROOT %reduce.36 = (f32[7,160,400]{2,1,0}, f32[7,160,400]{2,1,0}) reduce(%c, %c,
     %constant.5, %constant.6), dimensions={3}, to_apply=%minmax_func.2717
   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Reduce());
+}
+
+TEST_F(SpaceToBatchConverterTest, ReduceDegenerateDim) {
+  std::string hlo_string = R"(
+  HloModule module
+
+  %region_42.4982  {
+    %Arg_0.38 = f32[] parameter(0)
+    %Arg_1.39 = f32[] parameter(1)
+    ROOT %add.40 = f32[] add(f32[] %Arg_0.38, f32[] %Arg_1.39)
+  }
+ 
+  ENTRY computation {
+    %p0 = f32[2,1,84,84,3]{4,3,2,1,0}  parameter(0)
+    %p1 = f32[3,3,3,3,32]{4,3,2,1,0} parameter(1)
+    %constant.10559 = f32[] constant(0)
+    %convolution.98 = f32[2,1,84,84,32]{4,3,2,1,0} convolution(%p0, %p1), 
+      window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=b012f_012io->b012f
+      
+    ROOT %reduce.2606 = f32[2,84,84]{2,1,0} reduce(f32[2,1,84,84,32]{4,3,2,1,0} 
+      %convolution.98, f32[] %constant.10559), dimensions={1,4}, to_apply=%region_42.4982
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+  EXPECT_THAT(root->operand(0), op::Slice());
+}
+
+TEST_F(SpaceToBatchConverterTest, PropagateOnReduce) {
+  std::string hlo_string = R"(
+HloModule xla_computation_unknown.14
+
+region_0.134 {
+  Arg_0.135 = f32[] parameter(0)
+  Arg_1.136 = f32[] parameter(1)
+  ROOT add.137 = f32[] add(Arg_0.135, Arg_1.136)
+}
+
+ENTRY main.140 {
+  p0 = bf16[1,512,32,128]{3,2,1,0} parameter(0)
+  p1 = f32[3,3,128,128]{3,2,1,0} parameter(1)
+  %convolution.755 = f32[1,512,32,128]{3,2,1,0}
+    convolution(p0, p1),
+    window={size=3x3 pad=1_1x1_1 rhs_reversal=1x1}, dim_labels=b01f_01oi->b01f
+  %constant.19458 = f32[] constant(0)
+  ROOT %reduce.1354 = f32[128]{0} reduce(%convolution.755, %constant.19458),
+    dimensions={0,1,2}, to_apply=%region_0.134
+}
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));

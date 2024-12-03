@@ -15,13 +15,20 @@ limitations under the License.
 
 #include "xla/tools/hlo_control_flow_flattening.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/transforms/despecializer.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/despecializer.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/tests/hlo_test_base.h"

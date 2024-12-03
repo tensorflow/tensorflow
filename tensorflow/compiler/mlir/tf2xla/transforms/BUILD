@@ -2,7 +2,7 @@
 #    TF2XLA Bridge transforms
 
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -121,16 +121,11 @@ cc_library(
         "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
-        "//tensorflow/core/lib/monitoring:cell_reader",
-        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:Pass",
         "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -174,12 +169,12 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:padding",
-        "@local_xla//xla/client:sharding_builder",
-        "@local_xla//xla/client/lib:conv_grad_size_util",
+        "@local_xla//xla/hlo/builder:padding",
+        "@local_xla//xla/hlo/builder:sharding_builder",
+        "@local_xla//xla/hlo/builder/lib:conv_grad_size_util",
+        "@local_xla//xla/hlo/translate/hlo_to_mhlo:attribute_importer",
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/mlir_hlo:convert_op_folder",
-        "@local_xla//xla/translate/hlo_to_mhlo:attribute_importer",
         "@stablehlo//:chlo_ops",
     ] + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
 )
@@ -298,16 +293,16 @@ cc_library(
         "@local_xla//xla:shape_util",
         "@local_xla//xla:side_effect_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:padding",
-        "@local_xla//xla/client:sharding_builder",
+        "@local_xla//xla/hlo/builder:padding",
+        "@local_xla//xla/hlo/builder:sharding_builder",
+        "@local_xla//xla/hlo/translate/hlo_to_mhlo:attribute_importer",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/mlir_hlo:convert_op_folder",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/mlir_hlo:type_conversion",
         "@local_xla//xla/stream_executor/tpu:c_api_conversions",
         "@local_xla//xla/stream_executor/tpu:tpu_api",
-        "@local_xla//xla/translate/hlo_to_mhlo:attribute_importer",
-        "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
     ],
@@ -359,14 +354,14 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",
+        "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/translate/hlo_to_mhlo:hlo_module_importer",
-        "@local_xla//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
-        "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
     ],
 )
 
@@ -395,8 +390,8 @@ tf_cc_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
@@ -440,7 +435,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/client:xla_builder",
         "@local_xla//xla/mlir_hlo",
     ],
 )
@@ -485,7 +479,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tpu_embedding_ops_registry",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -496,19 +489,47 @@ tf_cc_test(
     deps = [
         ":legalization_op_config",
         ":legalize_tf",
-        ":test_utils",
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "split_into_island_per_op_pass",
+    srcs = ["split_into_island_per_op_pass.cc"],
+    hdrs = [
+        "split_into_island_per_op_pass.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_executor_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_pass_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+tf_cc_test(
+    name = "split_into_island_per_op_pass_test",
+    srcs = ["split_into_island_per_op_pass_test.cc"],
+    deps = [
+        ":split_into_island_per_op_pass",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )

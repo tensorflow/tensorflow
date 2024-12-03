@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
@@ -63,7 +64,8 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
   NcclAllReduceStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                           const HloAllReduceInstruction* inst,
-                          std::vector<Buffer> buffers);
+                          std::vector<Buffer> buffers,
+                          bool p2p_memcpy_enabled = false);
 
   static const char* GetHloOpName() { return "all-reduce-start"; }
 
@@ -77,7 +79,7 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
  protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
-                                 NcclCommHandleWrapper comm_wrapper) override;
+                                 CommunicatorHandle comm_handle) override;
 };
 
 // -----------------------------------------------------------------------------
@@ -87,7 +89,8 @@ class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
   NcclReduceScatterStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                               const HloReduceScatterInstruction* inst,
-                              std::vector<Buffer> buffers);
+                              std::vector<Buffer> buffers,
+                              bool p2p_memcpy_enabled = false);
 
   static const char* GetHloOpName() { return "reduce-scatter-start"; }
 
@@ -101,18 +104,18 @@ class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
  protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
-                                 NcclCommHandleWrapper comm_wrapper) override;
+                                 CommunicatorHandle comm_handle) override;
 };
 
 // -----------------------------------------------------------------------------
 
 absl::Status RunAllReduce(NcclApi* nccl_api, ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, NcclApi::NcclCommHandle comm);
+                          se::Stream& stream, Communicator* comm);
 
 absl::Status RunReduceScatter(NcclApi* nccl_api, ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, NcclApi::NcclCommHandle comm);
+                              se::Stream& stream, Communicator* comm);
 
 }  // namespace gpu
 }  // namespace xla

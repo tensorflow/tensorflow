@@ -18,12 +18,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/layout_util.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -31,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -55,7 +59,7 @@ class XlaCustomCallV2Op : public XlaOpKernel {
   }
 
  private:
-  Status CompileImpl(XlaOpKernelContext& ctx) const {
+  absl::Status CompileImpl(XlaOpKernelContext& ctx) const {
     std::vector<xla::XlaOp> operands(ctx.num_inputs());
     std::vector<xla::Shape> operand_shapes(ctx.num_inputs());
     for (int i = 0; i < ctx.num_inputs(); ++i) {

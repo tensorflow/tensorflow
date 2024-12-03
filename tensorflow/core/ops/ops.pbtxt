@@ -4100,6 +4100,7 @@ op {
         s: "low_priority_padding_with_max_batch_size"
         s: "low_priority_padding_with_next_allowed_batch_size"
         s: "priority_isolation"
+        s: "priority_merge"
       }
     }
   }
@@ -7980,6 +7981,21 @@ op {
     type: "string"
   }
   is_stateful: true
+}
+op {
+  name: "CheckPinned"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
 }
 op {
   name: "Cholesky"

@@ -15,22 +15,37 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/gpu_helpers.h"
 
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "absl/types/span.h"
 #include "xla/client/client_library.h"
+#include "xla/client/local_client.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/integrations/device_host_allocator.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/bfc_allocator.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -164,31 +179,76 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
 }
 
 // Returns a GPU pinned host memory allocator to use when staging host->GPU
-// transfers. We use a fixed 64GB pool of pinned memory.
+// transfers. We use a fixed pool of pinned memory.
+//
+// The pool size is controlled by XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB environment
+// variable, which defaults to 64GB.
+//
+// If XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE is set to true, the pool will be
+// preallocated, and the preallocated size is controlled by
+// XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB environment variable, which defaults to
+// 16GB in this case.
 std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
     se::StreamExecutor* executor) {
   std::unique_ptr<tsl::SubAllocator> sub_allocator(
       new se::DeviceHostAllocator(executor, /*numa_node=*/0,
                                   /*alloc_visitors=*/{},
                                   /*free_visitors=*/{}));
+  bool xla_pjrt_gpu_host_memory_preallocate;
+  {
+    absl::Status status =
+        tsl::ReadBoolFromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE", false,
+                                &xla_pjrt_gpu_host_memory_preallocate);
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to read XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE: "
+                 << status.message();
+    }
+  }
+
+  const int64_t default_xla_pjrt_gpu_host_memory_limit_gb =
+      xla_pjrt_gpu_host_memory_preallocate ? 16 : 64;
 
   int64_t xla_pjrt_gpu_host_memory_limit_gb;
-  absl::Status status =
-      tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB", 64,
-                               &xla_pjrt_gpu_host_memory_limit_gb);
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to read XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB: "
-               << status.message();
+  {
+    absl::Status status =
+        tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB",
+                                 default_xla_pjrt_gpu_host_memory_limit_gb,
+                                 &xla_pjrt_gpu_host_memory_limit_gb);
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to read XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB: "
+                 << status.message();
+    }
   }
 
   const int64_t kGpuHostMemoryLimitBytes =
       xla_pjrt_gpu_host_memory_limit_gb * (1LL << 30);
 
   tsl::BFCAllocator::Options opts;
-  opts.allow_growth = true;
+  opts.allow_growth = !xla_pjrt_gpu_host_memory_preallocate;
   return std::make_unique<tsl::BFCAllocator>(std::move(sub_allocator),
                                              kGpuHostMemoryLimitBytes,
                                              /*name=*/"xla_gpu_host_bfc", opts);
+}
+
+int TopologySizes::GetDeviceCount() {
+  return num_slices * num_hosts_per_slice * num_devices_per_host;
+}
+
+// static
+absl::StatusOr<TopologySizes> TopologySizes::FromString(
+    std::string_view topology_string) {
+  TopologySizes sizes;
+  std::vector<std::string> topology_components =
+      absl::StrSplit(topology_string, 'x');
+  if (topology_components.size() != 3 ||
+      !absl::SimpleAtoi(topology_components[0], &sizes.num_slices) ||
+      !absl::SimpleAtoi(topology_components[1], &sizes.num_hosts_per_slice) ||
+      !absl::SimpleAtoi(topology_components[2], &sizes.num_devices_per_host)) {
+    return absl::InternalError(
+        "topology must be of shape "
+        "\"<num-slices>x<num-hosts-per-slice>x<num-devices-per-host>\"");
+  }
+  return sizes;
 }
 
 }  // namespace xla

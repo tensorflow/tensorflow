@@ -58,6 +58,78 @@ func.func @transpose_dynamic_2d(%arg0: tensor<?x4xf32>) -> tensor<4x?xf32> {
 // mhlo.dot_general
 //===----------------------------------------------------------------------===//
 
+// CHECK-LABEL: dot_general_transposed_contracting_dims_3d
+func.func @dot_general_transposed_contracting_dims_3d(%arg0: tensor<2x8x256x1792xf32>, %arg1: tensor<1x2x128x8x256xf32>) -> (tensor<1x128x1792xf32>){
+  %4 = "mhlo.dot_general"(%arg1, %arg0)
+    <{dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [4, 3, 1],
+    rhs_contracting_dimensions = [2, 1, 0]>}>: (tensor<1x2x128x8x256xf32>,
+    tensor<2x8x256x1792xf32>) -> tensor<1x128x1792xf32>
+  return %4 : tensor<1x128x1792xf32>
+  // CHECK  %0 = "tfl.pseudo_const"() <{value = dense<[0, 2, 1, 3, 4]> : tensor<5xi64>}> : () -> tensor<5xi64>
+  // CHECK  %1 = "tfl.cast"(%0) : (tensor<5xi64>) -> tensor<5xi32>
+  // CHECK  %2 = "tfl.transpose"(%arg1, %1) : (tensor<1x2x128x8x256xf32>, tensor<5xi32>) -> tensor<1x128x2x8x256xf32>
+  // CHECK  %cst = arith.constant dense<[128, 4096]> : tensor<2xi64>
+  // CHECK  %3 = "tfl.cast"(%cst) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK  %4 = "tfl.reshape"(%2, %3) : (tensor<1x128x2x8x256xf32>, tensor<2xi32>) -> tensor<128x4096xf32>
+  // CHECK  %cst_0 = arith.constant dense<[4096, 1792]> : tensor<2xi64>
+  // CHECK  %5 = "tfl.cast"(%cst_0) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK  %6 = "tfl.reshape"(%arg0, %5) : (tensor<2x8x256x1792xf32>, tensor<2xi32>) -> tensor<4096x1792xf32>
+  // CHECK  %7 = "tfl.batch_matmul"(%4, %6) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<128x4096xf32>, tensor<4096x1792xf32>) -> tensor<128x1792xf32>
+  // CHECK  %cst_1 = arith.constant dense<[1, 128, 1792]> : tensor<3xi64>
+  // CHECK  %8 = "tfl.cast"(%cst_1) : (tensor<3xi64>) -> tensor<3xi32>
+  // CHECK  %9 = "tfl.reshape"(%7, %8) : (tensor<128x1792xf32>, tensor<3xi32>) -> tensor<1x128x1792xf32>
+  // CHECK  return %9 : tensor<1x128x1792xf32>
+}
+
+// -----
+
+// CHECK-LABEL: dot_general_transposed_contracting_dims
+func.func @dot_general_transposed_contracting_dims(%arg0: tensor<64x8x8xf32>, %arg1: tensor<1x10x8x8xf32>) -> (tensor<1x10x64xf32>){
+  %4 = "mhlo.dot_general"(%arg1, %arg0)
+    <{dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [3, 2],
+    rhs_contracting_dimensions = [2, 1]>}>
+    : (tensor<1x10x8x8xf32>, tensor<64x8x8xf32>) -> tensor<1x10x64xf32>
+  return %4 : tensor<1x10x64xf32>
+  // CHECK  %0 = "tfl.pseudo_const"() <{value = dense<[1, 2, 0]> : tensor<3xi64>}> : () -> tensor<3xi64>
+  // CHECK  %1 = "tfl.cast"(%0) : (tensor<3xi64>) -> tensor<3xi32>
+  // CHECK  %2 = "tfl.transpose"(%arg0, %1) : (tensor<64x8x8xf32>, tensor<3xi32>) -> tensor<8x8x64xf32>
+  // CHECK  %cst = arith.constant dense<[10, 64]> : tensor<2xi64>
+  // CHECK  %3 = "tfl.cast"(%cst) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK  %4 = "tfl.reshape"(%arg1, %3) : (tensor<1x10x8x8xf32>, tensor<2xi32>) -> tensor<10x64xf32>
+  // CHECK  %cst_0 = arith.constant dense<64> : tensor<2xi64>
+  // CHECK  %5 = "tfl.cast"(%cst_0) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK  %6 = "tfl.reshape"(%2, %5) : (tensor<8x8x64xf32>, tensor<2xi32>) -> tensor<64x64xf32>
+  // CHECK  %7 = "tfl.batch_matmul"(%4, %6) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<10x64xf32>, tensor<64x64xf32>) -> tensor<10x64xf32>
+  // CHECK  %cst_1 = arith.constant dense<[1, 10, 64]> : tensor<3xi64>
+  // CHECK  %8 = "tfl.cast"(%cst_1) : (tensor<3xi64>) -> tensor<3xi32>
+  // CHECK  %9 = "tfl.reshape"(%7, %8) : (tensor<10x64xf32>, tensor<3xi32>) -> tensor<1x10x64xf32>
+  // CHECK  return %9 : tensor<1x10x64xf32>
+}
+
+// -----
+
+// CHECK-LABEL: dot_general_non_transposed_contracting_dims
+func.func @dot_general_non_transposed_contracting_dims(%arg0: tensor<8x256x1792xf32>, %arg1: tensor<1x128x8x256xf32>) -> (tensor<1x128x1792xf32>){
+  %4 = "mhlo.dot_general"(%arg1, %arg0)
+    <{dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [3, 2],
+    rhs_contracting_dimensions = [1, 0]>}>
+    : (tensor<1x128x8x256xf32>, tensor<8x256x1792xf32>) -> tensor<1x128x1792xf32>
+  return %4 : tensor<1x128x1792xf32>
+  // CHECK  %cst = arith.constant dense<[128, 2048]> : tensor<2xi64>
+  // CHECK  %0 = "tfl.cast"(%cst) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK  %1 = "tfl.reshape"(%arg1, %0) : (tensor<1x128x8x256xf32>, tensor<2xi32>) -> tensor<128x2048xf32>
+  // CHECK  %cst_0 = arith.constant dense<[2048, 1792]> : tensor<2xi64>
+  // CHECK  %2 = "tfl.cast"(%cst_0) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK  %3 = "tfl.reshape"(%arg0, %2) : (tensor<8x256x1792xf32>, tensor<2xi32>) -> tensor<2048x1792xf32>
+  // CHECK  %4 = "tfl.batch_matmul"(%1, %3) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<128x2048xf32>, tensor<2048x1792xf32>) -> tensor<128x1792xf32>
+  // CHECK  %cst_1 = arith.constant dense<[1, 128, 1792]> : tensor<3xi64>
+  // CHECK  %5 = "tfl.cast"(%cst_1) : (tensor<3xi64>) -> tensor<3xi32>
+  // CHECK  %6 = "tfl.reshape"(%4, %5) : (tensor<128x1792xf32>, tensor<3xi32>) -> tensor<1x128x1792xf32>
+  // CHECK  return %6 : tensor<1x128x1792xf32>
+}
+
+// -----
+
 // CHECK-LABEL: dot_general
 func.func @dot_general(%arg0: tensor<3x2x6x5x1xf32>, %arg1: tensor<3x2x4x6xf32>) -> tensor<3x5x1x4xf32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
@@ -301,6 +373,18 @@ func.func @dot_general_dynamic_contracting_dim(%arg0: tensor<4x4x?xf32>, %arg1: 
 // mhlo.reduce
 //===----------------------------------------------------------------------===//
 
+// CHECK-LABEL:   convert_reduce_maximum_to_reduce_any
+func.func @convert_reduce_maximum_to_reduce_any(%arg0: tensor<128x1x1024xi1>) -> tensor<128x1xi1> {
+    %0 = mhlo.constant dense<false> : tensor<i1>
+    %1271 = mhlo.reduce(%arg0 init: %0) applies mhlo.maximum across dimensions = [2] : (tensor<128x1x1024xi1>, tensor<i1>) -> tensor<128x1xi1>
+    func.return %1271 : tensor<128x1xi1>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<2> : tensor<1xi32>
+// CHECK: "tfl.reduce_any"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<128x1x1024xi1>, tensor<1xi32>) -> tensor<128x1xi1>
+
+// -----
+
 // CHECK-LABEL: argmax
 func.func @argmax(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4x32xi32>) {
   %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
@@ -323,14 +407,10 @@ func.func @argmax(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4x32
   func.return %4#0, %4#1 : tensor<4x32xf32>, tensor<4x32xi32>
 }
 
-// CHECK:     %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
-// CHECK-DAG: %1 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<256xi32>
-// CHECK:     %3 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<2> : tensor<1xi64>}> : (tensor<256xi32>) -> tensor<4x32x256xi32>
-// CHECK:     %cst = arith.constant dense<2> : tensor<1xi32>
-// CHECK:     %4 = "tfl.reduce_max"(%arg0, %cst) <{keep_dims = false}> : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xf32>
-// CHECK:     %5 = "tfl.arg_max"(%arg0, %cst) : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xi32>
-// CHECK:     return %4, %5 : tensor<4x32xf32>, tensor<4x32xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<2> : tensor<1xi32>
+// CHECK: %[[REDUCE:.*]] = "tfl.reduce_max"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xf32>
+// CHECK: %[[ARG:.*]] = "tfl.arg_max"(%arg0, %[[CST]]) : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xi32>
+// CHECK: return %[[REDUCE]], %[[ARG]] : tensor<4x32xf32>, tensor<4x32xi32>
 
 // -----
 
@@ -355,13 +435,10 @@ func.func @argmax_constant(%arg0: tensor<2x2x4xf32>) -> (tensor<2x2xf32>, tensor
   func.return %4#0, %4#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
-// CHECK-DAG: %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
-// CHECK-DAG: %1 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %2 = mhlo.constant dense<{{\[\[}}[0, 1, 2, 3], [0, 1, 2, 3]], {{\[\[}}0, 1, 2, 3], [0, 1, 2, 3]]]> : tensor<2x2x4xi32>
-// CHECK:     %cst = arith.constant dense<2> : tensor<1xi32>
-// CHECK:     %3 = "tfl.reduce_max"(%arg0, %cst) <{keep_dims = false}> : (tensor<2x2x4xf32>, tensor<1xi32>) -> tensor<2x2xf32>
-// CHECK:     %4 = "tfl.arg_max"(%arg0, %cst) : (tensor<2x2x4xf32>, tensor<1xi32>) -> tensor<2x2xi32>
-// CHECK:     return %3, %4 : tensor<2x2xf32>, tensor<2x2xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<2> : tensor<1xi32>
+// CHECK: %[[REDUCE:.*]] = "tfl.reduce_max"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<2x2x4xf32>, tensor<1xi32>) -> tensor<2x2xf32>
+// CHECK: %[[ARG_MAX:.*]] = "tfl.arg_max"(%arg0, %[[CST]]) : (tensor<2x2x4xf32>, tensor<1xi32>) -> tensor<2x2xi32>
+// CHECK: return %[[REDUCE:.*]], %[[ARG_MAX]] : tensor<2x2xf32>, tensor<2x2xi32>
 
 // -----
 
@@ -386,13 +463,10 @@ func.func @argmax_constant_non_z_axis(%arg0: tensor<4x4xf32>) -> (tensor<4xf32>,
   func.return %4#0, %4#1 : tensor<4xf32>, tensor<4xi32>
 }
 
-// CHECK-DAG: %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
-// CHECK-DAG: %1 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %2 = mhlo.constant dense<{{\[\[}}0, 0, 0, 0], [1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3]]> : tensor<4x4xi32>
-// CHECK:     %cst = arith.constant dense<0> : tensor<1xi32>
-// CHECK:     %3 = "tfl.reduce_max"(%arg0, %cst) <{keep_dims = false}> : (tensor<4x4xf32>, tensor<1xi32>) -> tensor<4xf32>
-// CHECK:     %4 = "tfl.arg_max"(%arg0, %cst) : (tensor<4x4xf32>, tensor<1xi32>) -> tensor<4xi32>
-// CHECK:     return %3, %4 : tensor<4xf32>, tensor<4xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<1xi32>
+// CHECK: %[[REDUCE:.*]] = "tfl.reduce_max"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<4x4xf32>, tensor<1xi32>) -> tensor<4xf32>
+// CHECK: %[[ARG_MAX:.*]] = "tfl.arg_max"(%arg0, %[[CST]]) : (tensor<4x4xf32>, tensor<1xi32>) -> tensor<4xi32>
+// CHECK: return %[[REDUCE]], %[[ARG_MAX]] : tensor<4xf32>, tensor<4xi32>
 
 // -----
 
@@ -415,13 +489,8 @@ func.func @argmax_bool(%arg0: tensor<2xi1>) -> tensor<i32> {
   return %3#1 : tensor<i32>
 }
 
-// CHECK:     %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2xi32>
-// CHECK-DAG: %1 = mhlo.constant dense<false> : tensor<i1>
-// CHECK:     %2 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %cst = arith.constant dense<0> : tensor<1xi32>
-// CHECK:     %3 = "tfl.reduce_any"(%arg0, %cst) <{keep_dims = false}> : (tensor<2xi1>, tensor<1xi32>) -> tensor<i1>
-// CHECK:     %4 = "tfl.arg_max"(%arg0, %cst) : (tensor<2xi1>, tensor<1xi32>) -> tensor<i32>
-// CHECK:     return %4 : tensor<i32>
+// CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<1xi32>
+// CHECK: "tfl.reduce_any"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<2xi1>, tensor<1xi32>) -> tensor<i1>
 
 // -----
 
@@ -447,14 +516,10 @@ func.func @argmin(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4x32
   func.return %4#0, %4#1 : tensor<4x32xf32>, tensor<4x32xi32>
 }
 
-// CHECK-DAG: %0 = mhlo.constant dense<0x7F800000> : tensor<f32>
-// CHECK:     %1 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<256xi32>
-// CHECK:     %3 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<2> : tensor<1xi64>}> : (tensor<256xi32>) -> tensor<4x32x256xi32>
-// CHECK:     %cst = arith.constant dense<2> : tensor<1xi32>
-// CHECK:     %4 = "tfl.reduce_min"(%arg0, %cst) <{keep_dims = false}> : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xf32>
-// CHECK:     %5 = "tfl.arg_min"(%arg0, %cst) : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xi32>
-// CHECK:     return %4, %5 : tensor<4x32xf32>, tensor<4x32xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<2> : tensor<1xi32>
+// CHECK: %[[REDUCE:.*]] = "tfl.reduce_min"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xf32>
+// CHECK: %[[ARG:.*]] = "tfl.arg_min"(%arg0, %[[CST]]) : (tensor<4x32x256xf32>, tensor<1xi32>) -> tensor<4x32xi32>
+// CHECK: return %[[REDUCE]], %[[ARG]] : tensor<4x32xf32>, tensor<4x32xi32>
 
 // -----
 
@@ -479,14 +544,10 @@ func.func @argmin_i16(%arg0: tensor<2xi16>) -> (tensor<i16>, tensor<i32>) {
   func.return %4#0, %4#1 : tensor<i16>, tensor<i32>
 }
 
-// CHECK:     %0 = mhlo.constant dense<false> : tensor<i1>
-// CHECK:     %1 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2xi32>
-// CHECK-DAG: %2 = mhlo.constant dense<32767> : tensor<i16>
-// CHECK:     %3 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %cst = arith.constant dense<0> : tensor<1xi32>
-// CHECK:     %4 = "tfl.reduce_min"(%arg0, %cst) <{keep_dims = false}> : (tensor<2xi16>, tensor<1xi32>) -> tensor<i16>
-// CHECK:     %5 = "tfl.arg_min"(%arg0, %cst) : (tensor<2xi16>, tensor<1xi32>) -> tensor<i32>
-// CHECK:     return %4, %5 : tensor<i16>, tensor<i32>
+// CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<1xi32>
+// CHECK: %[[REDUCE:.*]] = "tfl.reduce_min"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<2xi16>, tensor<1xi32>) -> tensor<i16>
+// CHECK: %[[ARG:.*]] = "tfl.arg_min"(%arg0, %[[CST]]) : (tensor<2xi16>, tensor<1xi32>) -> tensor<i32>
+// CHECK: return %[[REDUCE]], %[[ARG]] : tensor<i16>, tensor<i32>
 
 // -----
 
@@ -511,13 +572,10 @@ func.func @argmin_constant(%arg0: tensor<2x2x4xf32>) -> (tensor<2x2xf32>, tensor
   func.return %4#0, %4#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
-// CHECK-DAG: %0 = mhlo.constant dense<0x7F800000> : tensor<f32>
-// CHECK-DAG: %1 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %2 = mhlo.constant dense<{{\[\[}}[0, 1, 2, 3], [0, 1, 2, 3]], {{\[\[}}0, 1, 2, 3], [0, 1, 2, 3]]]> : tensor<2x2x4xi32>
-// CHECK:     %cst = arith.constant dense<2> : tensor<1xi32>
-// CHECK:     %3 = "tfl.reduce_min"(%arg0, %cst) <{keep_dims = false}> : (tensor<2x2x4xf32>, tensor<1xi32>) -> tensor<2x2xf32>
-// CHECK:     %4 = "tfl.arg_min"(%arg0, %cst) : (tensor<2x2x4xf32>, tensor<1xi32>) -> tensor<2x2xi32>
-// CHECK:     return %3, %4 : tensor<2x2xf32>, tensor<2x2xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<2> : tensor<1xi32>
+// CHECK: %[[REDUCE:.*]] = "tfl.reduce_min"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<2x2x4xf32>, tensor<1xi32>) -> tensor<2x2xf32>
+// CHECK: %[[ARG_MIN:.*]] = "tfl.arg_min"(%arg0, %[[CST]]) : (tensor<2x2x4xf32>, tensor<1xi32>) -> tensor<2x2xi32>
+// CHECK: return %[[REDUCE]], %[[ARG_MIN]] : tensor<2x2xf32>, tensor<2x2xi32>
 
 // -----
 
@@ -540,13 +598,9 @@ func.func @argmin_bool(%arg0: tensor<2xi1>) -> tensor<i32> {
   return %3#1 : tensor<i32>
 }
 
-// CHECK:     %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2xi32>
-// CHECK-DAG: %1 = mhlo.constant dense<false> : tensor<i1>
-// CHECK:     %2 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %cst = arith.constant dense<0> : tensor<1xi32>
-// CHECK:     %3 = "tfl.reduce_all"(%arg0, %cst) <{keep_dims = false}> : (tensor<2xi1>, tensor<1xi32>) -> tensor<i1>
-// CHECK:     %4 = "tfl.arg_min"(%arg0, %cst) : (tensor<2xi1>, tensor<1xi32>) -> tensor<i32>
-// CHECK:     return %4 : tensor<i32>
+// CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<1xi32>
+// CHECK: %[[ARG_MIN:.*]] = "tfl.arg_min"(%arg0, %[[CST]]) : (tensor<2xi1>, tensor<1xi32>) -> tensor<i32>
+// CHECK: return %[[ARG_MIN]] : tensor<i32>
 
 // -----
 
@@ -572,16 +626,10 @@ func.func @argmax_with_reshaped_iota(%arg0: tensor<1x32x1xf32>) -> (tensor<1x1xf
   func.return %4#0, %4#1 : tensor<1x1xf32>, tensor<1x1xi32>
 }
 
-// CHECK-DAG: %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
-// CHECK-DAG: %1 = mhlo.constant dense<0> : tensor<i32>
-// CHECK:     %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<32xi32>
-// CHECK:     %cst = arith.constant dense<[1, 32, 1]> : tensor<3xi64>
-// CHECK:     %3 = "tfl.cast"(%cst) : (tensor<3xi64>) -> tensor<3xi32>
-// CHECK:     %4 = "tfl.reshape"(%2, %3) : (tensor<32xi32>, tensor<3xi32>) -> tensor<1x32x1xi32>
-// CHECK:     %cst_0 = arith.constant dense<1> : tensor<1xi32>
-// CHECK:     %5 = "tfl.reduce_max"(%arg0, %cst_0) <{keep_dims = false}> : (tensor<1x32x1xf32>, tensor<1xi32>) -> tensor<1x1xf32>
-// CHECK:     %6 = "tfl.arg_max"(%arg0, %cst_0) : (tensor<1x32x1xf32>, tensor<1xi32>) -> tensor<1x1xi32>
-// CHECK:     return %5, %6 : tensor<1x1xf32>, tensor<1x1xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: %[[REDUCE:.*]] = "tfl.reduce_max"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x32x1xf32>, tensor<1xi32>) -> tensor<1x1xf32>
+// CHECK: %[[ARG:.*]] = "tfl.arg_max"(%arg0, %[[CST]]) : (tensor<1x32x1xf32>, tensor<1xi32>) -> tensor<1x1xi32>
+// CHECK: return %[[REDUCE]], %[[ARG]] : tensor<1x1xf32>, tensor<1x1xi32>
 
 // -----
 
@@ -604,16 +652,9 @@ func.func @pytorch_argmax(%arg0: tensor<1x9xi32>) -> tensor<1xi32> {
   func.return %4#1 : tensor<1xi32>
 }
 
-// CHECK-DAG: %0 = mhlo.constant dense<0> : tensor<i32>
-// CHECK-DAG: %1 = mhlo.constant dense<-2147483648> : tensor<i32>
-// CHECK:     %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<9xi32>
-// CHECK:     %cst = arith.constant dense<[1, 9]> : tensor<2xi64>
-// CHECK:     %3 = "tfl.cast"(%cst) : (tensor<2xi64>) -> tensor<2xi32>
-// CHECK:     %4 = "tfl.reshape"(%2, %3) : (tensor<9xi32>, tensor<2xi32>) -> tensor<1x9xi32>
-// CHECK:     %cst_0 = arith.constant dense<1> : tensor<1xi32>
-// CHECK:     %5 = "tfl.reduce_max"(%arg0, %cst_0) <{keep_dims = false}> : (tensor<1x9xi32>, tensor<1xi32>) -> tensor<1xi32>
-// CHECK:     %6 = "tfl.arg_max"(%arg0, %cst_0) : (tensor<1x9xi32>, tensor<1xi32>) -> tensor<1xi32>
-// CHECK:     return %6 : tensor<1xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK: %[[ARG:.*]] = "tfl.arg_max"(%arg0, %[[CST]]) : (tensor<1x9xi32>, tensor<1xi32>) -> tensor<1xi32>
+// CHECK: return %[[ARG]] : tensor<1xi32>
 
 // -----
 
@@ -684,12 +725,138 @@ func.func @dynamic_reshape_i64(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi64>) -> 
 // -----
 
 //===----------------------------------------------------------------------===//
+// mhlo binary bit-wise ops
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: logical_and
+func.func @logical_and(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
+  %0 = mhlo.and %arg0, %arg1 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// CHECK: tfl.logical_and
+// CHECK-NOT: mhlo
+
+// -----
+
+// CHECK-LABEL: bitwise_and
+func.func @bitwise_and(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.and %arg0, %arg1 : tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK: mhlo.and
+// CHECK-NOT: tfl
+
+// -----
+
+// CHECK-LABEL: logical_or
+func.func @logical_or(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
+  %0 = mhlo.or %arg0, %arg1 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
+}
+
+// CHECK: tfl.logical_or
+// CHECK-NOT: mhlo
+
+// -----
+
+// CHECK-LABEL: bitwise_or
+func.func @bitwise_or(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.or %arg0, %arg1 : tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK: mhlo.or
+// CHECK-NOT: tfl
+
+// -----
+
+// CHECK-LABEL: logical_xor
+func.func @logical_xor(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
+  %0 = mhlo.xor %arg0, %arg1 : tensor<4xi1>
+  func.return %0 : tensor<4xi1>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // mhlo.convolution
 //===----------------------------------------------------------------------===//
 
 //
 // 2D
 //=---
+
+// CHECK-LABEL: transpose_conv2d_valid_padding_odd
+func.func @transpose_conv2d_valid_padding_odd(%arg0: tensor<1x200x198x4xf32>, %arg1: tensor<4x4x4x4xf32>) -> tensor<1x402x398x4xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f],
+    window = {pad = [[3, 3], [3, 3]],lhs_dilate = [2, 2]}
+    {batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+    : (tensor<1x200x198x4xf32>, tensor<4x4x4x4xf32>) -> tensor<1x402x398x4xf32>
+  func.return %0 : tensor<1x402x398x4xf32>
+  // CHECK  %cst = arith.constant dense<0.000000e+00> : tensor<4xf32>
+  // CHECK  %cst_0 = arith.constant dense<[1, 2]> : tensor<2xi32>
+  // CHECK  %0 = "tfl.reverse_v2"(%arg1, %cst_0) : (tensor<4x4x4x4xf32>, tensor<2xi32>) -> tensor<4x4x4x4xf32>
+  // CHECK  %cst_1 = arith.constant dense<[1, 402, 398, 4]> : tensor<4xi32>
+  // CHECK  %1 = "tfl.transpose_conv"(%cst_1, %0, %arg0, %cst) <{fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4xi32>, tensor<4x4x4x4xf32>, tensor<1x200x198x4xf32>, tensor<4xf32>) -> tensor<1x402x398x4xf32>
+  // CHECK  return %1 : tensor<1x402x398x4xf32>
+}
+
+// CHECK-LABEL: transpose_conv2d_same_padding
+func.func @transpose_conv2d_same_padding(%input: tensor<1x256x256x2xf32>, %filter:tensor<2x4x4x2xf32>) -> tensor<1x512x512x2xf32> {
+  %0 = mhlo.convolution(%input, %filter)
+    dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f],
+    window = {pad = [[2, 2], [2, 2]], lhs_dilate = [2, 2]}
+    {batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+    : (tensor<1x256x256x2xf32>, tensor<2x4x4x2xf32>) -> tensor<1x512x512x2xf32>
+    func.return %0 : tensor<1x512x512x2xf32>
+  // CHECK  %cst = arith.constant dense<0.000000e+00> : tensor<2xf32>
+  // CHECK  %cst_0 = arith.constant dense<[1, 2]> : tensor<2xi32>
+  // CHECK  %0 = "tfl.reverse_v2"(%arg1, %cst_0) : (tensor<2x4x4x2xf32>, tensor<2xi32>) -> tensor<2x4x4x2xf32>
+  // CHECK  %1 = "tfl.pseudo_const"() <{value = dense<[1, 512, 512, 2]> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK  %2 = "tfl.transpose_conv"(%1, %0, %arg0, %cst) <{fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4xi32>, tensor<2x4x4x2xf32>, tensor<1x256x256x2xf32>, tensor<2xf32>) -> tensor<1x512x512x2xf32>
+  // CHECK  return %2 : tensor<1x512x512x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: transpose_conv2d_valid_padding
+func.func @transpose_conv2d_valid_padding(%input: tensor<1x256x256x2xf32>, %filter:tensor<2x4x4x2xf32>) -> tensor<1x514x514x2xf32> {
+  %0 = mhlo.convolution(%input, %filter)
+    dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f],
+    window = {pad = [[3, 3], [3, 3]], lhs_dilate = [2, 2]}
+    {batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+    : (tensor<1x256x256x2xf32>, tensor<2x4x4x2xf32>) -> tensor<1x514x514x2xf32>
+  func.return %0 : tensor<1x514x514x2xf32>
+  // CHECK  %cst = arith.constant dense<0.000000e+00> : tensor<2xf32>
+  // CHECK  %cst_0 = arith.constant dense<[1, 2]> : tensor<2xi32>
+  // CHECK  %0 = "tfl.reverse_v2"(%arg1, %cst_0) : (tensor<2x4x4x2xf32>, tensor<2xi32>) -> tensor<2x4x4x2xf32>
+  // CHECK  %1 = "tfl.pseudo_const"() <{value = dense<[1, 514, 514, 2]> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK  %2 = "tfl.transpose_conv"(%1, %0, %arg0, %cst) <{fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4xi32>, tensor<2x4x4x2xf32>, tensor<1x256x256x2xf32>, tensor<2xf32>) -> tensor<1x514x514x2xf32>
+  // CHECK  return %2 : tensor<1x514x514x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: transpose_conv2d_valid_padding_equal_strides
+func.func @transpose_conv2d_valid_padding_equal_strides(%arg0: tensor<1x200x198x3xf32>, %arg1: tensor<3x3x3x3xf32>) -> tensor<1x401x397x3xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f],
+    window = {pad = [[2, 2], [2, 2]], lhs_dilate = [2, 2]}
+    {batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+    : (tensor<1x200x198x3xf32>, tensor<3x3x3x3xf32>) -> tensor<1x401x397x3xf32>
+  func.return %0 : tensor<1x401x397x3xf32>
+  // CHECK  %cst = arith.constant dense<0.000000e+00> : tensor<3xf32>
+  // CHECK  %cst_0 = arith.constant dense<[1, 2]> : tensor<2xi32>
+  // CHECK  %0 = "tfl.reverse_v2"(%arg1, %cst_0) : (tensor<3x3x3x3xf32>, tensor<2xi32>) -> tensor<3x3x3x3xf32>
+  // CHECK  %cst_1 = arith.constant dense<[1, 401, 397, 3]> : tensor<4xi32>
+  // CHECK  %1 = "tfl.transpose_conv"(%cst_1, %0, %arg0, %cst) <{fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4xi32>, tensor<3x3x3x3xf32>, tensor<1x200x198x3xf32>, tensor<3xf32>) -> tensor<1x401x397x3xf32>
+  // CHECK  return %1 : tensor<1x401x397x3xf32>
+}
+
+// -----
 
 // CHECK-LABEL: conv2d_nhwc_ohwi_nhwc
 func.func @conv2d_nhwc_ohwi_nhwc(%input: tensor<1x256x256x3xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<1x256x256x2xf32> {
@@ -857,8 +1024,7 @@ func.func @conv2d_nhwc_ohwi_nhwc_grouped_features(%input: tensor<1x256x256x6xf32
 
 // -----
 
-// TODO: b/351437662 - Add support for dynamic batch.
-// CHECK-LABEL: conv2d_nhwc_ohwi_nhwc
+// CHECK-LABEL: conv2d_nhwc_ohwi_nhwc_dynamic_batch
 func.func @conv2d_nhwc_ohwi_nhwc_dynamic_batch(%input: tensor<?x256x256x3xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<?x256x256x2xf32> {
   %0 = mhlo.convolution(%input, %filter)
     dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f],
@@ -869,7 +1035,7 @@ func.func @conv2d_nhwc_ohwi_nhwc_dynamic_batch(%input: tensor<?x256x256x3xf32>, 
   func.return %0 : tensor<?x256x256x2xf32>
 }
 
-// CHECK-NOT: tfl
+// CHECK: "tfl.conv_2d"(%arg0, %arg1, %cst) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<?x256x256x3xf32>, tensor<2x1x1x3xf32>, tensor<2xf32>) -> tensor<?x256x256x2xf32>
 
 // -----
 
@@ -889,6 +1055,26 @@ func.func @depthwise_conv2d_nhwc_ihwo_nhwc(%arg0: tensor<1x10x10x207xf32>, %arg1
 }
 
 // CHECK: %0 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %cst) <{depth_multiplier = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x10x10x207xf32>, tensor<1x3x3x207xf32>, tensor<207xf32>) -> tensor<1x8x8x207xf32>
+// CHECK: return %0
+
+// -----
+
+// CHECK-LABEL: depthwise_conv2d_nhwc_ihwo_nhwc_dynamic
+func.func @depthwise_conv2d_nhwc_ihwo_nhwc_dynamic(%arg0: tensor<?x10x10x207xf32>, %arg1: tensor<1x3x3x207xf32>) -> tensor<?x8x8x207xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[i, 0, 1, o]->[b, 0, 1, f]>,
+    feature_group_count = 207 : i64,
+    lhs_dilation = dense<1> : tensor<2xi64>,
+    padding = dense<0> : tensor<2x2xi64>,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+    rhs_dilation = dense<1> : tensor<2xi64>,
+    window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<?x10x10x207xf32>, tensor<1x3x3x207xf32>) -> tensor<?x8x8x207xf32>
+  func.return %0 : tensor<?x8x8x207xf32>
+}
+
+// CHECK: %0 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %cst) <{depth_multiplier = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<?x10x10x207xf32>, tensor<1x3x3x207xf32>, tensor<207xf32>) -> tensor<?x8x8x207xf32>
 // CHECK: return %0
 
 // -----
@@ -953,7 +1139,6 @@ func.func @depthwise_conv2d_nhwc_ihwo_nhwc_non_trivial_depth_multiplier(%arg0: t
 
 // -----
 
-// TODO: b/351437662 - Add support for conv to resize.
 // CHECK-LABEL: conv2d_resize_perferred_nhwc_hwoi_nhwc
 func.func @conv2d_resize_perferred_nhwc_hwoi_nhwc(%arg0: tensor<1x56x1248x16xf32>, %arg1: tensor<16x3x1x1xf32>) -> tensor<1x111x1248x16xf32> {
 	%0 = "mhlo.convolution"(%arg0, %arg1) {
@@ -967,13 +1152,13 @@ func.func @conv2d_resize_perferred_nhwc_hwoi_nhwc(%arg0: tensor<1x56x1248x16xf32
     window_strides = dense<[1, 1]> : tensor<2xi64>
   } : (tensor<1x56x1248x16xf32>, tensor<16x3x1x1xf32>) -> tensor<1x111x1248x16xf32>
   func.return %0 : tensor<1x111x1248x16xf32>
+  // CHECK  %0 = "tfl.pseudo_const"() <{value = dense<[111, 1248]> : tensor<2xi32>}> : () -> tensor<2xi32>
+  // CHECK  %1 = "tfl.resize_bilinear"(%arg0, %0) <{align_corners = false, half_pixel_centers = false}> : (tensor<1x56x1248x16xf32>, tensor<2xi32>) -> tensor<1x111x1248x16xf32>
+  // CHECK  return %1 : tensor<1x111x1248x16xf32>
 }
-
-// CHECK-NOT: tfl
 
 // -----
 
-// TODO: b/351437662 - Add support for conv to resize.
 // CHECK-LABEL: conv2d_to_resize_nhwc_hwoi_nhwc
 func.func @conv2d_to_resize_nhwc_hwoi_nhwc(%arg0: tensor<1x56x624x16xf32>, %arg1: tensor<16x1x257x1xf32>) -> tensor<1x56x904x16xf32> {
 	%0 = "mhlo.convolution"(%arg0, %arg1) {
@@ -987,9 +1172,10 @@ func.func @conv2d_to_resize_nhwc_hwoi_nhwc(%arg0: tensor<1x56x624x16xf32>, %arg1
     window_strides = dense<[1, 89]> : tensor<2xi64>
   } : (tensor<1x56x624x16xf32>, tensor<16x1x257x1xf32>) -> tensor<1x56x904x16xf32>
   func.return %0 : tensor<1x56x904x16xf32>
+  // CHECK  %0 = "tfl.pseudo_const"() <{value = dense<[56, 904]> : tensor<2xi32>}> : () -> tensor<2xi32>
+  // CHECK  %1 = "tfl.resize_bilinear"(%arg0, %0) <{align_corners = true, half_pixel_centers = false}> : (tensor<1x56x624x16xf32>, tensor<2xi32>) -> tensor<1x56x904x16xf32>
+  // CHECK  return %1 : tensor<1x56x904x16xf32>
 }
-
-// CHECK-NOT: tfl
 
 // -----
 
@@ -1155,10 +1341,8 @@ func.func @pad_cst_zero_vals(%arg0: tensor<8x128xf32>) -> tensor<11x131xf32> {
   func.return %0 : tensor<11x131xf32>
 }
 
-// CHECK:      %[[PADDINGS:.*]] = arith.constant
-// CHECK-SAME: [1, 2], [0, 3]
-// CHECK-SAME: tensor<2x2xi64>
-// CHECK:      "tfl.pad"(%arg0, %[[PADDINGS]]) : (tensor<8x128xf32>, tensor<2x2xi64>) -> tensor<11x131xf32>
+// CHECK: %[[PADDINGS:.*]] = arith.constant{{.*}}[1, 2], [0, 3]
+// CHECK: "tfl.pad"(%arg0, %[[PADDINGS]]) : (tensor<8x128xf32>, tensor<2x2xi64>) -> tensor<11x131xf32>
 
 // -----
 
@@ -1208,7 +1392,7 @@ func.func @reduce_to_prod(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
 }
 
 // CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
-// CHECK: %1 = "tfl.reduce_prod"(%arg0, %[[CST:.*]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
+// CHECK: "tfl.reduce_prod"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
 
 // -----
 
@@ -1244,7 +1428,7 @@ func.func @reduce_to_sum(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
 }
 
 // CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
-// CHECK: %1 = "tfl.sum"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
+// CHECK: "tfl.sum"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
 
 // -----
 
@@ -1276,7 +1460,7 @@ func.func @int_reduce_to_sum(%arg0: tensor<1x256xi32>) -> tensor<1xi32> {
 }
 
 // CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
-// CHECK: %1 = "tfl.sum"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xi32>, tensor<1xi32>) -> tensor<1xi32>
+// CHECK: "tfl.sum"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xi32>, tensor<1xi32>) -> tensor<1xi32>
 
 // -----
 
@@ -1297,7 +1481,7 @@ func.func @reduce_to_max(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
 }
 
 // CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
-// CHECK: %1 = "tfl.reduce_max"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
+// CHECK: "tfl.reduce_max"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
 
 // -----
 
@@ -1314,7 +1498,7 @@ func.func @reduce_to_max_int(%arg0: tensor<1x4xi32>) -> tensor<1xi32> {
 }
 
 // CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
-// CHECK: %1 = "tfl.reduce_max"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x4xi32>, tensor<1xi32>) -> tensor<1xi32>
+// CHECK: "tfl.reduce_max"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x4xi32>, tensor<1xi32>) -> tensor<1xi32>
 
 // -----
 
@@ -1335,7 +1519,7 @@ func.func @reduce_to_min(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
 }
 
 // CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
-// CHECK: %1 = "tfl.reduce_min"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
+// CHECK: "tfl.reduce_min"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
 
 // -----
 
@@ -1352,7 +1536,7 @@ func.func @reduce_to_min_int(%arg0: tensor<1x4xi32>) -> tensor<1xi32> {
 }
 
 // CHECK: %[[CST:.*]] = arith.constant dense<1> : tensor<1xi32>
-// CHECK: %1 = "tfl.reduce_min"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x4xi32>, tensor<1xi32>) -> tensor<1xi32>
+// CHECK: "tfl.reduce_min"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x4xi32>, tensor<1xi32>) -> tensor<1xi32>
 
 // -----
 
@@ -1372,7 +1556,7 @@ func.func @reduce_to_all(%arg0: tensor<1x2x3x4x5xi1>, %arg1: tensor<2xi64>) -> t
 }
 
 // CHECK: %[[CST:.*]] = arith.constant dense<[0, 2]> : tensor<2xi32>
-// CHECK: %1 = "tfl.reduce_all"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x2x3x4x5xi1>, tensor<2xi32>) -> tensor<2x4x5xi1>
+// CHECK: "tfl.reduce_all"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x2x3x4x5xi1>, tensor<2xi32>) -> tensor<2x4x5xi1>
 
 // -----
 
@@ -1387,8 +1571,8 @@ func.func @reduce_to_all_non_constant_init(%arg0: tensor<i1>, %arg1: tensor<1x2x
 }
 
 // CHECK: %[[CST:.*]] = arith.constant dense<[0, 2]> : tensor<2xi32>
-// CHECK: %0 = "tfl.reduce_all"(%arg1, %[[CST]]) <{keep_dims = false}> : (tensor<1x2x3x4x5xi1>, tensor<2xi32>) -> tensor<2x4x5xi1>
-// CHECK: %1 = tfl.logical_and(%0, %arg0) : (tensor<2x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
+// CHECK: %[[REDUCE:.*]] = "tfl.reduce_all"(%arg1, %[[CST]]) <{keep_dims = false}> : (tensor<1x2x3x4x5xi1>, tensor<2xi32>) -> tensor<2x4x5xi1>
+// CHECK: tfl.logical_and(%[[REDUCE]], %arg0) : (tensor<2x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
 
 // -----
 
@@ -1408,7 +1592,7 @@ func.func @reduce_to_any(%arg0: tensor<1x2x3x4x5xi1>, %arg1: tensor<2xi64>) -> t
 }
 
 // CHECK: %[[CST:.*]] = arith.constant dense<[0, 2]> : tensor<2xi32>
-// CHECK: %1 = "tfl.reduce_any"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x2x3x4x5xi1>, tensor<2xi32>) -> tensor<2x4x5xi1>
+// CHECK: "tfl.reduce_any"(%arg0, %[[CST]]) <{keep_dims = false}> : (tensor<1x2x3x4x5xi1>, tensor<2xi32>) -> tensor<2x4x5xi1>
 
 // -----
 
@@ -1423,8 +1607,8 @@ func.func @reduce_to_any_non_constant_init(%arg0: tensor<i1>, %arg1: tensor<1x2x
 }
 
 // CHECK: %[[CST:.*]] = arith.constant dense<[0, 2]> : tensor<2xi32>
-// CHECK: %0 = "tfl.reduce_any"(%arg1, %[[CST]]) <{keep_dims = false}> : (tensor<1x2x3x4x5xi1>, tensor<2xi32>) -> tensor<2x4x5xi1>
-// CHECK: %1 = tfl.logical_or(%0, %arg0) : (tensor<2x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
+// CHECK: %[[REDUCE:.*]] = "tfl.reduce_any"(%arg1, %[[CST]]) <{keep_dims = false}> : (tensor<1x2x3x4x5xi1>, tensor<2xi32>) -> tensor<2x4x5xi1>
+// CHECK: tfl.logical_or(%[[REDUCE]], %arg0) : (tensor<2x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
 
 // -----
 
@@ -1882,7 +2066,30 @@ func.func @maxpool_same(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x8x8x8xf32> {
   func.return %1 : tensor<4x8x8x8xf32>
 }
 
-// CHECK: %1 = "tfl.max_pool_2d"(%arg0) <{filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4x16x16x8xf32>) -> tensor<4x8x8x8xf32>
+// CHECK: "tfl.max_pool_2d"(%arg0) <{filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4x16x16x8xf32>) -> tensor<4x8x8x8xf32>
+
+// -----
+
+// CHECK-LABEL: maxpool_explicit
+func.func @maxpool_explicit(%arg0: tensor<1x112x112x64xf32>) -> tensor<1x56x56x64xf32> {
+  // "0xFF800000" represents -INF for f32.
+  %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
+  %1 = "mhlo.reduce_window"(%arg0, %0)({
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %2 = mhlo.maximum %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      mhlo.return %2 : tensor<f32>
+    }) {
+    padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>,
+    window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>,
+    window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64> } : (tensor<1x112x112x64xf32>, tensor<f32>) -> tensor<1x56x56x64xf32>
+  func.return %1 : tensor<1x56x56x64xf32>
+}
+
+// CHECK: %[[PADDING_CONST:.*]] = arith.constant dense<0xFF800000> : tensor<f32>
+// CHECK: %[[PADDING:.*]] = arith.constant dense<{{\[\[}}0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>
+// CHECK: %[[PAD_V2_OUT:.*]] = "tfl.padv2"(%arg0, %[[PADDING]], %[[PADDING_CONST]]) : (tensor<1x112x112x64xf32>, tensor<4x2xi64>, tensor<f32>) -> tensor<1x114x114x64xf32>
+// CHECK: "tfl.max_pool_2d"(%[[PAD_V2_OUT]]) <{filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<1x114x114x64xf32>) -> tensor<1x56x56x64xf32>
+
 
 // -----
 
@@ -1903,7 +2110,7 @@ func.func @maxpool_valid(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf32> {
   func.return %1 : tensor<4x7x7x8xf32>
 }
 
-// CHECK: %1 = "tfl.max_pool_2d"(%arg0) <{filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf32>
+// CHECK: "tfl.max_pool_2d"(%arg0) <{filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf32>
 
 // -----
 
@@ -1967,7 +2174,6 @@ func.func @reduce_window_sum(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
 // CHECK: %[[AXIS:.*]] = arith.constant dense<0> : tensor<i32>
 // CHECK: "tfl.cumsum"(%arg0, %[[AXIS]]) <{exclusive = false, reverse = false}> : (tensor<4x12xf32>, tensor<i32>) -> tensor<4x12xf32>
 
-
 // -----
 
 //===----------------------------------------------------------------------===//
@@ -1991,6 +2197,20 @@ func.func @slice(%arg0: tensor<1x4672xf32>) -> tensor<1x519xf32> {
 // -----
 
 //===----------------------------------------------------------------------===//
+// mhlo.real_dynamic_slice
+//===----------------------------------------------------------------------===//
+
+func.func @real_dynamic_slice(%arg0: tensor<1x?x4x256xf32>, %arg1: tensor<4xi32>, %arg2: tensor<4xi32>) -> tensor<1x?x4x128xf32> {
+  %cst = mhlo.constant dense<1> : tensor<4xi32>
+  %0 = mhlo.real_dynamic_slice %arg0, %arg1, %arg2, %cst : (tensor<1x?x4x256xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x?x4x128xf32>
+  func.return %0 : tensor<1x?x4x128xf32>
+}
+
+// CHECK: "tfl.strided_slice"(%arg0, %0, %1, %2) <{begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32}> : (tensor<1x?x4x256xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x?x4x128xf32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // mhlo.sort
 //===----------------------------------------------------------------------===//
 
@@ -2006,8 +2226,9 @@ func.func @sort_to_topk_iota_broadcast(%arg0: tensor<3x6xf32>) -> (tensor<3x6xf3
   func.return %2#0, %2#1 : tensor<3x6xf32>, tensor<3x6xi32>
 }
 
-// CHECK: %cst = arith.constant dense<6> : tensor<i32>
-// CHECK: %values, %indices = "tfl.topk_v2"(%arg0, %cst) : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
+// CHECK: arith.constant dense<6> : tensor<i32>
+// CHECK: %[[CST:.*]] = arith.constant dense<6> : tensor<i32>
+// CHECK: %values, %indices = "tfl.topk_v2"(%arg0, %[[CST]]) : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
 
 // -----
 
@@ -2023,8 +2244,8 @@ func.func @sort_to_topk_iota_cst_broadcast(%arg0: tensor<3x6xf32>) -> (tensor<3x
   func.return %2#0, %2#1 : tensor<3x6xf32>, tensor<3x6xi32>
 }
 
-// CHECK: %cst = arith.constant dense<6> : tensor<i32>
-// CHECK: %values, %indices = "tfl.topk_v2"(%arg0, %cst) : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
+// CHECK: %[[CST:.*]] = arith.constant dense<6> : tensor<i32>
+// CHECK: %values, %indices = "tfl.topk_v2"(%arg0, %[[CST]]) : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
 
 // -----
 
@@ -2039,8 +2260,98 @@ func.func @sort_to_topk_const(%arg0: tensor<3x6xf32>) -> (tensor<3x6xf32>, tenso
   func.return %1#0, %1#1 : tensor<3x6xf32>, tensor<3x6xi32>
 }
 
-// CHECK: %cst = arith.constant dense<6> : tensor<i32>
-// CHECK: %values, %indices = "tfl.topk_v2"(%arg0, %cst) : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<6> : tensor<i32>
+// CHECK: %values, %indices = "tfl.topk_v2"(%arg0, %[[CST]]) : (tensor<3x6xf32>, tensor<i32>) -> (tensor<3x6xf32>, tensor<3x6xi32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.iota
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: iota_1d
+func.func @iota_1d() -> tensor<123xf32> {
+  %0 = "mhlo.iota"() <{ iota_dimension = 0 : i64 }> : () -> tensor<123xf32>
+  func.return %0 : tensor<123xf32>
+}
+
+// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
+// CHECK-DAG: %[[CST_2:.*]] = arith.constant dense<1.230000e+02> : tensor<f32>
+// CHECK-DAG: %[[CST_3:.*]] = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK:     "tfl.range"(%[[CST_1]], %[[CST_2]], %[[CST_3]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<123xf32>
+
+// -----
+
+// CHECK-LABEL: iota_i64
+func.func @iota_i64() -> tensor<123xi64> {
+  %0 = "mhlo.iota"() <{ iota_dimension = 0 : i64 }> : () -> tensor<123xi64>
+  func.return %0 : tensor<123xi64>
+}
+
+// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<0> : tensor<i64>
+// CHECK-DAG: %[[CST_2:.*]] = arith.constant dense<123> : tensor<i64>
+// CHECK-DAG: %[[CST_3:.*]] = arith.constant dense<1> : tensor<i64>
+// CHECK:     "tfl.range"(%[[CST_1]], %[[CST_2]], %[[CST_3]]) : (tensor<i64>, tensor<i64>, tensor<i64>) -> tensor<123xi64>
+
+// -----
+
+// CHECK-LABEL: iota_i32
+func.func @iota_i32() -> tensor<123xi32> {
+  %0 = "mhlo.iota"() <{ iota_dimension = 0 : i64 }> : () -> tensor<123xi32>
+  func.return %0 : tensor<123xi32>
+}
+
+// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK-DAG: %[[CST_2:.*]] = arith.constant dense<123> : tensor<i32>
+// CHECK-DAG: %[[CST_3:.*]] = arith.constant dense<1> : tensor<i32>
+// CHECK:     "tfl.range"(%[[CST_1]], %[[CST_2]], %[[CST_3]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<123xi32>
+
+// -----
+
+// CHECK-LABEL: iota_3d
+func.func @iota_3d() -> tensor<5x7x9xi32> {
+  %0 = "mhlo.iota"() <{ iota_dimension = 1 : i64 }> : () -> tensor<5x7x9xi32>
+  func.return %0 : tensor<5x7x9xi32>
+}
+
+// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK-DAG: %[[CST_2:.*]] = arith.constant dense<7> : tensor<i32>
+// CHECK-DAG: %[[CST_3:.*]] = arith.constant dense<1> : tensor<i32>
+// CHECK:     %[[RANGE:.*]] = "tfl.range"(%[[CST_1]], %[[CST_2]], %[[CST_3]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<7xi32>
+// CHECK:     %[[CST_4:.*]] = arith.constant dense<[1, 7, 1]> : tensor<3xi64>
+// CHECK:     %[[CAST:.*]] = "tfl.cast"(%[[CST_4]]) : (tensor<3xi64>) -> tensor<3xi32>
+// CHECK:     %[[RESHAPE:.*]] = "tfl.reshape"(%[[RANGE]], %[[CAST]]) : (tensor<7xi32>, tensor<3xi32>) -> tensor<1x7x1xi32>
+// CHECK:     %[[CST_5:.*]] = arith.constant dense<[5, 7, 9]> : tensor<3xi64>
+// CHECK:     "tfl.broadcast_to"(%[[RESHAPE]], %[[CST_5]]) : (tensor<1x7x1xi32>, tensor<3xi64>) -> tensor<5x7x9xi32>
+
+// -----
+
+// CHECK-LABEL: dynamic_iota_i32_1d
+func.func @dynamic_iota_i32_1d(%arg0: tensor<1xi32>) -> tensor<?xi32> {
+  %0 = "mhlo.dynamic_iota"(%arg0) <{iota_dimension = 0 : i64}> : (tensor<1xi32>) -> tensor<?xi32>
+  func.return %0 : tensor<?xi32>
+}
+
+// CHECK-DAG: %[[CST:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<1> : tensor<i32>
+// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<> : tensor<0xi32>
+// CHECK:     %0 = "tfl.reshape"(%arg0, %[[CST_1]]) : (tensor<1xi32>, tensor<0xi32>) -> tensor<i32>
+// CHECK:     %1 = "tfl.range"(%[[CST]], %0, %[[CST_0]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+
+// -----
+
+// CHECK-LABEL: dynamic_iota_f32_1d
+func.func @dynamic_iota_f32_1d(%arg0: tensor<1xi32>) -> tensor<?xf32> {
+  %0 = "mhlo.dynamic_iota"(%arg0) <{iota_dimension = 0 : i64}> : (tensor<1xi32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
+// CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK:     %0 = "tfl.cast"(%arg0) : (tensor<1xi32>) -> tensor<1xf32>
+// CHECK:     %[[CST_1:.*]] = arith.constant dense<> : tensor<0xi32>
+// CHECK:     %1 = "tfl.reshape"(%0, %[[CST_1]]) : (tensor<1xf32>, tensor<0xi32>) -> tensor<f32>
+// CHECK:     %2 = "tfl.range"(%[[CST]], %1, %[[CST_0]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
 
 // -----
 
@@ -2106,10 +2417,57 @@ func.func @dynamic_slice_splat_sizes(%arg0: tensor<7x3xf32>, %arg1: tensor<i32>,
 // -----
 
 //===----------------------------------------------------------------------===//
+// mhlo.dynamic_update_slice
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: dynamic_update_slice
+func.func @dynamic_update_slice(%arg0: tensor<28x1x100xf32>, %arg1: tensor<1x1x100xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>) -> tensor<28x1x100xf32> {
+  %0 = "mhlo.dynamic_update_slice"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<28x1x100xf32>, tensor<1x1x100xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<28x1x100xf32>
+  func.return %0 : tensor<28x1x100xf32>
+}
+
+// CHECK: %0 = "tfl.pack"(%arg2, %arg3, %arg4) <{axis = 0 : i32, values_count = 3 : i32}> : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
+// CHECK: %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<28x1x100xf32>, tensor<1x1x100xf32>, tensor<3xi32>) -> tensor<28x1x100xf32>
+
+// -----
+
+// CHECK-LABEL: dynamic_update_slice_inputs_have_dynamic_dim
+func.func @dynamic_update_slice_inputs_have_dynamic_dim(%arg0: tensor<?x4xi32>, %arg1: tensor<?x2xi32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<?x4xi32> {
+  %0 = mhlo.dynamic_update_slice %arg0, %arg1, %arg2, %arg3 : (tensor<?x4xi32>, tensor<?x2xi32>, tensor<i32>, tensor<i32>) -> tensor<?x4xi32>
+  func.return %0 : tensor<?x4xi32>
+}
+
+// CHECK: %0 = "tfl.pack"(%arg2, %arg3) <{axis = 0 : i32, values_count = 2 : i32}> : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
+// CHECK: %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<?x4xi32>, tensor<?x2xi32>, tensor<2xi32>) -> tensor<?x4xi32>
+
+// -----
+
+// CHECK-LABEL: dynamic_update_slice_operand_has_dynamic_dim
+func.func @dynamic_update_slice_operand_has_dynamic_dim(%arg0: tensor<1x?x256xf32>, %arg1: tensor<1x1x256xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>) -> tensor<1x?x256xf32> {
+  %0 = mhlo.dynamic_update_slice %arg0, %arg1, %arg2, %arg3, %arg4 : (tensor<1x?x256xf32>, tensor<1x1x256xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<1x?x256xf32>
+  func.return %0 : tensor<1x?x256xf32>
+}
+
+// CHECK: %0 = "tfl.pack"(%arg2, %arg3, %arg4) <{axis = 0 : i32, values_count = 3 : i32}> : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
+// CHECK: %1 = "tfl.dynamic_update_slice"(%arg0, %arg1, %0) : (tensor<1x?x256xf32>, tensor<1x1x256xf32>, tensor<3xi32>) -> tensor<1x?x256xf32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // rounding
 //===----------------------------------------------------------------------===//
 
-// CHECK-LABEL: round
+// CHECK-LABEL: @nearest_even
+func.func @nearest_even(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.round_nearest_even"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// CHECK: %0 = "tfl.round"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+
+// -----
+
+// CHECK-LABEL: @round
 func.func @round(%arg0: tensor<8x128xf32>) -> tensor<8x128xf32> {
   %0 = mhlo.constant dense<2.000000e+00> : tensor<8x128xf32>
   %1 = mhlo.constant dense<5.000000e-01> : tensor<8x128xf32>
@@ -2183,8 +2541,8 @@ func.func @floor_mod_float_cst(%arg0: tensor<192x8xf32>) -> tensor<192x8xf32> {
   func.return %7 : tensor<192x8xf32>
 }
 
-// CHECK: %cst = arith.constant dense<2.000000e+00> : tensor<192x8xf32>
-// CHECK: "tfl.floor_mod"(%arg0, %cst) : (tensor<192x8xf32>, tensor<192x8xf32>) -> tensor<192x8xf32>
+// CHECK: %[[CST:.*]] = arith.constant dense<2.000000e+00> : tensor<192x8xf32>
+// CHECK: "tfl.floor_mod"(%arg0, %[[CST]]) : (tensor<192x8xf32>, tensor<192x8xf32>) -> tensor<192x8xf32>
 
 // -----
 
@@ -2201,8 +2559,8 @@ func.func @floor_mod_int_cst(%arg0: tensor<192x8xi32>) -> tensor<192x8xi32> {
   func.return %7 : tensor<192x8xi32>
 }
 
-// CHECK: %cst = arith.constant dense<2> : tensor<192x8xi32>
-// CHECK: "tfl.floor_mod"(%arg0, %cst) : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi32>
+// CHECK: %[[CST:.*]] = arith.constant dense<2> : tensor<192x8xi32>
+// CHECK: "tfl.floor_mod"(%arg0, %[[CST]]) : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi32>
 
 // -----
 
@@ -2250,7 +2608,7 @@ func.func @floor_div_cst(%arg0: tensor<10x10xf32>) -> tensor<10x10xf32> {
   func.return %14 : tensor<10x10xf32>
 }
 
-// CHECK: %[[CST:.*]] = mhlo.constant dense<2.000000e+00> : tensor<10x10xf32>
+// CHECK: %[[CST:.*]] = arith.constant dense<2.000000e+00> : tensor<10x10xf32>
 // CHECK: tfl.floor_div %arg0, %[[CST]] : tensor<10x10xf32>
 
 // -----
@@ -2275,7 +2633,7 @@ func.func @floor_div_cst2(%arg0: tensor<10x10xf32>) -> tensor<10x10xf32> {
   func.return %13 : tensor<10x10xf32>
 }
 
-// CHECK: %[[CST:.*]] = mhlo.constant dense<2.000000e+00> : tensor<10x10xf32>
+// CHECK: %[[CST:.*]] = arith.constant dense<2.000000e+00> : tensor<10x10xf32>
 // CHECK: tfl.floor_div %arg0, %[[CST]] : tensor<10x10xf32>
 
 // -----
@@ -2301,8 +2659,35 @@ func.func @floor_div_broadcast_cst(%arg0: tensor<10x8xf32>) -> tensor<10x8xf32> 
   func.return %15 : tensor<10x8xf32>
 }
 
-// CHECK: %[[BCAST:.*]] = "mhlo.broadcast_in_dim"(%1)
+// CHECK: %[[BCAST:.*]] = "tfl.broadcast_to"
 // CHECK: tfl.floor_div %arg0, %[[BCAST]] : tensor<10x8xf32>
+
+// -----
+
+// CHECK-LABEL: floor_div_cst3
+func.func @floor_div_cst3(%arg0: tensor<12xf32>) -> tensor<12xf32> {
+  %0 = mhlo.constant dense<2.000000e+00> : tensor<f32>
+  %1 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<12xf32>
+  %2 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %3 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<12xf32>
+  %4 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  %5 = "mhlo.broadcast_in_dim"(%4) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<12xf32>
+  %8 = mhlo.remainder %arg0, %1 : tensor<12xf32>
+  %9 = mhlo.subtract %arg0, %8 : tensor<12xf32>
+  %10 = mhlo.divide %9, %1 : tensor<12xf32>
+  %11 = mhlo.compare  NE, %8, %3,  FLOAT : (tensor<12xf32>, tensor<12xf32>) -> tensor<12xi1>
+  %12 = mhlo.sign %8 : tensor<12xf32>
+  %13 = mhlo.compare  NE, %5, %12,  FLOAT : (tensor<12xf32>, tensor<12xf32>) -> tensor<12xi1>
+  %14 = mhlo.and %11, %13 : tensor<12xi1>
+  %15 = mhlo.subtract %10, %5 : tensor<12xf32>
+  %16 = mhlo.select %14, %15, %10 : tensor<12xi1>, tensor<12xf32>
+  %17 = mhlo.round_nearest_afz %16 : tensor<12xf32>
+  return %17 : tensor<12xf32>
+}
+
+// CHECK: %[[CST:.*]] = arith.constant dense<2.000000e+00> : tensor<12xf32>
+// CHECK: %[[FLOOR_DIV:.*]] = tfl.floor_div %arg0, %[[CST]] : tensor<12xf32>
+// CHECK: return %[[FLOOR_DIV]] : tensor<12xf32>
 
 // -----
 
@@ -2366,8 +2751,8 @@ func.func @complex_abs(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xf32> {
   func.return %0 : tensor<2xf32>
 }
 
-// CHECK-NOT: tfl
-
+// CHECK: %0 = "tfl.complex_abs"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
+// CHECK: return %0 : tensor<2xf32>
 // -----
 
 func.func @is_finite(%arg0: tensor<2xf32>) -> tensor<2xi1> {
@@ -2835,3 +3220,452 @@ func.func @less_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1
 }
 
 // CHECK: tfl.less_equal
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo binary element-wise ops
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: add
+func.func @add(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  %0 = mhlo.add %arg0, %arg0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// CHECK: tfl.add
+// CHECK-NOT: mhlo
+
+// -----
+
+// CHECK-LABEL: maximum
+func.func @maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  %0 = mhlo.maximum %arg0, %arg1 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// CHECK: "tfl.maximum"(%arg0, %arg1)
+// CHECK-NOT: mhlo
+
+// -----
+
+// CHECK-LABEL: minimum
+func.func @minimum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  %0 = mhlo.minimum %arg0, %arg1 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// CHECK: "tfl.minimum"(%arg0, %arg1)
+// CHECK-NOT: mhlo
+
+// -----
+
+// CHECK-LABEL: mul
+func.func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  %0 = mhlo.multiply %arg0, %arg0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// CHECK: tfl.mul %arg0, %arg0
+// CHECK-NOT: mhlo
+
+// -----
+
+// CHECK-LABEL: pow
+func.func @pow(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  %0 = mhlo.power %arg0, %arg0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// CHECK: tfl.pow
+// CHECK-NOT: mhlo
+
+// -----
+
+// CHECK-LABEL: sub
+func.func @sub(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  %0 = mhlo.subtract %arg0, %arg0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// CHECK: tfl.sub %arg0, %arg0
+// CHECK-NOT: mhlo
+
+// -----
+
+// CHECK-LABEL: div
+func.func @div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  %0 = mhlo.divide %arg0, %arg0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// CHECK: tfl.div %arg0, %arg0
+// CHECK-NOT: mhlo
+
+// -----
+
+// CHECK-LABEL: atan2
+func.func @atan2(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  %0 = mhlo.atan2 %arg0, %arg0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// CHECK: "tfl.atan2"(%arg0, %arg0)
+// CHECK-NOT: mhlo
+
+// -----
+
+// CHECK-LABEL: broadcast_add
+func.func @broadcast_add(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.add %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.add %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: tfl.add(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK: tfl.add(%arg1, %arg0) <{fused_activation_function = "NONE"}> : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_add_cst
+func.func @broadcast_add_cst(%arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %cst = mhlo.constant dense<1.200000e+01> : tensor<f32>
+  %0 = "mhlo.broadcast_in_dim"(%cst) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<1x1000xf32>
+  %1 = mhlo.add %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.add %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: tfl.add{{.*}}(tensor<1x1000xf32>, tensor<f32>) -> tensor<1x1000xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_div
+func.func @broadcast_div(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.divide %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.divide %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: tfl.div(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK: tfl.div(%arg1, %arg0) <{fused_activation_function = "NONE"}> : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_maximum
+func.func @broadcast_maximum(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.maximum %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.maximum %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: "tfl.maximum"(%arg0, %arg1) : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK: "tfl.maximum"(%arg1, %arg0) : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_minimum
+func.func @broadcast_minimum(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.minimum %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.minimum %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: "tfl.minimum"(%arg0, %arg1) : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK: "tfl.minimum"(%arg1, %arg0) : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_mul
+func.func @broadcast_mul(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.multiply %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.multiply %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: tfl.mul(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK: tfl.mul(%arg1, %arg0) <{fused_activation_function = "NONE"}> : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_sub
+func.func @broadcast_sub(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.subtract %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.subtract %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: tfl.sub(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK: tfl.sub(%arg1, %arg0) <{fused_activation_function = "NONE"}> : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_pow
+func.func @broadcast_pow(%arg0: tensor<1xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0]> : tensor<1xi64>}> : (tensor<1xi32>) -> tensor<4xi32>
+  %1 = mhlo.power %0, %arg1 : tensor<4xi32>
+  %2 = mhlo.power %arg1, %0 : tensor<4xi32>
+  func.return %1, %2 : tensor<4xi32>, tensor<4xi32>
+}
+
+// CHECK: tfl.pow(%arg0, %arg1) : (tensor<1xi32>, tensor<4xi32>) -> tensor<4xi32>
+// CHECK: tfl.pow(%arg1, %arg0) : (tensor<4xi32>, tensor<1xi32>) -> tensor<4xi32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo ternary ops
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: clamp
+func.func @clamp(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+  %0 = "mhlo.clamp"(%arg0, %arg1, %arg2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// CHECK-NEXT: %0 = "tfl.minimum"(%arg1, %arg2)
+// CHECK-NEXT: %1 = "tfl.maximum"(%0, %arg0)
+// CHECK-NEXT: return %1 : tensor<f32>
+
+// -----
+
+// CHECK-LABEL: select
+func.func @select(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+  %0 = "mhlo.select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// CHECK:     "tfl.select"(%arg0, %arg1, %arg2)
+// CHECK-NOT: mhlo
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.while
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: while_with_variadic
+func.func @while_with_variadic() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
+  %cst = arith.constant dense<1> : tensor<i32>
+  %cst_0 = arith.constant dense<0> : tensor<i32>
+  %cst_1 = arith.constant dense<1000> : tensor<i32>
+  %0:3 = "mhlo.while"(%cst_0, %cst, %cst_1) ({
+  ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>):
+    %1 = "mhlo.compare"(%arg0, %arg2) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>):
+    %1 = mhlo.add %arg0, %arg1 : tensor<i32>
+    "mhlo.return"(%1, %arg1, %arg2) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
+  }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
+  func.return %0#0, %0#1, %0#2 : tensor<i32>, tensor<i32>, tensor<i32>
+}
+
+
+// CHECK-DAG: %cst = arith.constant dense<1> : tensor<i32>
+// CHECK-DAG: %cst_0 = arith.constant dense<0> : tensor<i32>
+// CHECK-DAG: %cst_1 = arith.constant dense<1000> : tensor<i32>
+// CHECK:     %0:3 = "tfl.while"(%cst_0, %cst, %cst_1) <{is_stateless = false}> ({
+// CHECK:     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>):
+// CHECK:     %1 = tfl.less(%arg0, %arg2) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK:     "tfl.yield"(%1) : (tensor<i1>) -> ()
+// CHECK:     }, {
+// CHECK:     ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>):
+// CHECK:     %1 = tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<i32>
+// CHECK:     "tfl.yield"(%1, %arg1, %arg2) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
+// CHECK:     }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
+
+// -----
+
+// CHECK-LABEL: while_with_reduce
+func.func @while_with_reduce(%arg0: tensor<1x256xf32>, %arg1: tensor<1xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1xf32>) {
+  %cst = arith.constant dense<1> : tensor<i32>
+  %cst_0 = arith.constant dense<0> : tensor<i32>
+  %cst_1 = arith.constant dense<1000> : tensor<i32>
+  %0:5 = "mhlo.while"(%cst_0, %cst, %cst_1, %arg0 , %arg1) ({
+  ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>, %arg5: tensor<1x256xf32>, %arg6: tensor<1xf32>):
+    %1 = "mhlo.compare"(%arg2, %arg4) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>, %arg5: tensor<1x256xf32>, %arg6: tensor<1xf32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<i32>
+    %2 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+    %3 = "mhlo.reduce"(%arg5, %2) ({
+      ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
+        %4 = mhlo.add %arg7, %arg8 : tensor<f32>
+        "mhlo.return"(%4) : (tensor<f32>) -> ()
+    }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
+    %5  = mhlo.add %3, %arg6 : tensor<1xf32>
+    "mhlo.return"(%1, %arg3, %arg4, %arg5, %5) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>) -> ()
+  }) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>)
+  func.return %0#0, %0#1, %0#2, %0#4: tensor<i32>, tensor<i32>, tensor<i32>, tensor<1xf32>
+}
+
+// CHECK-DAG: %cst = arith.constant dense<0.000000e+00> : tensor<f32>
+// CHECK-DAG: %cst_0 = arith.constant dense<1> : tensor<i32>
+// CHECK-DAG: %cst_1 = arith.constant dense<0> : tensor<i32>
+// CHECK-DAG: %cst_2 = arith.constant dense<1000> : tensor<i32>
+// CHECK:     %0:5 = "tfl.while"(%cst_1, %cst_0, %cst_2, %arg0, %arg1) <{is_stateless = false}> ({
+// CHECK:     ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>, %arg5: tensor<1x256xf32>, %arg6: tensor<1xf32>):
+// CHECK:       %1 = tfl.less(%arg2, %arg4) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK:       "tfl.yield"(%1) : (tensor<i1>) -> ()
+// CHECK:     ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>, %arg5: tensor<1x256xf32>, %arg6: tensor<1xf32>):
+// CHECK:       %1 = tfl.add %arg2, %arg3 {fused_activation_function = "NONE"} : tensor<i32>
+// CHECK:       %cst_3 = arith.constant dense<1> : tensor<1xi32>
+// CHECK:       %2 = "tfl.sum"(%arg5, %cst_3) <{keep_dims = false}> : (tensor<1x256xf32>, tensor<1xi32>) -> tensor<1xf32>
+// CHECK:       %3 = tfl.add %2, %arg6 {fused_activation_function = "NONE"} : tensor<1xf32>
+// CHECK:       "tfl.yield"(%1, %arg3, %arg4, %arg5, %3) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>) -> ()
+// CHECK:     }) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>)
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// data movement and shaping
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @get_dimension_size(
+func.func @get_dimension_size(%arg0: tensor<4x256x?xf32>) -> tensor<i32> {
+  %0 = "mhlo.get_dimension_size"(%arg0) <{dimension = 1 : i64}> : (tensor<4x256x?xf32>) -> tensor<i32>
+  func.return %0 : tensor<i32>
+}
+
+// This gets folded.
+// CHECK: %cst = arith.constant dense<256> : tensor<i32>
+
+// -----
+
+// CHECK-LABEL: reverse
+func.func @reverse(%arg0: tensor<3x2xi32>) -> tensor<3x2xi32> {
+  %0 = "mhlo.reverse"(%arg0) <{dimensions = dense<0> : tensor<1xi64>}> : (tensor<3x2xi32>) -> tensor<3x2xi32>
+  func.return %0 : tensor<3x2xi32>
+}
+
+// CHECK: %cst = arith.constant dense<0> : tensor<1xi64>
+// CHECK: %0 = "tfl.cast"(%cst) : (tensor<1xi64>) -> tensor<1xi32>
+// CHECK: %1 = "tfl.reverse_v2"(%arg0, %0) : (tensor<3x2xi32>, tensor<1xi32>) -> tensor<3x2xi32>
+// CHECK: return %1 : tensor<3x2xi32>
+
+// -----
+
+// CHECK-LABEL: concat
+func.func @concat(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tensor<6x3xf32> {
+  %0 = "mhlo.concatenate"(%arg0, %arg1) <{dimension = 0 : i64}> : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
+  func.return %0 : tensor<6x3xf32>
+}
+
+// CHECK: %0 = "tfl.concatenation"(%arg0, %arg1) <{axis = 0 : i32, fused_activation_function = "NONE"}> : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_in_dim_tfl_style
+func.func @broadcast_in_dim_tfl_style(%arg0: tensor<8x1x16xf32>) -> tensor<3x8x8x16xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[1, 2, 3]> : tensor<3xi64>, name = "broadcast.0"}> : (tensor<8x1x16xf32>) -> tensor<3x8x8x16xf32>
+  func.return %0 : tensor<3x8x8x16xf32>
+}
+
+// CHECK: %cst = arith.constant dense<[3, 8, 8, 16]> : tensor<4xi64>
+// CHECK: %0 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<8x1x16xf32>, tensor<4xi64>) -> tensor<3x8x8x16xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_in_dim_general_case
+func.func @broadcast_in_dim_general_case(%arg0: tensor<3x1x16xf32>) -> tensor<3x8x8x16xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 2, 3]> : tensor<3xi64>, name = "broadcast.0"}> : (tensor<3x1x16xf32>) -> tensor<3x8x8x16xf32>
+  func.return %0 : tensor<3x8x8x16xf32>
+}
+
+// CHECK: %cst = arith.constant dense<[3, 1, 1, 16]> : tensor<4xi32>
+// CHECK: %0 = "tfl.reshape"(%arg0, %cst) : (tensor<3x1x16xf32>, tensor<4xi32>) -> tensor<3x1x1x16xf32>
+// CHECK: %cst_0 = arith.constant dense<[3, 8, 8, 16]> : tensor<4xi64>
+// CHECK: %1 = "tfl.broadcast_to"(%0, %cst_0) : (tensor<3x1x1x16xf32>, tensor<4xi64>) -> tensor<3x8x8x16xf32>
+
+// -----
+
+// CHECK-LABEL: dynamic_broadcast_in_dim_tf_style
+func.func @dynamic_broadcast_in_dim_tf_style(%arg0: tensor<?x1x1x2x1xf32>, %arg1: tensor<5xi32>) -> tensor<?x750x1x2x384xf32> {
+  %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) <{broadcast_dimensions = dense<[0, 1, 2, 3, 4]> : tensor<5xi64>}> : (tensor<?x1x1x2x1xf32>, tensor<5xi32>) -> tensor<?x750x1x2x384xf32>
+  func.return %0 : tensor<?x750x1x2x384xf32>
+}
+
+// CHECK: %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<?x1x1x2x1xf32>, tensor<5xi32>) -> tensor<?x750x1x2x384xf32>
+
+// -----
+
+// CHECK-LABEL: dynamic_broadcast_in_dim_general_case_expand_back_dims
+func.func @dynamic_broadcast_in_dim_general_case_expand_back_dims(%arg0: tensor<?x3000xf32>, %arg1: tensor<4xi32>) -> tensor<?x3000x2x4xf32> {
+  %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<?x3000xf32>, tensor<4xi32>) -> tensor<?x3000x2x4xf32>
+  func.return %0 : tensor<?x3000x2x4xf32>
+}
+
+// CHECK: %cst = arith.constant dense<2> : tensor<i64>
+// CHECK: %0 = "tfl.expand_dims"(%arg0, %cst) : (tensor<?x3000xf32>, tensor<i64>) -> tensor<?x3000x1xf32>
+// CHECK: %cst_0 = arith.constant dense<3> : tensor<i64>
+// CHECK: %1 = "tfl.expand_dims"(%0, %cst_0) : (tensor<?x3000x1xf32>, tensor<i64>) -> tensor<?x3000x1x1xf32>
+// CHECK: %2 = "tfl.broadcast_to"(%1, %arg1) : (tensor<?x3000x1x1xf32>, tensor<4xi32>) -> tensor<?x3000x2x4xf32>
+
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.if
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: if
+func.func @if(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (tensor<i32>) {
+  %0 = mhlo.add %arg1, %arg2 : tensor<i32>
+  %1 = "mhlo.if"(%arg0) ({
+    "mhlo.return"(%0) : (tensor<i32>) -> ()
+  }, {
+    %2 = mhlo.multiply %arg1, %arg1 : tensor<i32>
+    "mhlo.return"(%2) : (tensor<i32>) -> ()
+  }) : (tensor<i1>) -> tensor<i32>
+  func.return %1: tensor<i32>
+}
+
+// CHECK: %0 = tfl.add %arg1, %arg2 {fused_activation_function = "NONE"} : tensor<i32>
+// CHECK: %1 = "tfl.if"(%arg0) ({
+// CHECK:   "tfl.yield"(%0) : (tensor<i32>) -> ()
+// CHECK: }, {
+// CHECK:   %2 = tfl.mul %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<i32>
+// CHECK:   "tfl.yield"(%2) : (tensor<i32>) -> ()
+// CHECK: }) : (tensor<i1>) -> tensor<i32>
+// CHECK: return %1 : tensor<i32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.fft
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: rfft_2d
+func.func @rfft_2d(%arg0: tensor<1x512xf32>) -> tensor<1x257xcomplex<f32>> {
+  %0 = "mhlo.fft"(%arg0) <{fft_length = dense<512> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<1x512xf32>) -> tensor<1x257xcomplex<f32>>
+  func.return %0 : tensor<1x257xcomplex<f32>>
+}
+
+// CHECK: %cst = arith.constant dense<-2> : tensor<i32>
+// CHECK: %0 = "tfl.expand_dims"(%arg0, %cst) : (tensor<1x512xf32>, tensor<i32>) -> tensor<1x1x512xf32>
+// CHECK-DAG: %cst_0 = arith.constant dense<1> : tensor<1xi32>
+// CHECK-DAG: %cst_1 = arith.constant dense<512> : tensor<1xi32>
+// CHECK: %1 = "tfl.concatenation"(%cst_0, %cst_1) <{axis = 0 : i32, fused_activation_function = "NONE"}> : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+// CHECK: %2 = "tfl.rfft2d"(%0, %1) : (tensor<1x1x512xf32>, tensor<2xi32>) -> tensor<1x1x257xcomplex<f32>>
+// CHECK: %3 = "tfl.squeeze"(%2) <{squeeze_dims = [-2]}> : (tensor<1x1x257xcomplex<f32>>) -> tensor<1x257xcomplex<f32>>
+// CHECK: return %3 : tensor<1x257xcomplex<f32>>
+
+// -----
+
+// CHECK-LABEL: @fft
+func.func @fft(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>> {
+  %0 = "mhlo.fft"(%arg0) <{ fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type FFT> }> : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>>
+  func.return %0 : tensor<3x9xcomplex<f32>>
+}
+
+// CHECK: %0 = "mhlo.fft"(%arg0) <{fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type FFT>}> : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>>
+// CHECK: return %0 : tensor<3x9xcomplex<f32>>
+

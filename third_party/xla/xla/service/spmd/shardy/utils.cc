@@ -19,10 +19,10 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "absl/strings/escaping.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -31,27 +31,25 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/LLVM.h"
+#include "shardy/dialect/sdy/ir/register.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
 
 namespace xla {
 namespace sdy {
+
 using ::mlir::ArrayRef;
 using ::mlir::Attribute;
 using ::mlir::DictionaryAttr;
 using ::mlir::NamedAttribute;
 using ::mlir::Operation;
 using ::mlir::SmallVector;
+using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using xla::sdy::kFrontendAttributesAttr;
 
 using ::mlir::func::FuncOp;
-
-mlir::StringAttr getStringAttribute(mlir::Attribute attr,
-                                    mlir::OpBuilder& builder) {
-  return builder.getStringAttr(mlir::sdy::attributeToString(attr));
-}
 
 DictionaryAttr getFrontendAttrs(Operation* op) {
   return op->getAttrOfType<DictionaryAttr>(kFrontendAttributesAttr);
@@ -63,6 +61,16 @@ DictionaryAttr getFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index) {
 }
 
 namespace {
+
+mlir::StringAttr getStringAttribute(Attribute attr, mlir::OpBuilder& builder) {
+  std::string value;
+  if (auto stringAttr = mlir::dyn_cast<StringAttr>(attr)) {
+    value = stringAttr.getValue().str();
+  } else {
+    value = mlir::sdy::attributeToString(attr);
+  }
+  return builder.getStringAttr(absl::CEscape(value));
+}
 
 SmallVector<NamedAttribute> getExistingFrontendAttributes(
     DictionaryAttr frontendAttributes, StringRef excludedAttribute) {
@@ -144,11 +152,21 @@ void removeFrontendAttribute(FuncOp funcOp, StringRef attributeName,
       [&]() { funcOp.removeArgAttr(argNum, kFrontendAttributesAttr); });
 }
 
+bool hasFrontendAttr(mlir::Operation* op, mlir::StringRef key) {
+  return hasKey(getFrontendAttrs(op), key);
+}
+
+bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key) {
+  return dictAttr && dictAttr.contains(key);
+}
+
 void loadAllRequiredDialects(mlir::MLIRContext* context) {
   mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
   registry.insert<mlir::mhlo::MhloDialect>();
+  mlir::sdy::registerAllDialects(registry);
   context->appendDialectRegistry(registry);
-  mlir::sdy::loadAllRequiredDialects(context);
+  context->loadAllAvailableDialects();
 }
 
 }  // namespace sdy

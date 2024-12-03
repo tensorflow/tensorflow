@@ -34,7 +34,7 @@ class StructureVerifier : public GraphVerifier {
 
   string name() const override { return "structure_verifier"; };
 
-  Status Verify(const GraphDef& graph) override;
+  absl::Status Verify(const GraphDef& graph) override;
 };
 
 }  // end namespace grappler

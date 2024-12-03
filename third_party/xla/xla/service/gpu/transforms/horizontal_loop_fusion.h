@@ -24,7 +24,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -124,8 +125,9 @@ namespace gpu {
 // Note, reshapes are added only if the tensors isn't already a vector.
 class HorizontalLoopFusion : public HloModulePass {
  public:
-  HorizontalLoopFusion() = default;
-  explicit HorizontalLoopFusion(absl::string_view prefix) : prefix_(prefix) {}
+  explicit HorizontalLoopFusion(const se::DeviceDescription& device_description,
+                                absl::string_view prefix = "")
+      : device_description_(device_description), prefix_(prefix) {}
 
   absl::string_view name() const override { return "horizontal_loop_fusion"; }
 
@@ -136,6 +138,8 @@ class HorizontalLoopFusion : public HloModulePass {
 
  private:
   absl::StatusOr<bool> RunOnComputation(HloComputation*);
+
+  const se::DeviceDescription& device_description_;
   std::string prefix_;
 };
 

@@ -53,7 +53,7 @@ class TpuOutfeedDequeueOp : public T {
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape_, &xla_shape_));
   }
 
-  Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
+  absl::Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
     Tensor* output;
     TF_RETURN_IF_ERROR(ctx->allocate_output(0, shape_, &output));
 
@@ -107,7 +107,7 @@ class TpuOutfeedDequeueTupleOp : public T {
     tuple_shape_ = xla::ShapeUtil::MakeTupleShape(xla_shapes_);
   }
 
-  Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
+  absl::Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
     VLOG(1) << "TransferLiteralFromOutfeed "
             << xla::ShapeUtil::HumanStringWithLayout(tuple_shape_);
 

@@ -3002,7 +3002,7 @@ class RemapperControlDependencyPatternMatcher : public RemapperTest {
     GraphDef output;
     TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
-    Status status;
+    absl::Status status;
     utils::MutableGraphView graph_view(&output, &status);
 
     const int num_nodes = output.node_size();
@@ -3085,7 +3085,7 @@ class XlaCpuJitDisableFusionTest : public RemapperTest {
     }
 
     Remapper optimizer(RewriterConfig::ON, RewriterConfig::NO_CONVERSION_ON_CPU,
-                       /*xla_clustering_on=*/true);
+                       /*xla_auto_clustering_on=*/true);
     GraphDef output;
     TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 

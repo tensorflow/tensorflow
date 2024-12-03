@@ -459,24 +459,39 @@ func.func @DontRemoveTrivialMul(%arg0: tensor<1x6x8x1xf32>) -> tensor<1x6x8x1xf3
   // CHECK: return %[[RESULT]] : tensor<1x6x8x1xf32>
 }
 
-// Do not fold if the op doesn't follow the constant folding policy. It doesn't
-// fold if the  total result size is large (>1 MB) and more than 2 times the
-// size of operands.
-
-// CHECK-LABEL: DontFoldTile
-func.func @DontFoldTile() -> (tensor<64x10000xi32>) {
-  %const_10000 = "tf.Const"() {value = dense<10000> : tensor<i32>} : () -> tensor<i32>
-  %const_0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  %const_1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  %const_64_1 = "tf.Const"() {value = dense<[64, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
-  %1 = "tf.Range"(%const_0, %const_10000, %const_1) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<10000xi32>
-  %2 = "tf.ExpandDims"(%1, %const_0) : (tensor<10000xi32>, tensor<i32>) -> tensor<1x10000xi32>
-  %3 = "tf.Tile"(%2, %const_64_1) : (tensor<1x10000xi32>, tensor<2xi32>) -> tensor<64x10000xi32>
-  // CHECK-NOT: tf.Range
-  // CHECK-NOT: tf.ExpandDims
+// Do not fold if the op doesn't follow the constant folding policy.
+// The policy doesn't fold if the total operand size is larger than 128 MiB.
+// CHECK-LABEL: DontFoldTileOperandsTooLarge
+func.func @DontFoldTileOperandsTooLarge() -> (tensor<3x134217728xi8>) {
+  %const_128mb_operand = "tf.Const"() {value = dense<42> : tensor<1x134217728xi8>} : () -> tensor<1x134217728xi8>
+  %const_tile_3x = "tf.Const"() {value = dense<[3, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %result = "tf.Tile"(%const_128mb_operand, %const_tile_3x) : (tensor<1x134217728xi8>, tensor<2xi32>) -> tensor<3x134217728xi8>
   // CHECK: [[TILE:%.*]] = "tf.Tile"
   // CHECK: return [[TILE]]
-  func.return %3 : tensor<64x10000xi32>
+  func.return %result : tensor<3x134217728xi8>
+}
+// Do not fold if the op doesn't follow the constant folding policy.
+// The policy doesn't fold if the total result size is larger than 8 KiB, and
+// larger than 2x the total operand size.
+// CHECK-LABEL: DontFoldTileResultTooLarge
+func.func @DontFoldTileResultTooLarge() -> (tensor<3x3072xi8>) {
+  %const_3kb_operand = "tf.Const"() {value = dense<42> : tensor<1x3072xi8>} : () -> tensor<1x3072xi8>
+  %const_tile_3x = "tf.Const"() {value = dense<[3, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %result = "tf.Tile"(%const_3kb_operand, %const_tile_3x) : (tensor<1x3072xi8>, tensor<2xi32>) -> tensor<3x3072xi8>
+  // CHECK: [[TILE:%.*]] = "tf.Tile"
+  // CHECK: return [[TILE]]
+  func.return %result : tensor<3x3072xi8>
+}
+// Fold if the op follows the constant folding policy.
+// CHECK-LABEL: FoldTile
+func.func @FoldTile() -> (tensor<2x3072xi8>) {
+  %const_3kb_operand = "tf.Const"() {value = dense<42> : tensor<1x3072xi8>} : () -> tensor<1x3072xi8>
+  %const_tile_2x = "tf.Const"() {value = dense<[2, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %result = "tf.Tile"(%const_3kb_operand, %const_tile_2x) : (tensor<1x3072xi8>, tensor<2xi32>) -> tensor<2x3072xi8>
+  func.return %result : tensor<2x3072xi8>
+  // CHECK-NOT: "tf.Tile"
+  // CHECK: [[FOLDED:%.*]] = "tf.Const"() <{value = dense<42> : tensor<2x3072xi8>}> : () -> tensor<2x3072xi8>
+  // CHECK: return [[FOLDED]]
 }
 
 // Verifies that very large splat constants are not materialized as Tensors for

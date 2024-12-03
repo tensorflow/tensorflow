@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -33,11 +32,11 @@ ExecutorCache::ExecutorCache() = default;
 ExecutorCache::~ExecutorCache() = default;
 
 absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
-    const StreamExecutorConfig& config, const ExecutorFactory& factory) {
+    int ordinal, const ExecutorFactory& factory) {
   // In the fast path case, the cache already has an entry and we can just
   // return after Get() which only takes a shared lock and not a unique lock.
   // If we need to create, we take a unique lock on cache_.
-  if (auto fast_result = Get(config); fast_result.ok()) {
+  if (auto fast_result = Get(ordinal); fast_result.ok()) {
     return fast_result;
   }
 
@@ -45,32 +44,19 @@ absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<StreamExecutor> result, factory());
   auto returned_executor = result.get();
   absl::MutexLock lock(&mutex_);
-  cache_.emplace(config.ordinal, std::move(result));
+  cache_.emplace(ordinal, std::move(result));
   return returned_executor;
 }
 
-absl::StatusOr<StreamExecutor*> ExecutorCache::Get(
-    const StreamExecutorConfig& config) {
+absl::StatusOr<StreamExecutor*> ExecutorCache::Get(int ordinal) {
   absl::ReaderMutexLock lock{&mutex_};
 
-  // If gpu stream is not nullptr we have to find StreamExecutor that owns it,
-  // and return NOT_FOUND error if we can't find it.
-  if (config.gpu_stream) {
-    for (auto& [ordinal, executor] : cache_) {
-      if (executor->FindAllocatedStream(config.gpu_stream)) {
-        return executor.get();
-      }
-    }
-    return absl::NotFoundError(
-        absl::StrFormat("No executors own stream %p", config.gpu_stream));
-  }
-
-  if (auto it = cache_.find(config.ordinal); it != cache_.end()) {
+  if (auto it = cache_.find(ordinal); it != cache_.end()) {
     return it->second.get();
   }
 
-  return absl::NotFoundError(absl::StrFormat(
-      "No executors registered for ordinal %d", config.ordinal));
+  return absl::NotFoundError(
+      absl::StrFormat("No executors registered for ordinal %d", ordinal));
 }
 
 }  // namespace stream_executor

@@ -18,10 +18,11 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/test.h"
-#include "tsl/protobuf/coordination_service.pb.h"
 namespace tsl {
 namespace {
+using ::tensorflow::BarrierError;
 using ::tensorflow::CoordinatedTask;
 using ::tensorflow::CoordinationServiceError;
 
@@ -100,6 +101,21 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithPayload) {
   EXPECT_EQ(actual_payload.is_reported_error(), payload.is_reported_error());
 }
 
+TEST(CoordinationServiceErrorUtil, MakeBarrierErrorWithPayload) {
+  absl::Status barrier_error =
+      MakeBarrierError(absl::InternalError("Test Error"), "barrier_id", 8);
+
+  BarrierError payload;
+  payload.ParseFromString(
+      std::string(barrier_error.GetPayload(BarrierErrorPayloadKey()).value()));
+  EXPECT_EQ(payload.barrier_id(), "barrier_id");
+  EXPECT_EQ(payload.counter(), 8);
+  EXPECT_EQ(GetBarrierCounterFromError(barrier_error), 8);
+  // Payload exists but has no value.
+  EXPECT_EQ(barrier_error.GetPayload(CoordinationErrorPayloadKey()).value(),
+            "");
+}
+
 TEST(CoordinationServiceErrorUtil,
      TrimCoordinationErrorMessage_CoordinationError) {
   absl::Status error = MakeCoordinationError(absl::InternalError(
@@ -143,6 +159,7 @@ TEST(CoordinationServiceErrorUtil, TrimCoordinationErrorMessage_NetworkError) {
   auto message = trimmed_error.message();
   EXPECT_EQ(trimmed_error.code(), error.code());
   EXPECT_TRUE(absl::StrContains(message, "Check earlier logs"));
+  EXPECT_TRUE(absl::StrContains(message, "preempted"));
   // Message is not duplicated.
   EXPECT_EQ(message.find("failed to connect"),
             message.rfind("failed to connect"))

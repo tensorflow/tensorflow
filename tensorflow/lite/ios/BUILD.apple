@@ -96,6 +96,7 @@ strip_common_include_path_prefix(
         "//tensorflow/lite/core/c:c_api_experimental.h",
         "//tensorflow/lite/core/c:c_api_opaque.h",
         "//tensorflow/lite/core/c:c_api_types.h",
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_types.h",
         "//tensorflow/lite/core/c:common.h",
         "//tensorflow/lite/core/c:operator.h",
         "//tensorflow/lite/core/async/c:types.h",
@@ -127,6 +128,7 @@ tflite_ios_framework(
         ":operator.h",
         ":profiler.h",
         ":telemetry_setting.h",
+        ":tflite_types.h",
         ":types.h",
         ":xnnpack_delegate.h",
     ],
@@ -181,6 +183,7 @@ ios_static_framework(
         ":operator.h",
         ":profiler.h",
         ":telemetry_setting.h",
+        ":tflite_types.h",
         ":types.h",
         ":xnnpack_delegate.h",
     ],
@@ -255,6 +258,7 @@ tflite_ios_framework(
 cc_library(
     name = "tensorflow_lite_c",
     hdrs = [
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_types.h",
         "//tensorflow/lite:builtin_ops.h",
         "//tensorflow/lite/core/async/c:types.h",
         "//tensorflow/lite/core/c:c_api.h",
@@ -272,6 +276,7 @@ cc_library(
         "swift_module=TensorFlowLiteC",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_types",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/c:c_api",

@@ -18,16 +18,18 @@ limitations under the License.
 
 #include <string_view>
 
-namespace stream_executor::gpu::internal {
+#include "xla/stream_executor/kernel_spec.h"
+
+namespace stream_executor::gpu {
+namespace internal {
 
 // This is a collection of gpu kernels for writing simple StreamExecutor tests.
 //
 // Some of the kernels available as pre-compiled PTX blobs (can be loaded with
-// CUDA driver API) / HSACO modules (can be loaded with ROCM driver api), and
+// CUDA driver API), and
 // some of the kernels are written directly in CUDA C++ and can be loaded from a
 // symbol pointer (to test StreamExecutor CUDA runtime integration).
 
-#if !defined(TENSORFLOW_USE_ROCM)
 // PTX kernel compiled from:
 //
 //  __global__ void add(int* a, int* b, int* c) {
@@ -36,24 +38,24 @@ namespace stream_executor::gpu::internal {
 //  }
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
-inline constexpr std::string_view kAddI32Kernel = R"(
+inline constexpr std::string_view kAddI32KernelPtx = R"(
 .version 4.0
 .target sm_50
 .address_size 64
 
-.visible .entry add(
-        .param .u64 add_param_0,
-        .param .u64 add_param_1,
-        .param .u64 add_param_2
+.visible .entry AddI32(
+        .param .u64 AddI32_param_0,
+        .param .u64 AddI32_param_1,
+        .param .u64 AddI32_param_2
 )
 {
         .reg .b32       %r<8>;
         .reg .b64       %rd<11>;
         .loc    1 1 0
 
-        ld.param.u64    %rd1, [add_param_0];
-        ld.param.u64    %rd2, [add_param_1];
-        ld.param.u64    %rd3, [add_param_2];
+        ld.param.u64    %rd1, [AddI32_param_0];
+        ld.param.u64    %rd2, [AddI32_param_1];
+        ld.param.u64    %rd3, [AddI32_param_2];
         .loc    1 3 3
         cvta.to.global.u64      %rd4, %rd3;
         cvta.to.global.u64      %rd5, %rd2;
@@ -75,9 +77,6 @@ inline constexpr std::string_view kAddI32Kernel = R"(
         ret;
 
 })";
-#else
-#include "xla/stream_executor/rocm/add_i32_kernel.h"
-#endif  // !defined(TENSORFLOW_USE_ROCM)
 
 template <typename T>
 struct Ptrs3 {
@@ -101,6 +100,14 @@ void* GetIncAndCmpKernel();
 // StreamExecutor arguments packing for custom C++ types.
 void* GetAddI32Ptrs3Kernel();
 
-}  // namespace stream_executor::gpu::internal
+}  // namespace internal
+
+// Returns an in-process kernel loader spec for the `AddI32` kernel above.
+MultiKernelLoaderSpec GetAddI32KernelSpec();
+
+// Returns a PTX kernel loader spec for the `AddI32` PTX kernel above.
+MultiKernelLoaderSpec GetAddI32PtxKernelSpec();
+
+}  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_H_

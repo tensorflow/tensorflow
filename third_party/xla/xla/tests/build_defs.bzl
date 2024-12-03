@@ -1,11 +1,12 @@
 """Build rules for XLA testing."""
 
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:plugin.bzl", "plugins")
+load("//xla/tsl:tsl.bzl", "if_oss")
+load(
+    "//xla/tsl/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 # Possible backend values for the GPU family.
 NVIDIA_GPU_BACKENDS = [
@@ -14,7 +15,7 @@ NVIDIA_GPU_BACKENDS = [
     "gpu_v100",
     "gpu_a100",
     "gpu_h100",
-]
+] + if_oss(["gpu_b100"])
 
 # The generic "gpu" backend includes the actual backends in this list.
 NVIDIA_GPU_DEFAULT_BACKENDS = [
@@ -31,6 +32,8 @@ GPU_BACKENDS = NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS
 
 GPU_DEFAULT_BACKENDS = NVIDIA_GPU_DEFAULT_BACKENDS
 
+DEFAULT_DISABLED_BACKENDS = []
+
 _ALL_BACKENDS = ["cpu", "interpreter"] + NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS + list(plugins.keys())
 
 # buildifier: disable=function-docstring
@@ -45,7 +48,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         new_disabled_backends.extend(NVIDIA_GPU_BACKENDS)
 
     new_backend_tags = {key: value for key, value in backend_tags.items() if key != "gpu"}
-    gpu_backend_tags = backend_tags.get("gpu", [])
+    gpu_backend_tags = backend_tags.get("gpu", tf_gpu_tests_tags())
     for key in NVIDIA_GPU_BACKENDS:
         new_backend_tags.setdefault(key, gpu_backend_tags[:])
 
@@ -61,6 +64,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         "gpu_v100": (7, 0),
         "gpu_a100": (8, 0),
         "gpu_h100": (9, 0),
+        "gpu_b100": if_oss((10, 0)),
     }
     for gpu_backend in NVIDIA_GPU_BACKENDS:
         all_tags = new_backend_tags[gpu_backend]
@@ -95,6 +99,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
                 sm_tag += ":%d" % num_gpus
             new_backend_tags[gpu_backend] = [t for t in all_tags if t not in requires_gpu]
             new_backend_tags[gpu_backend].append(sm_tag)
+            new_backend_tags[gpu_backend].append("cuda-only")
 
     return new_backends, new_disabled_backends, new_backend_tags, new_backend_args
 
@@ -127,9 +132,10 @@ def prepare_amd_gpu_backend_data(backends, disabled_backends, backend_tags, back
         new_backend_tags.setdefault(key, gpu_backend_tags[:])
 
     for backend in AMD_GPU_DEFAULT_BACKENDS:
-        if "no_rocm" not in gpu_backend_tags:
+        if "cuda-only" not in gpu_backend_tags:
             new_backend_tags[backend].append("requires-gpu-amd")
         new_backend_tags[backend].append("notap")
+        new_backend_tags[backend].append("rocm-only")
 
     return new_backends, new_disabled_backends, new_backend_tags, backend_args
 
@@ -175,7 +181,7 @@ def xla_test(
         deps,
         xla_test_library_deps = [],
         backends = [],
-        disabled_backends = [],
+        disabled_backends = DEFAULT_DISABLED_BACKENDS,
         real_hardware_only = False,  # @unused, all backends are real hardware.
         args = [],
         tags = [],
@@ -183,6 +189,7 @@ def xla_test(
         data = [],
         backend_tags = {},
         backend_args = {},
+        backend_kwargs = {},
         **kwargs):
     """Generates cc_test targets for the given XLA backends.
 
@@ -245,6 +252,9 @@ def xla_test(
         use for that target.
       backend_args: A dict mapping backend name to list of additional args to
         use for that target.
+      backend_kwargs: A dict mapping backend name to list of additional keyword
+        arguments to pass to native.cc_test. Only use for kwargs that don't have a
+        dedicated argument, like setting per-backend flaky or timeout attributes.
       **kwargs: Additional keyword arguments to pass to native.cc_test.
     """
 
@@ -267,6 +277,7 @@ def xla_test(
         this_backend_tags = ["xla_%s" % backend]
         this_backend_copts = []
         this_backend_args = backend_args.get(backend, [])
+        this_backend_kwargs = dict(kwargs) | backend_kwargs.get(backend, {})
         this_backend_data = []
         backend_deps = []
         if backend == "cpu":
@@ -281,6 +292,8 @@ def xla_test(
             ]
             if backend in NVIDIA_GPU_BACKENDS:
                 this_backend_tags += tf_gpu_tests_tags()
+            if backend in AMD_GPU_DEFAULT_BACKENDS:
+                this_backend_tags.append("gpu")
             this_backend_copts.append("-DXLA_TEST_BACKEND_GPU=1")
         elif backend == "interpreter":
             backend_deps += [
@@ -309,7 +322,7 @@ def xla_test(
             args = args + this_backend_args,
             deps = deps + backend_deps,
             data = data + this_backend_data,
-            **kwargs
+            **this_backend_kwargs
         )
 
         test_names.append(test_name)

@@ -267,6 +267,19 @@ absl::Status ShapeVerifier::HandleDot(HloInstruction* dot) {
   return CheckShape(dot, expected);
 }
 
+absl::Status ShapeVerifier::HandleRaggedDot(HloInstruction* ragged_dot) {
+  TF_RETURN_IF_ERROR(
+      CheckOperandCount(ragged_dot, HloRaggedDotInstruction::kOperands));
+  TF_ASSIGN_OR_RETURN(
+      const Shape expected,
+      ShapeInference::InferRaggedDotOpShape(
+          ragged_dot->operand(0)->shape(), ragged_dot->operand(1)->shape(),
+          ragged_dot->operand(2)->shape(),
+          ragged_dot->ragged_dot_dimension_numbers(),
+          /*preferred_element_type=*/ragged_dot->shape().element_type()));
+  return CheckShape(ragged_dot, expected);
+}
+
 absl::Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
   TF_ASSIGN_OR_RETURN(
       Shape expected,
@@ -613,6 +626,24 @@ absl::Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
     return CheckShape(hlo,
                       ShapeInference::InferAllToAllTupleShape(operand_shapes));
   }
+}
+
+absl::Status ShapeVerifier::HandleRaggedAllToAll(HloInstruction* hlo) {
+  auto* all_to_all = Cast<HloRaggedAllToAllInstruction>(hlo);
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(
+                          all_to_all->channel_id().has_value(), std::nullopt));
+
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
+
+  TF_RET_CHECK(all_to_all != nullptr);
+  TF_RET_CHECK(hlo->operand_count() == 6);
+  std::vector<const Shape*> operand_shapes;
+  for (const HloInstruction* operand : hlo->operands()) {
+    operand_shapes.push_back(&operand->shape());
+  }
+  return CheckShape(hlo,
+                    ShapeInference::InferRaggedAllToAllShape(operand_shapes));
 }
 
 absl::Status ShapeVerifier::HandlePartitionId(HloInstruction* hlo) {
@@ -1262,9 +1293,9 @@ absl::Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
   }
 
   auto& fused_parameters = fusion->fused_parameters();
-  if (fused_parameters.size() != fusion->operand_count()) {
+  if (fused_parameters.size() > fusion->operand_count()) {
     return Internal(
-        "Fused parameter count (%d) does not match the number of operands (%d)"
+        "Fused parameter count (%d) is greater than the number of operands (%d)"
         " passed to the fusion instruction in: %s.",
         fused_parameters.size(), fusion->operand_count(),
         fusion->ToString().c_str());
@@ -1961,7 +1992,15 @@ absl::Status ShapeVerifier::CheckShape(
             if (instruction_memory_space != operand_memory_space &&
                 (instruction_memory_space == Layout::kHostMemorySpace ||
                  operand_memory_space == Layout::kHostMemorySpace)) {
-              // Is a host->device copy for a device->host copy.
+              if (instruction_memory_space == Layout::kHostMemorySpace) {
+                // Unfortunately it might still be a host->host copy before
+                // memory space is propagated. A transpose is allowed in that
+                // case.
+                return instruction->shape().element_type() ==
+                       inferred_shape.element_type();
+              }
+              // A host->device copy or a device->host copy cannot do a
+              // transpose.
               return Shape::Equal().IgnoreMemorySpaceInLayout()(
                   instruction->shape(), inferred_shape);
             }
@@ -2228,18 +2267,6 @@ absl::Status VerifyHloStructure(HloModule* module) {
 
 namespace {
 
-// Returns true if the given Shape has a TOKEN shape as any subshape.
-bool ShapeContainsToken(const Shape& shape) {
-  bool contains_token = false;
-  ShapeUtil::ForEachSubshape(
-      shape, [&contains_token](const Shape& subshape, const ShapeIndex&) {
-        if (subshape.IsToken()) {
-          contains_token = true;
-        }
-      });
-  return contains_token;
-}
-
 // Checks if the given two instructions share the same channel id.
 absl::Status CheckSameChannel(const HloInstruction* instr1,
                               const HloInstruction* instr2) {
@@ -2247,15 +2274,14 @@ absl::Status CheckSameChannel(const HloInstruction* instr1,
     return Internal(
         "Expected to have the same channel id, actual channel ids are: %s "
         "(%d), %s (%d)",
-        instr1->ToString(), *instr1->channel_id(), instr2->ToString(),
-        *instr2->channel_id());
+        instr1->ToString(), instr1->channel_id().value_or(-1),
+        instr2->ToString(), instr2->channel_id().value_or(-1));
   }
   return absl::OkStatus();
 }
 
-// Checks if the given two instructions have the same is_host_transfer
-// attribute value. Instructions must be send/recv instructions or their
-// 'done' variant.
+// Checks if the given two instructions have the same is_host_transfer attribute
+// value. Instructions must be send/recv instructions or their 'done' variant.
 absl::Status CheckSameIsHostTransfer(const HloInstruction* instr1,
                                      const HloInstruction* instr2) {
   const HloSendRecvInstruction* send_recv1 =
@@ -2368,6 +2394,38 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
               instruction, {HloOpcode::kCollectivePermuteStart}));
           break;
         }
+        case HloOpcode::kSend: {
+          // If the instruction is kSend or kRecv, it can have no users if and
+          // only if it is wrapped in an async call.
+          if (instruction->IsRoot() &&
+              instruction->parent()->IsAsyncComputation()) {
+            break;
+          }
+          TF_RETURN_IF_ERROR(VerifySingleUser(
+              instruction, {HloOpcode::kSendDone, HloOpcode::kTuple}));
+          break;
+        }
+        case HloOpcode::kSendDone: {
+          TF_RETURN_IF_ERROR(VerifySingleOperand(
+              instruction, {HloOpcode::kSend, HloOpcode::kGetTupleElement}));
+          break;
+        }
+        case HloOpcode::kRecv: {
+          // If the instruction is kSend or kRecv, it can have no users if and
+          // only if it is wrapped in an async call.
+          if (instruction->IsRoot() &&
+              instruction->parent()->IsAsyncComputation()) {
+            break;
+          }
+          TF_RETURN_IF_ERROR(VerifySingleUser(
+              instruction, {HloOpcode::kRecvDone, HloOpcode::kTuple}));
+          break;
+        }
+        case HloOpcode::kRecvDone: {
+          TF_RETURN_IF_ERROR(VerifySingleOperand(
+              instruction, {HloOpcode::kRecv, HloOpcode::kGetTupleElement}));
+          break;
+        }
         default:
           break;
       }
@@ -2414,44 +2472,13 @@ absl::Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
 
 // Checks various invariants of channel instructions (send/recv and
 // collectives).
-absl::Status VerifyChannels(const HloModule& module) {
+absl::Status VerifyChannels(const HloModule& module,
+                            const HloVerifierOpts& opts) {
   absl::flat_hash_map<int64_t, std::vector<const HloInstruction*>>
       channel_instructions;
 
-  // For Async operations, we need to make sure:
-  // (1) AsyncStart and AsyncDone are used in pairs
-  // (2) AsynStart and Asyndone are connected, that is, an AsynDone has an
-  //     AsyncStart as its only operand, and an AsynStart has an AsyncDone as
-  //     its only user
-  // (3) the channel ID used by a pair of Async operations is unique
-  //
-  // Send and SendDone, Recv and RecvDone are such pairs of Async operations.
-  // Different from other Async operations, a channel ID can be used by one
-  // Send-SendDone pair and one Recv-RecvDone pair. As such, we verify the
-  // above three invariants for Send/Recv related instructions with adjustment
-  // to (3):
-  // (3*) the channel ID used by a pair of Send-SendDone can be shared by at
-  //       most one pair of Recv-RecvDone.
-  //
-  // Currently, the GPU compiler can decomposed collective-permute into a group
-  // of instructions with a pair of Send-SendDone and a pair of Recv-RecvDone
-  // that use the same channel ID. When a while-body contains such instructions,
-  // the GPU compiler can also peel off Send and Recv, and statically order
-  // SendDone/RecvDone inside the while-body before Send/Recv. This breaks
-  // invariants (2) and (3*) for the pipelined Send/Recv case. We verify the
-  // following for a group of instructions using the same channel ID but don't
-  // satisfy invariants (1)(2)(3*):
-  // (4) All instructions in the group are annotated with frontend attributes.
-  //     We avoid verifying the content of such a frontend attribute to avoid
-  //     making the general HLO instruction verifier depend on the compiler pass
-  //     that performs the transformation.
-  // (5) the group should contain equal number uses of each Send/Recv related
-  //     instructions.
-  //
-  // Comparing the verification of unpipelined Send/Recv with the verification
-  // of pipelined, what we missing verifying is that the direct connection
-  // between Send/Recv and SendDone/RecvDone through operands.
-  //
+  // Send/recv instruction must have a unique user. If it is the corresponding
+  // send-done/recv-done operation, channel IDs must match.
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       auto channel_instr = DynCast<HloChannelInstruction>(instruction);
@@ -2462,55 +2489,39 @@ absl::Status VerifyChannels(const HloModule& module) {
 
       switch (instruction->opcode()) {
         case HloOpcode::kSend: {
-          bool pipelined = true;
-          if (instruction->users().size() == 1) {
-            const HloInstruction* send_user = instruction->users().front();
-            if (send_user->opcode() == HloOpcode::kSendDone) {
-              TF_RETURN_IF_ERROR(CheckSameChannel(instruction, send_user));
-              TF_RETURN_IF_ERROR(
-                  CheckSameIsHostTransfer(instruction, send_user));
-              pipelined = false;
-            }
+          // If the instruction is kSend or kRecv, it can have no users if and
+          // only if it is wrapped in an async call.
+          if (instruction->IsRoot() &&
+              instruction->parent()->IsAsyncComputation()) {
+            break;
           }
-          // Pipelined Send should be annotated with frontend attributes.
-          TF_RET_CHECK(pipelined == false ||
-                       !instruction->frontend_attributes().map().empty());
+          TF_RET_CHECK(instruction->users().size() == 1);
+          const HloInstruction* send_done = instruction->users().front();
+          if (send_done->opcode() == HloOpcode::kSendDone) {
+            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, send_done));
+            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, send_done));
+          }
           break;
         }
         case HloOpcode::kRecv: {
-          bool pipelined = true;
-          if (instruction->users().size() == 1) {
-            const HloInstruction* recv_user = instruction->users().front();
-            if (recv_user->opcode() == HloOpcode::kRecvDone) {
-              TF_RETURN_IF_ERROR(CheckSameChannel(instruction, recv_user));
-              TF_RETURN_IF_ERROR(
-                  CheckSameIsHostTransfer(instruction, recv_user));
-              pipelined = false;
-            }
+          // If the instruction is kSend or kRecv, it can have no users if and
+          // only if it is wrapped in an async call.
+          if (instruction->IsRoot() &&
+              instruction->parent()->IsAsyncComputation()) {
+            break;
           }
-          // Pipelined Recv should be annotated with frontend attributes.
-          TF_RET_CHECK(pipelined == false ||
-                       !instruction->frontend_attributes().map().empty());
+          TF_RET_CHECK(instruction->users().size() == 1);
+          const HloInstruction* recv_done = instruction->users().front();
+          if (recv_done->opcode() == HloOpcode::kRecvDone) {
+            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, recv_done));
+            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, recv_done));
+          }
           break;
         }
-        case HloOpcode::kSendDone: {
+        case HloOpcode::kSendDone:
+        case HloOpcode::kRecvDone:
           TF_RET_CHECK(instruction->operands().size() == 1);
-          const HloInstruction* send_done_operand = instruction->operand(0);
-          // If the operand is not a Send, the Send-done is pipelined and should
-          // have frontend attributes.
-          TF_RET_CHECK(send_done_operand->opcode() == HloOpcode::kSend ||
-                       !instruction->frontend_attributes().map().empty());
           break;
-        }
-        case HloOpcode::kRecvDone: {
-          TF_RET_CHECK(instruction->operands().size() == 1);
-          const HloInstruction* recv_done_operand = instruction->operand(0);
-          // If the operand is not a Recv, the Recv-done is pipelined and should
-          // have frontend attributes.
-          TF_RET_CHECK(recv_done_operand->opcode() == HloOpcode::kRecv ||
-                       !instruction->frontend_attributes().map().empty());
-          break;
-        }
         default:
           break;
       }
@@ -2518,62 +2529,24 @@ absl::Status VerifyChannels(const HloModule& module) {
   }
 
   // Iterate over each channel to check invariants.
-  for (auto& pair : channel_instructions) {
-    auto& instructions = pair.second;
+  for (auto& [channel_id, instructions] : channel_instructions) {
     const HloInstruction* first = instructions[0];
-    auto sendrecv = DynCast<HloSendRecvInstruction>(first);
-    if (sendrecv) {
-      // Check that all instructions are Send/Recv related and count the
-      // appearance of each opcode in the group.
-      absl::flat_hash_map<HloOpcode, int> opcode_to_count;
+    if (const auto* sendrecv = DynCast<HloSendRecvInstruction>(first)) {
+      absl::flat_hash_set<HloOpcode> opcodes;
       for (const HloInstruction* instr : instructions) {
-        auto it = opcode_to_count.find(instr->opcode());
-        if (it != opcode_to_count.end()) {
-          it->second++;
-        } else {
-          opcode_to_count[instr->opcode()] = 1;
-        }
-        TF_RET_CHECK(DynCast<HloSendRecvInstruction>(instr) != nullptr)
-            << "channel " << pair.first
+        opcodes.insert(instr->opcode());
+        auto cast = DynCast<HloSendRecvInstruction>(instr);
+        TF_RET_CHECK(cast != nullptr)
+            << "channel " << channel_id
             << " is used for different types of channel instructions";
-      }
-
-      int count = opcode_to_count.begin()->second;
-      bool consistent_count =
-          absl::c_all_of(opcode_to_count, [count](const auto& opcode_count) {
-            return opcode_count.second == count;
-          });
-      // A pipelined group of Send/Recv should all have frontend attributes.
-      bool maybe_pipelined =
-          absl::c_all_of(instructions, [](const HloInstruction* inst) {
-            return !inst->frontend_attributes().map().empty();
-          });
-
-      if (sendrecv->is_host_transfer()) {
-        TF_RET_CHECK(consistent_count && count == 1 && instructions.size() == 2)
-            << "channel " << pair.first
-            << " is used for multiple host send/recv instructions";
-      } else {
-        if (consistent_count && count == 1) {
-          TF_RET_CHECK(instructions.size() == opcode_to_count.size())
-              << "channel " << pair.first
-              << " is used for multiple send/recv instructions";
-        } else {
-          TF_RET_CHECK(maybe_pipelined) << "channel " << pair.first
-                                        << " is used for multiple send/recv "
-                                           "instructions but not pipelined";
-          TF_RET_CHECK(consistent_count && opcode_to_count.size() % 2 == 0)
-              << "channel " << pair.first
-              << " is pipelined. Not all Send/Recv related instructions are"
-                 " used the same number of times or channel is used for other "
-                 "instructions";
-        }
       }
     } else {
-      for (const HloInstruction* instr : instructions) {
-        TF_RET_CHECK(first->opcode() == instr->opcode())
-            << "channel " << pair.first
-            << " is used for different types of channel instructions";
+      if (opts.verify_unique_channel_ids) {
+        for (const HloInstruction* instr : instructions) {
+          TF_RET_CHECK(first->opcode() == instr->opcode())
+              << "channel " << channel_id
+              << " is used for different types of channel instructions";
+        }
       }
     }
   }
@@ -2654,7 +2627,7 @@ absl::Status CheckFusionInstruction(HloInstruction* fusion) {
 
   // Fused parameter instructions must be numbered contiguously and match up
   // (shapes equal) with their respective operand.
-  CHECK_EQ(fusion->operands().size(), fused_parameters.size());
+  CHECK_GE(fusion->operands().size(), fused_parameters.size());
   std::vector<bool> parameter_numbers(fused_parameters.size(), false);
   for (auto fused_param : fused_parameters) {
     int64_t param_no = fused_param->parameter_number();
@@ -2982,8 +2955,12 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           const Layout& operand_layout = operand_shape.layout();
           Layout::Equal equal_predicate =
               Layout::Equal().IgnoreTiles().IgnoreMemorySpace();
-          if (instruction->opcode() == HloOpcode::kConvert) {
-            // Convert instructions can change element_size_in_bits
+          if (instruction->opcode() == HloOpcode::kConvert ||
+              instruction->opcode() == HloOpcode::kCompare ||
+              (instruction->opcode() == HloOpcode::kSelect &&
+               operand_shape.element_type() == PRED)) {
+            // Convert and Compare instructions can change element_size_in_bits
+            // Select instructions ignore element_size_in_bits for predicate
             equal_predicate.IgnoreElementSize();
           } else if (instruction->opcode() == HloOpcode::kDynamicSlice ||
                      instruction->opcode() == HloOpcode::kDynamicUpdateSlice ||
@@ -3082,7 +3059,8 @@ absl::StatusOr<bool> HloVerifier::Run(
 
     TF_RETURN_IF_ERROR(VerifyHloStructure(module));
     TF_RETURN_IF_ERROR(VerifyAsynchronousInstructionPairs(*module));
-    TF_RETURN_IF_ERROR(VerifyChannels(*module));
+    TF_RETURN_IF_ERROR(
+        VerifyChannels(*module, target_metadata_->GetVerifierOpts()));
     TF_RETURN_IF_ERROR(VerifyInstructionNameUnchanged(
         *module, target_metadata_->GetVerifierOpts()));
 
@@ -3093,7 +3071,11 @@ absl::StatusOr<bool> HloVerifier::Run(
     for (auto* computation : module->computations(execution_threads)) {
       TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
       TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
-      if (computation->IsAsyncComputation()) {
+      // Verify that async computations contain a single instruction or a
+      // collection of send/recv instructions. This is needed to represent NCCL
+      // groups on GPU.
+      if (computation->IsAsyncComputation() &&
+          !computation->OnlyContainsSendRecv()) {
         TF_RETURN_IF_ERROR(VerifyAsyncComputation(computation));
       }
     }

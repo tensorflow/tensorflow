@@ -19,27 +19,28 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
-#include "xla/literal.h"
-#include "xla/status_macros.h"
+#include "xla/hlo/builder/value_inference.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -110,9 +111,10 @@ REGISTER_XLA_OP(Name("TensorListLength").IsMetadataOp(), TensorListLengthOp);
 // "input" is the shape input for EmptyTensorList/TensorListReserve ops.
 // If "input" is a compile time constant and not "unknown rank" (-1), return
 // its value in "*shape".
-Status TryGetElementShapeFromInput(XlaOpKernelContext* ctx, xla::XlaOp input,
-                                   xla::PrimitiveType dtype, bool* got_shape,
-                                   xla::Shape* shape) {
+absl::Status TryGetElementShapeFromInput(XlaOpKernelContext* ctx,
+                                         xla::XlaOp input,
+                                         xla::PrimitiveType dtype,
+                                         bool* got_shape, xla::Shape* shape) {
   auto is_compile_time_constant_or = input.builder()->IsConstant(input);
   TF_RETURN_IF_ERROR(is_compile_time_constant_or.status());
 

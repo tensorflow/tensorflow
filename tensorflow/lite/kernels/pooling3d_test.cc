@@ -164,7 +164,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePool) {
       /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375});
   m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3.125, 4.25}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {3.125, 4.25}));
 }
 
 TYPED_TEST(AveragePoolingOpTest, AveragePoolFilterH1) {
@@ -176,7 +176,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolFilterH1) {
       /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375});
   m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2.75, 5.75}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {2.75, 5.75}));
 }
 
 TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingSameStride1) {
@@ -192,8 +192,9 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingSameStride1) {
   m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({2.875, 4.125, 4.5, 4.5, 3.0, 3.25, 3.25, 3.5,
-                                2.5, 4.0, 5.75, 5.5, 2.5, 2.0, 3.0, 4.0}));
+              Pointwise(FloatingPointEq(),
+                        {2.875, 4.125, 4.5, 4.5, 3.0, 3.25, 3.25, 3.5, 2.5, 4.0,
+                         5.75, 5.5, 2.5, 2.0, 3.0, 4.0}));
 }
 
 TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingValidStride1) {
@@ -208,7 +209,7 @@ TYPED_TEST(AveragePoolingOpTest, AveragePoolPaddingValidStride1) {
       /*stride_w=*/1);
   m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2.875, 4.125, 4.5}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {2.875, 4.125, 4.5}));
 }
 
 TYPED_TEST(MaxPoolingOpTest, MaxPool) {
@@ -220,7 +221,7 @@ TYPED_TEST(MaxPoolingOpTest, MaxPool) {
       /*output=*/{GetTensorType<TypeParam>(), {}, 0, 15.9375});
   m.SetInput({0, 6, 2, 4, 4, 5, 1, 4, 3, 2, 10, 7, 2, 3, 5, 1});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({6.0, 10.0}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {6.0, 10.0}));
 }
 
 TYPED_TEST(MaxPoolingOpTest, MaxPoolFilterH1) {
@@ -263,7 +264,7 @@ TYPED_TEST(MaxPoolingOpTest, MaxPoolPaddingValidStride1) {
       /*stride_w=*/1);
   m.SetInput({0, 6, 2, 4, 2, 5, 4, 3, 3, 2, 10, 7, 3, 2, 2, 4});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({6.0, 10.0, 10.0}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {6.0, 10.0, 10.0}));
 }
 
 }  // namespace tflite

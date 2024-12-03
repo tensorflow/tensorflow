@@ -28,9 +28,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
@@ -142,6 +142,37 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
                                    HloInstruction::FusionKind::kOutput,
                                    {param_1}, computation2.get(), "fusion2");
   EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion2.get()), nullptr);
+}
+
+TEST(CollectiveOpsUtilsTest, IsForwardCycle) {
+  EXPECT_TRUE(IsForwardCycle({{0, 1}, {1, 0}}));
+  EXPECT_TRUE(IsForwardCycle({{0, 1}, {1, 2}, {2, 3}, {3, 0}}));
+  EXPECT_FALSE(IsForwardCycle({{0, 0}})) << "Self link is not a cycle!";
+  EXPECT_FALSE(IsForwardCycle({{}})) << "Self link due to initialization to 0";
+
+  EXPECT_FALSE(IsForwardCycle({}));
+  EXPECT_FALSE(IsForwardCycle({{0, 1}}));
+  EXPECT_FALSE(IsForwardCycle({{0, 1}, {2, 0}})) << "No link between 1 and 2";
+  EXPECT_FALSE(IsForwardCycle({{1, 0}, {0, 1}})) << "Backward cycle";
+  EXPECT_FALSE(IsForwardCycle({{3, 0}, {0, 1}, {1, 2}, {2, 3}}))
+      << "Unordered pairs are not a cycle";
+  EXPECT_FALSE(IsForwardCycle({{0, 1}, {1, 2}, {2, 3}, {4, 5}, {3, 0}}))
+      << "Out of order pairs are not a cycle";
+}
+
+TEST(CollectiveOpsUtilsTest, IsBackwardCycle) {
+  EXPECT_TRUE(IsBackwardCycle({{0, 1}, {1, 0}}));
+  EXPECT_TRUE(IsBackwardCycle({{0, 3}, {1, 0}, {2, 1}, {3, 2}}));
+  EXPECT_FALSE(IsBackwardCycle({{0, 0}})) << "Self link is a backward cycle!";
+  EXPECT_FALSE(IsBackwardCycle({{}})) << "Self link due to initialization to 0";
+
+  EXPECT_FALSE(IsForwardCycle({}));
+  EXPECT_FALSE(IsForwardCycle({{1, 0}}));
+  EXPECT_FALSE(IsForwardCycle({{2, 1}, {0, 2}})) << "No link between 1 and 2";
+  EXPECT_FALSE(IsBackwardCycle({{3, 2}, {0, 3}, {1, 0}, {2, 1}}))
+      << "Unordered pairs are not a cycle";
+  EXPECT_FALSE(IsForwardCycle({{0, 1}, {1, 2}, {4, 5}, {3, 0}}))
+      << "Out of order pairs are not a cycle";
 }
 
 TEST(IsExclusivelyCrossModuleTest, CrossReplicaNoChannelSet) {
@@ -276,6 +307,130 @@ TEST_P(GetCollectOpGroupModeTest, Test) {
 
 INSTANTIATE_TEST_SUITE_P(GetCollectOpGroupMode, GetCollectOpGroupModeTest,
                          testing::ValuesIn(GetTestCases()));
+
+// Tests for GetCollectiveOpGroupMode(HloInstruction*)
+struct TestCaseForInstruction {
+  HloOpcode op_code;
+  bool has_channel_id;
+  std::optional<bool> use_global_device_ids;
+  xla::CollectiveOpGroupMode expected_group_mode;
+};
+
+std::vector<TestCaseForInstruction> GetTestCasesForInstruction() {
+  return std::vector<TestCaseForInstruction>{
+      //  opcode, has_channel_id, use_global_device_ids, expected_group_mode
+      {HloOpcode::kAllGather, true, true, CollectiveOpGroupMode::kFlattenedID},
+      {HloOpcode::kAllGather, true, false,
+       CollectiveOpGroupMode::kCrossReplicaAndPartition},
+      {HloOpcode::kAllGather, false, false,
+       CollectiveOpGroupMode::kCrossReplica},
+      {HloOpcode::kAllReduce, true, true, CollectiveOpGroupMode::kFlattenedID},
+      {HloOpcode::kAllReduce, true, false,
+       CollectiveOpGroupMode::kCrossReplicaAndPartition},
+      {HloOpcode::kAllReduce, false, false,
+       CollectiveOpGroupMode::kCrossReplica},
+      {HloOpcode::kAllToAll, true, std::nullopt,
+       CollectiveOpGroupMode::kCrossPartition},
+      {HloOpcode::kAllToAll, false, std::nullopt,
+       CollectiveOpGroupMode::kCrossReplica},
+      {HloOpcode::kCollectiveBroadcast, true, std::nullopt,
+       CollectiveOpGroupMode::kCrossPartition},
+      {HloOpcode::kCollectiveBroadcast, false, std::nullopt,
+       CollectiveOpGroupMode::kCrossReplica},
+      {HloOpcode::kCollectivePermute, true, std::nullopt,
+       CollectiveOpGroupMode::kCrossPartition},
+      {HloOpcode::kCollectivePermute, false, std::nullopt,
+       CollectiveOpGroupMode::kCrossReplica}};
+}
+
+class GetCollectOpGroupModeTestForInstruction
+    : public testing::TestWithParam<TestCaseForInstruction> {};
+
+absl::StatusOr<std::unique_ptr<HloComputation>> CreateMaxComputation() {
+  Shape scalar = ShapeUtil::MakeScalarShape(F32);
+  auto builder_max = HloComputation::Builder("max");
+  TF_ASSIGN_OR_RETURN(HloInstruction * a,
+                      builder_max.AddParameter(
+                          HloInstruction::CreateParameter(0, scalar, "a")));
+  TF_ASSIGN_OR_RETURN(HloInstruction * b,
+                      builder_max.AddParameter(
+                          HloInstruction::CreateParameter(1, scalar, "b")));
+  HloInstruction *max = builder_max.AddInstruction(
+      HloInstruction::CreateBinary(scalar, HloOpcode::kMaximum, a, b), "max");
+  return builder_max.Build(max);
+}
+
+TEST_P(GetCollectOpGroupModeTestForInstruction, Test) {
+  const TestCaseForInstruction &test_case = GetParam();
+  ReplicaGroup group;
+  for (int k = 0; k < 4; ++k) {
+    group.add_replica_ids(k);
+  }
+  std::vector<std::pair<int64_t, int64_t>> source_target_pairs{{0, 1}, {2, 3}};
+
+  Shape two_elements = ShapeUtil::MakeShape(F32, {2});
+  Shape eight_elements = ShapeUtil::MakeShape(F32, {8});
+
+  auto channel_id = [&test_case]() -> std::optional<int64_t> {
+    return test_case.has_channel_id ? std::make_optional<int64_t>(1)
+                                    : std::nullopt;
+  };
+
+  auto use_global_device_ids = [&test_case]() -> bool {
+    return test_case.use_global_device_ids.value();
+  };
+
+  // Create the entry computation for testing the group mode of the collectives.
+  auto builder = HloComputation::Builder("entry");
+  TF_ASSERT_OK_AND_ASSIGN(HloInstruction * parameter,
+                          builder.AddParameter(HloInstruction::CreateParameter(
+                              0, two_elements, "parameter")));
+
+  HloInstruction *collective;
+  switch (test_case.op_code) {
+    case HloOpcode::kAllGather:
+      collective = builder.AddInstruction(HloInstruction::CreateAllGather(
+          eight_elements, {parameter}, 1, {group}, /*constrain_layout=*/true,
+          channel_id(), use_global_device_ids()));
+      break;
+    case HloOpcode::kAllReduce: {
+      // Create a computation to be applied by the all-reduce instruction.
+      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloComputation> max_computation,
+                              CreateMaxComputation());
+
+      collective = builder.AddInstruction(HloInstruction::CreateAllReduce(
+          two_elements, {parameter}, max_computation.get(), {group},
+          /*constrain_layout=*/true, channel_id(), use_global_device_ids()));
+      break;
+    }
+    case HloOpcode::kAllToAll:
+      collective = builder.AddInstruction(HloInstruction::CreateAllToAll(
+          eight_elements, {parameter}, {group}, /*constrain_layout=*/true,
+          channel_id(), std::nullopt));
+      break;
+    case HloOpcode::kCollectiveBroadcast:
+      collective =
+          builder.AddInstruction(HloInstruction::CreateCollectiveBroadcast(
+              two_elements, {parameter}, {group}, /*constrain_layout=*/true,
+              channel_id()));
+      break;
+    case HloOpcode::kCollectivePermute:
+      collective =
+          builder.AddInstruction(HloInstruction::CreateCollectivePermute(
+              two_elements, parameter, source_target_pairs, channel_id()));
+      break;
+    default:
+      LOG(FATAL) << "Unexpected opcode.";
+  }
+  TF_ASSERT_OK_AND_ASSIGN(auto collective_group_mode,
+                          GetCollectiveOpGroupMode(collective));
+  EXPECT_EQ(collective_group_mode, test_case.expected_group_mode);
+}
+
+INSTANTIATE_TEST_SUITE_P(GetCollectOpGroupModeForInstruction,
+                         GetCollectOpGroupModeTestForInstruction,
+                         testing::ValuesIn(GetTestCasesForInstruction()));
+
 }  // namespace GetCollectiveOpGroupModeTest
 
 // Tests for GetParticipatingDevices

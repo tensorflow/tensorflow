@@ -125,7 +125,7 @@ BENCHMARK(BM_KernelAndDeviceInit);
 
 void BM_KernelAndDeviceRun(::testing::benchmark::State& state) {
   Tensor t(Input({{1.0f, 2.0f}, {3.0f, 4.0f}}).tensor());
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4UL> inputs;
   inputs.push_back(TensorValue(&t));
   inputs.push_back(TensorValue(&t));
   std::vector<EagerKernelRet> outputs;

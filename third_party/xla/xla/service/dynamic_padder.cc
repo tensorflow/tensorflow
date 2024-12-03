@@ -32,8 +32,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_builder.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -42,22 +42,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/dynamic_window_utils.h"
 #include "xla/service/hlo_creation_utils.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/monitoring/gauge.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/monitoring/gauge.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -1322,6 +1322,7 @@ absl::StatusOr<bool> RewriteDynamicConcat(
     return false;
   }
   std::vector<HloInstruction*> offsets;
+  offsets.reserve(concat->shape().dimensions_size());
   for (int64_t i = 0; i < concat->shape().dimensions_size(); ++i) {
     offsets.push_back(concat->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0))));
@@ -1667,12 +1668,14 @@ absl::StatusOr<bool> RewriteDynamicReshape(
   bool changed = false;
   HloInstruction* operand = reshape->mutable_operand(0);
   std::vector<HloInstruction*> input_dynamic_dims;
+  input_dynamic_dims.reserve(operand->shape().dimensions_size());
   for (int64_t dim = 0; dim < operand->shape().dimensions_size(); ++dim) {
     input_dynamic_dims.push_back(
         dynamic_dimension_inference->GetDynamicSize(operand, {}, dim));
   }
 
   std::vector<HloInstruction*> output_dynamic_dims;
+  output_dynamic_dims.reserve(reshape->shape().dimensions_size());
   for (int64_t dim = 0; dim < reshape->shape().dimensions_size(); ++dim) {
     output_dynamic_dims.push_back(
         dynamic_dimension_inference->GetDynamicSize(reshape, {}, dim));
@@ -2018,6 +2021,11 @@ absl::Status DynamicShapeRemovingVisitor::HandleCustomCall(
     // nature they support dynamic lowering.
     return absl::OkStatus();
   }
+  if (hlo->IsCustomCall(
+          {"Sharding", "SPMDShardToFullShape", "SPMDFullToShardShape"})) {
+    // Sharding ops are purely symbolic.
+    return absl::OkStatus();
+  }
 
   return DefaultAction(hlo);
 }
@@ -2232,7 +2240,6 @@ absl::StatusOr<bool> DynamicPadder::Run(
     // the output tensor to be in dynamic form.
     bool require_dynamic_output = options_.slice_dynamic_output &&
                                   computation == module->entry_computation();
-    changed |= require_dynamic_output;
     TF_ASSIGN_OR_RETURN(bool c,
                         DynamicShapeRemovingVisitor::Run(
                             computation, options_.op_supports_dynamism_handler,

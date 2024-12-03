@@ -13,12 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The StreamExecutor is a single-device abstraction for:
-//
-// * Loading/launching data-parallel-kernels
-// * Invoking pre-canned high-performance library routines (like matrix
-//   multiply)
-
 #ifndef XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_H_
 
@@ -33,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -42,7 +37,6 @@ limitations under the License.
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
@@ -66,11 +60,21 @@ inline std::string MemoryTypeString(MemoryType memory_type) {
   }
 }
 
+/// The StreamExecutor is a single-device abstraction for:
+//
+// * Loading/launching data-parallel-kernels
+// * Invoking pre-canned high-performance library routines (like matrix
+//   multiply)
+//
 // Interface which defines the method for interacting with an accelerator device
 // (e.g. GPU, TPU).
 class StreamExecutor {
  public:
   virtual ~StreamExecutor() = default;
+
+  // Returns an ActivateContext that ensures the StreamExecutor's context is
+  // activated for the duration of the returned ActivateContext's scope.
+  virtual std::unique_ptr<ActivateContext> Activate() = 0;
 
   // Returns a reference to the platform that created this executor.
   virtual const Platform* GetPlatform() const = 0;
@@ -86,6 +90,11 @@ class StreamExecutor {
       std::optional<std::variant<StreamPriority, int>> priority) = 0;
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream() {
     return CreateStream(std::nullopt);
+  }
+  // Creates an EventBasedTimer for the given stream.
+  virtual absl::StatusOr<std::unique_ptr<EventBasedTimer>>
+  CreateEventBasedTimer(Stream* stream, bool use_delay_kernel) {
+    return absl::UnimplementedError("Not Implemented");
   }
 
   // Creates and initializes an Event.
@@ -118,42 +127,24 @@ class StreamExecutor {
     return absl::UnimplementedError("Not Implemented");
   }
 
+  // Releases any state associated with the previously loaded kernel.
+  virtual void UnloadKernel(const Kernel* kernel) {}
+
   // Unloads the module with handle `module_handle`.
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
 
   // Loads a module for the platform this StreamExecutor is acting upon.
   //
-  // `spec` describes the module to be loaded.  On success writes the handle for
-  // the loaded module to `module_handle` and returns absl::OkStatus().
-  // Otherwise, returns the error which has occurred.
-  virtual absl::Status LoadModule(const MultiModuleLoaderSpec& spec,
-                                  ModuleHandle* module_handle) {
+  // `spec` describes the module to be loaded.  On success returns the handle
+  // for the loaded module. Otherwise, returns the error which has occurred.
+  virtual absl::StatusOr<ModuleHandle> LoadModule(
+      const MultiModuleLoaderSpec& spec) {
     return absl::UnimplementedError("Not Implemented");
   }
 
   // Creates a shared constant using the content provided.
   virtual absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
   CreateOrShareConstant(Stream* stream, absl::Span<const uint8_t> content) {
-    return absl::UnimplementedError("Not Implemented");
-  }
-
-  // Launches a data parallel kernel with the given thread/block
-  // dimensionality and already-packed args/sizes to pass to the underlying
-  // platform driver.
-
-  virtual absl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                              const BlockDim& block_dims, const Kernel& k,
-                              const KernelArgs& args) {
-    return absl::UnimplementedError("Not Implemented");
-  }
-
-  // Launches a data parallel kernel with the given thread/block
-  // dimensionality and already-packed args/sizes to pass to the underlying
-  // platform driver.
-  virtual absl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                              const BlockDim& block_dims,
-                              const ClusterDim& cluster_dims, const Kernel& k,
-                              const KernelArgs& args) {
     return absl::UnimplementedError("Not Implemented");
   }
 
@@ -214,6 +205,19 @@ class StreamExecutor {
   virtual absl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                           uint64_t size) = 0;
 
+  // Returns a DeviceMemoryBase representing the range [base, base + size)
+  // for the given DeviceMemoryBase, such that location is contained within the
+  // returned range.
+  virtual absl::StatusOr<DeviceMemoryBase> GetMemoryRange(
+      const DeviceMemoryBase& location) {
+    return absl::UnimplementedError("Not implemented for this executor.");
+  }
+
+  virtual bool HostMemoryUnregister(void* location) { return false; };
+  virtual bool HostMemoryRegister(void* location, uint64_t size) {
+    return false;
+  };
+
   // Blocks the caller while "size" bytes are copied to the given location in
   // device memory.
   virtual absl::Status SynchronousMemcpy(DeviceMemoryBase* device_dst,
@@ -236,11 +240,6 @@ class StreamExecutor {
 
   // Deallocates stream resources on the underlying platform.
   virtual void DeallocateStream(Stream* stream) = 0;
-
-  // Causes the host code to synchronously wait for operations enqueued
-  // onto stream to complete. Effectively a join on the asynchronous device
-  // operations enqueued on the stream before this program point.
-  virtual absl::Status BlockHostUntilDone(Stream* stream) = 0;
 
   // Enables peer access from this StreamExecutor to memory
   // allocated by other, such that launched device code, memcpies, etc may

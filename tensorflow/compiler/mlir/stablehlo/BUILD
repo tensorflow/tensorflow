@@ -22,19 +22,29 @@ tsl_pybind_extension(
     name = "stablehlo_extension",
     srcs = [
         "stablehlo.cc",
-        "@stablehlo//:stablehlo/integrations/python/PortableApi.cpp",
+        "@stablehlo//:stablehlo/integrations/python/StablehloApi.cpp",
     ],
     hdrs = [
-        "@stablehlo//:stablehlo/integrations/python/PortableApi.h",
+        "@stablehlo//:stablehlo/integrations/python/StablehloApi.h",
     ],
     copts = [
         "-fexceptions",
         "-frtti",
     ],
     features = ["-use_header_modules"],
+    visibility = [
+        ":friends",
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/tools/pip_package:__subpackages__",
+    ],
     deps = [
+        "//third_party/python_runtime:headers",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:CAPIIR",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MLIRBindingsPythonHeadersAndDeps",
         "@pybind11",
-        "@stablehlo//:stablehlo_portable_api",
+        "@stablehlo//:stablehlo_capi",
     ],
 )
 

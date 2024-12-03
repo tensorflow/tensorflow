@@ -34,14 +34,15 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/PassManager.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -79,6 +80,14 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
     return {};
   }
 
+  // Creates an epilogue with the raw thread/block/symbol indices, as defined
+  // by the fusion's thread->output mapping.
+  mlir_converter::EpilogueSpecification GetEpilogueForOutputIndexing(
+      const HloFusionAnalysis& analysis,
+      const std::vector<const HloInstruction*>& heroes,
+      const std::vector<const HloInstruction*>& roots,
+      mlir::MLIRContext* mlir_context) const;
+
   virtual absl::Status EmitEntryFunction(
       const mlir_converter::PartitionedComputations& computations,
       const mlir_converter::CallTargetProvider& call_targets,
@@ -96,21 +105,6 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
       mlir::ValueRange output_indices,
       mlir::ImplicitLocOpBuilder& builder) const;
 
-  // Emit a loop nest for the symbols in the output map. The map should have
-  // the dimensions specified in KernelFusionInterface. Loops are nested with
-  // the symbol 0 as the outermost loop. The indices of the map's dimensions and
-  // symbols are passed to the lambda separately. The return values of the
-  // function are the updated outputs.
-  // For the meaning of `vectorize`, see the documentation of `EmitLoopNest` in
-  // elemental_hlo_to_mlir.h.
-  llvm::SmallVector<mlir::Value> EmitThreadLoopNest(
-      mlir::ImplicitLocOpBuilder& b, mlir::ValueRange outputs,
-      const IndexingMap& indexing_map,
-      const std::function<llvm::SmallVector<mlir::Value>(
-          mlir::ValueRange outputs, mlir::ValueRange dim_values,
-          mlir::ValueRange symbol_values)>& create_body,
-      bool vectorize = false) const;
-
   mlir::Value EmitBlockId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
   mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
   llvm::SmallVector<mlir::Value> EmitThreadAndBlockIds(
@@ -127,6 +121,18 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
       mlir::ModuleOp module, mlir::PassManager& pm,
       mlir::interpreter::MlirCompilationTrace* trace) const;
 };
+
+// Adds passes that simplify arithmetic operations and remove dead code.
+void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm);
+
+// Adds passes that transform XLA_GPU and SCF loops, e.g. peel, pipeline,
+// vectorize.
+void AddLoopTransformationPasses(mlir::OpPassManager& pm,
+                                 const se::DeviceDescription& device);
+
+// Adds passes that lower transformed loops to LLVM.
+void AddLoweringPasses(mlir::OpPassManager& pm,
+                       const se::DeviceDescription& device);
 
 }  // namespace gpu
 }  // namespace xla

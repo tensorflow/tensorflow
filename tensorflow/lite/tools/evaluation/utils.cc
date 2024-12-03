@@ -27,6 +27,7 @@ limitations under the License.
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/string.h"  // from @flatbuffers
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
+#include "tensorflow/lite/tools/logging.h"
 
 #if defined(__APPLE__)
 #include "TargetConditionals.h"
@@ -223,6 +224,7 @@ TfLiteDelegatePtr CreateXNNPACKDelegate(
   flatbuffers::FlatBufferBuilder flatbuffer_builder;
   flatbuffers::Offset<flatbuffers::String> weight_cache_file_path;
   if (xnnpack_options->weight_cache_file_path) {
+    TFLITE_LOG(INFO) << "XNNPack file-backed weight cache enabled.";
     weight_cache_file_path = flatbuffer_builder.CreateString(
         xnnpack_options->weight_cache_file_path);
   }
@@ -231,6 +233,12 @@ TfLiteDelegatePtr CreateXNNPACKDelegate(
   int num_threads = xnnpack_options->num_threads;
   if (num_threads >= 0) {
     xnnpack_settings_builder.add_num_threads(num_threads);
+  }
+  if (xnnpack_options->flags & TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16) {
+    TFLITE_LOG(INFO) << "XNNPack FP16 inference enabled.";
+  }
+  if (xnnpack_options->flags & TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SLINKY) {
+    TFLITE_LOG(INFO) << "XNNPack Slinky enabled.";
   }
   xnnpack_settings_builder.fbb_.AddElement<int32_t>(
       XNNPackSettings::VT_FLAGS, static_cast<int32_t>(xnnpack_options->flags),
@@ -262,11 +270,9 @@ TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads, bool force_fp16,
   // Note that we don't want to use the thread pool for num_threads == 1.
   opts.num_threads = num_threads > 1 ? num_threads : 0;
   if (force_fp16) {
-    TFLITE_LOG(INFO) << "XNNPack FP16 inference enabled.";
     opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16;
   }
   if (weight_cache_file_path && weight_cache_file_path[0] != '\0') {
-    TFLITE_LOG(INFO) << "XNNPack file-backed weight cache enabled.";
     opts.weight_cache_file_path = weight_cache_file_path;
   }
   return CreateXNNPACKDelegate(&opts);

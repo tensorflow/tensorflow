@@ -28,15 +28,14 @@ namespace {
 
 class DynamicReshapeTest : public HloTestBase {};
 
-// TODO(b/355402228): Enable this test once the bug is fixed.
-TEST_F(DynamicReshapeTest, DISABLED_ON_GPU(SingleDynamicDimension)) {
+TEST_F(DynamicReshapeTest, SingleDynamicDimension) {
   constexpr const char* kModuleStr = R"(
     HloModule DynamicReshapeTest.SingleDynamicDimension
 
     ENTRY main {
       param = s32[2, 3, 3] parameter(0)
       two = s32[] parameter(1)
-      param_padded = s32[2, <=3, 3] set-dimension-size(param, two), 
+      param_padded = s32[2, <=3, 3] set-dimension-size(param, two),
         dimensions={1}
       nine = s32[] parameter(2)
       ROOT reshaped = s32[<=18] dynamic-reshape(param_padded, nine)
@@ -59,8 +58,7 @@ TEST_F(DynamicReshapeTest, DISABLED_ON_GPU(SingleDynamicDimension)) {
   EXPECT_EQ(result, expected);
 }
 
-// TODO(b/355402228): Enable this test once the bug is fixed.
-TEST_F(DynamicReshapeTest, DISABLED_ON_GPU(DoubleDynamicDimensions)) {
+TEST_F(DynamicReshapeTest, DoubleDynamicDimensions) {
   constexpr const char* kModuleStr = R"(
     HloModule DynamicReshapeTest.DoubleDynamicDimensions
 
@@ -121,8 +119,7 @@ TEST_F(DynamicReshapeTest, OutputDoubleDynamicDimensions) {
   EXPECT_EQ(result, expected);
 }
 
-// TODO(b/355402228): Enable this test once the bug is fixed.
-TEST_F(DynamicReshapeTest, DISABLED_ON_GPU(Complicated)) {
+TEST_F(DynamicReshapeTest, Complicated) {
   constexpr const char* kModuleStr = R"(
     HloModule DynamicReshapeTest.Complicated
 

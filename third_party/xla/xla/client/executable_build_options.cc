@@ -169,6 +169,8 @@ absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
   output.set_num_partitions(num_partitions());
   output.set_use_spmd_partitioning(use_spmd_partitioning());
   output.set_use_auto_spmd_partitioning(use_auto_spmd_partitioning());
+  output.set_exec_time_optimization_effort(exec_time_optimization_effort());
+  output.set_memory_fitting_effort(memory_fitting_effort());
   output.set_deduplicate_hlo(deduplicate_hlo());
   if (has_device_assignment()) {
     device_assignment().Serialize(output.mutable_device_assignment());
@@ -196,6 +198,8 @@ absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
     output.mutable_auto_spmd_partitioning_mesh_ids()->Add(s);
   }
   output.set_use_shardy_partitioner(use_shardy_partitioner());
+  output.set_process_index(process_index());
+  output.set_process_count(process_count());
   return output;
 }
 
@@ -221,6 +225,9 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   output.set_num_partitions(input.num_partitions());
   output.set_use_spmd_partitioning(input.use_spmd_partitioning());
   output.set_use_auto_spmd_partitioning(input.use_auto_spmd_partitioning());
+  output.set_exec_time_optimization_effort(
+      input.exec_time_optimization_effort());
+  output.set_memory_fitting_effort(input.memory_fitting_effort());
   output.set_deduplicate_hlo(input.deduplicate_hlo());
   if (input.has_device_assignment()) {
     TF_ASSIGN_OR_RETURN(
@@ -243,6 +250,8 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
       std::vector<int64_t>(input.auto_spmd_partitioning_mesh_ids().begin(),
                            input.auto_spmd_partitioning_mesh_ids().end()));
   output.set_use_shardy_partitioner(input.use_shardy_partitioner());
+  output.set_process_index(input.process_index());
+  output.set_process_count(input.process_count());
   return output;
 }
 
@@ -274,6 +283,10 @@ ExecutionOptions CreateExecutionOptions(
   for (auto t : build_options.auto_spmd_partitioning_mesh_ids()) {
     execution_options.mutable_auto_spmd_partitioning_mesh_ids()->Add(t);
   }
+  execution_options.set_exec_time_optimization_effort(
+      build_options.exec_time_optimization_effort());
+  execution_options.set_memory_fitting_effort(
+      build_options.memory_fitting_effort());
   execution_options.set_deduplicate_hlo(build_options.deduplicate_hlo());
   if (!build_options.allow_spmd_sharding_propagation_to_parameters().empty()) {
     execution_options.mutable_allow_spmd_sharding_propagation_to_parameters()

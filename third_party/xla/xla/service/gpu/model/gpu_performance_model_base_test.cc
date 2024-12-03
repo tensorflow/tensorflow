@@ -25,8 +25,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
@@ -38,16 +36,7 @@ namespace {
 
 class GpuPerformanceModelBaseTest : public HloTestBase {
  public:
-  GpuHloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
-    return [&](const Shape& shape) {
-      constexpr int64_t kPointerSize = 8;
-      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-    };
-  }
-
-  GpuHloCostAnalysis::Options options_{ShapeSizeBytesFunction(),
-                                       /*per_second_rates=*/{},
-                                       /*count_multiple_input_accesses=*/true};
+  GpuHloCostAnalysis::Options options_{.count_multiple_input_accesses = true};
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
@@ -216,8 +205,8 @@ ENTRY entry_computation {
   auto launch_dimensions =
       GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);
 
-  EXPECT_EQ(launch_dimensions.num_blocks(), 16);
-  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 1024);
+  EXPECT_EQ(launch_dimensions.num_blocks(), 128);
+  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 128);
 }
 
 TEST_F(GpuPerformanceModelBaseTest,

@@ -617,9 +617,9 @@ tstring PyRepr(PyObject* obj) {
 bool IsPyDimension(PyObject* obj) {
   const char* tp_name = obj->ob_type->tp_name;
   if (strcmp(tp_name, "Dimension") != 0) return false;
-  bool ret = str_util::EndsWith(
-      PyRepr(PyType(obj)),
-      "tensorflow.python.framework.tensor_shape.Dimension'>");
+  bool ret =
+      absl::EndsWith(PyRepr(PyType(obj)),
+                     "tensorflow.python.framework.tensor_shape.Dimension'>");
   return ret;
 }
 

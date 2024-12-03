@@ -50,10 +50,10 @@ class DynamicUpdateSliceOpsTest(xla_test.XLATestCase):
       self._assertOpOutputMatchesExpected(
           xla.dynamic_update_slice, [
               np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=dtype),
-              np.array([-1, -2, -3], dtype=dtype),
+              np.array([11, 12, 13], dtype=dtype),
               np.array([6], dtype=np.int32)
           ],
-          expected=np.array([1, 2, 3, 4, 5, 6, -1, -2, -3, 10], dtype=dtype))
+          expected=np.array([1, 2, 3, 4, 5, 6, 11, 12, 13, 10], dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           xla.dynamic_update_slice, [

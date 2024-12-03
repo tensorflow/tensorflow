@@ -53,8 +53,9 @@ namespace tensorflow {
 
 bool IsPowerOfTwo(int32_t x) { return x > 0 && (x & (x - 1)) == 0; }
 
-Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
-                      const Tensor& weights, int sample_count) {
+absl::Status ValidateInputs(const Tensor& indices_or_row_splits,
+                            const Tensor& values, const Tensor& weights,
+                            int sample_count) {
   if (values.dims() != 1) {
     return absl::InvalidArgumentError(
         absl::StrCat("Values input should have dimension 1. But got dimension ",
@@ -92,7 +93,9 @@ Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
     // tensor.
   } else if (indices_or_row_splits.dims() == 2 &&
              indices_or_row_splits.NumElements() >= 0) {
-    // TODO(pineapplejuice233): Add checking logic for sparse tensor input.
+    // NOTE(mrry): Checking logic for SparseTensor inputs is in
+    // `ComputeRowIdsBeforePadding()`, to avoid an extra traversal of the
+    // indices matrix.
   } else if (indices_or_row_splits.dims() == 1 &&
              indices_or_row_splits.NumElements() > 0) {
     // Ragged tensor.
@@ -112,9 +115,10 @@ Status ValidateInputs(const Tensor& indices_or_row_splits, const Tensor& values,
   return absl::OkStatus();
 }
 
-Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
-                                  const int32 total_id_count,
-                                  int32* row_ids_before_padding) {
+absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
+                                        const int32 total_id_count,
+                                        const int32 sample_count,
+                                        int32* row_ids_before_padding) {
   // The only difference between dense tensor, sparse tensor and ragged tensor
   // is the row ids output.
   if (indices_or_row_splits.NumElements() == 0) {
@@ -140,9 +144,17 @@ Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
       if (current_row_id < previous_row_id) {
         return absl::InvalidArgumentError(
             "Invalid indices_or_row_splits input, indices of SparseTensor need "
-            "to be sorted in ascending order.");
+            "to be sorted in ascending (non-decreasing) order.");
+      }
+      if (current_row_id >= sample_count) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Invalid indices_or_row_splits input, indices of SparseTensor "
+            "contained a row_id ",
+            current_row_id, " that was >= the sample count (", sample_count,
+            ")."));
       }
       *(row_ids_before_padding + i) = current_row_id;
+      previous_row_id = current_row_id;
     }
   } else if (indices_or_row_splits.dims() == 1 &&
              indices_or_row_splits.NumElements() > 0) {
@@ -308,9 +320,9 @@ class ConvertToCooTensorOp : public OpKernel {
 
     auto row_ids_before_dedup = std::make_unique<int32[]>(total_id_count);
 
-    OP_REQUIRES_OK(
-        ctx, ComputeRowIdsBeforePadding(*indices_or_row_splits, total_id_count,
-                                        row_ids_before_dedup.get()));
+    OP_REQUIRES_OK(ctx, ComputeRowIdsBeforePadding(
+                            *indices_or_row_splits, total_id_count,
+                            sample_count_, row_ids_before_dedup.get()));
 
     // Compute the rescaled gains for non-sum combiners.
     std::optional<std::vector<float>> gains_rescale =
@@ -519,9 +531,8 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
           "The number of minibatches per sparse core is ", num_minibatch_per_sc,
           ". But the max minibatches per sparse core is set to be ",
           max_minibatches_per_sc_, " which is smaller.")));
-  VLOG(2) << "GetMinibatchesInCsrWithPhysicalReplicaOp: "
-          << "program_key = '" << program_key << "'"
-          << ", table_name = '" << table_name_ << "'"
+  VLOG(2) << "GetMinibatchesInCsrWithPhysicalReplicaOp: " << "program_key = '"
+          << program_key << "'" << ", table_name = '" << table_name_ << "'"
           << ", max_ids = " << max_ids_per_partition
           << ", max_uniques = " << max_unique_ids_per_partition
           << ", num_minibatch_per_sc = " << num_minibatch_per_sc;
@@ -1212,9 +1223,9 @@ void ConvertToListOfSparseCoreCooTensorsOp::Compute(OpKernelContext* ctx) {
   auto row_ids_before_dedup = std::unique_ptr<int32[]>(
       new std::remove_extent_t<int32[]>[total_id_count]);
 
-  OP_REQUIRES_OK(
-      ctx, ComputeRowIdsBeforePadding(*indices_or_row_splits, total_id_count,
-                                      row_ids_before_dedup.get()));
+  OP_REQUIRES_OK(ctx, ComputeRowIdsBeforePadding(*indices_or_row_splits,
+                                                 total_id_count, sample_count_,
+                                                 row_ids_before_dedup.get()));
 
   // Compute the rescaled gains for non-sum combiners.
   std::optional<std::vector<float>> gains_rescale =

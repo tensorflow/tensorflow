@@ -47,10 +47,10 @@ inline std::string Serialize(const tsl::protobuf::Message& protobuf_object) {
   if (serialized.empty()) {
     // Show the name of the protobuf message type to provide more information
     // and easier debugging.
-    const std::string descriptor_name =
+    const absl::string_view descriptor_name =
         protobuf_object.GetDescriptor() == nullptr
-            ? "unknown"
-            : protobuf_object.GetDescriptor()->full_name();
+            ? absl::string_view("unknown")
+            : absl::string_view(protobuf_object.GetDescriptor()->full_name());
     throw py::value_error(absl::StrFormat(
         "Failed to serialize protobuf object: %s.", descriptor_name));
   }

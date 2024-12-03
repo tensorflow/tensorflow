@@ -81,7 +81,7 @@ ImmutableExecutorState::FrameInfo* ImmutableExecutorState::EnsureFrameInfo(
   }
 }
 
-Status ImmutableExecutorState::Initialize(const Graph& graph) {
+absl::Status ImmutableExecutorState::Initialize(const Graph& graph) {
   TF_RETURN_IF_ERROR(gview_.Initialize(&graph));
 
   // Build the information about frames in this subgraph.
@@ -129,7 +129,7 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
     item->input_start = frame_info->total_inputs;
     frame_info->total_inputs += n->num_inputs();
 
-    Status s = params_.create_kernel(n->properties(), &item->kernel);
+    absl::Status s = params_.create_kernel(n->properties(), &item->kernel);
     if (!s.ok()) {
       params_.delete_kernel(item->kernel);
       item->kernel = nullptr;
@@ -282,8 +282,8 @@ bool ExtractScopedAllocatorAttr(const std::vector<int>& sc_attr,
 }
 }  // namespace
 
-Status ImmutableExecutorState::BuildControlFlowInfo(const Graph* g,
-                                                    ControlFlowInfo* cf_info) {
+absl::Status ImmutableExecutorState::BuildControlFlowInfo(
+    const Graph* g, ControlFlowInfo* cf_info) {
   const int num_nodes = g->num_node_ids();
   cf_info->frame_names.resize(num_nodes);
   std::vector<Node*> parent_nodes;

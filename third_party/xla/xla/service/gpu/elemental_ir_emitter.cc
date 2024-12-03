@@ -56,7 +56,7 @@ namespace xla {
 namespace gpu {
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
-    IrEmitterContext& ir_emitter_context, llvm::IRBuilder<>* b)
+    IrEmitterContext& ir_emitter_context, llvm::IRBuilderBase* b)
     : ElementalIrEmitter(ir_emitter_context.llvm_module(), b),
       ir_emitter_context_(ir_emitter_context) {}
 
@@ -66,23 +66,23 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
     absl::string_view name) {
   // Device functions don't have f16 math functions, so we convert the operands
   // to f32 before calling the function and then convert the result back to f16.
-  bool cast_result_to_fp16 = false;
   std::vector<llvm::Value*> converted_operands(operands.begin(),
                                                operands.end());
   std::vector<PrimitiveType> converted_input_types(input_types.begin(),
                                                    input_types.end());
+  PrimitiveType original_output_type = output_type;
   switch (output_type) {
+    case BF16:
     case F16:
-      cast_result_to_fp16 = true;
       for (int64_t i = 0; i < operands.size(); ++i) {
-        if (input_types[i] == F16) {
+        if (input_types[i] == original_output_type) {
           converted_operands[i] =
               FPCast(converted_operands[i], b()->getFloatTy());
           converted_input_types[i] = F32;
         }
       }
       output_type = F32;
-      [[fallthrough]];
+      break;
     case F32:
       break;
     case F64:
@@ -92,13 +92,13 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
                            PrimitiveType_Name(output_type));
   }
   const std::string& munged_callee = ObtainDeviceFunctionName(
-      funcid, output_type,
+      funcid, original_output_type,
       llvm::Triple(b()->GetInsertBlock()->getModule()->getTargetTriple()));
   llvm::Value* result = EmitMathCall(munged_callee, converted_operands,
                                      converted_input_types, output_type, name)
                             .value();
-  if (cast_result_to_fp16) {
-    result = FPCast(result, b()->getHalfTy());
+  if (output_type != original_output_type) {
+    result = FPCast(result, operands[0]->getType());
   }
   return result;
 }
@@ -160,17 +160,6 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
     return llvm_ir::EmitCallToIntrinsic(
         opcode == HloOpcode::kMaximum ? llvm::Intrinsic::maxnum
                                       : llvm::Intrinsic::minnum,
-        {lhs_value, rhs_value}, {lhs_value->getType()}, b());
-  }
-
-  // sm_80 and up has min.NaN and max.NaN instructions.
-  if (output_type == F32 &&
-      ir_emitter_context_.cuda_compute_capability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE) &&
-      (opcode == HloOpcode::kMaximum || opcode == HloOpcode::kMinimum)) {
-    return llvm_ir::EmitCallToIntrinsic(
-        opcode == HloOpcode::kMaximum ? llvm::Intrinsic::maximum
-                                      : llvm::Intrinsic::minimum,
         {lhs_value, rhs_value}, {lhs_value->getType()}, b());
   }
 

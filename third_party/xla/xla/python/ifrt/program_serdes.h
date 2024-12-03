@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_PROGRAM_SERDES_H_
 
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/serdes.h"
 
 namespace xla {

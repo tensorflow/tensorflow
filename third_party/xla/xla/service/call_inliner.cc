@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -24,16 +25,20 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_domain_isolator.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -133,6 +138,42 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   CallInliner::InlinedInstructionMap subcomputation_hlo_to_new_hlo_;
 };
 
+// Specific inlining rules when needing to round-trip from MLIR->HLO->MLIR when
+// using Shardy (github.com/openxla/shardy).
+//
+// - shmap_body: We don't want to inline the bodies of JAX shard maps in order
+//   to import them into an `sdy.ManualComputationOp`. This is for the MHLO
+//   round-trip pipeline
+// - kManualComputationBodyFuncName: Same as shmap_body except for the SDY
+//   round-trip pipeline.
+bool InlineUnderShardy(HloInstruction* instruction) {
+  return !(instruction->GetModule()->config().use_shardy_partitioner() &&
+           (absl::StrContains(instruction->to_apply()->name(), "shmap_body") ||
+            absl::StrContains(instruction->to_apply()->name(),
+                              sdy::kManualComputationBodyFuncName.str())));
+}
+
+bool InlineComposites(
+    HloInstruction* instruction,
+    const absl::flat_hash_set<std::string>& composites_to_preserve) {
+  return !instruction->is_composite() ||
+         !composites_to_preserve.contains(
+             instruction->frontend_attributes().map().at("composite.name"));
+}
+
+bool InlineStreamAnnotation(HloInstruction* instruction) {
+  if (instruction->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_stream_annotation()) {
+    if (instruction->frontend_attributes().map().contains(
+            kXlaStreamAnnotationAttr)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 /* static */ absl::StatusOr<CallInliner::InlinedInstructionMap>
@@ -152,6 +193,29 @@ CallInliner::Inline(HloInstruction* call) {
   const auto& callees = call->called_computations();
   TF_RET_CHECK(callees.size() == 1);
   HloComputation* callee = callees[0];
+
+  // Propagate the frontend attributes related to fusion from the call to the
+  // inlined instructions.
+  if (call->has_frontend_attributes()) {
+    const FrontendAttributes& call_attributes = call->frontend_attributes();
+    std::string has_fuse =
+        call_attributes.map().contains("MUST_FUSE")      ? "MUST_FUSE"
+        : call_attributes.map().contains("MAXIMAL_FUSE") ? "MAXIMAL_FUSE"
+                                                         : "";
+    if (!has_fuse.empty()) {
+      for (auto instruction : callee->instructions()) {
+        // Do so for only fusible instructions.
+        if (instruction->IsFusible()) {
+          FrontendAttributes frontend_attributes =
+              instruction->frontend_attributes();
+          frontend_attributes.mutable_map()->insert(
+              {has_fuse, call_attributes.map().at(has_fuse)});
+          instruction->set_frontend_attributes(frontend_attributes);
+        }
+      }
+    }
+  }
+
   // We visit the callee, cloning its body into its caller.
   SubcomputationInsertionVisitor visitor(call);
   TF_RETURN_IF_ERROR(callee->Accept(&visitor));
@@ -160,7 +224,11 @@ CallInliner::Inline(HloInstruction* call) {
 
 bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   return instruction->opcode() == HloOpcode::kCall &&
-         !instruction->parent()->IsAsyncComputation();
+         !instruction->has_backend_config() &&
+         !instruction->parent()->IsAsyncComputation() &&
+         InlineUnderShardy(instruction) &&
+         InlineComposites(instruction, composites_to_preserve_) &&
+         InlineStreamAnnotation(instruction);
 }
 
 absl::StatusOr<bool> CallInliner::Run(

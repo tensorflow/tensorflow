@@ -205,6 +205,16 @@ if(TFLITE_ENABLE_XNNPACK)
       "${CMAKE_BINARY_DIR}/pthreadpool")
   endif()
   list(APPEND TFLITE_TARGET_DEPENDENCIES pthreadpool)
+
+  IF(NOT DEFINED FP16_SOURCE_DIR)
+    MESSAGE(STATUS "Downloading FP16 to ${CMAKE_BINARY_DIR}/FP16-source (define FP16_SOURCE_DIR to avoid it)")
+    CONFIGURE_FILE(cmake/DownloadFP16.cmake "${CMAKE_BINARY_DIR}/FP16-download/CMakeLists.txt")
+    EXECUTE_PROCESS(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/FP16-download")
+    EXECUTE_PROCESS(COMMAND "${CMAKE_COMMAND}" --build .
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/FP16-download")
+    SET(FP16_SOURCE_DIR "${CMAKE_BINARY_DIR}/FP16-source" CACHE STRING "FP16 source directory")
+  ENDIF()
 endif()
 set(TF_TARGET_PRIVATE_OPTIONS "")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
@@ -274,12 +284,6 @@ list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*with_selected_ops\\.cc$")
 
 # Exclude tensorflow_profiler_logger files.
 list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*tensorflow_profiler_logger\\.cc$")
-
-if(_TFLITE_ENABLE_MMAP)
-  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation_disabled\\.cc$")
-else()
-  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation\\.cc$")
-endif()
 
 # Handle TFLite logging source.
 list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_.*\\.cc$")
@@ -392,6 +396,7 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_SRCS}
     ${TFLITE_SOURCE_DIR}/tools/versioning/gpu_compatibility.cc
     ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
+    ${TF_SOURCE_DIR}/compiler/mlir/lite/tools/versioning/op_signature.cc
   )
   include_directories(
     AFTER
@@ -513,6 +518,11 @@ endif()
 if(TFLITE_ENABLE_XNNPACK)
   find_package(fp16_headers REQUIRED)
   find_package(XNNPACK REQUIRED)
+  set(XNNPACK_NEON_2_SSE "")
+  if (NOT CMAKE_SYSTEM_PROCESSOR OR CMAKE_SYSTEM_PROCESSOR MATCHES "x86")
+    find_package(NEON_2_SSE REQUIRED)
+    list(APPEND XNNPACK_NEON_2_SSE NEON_2_SSE::NEON_2_SSE)
+  endif()
   populate_tflite_source_vars("delegates/xnnpack"
     TFLITE_DELEGATES_XNNPACK_SRCS
     FILTER ".*(_test|_tester)\\.(cc|h)"
@@ -539,6 +549,7 @@ if(TFLITE_ENABLE_XNNPACK)
     flatbuffers::flatbuffers
     gemmlowp::gemmlowp
     ruy::ruy
+    ${XNNPACK_NEON_2_SSE}
     )
 
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_KERNEL_USE_XNNPACK")
@@ -640,55 +651,73 @@ endif()
 
 # TFLite library
 set(_ALL_TFLITE_SRCS
+  # go/keep-sorted start
   ${TFLITE_CORE_ACCELERATION_SRCS}
   ${TFLITE_CORE_API_SRCS}
+  ${TFLITE_CORE_ASYNC_C_SRCS}
+  ${TFLITE_CORE_ASYNC_INTEROP_C_SRCS}
+  ${TFLITE_CORE_ASYNC_INTEROP_SRCS}
+  ${TFLITE_CORE_ASYNC_SRCS}
   ${TFLITE_CORE_C_SRCS}
   ${TFLITE_CORE_EXPERIMENTAL_SRCS}
   ${TFLITE_CORE_KERNELS_SRCS}
   ${TFLITE_CORE_SRCS}
-  ${TFLITE_CORE_ASYNC_SRCS}
-  ${TFLITE_CORE_ASYNC_C_SRCS}
-  ${TFLITE_CORE_ASYNC_INTEROP_SRCS}
-  ${TFLITE_CORE_ASYNC_INTEROP_C_SRCS}
   ${TFLITE_CORE_TOOLS_SRCS}
   ${TFLITE_C_SRCS}
+  ${TFLITE_DELEGATES_EXTERNAL_SRCS}
   ${TFLITE_DELEGATES_FLEX_SRCS}
   ${TFLITE_DELEGATES_GPU_SRCS}
   ${TFLITE_DELEGATES_NNAPI_SRCS}
   ${TFLITE_DELEGATES_SRCS}
-  ${TFLITE_DELEGATES_EXTERNAL_SRCS}
   ${TFLITE_EXPERIMENTAL_REMAT_SRCS}
   ${TFLITE_EXPERIMENTAL_RESOURCE_SRCS}
   ${TFLITE_EXPERIMENTAL_RUY_PROFILER_SRCS}
   ${TFLITE_EXPERIMENTAL_RUY_SRCS}
+  ${TFLITE_KERNEL_INTERNAL_OPT_4BIT_SRCS}
   ${TFLITE_KERNEL_INTERNAL_OPT_INTEGER_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_OPT_SPARSE_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_OPT_SRCS}
-  ${TFLITE_KERNEL_INTERNAL_OPT_4BIT_SRCS}
   ${TFLITE_KERNEL_INTERNAL_REF_INTEGER_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_REF_SPARSE_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_REF_SRCS}
   ${TFLITE_KERNEL_INTERNAL_SRCS}
   ${TFLITE_KERNEL_SRCS}
   ${TFLITE_NNAPI_SRCS}
-  ${TFLITE_SRCS}
   ${TFLITE_PROFILER_SRCS}
   ${TFLITE_SOURCE_DIR}/internal/signature_def.h
   ${TFLITE_SOURCE_DIR}/kernels/internal/utils/sparsity_format_converter.cc
   ${TFLITE_SOURCE_DIR}/schema/conversion_metadata_generated.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_utils.cc
+  ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
+  ${TFLITE_SRCS}
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/flatbuffer_conversions.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/verifier.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/c/tflite_types.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/macros.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation_disabled.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/conversion_metadata_generated.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_generated.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/control_edges.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.cc
-  ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
+  # go/keep-sorted end
 )
+
+if(_TFLITE_ENABLE_MMAP)
+  list(FILTER _ALL_TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation_disabled\\.cc$")
+else()
+  list(FILTER _ALL_TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation\\.cc$")
+endif()
+
 add_library(tensorflow-lite
   ${_ALL_TFLITE_SRCS}
 )
@@ -777,6 +806,9 @@ set(TFLITE_GENERATED_HEADERS_DIR ${CMAKE_BINARY_DIR}/tensorflow/lite)
 
 # Add the profiling proto directory.
 add_subdirectory(${TFLITE_SOURCE_DIR}/profiling/proto)
+
+# Add the tf example directory.
+add_subdirectory(${TF_SOURCE_DIR}/core/example ${CMAKE_BINARY_DIR}/example_proto_generated)
 
 # The benchmark tool.
 add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark)

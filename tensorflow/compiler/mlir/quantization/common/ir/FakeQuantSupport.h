@@ -44,7 +44,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_IR_FAKEQUANTSUPPORT_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_IR_FAKEQUANTSUPPORT_H_
 
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include <cstdint>
+
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project

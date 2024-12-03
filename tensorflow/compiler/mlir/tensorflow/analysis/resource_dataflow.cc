@@ -119,10 +119,12 @@ class ResourceDataflowAnalysis
  public:
   using TensorflowDataflowAnalysis<
       ResourceConstructingOps>::TensorflowDataflowAnalysis;
-  void visitOperation(Operation *op, ArrayRef<const StateT *> operands,
-                      ArrayRef<StateT *> results) override {
-    if (ForwardThroughTFOperation(op, operands, results)) return;
+  LogicalResult visitOperation(Operation *op, ArrayRef<const StateT *> operands,
+                               ArrayRef<StateT *> results) override {
+    if (ForwardThroughTFOperation(op, operands, results))
+      return mlir::success();
     setAllToEntryStates(results);
+    return mlir::success();
   }
   ~ResourceDataflowAnalysis() override = default;
 };
@@ -131,10 +133,12 @@ class IsCompositeDataflowAnalysis
     : public TensorflowDataflowAnalysis<IsComposite> {
  public:
   using TensorflowDataflowAnalysis<IsComposite>::TensorflowDataflowAnalysis;
-  void visitOperation(Operation *op, ArrayRef<const StateT *> operands,
-                      ArrayRef<StateT *> results) override {
-    if (ForwardThroughTFOperation(op, operands, results)) return;
+  LogicalResult visitOperation(Operation *op, ArrayRef<const StateT *> operands,
+                               ArrayRef<StateT *> results) override {
+    if (ForwardThroughTFOperation(op, operands, results))
+      return mlir::success();
     setAllToEntryStates(results);
+    return mlir::success();
   }
   ~IsCompositeDataflowAnalysis() override = default;
 };

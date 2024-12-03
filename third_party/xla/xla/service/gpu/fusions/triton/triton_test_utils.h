@@ -46,7 +46,6 @@ bool SupportsBF16(const stream_executor::GpuComputeCapability& cc);
 
 absl::Status CreateTritonIrAndFileCheck(
     HloTestBase* test, absl::string_view hlo_text,
-    const BlockLevelParameters& block_level_parameters,
     absl::string_view triton_fusion_name, absl::string_view filecheck_pattern);
 
 absl::Status CreateTritonIrAndFileCheck(
@@ -73,6 +72,8 @@ absl::StatusOr<bool> ApplyFloatNormalization(
 
 class TritonSupportTestBase : public HloTestBase {
  protected:
+  DebugOptions GetDebugOptionsForTest() const override;
+
   // An HLO module together with a reference to the instruction of interest
   // that's being tested. See ParseTemplateAndGetInstruction for more details.
   class TestedInstruction {
@@ -131,12 +132,23 @@ class TritonSupportTestBaseWithParam
       public ::testing::WithParamInterface<
           std::tuple<PrimitiveType, HloOpcode>> {};
 
-std::string TritonSupportTestParamsToString(
+std::string TritonSupportTestTypeAndOpcodeToString(
     const ::testing::TestParamInfo<std::tuple<PrimitiveType, HloOpcode>>& data);
 
-std::string TritonSupportTestTypeOpcodeAndDeviceToString(
+std::string TritonSupportTestTypeAndDeviceToString(
+    const ::testing::TestParamInfo<
+        std::tuple<PrimitiveType, se::GpuComputeCapability>>& data);
+
+std::string TritonSupportTestTypeAndOpcodeAndDeviceToString(
     const ::testing::TestParamInfo<
         std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>>& data);
+
+std::string TritonSupportTestTwoTypesAndDeviceToString(
+    const ::testing::TestParamInfo<std::tuple<PrimitiveType, PrimitiveType,
+                                              se::GpuComputeCapability>>& data);
+
+std::string TritonSupportTestTypeToString(
+    const ::testing::TestParamInfo<PrimitiveType>& data);
 }  //  namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_TRITON_TEST_UTILS_H_

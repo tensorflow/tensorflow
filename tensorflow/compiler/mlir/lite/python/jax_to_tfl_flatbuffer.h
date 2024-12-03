@@ -17,20 +17,20 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
 
 namespace tensorflow {
 
 // Converts the given Jax model to a TF Lite FlatBuffer
-// string according to the given model flags, toco flags and tags. Returns error
-// status if it fails to convert the input.
+// string according to the given model flags, converter flags and tags. Returns
+// error status if it fails to convert the input.
 Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
-                                    const toco::ModelFlags& model_flags,
-                                    toco::TocoFlags& toco_flags,
+                                    const tflite::ModelFlags& model_flags,
+                                    tflite::ConverterFlags& converter_flags,
                                     string* result);
 
 }  // namespace tensorflow

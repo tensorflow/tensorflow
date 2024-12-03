@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "xla/tsl/protobuf/status.pb.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
@@ -30,8 +32,6 @@ limitations under the License.
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
-#include "tsl/protobuf/error_codes.pb.h"
-#include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {

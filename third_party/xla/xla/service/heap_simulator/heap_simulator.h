@@ -34,9 +34,12 @@ limitations under the License.
 #endif
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -44,7 +47,6 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 
@@ -405,7 +407,18 @@ class BufferIntervalTree {
   std::string NodesOverlappingInTimeToAsciiArt(int64_t start, int64_t end,
                                                int64_t group_size = 0) const;
 
+  // Returns a vector of size `end - start + 1` where the element at index i is
+  // the memory used at the time instant `start + i`. Both `start` and `end` are
+  // inclusive.
+  std::vector<int64_t> MemoryUsedInInterval(int64_t start, int64_t end) const;
+
+  // Returns an integer denoting the largest occupied memory location in the
+  // heap within the time interval [start, end].
+  int64_t HeapSizeInInterval(int64_t start, int64_t end) const;
+
  private:
+  // The BufferIntervalTreeNode objects inside the result vector are guaranteed
+  // to be non-null.
   std::vector<const BufferIntervalTreeNode*> NodesOverlappingInTime(
       int64_t start, int64_t end) const;
 

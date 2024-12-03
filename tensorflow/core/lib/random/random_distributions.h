@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/tsl/lib/random/random_distributions.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions_utils.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/random/random_distributions.h"
 
 namespace tensorflow {
 namespace random {

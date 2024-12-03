@@ -94,29 +94,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-class Kernel;
-
-//===----------------------------------------------------------------------===//
-// Kernel cache config
-//===----------------------------------------------------------------------===//
-
-// This enum represents potential configurations of L1/shared memory when
-// running a particular kernel. These values represent user preference, and
-// the runtime is not required to respect these choices.
-enum class KernelCacheConfig {
-  // Indicates no preference for device L1/shared memory configuration.
-  kNoPreference,
-
-  // Indicates a preference for more shared memory than L1 cache.
-  kPreferShared,
-
-  // Indicates a preference for more L1 cache than shared memory.
-  kPreferL1,
-
-  // Indicates a preference for equal amounts of L1 cache and shared memory.
-  kPreferEqual,
-};
-
 //===----------------------------------------------------------------------===//
 // Kernel metadata
 //===----------------------------------------------------------------------===//
@@ -241,11 +218,6 @@ class Kernel {
   virtual absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const = 0;
 
-  KernelCacheConfig cache_config() const { return cache_config_; }
-  void set_cache_config(KernelCacheConfig cache_config) {
-    cache_config_ = std::move(cache_config);
-  }
-
   const KernelMetadata &metadata() const { return metadata_; }
   void set_metadata(KernelMetadata metadata) {
     metadata_ = std::move(metadata);
@@ -259,13 +231,9 @@ class Kernel {
   std::string_view name() const { return name_; }
   void set_name(absl::string_view name);
 
-  std::string_view demangled_name() const { return demangled_name_; }
-
  private:
   std::string name_;
-  std::string demangled_name_;
 
-  KernelCacheConfig cache_config_ = KernelCacheConfig::kNoPreference;
   KernelMetadata metadata_;
   KernelArgsPacking args_packing_;
 };

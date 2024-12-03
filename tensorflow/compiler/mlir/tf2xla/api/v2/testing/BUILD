@@ -9,6 +9,33 @@ package(
 )
 
 cc_library(
+    name = "compile_mlir",
+    testonly = True,
+    srcs = ["compile_mlir.cc"],
+    hdrs = ["compile_mlir.h"],
+    deps = [
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:legalize_tf",
+        "//tensorflow/compiler/mlir/tf2xla/internal/utils:test_metadata_config",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:Pass",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla/client:client_library",
+        "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor:platform_manager",
+    ],
+)
+
+cc_library(
     name = "utils",
     testonly = True,
     srcs = ["utils.cc"],

@@ -39,18 +39,18 @@ struct TopologicalDependency {
 // must be respected when computing graph topological order. Example: Tensorflow
 // runtime allows concurrent execution of dequeue/enqueue ops from the same
 // queue resource, but we might want to enforce ordering between them.
-Status ComputeTopologicalOrder(
+absl::Status ComputeTopologicalOrder(
     const GraphDef& graph,
     absl::Span<const TopologicalDependency> extra_dependencies,
     std::vector<const NodeDef*>* topo_order);
-Status ComputeTopologicalOrder(const GraphDef& graph,
-                               std::vector<const NodeDef*>* topo_order);
+absl::Status ComputeTopologicalOrder(const GraphDef& graph,
+                                     std::vector<const NodeDef*>* topo_order);
 
 // Sorts a graph in topological order.
-Status TopologicalSort(GraphDef* graph);
+absl::Status TopologicalSort(GraphDef* graph);
 
 // Sorts a graph in topological order and reverse it.
-Status ReversedTopologicalSort(GraphDef* graph);
+absl::Status ReversedTopologicalSort(GraphDef* graph);
 
 }  // namespace grappler
 }  // namespace tensorflow

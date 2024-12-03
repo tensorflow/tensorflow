@@ -211,7 +211,7 @@ static Status WrappedDatasetVariantDeviceCopy(
     const WrappedDatasetVariantWrapper& from, WrappedDatasetVariantWrapper* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
   *to = WrappedDatasetVariantWrapper(from);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define REGISTER_OPTIONAL_COPY(DIRECTION)               \
@@ -248,7 +248,7 @@ Status GraphDefBuilderWrapper::AddDataset(
 Status GraphDefBuilderWrapper::AddDataset(
     const DatasetBase* dataset,
     const std::vector<std::pair<size_t, Node*>>& inputs,
-    const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
+    const std::vector<std::pair<size_t, absl::Span<Node* const>>>& list_inputs,
     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
     Node** output) {
   return AddDataset(dataset, inputs, list_inputs, attrs,
@@ -258,7 +258,7 @@ Status GraphDefBuilderWrapper::AddDataset(
 Status GraphDefBuilderWrapper::AddDataset(
     const DatasetBase* dataset,
     const std::vector<std::pair<size_t, Node*>>& inputs,
-    const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
+    const std::vector<std::pair<size_t, absl::Span<Node* const>>>& list_inputs,
     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
     bool use_dataset_name, Node** output) {
   auto& type_string = dataset->type_string();
@@ -320,7 +320,7 @@ Status GraphDefBuilderWrapper::AddDataset(
     return errors::Internal("AddDataset: Failed to build ", type_string,
                             " op with error ", opts->StatusToString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphDefBuilderWrapper::AddFunction(
@@ -329,7 +329,7 @@ Status GraphDefBuilderWrapper::AddFunction(
   if (b_->HasFunction(function_name)) {
     VLOG(1) << "Function with name " << function_name << "already exists in"
             << " the graph. It will not be added again.";
-    return OkStatus();
+    return absl::OkStatus();
   }
   const FunctionDef* f_def = lib_def.Find(function_name);
   if (f_def == nullptr) {
@@ -363,7 +363,7 @@ Status GraphDefBuilderWrapper::AddFunction(
   for (auto iter = f_def->attr().begin(); iter != f_def->attr().end(); iter++) {
     TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, iter->second, lib_def));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void GraphDefBuilderWrapper::AddPlaceholderInternal(const Tensor& val,
@@ -529,7 +529,7 @@ Status MemoryCheckpoint::Save(IteratorStateWriter* writer) const {
     auto [prefix, key] = id_registry_->Get(id);
     TF_RETURN_IF_ERROR(writer->WriteTensor(prefix, key, value));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IteratorBase::InitializeBase(IteratorContext* ctx,
@@ -551,7 +551,7 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
       cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetCompressedElementFromVariantTensor(
@@ -569,7 +569,7 @@ Status GetCompressedElementFromVariantTensor(
         "Tensor must be a `CompressedElement` object.");
   }
   *out_compressed_element = compressed_element;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t GetAllocatedBytes(const std::vector<Tensor>& element) {
@@ -619,7 +619,7 @@ int64_t GetTotalBytes(const std::vector<Tensor>& element) {
 }
 
 std::string FullName(const std::string& prefix, const std::string& name) {
-  if (str_util::StrContains(name, kColon)) {
+  if (absl::StrContains(name, kColon)) {
     LOG(ERROR) << name << " should not contain " << kColon;
   }
 
@@ -627,7 +627,7 @@ std::string FullName(const std::string& prefix, const std::string& name) {
 }
 
 Status ExtractIteratorPrefix(StringPiece key, string* prefix) {
-  if (!str_util::StartsWith(key, data::kFullNameRandomHex)) {
+  if (!absl::StartsWith(key, data::kFullNameRandomHex)) {
     return errors::InvalidArgument("Key: ", key,
                                    " was not generated using full_name.");
   }
@@ -639,7 +639,7 @@ Status ExtractIteratorPrefix(StringPiece key, string* prefix) {
   string real_key = split_keys[1];
   const int pos = real_key.rfind(kColon);
   *prefix = real_key.substr(0, pos);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
@@ -658,7 +658,7 @@ Status GetDatasetFromVariantTensor(const Tensor& tensor,
   if (*out_dataset == nullptr) {
     return errors::Internal("Read uninitialized Dataset variant.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
@@ -668,7 +668,7 @@ Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
         "Dataset tensor must be a scalar of dtype DT_VARIANT.");
   }
   tensor->scalar<Variant>()() = DatasetVariantWrapper(dataset);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace internal {
@@ -792,12 +792,12 @@ Status DatasetBase::ComputeNumSources() {
   }
   if (num_sources_ >= 0) {
     // Already computed.
-    return OkStatus();
+    return absl::OkStatus();
   }
   num_sources_ = 0;
   if (inputs.empty()) {
     num_sources_ = 1;
-    return OkStatus();
+    return absl::OkStatus();
   }
   for (const auto& input : inputs) {
     if (input->num_sources() < 0) {
@@ -808,7 +808,7 @@ Status DatasetBase::ComputeNumSources() {
     }
     num_sources_ += input->num_sources();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
@@ -826,7 +826,7 @@ Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
     return errors::OutOfRange("Index out of range [0, ", cardinality,
                               "):", index);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
@@ -859,7 +859,7 @@ Status DatasetBase::MergeOptionsFromInputs() {
     return s;
   }
   if (inputs.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   // Merge options from inputs sequentially before merging options from dataset.
   // Since the last options merged takes precedence, the options that may be set
@@ -871,7 +871,7 @@ Status DatasetBase::MergeOptionsFromInputs() {
   }
   internal::MergeOptions(options_, &merged_options);
   options_ = merged_options;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DatasetBase::MakeIterator(
@@ -883,12 +883,12 @@ Status DatasetBase::MakeIterator(
     Status s = InputDatasets(&inputs);
     return inputs[0]->MakeIterator(ctx, parent, output_prefix, iterator);
   }
-  profiler::TraceMe traceme(
+  tsl::profiler::TraceMe traceme(
       [&] {
-        return profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             strings::StrCat("MakeIterator::", type_string()), {});
       },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   *iterator = MakeIteratorInternal(output_prefix);
   Status s = (*iterator)->InitializeBase(ctx, parent);
   if (s.ok()) {
@@ -995,7 +995,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
           << " will not be optimized because the dataset does not implement "
              "the "
              "AsGraphDefInternal() method needed to apply optimizations.";
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   return status;
@@ -1033,7 +1033,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddIdentity(
   *output =
       ops::UnaryOp("Identity", *input,
                    builder()->opts().WithName(UniqueNodeName(name_prefix)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
@@ -1055,7 +1055,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
                            opts.op_registry());
   node_builder.Input(std::move(nodes));
   *output = opts.FinalizeBuilder(&node_builder);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
@@ -1138,8 +1138,8 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
         "Iterator::GetNext", activity_watcher::ActivityCategory::kDatasetOp,
         std::move(attributes));
   });
-  profiler::TraceMe activity([&] { return BuildTraceMeName(); },
-                             profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity([&] { return BuildTraceMeName(); },
+                                  tsl::profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " GetNext enter";
   auto model = ctx->model();
   bool output_was_recording =
@@ -1162,7 +1162,12 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   }
   if (TF_PREDICT_TRUE(s.ok())) {
     if (TF_PREDICT_TRUE(!*end_of_sequence)) {
-      DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());
+      if (TF_PREDICT_FALSE(out_tensors->size() !=
+                           dataset()->output_dtypes().size())) {
+        return errors::Internal("Expected ", dataset()->output_dtypes().size(),
+                                " components but got ", out_tensors->size(),
+                                ".");
+      }
       RecordElement(ctx, out_tensors);
     } else {
       out_tensors->clear();
@@ -1189,8 +1194,8 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
 
 Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
                                  bool* end_of_sequence, int* num_skipped) {
-  profiler::TraceMe activity([&] { return BuildTraceMeName(); },
-                             profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity([&] { return BuildTraceMeName(); },
+                                  tsl::profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " Skip enter";
   auto model = ctx->model();
   bool output_was_recording =
@@ -1232,7 +1237,7 @@ Status DatasetBaseIterator::SkipInternal(IteratorContext* ctx, int num_to_skip,
     std::vector<Tensor> out_tensors;
     TF_RETURN_IF_ERROR(GetNextInternal(ctx, &out_tensors, end_of_sequence));
     if (*end_of_sequence) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     // RecordElement is used to count the number of element computed and
     // help calculate the CPU time spent on a given iterator to do the
@@ -1244,7 +1249,7 @@ Status DatasetBaseIterator::SkipInternal(IteratorContext* ctx, int num_to_skip,
     RecordElement(ctx, &out_tensors);
     (*num_skipped)++;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DatasetOpKernel::Compute(OpKernelContext* ctx) {
@@ -1269,7 +1274,7 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
 
 string DatasetOpKernel::TraceString(const OpKernelContext& ctx,
                                     bool verbose) const {
-  return profiler::TraceMeOp(name_view(), type_string_view());
+  return tsl::profiler::TraceMeOp(name_view(), type_string_view());
 }
 
 // static

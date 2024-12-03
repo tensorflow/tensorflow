@@ -35,10 +35,13 @@ class ConnectionOptions:
     on_connection_update: Optional, a callback that will be called with status
       updates about initial connection establishment. The updates will be
       provided as human-readable strings, and an end-user may find them helpful.
+    connection_timeout_in_seconds: Optional, the timeout for establishing a
+      connection to the proxy server.
   """
 
   on_disconnect: Optional[Callable[[str], None]] = None
   on_connection_update: Optional[Callable[[str], None]] = None
+  connection_timeout_in_seconds: Optional[int] = None
 
 
 _backend_created: bool = False
@@ -48,12 +51,16 @@ _connection_options: ConnectionOptions = ConnectionOptions()
 def get_client(proxy_server_address: str) -> xla_client.Client:
   """Creates an IFRT Proxy client for the given server address."""
   global _backend_created
-  _backend_created = True
   py_module = xla_client._xla.ifrt_proxy  # pylint: disable=protected-access
   cpp_options = py_module.ClientConnectionOptions()
   cpp_options.on_disconnect = _connection_options.on_disconnect
   cpp_options.on_connection_update = _connection_options.on_connection_update
+  cpp_options.connection_timeout_in_seconds = (
+      _connection_options.connection_timeout_in_seconds
+  )
   client = py_module.get_client(proxy_server_address, cpp_options)
+  if client is not None:
+    _backend_created = True
   return client
 
 

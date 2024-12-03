@@ -222,7 +222,7 @@ android_binary_with_tflite(
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto:default_latency_criteria",
     ],
     assets_dir = "assets",
-    custom_package = "org.tensorflow.lite.benchmark.delegate_performance",
+    custom_package = "org.tensorflow.lite.benchmark.delegateperformance",
     manifest = "AndroidManifest.xml",
     multidex = "native",
     nocompress_extensions = [".tflite"],

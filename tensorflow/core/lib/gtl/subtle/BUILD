@@ -12,7 +12,7 @@ filegroup(
     name = "map_traits",
     srcs = [
         "map_traits.h",
-        "@local_tsl//tsl/lib/gtl/subtle:map_traits",
+        "@local_xla//xla/tsl/lib/gtl/subtle:map_traits",
     ],
     visibility = ["//tensorflow/core/lib/gtl:__pkg__"],
 )

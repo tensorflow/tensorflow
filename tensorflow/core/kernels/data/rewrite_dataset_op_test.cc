@@ -42,13 +42,13 @@ class RewriteDatasetParams : public DatasetParams {
     return {CreateTensor<tstring>(TensorShape({}), {rewrite_name_})};
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     *input_names = {RewriteDatasetOp::kInputDataset,
                     RewriteDatasetOp::kRewriteName};
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);
     return absl::OkStatus();

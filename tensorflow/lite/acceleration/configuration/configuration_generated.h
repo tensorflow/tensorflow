@@ -528,27 +528,20 @@ inline const XNNPackFlags (&EnumValuesXNNPackFlags())[10] {
   return values;
 }
 
-inline const char * const *EnumNamesXNNPackFlags() {
-  static const char * const names[11] = {
-    "TFLITE_XNNPACK_DELEGATE_NO_FLAGS",
-    "TFLITE_XNNPACK_DELEGATE_FLAG_QS8",
-    "TFLITE_XNNPACK_DELEGATE_FLAG_QU8",
-    "TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8",
-    "TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16",
-    "TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED",
-    "TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS",
-    "TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER",
-    "TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS",
-    "TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING",
-    nullptr
-  };
-  return names;
-}
-
 inline const char *EnumNameXNNPackFlags(XNNPackFlags e) {
-  if (::flatbuffers::IsOutRange(e, XNNPackFlags_TFLITE_XNNPACK_DELEGATE_NO_FLAGS, XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING)) return "";
-  const size_t index = static_cast<size_t>(e);
-  return EnumNamesXNNPackFlags()[index];
+  switch (e) {
+    case XNNPackFlags_TFLITE_XNNPACK_DELEGATE_NO_FLAGS: return "TFLITE_XNNPACK_DELEGATE_NO_FLAGS";
+    case XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_QS8: return "TFLITE_XNNPACK_DELEGATE_FLAG_QS8";
+    case XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_QU8: return "TFLITE_XNNPACK_DELEGATE_FLAG_QU8";
+    case XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8: return "TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8";
+    case XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16: return "TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16";
+    case XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED: return "TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED";
+    case XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS: return "TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS";
+    case XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER: return "TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER";
+    case XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS: return "TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS";
+    case XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING: return "TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING";
+    default: return "";
+  }
 }
 
 namespace CoreMLSettings_ {
@@ -2835,6 +2828,8 @@ struct MtkNeuronSettingsT : public ::flatbuffers::NativeTable {
   std::vector<std::string> compile_options{};
   std::vector<std::string> accelerator_names{};
   std::string neuron_config_path{};
+  int32_t inference_deadline_ms = 0;
+  int32_t inference_abort_time_ms = 0;
 };
 
 struct MtkNeuronSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -2850,7 +2845,9 @@ struct MtkNeuronSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table 
     VT_USE_CACHEABLE_BUFFER = 16,
     VT_COMPILE_OPTIONS = 18,
     VT_ACCELERATOR_NAMES = 20,
-    VT_NEURON_CONFIG_PATH = 22
+    VT_NEURON_CONFIG_PATH = 22,
+    VT_INFERENCE_DEADLINE_MS = 24,
+    VT_INFERENCE_ABORT_TIME_MS = 26
   };
   tflite::MtkNeuronSettings_::ExecutionPreference execution_preference() const {
     return static_cast<tflite::MtkNeuronSettings_::ExecutionPreference>(GetField<int32_t>(VT_EXECUTION_PREFERENCE, 0));
@@ -2882,6 +2879,12 @@ struct MtkNeuronSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table 
   const ::flatbuffers::String *neuron_config_path() const {
     return GetPointer<const ::flatbuffers::String *>(VT_NEURON_CONFIG_PATH);
   }
+  int32_t inference_deadline_ms() const {
+    return GetField<int32_t>(VT_INFERENCE_DEADLINE_MS, 0);
+  }
+  int32_t inference_abort_time_ms() const {
+    return GetField<int32_t>(VT_INFERENCE_ABORT_TIME_MS, 0);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_EXECUTION_PREFERENCE, 4) &&
@@ -2900,6 +2903,8 @@ struct MtkNeuronSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table 
            verifier.VerifyVectorOfStrings(accelerator_names()) &&
            VerifyOffset(verifier, VT_NEURON_CONFIG_PATH) &&
            verifier.VerifyString(neuron_config_path()) &&
+           VerifyField<int32_t>(verifier, VT_INFERENCE_DEADLINE_MS, 4) &&
+           VerifyField<int32_t>(verifier, VT_INFERENCE_ABORT_TIME_MS, 4) &&
            verifier.EndTable();
   }
   MtkNeuronSettingsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2941,6 +2946,12 @@ struct MtkNeuronSettingsBuilder {
   void add_neuron_config_path(::flatbuffers::Offset<::flatbuffers::String> neuron_config_path) {
     fbb_.AddOffset(MtkNeuronSettings::VT_NEURON_CONFIG_PATH, neuron_config_path);
   }
+  void add_inference_deadline_ms(int32_t inference_deadline_ms) {
+    fbb_.AddElement<int32_t>(MtkNeuronSettings::VT_INFERENCE_DEADLINE_MS, inference_deadline_ms, 0);
+  }
+  void add_inference_abort_time_ms(int32_t inference_abort_time_ms) {
+    fbb_.AddElement<int32_t>(MtkNeuronSettings::VT_INFERENCE_ABORT_TIME_MS, inference_abort_time_ms, 0);
+  }
   explicit MtkNeuronSettingsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2963,8 +2974,12 @@ inline ::flatbuffers::Offset<MtkNeuronSettings> CreateMtkNeuronSettings(
     bool use_cacheable_buffer = true,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> compile_options = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<::flatbuffers::String>>> accelerator_names = 0,
-    ::flatbuffers::Offset<::flatbuffers::String> neuron_config_path = 0) {
+    ::flatbuffers::Offset<::flatbuffers::String> neuron_config_path = 0,
+    int32_t inference_deadline_ms = 0,
+    int32_t inference_abort_time_ms = 0) {
   MtkNeuronSettingsBuilder builder_(_fbb);
+  builder_.add_inference_abort_time_ms(inference_abort_time_ms);
+  builder_.add_inference_deadline_ms(inference_deadline_ms);
   builder_.add_neuron_config_path(neuron_config_path);
   builder_.add_accelerator_names(accelerator_names);
   builder_.add_compile_options(compile_options);
@@ -2989,7 +3004,9 @@ inline ::flatbuffers::Offset<MtkNeuronSettings> CreateMtkNeuronSettingsDirect(
     bool use_cacheable_buffer = true,
     const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *compile_options = nullptr,
     const std::vector<::flatbuffers::Offset<::flatbuffers::String>> *accelerator_names = nullptr,
-    const char *neuron_config_path = nullptr) {
+    const char *neuron_config_path = nullptr,
+    int32_t inference_deadline_ms = 0,
+    int32_t inference_abort_time_ms = 0) {
   auto optimization_hints__ = optimization_hints ? _fbb.CreateVector<int32_t>(*optimization_hints) : 0;
   auto compile_options__ = compile_options ? _fbb.CreateVector<::flatbuffers::Offset<::flatbuffers::String>>(*compile_options) : 0;
   auto accelerator_names__ = accelerator_names ? _fbb.CreateVector<::flatbuffers::Offset<::flatbuffers::String>>(*accelerator_names) : 0;
@@ -3005,7 +3022,9 @@ inline ::flatbuffers::Offset<MtkNeuronSettings> CreateMtkNeuronSettingsDirect(
       use_cacheable_buffer,
       compile_options__,
       accelerator_names__,
-      neuron_config_path__);
+      neuron_config_path__,
+      inference_deadline_ms,
+      inference_abort_time_ms);
 }
 
 ::flatbuffers::Offset<MtkNeuronSettings> CreateMtkNeuronSettings(::flatbuffers::FlatBufferBuilder &_fbb, const MtkNeuronSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -5534,7 +5553,9 @@ inline bool operator==(const MtkNeuronSettingsT &lhs, const MtkNeuronSettingsT &
       (lhs.use_cacheable_buffer == rhs.use_cacheable_buffer) &&
       (lhs.compile_options == rhs.compile_options) &&
       (lhs.accelerator_names == rhs.accelerator_names) &&
-      (lhs.neuron_config_path == rhs.neuron_config_path);
+      (lhs.neuron_config_path == rhs.neuron_config_path) &&
+      (lhs.inference_deadline_ms == rhs.inference_deadline_ms) &&
+      (lhs.inference_abort_time_ms == rhs.inference_abort_time_ms);
 }
 
 inline bool operator!=(const MtkNeuronSettingsT &lhs, const MtkNeuronSettingsT &rhs) {
@@ -5561,6 +5582,8 @@ inline void MtkNeuronSettings::UnPackTo(MtkNeuronSettingsT *_o, const ::flatbuff
   { auto _e = compile_options(); if (_e) { _o->compile_options.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->compile_options[_i] = _e->Get(_i)->str(); } } else { _o->compile_options.resize(0); } }
   { auto _e = accelerator_names(); if (_e) { _o->accelerator_names.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->accelerator_names[_i] = _e->Get(_i)->str(); } } else { _o->accelerator_names.resize(0); } }
   { auto _e = neuron_config_path(); if (_e) _o->neuron_config_path = _e->str(); }
+  { auto _e = inference_deadline_ms(); _o->inference_deadline_ms = _e; }
+  { auto _e = inference_abort_time_ms(); _o->inference_abort_time_ms = _e; }
 }
 
 inline ::flatbuffers::Offset<MtkNeuronSettings> MtkNeuronSettings::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const MtkNeuronSettingsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -5581,6 +5604,8 @@ inline ::flatbuffers::Offset<MtkNeuronSettings> CreateMtkNeuronSettings(::flatbu
   auto _compile_options = _o->compile_options.size() ? _fbb.CreateVectorOfStrings(_o->compile_options) : 0;
   auto _accelerator_names = _o->accelerator_names.size() ? _fbb.CreateVectorOfStrings(_o->accelerator_names) : 0;
   auto _neuron_config_path = _o->neuron_config_path.empty() ? 0 : _fbb.CreateString(_o->neuron_config_path);
+  auto _inference_deadline_ms = _o->inference_deadline_ms;
+  auto _inference_abort_time_ms = _o->inference_abort_time_ms;
   return tflite::CreateMtkNeuronSettings(
       _fbb,
       _execution_preference,
@@ -5592,7 +5617,9 @@ inline ::flatbuffers::Offset<MtkNeuronSettings> CreateMtkNeuronSettings(::flatbu
       _use_cacheable_buffer,
       _compile_options,
       _accelerator_names,
-      _neuron_config_path);
+      _neuron_config_path,
+      _inference_deadline_ms,
+      _inference_abort_time_ms);
 }
 
 

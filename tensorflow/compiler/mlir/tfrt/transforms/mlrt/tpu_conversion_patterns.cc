@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_tpu_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/execute_op_registry.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/mlrt_device_constants.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
 
 namespace tensorflow {

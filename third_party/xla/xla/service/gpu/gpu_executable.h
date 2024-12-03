@@ -31,8 +31,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -42,8 +40,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
-#include "xla/service/hlo_execution_profile.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
@@ -134,13 +130,11 @@ class GpuExecutable : public Executable {
   // doesn't match the compute capability passed to this object's constructor.
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
+      std::vector<ExecutionInput> arguments) override;
 
   absl::StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
+      absl::Span<const ShapedBuffer* const> arguments) override;
 
   using VariantArguments = std::variant<absl::Span<const ShapedBuffer* const>,
                                         absl::Span<ExecutionInput>>;
@@ -169,6 +163,8 @@ class GpuExecutable : public Executable {
   const BufferAssignment* buffer_assignment() const {
     return buffer_assignment_.get();
   }
+
+  const SequentialThunk& GetThunk() { return *thunks_; }
 
  private:
   // Use GpuExecutable::Create() to create an instance.

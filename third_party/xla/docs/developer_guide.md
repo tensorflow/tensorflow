@@ -4,7 +4,7 @@ This guide shows you how to get started developing the XLA project.
 
 Before you begin, complete the following prerequisites:
 
-1.  Go to [CONTRIBUTING.md](../CONTRIBUTING.md) and review the contribution
+1.  Go to [Contributing page](contributing.md) and review the contribution
     process.
 2.  If you haven't already done so, sign the
     [Contributor License Agreement](https://cla.developers.google.com/about).
@@ -18,11 +18,13 @@ the repository, and create a pull request.
 ## Get the code
 
 1.  Create a fork of the [XLA repository](https://github.com/openxla/xla).
-2.  Clone your fork of the repo, replacing `<USER>` with your GitHub username:
+2.  Clone your fork of the repo, replacing `{USER}` with your GitHub username:
     ```sh
-    git clone https://github.com/<USER>/xla.git
+    git clone https://github.com/{USER}/xla.git
     ```
+
 3.  Change into the `xla` directory: `cd xla`
+
 4.  Configure the remote upstream repo:
     ```sh
     git remote add upstream https://github.com/openxla/xla.git
@@ -64,6 +66,16 @@ docker exec xla ./configure.py --backend=CUDA
 docker exec xla bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
 ```
 
+**NB:** please note that with hermetic CUDA rules, you don't have to build XLA
+in Docker. You can build XLA for GPU on your machine without GPUs and without
+NVIDIA driver installed:
+
+```sh
+./configure.py --backend=CUDA
+
+bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
+```
+
 Your first build will take quite a while because it has to build the entire
 stack, including XLA, MLIR, and StableHLO.
 
@@ -75,4 +87,4 @@ When you're ready to send changes for review, create a
 [pull request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests).
 
 To learn about the XLA code review philosophy, see
-[Code reviews](code_reviews.md).
+[Review Process](contributing.md#review-process).

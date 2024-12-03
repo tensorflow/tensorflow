@@ -4254,6 +4254,15 @@ func.func @testTile(%arg0: tensor<2x3x?xf32>) {
 
 // -----
 
+func.func @testTileFold(%arg0: tensor<2x3x1xf32>, %arg1: tensor<2x3x20xf32>) -> tensor<2x3x20xf32> {
+  %cst = arith.constant dense <[1, 1, 20]> : tensor<3xi32>
+  %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3x1xf32>, tensor<3xi32>) -> tensor<2x3x20xf32>
+  %1 = "tf.AddV2"(%0, %arg1) {device = ""} : (tensor<2x3x20xf32>, tensor<2x3x20xf32>) -> tensor<2x3x20xf32>
+  func.return %1 : tensor<2x3x20xf32>
+}
+
+// -----
+
 func.func @testTileMultipleNotRank1(%arg0: tensor<2x3xf32>, %arg1: tensor<1x1xi32>) {
   // expected-error @+1 {{expected multiples to be rank 1, got rank = 2}}
   %0 = "tf.Tile"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<1x1xi32>) -> tensor<2x3xf32>

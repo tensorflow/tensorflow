@@ -586,6 +586,27 @@ absl::Status CompileOptions::ApplyOption(const std::string& key,
                std::holds_alternative<double>(value)) {
       reflection->SetDouble(&debug_options, xla_field, std::get<double>(value));
       return absl::OkStatus();
+    } else if (xla_field->type() == tsl::protobuf::FieldDescriptor::TYPE_ENUM) {
+      if (std::holds_alternative<int64_t>(value)) {
+        if (xla_field->is_repeated()) {
+          reflection->AddEnumValue(&debug_options, xla_field,
+                                   std::get<int64_t>(value));
+        } else {
+          reflection->SetEnumValue(&debug_options, xla_field,
+                                   std::get<int64_t>(value));
+        }
+      } else {
+        auto enum_desc = xla_field->enum_type()->FindValueByName(
+            std::get<std::string>(value));
+        if (enum_desc != nullptr) {
+          if (xla_field->is_repeated()) {
+            reflection->AddEnum(&debug_options, xla_field, enum_desc);
+          } else {
+            reflection->SetEnum(&debug_options, xla_field, enum_desc);
+          }
+        }
+      }
+      return absl::OkStatus();
     } else {
       return InvalidArgument(
           "While setting option %s, '%s' is not a valid %s value.", key,
@@ -635,6 +656,25 @@ absl::Status CompileOptions::ApplyOptionFromString(
     if (value == "True" || value == "False") {
       reflection->SetBool(&debug_options, field, bvalue);
       return absl::OkStatus();
+    }
+  } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_ENUM) {
+    int int_value;
+    if (absl::SimpleAtoi(value, &int_value)) {
+      if (field->is_repeated()) {
+        reflection->AddEnumValue(&debug_options, field, int_value);
+      } else {
+        reflection->SetEnumValue(&debug_options, field, int_value);
+      }
+      return absl::OkStatus();
+    } else {
+      auto enum_desc = field->enum_type()->FindValueByName(value);
+      if (enum_desc != nullptr) {
+        if (field->is_repeated()) {
+          reflection->AddEnum(&debug_options, field, enum_desc);
+        } else {
+          reflection->SetEnum(&debug_options, field, enum_desc);
+        }
+      }
     }
   }
   return InvalidArgument(

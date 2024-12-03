@@ -22,9 +22,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/service/backend.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 

@@ -46,7 +46,7 @@ class CopyFromGpuToHostKernel : public AsyncOpKernel {
 
     ctx->op_device_context()->CopyDeviceTensorToCPU(
         &input, "CopyFromGpuToHost", static_cast<Device*>(ctx->device()),
-        output, [ctx, done](const Status& s) {
+        output, [ctx, done](const absl::Status& s) {
           ctx->SetStatus(s);
           done();
         });
@@ -75,7 +75,7 @@ class CopyFromHostToGpuKernel : public AsyncOpKernel {
 
     ctx->op_device_context()->CopyCPUTensorToDevice(
         &input, static_cast<Device*>(ctx->device()), output,
-        [ctx, done](const Status& s) {
+        [ctx, done](const absl::Status& s) {
           ctx->SetStatus(s);
           done();
         });

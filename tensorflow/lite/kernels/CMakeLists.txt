@@ -95,9 +95,9 @@ set(TEST_FRAMEWORK_SRC
   ${TFLITE_SOURCE_DIR}/tools/optimize/quantization_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
   ${TFLITE_SOURCE_DIR}/tools/versioning/op_version.cc
-  ${TSL_SOURCE_DIR}/tsl/platform/default/env_time.cc
-  ${TSL_SOURCE_DIR}/tsl/platform/default/logging.cc
-  ${TSL_SOURCE_DIR}/tsl/platform/default/mutex.cc
+  ${XLA_SOURCE_DIR}/xla/tsl/platform/default/env_time.cc
+  ${XLA_SOURCE_DIR}/xla/tsl/platform/default/logging.cc
+  ${XLA_SOURCE_DIR}/xla/tsl/platform/default/mutex.cc
   internal/test_util.cc
   acceleration_test_util.cc
   acceleration_test_util_internal.cc
@@ -154,6 +154,7 @@ target_link_libraries(tensorflow-lite-test-external-main
   tensorflow-lite-test-base
   -Wl,--no-whole-archive
   gtest
+  absl::log
 )
 
 macro(add_kernel_test TEST_SRC TEST_LIB)

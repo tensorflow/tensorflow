@@ -25,6 +25,7 @@ limitations under the License.
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/tflite/builtin_operator.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace toco {
 namespace tflite {
@@ -162,7 +162,7 @@ class ExportTest : public ::testing::Test {
     }
   }
 
-  tensorflow::Status ExportAndReturnStatus(const ExportParams& params) {
+  absl::Status ExportAndReturnStatus(const ExportParams& params) {
     std::string result;
     return Export(input_model_, &result, params);
   }

@@ -53,7 +53,7 @@ class XlaDevice : public LocalDevice {
   // Given a tensor, sets `xla::Shape*` the shape of tensor's representation
   // on device, fully padded. On error, the contents of `xla::Shape*`
   // are undefined.
-  typedef std::function<Status(const Tensor&, xla::Shape*)> PaddedShapeFn;
+  typedef std::function<absl::Status(const Tensor&, xla::Shape*)> PaddedShapeFn;
 
   // Wrapper class to store metadata about the XlaDevice, where it can be
   // retrieved e.g., when lazily creating the XlaCompilationCache device.
@@ -93,16 +93,17 @@ class XlaDevice : public LocalDevice {
   };
 
   // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by `ctx`.
-  static Status GetMetadata(OpKernelContext* ctx, const Metadata** metadata);
+  static absl::Status GetMetadata(OpKernelContext* ctx,
+                                  const Metadata** metadata);
 
   // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by `ctx`.
-  static Status GetMetadata(OpKernelConstruction* ctx,
-                            const Metadata** metadata);
+  static absl::Status GetMetadata(OpKernelConstruction* ctx,
+                                  const Metadata** metadata);
 
   // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by
   // `device`.
-  static Status GetMetadataFromDevice(DeviceBase* device,
-                                      const XlaDevice::Metadata** metadata);
+  static absl::Status GetMetadataFromDevice(
+      DeviceBase* device, const XlaDevice::Metadata** metadata);
 
   struct Options {
     // The StreamExecutor platform. Not owned. Must be non-null.
@@ -157,19 +158,20 @@ class XlaDevice : public LocalDevice {
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
   void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                     AsyncOpKernel::DoneCallback done) override;
-  Status Sync() override;
+  absl::Status Sync() override;
 
-  Status TryGetDeviceContext(DeviceContext** out_context) override
+  absl::Status TryGetDeviceContext(DeviceContext** out_context) override
       TF_LOCKS_EXCLUDED(mu_);
 
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override TF_LOCKS_EXCLUDED(mu_);
+  absl::Status MakeTensorFromProto(const TensorProto& tensor_proto,
+                                   const AllocatorAttributes alloc_attrs,
+                                   Tensor* tensor) override
+      TF_LOCKS_EXCLUDED(mu_);
 
-  Status MakeTensorFromProto(DeviceContext* device_context,
-                             const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor);
+  absl::Status MakeTensorFromProto(DeviceContext* device_context,
+                                   const TensorProto& tensor_proto,
+                                   const AllocatorAttributes alloc_attrs,
+                                   Tensor* tensor);
 
   const Metadata& metadata() { return xla_metadata_; }
 
@@ -179,7 +181,7 @@ class XlaDevice : public LocalDevice {
   //
   // TODO(b/111859745): The Eager context needs to call this method to recover
   // from failures.
-  Status EnsureDeviceContextOk() TF_LOCKS_EXCLUDED(mu_);
+  absl::Status EnsureDeviceContextOk() TF_LOCKS_EXCLUDED(mu_);
 
   // Two convenient methods to get the underlying device context.
   // Get the default device context, created by the first
@@ -190,7 +192,7 @@ class XlaDevice : public LocalDevice {
 
   // Instructs this XlaDevice to set a AcceleratorDeviceInfo, which holds extra
   // information for GPU and TPU devices.
-  Status UseAcceleratorDeviceInfo() TF_LOCKS_EXCLUDED(mu_);
+  absl::Status UseAcceleratorDeviceInfo() TF_LOCKS_EXCLUDED(mu_);
 
   // Instructs this XlaDevice to return 'sync_on_completion' for
   // AllowsSyncOnCompletion().
@@ -199,17 +201,17 @@ class XlaDevice : public LocalDevice {
   bool AllowsSyncOnCompletion() const override TF_LOCKS_EXCLUDED(mu_);
 
   // Installs an error handling callback when RefreshStatus sees !status.ok().
-  void SetHandleDeviceErrorCallback(std::function<Status()> callback);
+  void SetHandleDeviceErrorCallback(std::function<absl::Status()> callback);
 
-  Status RefreshStatus() override TF_LOCKS_EXCLUDED(mu_);
+  absl::Status RefreshStatus() override TF_LOCKS_EXCLUDED(mu_);
 
  private:
   absl::StatusOr<xla::LocalClient*> GetOrCreateClient() const;
   Allocator* GetAllocatorLocked(AllocatorAttributes attr)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  Status EnsureStreamOkLocked(xla::Backend* backend, const string& name,
-                              std::shared_ptr<se::Stream>* stream,
-                              bool* stream_was_changed)
+  absl::Status EnsureStreamOkLocked(xla::Backend* backend, const string& name,
+                                    std::shared_ptr<se::Stream>* stream,
+                                    bool* stream_was_changed)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Return a vector of device context, ordered by the sequence in the given
@@ -218,7 +220,7 @@ class XlaDevice : public LocalDevice {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Handles error when RefreshStatus sees !status.ok().
-  Status HandleDeviceError();
+  absl::Status HandleDeviceError();
 
   mutable mutex mu_;
   // The metadata of this XlaDevice.
@@ -279,7 +281,7 @@ class XlaDevice : public LocalDevice {
   bool sync_on_completion_ TF_GUARDED_BY(mu_) = true;
 
   // A callback that will be invoked when RefreshStatus sees a status error.
-  std::function<Status()> device_error_callback_ TF_GUARDED_BY(mu_);
+  std::function<absl::Status()> device_error_callback_ TF_GUARDED_BY(mu_);
 
   // Set of devices to use. This controls which of the devices on the given
   // platform will have resources allocated. For GPUs this will be
@@ -311,7 +313,7 @@ XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device);
 
-Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape);
+absl::Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape);
 
 }  // namespace tensorflow
 

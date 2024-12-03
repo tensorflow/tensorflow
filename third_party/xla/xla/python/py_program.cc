@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/py_program.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,6 +23,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -30,14 +32,30 @@ limitations under the License.
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/custom_call_program.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/plugin_program.h"
+#include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/python/nb_class_ptr.h"
+#include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/python/py_device.h"
+#include "xla/python/py_device_list.h"
+#include "xla/python/python_ref_manager.h"
+#include "xla/python/sharding.h"
+#include "xla/python/types.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
 
@@ -46,6 +64,113 @@ namespace xla {
 namespace nb = ::nanobind;
 
 namespace {
+
+// Gets `ifrt::DeviceList` from a sequence of JAX devices.
+absl::StatusOr<tsl::RCReference<ifrt::DeviceList>> GetDeviceList(
+    nb::sequence devices) {
+  tsl::RCReference<ifrt::DeviceList> ifrt_device_list;
+  if (devices.type().is(jax::PyDeviceList::type())) {
+    return nb::cast<const jax::PyDeviceList*>(devices)->ifrt_device_list();
+  } else {
+    auto py_devices = nb::cast<std::vector<nb_class_ptr<PyDevice>>>(devices);
+    ifrt::BasicDeviceList::Devices ifrt_devices;
+    ifrt_devices.reserve(py_devices.size());
+    for (const nb_class_ptr<PyDevice>& py_device : py_devices) {
+      ifrt_devices.push_back(py_device->device());
+    }
+    return ifrt::BasicDeviceList::Create(std::move(ifrt_devices));
+  }
+}
+
+// Gets `xla::HloSharding` from a JAX Sharding.
+xla::HloSharding GetXlaHloSharding(nb::handle sharding,
+                                   int64_t num_dimensions) {
+  if (sharding.type().is(jax::GSPMDSharding::type())) {
+    return nb::cast<jax::GSPMDSharding*>(sharding)->hlo_sharding();
+  } else {
+    return nb::cast<xla::HloSharding>(
+        sharding.attr("_to_xla_hlo_sharding")(num_dimensions));
+  }
+}
+
+// Gets `ifrt::DeviceList` from a JAX Sharding.
+absl::StatusOr<tsl::RCReference<ifrt::DeviceList>> GetIfrtDeviceList(
+    nb::handle sharding) {
+  if (sharding.type().is(jax::NamedSharding::type())) {
+    TF_ASSIGN_OR_RETURN(
+        auto ns_device_list,
+        nb::cast<const jax::NamedSharding*>(sharding)->internal_device_list());
+    return ns_device_list->ifrt_device_list();
+  } else if (sharding.type().is(jax::SingleDeviceSharding::type())) {
+    return nb::cast<const jax::SingleDeviceSharding*>(sharding)
+        ->internal_device_list()
+        ->ifrt_device_list();
+  } else if (sharding.type().is(jax::PmapSharding::type())) {
+    return nb::cast<const jax::PmapSharding*>(sharding)
+        ->internal_device_list()
+        ->ifrt_device_list();
+  } else if (sharding.type().is(jax::GSPMDSharding::type())) {
+    return nb::cast<const jax::GSPMDSharding*>(sharding)
+        ->internal_device_list()
+        ->ifrt_device_list();
+  } else {
+    return nb::cast<const jax::PyDeviceList*>(
+               sharding.attr("_internal_device_list"))
+        ->ifrt_device_list();
+  }
+}
+
+// Gets `ifrt::MemoryKind` from a JAX Sharding.
+ifrt::MemoryKind GetIfrtMemoryKind(nb::handle sharding) {
+  auto memory_kind = sharding.attr("memory_kind");
+  if (memory_kind.is_none()) {
+    return ifrt::MemoryKind();
+  } else {
+    return ifrt::MemoryKind(nb::cast<std::string>(memory_kind));
+  }
+}
+
+// Makes `ifrt::Sharding` from a JAX Sharding. It requires the number of shape
+// dimensions, which may become necessary when building an HLO sharding.
+absl::StatusOr<std::shared_ptr<const ifrt::Sharding>> GetIfrtSharding(
+    nb::handle sharding, int64_t num_dimensions) {
+  auto ifrt_memory_kind = GetIfrtMemoryKind(sharding);
+  std::shared_ptr<const ifrt::Sharding> ifrt_sharding;
+  if (sharding.type().is(jax::SingleDeviceSharding::type())) {
+    TF_ASSIGN_OR_RETURN(auto ifrt_device_list,
+                        nb::cast<const jax::SingleDeviceSharding*>(sharding)
+                            ->internal_device_list()
+                            ->ifrt_device_list());
+    return ifrt::SingleDeviceSharding::Create(
+        ifrt_device_list->devices().front(), ifrt_memory_kind);
+  } else {
+    TF_ASSIGN_OR_RETURN(auto ifrt_device_list, GetIfrtDeviceList(sharding));
+    auto xla_hlo_sharding = GetXlaHloSharding(sharding, num_dimensions);
+    return ifrt::HloSharding::Create(std::move(ifrt_device_list),
+                                     ifrt_memory_kind,
+                                     std::move(xla_hlo_sharding));
+  }
+}
+
+// Gets `ifrt::ArraySpec`s from a sequence of JAX avals (e.g.,
+// `jax.ShapeDtypeStruct`).
+absl::StatusOr<std::vector<ifrt::ArraySpec>> GetIfrtArraySpecs(
+    nb::sequence avals) {
+  std::vector<ifrt::ArraySpec> ifrt_array_specs;
+  ifrt_array_specs.reserve(nb::len(avals));
+  for (nb::handle aval : avals) {
+    ifrt::Shape ifrt_shape(nb::cast<std::vector<int64_t>>(aval.attr("shape")));
+    TF_ASSIGN_OR_RETURN(
+        auto ifrt_dtype,
+        DtypeToIfRtDType(nb::cast<nb_dtype>(aval.attr("dtype"))));
+    TF_ASSIGN_OR_RETURN(
+        auto ifrt_sharding,
+        GetIfrtSharding(aval.attr("sharding"), ifrt_shape.dims().size()));
+    ifrt_array_specs.push_back(ifrt::ArraySpec{
+        ifrt_dtype, std::move(ifrt_shape), std::move(ifrt_sharding)});
+  }
+  return ifrt_array_specs;
+}
 
 absl::StatusOr<std::unique_ptr<xla::ifrt::Program>> MakePluginProgramFromString(
     std::string data) {
@@ -102,26 +227,52 @@ absl::StatusOr<std::unique_ptr<ifrt::CompileOptions>> MakeXlaCompileOptions(
       std::move(options), std::move(ifrt_loaded_host_callbacks));
 }
 
+constexpr absl::string_view kColocatedPythonProgramType =
+    "jax_colocated_python_v0.0.1";
+
+absl::StatusOr<std::unique_ptr<ifrt::Program>> MakeColocatedPythonProgram(
+    std::string name, nb::bytes picked_function, nb::sequence devices,
+    nb::sequence input_avals, nb::sequence output_avals) {
+  auto ifrt_serialized_program_text = absl::MakeCordFromExternal(
+      absl::string_view(reinterpret_cast<const char*>(picked_function.data()),
+                        picked_function.size()),
+      /*releaser=*/[picked_function](absl::string_view) mutable {
+        GlobalPyRefManager()->AddGarbage(std::move(picked_function));
+      });
+  TF_ASSIGN_OR_RETURN(auto ifrt_device_list, GetDeviceList(devices));
+  TF_ASSIGN_OR_RETURN(auto ifrt_input_specs, GetIfrtArraySpecs(input_avals));
+  TF_ASSIGN_OR_RETURN(auto ifrt_output_specs, GetIfrtArraySpecs(output_avals));
+  return std::make_unique<ifrt::CustomCallProgram>(
+      std::string(kColocatedPythonProgramType), std::move(name),
+      std::move(ifrt_serialized_program_text), std::move(ifrt_device_list),
+      std::move(ifrt_input_specs), std::move(ifrt_output_specs));
+}
+
 }  // namespace
 
 void BuildIfrtProgramsSubmodule(nanobind::module_& m) {
   auto sub_module = m.def_submodule("ifrt_programs");
-  nb::class_<xla::ifrt::Program> ifrt_program_base_class(sub_module, "Program");
-  nb::class_<xla::ifrt::CompileOptions> ifrt_compile_options_base_class(
+  nb::class_<ifrt::Program> ifrt_program_base_class(sub_module, "Program");
+  nb::class_<ifrt::CompileOptions> ifrt_compile_options_base_class(
       sub_module, "CompileOptions");
   sub_module
-      .def("make_hlo_program",
-           xla::ValueOrThrowWrapper(MakeHloProgramFromString))
-      .def("make_hlo_program",
-           xla::ValueOrThrowWrapper(MakeHloProgramFromBytes))
+      .def("make_hlo_program", ValueOrThrowWrapper(MakeHloProgramFromString),
+           nb::arg("mlir_module"))
+      .def("make_hlo_program", ValueOrThrowWrapper(MakeHloProgramFromBytes),
+           nb::arg("mlir_module"))
+      .def("make_colocated_python_program",
+           ValueOrThrowWrapper(MakeColocatedPythonProgram), nb::arg("name"),
+           nb::arg("pickled_function"), nb::arg("devices"),
+           nb::arg("input_avals"), nb::arg("output_avals"))
       .def("make_plugin_program",
-           xla::ValueOrThrowWrapper(MakePluginProgramFromString))
+           ValueOrThrowWrapper(MakePluginProgramFromString), nb::arg("data"))
       .def("make_plugin_program",
-           xla::ValueOrThrowWrapper(MakePluginProgramFromBytes))
+           ValueOrThrowWrapper(MakePluginProgramFromBytes), nb::arg("data"))
       .def("make_xla_compile_options",
-           xla::ValueOrThrowWrapper(MakeXlaCompileOptions))
+           ValueOrThrowWrapper(MakeXlaCompileOptions), nb::arg("options"),
+           nb::arg("host_callbacks"))
       .def("make_plugin_compile_options",
-           xla::ValueOrThrowWrapper(MakePluginCompileOptions));
+           ValueOrThrowWrapper(MakePluginCompileOptions));
 }
 
 }  // namespace xla

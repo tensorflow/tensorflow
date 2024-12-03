@@ -144,6 +144,7 @@ void EventMgr::StopPollingLoop() {
 // While one or more events is outstanding, poll for completed events.  When no
 // events are outstanding, we sleep until one is enqueued.
 void EventMgr::PollLoop() {
+  ToFreeVector to_free;
   while (true) {
     bool events_still_pending;
     {
@@ -154,9 +155,11 @@ void EventMgr::PollLoop() {
       if (callbacks_.empty()) {
         events_pending_.wait(l);
       }
-      PollEvents(/*stream=*/nullptr);  // poll all streams
+      PollEvents(nullptr, &to_free);  // poll all streams
       events_still_pending = !callbacks_.empty();
     }
+    FreeMemory(to_free);
+    to_free.clear();
 
     if (events_still_pending) {
       Env::Default()->SleepForMicroseconds(polling_active_delay_usecs_);
@@ -195,7 +198,8 @@ void EventMgr::EnqueueCallback(se::Stream* stream, std::function<void()> func) {
 // spikes of up to several hundred outstanding.  (If GPUKernelTracker
 // is used to cap pending kernels there should never be more than
 // that many.)
-void EventMgr::PollEvents(se::Stream* stream /*=nullptr*/) {
+void EventMgr::PollEvents(se::Stream* stream,
+                          absl::InlinedVector<InUse, 4UL>* to_free) {
   VLOG(2) << "PollEvents with one or more callbacks pending on "
           << callbacks_.size() << " streams and " << free_events_.size()
           << " unused event objects.";
@@ -228,7 +232,7 @@ void EventMgr::PollEvents(se::Stream* stream /*=nullptr*/) {
               break;
             case se::Event::Status::kComplete:
               free_events_.push_back(std::move(event));
-              threadpool_.Schedule(std::move(callback));
+              to_free->push_back({nullptr, std::move(callback)});
               // std::deque::erase() does invalidate iterators, so we can't
               // erase `it` here.  Instead, we'll wait until the end of the loop
               // over stream_callbacks and erase all of the completed events at

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/service/map_inliner.h"
 
-#include <memory>
-#include <string>
+#include <cstdint>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -96,6 +96,7 @@ absl::Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
           computation_->ReplaceInstruction(map, placed_instruction));
     } else {
       std::vector<HloInstruction*> params;
+      params.reserve(root.operands().size());
       for (int64_t o = 0; o < root.operands().size(); o++) {
         params.push_back(map->operands()[root.operand(o)->parameter_number()]);
       }

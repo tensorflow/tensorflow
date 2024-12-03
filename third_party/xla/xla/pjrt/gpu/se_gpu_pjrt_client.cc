@@ -46,7 +46,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -86,6 +86,7 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -122,17 +123,28 @@ class AsyncHostToDeviceTransferManager
     : public xla::PjRtClient::AsyncHostToDeviceTransferManager {
  public:
   static absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
-  Create(absl::Span<const Shape> shapes, PjRtStreamExecutorDevice* device,
-         PjRtStreamExecutorClient* client, PjRtMemorySpace* memory_space) {
+  Create(absl::Span<const PjRtClient::ShapeSpec> shape_specs,
+         std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+         PjRtStreamExecutorDevice* device, PjRtStreamExecutorClient* client,
+         PjRtMemorySpace* memory_space) {
+    if (device_layouts.has_value() &&
+        device_layouts->size() != shape_specs.size()) {
+      return InvalidArgument(
+          "Number of layouts %d does not match the number of shapes %d",
+          device_layouts->size(), shape_specs.size());
+    }
     absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers;
     absl::InlinedVector<std::shared_ptr<TrackedDeviceBuffer>, 4> buffer_ptrs;
     absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 4>
         definition_events;
-    buffers.reserve(shapes.size());
-    buffer_ptrs.reserve(shapes.size());
-    definition_events.reserve(shapes.size());
-    for (const auto& shape : shapes) {
-      if (shape.IsTuple()) {
+    absl::InlinedVector<Shape, 4> device_shapes;
+    buffers.reserve(shape_specs.size());
+    buffer_ptrs.reserve(shape_specs.size());
+    definition_events.reserve(shape_specs.size());
+    device_shapes.reserve(shape_specs.size());
+    for (int i = 0; i < shape_specs.size(); ++i) {
+      const PjRtClient::ShapeSpec& shape_spec = shape_specs[i];
+      if (shape_spec.element_type == TUPLE) {
         return Unimplemented(
             "Async buffer transfer of tuples not implemented.");
       }
@@ -140,16 +152,22 @@ class AsyncHostToDeviceTransferManager
       // event will block the buffer usage until the transfer is done.
       definition_events.push_back(
           std::make_shared<BufferSequencingEvent>(client->thread_pool()));
-      TF_ASSIGN_OR_RETURN(Shape compact_shape,
-                          client->client()
-                              ->backend()
-                              .transfer_manager()
-                              ->ChooseCompactLayoutForShape(shape));
+      Shape& device_shape = device_shapes.emplace_back(
+          ShapeUtil::MakeShape(shape_spec.element_type, shape_spec.dims));
+      if (device_layouts.has_value() && (*device_layouts)[i].has_value()) {
+        *device_shape.mutable_layout() = *(*device_layouts)[i];
+      } else {
+        TF_ASSIGN_OR_RETURN(device_shape,
+                            client->client()
+                                ->backend()
+                                .transfer_manager()
+                                ->ChooseCompactLayoutForShape(device_shape));
+      }
       LocalDeviceState* local_device = device->local_device_state();
       se::Stream* h2d_stream = local_device->host_to_device_stream();
       TF_ASSIGN_OR_RETURN(auto buffer,
                           AllocateDestinationBuffer(
-                              compact_shape, device, local_device, h2d_stream,
+                              device_shape, device, local_device, h2d_stream,
                               /*is_uninitialized_create=*/true, client,
                               definition_events.back(), memory_space));
       // Get a temporary hold just so we can fish out a shared_ptr to the
@@ -167,7 +185,7 @@ class AsyncHostToDeviceTransferManager
 
     return std::make_unique<AsyncHostToDeviceTransferManager>(
         std::move(buffers), std::move(buffer_ptrs),
-        std::move(definition_events), device);
+        std::move(definition_events), std::move(device_shapes), device);
   }
 
   AsyncHostToDeviceTransferManager(
@@ -175,10 +193,12 @@ class AsyncHostToDeviceTransferManager
       absl::InlinedVector<std::shared_ptr<TrackedDeviceBuffer>, 4> buffer_ptrs,
       absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 4>
           definition_events,
+      absl::InlinedVector<Shape, 4> device_shapes,
       PjRtStreamExecutorDevice* device)
       : buffers_(std::move(buffers)),
         buffer_ptrs_(std::move(buffer_ptrs)),
         definition_events_(std::move(definition_events)),
+        device_shapes_(std::move(device_shapes)),
         remaining_buffer_count_(buffer_ptrs_.size()),
         transfers_in_flight_(0),
         device_(device) {
@@ -229,9 +249,6 @@ class AsyncHostToDeviceTransferManager
 
     TransferManager* transfer_manager =
         se_client->client()->backend().transfer_manager();
-    TF_ASSIGN_OR_RETURN(
-        Shape compact_shape,
-        transfer_manager->ChooseCompactLayoutForShape(literal.shape()));
 
     std::shared_ptr<TrackedDeviceBuffer> buffer;
     {
@@ -256,16 +273,6 @@ class AsyncHostToDeviceTransferManager
       }
       DCHECK_EQ(buffer->device_memory().size(), 1);
 
-      auto& buffer_memory = buffer->device_memory()[0];
-      if (transfer_manager->GetByteSizeRequirement(compact_shape) !=
-          buffer_memory.size()) {
-        return InvalidArgument(
-            "TransferLiteralToBuffer shape %s has size %lld "
-            "but buffer has size %lld",
-            ShapeUtil::HumanStringWithLayout(compact_shape),
-            transfer_manager->GetByteSizeRequirement(compact_shape),
-            buffer_memory.size());
-      }
       ++transfers_in_flight_;
     }
 
@@ -274,7 +281,7 @@ class AsyncHostToDeviceTransferManager
     // TODO(misard) assess if it would be preferable to introduce a heuristic to
     // put the transfer into the calling thread for small literals.
     auto transfer_h2d = [this, buffer_index, stream, transfer_manager, literal,
-                         device_buffer = buffer.get(), compact_shape,
+                         device_buffer = buffer.get(),
                          local_device =
                              std::move(device_->local_device_state()),
                          on_done = std::move(on_done)]() mutable {
@@ -285,7 +292,8 @@ class AsyncHostToDeviceTransferManager
       auto event = local_device->event_pool().AllocateEvent(stream->parent());
 
       // Initiate linearization and transfer of the buffer on the stream.
-      ShapedBuffer buffer = device_buffer->AsShapedBuffer(compact_shape);
+      ShapedBuffer buffer =
+          device_buffer->AsShapedBuffer(device_shapes_[buffer_index]);
       TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
           stream, literal, buffer));
       local_device->event_pool().ThenRecordEvent(stream, event.value());
@@ -449,6 +457,8 @@ class AsyncHostToDeviceTransferManager
   // corresponding buffer transfer has completed.
   absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 4>
       definition_events_ ABSL_GUARDED_BY(mu_);
+  // Device shapes for all buffers with either compact or custom layout.
+  const absl::InlinedVector<Shape, 4> device_shapes_;
   // Count of buffers that have not yet been fully transferred.
   size_t remaining_buffer_count_ ABSL_GUARDED_BY(mu_);
   // Count of transfers that have been started but have not yet called cleanup.
@@ -483,6 +493,33 @@ class AsyncHostToDeviceTransferManager
   }
 };
 
+static std::optional<stream_executor::GpuTargetConfigProto>
+GetTargetConfigForDevices(absl::Span<PjRtDevice* const> devices) {
+  for (const PjRtDevice* device : devices) {
+    LocalDeviceState* local_device_state =
+        tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
+            ->local_device_state();
+    if (local_device_state != nullptr) {
+      return xla::Compiler::TargetConfig(local_device_state->executor())
+          .ToProto();
+    }
+  }
+  return std::nullopt;
+}
+
+static absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
+    absl::Span<PjRtDevice* const> devices) {
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attrs;
+  auto target_config = GetTargetConfigForDevices(devices);
+  if (target_config.has_value()) {
+    std::string attr;
+    if (tsl::protobuf::TextFormat::PrintToString(*target_config, &attr)) {
+      attrs["target_config"] = std::move(attr);
+    }
+  }
+  return attrs;
+}
+
 StreamExecutorGpuClient::StreamExecutorGpuClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
@@ -496,10 +533,12 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
           platform_name, client, std::move(devices), process_index,
           std::move(allocator), std::move(host_memory_allocator),
           should_stage_host_to_device_transfers, std::move(gpu_run_options)),
-      topology_(xla::StreamExecutorGpuTopologyDescription::Create(
+      topology_(xla::StreamExecutorGpuTopologyDescription(
           tsl::Fingerprint64(platform_name), platform_name,
-          std::move(gpu_topology))),
+          std::move(gpu_topology), GetAttrsForDevices(addressable_devices()),
+          GetTargetConfigForDevices(addressable_devices()))),
       kv_store_(std::move(kv_store)) {
+  const int basePinnedId = device_count();
   for (auto* device : addressable_devices()) {
     // Use the device id to construct a globally unique memory space id. We do
     // not promise that memory space ids and device ids are the same.
@@ -509,8 +548,8 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
         memory_space.get());
     owned_memory_spaces_.push_back(std::move(memory_space));
-    const size_t basePinnedId = devices.size();
-    auto pinned = std::make_unique<PinnedHostMemorySpace>(basePinnedId, device);
+    auto pinned =
+        std::make_unique<PinnedHostMemorySpace>(basePinnedId + id, device);
     tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
         pinned.get());
     owned_memory_spaces_.push_back(std::move(pinned));
@@ -544,22 +583,56 @@ absl::string_view StreamExecutorGpuClient::platform_version() const {
 
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
-    absl::Span<const Shape> shapes, PjRtDevice* device) {
+    absl::Span<const PjRtClient::ShapeSpec> shape_specs,
+    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+    PjRtDevice* device) {
   auto* stream_executor_device =
       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
   return xla::AsyncHostToDeviceTransferManager::Create(
-      shapes, stream_executor_device, this, /*memory_space=*/nullptr);
+      shape_specs, std::move(device_layouts), stream_executor_device, this,
+      /*memory_space=*/nullptr);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
-    absl::Span<const Shape> shapes, PjRtMemorySpace* memory_space) {
+    absl::Span<const Shape> shapes, PjRtDevice* device) {
+  absl::InlinedVector<PjRtClient::ShapeSpec, 4> shape_specs;
+  shape_specs.reserve(shapes.size());
+  for (const auto& shape : shapes) {
+    shape_specs.emplace_back(PjRtClient::ShapeSpec{
+        shape.element_type(),
+        DimensionVector(shape.dimensions().begin(), shape.dimensions().end())});
+  }
+  return CreateBuffersForAsyncHostToDevice(
+      shape_specs, /*device_layouts=*/std::nullopt, device);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const PjRtClient::ShapeSpec> shape_specs,
+    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+    PjRtMemorySpace* memory_space) {
   CHECK_EQ(memory_space->devices().size(), 1);
   PjRtDevice* device = memory_space->devices()[0];
   auto* stream_executor_device =
       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
   return xla::AsyncHostToDeviceTransferManager::Create(
-      shapes, stream_executor_device, this, memory_space);
+      shape_specs, std::move(device_layouts), stream_executor_device, this,
+      memory_space);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const Shape> shapes, PjRtMemorySpace* memory_space) {
+  absl::InlinedVector<PjRtClient::ShapeSpec, 4> shape_specs;
+  shape_specs.reserve(shapes.size());
+  for (const auto& shape : shapes) {
+    shape_specs.emplace_back(PjRtClient::ShapeSpec{
+        shape.element_type(),
+        DimensionVector(shape.dimensions().begin(), shape.dimensions().end())});
+  }
+  return CreateBuffersForAsyncHostToDevice(
+      shape_specs, /*device_layouts=*/std::nullopt, memory_space);
 }
 
 absl::StatusOr<xla::DeviceAssignment>
@@ -735,7 +808,6 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 StreamExecutorGpuClient::Compile(const XlaComputation& computation,
                                  CompileOptions options) {
-  options.executable_build_options.set_key_value_store(kv_store_);
   auto executable = PjRtStreamExecutorClient::Compile(computation, options);
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
@@ -995,6 +1067,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     int node_id, int num_nodes,
     gpu::GpuExecutableRunOptions* gpu_executable_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
+    std::optional<std::string_view> mock_gpu_topology,
     absl::Duration get_local_topology_timeout,
     absl::Duration get_global_topology_timeout) {
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
@@ -1026,12 +1099,37 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
 
   GlobalTopologyProto global_topology;
   if (enable_mock_nccl) {
+    TopologySizes sizes;
+    if (mock_gpu_topology.has_value()) {
+      TF_ASSIGN_OR_RETURN(sizes, TopologySizes::FromString(*mock_gpu_topology));
+    } else {
+      // If there is no topology spec, we assume that each node is a slice,
+      // there is one process (host) on each slice and each host
+      // has all the local devices.
+      sizes.num_slices = num_nodes;
+      sizes.num_hosts_per_slice = 1;
+      sizes.num_devices_per_host = local_topology.devices().size();
+    }
+
+    if (sizes.num_devices_per_host != local_topology.devices().size()) {
+      return absl::InternalError(
+          "The number of devices per host in 'mock_gpu_topology' "
+          "must be the same as the number of devices in the local topology");
+    }
+
+    if (sizes.num_slices * sizes.num_hosts_per_slice != num_nodes) {
+      return absl::InternalError(
+          "The number of hosts in 'mock_gpu_topology' "
+          "must be the same as 'num_nodes'");
+    }
+
     std::vector<LocalTopologyProto> local_topologies(num_nodes, local_topology);
-    for (int i = 0; i < num_nodes; ++i) {
-      local_topologies[i].set_node_id(i);
-      // Set a distinct boot_id for each local topology to change slice_index
-      // for each node.
-      local_topologies[i].set_boot_id(absl::StrCat(i));
+    for (int i = 0; i < sizes.num_slices; ++i) {
+      for (int j = 0; j < sizes.num_hosts_per_slice; j++) {
+        int node_id = i * sizes.num_hosts_per_slice + j;
+        local_topologies[node_id].set_node_id(node_id);
+        local_topologies[node_id].set_boot_id(absl::StrCat(i));
+      }
     }
     global_topology = BuildGlobalTopology(absl::MakeSpan(local_topologies),
                                           /*assign_global_device_ids=*/true);
@@ -1110,8 +1208,6 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
                                std::move(device_kind), node_id),
       device_vendor_(std::move(device_vendor)),
       slice_index_(slice_index) {
-  int64_t core_index = 0;
-  description().SetCoreOnChip(core_index);
   std::array<int, 1> coords = {local_device_id().value()};
   description().SetCoords(coords);
   std::vector<int64_t> v_coords(description().coords().begin(),
@@ -1119,7 +1215,6 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
 
   description().SetAttributes(
       {{"coords", xla::PjRtDeviceAttribute(v_coords)},
-       {"core_on_chip", xla::PjRtDeviceAttribute(core_index)},
        {"device_vendor", device_vendor_},
        {"slice_index", static_cast<int64_t>(slice_index)},
        {"compute_capability", xla::PjRtDeviceAttribute(compute_capability)},
@@ -1166,10 +1261,6 @@ absl::Span<int const> StreamExecutorGpuDevice::coords() const {
   return description().coords();
 }
 
-int StreamExecutorGpuDevice::core_on_chip() const {
-  return description().core_on_chip();
-}
-
 absl::StatusOr<PjRtMemorySpace*> StreamExecutorGpuDevice::default_memory_space()
     const {
   return memory_space_by_kind_id(StreamExecutorGpuHbmMemorySpace::kKindId);
@@ -1207,11 +1298,17 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   auto host_memory_allocator =
       GetGpuHostAllocator(local_device_states.begin()->second->executor());
 
-  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
   if (options.enable_mock_nccl) {
     gpu_run_options->set_enable_mock_nccl_collectives();
   }
+
+  static const bool xla_gpu_require_exclusive_lock =
+      xla::GetDebugOptionsFromFlags().xla_gpu_require_exclusive_lock();
+  if (xla_gpu_require_exclusive_lock) {
+    gpu_run_options->set_requires_exclusive_lock_on_gpu();
+  }
+
   std::shared_ptr<KeyValueStoreInterface> kv_store = options.kv_store;
   if (options.enable_mock_nccl) {
     kv_store = std::make_shared<InMemoryKeyValueStore>();
@@ -1219,10 +1316,10 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   TF_RET_CHECK(options.num_nodes == 1 || kv_store != nullptr);
   TF_ASSIGN_OR_RETURN(
       DeviceTopologyPair device_topology_pair,
-      BuildDistributedDevices(pjrt_platform_name,
-                              std::move(local_device_states), options.node_id,
-                              options.num_nodes, gpu_run_options.get(),
-                              kv_store, options.enable_mock_nccl));
+      BuildDistributedDevices(
+          pjrt_platform_name, std::move(local_device_states), options.node_id,
+          options.num_nodes, gpu_run_options.get(), kv_store,
+          options.enable_mock_nccl, options.mock_gpu_topology));
 
   auto gpu_topology = std::shared_ptr<const GpuTopology>(
       GpuTopology::FromProto(device_topology_pair.second));

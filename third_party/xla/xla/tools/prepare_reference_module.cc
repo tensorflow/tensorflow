@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/despecializer.h"
+#include "xla/hlo/transforms/despecializer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/xla.pb.h"
@@ -48,7 +48,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
     config_modifier_hook(&reference_config);
   }
   std::unique_ptr<HloModule> reference_module =
-      test_module.Clone(reference_config, "reference");
+      test_module.Clone("reference", reference_config);
   if (module_modifier_hook) {
     TF_RETURN_IF_ERROR(
         module_modifier_hook(test_module, test_runner, reference_module.get()));

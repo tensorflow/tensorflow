@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime_conv2d.h"
 
-#include <optional>
+#include <cstdint>
+
+#include "absl/base/attributes.h"
 
 #define EIGEN_USE_THREADS
 
-#include "absl/base/dynamic_annotations.h"
+#include "xla/backends/cpu/runtime/convolution_thunk_internal.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/cpu/runtime/conv_impl.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv2DF32(
@@ -37,13 +38,13 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv2DF32(
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
   XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
-  tensorflow::xla::EigenConv2DImpl(
+  xla::cpu::internal::EigenConv2D(
       *run_options->intra_op_thread_pool(), out, lhs, rhs, input_batch,
       input_rows, input_cols, input_channels, kernel_rows, kernel_cols,
       kernel_channels, kernel_filters, output_rows, output_cols, row_stride,
       col_stride, padding_top, padding_bottom, padding_left, padding_right,
       lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation,
-      feature_group_count, std::nullopt);
+      feature_group_count, nullptr, /*use_thunk_runtime=*/false);
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv2DF16(
@@ -59,11 +60,11 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv2DF16(
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
   XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
-  tensorflow::xla::EigenConv2DImpl(
+  xla::cpu::internal::EigenConv2D(
       *run_options->intra_op_thread_pool(), out, lhs, rhs, input_batch,
       input_rows, input_cols, input_channels, kernel_rows, kernel_cols,
       kernel_channels, kernel_filters, output_rows, output_cols, row_stride,
       col_stride, padding_top, padding_bottom, padding_left, padding_right,
       lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation,
-      feature_group_count, std::nullopt);
+      feature_group_count, nullptr, /*use_thunk_runtime=*/false);
 }

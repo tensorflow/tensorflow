@@ -24,7 +24,7 @@ namespace {
 
 // Verifies that `shapes_and_types` is a valid list handle and has the right
 // dtype.
-Status VerifyHandleData(
+absl::Status VerifyHandleData(
     shape_inference::InferenceContext* c,
     const std::vector<shape_inference::ShapeAndType>& shapes_and_types,
     DataType element_dtype) {
@@ -262,7 +262,7 @@ REGISTER_OP("TensorListStack")
       return absl::OkStatus();
     });
 
-Status TensorListConcatShapeInference(
+absl::Status TensorListConcatShapeInference(
     shape_inference::InferenceContext* c,
     shape_inference::ShapeHandle element_shape) {
   DataType element_dtype;

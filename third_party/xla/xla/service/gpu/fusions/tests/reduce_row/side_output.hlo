@@ -1,5 +1,6 @@
-// RUN: fusion_to_mlir %s | mlir_fusions_opt -cse -xla-gpu-simplify-arith -canonicalize | FileCheck %s
-// RUN: test_correctness %s --bijection_inputs=reduce:0 --bijection_outputs=reduce --bijection_outputs=exp
+// RUN: fusion_to_mlir %s | mlir_fusions_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=reduce --bijection_outputs=exp
 
 add {
   lhs = f32[] parameter(0)
@@ -7,7 +8,7 @@ add {
   ROOT add = f32[] add(lhs, rhs)
 }
 
-fused_computation {
+fusion {
   param_0 = f32[8,2048] parameter(0)
   param_1 = f32[] parameter(1)
   exp = f32[8,2048] exponential(param_0)
@@ -15,10 +16,8 @@ fused_computation {
   ROOT t = (f32[8], f32[8,2048]) tuple(reduce, exp)
 }
 
-// CHECK:     @fused_computation
-// CHECK:     scf.for
-// CHECK:       scf.for
-// CHECK:         %[[SIDE_OUTPUT:.*]] = xla_gpu.pure_call @fused_computation_exp
+// CHECK:     @fusion
+// CHECK:       xla_gpu.loop
+// CHECK:         %[[SIDE_OUTPUT:.*]] = xla_gpu.pure_call @fusion_exp
 // CHECK-NEXT:    tensor.insert %[[SIDE_OUTPUT]]
-// CHECK:         scf.yield
-// CHECK:       scf.yield
+// CHECK:         xla_gpu.yield

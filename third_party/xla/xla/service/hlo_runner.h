@@ -187,8 +187,12 @@ class HloRunner : public HloRunnerInterface {
 
   absl::string_view Name() const override;
 
-  DeviceShapeRepresentationFn device_shape_representation_fn() {
+  DeviceShapeRepresentationFn device_shape_representation_fn() const override {
     return device_shape_representation_fn_;
+  }
+
+  DeviceShapeSizeFn device_shape_size_fn() const override {
+    return backend().compiler()->ShapeSizeBytesFunction();
   }
 
  private:
@@ -202,7 +206,7 @@ class HloRunner : public HloRunnerInterface {
   // should pass the device_assignment parameter.
   ServiceExecutableRunOptions GetServiceRunOptionsForDevice(
       int64_t device, se::Stream* stream, DeviceAssignment* device_assignment,
-      RunId run_id);
+      RunId run_id, int local_device_count);
 
   // Common implementation code for ExecuteReplicated() above.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicatedImpl(

@@ -74,8 +74,8 @@ py_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:numpy_compat",
         "//tensorflow/python/util:object_identity",
-        "//third_party/py/numpy",
     ],
 )
 

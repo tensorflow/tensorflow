@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -114,6 +114,7 @@ absl::StatusOr<ExecuteOptions> GenerateExecuteOptions(const HloModule& module) {
 // TODO(b/245550554): Remove the use of PjRtWrappedExecutable.
 class PjRtWrappedExecutable : public Executable {
  public:
+  // Takes ownership of the provided executable.
   explicit PjRtWrappedExecutable(std::shared_ptr<HloModule> hlo_module,
                                  PjRtLoadedExecutable* pjrt_loaded_executable)
       : Executable(hlo_module),
@@ -121,21 +122,19 @@ class PjRtWrappedExecutable : public Executable {
 
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ExecutionInput> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
+      std::vector<ExecutionInput> arguments) override;
 
   PjRtLoadedExecutable* GetPjRtLoadedExecutable() const {
-    return pjrt_loaded_executable_;
+    return pjrt_loaded_executable_.get();
   }
 
  private:
-  PjRtLoadedExecutable* pjrt_loaded_executable_;
+  std::unique_ptr<PjRtLoadedExecutable> pjrt_loaded_executable_;
 };
 
 absl::StatusOr<ExecutionOutput> PjRtWrappedExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    std::vector<ExecutionInput> arguments) {
   return Unimplemented(
       "PjRtWrappedExecutable: Unimplemented ExecuteAsyncOnStream");
 }
@@ -144,9 +143,11 @@ static const int kDeviceIdx = 0;
 
 HloRunnerPjRt::HloRunnerPjRt(
     std::unique_ptr<PjRtClient> pjrt_client,
-    DeviceShapeRepresentationFn device_shape_representation_fn)
+    DeviceShapeRepresentationFn device_shape_representation_fn,
+    DeviceShapeSizeFn device_shape_size_fn)
     : pjrt_client_(std::move(pjrt_client)),
-      device_shape_representation_fn_(device_shape_representation_fn) {}
+      device_shape_representation_fn_(device_shape_representation_fn),
+      device_shape_size_fn_(device_shape_size_fn) {}
 
 HloRunnerPjRt::~HloRunnerPjRt() = default;
 
@@ -373,9 +374,7 @@ absl::StatusOr<std::unique_ptr<Executable>> HloRunnerPjRt::CreateExecutable(
           std::move(pjrt_executable->GetHloModules().value()[0])),
       pjrt_executable.release());
 
-  std::unique_ptr<Executable> exec =
-      static_cast<std::unique_ptr<Executable>>(executable.release());
-  return exec;
+  return executable;
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(

@@ -14,7 +14,6 @@
 
 #include "xla/python/ifrt_proxy/client/grpc_client_session.h"
 
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -40,21 +39,20 @@
 #include "grpcpp/support/channel_arguments.h"
 #include "xla/pjrt/distributed/util.h"
 #include "xla/python/ifrt/future.h"
-#include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/grpc_credentials.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
+#include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/platform/unbounded_work_queue.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
-
-using OpId = int64_t;
 
 // Logically equivalent to a map<OpId, ResponseCallback>, but thread-safe and
 // with various convenience functions.
@@ -146,9 +144,9 @@ Future<std::shared_ptr<IfrtResponse>> GrpcClientSession::Enqueue(
 
 absl::Status GrpcClientSession::Enqueue(std::unique_ptr<IfrtRequest> req,
                                         ResponseCallback callback) {
-  const OpId op_id = req->request_metadata().op_id();
-
   absl::MutexLock l(&writer_mu_);
+  const OpId op_id = writer_next_op_id_++;
+
   if (writes_stopped_) {
     return absl::FailedPreconditionError(
         "GrpcClientSession: writes no longer allowed.");
@@ -156,6 +154,10 @@ absl::Status GrpcClientSession::Enqueue(std::unique_ptr<IfrtRequest> req,
 
   TF_RETURN_IF_ERROR(response_callbacks_->Add(op_id, std::move(callback)));
 
+  CHECK_EQ(req->mutable_request_metadata()->op_id(), 0);
+  req->mutable_request_metadata()->set_op_id(op_id);
+
+  tsl::profiler::TraceMe t("grpc_stream_write");
   if (!stream_->Write(*req)) {
     CHECK(response_callbacks_->Pop(op_id).has_value());
     return absl::UnknownError("GrpcClientSession: writing to stream failed.");
@@ -249,6 +251,7 @@ std::shared_ptr<grpc::GrpcIfrtService::StubInterface> CreateGrpcStub(
   // model compilation.
   args.SetInt(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH, -1);
   args.SetInt(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH, -1);
+  args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
   std::shared_ptr<::grpc::Channel> channel = ::grpc::CreateCustomChannel(
       std::string(server_address), GetClientCredentials(), args);
   VLOG(0) << "  Established channel.";

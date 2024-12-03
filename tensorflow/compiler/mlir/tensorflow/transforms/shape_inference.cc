@@ -83,10 +83,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -126,9 +126,9 @@ MLIRContext::Threading GetMlirContextThreading() {
 }
 
 // Compute a refined type between two types `lhs` and `rhs`, the result type
-// is always more refined (i.e. has more static information) than `lhs`
-// This method will actually merge the information contained in the
-// types, it is capable of refining:
+// is always at least as refined as (i.e. has more static information) than
+// `lhs` This method will actually merge the information contained in the types,
+// it is capable of refining:
 //   tensor<!tf_type.variant<tensor<?x8xf32>>>
 // and:
 //   tensor<!tf_type.variant<tensor<10x?xf32>>>
@@ -1117,8 +1117,8 @@ bool ShapeInference::RefineResultType(Operation* op, Value result,
 // Infers the shape from a (Stateful)PartitionedCall operation by looking up
 // the called function and propagating the return type.
 bool ShapeInference::InferShapeForCall(CallOpInterface call_op) {
-  func::FuncOp func =
-      dyn_cast_or_null<func::FuncOp>(call_op.resolveCallable(&symbol_table_));
+  func::FuncOp func = dyn_cast_or_null<func::FuncOp>(
+      call_op.resolveCallableInTable(&symbol_table_));
   if (!func) return false;
 
   DCOMMENT("Infer shape for call " << func.getName());
@@ -2329,12 +2329,20 @@ bool ShapeInference::RefineWithInferTypeOpInterface(
   // Map each of the results of the call to the returned type of the
   // function.
   bool changed = false;
-  for (auto result : zip(op->getResults(), inferred)) {
-    if (std::get<0>(result).getType() == std::get<1>(result)) continue;
-
-    if (!UpdateTypeAndInsertIncompatibleUseCasts(std::get<1>(result),
-                                                 std::get<0>(result)))
+  for (auto [result, inferred_type] : zip(op->getResults(), inferred)) {
+    auto result_type = result.getType();
+    auto new_type = inferred_type;
+    if (!llvm::isa<TF::ZerosLikeOp>(op)) {
+      // TODO: b/361179755 - Remove when folding issue is resolved or proper
+      // shape inference is confirmed for zeros like.
+      new_type = TypeMeet(inferred_type, result_type);
+    }
+    if (new_type == result_type) {
       continue;
+    }
+    if (!UpdateTypeAndInsertIncompatibleUseCasts(new_type, result)) {
+      continue;
+    }
     changed = true;
   }
   return changed;
@@ -2968,8 +2976,8 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
          while_op.ResolveBodyFunction(&symbol_table_)},
         max_iterations);
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
-    if (auto func =
-            dyn_cast<func::FuncOp>(call_op.resolveCallable(&symbol_table_))) {
+    if (auto func = dyn_cast<func::FuncOp>(
+            call_op.resolveCallableInTable(&symbol_table_))) {
       PropagateConstantToCallee(call_op, func, module);
       FailureOr<bool> failure_or_converged = PropagateShapeToFunctions(
           module, call_op.getArgOperands().getTypes(), {func}, max_iterations);

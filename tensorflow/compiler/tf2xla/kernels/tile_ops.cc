@@ -20,19 +20,15 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/value_inference.h"
-#include "xla/client/xla_builder.h"
-#include "tensorflow/core/framework/numeric_op.h"
+#include "xla/hlo/builder/value_inference.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace {

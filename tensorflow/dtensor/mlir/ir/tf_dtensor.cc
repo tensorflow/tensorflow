@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 
+#include <cassert>
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project

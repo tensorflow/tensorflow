@@ -47,7 +47,7 @@ class PprofProfile {
   virtual void AddSample(const CodeNode* leaf,
                          std::vector<uint64>* call_ids) = 0;
 
-  virtual Status WritePprofProfile(const string& filename) = 0;
+  virtual absl::Status WritePprofProfile(const string& filename) = 0;
 };
 
 class TFCode : public TFMultiShow {

@@ -20,10 +20,10 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
-#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -41,7 +42,9 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
@@ -95,7 +98,7 @@ class PjRtClient final
     std::shared_ptr<xla::PjRtClient> pjrt_client;
 
     // KV store for sharing topology information. If present, PJRT-IFRT will do
-    // its own topology exchange. If omitted, we will trust  whatever topology
+    // its own topology exchange. If omitted, we will trust whatever topology
     // information the PJRT client reports.
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr;
 
@@ -107,6 +110,29 @@ class PjRtClient final
 
     absl::Duration get_local_topology_timeout = absl::Minutes(2);
     absl::Duration get_global_topology_timeout = absl::Minutes(5);
+
+    // Device mapping to construct a global view consisting of both addressable
+    // and non-addressable devices.
+    //
+    // If omitted, the PjRt client's device view will be used as-is.
+    //
+    // Currently supported only if `kv_store` is unspecified.
+    struct GlobalDeviceMapping {
+      // Device IDs to use for addressable devices exported by `pjrt_client`.
+      // It must have the same number of addressable devices as
+      // `pjrt_client`.
+      absl::flat_hash_set<DeviceId> addressable_device_ids;
+
+      // Mapping of device ID to process index for all processes. The local
+      // process index is identified by the entry whose device ID matches one in
+      // `addressable_device_ids`.
+      absl::flat_hash_map<DeviceId, int> device_id_to_process_index;
+    };
+    std::optional<GlobalDeviceMapping> global_device_mapping;
+
+    // Whether to sort devices by (process index, device ID). If false, sort
+    // devices only by device ID.
+    bool sort_devices_by_process_index = true;
   };
 
   static absl::StatusOr<std::unique_ptr<PjRtClient>> Create(
@@ -134,11 +160,12 @@ class PjRtClient final
   ~PjRtClient() override;
 
   // For making Arrays with `dtype` as kString:
-  //   (1) the `data` argument should point to an array of `absl::string_view`
+  //   (1) the `data` argument should point to an array of `absl::Cord`
   //   in major-to-minor order,
   //   (2) `byte_strides` are not supported, and non-`nullopt` values cause this
   //   function to fail.
   //   (3) only the `kImmutableDuringCall` semantics is supported currently.
+  //   Fails for other values of `HostBufferSemantics`.
   absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
@@ -150,10 +177,16 @@ class PjRtClient final
       Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<Array>> arrays,
       ArrayCopySemantics semantics) override;
+  absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
+      Shape shape, std::shared_ptr<const Sharding> sharding,
+      absl::Span<tsl::RCReference<Array>> arrays,
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics) override;
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>> CopyArrays(
       absl::Span<tsl::RCReference<Array>> arrays,
-      std::optional<DeviceList> devices, std::optional<MemoryKind> memory_kind,
+      std::optional<tsl::RCReference<DeviceList>> devices,
+      std::optional<MemoryKind> memory_kind,
       ArrayCopySemantics semantics) override;
 
   absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> RemapArrays(
@@ -167,10 +200,7 @@ class PjRtClient final
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<tsl::RCReference<Value>> values) override;
 
-  absl::string_view runtime_type() const override {
-    DCHECK(this);
-    return PjRtRuntimeTypeString(pjrt_client_->runtime_type());
-  }
+  absl::string_view runtime_type() const override { return "pjrt_ifrt"; }
 
   absl::string_view platform_name() const override {
     DCHECK(this);
@@ -203,7 +233,13 @@ class PjRtClient final
     DCHECK(this);
     return addressable_devices_;
   }
-  int process_index() const override { return pjrt_client_->process_index(); }
+  int process_index() const override { return my_process_index_; }
+
+  absl::Span<Device* const> GetAllDevices() const override {
+    DCHECK(this);
+    return devices_;
+  }
+
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
     DCHECK(this);
@@ -221,7 +257,7 @@ class PjRtClient final
   }
 
   absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
-      const DeviceList& devices) const override;
+      const tsl::RCReference<DeviceList>& devices) const override;
 
   absl::StatusOr<std::unique_ptr<xla::PjRtLayout>> GetDefaultLayoutForDevice(
       DType dtype, absl::Span<const int64_t> dims,
@@ -231,6 +267,19 @@ class PjRtClient final
       xla::PjRtDevice* pjrt_device) const override;
   absl::StatusOr<PjRtCompatibleMemory*> LookupPjRtMemory(
       xla::PjRtMemorySpace* pjrt_memory) const override;
+
+  // Returns the PjRt global device ID for the given IFRT device ID. This
+  // succeeds only if the PjRt global device ID was available in `pjrt_client_`
+  // or it has been discovered through topology exchange; in other words, it
+  // also supports getting the PjRt global device ID for non-addressable IFRT
+  // device IDs, unlike `xla::ifrt::PjRtDevice` that does not keep
+  // `xla::PjRtDevice` around for non-addressable devices.
+  //
+  // Note that it does not yet support non-addressable IFRT device IDs created
+  // by PjRt-IFRT with the global device mapping because there is no well-agreed
+  // PjRt device ID allocation that PjRt-IFRT can assume.
+  absl::StatusOr<xla::PjRtGlobalDeviceId> GetPjRtGlobalDeviceId(
+      DeviceId device_id) const;
 
   // Transfer the given literal to the infeed queue.
   absl::Status TransferToInfeed(PjRtDevice* device,
@@ -247,6 +296,13 @@ class PjRtClient final
 
   std::shared_ptr<xla::PjRtClient> pjrt_client_;
   PjRtCompiler default_compiler_;
+
+  // My process ID used as an IFRT client.
+  int my_process_index_;
+  // Mapping from IFRT device ID to PjRt global device ID. Made for the devices
+  // that are accessible via `pjrt_client_->devices()`.
+  absl::flat_hash_map<DeviceId, xla::PjRtGlobalDeviceId>
+      ifrt_device_id_to_pjrt_global_device_id_;
 
   AttributeMap attributes_;
 

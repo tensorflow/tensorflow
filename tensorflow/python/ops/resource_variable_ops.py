@@ -17,10 +17,10 @@
 # pylint: disable=g-bad-name
 import contextlib
 import functools
+from typing import Any
 import weakref
 
 from absl import logging
-import numpy as np
 
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.core.framework import attr_value_pb2
@@ -61,6 +61,7 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import compat
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
@@ -569,7 +570,7 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     # Even `self.read_value().__array__()` and `self.read_value()._numpy()` give
     # the same error. The `EagerTensor` class must be doing something behind the
     # scenes to make `np.array(tf.constant(1))` work.
-    return np.asarray(self.numpy(), dtype=dtype)
+    return numpy_compat.np_asarray(self.numpy(), dtype=dtype)
 
   def __nonzero__(self):
     return self.__bool__()
@@ -857,7 +858,8 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
         and self._xla_sharding is not None
     ):
       sharding_string = self._xla_sharding.SerializeToString()
-      result = gen_xla_ops.xla_sharding(result, sharding=sharding_string)
+      with ops.colocate_with(result):
+        result = gen_xla_ops.xla_sharding(result, sharding=sharding_string)
       # pylint: disable=protected-access
       result.op._set_attr(
           "_XlaSharding",
@@ -2843,3 +2845,8 @@ def write_object_proto_for_resource_variable(resource_variable,
   ):
     if hasattr(resource_variable, "device"):
       proto.variable.device = resource_variable.device
+
+
+def get_xla_sharding(var: BaseResourceVariable) -> Any:
+  """Returns the XLA sharding associated with the variable."""
+  return var._get_xla_sharding()  # pylint: disable=protected-access

@@ -17,10 +17,15 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_helpers.h"
 
+#include <algorithm>
+#include <functional>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_join.h"
 #include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/device.h"
@@ -29,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -38,7 +42,7 @@ limitations under the License.
 namespace tensorflow {
 
 // LINT.IfChange
-Status DistributedTPURewriteHelpers::GetSystemDevice(
+absl::Status DistributedTPURewriteHelpers::GetSystemDevice(
     const string& system_spec_string, const DeviceSet& device_set,
     DeviceNameUtils::ParsedName* system_spec, Device** system_device) {
   if (!DeviceNameUtils::ParseFullName(system_spec_string, system_spec)) {
@@ -105,7 +109,7 @@ Status DistributedTPURewriteHelpers::GetSystemDevice(
 // LINT.ThenChange(//tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.cc)
 
 // LINT.IfChange
-Status DistributedTPURewriteHelpers::GetHostSystemDevices(
+absl::Status DistributedTPURewriteHelpers::GetHostSystemDevices(
     const DeviceNameUtils::ParsedName& system_spec, const DeviceSet& device_set,
     std::vector<Device*>* host_system_devices) {
   DeviceNameUtils::ParsedName host_spec;
@@ -159,7 +163,7 @@ Status DistributedTPURewriteHelpers::GetHostSystemDevices(
 // LINT.ThenChange(//tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.cc)
 
 // LINT.IfChange
-Status DistributedTPURewriteHelpers::GetTPUDevices(
+absl::Status DistributedTPURewriteHelpers::GetTPUDevices(
     const DeviceNameUtils::ParsedName& system_spec, const DeviceSet& device_set,
     int* num_tpus_per_host, std::vector<std::vector<Device*>>* tpu_devices) {
   // GetHostSystemDevices returns the CPU device on each host that is
@@ -209,15 +213,15 @@ Status DistributedTPURewriteHelpers::GetTPUDevices(
 }
 // LINT.ThenChange(//tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.cc)
 
-Status DistributedTPURewriteHelpers::ForConfigurationNodeMatchingType(
+absl::Status DistributedTPURewriteHelpers::ForConfigurationNodeMatchingType(
     const string& node_type, Graph* graph, const DeviceSet& device_set,
     const std::function<
-        Status(const NodeDef& configuration_node_def,
-               const string& configuration_device_name,
-               const std::vector<Device*>& host_devices,
-               const std::vector<Node*>& input_dependencies,
-               const std::vector<OutputDependency>& output_dependencies,
-               Graph* graph)>& action) {
+        absl::Status(const NodeDef& configuration_node_def,
+                     const string& configuration_device_name,
+                     const std::vector<Device*>& host_devices,
+                     const std::vector<Node*>& input_dependencies,
+                     const std::vector<OutputDependency>& output_dependencies,
+                     Graph* graph)>& action) {
   // Find all the matching nodes before mutating the graph.
   std::vector<Node*> nodes;
   for (Node* node : graph->nodes()) {

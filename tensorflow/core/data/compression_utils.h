@@ -30,12 +30,12 @@ namespace data {
 // out the per-component metadata for the `CompressedElement`.
 //
 // Returns an error if the uncompressed size of the element exceeds 4GB.
-Status CompressElement(const std::vector<Tensor>& element,
-                       CompressedElement* out);
+absl::Status CompressElement(const std::vector<Tensor>& element,
+                             CompressedElement* out);
 
 // Uncompresses a `CompressedElement` into a vector of tensor components.
-Status UncompressElement(const CompressedElement& compressed,
-                         std::vector<Tensor>* out);
+absl::Status UncompressElement(const CompressedElement& compressed,
+                               std::vector<Tensor>* out);
 
 }  // namespace data
 }  // namespace tensorflow

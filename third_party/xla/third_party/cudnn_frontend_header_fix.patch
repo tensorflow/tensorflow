@@ -1,5 +1,5 @@
 diff --git a/include/cudnn_frontend.h b/include/cudnn_frontend.h
-index 7bca425..cd74e3a 100644
+index e3f1ec8..373e52d 100644
 --- a/include/cudnn_frontend.h
 +++ b/include/cudnn_frontend.h
 @@ -97,7 +97,7 @@
@@ -12,13 +12,13 @@ index 7bca425..cd74e3a 100644
  #include "cudnn_frontend_ConvDesc.h"
  #include "cudnn_frontend_Heuristics.h"
 diff --git a/include/cudnn_frontend/backend/backend_descriptor.h b/include/cudnn_frontend/backend/backend_descriptor.h
-index dc7ad25..ade164a 100644
+index 47387a1..3864c1d 100644
 --- a/include/cudnn_frontend/backend/backend_descriptor.h
 +++ b/include/cudnn_frontend/backend/backend_descriptor.h
-@@ -2,7 +2,7 @@
- 
+@@ -3,7 +3,7 @@
  #include <memory>
  
+ #include "../graph_helpers.h"
 -#include "cudnn.h"
 +#include "third_party/gpus/cudnn/cudnn.h"
  

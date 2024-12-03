@@ -153,7 +153,9 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       params.collective_cliques, /*device_to_host_stream=*/nullptr,
       /*host_to_device_stream=*/nullptr,
       /*send_device_memory_function=*/nullptr,
-      /*recv_device_memory_function=*/nullptr, params.ffi_execution_context);
+      /*recv_device_memory_function=*/nullptr, params.ffi_execution_context,
+      /*additional_compute_streams=*/{}, /*mock_collectives=*/false,
+      /*requires_exclusive_lock_on_gpu=*/params.requires_exclusive_lock_on_gpu);
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
@@ -164,13 +166,16 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // If command buffer in any other state we check it is has to be updated, i.e.
   // if captured pointers changed or command buffer has commands that require
   // update on each call.
-  if (cmd_buffer->command_buffer->state() ==
-          se::CommandBuffer::State::kCreate &&
+  if ((cmd_buffer->command_buffer->state() ==
+           se::CommandBuffer::State::kCreate ||
+       params.requires_exclusive_lock_on_gpu) &&
       cmd_buffer->ShouldUpdateCommandBuffer(commands_, execute_params)) {
-    VLOG(3) << "Initialize command buffer on device #"
+    VLOG(3) << "Initialize/Update command buffer on device #"
             << params.executor->device_ordinal()
             << " by recoding command buffer cmd sequence"
-            << "; num_commands=" << commands_.size();
+            << "; num_commands=" << commands_.size()
+            << " requires_exclusive_lock_on_gpu="
+            << params.requires_exclusive_lock_on_gpu;
 
     TraceMe trace([&] {
       return TraceMeEncode("command_buffer::initialize",
@@ -217,9 +222,10 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   absl::MutexLock lock(&cmd_buffer->mutex);
 
-  if (cmd_buffer->ShouldUpdateCommandBuffer(commands_, params)) {
+  if ((!params.requires_exclusive_lock_on_gpu) &&
+      cmd_buffer->ShouldUpdateCommandBuffer(commands_, params)) {
     VLOG(3) << "Update command buffer on device #" << executor->device_ordinal()
-            << " by recoding command buffer cmd sequence" << " after "
+            << " by recoding command buffer cmd sequence after "
             << cmd_buffer->num_executions << " executions since last update"
             << "; num_commands=" << commands_.size();
 

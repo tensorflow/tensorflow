@@ -18,19 +18,19 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <ostream>
 #include <string>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,12 +38,10 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -57,8 +55,8 @@ Thunk::CollectiveCliques::CollectiveCliques(
     NcclClique::AcquiredCliquesMap cliques_map)
     : cliques_map_(std::move(cliques_map)) {}
 
-absl::StatusOr<NcclApi::NcclCommHandle> Thunk::CollectiveCliques::GetComm(
-    const NcclCliqueKey& clique_key, int32_t rank) const {
+absl::StatusOr<Communicator*> Thunk::CollectiveCliques::GetComm(
+    const NcclCliqueKey& clique_key, RankId rank) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);
   if (clique == cliques_map_.end()) {
@@ -69,9 +67,9 @@ absl::StatusOr<NcclApi::NcclCommHandle> Thunk::CollectiveCliques::GetComm(
   // Check that clique has a communicator for our rank.
   auto communicator = (*clique->second)->comm(rank);
   if (!communicator.has_value()) {
-    return absl::InternalError(absl::StrCat("Communicator for rank ", rank,
-                                            " not found in a NCCL clique ",
-                                            clique_key.ToString()));
+    return absl::InternalError(
+        absl::StrCat("Communicator for rank ", rank.value(),
+                     " not found in a NCCL clique ", clique_key.ToString()));
   }
 
   return *communicator;
@@ -191,6 +189,11 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                            ? run_options.run_options()
                                  .gpu_executable_run_options()
                                  ->enable_mock_nccl_collectives()
+                           : false,
+                       run_options.run_options().gpu_executable_run_options()
+                           ? run_options.run_options()
+                                 .gpu_executable_run_options()
+                                 ->requires_exclusive_lock_on_gpu()
                            : false);
 }
 
@@ -214,7 +217,8 @@ Thunk::ExecuteParams::ExecuteParams(
     SendDeviceMemoryFunction* send_device_memory_function,
     RecvDeviceMemoryFunction* recv_device_memory_function,
     const ffi::ExecutionContext* ffi_execution_context,
-    ExecutionStreamIdMap additional_compute_streams, bool mock_collectives)
+    ExecutionStreamIdMap additional_compute_streams, bool mock_collectives,
+    bool requires_exclusive_lock_on_gpu)
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
@@ -226,7 +230,8 @@ Thunk::ExecuteParams::ExecuteParams(
       recv_device_memory_function(recv_device_memory_function),
       ffi_execution_context(ffi_execution_context),
       additional_compute_streams(additional_compute_streams),
-      mock_collectives(mock_collectives) {}
+      mock_collectives(mock_collectives),
+      requires_exclusive_lock_on_gpu(requires_exclusive_lock_on_gpu) {}
 
 //===----------------------------------------------------------------------===//
 
@@ -235,7 +240,7 @@ Thunk::ExecuteParams::ExecuteParams(
   case Thunk::x: \
     return #x
   switch (kind) {
-    CASE(kAddressComputation);
+    CASE(kDynamicSlice);
     CASE(kCholesky);
     CASE(kCommandBuffer);
     CASE(kConditional);
@@ -259,6 +264,8 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kNcclCollectivePermute);
     CASE(kNcclCollectivePermuteStart);
     CASE(kNcclCollectivePermuteDone);
+    CASE(kNcclGroupStart);
+    CASE(kNcclGroupDone);
     CASE(kNcclReduceScatter);
     CASE(kNcclReduceScatterStart);
     CASE(kNcclReduceScatterDone);
@@ -351,6 +358,8 @@ bool Thunk::IsCollective() const {
     case kNcclSendDone:
     case kNcclRecv:
     case kNcclRecvDone:
+    case kNcclGroupStart:
+    case kNcclGroupDone:
       return true;
     default:
       return false;

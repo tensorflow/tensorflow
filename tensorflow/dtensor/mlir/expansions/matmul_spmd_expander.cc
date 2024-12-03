@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -61,7 +60,6 @@ void GetTransposeSettings(mlir::Operation* op, bool* left_transposed,
 }  // namespace
 
 StatusOr<mlir::Operation*> MatMulSPMDExpander::ExpandOp(mlir::Operation* op) {
-  absl::flat_hash_set<std::string> reduced_dims;
   bool left_transposed;
   bool right_transposed;
   TF_ASSIGN_OR_RETURN(const Layout left_layout,
@@ -190,7 +188,7 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
 // * The resulting layout of the matmul tensor, so we can insert an AllConcat/
 //   split to make the output have the desired layout.
 // * The left and right value for use as input to the matmul.
-Status MatMulSPMDExpander::MaybeRelayoutInputs(
+absl::Status MatMulSPMDExpander::MaybeRelayoutInputs(
     mlir::Operation* op, const Layout& left_layout, bool left_transposed,
     const Layout& right_layout, bool right_transposed,
     const Layout& output_layout, std::string& reduced_dim,

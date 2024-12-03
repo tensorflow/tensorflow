@@ -39,7 +39,7 @@ Status ValidateTPProfilerRegistrationParams(
   TF_VALIDATE_NOT_NULL(TF_ProfilerRegistrationParams, params, destroy_profiler);
   TF_VALIDATE_NOT_NULL(TF_ProfilerRegistrationParams, params,
                        destroy_profiler_fns);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ValidateTPProfiler(const TP_Profiler& profiler) {
@@ -47,7 +47,7 @@ Status ValidateTPProfiler(const TP_Profiler& profiler) {
   TF_VALIDATE_NOT_NULL(TP_Profiler, profiler, device_type);
   TF_RETURN_IF_ERROR(
       tensorflow::device_utils::ValidateDeviceType(profiler.device_type));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ValidateTPProfilerFns(const TP_ProfilerFns& profiler_fns) {
@@ -56,7 +56,7 @@ Status ValidateTPProfilerFns(const TP_ProfilerFns& profiler_fns) {
   TF_VALIDATE_NOT_NULL(TP_ProfilerFns, profiler_fns, start);
   TF_VALIDATE_NOT_NULL(TP_ProfilerFns, profiler_fns, stop);
   TF_VALIDATE_NOT_NULL(TP_ProfilerFns, profiler_fns, collect_data_xspace);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class PluggableProfiler : public tensorflow::profiler::ProfilerInterface {
@@ -175,8 +175,8 @@ Status InitPluginProfiler(TFInitProfilerFn init_fn) {
         return factory.CreatePluggableProfiler(options);
       };
 
-  tensorflow::profiler::RegisterProfilerFactory(std::move(create_func));
-  return OkStatus();
+  tsl::profiler::RegisterProfilerFactory(std::move(create_func));
+  return absl::OkStatus();
 }
 
 }  // namespace profiler

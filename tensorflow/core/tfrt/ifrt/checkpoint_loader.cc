@@ -39,10 +39,11 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_utils.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
-#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel_runner_utils.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/shard_restore_util.h"
@@ -138,10 +139,62 @@ absl::StatusOr<tensorflow::Tensor> Cast(
   return *(op_kernel_context.mutable_output(0));
 }
 
+void RunShardHelper(const tfrt_stub::OpKernelRunner& runner,
+                    AsyncState* async_state, RestoreVariableShard shard) {
+  // Keep input tensor alive in `shard`.
+  auto* op_kernel_context_ptr = &async_state->context;
+  runner.Run(op_kernel_context_ptr);
+
+  auto& op_kernel_context = async_state->context;
+  if (!op_kernel_context.status().ok()) {
+    for (auto& result : async_state->results) {
+      std::move(result).Set(op_kernel_context.status());
+    }
+    return;
+  }
+  DCHECK_EQ(shard.var_handles.size(), op_kernel_context.num_outputs());
+  DCHECK_EQ(shard.truncate_in_cast.size(), op_kernel_context.num_outputs());
+
+  // TODO(b/343964091): consider to run multiple casts in parallel.
+  for (int i = 0; i < op_kernel_context.num_outputs(); ++i) {
+    DCHECK(op_kernel_context.mutable_output(i));
+
+    if (op_kernel_context.mutable_output(i)->dtype() !=
+        shard.restored_dtypes[i]) {
+      std::move(async_state->results[i])
+          .Set(absl::InvalidArgumentError(
+              absl::StrCat("The restored tensor has a different dtype than the "
+                           "variable handle: ",
+                           op_kernel_context.mutable_output(i)->dtype(),
+                           " vs. ", shard.restored_dtypes[i])));
+      return;
+    }
+    const ResourceHandle& var_handle =
+        shard.var_handles[i].tensor().scalar<tensorflow::ResourceHandle>()();
+
+    if (shard.restored_dtypes[i] == var_handle.dtypes_and_shapes()[0].dtype) {
+      std::move(async_state->results[i])
+          .Set(*std::move(op_kernel_context.mutable_output(i)));
+    } else {
+      absl::StatusOr<tensorflow::Tensor> cast_output =
+          Cast(*op_kernel_context.mutable_output(i), shard.restored_dtypes[i],
+               var_handle.dtypes_and_shapes()[0].dtype,
+               shard.truncate_in_cast[i], async_state->device_manager,
+               async_state->process_function_library_runtime,
+               async_state->run_state.params);
+      if (!cast_output.ok()) {
+        std::move(async_state->results[i]).Set(cast_output.status());
+      } else {
+        std::move(async_state->results[i]).Set(*std::move(cast_output));
+      }
+    }
+  }
+}
+
 absl::Status RunShard(RestoreVariableShard shard,
                       IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
                       tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue,
-                      tf_mlrt::Context& context) {
+                      tf_mlrt::Context& context, bool use_async_restore) {
   if (!ifrt_restore_tensor_registry) {
     return absl::InternalError("ifrt_restore_tensor_registry must not be null");
   }
@@ -218,60 +271,20 @@ absl::Status RunShard(RestoreVariableShard shard,
     }
     async_state->results.push_back(std::move(promise));
   }
+  // Run the shard synchronously.
+  if (!use_async_restore) {
+    RunShardHelper(runner, async_state.get(), shard);
+  } else {
+    tensorflow::Context bg_context(tensorflow::ContextKind::kThread);
+    // Use dedicated work queue for restore operation.
+    checkpoint_loader_work_queue->AddTask(
+        [runner = std::move(runner), async_state = std::move(async_state),
+         shard = std::move(shard), bg_context = std::move(bg_context)]() {
+          tensorflow::WithContext wc(bg_context);
+          RunShardHelper(runner, async_state.get(), shard);
+        });
+  }
 
-  // Use dedicated work queue for restore operation.
-  checkpoint_loader_work_queue->AddTask([runner = std::move(runner),
-                                         async_state = std::move(async_state),
-                                         shard = std::move(shard)]() {
-    // Keep input tensor alive in `shard`.
-    auto* op_kernel_context_ptr = &async_state->context;
-    runner.Run(op_kernel_context_ptr);
-
-    auto& op_kernel_context = async_state->context;
-    if (!op_kernel_context.status().ok()) {
-      for (auto& result : async_state->results) {
-        std::move(result).Set(op_kernel_context.status());
-      }
-      return;
-    }
-    DCHECK_EQ(shard.var_handles.size(), op_kernel_context.num_outputs());
-    DCHECK_EQ(shard.truncate_in_cast.size(), op_kernel_context.num_outputs());
-
-    // TODO(b/343964091): consider to run multiple casts in parallel.
-    for (int i = 0; i < op_kernel_context.num_outputs(); ++i) {
-      DCHECK(op_kernel_context.mutable_output(i));
-
-      if (op_kernel_context.mutable_output(i)->dtype() !=
-          shard.restored_dtypes[i]) {
-        std::move(async_state->results[i])
-            .Set(absl::InvalidArgumentError(absl::StrCat(
-                "The restored tensor has a different dtype than the "
-                "variable handle: ",
-                op_kernel_context.mutable_output(i)->dtype(), " vs. ",
-                shard.restored_dtypes[i])));
-        return;
-      }
-      const ResourceHandle& var_handle =
-          shard.var_handles[i].tensor().scalar<tensorflow::ResourceHandle>()();
-
-      if (shard.restored_dtypes[i] == var_handle.dtypes_and_shapes()[0].dtype) {
-        std::move(async_state->results[i])
-            .Set(*std::move(op_kernel_context.mutable_output(i)));
-      } else {
-        absl::StatusOr<tensorflow::Tensor> cast_output =
-            Cast(*op_kernel_context.mutable_output(i), shard.restored_dtypes[i],
-                 var_handle.dtypes_and_shapes()[0].dtype,
-                 shard.truncate_in_cast[i], async_state->device_manager,
-                 async_state->process_function_library_runtime,
-                 async_state->run_state.params);
-        if (!cast_output.ok()) {
-          std::move(async_state->results[i]).Set(cast_output.status());
-        } else {
-          std::move(async_state->results[i]).Set(*std::move(cast_output));
-        }
-      }
-    }
-  });
   return absl::OkStatus();
 }
 
@@ -286,8 +299,7 @@ int64_t GetSizeFromVarHandle(const ResourceHandle& handle) {
 
 }  // namespace
 
-absl::Status CheckpointLoader::PrepareRestore(
-    mlir::OwningOpRef<mlir::ModuleOp> module) {
+absl::Status CheckpointLoader::PrepareRestore(const PrepareRestoreArgs& args) {
   VLOG(1) << "Skip CheckpointLoader::PrepareRestore";
   return absl::OkStatus();
 }
@@ -297,8 +309,8 @@ absl::Status CheckpointLoader::Load(
     const std::vector<tensorflow::tfrt_stub::FallbackTensor>& var_handles,
     const tensorflow::tfrt_stub::FallbackTensor& tensor_names,
     const tensorflow::tfrt_stub::FallbackTensor& shape_and_slices,
-    const mlrt::bc::Vector<tensorflow::DataType>& restored_dtypes,
-    const mlrt::bc::Vector<bool>& truncate_in_cast, tf_mlrt::Context& context) {
+    absl::Span<const tensorflow::DataType> restored_dtypes,
+    const std::vector<bool>& truncate_in_cast, tf_mlrt::Context& context) {
   std::vector<int64_t> variable_sizes;
   variable_sizes.reserve(var_handles.size());
   for (auto& handle : var_handles) {
@@ -349,7 +361,8 @@ absl::Status CheckpointLoader::Load(
   }
   for (const auto& shard : shards) {
     TF_RETURN_IF_ERROR(RunShard(shard, ifrt_restore_tensor_registry_,
-                                checkpoint_loader_work_queue_, context));
+                                checkpoint_loader_work_queue_, context,
+                                use_async_restore_));
   }
   return absl::OkStatus();
 }

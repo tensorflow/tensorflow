@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/evaluation/stages/tflite_inference_stage.h"
 
-#include <cstring>
+#include <cstdint>
 #include <fstream>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/attributes.h"
 #include "tensorflow/core/platform/logging.h"

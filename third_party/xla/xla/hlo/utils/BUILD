@@ -1,11 +1,12 @@
 # Description:
 #   Implementation of XLA’s HLO utilities used for higher-level transformations.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
 )
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -21,16 +22,26 @@ package_group(
 )
 
 cc_library(
+    name = "hlo_container_util",
+    srcs = [],
+    hdrs = ["hlo_container_util.h"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "hlo_live_range",
     srcs = ["hlo_live_range.cc"],
     hdrs = ["hlo_live_range.h"],
     deps = [
         "//xla:shape_util",
+        "//xla/hlo/analysis:hlo_alias_analysis",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
+        "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_alias_analysis",
         "//xla/service:hlo_buffer",
-        "//xla/service:hlo_dataflow_analysis",
-        "//xla/service:hlo_ordering",
         "//xla/service:hlo_value",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -46,17 +57,18 @@ xla_cc_test(
     srcs = ["hlo_live_range_test.cc"],
     deps = [
         ":hlo_live_range",
-        "//xla:literal",
-        "//xla:status_macros",
+        "//xla:comparison_util",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_alias_analysis",
-        "//xla/service:hlo_ordering",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:hlo_value",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -69,7 +81,7 @@ cc_library(
         "//xla:test",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_parser",
+        "//xla/hlo/parser:hlo_parser",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -82,9 +94,9 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -97,6 +109,7 @@ cc_library(
         "hlo_sharding_util.h",
     ],
     deps = [
+        ":hlo_container_util",
         "//xla:array",
         "//xla:literal_util",
         "//xla:protobuf_util",
@@ -107,6 +120,7 @@ cc_library(
         "//xla/hlo/ir:tile_assignment",
         "//xla/service:call_graph",
         "//xla/service:dot_as_convolution_util",
+        "//xla/service:gather_scatter_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -115,6 +129,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
@@ -136,14 +151,14 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:tile_assignment",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:dot_as_convolution_util",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -154,11 +169,11 @@ cc_library(
     deps = [
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:pattern_matcher",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
@@ -170,11 +185,46 @@ xla_cc_test(
     ],
     deps = [
         ":hlo_query",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_parser",
-        "//xla/tests:hlo_test_base",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "hlo_traversal",
+    srcs = ["hlo_traversal.cc"],
+    hdrs = ["hlo_traversal.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_traversal_test",
+    srcs = ["hlo_traversal_test.cc"],
+    deps = [
+        ":hlo_traversal",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )

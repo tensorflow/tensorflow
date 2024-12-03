@@ -37,13 +37,13 @@ TpuCompilationCacheLocalLookup::~TpuCompilationCacheLocalLookup() {
   cache_->Unref();
 }
 
-Status TpuCompilationCacheLocalLookup::Lookup(
+absl::Status TpuCompilationCacheLocalLookup::Lookup(
     const std::string& proto_key,
     std::unique_ptr<CompilationCacheEntryRef>* entry,
     CompilationCacheFetchTarget fetch_target) {
   tsl::profiler::TraceMe proto_lookup_traceme("Local TPU proto cache lookup",
                                               /*level=*/2);
-  Status s = cache_->Lookup(proto_key, entry);
+  absl::Status s = cache_->Lookup(proto_key, entry);
   VLOG(1) << "Looked up key " << proto_key << " in local subgraph cache status "
           << s;
   if (!s.ok()) {
@@ -56,14 +56,14 @@ Status TpuCompilationCacheLocalLookup::Lookup(
   return s;
 }
 
-Status TpuCompilationCacheLocalLookup::Lookup(
+absl::Status TpuCompilationCacheLocalLookup::Lookup(
     int64_t uid, int proto_index,
     std::unique_ptr<CompilationCacheEntryRef>* entry,
     CompilationCacheFetchTarget fetch_target) {
   tsl::profiler::TraceMe proto_lookup_traceme(
       "Local TPU proto cache lookup by uid",
       /*level=*/2);
-  Status s = cache_->Lookup(uid, proto_index, entry);
+  absl::Status s = cache_->Lookup(uid, proto_index, entry);
   VLOG(1) << "Looked up uid " << uid << ", index " << proto_index
           << " in local subgraph cache status " << s;
   if (!s.ok()) {

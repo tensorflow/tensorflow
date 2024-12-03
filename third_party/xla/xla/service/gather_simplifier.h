@@ -16,36 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GATHER_SIMPLIFIER_H_
 #define XLA_SERVICE_GATHER_SIMPLIFIER_H_
 
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/op_expander_pass.h"
-
-namespace xla {
-
-// This pass rewrites gather operations into a combination of transposes,
-// reshapes and a simpler gather.
-//
-// The output gather's attributes will have the following characteristics:
-// - start_indices is a two-dimensional tensor
-// - index_vector_dim is 1
-// - start_index_map is [0, 1, ...]
-// - collapsed_slice_dims is []
-// - offset_dims is [1, 2, ...]
-//
-// The purpose of this pass is to check whether this transformation has any
-// performance implications.
-class GatherSimplifier : public OpExpanderPass {
- public:
-  absl::string_view name() const override { return "gather_simplifier"; }
-
-  static bool IsSimplifiedGather(const HloGatherInstruction* gather);
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* inst) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* inst) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/gather_simplifier.h"
 
 #endif  // XLA_SERVICE_GATHER_SIMPLIFIER_H_

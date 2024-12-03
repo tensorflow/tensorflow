@@ -2,13 +2,17 @@
 #   Stubs for dynamically loading CUDA.
 
 load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "@local_xla//xla/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "cuda_rpath_flags",
     "if_cuda_is_configured",
+)
+load(
+    "//xla/tsl:tsl.bzl",
+    "if_cuda_libs",
 )
 load("//xla/tsl/cuda:stub.bzl", "cuda_stub")
 
@@ -22,7 +26,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "cublas",  # buildifier: disable=duplicated-name
+    name = "cublas_stub",
     srcs = if_cuda_is_configured([
         "cublas_stub.cc",
         "cublas.tramp.S",
@@ -44,13 +48,19 @@ cc_library(
     ]),
 )
 
+alias(
+    name = "cublas",  # buildifier: disable=duplicated-name
+    actual = if_cuda_libs("@cuda_cublas//:cublas", ":cublas_stub"),
+    visibility = ["//visibility:public"],
+)
+
 cuda_stub(
     name = "cublasLt",
     srcs = ["cublasLt.symbols"],
 )
 
 cc_library(
-    name = "cublas_lt",
+    name = "cublas_lt_stub",
     srcs = if_cuda_is_configured([
         "cublasLt_stub.cc",
         "cublasLt.tramp.S",
@@ -66,6 +76,12 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
+)
+
+alias(
+    name = "cublas_lt",
+    actual = if_cuda_libs("@cuda_cublas//:cublasLt", ":cublas_lt_stub"),
+    visibility = ["//visibility:public"],
 )
 
 cuda_stub(
@@ -98,7 +114,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "cudart",  # buildifier: disable=duplicated-name
+    name = "cudart_stub",
     srcs = select({
         # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
         "@local_xla//xla/tsl:is_cuda_enabled_and_oss": [
@@ -129,13 +145,19 @@ cc_library(
     }),
 )
 
+alias(
+    name = "cudart",  # buildifier: disable=duplicated-name
+    actual = if_cuda_libs("@cuda_cudart//:cudart", ":cudart_stub"),
+    visibility = ["//visibility:public"],
+)
+
 cuda_stub(
     name = "cudnn",
     srcs = ["cudnn.symbols"],
 )
 
 cc_library(
-    name = "cudnn",  # buildifier: disable=duplicated-name
+    name = "cudnn_stub",
     srcs = if_cuda_is_configured([
         "cudnn_stub.cc",
         "cudnn.tramp.S",
@@ -155,9 +177,21 @@ cc_library(
     ]),
 )
 
+alias(
+    name = "cudnn",  # buildifier: disable=duplicated-name
+    actual = if_cuda_libs("@cuda_cudnn//:cudnn", ":cudnn_stub"),
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
-    name = "nccl_rpath",
+    name = "nccl_rpath_flags",
     linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/nccl/lib")),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "nccl_rpath",
+    actual = if_cuda_libs("@cuda_nccl//:nccl", ":nccl_rpath_flags"),
     visibility = ["//visibility:public"],
 )
 
@@ -173,7 +207,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "cufft",  # buildifier: disable=duplicated-name
+    name = "cufft_stub",
     srcs = if_cuda_is_configured([
         "cufft_stub.cc",
         "cufft.tramp.S",
@@ -192,13 +226,19 @@ cc_library(
     ]),
 )
 
+alias(
+    name = "cufft",  # buildifier: disable=duplicated-name
+    actual = if_cuda_libs("@cuda_cufft//:cufft", ":cufft_stub"),
+    visibility = ["//visibility:public"],
+)
+
 cuda_stub(
     name = "cupti",
     srcs = ["cupti.symbols"],
 )
 
 cc_library(
-    name = "cupti",  # buildifier: disable=duplicated-name
+    name = "cupti_stub",
     srcs = if_cuda_is_configured([
         "cupti_stub.cc",
         "cupti.tramp.S",
@@ -219,13 +259,19 @@ cc_library(
     ]),
 )
 
+alias(
+    name = "cupti",  # buildifier: disable=duplicated-name
+    actual = if_cuda_libs("@cuda_cupti//:cupti", ":cupti_stub"),
+    visibility = ["//visibility:public"],
+)
+
 cuda_stub(
     name = "cusolver",
     srcs = ["cusolver.symbols"],
 )
 
 cc_library(
-    name = "cusolver",  # buildifier: disable=duplicated-name
+    name = "cusolver_stub",
     srcs = if_cuda_is_configured([
         "cusolver_stub.cc",
         "cusolver.tramp.S",
@@ -244,13 +290,19 @@ cc_library(
     ]),
 )
 
+alias(
+    name = "cusolver",  # buildifier: disable=duplicated-name
+    actual = if_cuda_libs("@cuda_cusolver//:cusolver", ":cusolver_stub"),
+    visibility = ["//visibility:public"],
+)
+
 cuda_stub(
     name = "cusparse",
     srcs = ["cusparse.symbols"],
 )
 
 cc_library(
-    name = "cusparse",  # buildifier: disable=duplicated-name
+    name = "cusparse_stub",
     srcs = if_cuda_is_configured([
         "cusparse_stub.cc",
         "cusparse.tramp.S",
@@ -270,13 +322,19 @@ cc_library(
     ]),
 )
 
+alias(
+    name = "cusparse",  # buildifier: disable=duplicated-name
+    actual = if_cuda_libs("@cuda_cusparse//:cusparse", ":cusparse_stub"),
+    visibility = ["//visibility:public"],
+)
+
 cuda_stub(
     name = "nccl",
     srcs = ["nccl.symbols"],
 )
 
 cc_library(
-    name = "nccl_stub",
+    name = "nccl",  # buildifier: disable=duplicated-name
     srcs = if_cuda_is_configured([
         "nccl_stub.cc",
         "nccl.tramp.S",
@@ -295,4 +353,10 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
+)
+
+alias(
+    name = "nccl_stub",  # buildifier: disable=duplicated-name
+    actual = if_cuda_libs("@cuda_nccl//:nccl", ":nccl"),
+    visibility = ["//visibility:public"],
 )

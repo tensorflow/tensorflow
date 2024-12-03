@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
@@ -41,29 +42,30 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/common/file_utils.h"
+#include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
 #include "shardy/dialect/sdy/transforms/propagation/passes.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout.h"
 #include "xla/map_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/mhlo_export.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/mhlo_import.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/service/spmd/shardy/utils.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
-#include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -308,11 +310,22 @@ absl::StatusOr<bool> ShardyXLA::Run(
                           /*flatten_computation_args_result=*/true));
 
   std::string shardyDir = hloModule->config().debug_options().xla_dump_to();
+
+  if (shardyDir == "sponge") {
+    shardyDir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+    if (shardyDir.empty()) {
+      LOG(WARNING) << "\"sponge\" specified as dump directory but "
+                      "TEST_UNDECLARED_OUTPUTS_DIR is not set!";
+    }
+  }
+
   if (!shardyDir.empty()) {
     shardyDir =
         tsl::io::JoinPath(shardyDir, "shardy",
                           std::string_view(mlirModule->getName().value_or("")));
+    LOG(INFO) << "Using Shardy output directory: " << shardyDir;
   }
+
   // MLIR pipeline: (1) import, (2) Shardy, and (3) export.
 
   bool enableVerifier = false;
@@ -322,21 +335,17 @@ absl::StatusOr<bool> ShardyXLA::Run(
 
   mlir::PassManager pm(mlirContext.get());
   pm.enableVerifier(enableVerifier);
+  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir,
+                                               "sdy_module_before_xla_import"));
   bool useTupleArgs = false;
   mlir::DictionaryAttr moduleFrontendAttrs = getFrontendAttrs(*mlirModule);
-  if (moduleFrontendAttrs && moduleFrontendAttrs.get(kUseTupleArgs)) {
+  if (hasKey(moduleFrontendAttrs, kUseTupleArgs)) {
     useTupleArgs = true;
     removeFrontendAttribute(*mlirModule, kUseTupleArgs);
   }
-  // TODO(bartchr): Only call addSdyRoundTripImportPipeline when JAX & PartIR
-  // integration is complete. Need to branch on `kPythonIntegrationComplete`
-  // since partir.jit lowers to SDY (so call addSdyRoundTripImportPipeline) but
-  // jax.jit doesn't yet (so call addMhloImportPipeline).
-  if (moduleFrontendAttrs &&
-      moduleFrontendAttrs.get(kPythonIntegrationComplete)) {
-    removeFrontendAttribute(*mlirModule, kPythonIntegrationComplete);
-    addSdyRoundTripImportPipeline(pm);
-  } else {
+
+  if (hasKey(moduleFrontendAttrs, kImportMhloShardings)) {
+    removeFrontendAttribute(*mlirModule, kImportMhloShardings);
     auto spanToArrayRef = [](absl::Span<const bool> span) {
       return mlir::ArrayRef<bool>(span.data(), span.size());
     };
@@ -347,6 +356,9 @@ absl::StatusOr<bool> ShardyXLA::Run(
                            .allow_spmd_sharding_propagation_to_parameters()),
         spanToArrayRef(
             hloModule->config().allow_spmd_sharding_propagation_to_output()));
+  } else {
+    // This is the default path.
+    addSdyRoundTripImportPipeline(pm);
   }
 
   // Store the entry computation layout, input-output alias config, and buffer
@@ -366,8 +378,6 @@ absl::StatusOr<bool> ShardyXLA::Run(
                                      originalParamIndexToFlattenedNum,
                                      useTupleArgs);
 
-  pm.addPass(
-      mlir::sdy::createSaveModuleOpPass(shardyDir, "sdy_module_after_import"));
   if (runSdyShardingPropagation) {
     // Shardy is currently operating on stablehlo, since this is what JAX
     // emits. Long term shardy will be fully dialect agnostic, and both mhlo
@@ -375,14 +385,15 @@ absl::StatusOr<bool> ShardyXLA::Run(
     pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
     // NOTE: if we are using auto-spmd, we will use conservative propagation
     // since the TOAST cost model cannot account for split axes or padding.
-    mlir::sdy::addPropagationPipeline(
-        pm, shardyDir,
-        /*conservativePropagation=*/hloModule->use_auto_spmd_partitioning());
+    mlir::sdy::PropagationOptions options;
+    options.dumpDirectory = shardyDir;
+    options.conservativePropagation = hloModule->use_auto_spmd_partitioning();
+    mlir::sdy::addPropagationPipeline(pm, options);
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   }
   addMhloExportPipeline(pm);
-  pm.addPass(
-      mlir::sdy::createSaveModuleOpPass(shardyDir, "sdy_module_after_export"));
+  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir,
+                                               "sdy_module_after_xla_export"));
   tsl::StatusScopedDiagnosticHandler diagnosticHandler(mlirContext.get());
   TF_RETURN_IF_ERROR(diagnosticHandler.consumeStatus(pm.run(*mlirModule)));
 
@@ -415,9 +426,7 @@ absl::StatusOr<bool> ShardyXLA::Run(
 
   // We don't fully replace the HLO module, so it will continue to have the
   // temporary frontend attributes. So clean them up as XLA won't need them.
-  removeFrontendAttributes(
-      hloModule,
-      {kUseTupleArgs, kPythonIntegrationComplete, kMeshesRoundTripAttr});
+  removeFrontendAttributes(hloModule, {kUseTupleArgs, kMeshesRoundTripAttr});
 
   return true;
 }

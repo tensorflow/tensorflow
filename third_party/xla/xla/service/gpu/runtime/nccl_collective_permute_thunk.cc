@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -53,6 +54,26 @@ absl::StatusOr<const int64_t> GetCurrentId(
           : current_logical_id.computation_id;
   return current_id;
 }
+
+bool IsLocalPeerTransfer(
+    const NcclP2PConfig::SourceTargetMapEntry& source_target,
+    const int64_t current_id, const int64_t device_count) {
+  const std::optional<int64_t> source_id = source_target.source;
+  const std::optional<int64_t> target_id = source_target.target;
+  // Mixing nccl p2p with p2p memcopy will cause random deadlocks, namely
+  // when calling nccl call and cuda memcpy p2p together(which both are
+  // synchronizing devices), in this case if this rank is sending across host
+  // using a nccl call but receiving from a local peer which is going through
+  // cuda api, the deadlock could happen because nccl cannot ensure the
+  // order of cuda api calls.
+  // We determine if it's a local peer if the source/target id is within a node
+  // if they are present.
+  int64_t host_id = (current_id / device_count);
+  if (source_id && host_id != *source_id / device_count) return false;
+  if (target_id && host_id != *target_id / device_count) return false;
+  return true;
+}
+
 }  // namespace
 
 NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
@@ -133,6 +154,10 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
 absl::Status NcclCollectivePermuteStartThunk::Initialize(
     const InitializeParams& params) {
   TF_RETURN_IF_ERROR(NcclCollectiveThunk::Initialize(params));
+  device_count_ = params.local_device_count;
+  CHECK_GT(device_count_, 0);
+  VLOG(5) << "Local device count: " << device_count_;
+
   if (p2p_memcpy_enabled_) {
     TF_ASSIGN_OR_RETURN(const int64_t current_id,
                         GetCurrentId(params.collective_params, config_));
@@ -145,7 +170,7 @@ absl::Status NcclCollectivePermuteStartThunk::Initialize(
 
 absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
-    NcclCommHandleWrapper comm_wrapper) {
+    CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -157,20 +182,21 @@ absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
 
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
+  bool is_local_peer =
+      IsLocalPeerTransfer(source_target, current_id, device_count_);
+  VLOG(5) << "Is local peer : " << (is_local_peer ? "true" : "false");
 
-  bool use_memcpy = comm_wrapper.is_local &&
-                    recv_ptr_map_.IsInitialized(current_id) &&
+  bool use_memcpy = is_local_peer && recv_ptr_map_.IsInitialized(current_id) &&
                     p2p_memcpy_enabled_;
 
   return ::xla::gpu::RunCollectivePermute(
-      nccl_api(), source_target, device_buffers[0], stream,
-      comm_wrapper.comm_handle, device_string, current_id, use_memcpy,
-      recv_ptr_map_);
+      nccl_api(), source_target, device_buffers[0], stream, comm_handle.comm,
+      device_string, current_id, use_memcpy, recv_ptr_map_);
 }
 
 absl::Status RunCollectivePermute(
     NcclApi* nccl_api, NcclP2PConfig::SourceTargetMapEntry source_target,
-    DeviceBufferPair& buffer, se::Stream& stream, NcclApi::NcclCommHandle comm,
+    DeviceBufferPair& buffer, se::Stream& stream, Communicator* comm,
     absl::string_view device_string, int64_t current_id, bool use_memcpy,
     NcclCollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map) {
   // Determine the source and target IDs for this instance. The source ID is the
@@ -201,7 +227,7 @@ absl::Status RunCollectivePermute(
   VLOG(3) << "Performing collective permute from device ordinal: "
           << device_ordinal << " current_id " << current_id;
   TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(nccl_api, device_ordinal, {buffer}, comm));
+      MaybeRegisterBuffers(nccl_api, stream.parent(), {buffer}, comm));
 
   const std::optional<int64_t> source_id = source_target.source;
   const std::optional<int64_t> target_id = source_target.target;

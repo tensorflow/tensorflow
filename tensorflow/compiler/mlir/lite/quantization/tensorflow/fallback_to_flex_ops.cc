@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/attributes.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/STLExtras.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/platform/statusor.h"
 
 namespace mlir {
 namespace TF {

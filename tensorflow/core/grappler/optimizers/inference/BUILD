@@ -19,14 +19,12 @@ package(
 tf_proto_library(
     name = "batch_op_rewriter_proto",
     srcs = ["batch_op_rewriter.proto"],
-    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "batch_op_rewriter_proto_py_pb2",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":batch_op_rewriter_proto"],
 # )

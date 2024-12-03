@@ -17,6 +17,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/log/check.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -105,41 +107,6 @@ struct Val {
   }
 };
 
-template <typename OpTy, ma::CmpFPredicate pred>
-struct RewriteToCmpSelect : public mlir::OpRewritePattern<OpTy> {
-  using mlir::OpRewritePattern<OpTy>::OpRewritePattern;
-
-  RewriteToCmpSelect(mlir::MLIRContext* context, bool include_f32)
-      : mlir::OpRewritePattern<OpTy>(context), include_f32(include_f32) {}
-
-  mlir::LogicalResult matchAndRewrite(
-      OpTy op, mlir::PatternRewriter& rewriter) const override {
-    if (op.getType().isF32() && !include_f32) {
-      return rewriter.notifyMatchFailure(op, "not rewriting f32 min/max");
-    }
-
-    auto lhs_is_nan = rewriter.create<ma::CmpFOp>(
-        op.getLoc(), ma::CmpFPredicate::UNE, op.getLhs(), op.getLhs());
-    auto rhs_is_not_nan = rewriter.create<ma::CmpFOp>(
-        op.getLoc(), ma::CmpFPredicate::OEQ, op.getRhs(), op.getRhs());
-
-    auto return_lhs =
-        rewriter.create<ma::CmpFOp>(op.getLoc(), pred, op.getLhs(), op.getRhs())
-            .getResult();
-
-    // logic: isNaN(lhs) || (!isNan(rhs) && return_lhs) ? lhs : rhs
-    return_lhs = rewriter.create<ma::OrIOp>(
-        op.getLoc(), lhs_is_nan,
-        rewriter.create<ma::AndIOp>(op.getLoc(), rhs_is_not_nan, return_lhs));
-
-    rewriter.replaceOpWithNewOp<SelectOp>(op, op.getResult().getType(),
-                                          return_lhs, op.getLhs(), op.getRhs());
-    return mlir::success();
-  }
-
-  bool include_f32;
-};
-
 struct RewriteErf32Pattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -209,12 +176,19 @@ Value IsInf(Value value, mlir::ImplicitLocOpBuilder& b) {
   }
 
   assert(ty.getIntOrFloatBitWidth() == 8);
-  if (!ty.isFloat8E5M2()) {
-    // F8E5M2 is the only 8 bit float with infinities.
+  // F8E5M2, F8E4M3, F8E3M4 are the only 8 bit float with infinities.
+  if (ty.isFloat8E5M2()) {
+    Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
+    return (bits & 0x7F) == 0x7C;
+  } else if (ty.isFloat8E4M3()) {
+    Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
+    return (bits & 0x7F) == 0x78;
+  } else if (ty.isFloat8E3M4()) {
+    Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
+    return (bits & 0x7F) == 0x70;
+  } else {
     return b.create<ma::ConstantIntOp>(false, b.getI1Type());
   }
-  Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
-  return (bits & 0x7F) == 0x7C;
 }
 
 Value IsNaN(Value value, mlir::ImplicitLocOpBuilder& b) {
@@ -225,8 +199,14 @@ Value IsNaN(Value value, mlir::ImplicitLocOpBuilder& b) {
 
   assert(ty.getIntOrFloatBitWidth() == 8);
   Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
-  if (ty.isFloat8E5M2() || ty.isFloat8E4M3FN()) {
-    return (bits & 0x7F) == 0x7F;
+  if (ty.isFloat8E5M2()) {
+    return (bits & 0b0111'1111).cmp(ma::CmpIPredicate::ugt, 0b0111'1100);
+  } else if (ty.isFloat8E4M3()) {
+    return (bits & 0b0111'1111).cmp(ma::CmpIPredicate::ugt, 0b0111'1000);
+  } else if (ty.isFloat8E4M3FN()) {
+    return (bits & 0b0111'1111) == 0b0111'1111;
+  } else if (ty.isFloat8E3M4()) {
+    return (bits & 0b0111'1111).cmp(ma::CmpIPredicate::ugt, 0b0111'0000);
   }
   return bits == 0x80;
 }
@@ -239,7 +219,8 @@ Value EmitReducePrecision(Value value, int exponent_bits, int mantissa_bits,
   return mlir::mhlo::MhloOpToStdScalarOp::mapOpOfType<
       mlir::mhlo::ReducePrecisionOp>(
       b.getLoc(), value.getType(), {value.getType()},
-      mlir::mhlo::ReducePrecisionOp::Adaptor(value, nullptr, properties), &b);
+      mlir::mhlo::ReducePrecisionOp::Adaptor(value, nullptr, properties),
+      /*attributes=*/std::nullopt, &b);
 }
 
 Value EmitF16ToF8e5m2(Value in, mlir::ImplicitLocOpBuilder& b) {
@@ -264,12 +245,24 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
                           mlir::ImplicitLocOpBuilder& b) {
   using ma::CmpIPredicate;
 
-  // This is a port of ConvertImpl in
-  // https://github.com/jax-ml/ml_dtypes/blob/main/ml_dtypes/include/float8.h
   auto from_ty = mlir::cast<mlir::FloatType>(value.getType());
   if (to_ty == b.getFloat8E5M2Type() && from_ty == b.getF16Type()) {
     return EmitF16ToF8e5m2(value, b);
   }
+
+  if (to_ty == b.getFloat8E5M2Type() && from_ty == b.getBF16Type()) {
+    // Going through f32 and f16 is significantly faster than the fallback code
+    // below.
+    return EmitF16ToF8e5m2(
+        b.create<ma::TruncFOp>(b.getF16Type(),
+                               b.create<ma::ExtFOp>(b.getF32Type(), value)),
+        b);
+  }
+
+  // Fallback code. The generated code here is not good. If you end up here,
+  // you might want to add a more specific conversion.
+  // This is a port of ConvertImpl in
+  // https://github.com/jax-ml/ml_dtypes/blob/main/ml_dtypes/include/float8.h
 
   int from_mantissa = GetSignificandBits(from_ty);
   int from_bias = GetExponentBias(from_ty);
@@ -564,7 +557,8 @@ struct RewriteF8Cst : public mlir::OpRewritePattern<ma::CmpFOp> {
       int64_t constant = rhs_cst.bitcastToAPInt().getZExtValue();
       // If we're comparing to +-0, compare the absolute values.
       if (rhs_cst.isZero() &&
-          (lhs.getType().isFloat8E4M3FN() || lhs.getType().isFloat8E5M2())) {
+          (lhs.getType().isFloat8E3M4() || lhs.getType().isFloat8E4M3() ||
+           lhs.getType().isFloat8E4M3FN() || lhs.getType().isFloat8E5M2())) {
         int_value = int_value & 0x7f;
         constant &= 0x7f;
       }
@@ -647,10 +641,6 @@ class ExpandFloatOpsPass
   using ExpandFloatOpsPassBase::ExpandFloatOpsPassBase;
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
-    patterns.add<RewriteToCmpSelect<ma::MinimumFOp, ma::CmpFPredicate::OLE>>(
-        &getContext(), /*include_f32=*/pre_ampere_);
-    patterns.add<RewriteToCmpSelect<ma::MaximumFOp, ma::CmpFPredicate::OGE>>(
-        &getContext(), /*include_f32=*/pre_ampere_);
     patterns.add<RewriteTruncFPattern, RewriteExtFPattern, RewriteAbsFPattern,
                  RewriteF8Cst, RewriteIToFpPattern<ma::SIToFPOp>,
                  RewriteIToFpPattern<ma::UIToFPOp>,
@@ -667,8 +657,8 @@ class ExpandFloatOpsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool pre_ampere) {
-  return createExpandFloatOpsPass(ExpandFloatOpsPassOptions{pre_ampere});
+std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass() {
+  return std::make_unique<ExpandFloatOpsPass>();
 }
 
 }  // namespace gpu

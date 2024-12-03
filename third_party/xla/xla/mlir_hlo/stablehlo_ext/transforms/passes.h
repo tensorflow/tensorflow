@@ -17,8 +17,10 @@ limitations under the License.
 #define STABLEHLO_EXT_TRANSFORMS_PASSES_H
 
 #include <memory>
+#include <string>
 
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassOptions.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {

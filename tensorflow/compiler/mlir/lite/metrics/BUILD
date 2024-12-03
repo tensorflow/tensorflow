@@ -11,7 +11,6 @@ package(
     default_visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/lite/python/converter:__subpackages__",
         "//tensorflow/lite/toco/python:__subpackages__",
     ],
     licenses = ["notice"],
@@ -85,7 +84,6 @@ cc_library(
 tf_proto_library(
     name = "converter_error_data_proto",
     srcs = ["converter_error_data.proto"],
-    cc_api_version = 2,
     visibility = [
         "//visibility:public",
     ],
@@ -94,7 +92,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "converter_error_data_proto_py",
-#     api_version = 2,
 #     visibility = [
 #         "//visibility:public",
 #     ],

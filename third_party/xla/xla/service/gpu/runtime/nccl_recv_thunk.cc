@@ -64,9 +64,9 @@ absl::Status NcclRecvThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status NcclRecvThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream,
-    NcclCommHandleWrapper comm_wrapper) {
+absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
+                                              se::Stream& stream,
+                                              CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -93,9 +93,11 @@ absl::Status NcclRecvThunk::RunNcclCollective(
   // source, just memzero() the destination buffer.
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing Recv from device ordinal: " << device_ordinal
-          << "current_id " << current_id;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(nccl_api(), device_ordinal, {buffer},
-                                          comm_wrapper.comm_handle));
+          << ", current_id: " << current_id << ", group mode: "
+          << CollectiveOpGroupModeToString(config_.config.group_mode);
+  ;
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(nccl_api(), stream.parent(), {buffer},
+                                          comm_handle.comm));
 
   const std::optional<int64_t> source_id = source_target.source;
   se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
@@ -129,14 +131,13 @@ absl::Status NcclRecvThunk::RunNcclCollective(
     if (should_run) {
       TF_RETURN_IF_ERROR(nccl_api()->Recv(dest_addr, buffer.element_type,
                                           buffer.element_count, *source_id,
-                                          comm_wrapper.comm_handle, &stream));
+                                          comm_handle.comm, &stream));
     }
 
   } else {
     // If there is no source peer, i.e. no sender to this instance, zero out
     // the destination buffer.
-    VLOG(3) << absl::StreamFormat("%s : collective-Permute: Issuing MemZero",
-                                  device_string);
+    VLOG(3) << absl::StreamFormat("%s : Recv: Issuing MemZero", device_string);
     TF_RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
   }
   return absl::OkStatus();

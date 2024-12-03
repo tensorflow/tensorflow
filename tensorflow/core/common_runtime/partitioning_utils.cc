@@ -36,7 +36,7 @@ namespace {
 
 // A helper to partiton a `graph` given a `device_set` and a `graph`.
 // `partitions` maps device names to the graphdef assigned to that device.
-Status PartitionFunctionGraph(
+absl::Status PartitionFunctionGraph(
     const DeviceSet& device_set, Graph* graph,
     std::unordered_map<string, GraphDef>* partitions,
     std::function<string(const Node*)> node_to_loc,
@@ -82,7 +82,7 @@ constexpr char kTensorNameAttr[] = "tensor_name";
 
 // Adds a dependency to each pair of matching Send/Recv ops to make the
 // dependency explicit.
-Status MakeSendRecvDependencyExplicit(Graph* graph) {
+absl::Status MakeSendRecvDependencyExplicit(Graph* graph) {
   // Find all matching Send/Recv pairs.
   absl::flat_hash_map<std::string, SendRecvPair> send_recv_pairs;
   for (Node* node : graph->op_nodes()) {
@@ -115,7 +115,7 @@ Status MakeSendRecvDependencyExplicit(Graph* graph) {
 
 }  // namespace
 
-Status PartitionFunctionGraph(
+absl::Status PartitionFunctionGraph(
     const DeviceSet& device_set, std::unique_ptr<Graph> graph,
     std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs,
     std::function<string(const Edge*)> get_tensor_name_attr) {
@@ -199,7 +199,7 @@ absl::StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
   return std::move(new_graph);
 }
 
-Status UpdateArgAndRetvalMetadata(
+absl::Status UpdateArgAndRetvalMetadata(
     Graph* graph, std::vector<FunctionArgIndex>* arg_indices,
     std::vector<int>* ret_indices,
     std::vector<AllocatorAttributes>* arg_alloc_attrs,

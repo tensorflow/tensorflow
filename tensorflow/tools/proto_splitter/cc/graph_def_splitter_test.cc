@@ -44,23 +44,6 @@ namespace {
 
 using ::tensorflow::proto_splitter::ChunkedMessage;
 
-// Ensures that all Messages are less than the max size. std::string chunks are
-// not limited by the max size, so they are ignored in this check.
-#define EXPECT_CHUNK_SIZES(chunks, max_size)                                \
-  do {                                                                      \
-    for (auto chunk : *chunks) {                                            \
-      if (std::holds_alternative<std::shared_ptr<tsl::protobuf::Message>>(  \
-              chunk)) {                                                     \
-        EXPECT_LE(std::get<std::shared_ptr<tsl::protobuf::Message>>(chunk)  \
-                      ->ByteSizeLong(),                                     \
-                  max_size);                                                \
-      } else if (std::holds_alternative<tsl::protobuf::Message*>(chunk)) {  \
-        EXPECT_LE(std::get<tsl::protobuf::Message*>(chunk)->ByteSizeLong(), \
-                  max_size);                                                \
-      }                                                                     \
-    }                                                                       \
-  } while (0)
-
 TEST(GraphDefSplitterTest, TestLargeConstant) {
   GraphDef proto;
   const std::string graph_def_path =

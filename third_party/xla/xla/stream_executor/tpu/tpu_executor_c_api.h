@@ -28,8 +28,7 @@ SE_Platform* TpuPlatform_New();
 void TpuPlatform_Free(SE_Platform* platform);
 void TpuPlatform_Initialize(SE_Platform* platform, TF_Status* status);
 bool TpuPlatform_Initialized(SE_Platform* platform);
-SE_StreamExecutor* TpuPlatform_GetExecutor(SE_Platform* platform,
-                                           SE_StreamExecutorConfig* config,
+SE_StreamExecutor* TpuPlatform_GetExecutor(SE_Platform* platform, int ordinal,
                                            TF_Status* status);
 SE_PlatformId TpuPlatform_Id(SE_Platform* platform);
 int64_t TpuPlatform_VisibleDeviceCount(SE_Platform* platform);
@@ -131,10 +130,6 @@ void TpuStatus_Free(TF_Status* status);
 const char* TpuStatus_Message(TF_Status* status);
 int TpuStatus_Code(TF_Status* status);
 bool TpuStatus_Ok(TF_Status* status);
-
-SE_StreamExecutorConfig* TpuStreamExecutorConfig_Default();
-void TpuStreamExecutorConfig_SetOrdinal(SE_StreamExecutorConfig*, int ordinal);
-void TpuStreamExecutorConfig_Free(SE_StreamExecutorConfig*);
 
 SE_DeviceDescription* TpuDeviceDescription_New();
 void TpuDeviceDescription_Free(SE_DeviceDescription* description);
@@ -294,7 +289,6 @@ TFTPU_CAPI_EXPORT void TpuCompiler_DefaultDeviceShapeRepresentation(
 TFTPU_CAPI_EXPORT void TpuExecutable_ExecuteAsyncOnStream(
     SE_Executable* executable, SE_ExecutableRunOptions* se_options,
     SE_ExecutionInput** se_arguments, int se_arguments_size,
-    SE_HloExecutionProfile* hlo_execution_profile,
     SE_ExecutionOutput* se_output, TF_Status* status);
 
 // This frees the XLA_ShapeIndex* array allocated when se_output is returned by
@@ -416,10 +410,6 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Message);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Code);
   TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Ok);
-
-  TFTPU_ADD_FN_IN_STRUCT(TpuStreamExecutorConfig_Default);
-  TFTPU_ADD_FN_IN_STRUCT(TpuStreamExecutorConfig_SetOrdinal);
-  TFTPU_ADD_FN_IN_STRUCT(TpuStreamExecutorConfig_Free);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuDeviceDescription_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuDeviceDescription_Free);

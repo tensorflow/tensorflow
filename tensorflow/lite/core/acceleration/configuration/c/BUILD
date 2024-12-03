@@ -153,6 +153,7 @@ cc_test(
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -181,6 +182,7 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
         "@pthreadpool",
     ],
 )

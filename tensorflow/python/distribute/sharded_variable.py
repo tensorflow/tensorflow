@@ -620,7 +620,7 @@ class ShardedVariableMixin(trackable.Trackable):
     actual_first_dim = [v.shape.as_list()[0] for v in self._variables]
     if expect_first_dim != actual_first_dim:
       raise NotImplementedError(
-          'scatter_xxx ops are not supported in Sharded Variable that does not '
+          'scatter_xxx ops are not supported in ShardedVariable that does not '
           'conform to "div" sharding'
       )
 
@@ -632,8 +632,8 @@ class ShardedVariableMixin(trackable.Trackable):
     #
     # Example:
     #   base = 10, extra = 2, partitions: [0, 11), [11, 22), [22, 32)
-    #   index = 10 -> partition_assigment = 0
-    #   index = 22 -> partition_assiment = 2
+    #   index = 10 -> partition_assignment = 0
+    #   index = 22 -> partition_assignment = 2
     partition_assignments = math_ops.maximum(
         indices // (base + 1), (indices - extra) // base
     )

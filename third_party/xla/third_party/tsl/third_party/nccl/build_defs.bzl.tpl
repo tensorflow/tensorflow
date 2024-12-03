@@ -5,7 +5,6 @@ load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
 # CUDA toolkit version as tuple (e.g. '(11, 1)').
 _cuda_version = %{cuda_version}
-_cuda_clang = %{cuda_clang}
 
 def _rdc_copts():
     """Returns copts for compiling relocatable device code."""
@@ -121,25 +120,25 @@ _device_link = rule(
         "gpu_archs": attr.string_list(),
         "nvlink_args": attr.string_list(),
         "_nvlink": attr.label(
-            default = Label("@local_config_cuda//cuda:cuda/bin/nvlink"),
+            default = Label("%{nvlink_label}"),
             allow_single_file = True,
             executable = True,
             cfg = "host",
         ),
         "_fatbinary": attr.label(
-            default = Label("@local_config_cuda//cuda:cuda/bin/fatbinary"),
+            default = Label("%{fatbinary_label}"),
             allow_single_file = True,
             executable = True,
             cfg = "host",
         ),
         "_bin2c": attr.label(
-            default = Label("@local_config_cuda//cuda:cuda/bin/bin2c"),
+            default = Label("%{bin2c_label}"),
             allow_single_file = True,
             executable = True,
             cfg = "host",
         ),
         "_link_stub": attr.label(
-            default = Label("@local_config_cuda//cuda:cuda/bin/crt/link.stub"),
+            default = Label("%{link_stub_label}"),
             allow_single_file = True,
         ),
     },
@@ -189,7 +188,7 @@ _prune_relocatable_code = rule(
         "input": attr.label(mandatory = True, allow_files = True),
         "gpu_archs": attr.string_list(),
         "_nvprune": attr.label(
-            default = Label("@local_config_cuda//cuda:cuda/bin/nvprune"),
+            default = Label("%{nvprune_label}"),
             allow_single_file = True,
             executable = True,
             cfg = "host",

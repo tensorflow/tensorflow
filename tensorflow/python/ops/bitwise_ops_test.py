@@ -60,7 +60,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
     for dtype in dtype_list:
       with self.cached_session():
         print("PopulationCount test: ", dtype)
-        inputs = np.array(raw_inputs, dtype=dtype.as_numpy_dtype)
+        inputs = np.array(raw_inputs).astype(dtype.as_numpy_dtype)
         truth = [count_bits(x) for x in inputs]
         input_tensor = constant_op.constant(inputs, dtype=dtype)
         popcnt_result = self.evaluate(

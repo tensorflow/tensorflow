@@ -1,4 +1,5 @@
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-simplify-arith -cse -canonicalize | FileCheck %s
+// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-simplify-arith -cse \
+// RUN:   -canonicalize | FileCheck %s
 
 module {
   func.func @unknown(%arg0: index {xla.range = [0 : index, 42 : index]}) -> i1 {
@@ -247,7 +248,8 @@ func.func @refine_constraints(%tensor: tensor<100xf32>) -> tensor<100xf32> {
   %c42_f32 = arith.constant 42.0 : f32
   %loop = scf.for %i = %c0 to %c3 step %c1
       iter_args(%in_ = %tensor) -> (tensor<100xf32>) {
-    %0 = xla_gpu.apply_indexing #xla_gpu.indexing_map<(d0) -> (d0 mod 4), domain: d0 in [0, 9]>(%i)
+    %0 = xla_gpu.apply_indexing #xla_gpu.indexing_map<"(d0) -> (d0 mod 4),"
+      "domain: d0 in [0, 9]">(%i)
     %updated = tensor.insert %c42_f32 into %in_[%0] : tensor<100xf32>
     scf.yield %updated :tensor<100xf32>
   }
@@ -261,10 +263,11 @@ func.func @refine_constraints(%tensor: tensor<100xf32>) -> tensor<100xf32> {
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (((d0 * 4 + d1 * 512 + s1) floordiv 9 + s0 * 32768) mod 2400000),
-                             domain: d0 in [0, 127], d1 in [0, 575], s0 in [0, 73], s1 in [0, 3]>
-#map1 = #xla_gpu.indexing_map<(d0, d1)[s0] -> ((d0 * 4 + d1 * 512 + s0) mod 9),
-                             domain: d0 in [0, 127], d1 in [0, 575], s0 in [0, 3]>
+#map = #xla_gpu.indexing_map<
+  "(d0, d1)[s0, s1] -> (((d0 * 4 + d1 * 512 + s1) floordiv 9 + s0 * 32768) mod 2400000),"
+  "domain: d0 in [0, 127], d1 in [0, 575], s0 in [0, 73], s1 in [0, 3]">
+#map1 = #xla_gpu.indexing_map<"(d0, d1)[s0] -> ((d0 * 4 + d1 * 512 + s0) mod 9),"
+  "domain: d0 in [0, 127], d1 in [0, 575], s0 in [0, 3]">
 func.func @refine_constraints_for_symbol(%arg0: tensor<2400000x9xf32>,
     %arg1: tensor<2400000x9xf32>) -> tensor<2400000x9xf32> {
   %c0 = arith.constant 0 : index
@@ -288,5 +291,116 @@ func.func @refine_constraints_for_symbol(%arg0: tensor<2400000x9xf32>,
   }
   return %0 : tensor<2400000x9xf32>
 }
-// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> ((d0 * 4 + d1 * 512 + s1) floordiv 9 + s0 * 32768),
+// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<"(d0, d1, d2, d3) -> (d2 * 32768 + (d0 * 4 + d1 * 512 + d3) floordiv 9),
 // CHECK-LABEL: func.func @refine_constraints_for_symbol
+
+// -----
+
+#map = #xla_gpu.indexing_map<
+  "(d0, d1, d2, d3, d4, d5)[s0] -> ((d0 * 4 + s0) floordiv 6, (d0 * 4 + s0) mod 6),"
+  "domain:"
+  "d0 in [0, 29],"
+  "d1 in [0, 0],"
+  "d2 in [0, 0],"
+  "d3 in [0, 0],"
+  "d4 in [0, 0],"
+  "d5 in [0, 0],"
+  "s0 in [0, 3],"
+  "d0 * 4 + s0 in [0, 29]">
+func.func @dus(%arg0: tensor<20x30xf32>, %arg1: tensor<5x6xf32>, %arg2: i32, %arg3: i32, %arg4: tensor<20x30xf32>) -> tensor<20x30xf32> {
+  %c24 = arith.constant 24 : index
+  %c15 = arith.constant 15 : index
+  %c0 = arith.constant 0 : index
+  %thread_id_x = gpu.thread_id x
+  %thread_id_y = gpu.thread_id y
+  %thread_id_z = gpu.thread_id z
+  %block_id_x = gpu.block_id x
+  %block_id_y = gpu.block_id y
+  %block_id_z = gpu.block_id z
+  %0 = arith.index_cast %arg2 : i32 to index
+  %1 = arith.minsi %0, %c15 : index
+  %2 = arith.maxsi %1, %c0 : index
+  %3 = arith.index_cast %arg3 : i32 to index
+  %4 = arith.minsi %3, %c24 : index
+  %5 = arith.maxsi %4, %c0 : index
+  %xla_loop = xla_gpu.loop (%thread_id_x, %thread_id_y, %thread_id_z, %block_id_x, %block_id_y, %block_id_z)[%i] -> (%ra, %rb) in #map iter_args(%iter = %arg4) -> (tensor<20x30xf32>) {
+    %6 = arith.addi %2, %ra : index
+    %7 = arith.addi %5, %rb : index
+    %extracted = tensor.extract %arg1[%ra, %rb] : tensor<5x6xf32>
+    %inserted = tensor.insert %extracted into %iter[%6, %7] : tensor<20x30xf32>
+    xla_gpu.yield %inserted : tensor<20x30xf32>
+  }
+  return %xla_loop : tensor<20x30xf32>
+}
+
+// CHECK-LABEL: func.func @dus
+// CHECK: arith.minsi
+// CHECK-SAME: xla.range = [-9223372036854775808 : index, 15 : index]
+// CHECK: arith.maxsi
+// CHECK-SAME: xla.range = [0 : index, 15 : index]
+// CHECK: arith.minsi
+// CHECK-SAME: xla.range = [-9223372036854775808 : index, 24 : index]
+// CHECK: arith.maxsi
+// CHECK-SAME: xla.range = [0 : index, 24 : index]
+// CHECK: xla_gpu.loop
+// CHECK: arith.addi
+// CHECK-SAME: xla.range = [0 : index, 19 : index]
+// CHECK: arith.addi
+// CHECK-SAME: xla.range = [0 : index, 29 : index]
+
+// -----
+
+module {
+  func.func @annotate_range_abs_index(%v: i32) -> index {
+    %c0_i32 = arith.constant 0 : i32
+    %0 = arith.cmpi sge, %v, %c0_i32 : i32
+    %1 = arith.subi %c0_i32, %v : i32
+    %2 = arith.select %0, %v, %1 : i32
+    %3 = arith.index_cast %2 : i32 to index
+    return %3: index
+  }
+}
+
+// CHECK-LABEL: @annotate_range_abs
+// CHECK: arith.select
+// CHECK-SAME: xla.range = [0 : index, 2147483647 : index]
+// CHECK-NEXT: arith.index_cast
+// CHECK-SAME: xla.range = [0 : index, 2147483647 : index]
+
+// -----
+
+module {
+  func.func @annotate_range_abs_index(%v: i32 {xla.range = [-31 : i32, 17 : i32]}) -> index {
+    %c0_i32 = arith.constant 0 : i32
+    %0 = arith.cmpi sge, %v, %c0_i32 : i32
+    %1 = arith.subi %c0_i32, %v : i32
+    %2 = arith.select %0, %v, %1 : i32
+    %3 = arith.index_cast %2 : i32 to index
+    return %3: index
+  }
+}
+
+// CHECK-LABEL: @annotate_range_abs
+// CHECK: arith.select
+// CHECK-SAME: xla.range = [0 : index, 31 : index]
+// CHECK-NEXT: arith.index_cast
+// CHECK-SAME: xla.range = [0 : index, 31 : index]
+
+// -----
+
+module {
+  func.func @annotate_range_abs_index(%v: i32 {xla.range = [-5 : i32, 3 : i32]}) -> index {
+    %c0_i32 = arith.constant 0 : i32
+    %0 = arith.cmpi sge, %v, %c0_i32 : i32
+    %1 = arith.subi %c0_i32, %v : i32
+    %2 = arith.select %0, %v, %1 : i32
+    %3 = arith.index_cast %2 : i32 to index
+    return %3: index
+  }
+}
+
+// CHECK-LABEL: @annotate_range_abs
+// CHECK: arith.select
+// CHECK-SAME: xla.range = [0 : index, 5 : index]
+// CHECK-NEXT: arith.index_cast
+// CHECK-SAME: xla.range = [0 : index, 5 : index]

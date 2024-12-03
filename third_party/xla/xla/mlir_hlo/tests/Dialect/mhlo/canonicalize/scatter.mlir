@@ -53,6 +53,24 @@ func.func @scatter_full_overwrite() ->  tensor<512x1x6400x6400xf32> {
 
 // -----
 
+// Verify that a full overwrite of the "base" with a batched scatter is
+// correctly folded.
+func.func @scatter_batching_dims_full_overwrite() ->  tensor<3x1x6400x6400xf32> {
+  %base = mhlo.constant dense<0.000000e+00> : tensor<3x1x6400x6400xf32>
+  %index = mhlo.constant dense<0> : tensor<3x1xi32>
+  %update = mhlo.constant dense<1.000000e+00> : tensor<3x1x6400x6400xf32>
+  %scatter = "mhlo.scatter"(%base, %index, %update) ({
+    ^bb0(%arg5: tensor<f32>, %arg6: tensor<f32>):
+      "mhlo.return"(%arg6) : (tensor<f32>) -> ()
+  }) {indices_are_sorted = true, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [1, 2, 3], input_batching_dims = [0], scatter_indices_batching_dims = [0], scatter_dims_to_operand_dims = [3], index_vector_dim = 1>, unique_indices = true} : (tensor<3x1x6400x6400xf32>, tensor<3x1xi32>, tensor<3x1x6400x6400xf32>) -> tensor<3x1x6400x6400xf32>
+
+  // CHECK: %[[FOLD:.*]] = mhlo.constant dense<1.000000e+00> : tensor<3x1x6400x6400xf32>
+  // CHECK: return %[[FOLD]]
+  func.return %scatter :  tensor<3x1x6400x6400xf32>
+}
+
+// -----
+
 // Verify that a full overwrite of the "base" with a scatter is correctly folded
 // even if the base and update are not constant values.
 func.func @scatter_full_overwrite_non_const(

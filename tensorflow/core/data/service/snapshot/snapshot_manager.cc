@@ -34,6 +34,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/tsl/lib/io/compression.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "xla/tsl/protobuf/status.pb.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
@@ -43,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/lib/io/compression.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/mutex.h"
@@ -51,8 +53,6 @@ limitations under the License.
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/platform/threadpool.h"
-#include "tsl/protobuf/error_codes.pb.h"
-#include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {

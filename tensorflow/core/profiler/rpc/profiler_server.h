@@ -18,9 +18,9 @@ limitations under the License.
 #include <memory>
 
 #include "grpcpp/grpcpp.h"
+#include "xla/tsl/profiler/rpc/profiler_server.h"
 #include "tensorflow/core/platform/types.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
-#include "tsl/profiler/rpc/profiler_server.h"
 
 namespace tensorflow {
 namespace profiler {

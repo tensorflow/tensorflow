@@ -446,7 +446,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {
@@ -530,7 +530,7 @@ void SetAttrValue(const AttrValue& value, AttrValue* out) { *out = value; }
   DEFINE_SET_ATTR_VALUE_LIST(gtl::ArraySlice<ARG_TYPE>, FIELD)
 
 DEFINE_SET_ATTR_VALUE_ONE(const string&, s)
-DEFINE_SET_ATTR_VALUE_LIST(gtl::ArraySlice<string>, s)
+DEFINE_SET_ATTR_VALUE_LIST(absl::Span<const string>, s)
 DEFINE_SET_ATTR_VALUE_BOTH(const char*, s)
 DEFINE_SET_ATTR_VALUE_BOTH(int64_t, i)
 DEFINE_SET_ATTR_VALUE_BOTH(int32_t, i)
@@ -545,7 +545,7 @@ void SetAttrValue(const tstring& value, AttrValue* out) {
   out->set_s(value.data(), value.size());
 }
 
-void SetAttrValue(gtl::ArraySlice<tstring> value, AttrValue* out) {
+void SetAttrValue(absl::Span<const tstring> value, AttrValue* out) {
   out->mutable_list()->Clear();
   for (const auto& v : value) {
     out->mutable_list()->add_s(v.data(), v.size());
@@ -556,7 +556,7 @@ void SetAttrValue(StringPiece value, AttrValue* out) {
   out->set_s(value.data(), value.size());
 }
 
-void SetAttrValue(const gtl::ArraySlice<StringPiece> value, AttrValue* out) {
+void SetAttrValue(const absl::Span<const StringPiece> value, AttrValue* out) {
   out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     out->mutable_list()->add_s(v.data(), v.size());
@@ -582,21 +582,21 @@ void SetAttrValue(const PartialTensorShape& value, AttrValue* out) {
   value.AsProto(out->mutable_shape());
 }
 
-void SetAttrValue(const gtl::ArraySlice<TensorShape> value, AttrValue* out) {
+void SetAttrValue(const absl::Span<const TensorShape> value, AttrValue* out) {
   out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     v.AsProto(out->mutable_list()->add_shape());
   }
 }
 
-void SetAttrValue(gtl::ArraySlice<TensorShapeProto> value, AttrValue* out) {
+void SetAttrValue(absl::Span<const TensorShapeProto> value, AttrValue* out) {
   out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     *out->mutable_list()->add_shape() = v;
   }
 }
 
-void SetAttrValue(const gtl::ArraySlice<PartialTensorShape> value,
+void SetAttrValue(const absl::Span<const PartialTensorShape> value,
                   AttrValue* out) {
   out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
@@ -612,7 +612,7 @@ void SetAttrValue(const Tensor& value, AttrValue* out) {
   }
 }
 
-void SetAttrValue(const gtl::ArraySlice<Tensor> value, AttrValue* out) {
+void SetAttrValue(const absl::Span<const Tensor> value, AttrValue* out) {
   out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     if (v.NumElements() > 1) {
@@ -627,7 +627,7 @@ void SetAttrValue(const TensorProto& value, AttrValue* out) {
   *out->mutable_tensor() = value;
 }
 
-void SetAttrValue(const gtl::ArraySlice<TensorProto> value, AttrValue* out) {
+void SetAttrValue(const absl::Span<const TensorProto> value, AttrValue* out) {
   out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     *out->mutable_list()->add_tensor() = v;
@@ -638,7 +638,7 @@ void SetAttrValue(const NameAttrList& value, AttrValue* out) {
   *out->mutable_func() = value;
 }
 
-void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out) {
+void SetAttrValue(absl::Span<const NameAttrList> value, AttrValue* out) {
   out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     *out->mutable_list()->add_func() = v;

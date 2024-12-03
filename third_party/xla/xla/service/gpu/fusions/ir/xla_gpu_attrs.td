@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_ATTRS
 
 include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/EnumAttr.td"
 include "xla/service/gpu/fusions/ir/xla_gpu_dialect.td"
 
 class XLAGPU_Attr<string name, list<Trait> traits = []> :
@@ -27,16 +28,13 @@ def XLAGPU_AffineMapParameter :
     AttrOrTypeParameter<"::mlir::AffineMap", ""> {
 }
 
-def XLAGPU_DimVarsParameter : ArrayRefParameter<"::xla::gpu::DimVar",
-                                                "DimVarArray"> {
-}
-
-def XLAGPU_RangeVarsParameter : ArrayRefParameter<"::xla::gpu::RangeVar",
-                                                  "RangeVarArray"> {
+def XLAGPU_IndexingMapVariableParameter
+  : ArrayRefParameter<"::xla::IndexingMap::Variable",
+                      "IndexingMapVariableArray"> {
 }
 
 def XLAGPU_ConstraintsParameter :
-    ArrayRefParameter<"::std::pair<::mlir::AffineExpr, ::xla::gpu::Interval>",
+    ArrayRefParameter<"::std::pair<::mlir::AffineExpr, ::xla::Interval>",
                       "ContraintsArray"> {
 }
 
@@ -47,18 +45,58 @@ def XLAGPU_IndexingMapAttr : XLAGPU_Attr<"IndexingMap"> {
     https://openxla.org/xla/indexing for more details.
   }];
   let parameters = (ins XLAGPU_AffineMapParameter:$map,
-                        XLAGPU_DimVarsParameter:$dim_vars,
-                        XLAGPU_RangeVarsParameter:$range_vars,
+                        XLAGPU_IndexingMapVariableParameter:$dim_vars,
+                        XLAGPU_IndexingMapVariableParameter:$range_vars,
                         XLAGPU_ConstraintsParameter:$constraints);
   let hasCustomAssemblyFormat = 1;
   let builders =  [
-    AttrBuilder<(ins "const ::xla::gpu::IndexingMap&":$indexing_map)>,
+    AttrBuilder<(ins "const ::xla::IndexingMap&":$indexing_map)>,
   ];
   let genVerifyDecl = 1;
   let extraClassDeclaration = [{
     // Returns the indexing map constructed from IndexingMapAttr.
-    xla::gpu::IndexingMap getIndexingMap();
+    xla::IndexingMap getIndexingMap() const;
+
+    // Returns the number of indexing map results.
+    int64_t getNumResults() const;
   }];
 }
+
+//===----------------------------------------------------------------------===//
+// Tensor layout attribute
+//===----------------------------------------------------------------------===//
+
+def XLAGPU_MemorySpace : I32EnumAttr<"MemorySpace",
+    "element-wise op type", [
+    I32EnumAttrCase<"kRegisters", 0, "registers">,
+    I32EnumAttrCase<"kSharedMemory", 1, "shmem">
+  ]> {
+  let cppNamespace = "::xla::gpu";
+  let genSpecializedAttr = 0;
+}
+
+def XLAGPU_MemorySpaceAttr : EnumAttr<
+  XlaGpuDialect, XLAGPU_MemorySpace, "memory_space"> {
+  let assemblyFormat = "`<` $value `>`";
+}
+
+def XLAGPU_LayoutAttr : XLAGPU_Attr<"Layout"> {
+  let mnemonic = "layout";
+  let summary = "Layout consists of a thread ID indexing map + memory space.";
+  let description = [{
+    This attribute is used as an encoding for RankedTensorType. It indicates in
+    which memory space the tensor is stored and the access pattern from the
+    warps/threads.
+    ```mlir
+    tensor<42xf32, #xla_gpu.layout<"shmem", (d0) -> (), domain: d0 in [0, 42]>>
+    ```
+  }];
+  let parameters = (ins
+      AttrParameter<"MemorySpaceAttr", "memory_space">:$memory_space,
+      AttrParameter<"IndexingMapAttr", "thread_map">:$thread_map
+  );
+  let hasCustomAssemblyFormat = 1;
+}
+
 
 #endif // XLA_SERVICE_GPU_FUSIONS_MLIR_ATTRS

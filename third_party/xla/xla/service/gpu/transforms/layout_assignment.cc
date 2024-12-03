@@ -38,6 +38,8 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -303,6 +305,87 @@ bool DotCanSupportShapeWithLayout(const HloInstruction* dot,
 
 }  // namespace
 
+absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
+    LayoutConstraints* constraints, HloDotInstruction* instruction) {
+  struct Side {
+    size_t operand_no;
+    const Shape* shape;
+    absl::Span<const int64_t> batch_dims;
+    absl::Span<const int64_t> contracting_dims;
+    PrimitiveType type;
+    std::vector<int64_t> non_contracting_dims;
+  };
+  auto make_side =
+      [&](size_t operand_no, absl::Span<const int64_t> batch_dims,
+          absl::Span<const int64_t> contracting_dims) -> absl::StatusOr<Side> {
+    Side side = {operand_no, &instruction->operand(operand_no)->shape(),
+                 batch_dims, contracting_dims};
+    side.type = side.shape->element_type();
+    TF_ASSIGN_OR_RETURN(side.non_contracting_dims,
+                        GetNonContractingDims(*side.shape, side.batch_dims,
+                                              side.contracting_dims));
+    return side;
+  };
+  const DotDimensionNumbers& dot_dims = instruction->dot_dimension_numbers();
+  TF_ASSIGN_OR_RETURN(const Side lhs,
+                      make_side(0, dot_dims.lhs_batch_dimensions(),
+                                dot_dims.lhs_contracting_dimensions()));
+  TF_ASSIGN_OR_RETURN(const Side rhs,
+                      make_side(1, dot_dims.rhs_batch_dimensions(),
+                                dot_dims.rhs_contracting_dimensions()));
+
+  const PrimitiveType& output_type = instruction->shape().element_type();
+
+  // Matmuls require the batch dimensions to be in consecutive physical
+  // dimensions and likewise for the contracting and non-contracting
+  // dimensions. Additionally, no batch dimension can be in the most
+  // minor physical dimension for inputs or the output.
+
+  const bool xla_gpu_ensure_minor_dot_contraction_dims =
+      instruction->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_ensure_minor_dot_contraction_dims();
+
+  const bool is_bf16_to_bf16 =
+      (output_type == PrimitiveType::BF16 && lhs.type == PrimitiveType::BF16 &&
+       rhs.type == PrimitiveType::BF16);
+  const bool is_s8_to_s32 = output_type == PrimitiveType::S32 &&
+                            lhs.type == PrimitiveType::S8 &&
+                            rhs.type == PrimitiveType::S8;
+  const bool is_fp8_to_fp8 = (lhs.type == PrimitiveType::F8E4M3FN ||
+                              lhs.type == PrimitiveType::F8E5M2FNUZ) &&
+                             (rhs.type == PrimitiveType::F8E4M3FN ||
+                              rhs.type == PrimitiveType::F8E5M2FNUZ);
+  const bool both_operands_require_minor_contraction_dims =
+      (is_bf16_to_bf16 && xla_gpu_ensure_minor_dot_contraction_dims) ||
+      is_s8_to_s32 || is_fp8_to_fp8;
+
+  for (const Side& side : {lhs, rhs}) {
+    if (both_operands_require_minor_contraction_dims) {
+      TF_RETURN_IF_ERROR(SetOperandMajorToMinorLayout(
+          instruction, side.operand_no,
+          /*dim_groups=*/
+          {side.batch_dims, side.non_contracting_dims, side.contracting_dims}));
+    } else if (!side.batch_dims.empty() || side.contracting_dims.size() > 1 ||
+               side.non_contracting_dims.size() > 1) {
+      TF_RETURN_IF_ERROR(SetDotOperandLayout(
+          instruction, side.operand_no, side.batch_dims, side.contracting_dims,
+          side.non_contracting_dims));
+    }
+  }
+
+  // If we have at least one batch dimension or there is more than one
+  // non-contracting dimension on lhs or rhs, we need to set a layout for
+  // the dot output.
+  if (!lhs.batch_dims.empty() || lhs.non_contracting_dims.size() > 1 ||
+      rhs.non_contracting_dims.size() > 1) {
+    TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
+  }
+
+  return absl::OkStatus();
+}
+
 absl::Status GpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   // Add convolution constraints in reverse postorder that the earliest
@@ -321,79 +404,8 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
         << "Gemm rewriting should run after layout assignment";
 
     if (instruction->opcode() == HloOpcode::kDot) {
-      const Shape& output_shape = instruction->shape();
-      const Shape& lhs_shape = instruction->operand(0)->shape();
-      const Shape& rhs_shape = instruction->operand(1)->shape();
-      const DotDimensionNumbers& dot_dims =
-          instruction->dot_dimension_numbers();
-
-      // Matmuls require the batch dimensions to be in consecutive physical
-      // dimensions and likewise for the contracting and non-contracting
-      // dimensions. Additionally, no batch dimension can be in the most
-      // minor physical dimension for inputs or the output.
-      absl::Span<const int64_t> lhs_batch_dims =
-          dot_dims.lhs_batch_dimensions();
-      absl::Span<const int64_t> lhs_contracting_dims =
-          dot_dims.lhs_contracting_dimensions();
-      TF_ASSIGN_OR_RETURN(std::vector<int64_t> lhs_non_contracting_dims,
-                          GetNonContractingDims(lhs_shape, lhs_batch_dims,
-                                                lhs_contracting_dims));
-
-      absl::Span<const int64_t> rhs_batch_dims =
-          dot_dims.rhs_batch_dimensions();
-      absl::Span<const int64_t> rhs_contracting_dims =
-          dot_dims.rhs_contracting_dimensions();
-      TF_ASSIGN_OR_RETURN(std::vector<int64_t> rhs_non_contracting_dims,
-                          GetNonContractingDims(rhs_shape, rhs_batch_dims,
-                                                rhs_contracting_dims));
-
-      const DebugOptions& debug_options =
-          instruction->GetModule()->config().debug_options();
-
-      bool is_bf16_to_bf16 =
-          (output_shape.element_type() == PrimitiveType::BF16 &&
-           lhs_shape.element_type() == PrimitiveType::BF16 &&
-           rhs_shape.element_type() == PrimitiveType::BF16);
-      bool is_s8_to_s32 = (output_shape.element_type() == PrimitiveType::S32 &&
-                           lhs_shape.element_type() == PrimitiveType::S8 &&
-                           rhs_shape.element_type() == PrimitiveType::S8 &&
-                           output_shape.dimensions_size() == 2 &&
-                           lhs_shape.dimensions_size() == 2 &&
-                           rhs_shape.dimensions_size() == 2);
-
-      if (is_s8_to_s32 ||
-          (is_bf16_to_bf16 &&
-           debug_options.xla_gpu_ensure_minor_dot_contraction_dims())) {
-        TF_RETURN_IF_ERROR(SetOperandMajorToMinorLayout(
-            instruction, /*operand=*/0,
-            /*dim_groups=*/
-            {lhs_batch_dims, lhs_non_contracting_dims, lhs_contracting_dims}));
-        TF_RETURN_IF_ERROR(SetOperandMajorToMinorLayout(
-            instruction, /*operand=*/1,
-            /*dim_groups=*/
-            {rhs_batch_dims, rhs_non_contracting_dims, rhs_contracting_dims}));
-        TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
-      } else {
-        if (!lhs_batch_dims.empty() || lhs_contracting_dims.size() > 1 ||
-            lhs_non_contracting_dims.size() > 1) {
-          TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 0, lhs_batch_dims,
-                                                 lhs_contracting_dims,
-                                                 lhs_non_contracting_dims));
-        }
-        if (!rhs_batch_dims.empty() || rhs_non_contracting_dims.size() > 1 ||
-            rhs_contracting_dims.size() > 1) {
-          TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 1, rhs_batch_dims,
-                                                 rhs_contracting_dims,
-                                                 rhs_non_contracting_dims));
-        }
-        // If we have at least one batch dimension or there is more than one
-        // non-contracting dimension on lhs or rhs, we need to set a layout for
-        // the dot output.
-        if (!lhs_batch_dims.empty() || lhs_non_contracting_dims.size() > 1 ||
-            rhs_non_contracting_dims.size() > 1) {
-          TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
-        }
-      }
+      TF_RETURN_IF_ERROR(AddDotBackendConstraints(
+          constraints, Cast<HloDotInstruction>(instruction)));
     } else if (instruction->opcode() == HloOpcode::kTranspose) {
       const HloInstruction* operand = instruction->operand(0);
       if ((operand->opcode() != HloOpcode::kDot) ||
@@ -441,6 +453,18 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
         }
         TF_RETURN_IF_ERROR(SetBufferLayout(keys_layout, *output_buffer));
       }
+    } else if (IsCustomCallToTopK(*instruction)) {
+      // The output of the TopK custom call needs to have default layout.
+      Layout default_layout = LayoutUtil::GetDefaultLayoutForRank(
+          instruction->operand(0)->shape().rank());
+      TF_ASSIGN_OR_RETURN(
+          auto values_buffer,
+          points_to_analysis_->GetBufferDefinedAt(instruction, {0}));
+      TF_RETURN_IF_ERROR(SetBufferLayout(default_layout, *values_buffer));
+      TF_ASSIGN_OR_RETURN(
+          auto indices_buffer,
+          points_to_analysis_->GetBufferDefinedAt(instruction, {1}));
+      TF_RETURN_IF_ERROR(SetBufferLayout(default_layout, *indices_buffer));
     } else if (instruction->opcode() == HloOpcode::kTriangularSolve) {
       // TODO(phawkins): Ideally we would relax this constraint. What we
       // actually want is that:
@@ -571,7 +595,8 @@ bool GpuLayoutAssignment::PropagateReductionLayoutToOperand(
   }
   int64_t kept_dimension_size = ShapeUtil::ElementsIn(user->shape());
   return IsUnnestedReductionFasterThanElemental(
-      {/*is_row_reduction=*/true, {1, kept_dimension_size, reduction_size}});
+      {/*is_row_reduction=*/true, {1, kept_dimension_size, reduction_size}},
+      device_description_);
 }
 
 bool GpuLayoutAssignment::InstructionCanChangeLayoutInstance(
@@ -579,13 +604,16 @@ bool GpuLayoutAssignment::InstructionCanChangeLayoutInstance(
   // The host offloading custom calls will be eventually removed
   // by the offloader, so we need to make sure that the calls do not change
   // the layout and thus cause layout mismatches after the removal.
+  // The TopK custom call cannot handle the case if the operand has a different
+  // layout.
   const HloCustomCallInstruction* custom_call =
       DynCast<HloCustomCallInstruction>(instruction);
   if (custom_call != nullptr &&
       (custom_call->custom_call_target() ==
            host_memory_offload_annotations::kMoveToHostCustomCallTarget ||
        custom_call->custom_call_target() ==
-           host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
+           host_memory_offload_annotations::kMoveToDeviceCustomCallTarget ||
+       custom_call->custom_call_target() == kTopKCustomCallTarget)) {
     return false;
   }
 

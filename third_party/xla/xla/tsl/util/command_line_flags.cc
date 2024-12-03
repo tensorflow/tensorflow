@@ -30,7 +30,7 @@ limitations under the License.
 namespace tsl {
 namespace {
 
-bool ParseStringFlag(StringPiece arg, StringPiece flag,
+bool ParseStringFlag(absl::string_view arg, absl::string_view flag,
                      const std::function<bool(string)>& hook,
                      bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -43,7 +43,7 @@ bool ParseStringFlag(StringPiece arg, StringPiece flag,
   return false;
 }
 
-bool ParseInt32Flag(StringPiece arg, StringPiece flag,
+bool ParseInt32Flag(absl::string_view arg, absl::string_view flag,
                     const std::function<bool(int32_t)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -64,7 +64,7 @@ bool ParseInt32Flag(StringPiece arg, StringPiece flag,
   return false;
 }
 
-bool ParseInt64Flag(StringPiece arg, StringPiece flag,
+bool ParseInt64Flag(absl::string_view arg, absl::string_view flag,
                     const std::function<bool(int64_t)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -85,7 +85,7 @@ bool ParseInt64Flag(StringPiece arg, StringPiece flag,
   return false;
 }
 
-bool ParseBoolFlag(StringPiece arg, StringPiece flag,
+bool ParseBoolFlag(absl::string_view arg, absl::string_view flag,
                    const std::function<bool(bool)>& hook,
                    bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -115,7 +115,7 @@ bool ParseBoolFlag(StringPiece arg, StringPiece flag,
   return false;
 }
 
-bool ParseFloatFlag(StringPiece arg, StringPiece flag,
+bool ParseFloatFlag(absl::string_view arg, absl::string_view flag,
                     const std::function<bool(float)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;

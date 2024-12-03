@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -47,12 +48,12 @@ class NcclCollectiveBroadcastStartThunk : public NcclCollectiveThunk {
   NcclCollectiveBroadcastStartThunk(
       ThunkInfo thunk_info, NcclApi* nccl_api,
       const HloCollectiveBroadcastInstruction* instr,
-      std::vector<Buffer> buffers);
+      std::vector<Buffer> buffers, bool p2p_memcpy_enabled = false);
 
  protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
-                                 NcclCommHandleWrapper comm_wrapper) override;
+                                 CommunicatorHandle comm_handle) override;
 
  private:
   const NcclCollectiveConfig config_;
@@ -60,8 +61,7 @@ class NcclCollectiveBroadcastStartThunk : public NcclCollectiveThunk {
 };
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream,
-                                    NcclApi::NcclCommHandle comm,
+                                    se::Stream& stream, Communicator* comm,
                                     NcclApi* nccl_api);
 
 }  // namespace xla::gpu

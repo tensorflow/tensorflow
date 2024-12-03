@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/model/arg_spec.h"
 
+#include "tensorflow/c/experimental/ops/gen/model/arg_type.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+
 namespace tensorflow {
 namespace generator {
 

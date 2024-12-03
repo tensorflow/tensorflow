@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_PRIORITY_FUSION_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_PRIORITY_FUSION_H_
 
-#include <stdint.h>
-
 #include <memory>
 #include <utility>
 
@@ -28,33 +26,30 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/fusion_queue.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
 
-class PriorityFusion : public InstructionFusion {
+class PriorityFusion : public HloModulePass {
  public:
   PriorityFusion(tsl::thread::ThreadPool* thread_pool,
                  const se::DeviceDescription& device,
                  GpuHloCostAnalysis::Options cost_analysis_options)
-      : InstructionFusion(PriorityFusion::IsExpensive),
-        thread_pool_(thread_pool),
+      : thread_pool_(thread_pool),
         device_info_(device),
         cost_analysis_options_(std::move(cost_analysis_options)),
         fusion_analysis_cache_(device_info_) {}
 
   absl::string_view name() const override { return "priority-fusion"; }
-
-  static bool IsExpensive(const HloInstruction& instruction);
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
@@ -62,22 +57,19 @@ class PriorityFusion : public InstructionFusion {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  protected:
-  std::unique_ptr<FusionQueue> GetFusionQueue(
-      HloComputation* computation) override;
+  HloInstruction::FusionKind ChooseKind(const HloInstruction* producer,
+                                        const HloInstruction* consumer);
 
-  FusionDecision ShouldFuse(HloInstruction* consumer,
-                            int64_t operand_index) override;
-
-  HloInstruction::FusionKind ChooseKind(
-      const HloInstruction* producer, const HloInstruction* consumer) override;
+  HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer);
 
  private:
-  HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
-                                  HloInstruction* producer) override;
-
   // Consumes a unit of compiler fuel and returns true if we should
   // continue with the transformation.
   bool ConsumeFuel(HloInstruction* producer, HloInstruction* consumer);
+
+  // Returns the decision if the constant can be fused into the user.
+  FusionDecision CanFuseConstant(const HloInstruction* constant,
+                                 const HloInstruction* user);
 
   tsl::thread::ThreadPool* thread_pool_;
   se::DeviceDescription device_info_;

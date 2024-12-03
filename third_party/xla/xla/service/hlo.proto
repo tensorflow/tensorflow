@@ -31,6 +31,7 @@ syntax = "proto3";
 package xla;
 
 import "google/protobuf/any.proto";
+import "xla/service/metrics.proto";
 import "xla/xla_data.proto";
 
 option cc_enable_arenas = true;
@@ -112,7 +113,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 90
+// Next ID: 92
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -222,6 +223,9 @@ message HloInstructionProto {
 
   // Describes the dimension numbers used for a dot operation
   xla.DotDimensionNumbers dot_dimension_numbers = 30;
+
+  // Describes the dimension numbers used for a ragged dot operation
+  xla.RaggedDotDimensionNumbers ragged_dot_dimension_numbers = 90;
 
   // FFT type (FFT, IFFT, etc).
   xla.FftType fft_type = 31;
@@ -388,6 +392,9 @@ message HloInstructionProto {
 
   // Specifies if a call instruction is a composite.
   bool is_composite = 89;
+
+  // Accuracy for unary functions with multiple implementations.
+  xla.ResultAccuracy result_accuracy = 91;
 }
 
 // Serialization of HloComputation.
@@ -584,7 +591,13 @@ message HloModuleProto {
     DOT = 4;
     FLAGNET = 5;
   }
-
+  // The type of profile generation strategy used to generate the profile.
+  enum ProfileGenerationStrategy {
+    PROFILE_GENERATION_STRATEGY_UNKNOWN = 0;
+    PROFILE_GENERATION_STRATEGY_GA = 1;
+    PROFILE_GENERATION_STRATEGY_FANTA = 2;
+    PROFILE_GENERATION_STRATEGY_CFO = 3;
+  }
   // Information about the optimization profile that this module contains.
   message ProfileInfo {
     // The optimization profiles that this module contains.
@@ -595,8 +608,11 @@ message HloModuleProto {
     xla.ProfileSource profile_source = 3;
     // The compilation event that triggered the use of the profile.
     xla.CompilationEvent compilation_event = 4;
-    // The fingerprint of the unoptimized module this profile was applied to.
+    // The fingerprint of this profile. `fingerprint` should match a key
+    // in the profile table.
     string fingerprint = 5;
+    // The type of profile generation strategy used to generate the profile.
+    ProfileGenerationStrategy profile_generation_strategy = 6;
   }
 
   // Profile information for the HLO module.
@@ -809,4 +825,7 @@ message HloPassMetadata {
 
   // Custom metadata for the pass.
   google.protobuf.Any custom_metadata = 10;
+
+  // Used to log any number of key, value pair stats per pass.
+  repeated KeyValueMetric kv_metrics = 11;
 }

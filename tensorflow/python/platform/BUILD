@@ -225,7 +225,6 @@ py_strict_library(
         "//tensorflow_models:__subpackages__",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/mlperf:__subpackages__",
-        "//third_party/proto_splitter:__subpackages__",  # TODO(b/277279227): remove this dep from proto_splitter
         "//third_party/py/tf_slim:__subpackages__",
     ],
     deps = [
@@ -246,20 +245,6 @@ py_strict_library(
         "@absl_py//absl:app",
     ],
 )
-
-# copybara:uncomment_begin(google-only)
-# py_strict_library(
-#     name = "cpp_memory_checker",
-#     srcs = ["cpp_memory_checker.py"],
-#     deps = [
-#         ":tf_logging",
-#         "//perftools/profiles/collector/heap:pywrap_alloc_recorder",
-#         "//perftools/profiles/proto:profile_py_pb2",
-#         "//pyglib:resources",
-#         "//tensorflow/python/profiler:trace",
-#     ],
-# )
-# copybara:uncomment_end
 
 py_strict_library(
     name = "sysconfig",
@@ -301,7 +286,7 @@ py_strict_library(
 py_strict_library(
     name = "gfile",
     srcs = ["gfile.py"],
-    visibility = visibility + ["//third_party/py/tf_slim/training:__pkg__"],
+    visibility = visibility,
     deps = [
         "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/util:deprecation",

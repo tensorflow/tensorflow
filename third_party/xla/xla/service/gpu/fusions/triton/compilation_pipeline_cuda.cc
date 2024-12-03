@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "xla/service/gpu/fusions/triton/passes.h"
-#include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
@@ -58,6 +58,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mt::createLoopUnrollPass());
 
   // Based on make_ttgir() in
   // @triton//:third_party/nvidia/backend/compiler.py
@@ -115,7 +116,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::gpu::createAllocateSharedMemoryPass());
   pm.addPass(CreateSparseLocalLoadToLLVMPass());
   pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
-  // The triton_gpu.sparse_dot ops need to be rewritten after
+  // The triton_xla.sparse_dot ops need to be rewritten after
   // ModuleAxisInfoAnalysis inside convert-triton-gpu-to-llvm.
   pm.addPass(CreateSparseDotOpToLLVMPass());
   pm.addPass(mt::createConvertNVGPUToLLVMPass());

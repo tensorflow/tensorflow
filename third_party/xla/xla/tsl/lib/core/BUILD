@@ -6,6 +6,11 @@
 
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
+load(
+    "//xla/tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 # TODO(rdzhabarov): Tighten visibility after migration is complete.
 package(
@@ -24,7 +29,7 @@ filegroup(
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
         "//tensorflow/core:__pkg__",
-        "@local_tsl//tsl/lib/core:__pkg__",
+        "//xla/tsl/lib/core:__pkg__",
         "//tensorflow/core/lib/core:__pkg__",
     ]),
 )
@@ -37,5 +42,80 @@ cc_library(
     deps = [
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "bitmap.h",
+        "bits.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
+)
+
+filegroup(
+    name = "legacy_lib_core_all_headers",
+    srcs = [
+        "bitmap.h",
+        "bits.h",
+        "status_test_util.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/core:__pkg__",
+    ]),
+)
+
+filegroup(
+    name = "legacy_lib_core_all_tests",
+    srcs = [
+        "bitmap_test.cc",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
+)
+
+filegroup(
+    name = "legacy_lib_core_headers",
+    srcs = [
+        "bitmap.h",
+        "bits.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
+)
+
+cc_library(
+    name = "bitmap",
+    srcs = ["bitmap.cc"],
+    hdrs = ["bitmap.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@com_google_absl//absl/numeric:bits",
+        "@local_tsl//tsl/platform:logging",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "bits",
+    hdrs = ["bits.h"],
+    deps = [
+        "@com_google_absl//absl/numeric:bits",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+tsl_cc_test(
+    name = "bits_test",
+    size = "small",
+    srcs = ["bits_test.cc"],
+    deps = [
+        ":bits",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )

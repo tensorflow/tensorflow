@@ -32,11 +32,6 @@ std::string StreamPriorityToString(StreamPriority priority) {
   }
 }
 
-StreamExecutorConfig::StreamExecutorConfig() : ordinal(-1) {}
-
-StreamExecutorConfig::StreamExecutorConfig(int ordinal_in)
-    : ordinal(ordinal_in) {}
-
 bool Platform::Initialized() const { return true; }
 
 absl::Status Platform::Initialize() { return absl::OkStatus(); }

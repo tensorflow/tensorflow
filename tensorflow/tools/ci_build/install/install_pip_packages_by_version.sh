@@ -95,7 +95,12 @@ fi
 if [[ "$2" == "jax" ]]; then
   # As of NumPy 2.0, wheels must be built against NumPy 2.0, even if we intend
   # to deploy them against Numpy 1.
-  "${PIP_INSTALL[@]}" --pre "numpy==2.0.0rc1" "scipy==1.13.0rc1"
+  "${PIP_INSTALL[@]}" "scipy>=1.13.1"
+  if [[ $((${PYTHON_VERSION} < 13)) ]]; then
+    "${PIP_INSTALL[@]}" "numpy~=2.0.0"
+  else
+    "${PIP_INSTALL[@]}" "numpy~=2.1.0"
+  fi
 else
   # Special casing by version of Python
   # E.g., numpy supports py3.10 only from 1.21.3

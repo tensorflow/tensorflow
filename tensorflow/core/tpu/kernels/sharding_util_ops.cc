@@ -53,11 +53,9 @@ namespace {
 constexpr absl::string_view kNumSplitsAttrName = "num_splits";
 constexpr absl::string_view kNumConcatsAttrName = "num_concats";
 
-Status GetAndValidateAttributesHelper(bool split, OpKernelConstruction* ctx,
-                                      std::vector<int32_t>& num_partitions,
-                                      int& num_slices,
-                                      std::vector<int32_t>& paddings,
-                                      bool& has_paddings) {
+absl::Status GetAndValidateAttributesHelper(
+    bool split, OpKernelConstruction* ctx, std::vector<int32_t>& num_partitions,
+    int& num_slices, std::vector<int32_t>& paddings, bool& has_paddings) {
   absl::string_view num_partitions_attr_name =
       split ? kNumSplitsAttrName : kNumConcatsAttrName;
   TF_RETURN_IF_ERROR(ctx->GetAttr(num_partitions_attr_name, &num_partitions));
@@ -123,9 +121,9 @@ absl::string_view kHandle = "handle";
 absl::string_view kTensor = "tensor";
 
 template <bool Handle>
-Status CreateResourceInvalidDTypeError(const ResourceHandle& handle,
-                                       DataType actual_dtype,
-                                       DataType expected_dtype) {
+absl::Status CreateResourceInvalidDTypeError(const ResourceHandle& handle,
+                                             DataType actual_dtype,
+                                             DataType expected_dtype) {
   absl::string_view resource_component = Handle ? kHandle : kTensor;
   return absl::InvalidArgumentError(
       absl::StrCat("'T' must match 'resource' variable ", resource_component,
@@ -176,10 +174,8 @@ class XlaSplitNDBaseOp : public XlaSplitNDShared<Device, T> {
  protected:
   void ComputeInternal(
       bool resource, OpKernelContext* ctx,
-      const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
+      const std::function<absl::Status(const Tensor&)>& assign_or_copy_value_fn,
       const Tensor* input) {
-    const auto& input_shape = input->shape().dim_sizes();
-
     absl::string_view input_name = resource ? kResourceName : kTensorName;
     auto allocate_output_fn = [&](int i, const TensorShape& output_slice_shape,
                                   Tensor** tensor) {
@@ -203,7 +199,7 @@ class XlaSplitNDOp : public XlaSplitNDBaseOp<Device, T> {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
 
-    auto assign_or_copy_value_fn = [&ctx](const Tensor& input) -> Status {
+    auto assign_or_copy_value_fn = [&ctx](const Tensor& input) -> absl::Status {
       ctx->set_output(/*index=*/0, input);
       return absl::OkStatus();
     };
@@ -226,7 +222,7 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T> {
     core::RefCountPtr<Var> variable;
     ResourceHandle handle;
     OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
-    const Status status = LookupResource(ctx, handle, &variable);
+    const absl::Status status = LookupResource(ctx, handle, &variable);
     OP_REQUIRES(
         ctx, status.ok(),
         absl::InvalidArgumentError(absl::StrCat(
@@ -239,8 +235,8 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T> {
         ctx, input->dtype() == dtype_,
         CreateResourceInvalidDTypeError<false>(handle, input->dtype(), dtype_));
 
-    auto assign_or_copy_value_fn = [&ctx,
-                                    &variable](const Tensor& input) -> Status {
+    auto assign_or_copy_value_fn =
+        [&ctx, &variable](const Tensor& input) -> absl::Status {
       if (variable->copy_on_read_mode.load()) {
         Tensor* output;
         TF_RETURN_IF_ERROR(
@@ -300,8 +296,9 @@ class XlaConcatNDShared : public OpKernel {
   }
 
  protected:
-  Status GetInputsAndOutputShape(OpKernelContext* ctx, OpInputList& inputs,
-                                 TensorShape& output_shape) {
+  absl::Status GetInputsAndOutputShape(OpKernelContext* ctx,
+                                       OpInputList& inputs,
+                                       TensorShape& output_shape) {
     TF_RETURN_IF_ERROR(ctx->input_list("inputs", &inputs));
     DCHECK_EQ(inputs.size(), num_slices_);
 
@@ -351,7 +348,7 @@ class XlaConcatNDBaseOp : public XlaConcatNDShared<Device, T> {
  protected:
   void ComputeInternal(
       bool resource, OpKernelContext* ctx, const OpInputList& inputs,
-      const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
+      const std::function<absl::Status(const Tensor&)>& assign_or_copy_value_fn,
       const std::function<absl::StatusOr<Tensor*>()>& get_output_fn) {
     const Device& device = ctx->eigen_device<Device>();
     std::vector<Tensor> input_tensors(inputs.begin(), inputs.end());
@@ -374,7 +371,7 @@ class XlaConcatNDOp : public XlaConcatNDBaseOp<Device, T> {
     OP_REQUIRES_OK(ctx,
                    this->GetInputsAndOutputShape(ctx, inputs, output_shape));
 
-    auto assign_or_copy_value_fn = [&ctx](const Tensor& input) -> Status {
+    auto assign_or_copy_value_fn = [&ctx](const Tensor& input) -> absl::Status {
       ctx->set_output(/*index=*/0, input);
       return absl::OkStatus();
     };
@@ -433,8 +430,8 @@ class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T> {
                 CreateResourceInvalidDTypeError<false>(
                     handle, variable->tensor()->dtype(), dtype_));
 
-    auto assign_or_copy_value_fn = [this, &ctx, &output_shape,
-                                    &variable](const Tensor& input) -> Status {
+    auto assign_or_copy_value_fn = [this, &ctx, &output_shape, &variable](
+                                       const Tensor& input) -> absl::Status {
       if (variable->copy_on_read_mode.load()) {
         TF_RETURN_IF_ERROR(
             ctx->allocate_temp(dtype_, output_shape, variable->tensor()));

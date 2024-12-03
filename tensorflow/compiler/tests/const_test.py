@@ -33,15 +33,33 @@ class ConstOpTest(test_util.TensorFlowTestCase):
   # @test_util.run_v2_only
   def testConst(self):
     types = {
-        dtypes.bool, dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
-        dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64,
-        dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
-        dtypes.float8_e5m2, dtypes.float8_e4m3fn,
+        dtypes.bool,
+        dtypes.int8,
+        dtypes.int16,
+        dtypes.int32,
+        dtypes.int64,
+        dtypes.uint8,
+        dtypes.uint16,
+        dtypes.uint32,
+        dtypes.uint64,
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.float8_e5m2,
+        dtypes.float8_e4m3fn,
     }
     for dtype in types:
       with self.subTest(dtype=dtype):
         if dtype == dtypes.bool:
           values = [True, False]
+        elif dtype in [
+            dtypes.uint8,
+            dtypes.uint16,
+            dtypes.uint32,
+            dtypes.uint64,
+        ]:
+          values = [0., 1., dtype.min, dtype.max]
         else:
           values = [0., 1., -1., dtype.min, dtype.max]
         if dtype.is_floating:

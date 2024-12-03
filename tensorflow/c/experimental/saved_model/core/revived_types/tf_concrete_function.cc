@@ -16,7 +16,8 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
 
 #include <memory>
-#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
@@ -36,7 +37,7 @@ TFConcreteFunction::TFConcreteFunction(std::unique_ptr<FlatTensorFunction> func,
                                        FunctionMetadata metadata)
     : func_(std::move(func)), metadata_(std::move(metadata)) {}
 
-Status TFConcreteFunction::Create(
+absl::Status TFConcreteFunction::Create(
     const FunctionDef* function_def,
     std::vector<ImmediateExecutionTensorHandle*> captures,
     FunctionMetadata metadata, ImmediateExecutionContext* ctx,
@@ -46,14 +47,14 @@ Status TFConcreteFunction::Create(
       function_def, std::move(captures), ctx, &func));
 
   out->reset(new TFConcreteFunction(std::move(func), std::move(metadata)));
-  return Status();
+  return absl::Status();
 }
 
 const FunctionMetadata& TFConcreteFunction::GetFunctionMetadata() const {
   return metadata_;
 }
 
-Status TFConcreteFunction::MakeCallOp(
+absl::Status TFConcreteFunction::MakeCallOp(
     absl::Span<AbstractTensorHandle* const> inputs, ImmediateOpPtr* out) const {
   return func_->MakeCallOp(inputs, out);
 }

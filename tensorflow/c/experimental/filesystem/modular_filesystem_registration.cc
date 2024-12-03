@@ -14,12 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/filesystem/modular_filesystem_registration.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <memory>
+#include <utility>
 
+#include "absl/log/log.h"
+#include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/experimental/filesystem/modular_filesystem.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

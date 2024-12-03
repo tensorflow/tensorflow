@@ -2,4 +2,7 @@
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
-exports_files(srcs = ["workspace.bzl"])
+exports_files(srcs = [
+    "temporary.patch",
+    "workspace.bzl",
+])

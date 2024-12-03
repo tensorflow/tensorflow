@@ -41,7 +41,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -384,58 +384,6 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
 // Make sure to choose delimiter that will never show up in Layout strings.
 static const char* kDelimiter = ";";
 
-static std::string GetFrontendAttr(absl::Span<const LayoutMode> layout_modes) {
-  return absl::StrJoin(layout_modes, kDelimiter,
-                       [](std::string* out, const LayoutMode& mode) {
-                         absl::StrAppend(out, mode.ToString());
-                       });
-}
-
-absl::Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
-                                           XlaComputation& xla_computation) {
-  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
-                      GetArgLayoutModes(module));
-  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
-                      GetOutputLayoutModes(module));
-
-  // Type is string->string proto map. Using auto here to deal with different
-  // build environments.
-  auto& frontend_attrs = *xla_computation.mutable_proto()
-                              ->mutable_frontend_attributes()
-                              ->mutable_map();
-  frontend_attrs["arg_layout_modes"] = GetFrontendAttr(arg_layout_modes);
-  frontend_attrs["out_layout_modes"] = GetFrontendAttr(out_layout_modes);
-  return absl::OkStatus();
-}
-
-static std::string GetFrontendAttrForMemorySpace(
-    const std::vector<MemorySpaceColor>& memory_spaces) {
-  return absl::StrJoin(
-      memory_spaces, kDelimiter,
-      [](std::string* out, const MemorySpaceColor memory_kind) {
-        absl::StrAppend(out, memory_kind);
-      });
-}
-
-absl::Status AddMemoryKindsToFrontendAttrs(mlir::ModuleOp module,
-                                           XlaComputation& xla_computation) {
-  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
-                      GetArgMemoryKinds(module));
-  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
-                      GetOutputMemoryKinds(module));
-
-  // Type is string->string proto map. Using auto here to deal with different
-  // build environments.
-  auto& frontend_attrs = *xla_computation.mutable_proto()
-                              ->mutable_frontend_attributes()
-                              ->mutable_map();
-  frontend_attrs["arg_memory_spaces"] =
-      GetFrontendAttrForMemorySpace(arg_memory_spaces);
-  frontend_attrs["out_memory_spaces"] =
-      GetFrontendAttrForMemorySpace(out_memory_spaces);
-  return absl::OkStatus();
-}
-
 static absl::StatusOr<std::vector<LayoutMode>> GetLayoutModesFromFrontendAttr(
     absl::string_view attr) {
   // SkipEmpty() needed to avoid returning the empty string when attr is empty.
@@ -719,6 +667,7 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
     std::vector<const Shape*>* argument_layout_pointers) {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       computation.GetProgramShape());
+  const bool given_argument_layouts = argument_layouts.has_value();
   if (!argument_layouts) {
     argument_layouts.emplace(program_shape.parameters());
     for (Shape& shape : *argument_layouts) {
@@ -734,8 +683,7 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
 
   // Assign a default layout based on `sharded_shape` to any array subshapes in
   // `dst_shape` that are missing layouts.
-  auto assign_layouts = [&choose_compact_layout_for_shape_function](
-                            const Shape& sharded_shape, Shape* dst_shape) {
+  auto assign_layouts = [&](const Shape& sharded_shape, Shape* dst_shape) {
     return ShapeUtil::ForEachMutableSubshapeWithStatus(
         dst_shape, [&](Shape* subshape, const ShapeIndex& idx) {
           if (subshape->IsArray() && !subshape->has_layout()) {
@@ -746,7 +694,11 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
             TF_ASSIGN_OR_RETURN(
                 Shape layout,
                 choose_compact_layout_for_shape_function(sharded_subshape));
-            *subshape->mutable_layout() = layout.layout();
+            if (layout.has_layout()) {
+              *subshape->mutable_layout() = layout.layout();
+            } else {
+              subshape->clear_layout();
+            }
           }
           return absl::OkStatus();
         });
@@ -759,16 +711,49 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
     Shape* layout = &(*argument_layouts)[i];
     argument_layout_pointers->push_back(layout);
     TF_RETURN_IF_ERROR(assign_layouts(sharded_shapes.first[i], layout));
+    if (!given_argument_layouts) {
+      // Carry memory space forward from program shape.
+      ShapeUtil::ForEachSubshape(
+          program_shape.parameters(i),
+          [&](const Shape& subshape, const ShapeIndex& index) {
+            if (subshape.IsArray()) {
+              Shape* program_subshape =
+                  ShapeUtil::GetMutableSubshape(layout, index);
+              if (program_subshape->has_layout() && subshape.has_layout()) {
+                program_subshape->mutable_layout()->set_memory_space(
+                    subshape.layout().memory_space());
+              }
+            }
+          });
+    }
   }
 
+  bool used_program_shape;
   Shape result_layout;
   if (build_options->result_layout()) {
     result_layout = *build_options->result_layout();
+    used_program_shape = false;
   } else {
     result_layout = program_shape.result();
     LayoutUtil::ClearLayout(&result_layout);
+    used_program_shape = true;
   }
   TF_RETURN_IF_ERROR(assign_layouts(sharded_shapes.second, &result_layout));
+  if (used_program_shape) {
+    // Carry memory spaces forward from program shape.
+    ShapeUtil::ForEachSubshape(
+        program_shape.result(),
+        [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsArray()) {
+            Shape* result_subshape =
+                ShapeUtil::GetMutableSubshape(&result_layout, index);
+            if (result_subshape->has_layout() && subshape.has_layout()) {
+              result_subshape->mutable_layout()->set_memory_space(
+                  subshape.layout().memory_space());
+            }
+          }
+        });
+  }
   build_options->set_result_layout(result_layout);
   return absl::OkStatus();
 }

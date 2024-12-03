@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+import datetime
 from typing import Any, Optional, Callable
 
 from xla.python import xla_extension
@@ -24,6 +25,7 @@ Client = xla_extension.Client
 class ClientConnectionOptions:
   on_disconnect: Optional[Callable[[_Status], None]] = None
   on_connection_update: Optional[Callable[[str], None]] = None
+  connection_timeout_in_seconds: Optional[int] = None
 
 
 def get_client(

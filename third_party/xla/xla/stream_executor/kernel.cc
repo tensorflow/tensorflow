@@ -20,8 +20,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
-#include "tsl/platform/demangle.h"
 
 namespace stream_executor {
 
@@ -45,12 +43,6 @@ void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
 // Kernel
 //===----------------------------------------------------------------------===//
 
-void Kernel::set_name(absl::string_view name) {
-  name_ = std::string(name);
-
-  // CUDA splitter prefixes stub functions with __device_stub_.
-  demangled_name_ =
-      tsl::port::Demangle(absl::StripPrefix(name, "__device_stub_").data());
-}
+void Kernel::set_name(absl::string_view name) { name_ = std::string(name); }
 
 }  // namespace stream_executor

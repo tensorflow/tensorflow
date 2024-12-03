@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -66,9 +66,15 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
         cost_analysis_(
             GpuHloCostAnalysis::Options{shape_size_,
                                         /*per_second_rates=*/{},
+                                        /*min_latencies_seconds=*/{},
                                         /*count_multiple_input_accesses=*/true},
             *device_info_),
         mlir_context_(mlir_context) {}
+
+  // Returns the launch dimensions for the given tiled HLO computation.
+  static LaunchDimensions GetLaunchDimensionsForTiledFusion(
+      const TiledHloComputation& tiled_hlo_computation,
+      const se::DeviceDescription& device_info);
 
   EstimateRunTimeData EstimateRunTimeForFusion(
       const HloFusionAnalysis& fusion_analysis, bool is_coalesced = true);

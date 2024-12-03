@@ -37,8 +37,8 @@ namespace graph_transforms {
 
 // Sparsify Tensor of shape [N, 1]. Return the indices and values vectors for
 // non-zero tensor content.
-Status SparsifyWeights(const Tensor& tensor, Tensor* indices_tensor,
-                       Tensor* values_tensor) {
+absl::Status SparsifyWeights(const Tensor& tensor, Tensor* indices_tensor,
+                             Tensor* values_tensor) {
   if (tensor.dims() != 2 || tensor.dim_size(1) != 1) {
     return tensorflow::errors::FailedPrecondition(
         "Transform only applicable to subgraph with 'Const' with "
@@ -75,7 +75,7 @@ Status SparsifyWeights(const Tensor& tensor, Tensor* indices_tensor,
   std::copy_n(values.begin(), values.size(),
               values_tensor->flat<float>().data());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void CreateConstNode(const Tensor& tensor, const string& name,
@@ -94,9 +94,9 @@ string GetMonolithicTensorKey(const string& tensor_slice_name) {
   return absl::StrJoin(names, "/");
 }
 
-Status ObtainTensorSlice(const GraphDef& input_graph_def,
-                         const string& target_name,
-                         string* shape_slice_string) {
+absl::Status ObtainTensorSlice(const GraphDef& input_graph_def,
+                               const string& target_name,
+                               string* shape_slice_string) {
   string restore_node_name;
   for (const auto& node : input_graph_def.node()) {
     std::vector<string> node_name_parts = Split(node.name(), "/");
@@ -146,13 +146,13 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
       const auto& shape_and_slices_value =
           shape_and_slices_tensor.flat<tstring>();
       *shape_slice_string = shape_and_slices_value(offset);
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   return errors::Internal("Unable to find slice for variable: ", target_name);
 }
 
-Status ReadTensorFromCheckpoint(
+absl::Status ReadTensorFromCheckpoint(
     const string& tensor_name, const std::unique_ptr<BundleReader>& ckpt_reader,
     const string& shape_and_slice, Tensor* tensor) {
   if (ckpt_reader) {
@@ -174,25 +174,27 @@ Status ReadTensorFromCheckpoint(
       TF_RETURN_IF_ERROR(
           ckpt_reader->Lookup(GetMonolithicTensorKey(tensor_name), tensor));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::Internal("Checkpoint reader was not initialized. ");
 }
 
-Status InitializeCheckpointReader(const TransformFuncContext& context,
-                                  std::unique_ptr<BundleReader>* ckpt_reader) {
+absl::Status InitializeCheckpointReader(
+    const TransformFuncContext& context,
+    std::unique_ptr<BundleReader>* ckpt_reader) {
   if (context.params.count("input_checkpoint")) {
     const string input_checkpoint = context.params.at("input_checkpoint")[0];
-    ckpt_reader->reset(new BundleReader(Env::Default(), input_checkpoint));
+    *ckpt_reader =
+        std::make_unique<BundleReader>(Env::Default(), input_checkpoint);
     TF_RETURN_IF_ERROR((*ckpt_reader)->status());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ObtainVariableInfo(
+absl::Status ObtainVariableInfo(
     const GraphDef& input_graph_def,
-    std::unique_ptr<std::unordered_map<string, string> >* shapes_and_slices) {
-  shapes_and_slices->reset(new std::unordered_map<string, string>());
+    std::unique_ptr<std::unordered_map<string, string>>* shapes_and_slices) {
+  *shapes_and_slices = std::make_unique<std::unordered_map<string, string>>();
   for (const auto& node : input_graph_def.node()) {
     if ((node.op() == "Variable") || (node.op() == "VariableV2")) {
       string s;
@@ -200,28 +202,28 @@ Status ObtainVariableInfo(
       (**shapes_and_slices)[node.name()] = s;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RemoveInputAtIndex(NodeDef* n, int index) {
+absl::Status RemoveInputAtIndex(NodeDef* n, int index) {
   for (int i = index; i < n->input_size() - 1; i++) {
     n->mutable_input()->SwapElements(i, i + 1);
   }
   n->mutable_input()->RemoveLast();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RemoveNodeAtIndex(GraphDef* g, int index) {
+absl::Status RemoveNodeAtIndex(GraphDef* g, int index) {
   for (int i = index; i < g->node_size() - 1; i++) {
     g->mutable_node()->SwapElements(i, i + 1);
   }
   g->mutable_node()->RemoveLast();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SparsifyGatherInternal(
+absl::Status SparsifyGatherInternal(
     const GraphDef& input_graph_def,
-    const std::unique_ptr<std::unordered_map<string, string> >&
+    const std::unique_ptr<std::unordered_map<string, string>>&
         shapes_and_slices,
     const TransformFuncContext& context, const OpTypePattern& pattern,
     const std::unique_ptr<BundleReader>& ckpt_reader,
@@ -444,7 +446,7 @@ Status SparsifyGatherInternal(
           new_nodes->push_back(dim_idx_node);
           new_nodes->push_back(expand_dims_node);
 
-          return OkStatus();
+          return absl::OkStatus();
         },
         {true}, &replaced_graph_def));
 
@@ -554,12 +556,12 @@ Status SparsifyGatherInternal(
     current_graph_def = replaced_graph_def;
   } while (any_match_found);
   *output_graph_def = current_graph_def;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SparsifyGather(const GraphDef& input_graph_def,
-                      const TransformFuncContext& context,
-                      GraphDef* output_graph_def) {
+absl::Status SparsifyGather(const GraphDef& input_graph_def,
+                            const TransformFuncContext& context,
+                            GraphDef* output_graph_def) {
   // clang-format off
   const OpTypePattern gather_pattern =
     {"Gather",
@@ -608,7 +610,7 @@ Status SparsifyGather(const GraphDef& input_graph_def,
                                             context, gather_v2_pattern,
                                             ckpt_reader, output_graph_def));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("sparsify_gather", SparsifyGather);

@@ -23,11 +23,15 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/hlo.pb.h"
 
 namespace xla {
 
@@ -84,6 +88,11 @@ class HloInstructionSequence {
     instruction_sequence_.insert(instruction_sequence_.begin() + index,
                                  instruction);
     id_sequence_.insert(id_sequence_.begin() + index, instruction->unique_id());
+  }
+
+  bool contains(const HloInstruction* inst) const {
+    return absl::c_find(instruction_sequence_, inst) !=
+           instruction_sequence_.end();
   }
 
   // Clears the sequence of all instructions.

@@ -57,7 +57,7 @@ struct ChloLegalizeToHighLevelMhloPass
     // Consider the mhlo dialect legal for tests. Also add helper dialects
     // that are needed by the patterns.
     conversionTarget.addLegalDialect<chlo::ChloDialect, mhlo::MhloDialect>();
-    conversionTarget.addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::TanOp>();
+    conversionTarget.addIllegalOp<chlo::TopKOp, chlo::ErfOp>();
 
     if (failed(applyPartialConversion(getOperation(), conversionTarget,
                                       std::move(conversionPatterns)))) {

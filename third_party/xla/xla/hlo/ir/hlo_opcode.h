@@ -127,6 +127,8 @@ namespace xla {
   V(kPartitionId, "partition-id", 0)                                           \
   V(kPopulationCount, "popcnt", 1)                                             \
   V(kPower, "power", 2)                                                        \
+  V(kRaggedAllToAll, "ragged-all-to-all", 6)                                   \
+  V(kRaggedDot, "ragged-dot", 3)                                               \
   V(kReal, "real", 1)                                                          \
   V(kRecv, "recv", 1)                                                          \
   V(kRecvDone, "recv-done", 1)                                                 \

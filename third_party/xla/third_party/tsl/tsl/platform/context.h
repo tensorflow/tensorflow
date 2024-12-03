@@ -39,9 +39,9 @@ class WithContext;
 }  // namespace tsl
 
 #if defined(PLATFORM_GOOGLE)
-#include "tsl/platform/google/context.h"  // IWYU pragma: export
+#include "xla/tsl/platform/google/context.h"  // IWYU pragma: export
 #else
-#include "tsl/platform/default/context.h"  // IWYU pragma: export
+#include "xla/tsl/platform/default/context.h"  // IWYU pragma: export
 #endif
 
 #endif  // TENSORFLOW_TSL_PLATFORM_CONTEXT_H_

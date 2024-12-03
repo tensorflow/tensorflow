@@ -41,7 +41,7 @@ class ConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
     };
   }
 
-  Status CheckSignature(OpKernelContext* ctx) override {
+  absl::Status CheckSignature(OpKernelContext* ctx) override {
     TF_RETURN_IF_ERROR(ctx->MatchSignature({}, {DT_STRING_REF}));
     return absl::OkStatus();
   }
@@ -79,7 +79,7 @@ class ResourceConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
     };
   }
 
-  Status CheckSignature(OpKernelContext* ctx) override {
+  absl::Status CheckSignature(OpKernelContext* ctx) override {
     TF_RETURN_IF_ERROR(ctx->MatchSignature({}, {DT_RESOURCE}));
     return absl::OkStatus();
   }

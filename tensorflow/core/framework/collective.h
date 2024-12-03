@@ -169,16 +169,16 @@ class DeviceResolverInterface {
   virtual ~DeviceResolverInterface() {}
 
   // Populates *attributes with the DeviceAttributes of the specified device.
-  virtual Status GetDeviceAttributes(const string& device,
-                                     DeviceAttributes* attributes) = 0;
+  virtual absl::Status GetDeviceAttributes(const string& device,
+                                           DeviceAttributes* attributes) = 0;
 
   // Returns all device attributes of a task.
-  virtual Status GetAllDeviceAttributes(
+  virtual absl::Status GetAllDeviceAttributes(
       const string& task, std::vector<DeviceAttributes>* attributes) = 0;
 
   // Updates device attributes. It returns error if any device already
   // exists in the DeviceResolver and has a different incarnation.
-  virtual Status UpdateDeviceAttributes(
+  virtual absl::Status UpdateDeviceAttributes(
       const std::vector<DeviceAttributes>& attributes) = 0;
 };
 
@@ -213,10 +213,11 @@ class ParamResolverInterface {
 
   // Looks up a group. It returns an error if the group is not ready or not
   // found.
-  virtual Status LookupGroup(int32_t group_key, CollGroupParams* group) = 0;
+  virtual absl::Status LookupGroup(int32_t group_key,
+                                   CollGroupParams* group) = 0;
 
   // Aborts the resolver. After abortion the resolver can no longer be used.
-  virtual void StartAbort(const Status& s) = 0;
+  virtual void StartAbort(const absl::Status& s) = 0;
 };
 
 // Graphs which utilize Collective Ops in a common instance must
@@ -255,7 +256,7 @@ class NcclCommunicatorInterface;
 // instances and various distributed resolution capabilities.
 class CollectiveExecutorMgrInterface : public StepSequenceInterface {
  public:
-  virtual ~CollectiveExecutorMgrInterface() {}
+  ~CollectiveExecutorMgrInterface() override {}
 
   // Returns the step-specific CollectiveExecutor, creating if one does not
   // already exist.  The caller assumes ownership of one Ref on the object.
@@ -310,14 +311,14 @@ class CollectiveRemoteAccess {
 
   virtual BufRendezvous* buf_rendezvous() = 0;
 
-  virtual void StartAbort(const Status& s) = 0;
+  virtual void StartAbort(const absl::Status& s) = 0;
 };
 
 // A step-specific object that can execute a collective operation completely
 // described by a CollectiveParams object.
 class CollectiveExecutor : public core::RefCounted {
  public:
-  virtual void StartAbort(const Status& s) {}
+  virtual void StartAbort(const absl::Status& s) {}
 
   virtual void ExecuteAsync(OpKernelContext* ctx,
                             const CollectiveParams* col_params,
@@ -344,7 +345,7 @@ class CollectiveExecutor : public core::RefCounted {
                                                         cancel_mgr, done);
   }
 
-  virtual Status LookupGroup(int32_t group_key, CollGroupParams* group) {
+  virtual absl::Status LookupGroup(int32_t group_key, CollGroupParams* group) {
     return cem_->GetParamResolver()->LookupGroup(group_key, group);
   }
 
@@ -428,7 +429,7 @@ class NcclCommunicatorInterface {
   virtual void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                        StatusCallback done) = 0;
 
-  virtual void StartAbort(const Status& s) = 0;
+  virtual void StartAbort(const absl::Status& s) = 0;
 };
 
 // Interface of a Collective Op implementation.  Each specific CollectiveOp will
@@ -437,7 +438,7 @@ class NcclCommunicatorInterface {
 // common_runtime/hierarchical_tree_broadcaster for examples.
 class CollectiveImplementationInterface : public core::RefCounted {
  public:
-  virtual ~CollectiveImplementationInterface() = default;
+  ~CollectiveImplementationInterface() override = default;
 
   // Initializes the portions of `col_params` specific to this
   // implementation.  Called exactly once for every Collective instance during
@@ -447,13 +448,14 @@ class CollectiveImplementationInterface : public core::RefCounted {
   // `col_params` passed in and should not manipulate any data members.  However
   // because it is virtual and needs to be implemented by every derived class we
   // do not mark it as static.
-  virtual Status InitializeCollectiveParams(CollectiveParams* col_params) = 0;
+  virtual absl::Status InitializeCollectiveParams(
+      CollectiveParams* col_params) = 0;
 
   // Prepares the CollectiveContext for executing this CollectiveImplementation.
   // Called from CollectiveExecutor right before calling Run().  The
   // CollectiveContext passed in must outlive the CollectiveImplementation
   // object.
-  virtual Status InitializeCollectiveContext(
+  virtual absl::Status InitializeCollectiveContext(
       std::shared_ptr<CollectiveContext> col_ctx) = 0;
 
   // Processes and moves data according to the logic of this Collective
@@ -471,14 +473,15 @@ class CollectiveRegistry {
   // Looks up a previously registered CollectiveImplementation under
   // `collective_name`.  If found, creates an instance of the implementation and
   // assign to `implementation`.
-  static Status Lookup(const string& collective_name,
-                       CollectiveImplementationInterface** implementation);
+  static absl::Status Lookup(
+      const string& collective_name,
+      CollectiveImplementationInterface** implementation);
 
   // Looks up a previously registered CollectiveImplementation under
   // `collective_name`.  If found, returns the static instance of this
   // implementation via `implementation`.  This instance should only be used to
   // call InitializateCollectiveParams.
-  static Status LookupParamResolverInstance(
+  static absl::Status LookupParamResolverInstance(
       const string& collective_name,
       CollectiveImplementationInterface** implementation);
 
@@ -493,11 +496,11 @@ class CollectiveRegistry {
   // the CollectiveImplementation.  Also creates a static instance of the
   // implementation - this instance is used during param resolution and should
   // only be used to call InitializeCollectiveParams.
-  static Status Register(const string& collective_name, Factory factory);
+  static absl::Status Register(const string& collective_name, Factory factory);
 
-  static Status LookupHelper(const string& collective_name,
-                             CollectiveImplementationInterface** implementation,
-                             bool param_resolver);
+  static absl::Status LookupHelper(
+      const string& collective_name,
+      CollectiveImplementationInterface** implementation, bool param_resolver);
 };
 
 // Class used to call CollectiveRegistry::Register.  This should only be used to

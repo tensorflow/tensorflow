@@ -2,7 +2,7 @@
 #   Test util libraries.
 
 load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "//xla/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 

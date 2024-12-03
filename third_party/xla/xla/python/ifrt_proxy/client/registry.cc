@@ -22,6 +22,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -29,6 +30,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt_proxy/client/global_flags.h"
 
 namespace xla {
 namespace ifrt {
@@ -77,6 +79,9 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::Client>> CreateClient(
 
   const absl::string_view transport_name = proxy_server_address.substr(0, pos);
   const absl::string_view address = proxy_server_address.substr(pos + 3);
+  LOG(INFO) << "Attempting to create IFRT proxy client with transport name "
+            << transport_name << " to address '" << address
+            << "' and with global client flags " << *GetGlobalClientFlags();
 
   FactoryFn factory;
   {

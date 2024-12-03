@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
-import public "tsl/protobuf/histogram.proto";
+import public "xla/tsl/protobuf/histogram.proto";
 
 import "tensorflow/core/framework/tensor.proto";
 

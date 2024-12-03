@@ -52,7 +52,7 @@ class ResourceBase : public core::WeakRefCounted {
   // should not be tied to the graph that created it, since the graph may be
   // destroyed before the resource is used. To avoid this lifetime issue, you
   // can usually set a unique `shared_name` attribute for the resource.
-  virtual Status AsGraphDef(GraphDefBuilder* builder, Node** out) const {
+  virtual absl::Status AsGraphDef(GraphDefBuilder* builder, Node** out) const {
     return errors::Unimplemented("AsGraphDef not implemented for resource ",
                                  DebugString());
   }

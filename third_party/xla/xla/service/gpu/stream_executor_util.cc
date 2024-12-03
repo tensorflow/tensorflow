@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -57,9 +58,10 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
-#include "xla/tsl/util/env_var.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -491,7 +493,6 @@ static void InitializeTypedBuffer(se::Stream* stream,
     // Nothing more to do
     return;
   }
-#ifdef GOOGLE_CUDA
   // Repeat the host_buffer_size elements at the start of `buf` to the end
   CHECK_EQ(elements_to_fill, buffer.size() / sizeof(T) - host_buffer_size);
   se::StreamExecutor* executor = stream->parent();
@@ -512,7 +513,6 @@ static void InitializeTypedBuffer(se::Stream* stream,
                                  se::BlockDim(blocks_per_grid, 1, 1), *kernel,
                                  buffer, host_buffer_bytes,
                                  static_cast<int64_t>(buffer.size())));
-#endif
 }
 
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,

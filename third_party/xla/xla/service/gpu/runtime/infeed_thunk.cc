@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_transfer_manager.h"
 #include "xla/service/gpu/infeed_manager.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/shape.h"
@@ -48,7 +49,8 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   VLOG(2) << "Infeeding to GPU";
   ShapeTree<se::DeviceMemoryHandle> source_buffers =
-      GetOrCreateInfeedManager(stream.parent())->BlockingGetNextDestination();
+      GpuTransferManager::GetOrCreateInfeedManager(stream.parent())
+          ->BlockingGetNextDestination();
 
   size_t index = 0;
   for (auto& source : source_buffers.leaves()) {

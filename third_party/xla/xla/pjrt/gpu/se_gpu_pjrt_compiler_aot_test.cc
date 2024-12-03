@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -44,7 +44,7 @@ limitations under the License.
 #elif TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/amdgpu_compiler.h"
 #endif
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/protobuf.h"

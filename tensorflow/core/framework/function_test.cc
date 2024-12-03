@@ -69,7 +69,7 @@ class Attrs {
 
 typedef FunctionDefHelper FDH;
 
-Status GetOpSig(const string& op, const OpDef** sig) {
+absl::Status GetOpSig(const string& op, const OpDef** sig) {
   return OpRegistry::Global()->LookUpOpDef(op, sig);
 }
 
@@ -633,7 +633,7 @@ TEST(TFunc, IntsOnDeviceArgSet) {
   EXPECT_EQ("_DeviceRetval", result.nodes[4].op());
 }
 
-static void HasError(const Status& s, const string& substr) {
+static void HasError(const absl::Status& s, const string& substr) {
   EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << ">>" << s << "<<, expected substring >>" << substr << "<<";
 }
@@ -1109,7 +1109,7 @@ TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
   // Test that adding a function with same name as existing op fails.
   FunctionDef fdef = test::function::XTimesTwo();
   fdef.mutable_signature()->set_name("Add");
-  Status s = lib_def.AddFunctionDef(fdef);
+  absl::Status s = lib_def.AddFunctionDef(fdef);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.message(),
             "Cannot add function 'Add' because an op with the same name "
@@ -1151,7 +1151,7 @@ TEST(FunctionLibraryDefinitionTest, AddGradientDef) {
 
   // Test that adding a duplicate gradient fails
   grad.set_gradient_func(test::function::XTimes16().signature().name());
-  Status s = lib_def.AddGradientDef(grad);
+  absl::Status s = lib_def.AddGradientDef(grad);
   EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
   EXPECT_EQ(s.message(),
             "Cannot assign gradient function 'XTimes16' to 'XTimesTwo' because "
@@ -1162,7 +1162,7 @@ TEST(FunctionLibraryDefinitionTest, RemoveFunction) {
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
-  Status s = lib_def.RemoveFunction("XTimes16");
+  absl::Status s = lib_def.RemoveFunction("XTimes16");
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.message(), "Tried to remove non-existent function 'XTimes16'.");
 
@@ -1200,7 +1200,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary) {
       test::function::XTimesTwo().signature().name());
   *proto.add_function() = fdef;
   FunctionLibraryDefinition lib_def2(OpRegistry::Global(), proto);
-  Status s = lib_def.AddLibrary(lib_def2);
+  absl::Status s = lib_def.AddLibrary(lib_def2);
   EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
   EXPECT_EQ(s.message(),
             "Cannot add function 'XTimesTwo' because a different function with "
@@ -1248,7 +1248,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary_Atomic) {
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
 
   // Try adding the two functions to lib_def
-  Status s = lib_def.AddLibrary(proto);
+  absl::Status s = lib_def.AddLibrary(proto);
   EXPECT_EQ(error::Code::INVALID_ARGUMENT, s.code());
   EXPECT_EQ(
       "Cannot add function 'XTimesTwo' because a different function with "
@@ -1299,7 +1299,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibraryDefinition_Atomic_FuncConflict) {
 
   // Verify that adding lib_def2 will fail because of function conflict
   // and WXPlusB is not added.
-  Status s = lib_def.AddLibrary(lib_def2);
+  absl::Status s = lib_def.AddLibrary(lib_def2);
   EXPECT_EQ(error::Code::INVALID_ARGUMENT, s.code());
   EXPECT_EQ(
       "Cannot add function 'XTimesTwo' because a different function "
@@ -1335,7 +1335,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibraryDefinition_Atomic_GradConflict) {
 
   // Verify that adding lib_def2 will fail because of gradient conflict
   // and WXPlusB is not added.
-  Status s = lib_def.AddLibrary(lib_def2);
+  absl::Status s = lib_def.AddLibrary(lib_def2);
   EXPECT_EQ(error::Code::INVALID_ARGUMENT, s.code());
   EXPECT_EQ(
       "Cannot assign gradient function 'WXPlusB' to 'XTimesTwo'"

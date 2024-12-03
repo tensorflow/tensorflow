@@ -456,6 +456,12 @@ std::string GetShapeDebugString(const TfLiteIntArray* shape) {
   return str;
 }
 
+std::string GetTensorDebugString(const TfLiteTensor* tensor) {
+  return std::string("{\n  type: ") + TfLiteTypeGetName(tensor->type) +
+         "\n  data: {...}\n  dims: " + GetShapeDebugString(tensor->dims) +
+         "\n}";
+}
+
 TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input1,
                                         const TfLiteTensor* input2,

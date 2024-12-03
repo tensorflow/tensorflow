@@ -56,13 +56,6 @@ bool TpuExecutor::SynchronizeAllActivity() {
   return ExecutorApiFn()->TpuExecutor_SynchronizeAllActivityFn(executor_);
 }
 
-absl::Status TpuExecutor::BlockHostUntilDone(Stream* stream) {
-  StatusHelper status;
-  ExecutorApiFn()->TpuExecutor_BlockHostUntilDoneFn(
-      executor_, get_stream(stream), status.c_status);
-  return status.status();
-}
-
 tensorflow::tpu::TpuCoreLocationExternal TpuExecutor::GetCoreLocationExternal()
     const {
   return tensorflow::tpu::TpuCoreLocationExternal(
@@ -216,16 +209,16 @@ TpuExecutor::CreateDeviceDescription() const {
   ExecutorApiFn()->TpuExecutor_CreateDeviceDescriptionFn(executor_, description,
                                                          status.c_status);
   if (status.status().ok()) {
-    stream_executor::internal::DeviceDescriptionBuilder builder;
+    stream_executor::DeviceDescription desc;
     CHECK_NE(description->device_vendor, nullptr);
-    builder.set_device_vendor(description->device_vendor);
-    builder.set_name(description->name);
-    builder.set_clock_rate_ghz(description->clock_rate_ghz);
-    builder.set_core_count(description->core_count);
-    builder.set_ecc_enabled(description->ecc_enabled);
-    builder.set_device_memory_size(description->device_memory_size);
-    builder.set_platform_version(description->platform_version);
-    return builder.Build();
+    desc.set_device_vendor(description->device_vendor);
+    desc.set_name(description->name);
+    desc.set_clock_rate_ghz(description->clock_rate_ghz);
+    desc.set_core_count(description->core_count);
+    desc.set_ecc_enabled(description->ecc_enabled);
+    desc.set_device_memory_size(description->device_memory_size);
+    desc.set_platform_version(description->platform_version);
+    return std::make_unique<DeviceDescription>(std::move(desc));
   }
   return status.status();
 }

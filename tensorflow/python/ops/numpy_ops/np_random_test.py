@@ -116,13 +116,19 @@ class UniformTest(RandomTestBase):
 class PoissonTest(RandomTestBase):
 
   def setUp(self):
-    self.np_func = np_random.poisson
+    def np_wrapper(lam, size):
+      return np_random.poisson(lam, size).astype(np_dtypes.int64)
+    self.np_func = np_wrapper
     self.onp_func = onp.random.poisson
     super(PoissonTest, self).setUp()
 
-  @parameterized.parameters((1.0, None), (1.0, 1), (2.0, (3, 3)))
+  @parameterized.parameters(
+      (1.0, None),
+      (1.0, 1),
+      (2.0, (3, 3)),
+  )
   def test(self, lam, size):
-    self._test(lam, size)
+    self._test(lam, size, onp_dtype=np_dtypes.int64)
 
 
 class RandomTest(RandomTestBase):

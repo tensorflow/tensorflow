@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdarg>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <iterator>
 #include <memory>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
@@ -47,11 +49,11 @@ limitations under the License.
 #include "xla/service/cpu/in_process_collectives.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -117,6 +119,10 @@ extern const char* const kEigenConv3DF32SymbolName =
 extern const char* const kDuccFftSymbolName = "__xla_cpu_runtime_DuccFft";
 extern const char* const kDuccSingleThreadedFftSymbolName =
     "__xla_cpu_runtime_DuccSingleThreadedFft";
+extern const char* const kEigenSingleThreadedMatMulF8E4M3FNSymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulF8E4M3FN";
+extern const char* const kEigenSingleThreadedMatMulF8E5M2SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulF8E5M2";
 extern const char* const kEigenSingleThreadedMatMulF16SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulF16";
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName =

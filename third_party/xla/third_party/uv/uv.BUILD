@@ -55,7 +55,19 @@ cc_library(
     # TODO: Add Linux, etc. as in https://github.com/libuv/libuv/blob/v1.38.0/CMakeLists.txt.
     hdrs = [
         "include/uv.h",
-    ],
+        "src/heap-inl.h",
+        "src/idna.h",
+        "src/queue.h",
+        "src/strscpy.h",
+        "src/unix/atomic-ops.h",
+        "src/unix/internal.h",
+        "src/unix/spinlock.h",
+        "src/uv-common.h",
+    ] + select({
+        "@platforms//os:osx": [
+            "src/unix/darwin-stub.h",
+        ],
+    }) + glob(["include/uv/*.h"]),
     copts = [
         "-fexceptions",
         "-Wno-unused-variable",

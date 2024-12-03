@@ -61,9 +61,9 @@ CostGraph::CostGraph(const StrategyGroups& strategy_groups,
 
   // Build the cost graph.
   for (StrategyGroup* strategy_group : strategy_groups) {
-    node_lens_.push_back(strategy_group->strategies.size());
+    node_lens_.push_back(strategy_group->GetStrategies().size());
     extra_node_costs_.push_back(
-        std::vector<double>(strategy_group->strategies.size(), 0.0));
+        std::vector<double>(strategy_group->GetStrategies().size(), 0.0));
 
     const auto& in_nodes = strategy_group->in_nodes;
     for (size_t i = 0; i < in_nodes.size(); ++i) {
@@ -74,8 +74,8 @@ CostGraph::CostGraph(const StrategyGroups& strategy_groups,
             CreateEdgeCost(src_idx, dst_idx, i, strategy_group);
         AddEdgeCost(src_idx, dst_idx, edge_cost);
       } else if (in_nodes[i]->is_tuple && in_nodes.size() > 1) {
-        for (size_t l = 0; l < in_nodes[i]->childs.size(); ++l) {
-          NodeIdx src_idx = in_nodes[i]->childs[l]->node_idx;
+        for (const auto& child : in_nodes[i]->GetChildren()) {
+          NodeIdx src_idx = child->node_idx;
           NodeIdx dst_idx = strategy_group->node_idx;
           EdgeReshardingCostMatrix edge_cost =
               CreateEdgeCost(src_idx, dst_idx, i, strategy_group, true);
@@ -86,8 +86,8 @@ CostGraph::CostGraph(const StrategyGroups& strategy_groups,
             << "Do not support instructions with more than one tuple "
                "operand. If this CHECK fails, we will need to fix "
                "b/233412625.";
-        for (size_t l = 0; l < in_nodes[i]->childs.size(); ++l) {
-          NodeIdx src_idx = in_nodes[i]->childs[l]->node_idx;
+        for (size_t l = 0; l < in_nodes[i]->GetChildren().size(); ++l) {
+          NodeIdx src_idx = in_nodes[i]->GetChildren()[l]->node_idx;
           NodeIdx dst_idx = strategy_group->node_idx;
           // TODO(b/233412625) Support more general case, e.g., multiple tuple
           // operands. If there is only one operand and it's a tuple, the
@@ -101,16 +101,13 @@ CostGraph::CostGraph(const StrategyGroups& strategy_groups,
     }
 
     if (strategy_group->following) {
-      if (strategy_group->strategies.size() ==
-          strategy_group->following->strategies.size()) {
-        to_merge_pairs_.push_back(
-            {strategy_group->node_idx, strategy_group->following->node_idx});
-      } else {
-        LOG(WARNING) << "Different strategy counts for instruction ID "
-                     << strategy_group->instruction_id
-                     << " and following instruction ID "
-                     << strategy_group->following->instruction_id;
-      }
+      CHECK_EQ(strategy_group->GetStrategies().size(),
+               strategy_group->following->GetStrategies().size())
+          << "Different strategy counts for instruction ID "
+          << strategy_group->instruction_id << " and following instruction ID "
+          << strategy_group->following->instruction_id;
+      to_merge_pairs_.push_back(
+          {strategy_group->node_idx, strategy_group->following->node_idx});
     }
   }
 
@@ -119,26 +116,35 @@ CostGraph::CostGraph(const StrategyGroups& strategy_groups,
   for (const auto& pair : associative_dot_pairs) {
     NodeIdx src_idx = pair.first->node_idx;
     NodeIdx dst_idx = pair.second->node_idx;
+    StrategyGroup& src_strategy_group = *strategy_groups[src_idx];
+    StrategyGroup& dst_strategy_group = *strategy_groups[dst_idx];
 
     EdgeReshardingCostMatrix edge_cost(node_lens_[src_idx],
                                        node_lens_[dst_idx]);
     absl::flat_hash_map<std::string, NodeStrategyIdx>
         src_strategy_name_to_idx_map;
-    for (NodeStrategyIdx i = 0; i < node_lens_[src_idx]; ++i) {
-      const ShardingStrategy& strategy =
-          strategy_groups[src_idx]->strategies[i];
+    const auto& src_strategy_input_shardings =
+        src_strategy_group.GetStrategyInputShardings();
+    for (size_t iid = 0; iid < src_strategy_input_shardings.size(); ++iid) {
+      const InputShardings& input_shardings = src_strategy_input_shardings[iid];
+      NodeStrategyIdx i =
+          src_strategy_group.GetStrategyIdxForInputShardings(iid);
+      const ShardingStrategy& strategy = src_strategy_group.GetStrategy(i);
       if (strategy.communication_cost > 0) {
-        src_strategy_name_to_idx_map[strategy.name] = i;
+        src_strategy_name_to_idx_map[input_shardings.name] = i;
       }
     }
-    for (NodeStrategyIdx i = 0; i < node_lens_[dst_idx]; ++i) {
-      const ShardingStrategy& dst_strategy =
-          strategy_groups[dst_idx]->strategies[i];
+    const auto& dst_strategy_input_shardings =
+        dst_strategy_group.GetStrategyInputShardings();
+    for (size_t iid = 0; iid < dst_strategy_input_shardings.size(); ++iid) {
+      const InputShardings& input_shardings = dst_strategy_input_shardings[iid];
+      NodeStrategyIdx i =
+          dst_strategy_group.GetStrategyIdxForInputShardings(iid);
+      const ShardingStrategy& dst_strategy = dst_strategy_group.GetStrategy(i);
       if (dst_strategy.communication_cost > 0) {
-        auto it = src_strategy_name_to_idx_map.find(dst_strategy.name);
+        auto it = src_strategy_name_to_idx_map.find(input_shardings.name);
         if (it != src_strategy_name_to_idx_map.end()) {
-          const ShardingStrategy& src_strategy =
-              strategy_groups[src_idx]->strategies[it->second];
+          const auto& src_strategy = src_strategy_group.GetStrategy(it->second);
           CHECK_LE(std::abs(src_strategy.communication_cost -
                             dst_strategy.communication_cost),
                    1e-6);
@@ -157,8 +163,9 @@ EdgeReshardingCostMatrix CostGraph::CreateEdgeCost(
   CHECK_LT(src_idx, node_lens_.size());
   CHECK_LT(dst_idx, node_lens_.size());
   EdgeReshardingCostMatrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
-  for (NodeStrategyIdx k = 0; k < strategy_group->strategies.size(); ++k) {
-    const ShardingStrategy& strategy = strategy_group->strategies[k];
+  const auto& strategies = strategy_group->GetStrategies();
+  for (NodeStrategyIdx k = 0; k < strategies.size(); ++k) {
+    const ShardingStrategy& strategy = strategies[k];
     size_t start_idx = 0;
     CHECK_LT(in_node_idx, strategy.memory_resharding_costs.size())
         << strategy_group->node_idx;

@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/lib/data_format.h"
 
 #include "absl/status/statusor.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"

@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -93,11 +94,15 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kTranspose:
     // Other special ops.
     case HloOpcode::kBitcast:
+    case HloOpcode::kReducePrecision:
       return true;
     // Elementwise ops.
+    case HloOpcode::kExp:
+    case HloOpcode::kLog:
+      return LowPrecisionType() == BF16;
     case HloOpcode::kAdd:
-    case HloOpcode::kSubtract:
-    case HloOpcode::kMultiply: {
+    case HloOpcode::kMultiply:
+    case HloOpcode::kSubtract: {
       if (LowPrecisionType() == BF16) {
         auto* cuda_compute_capability =
             std::get_if<se::CudaComputeCapability>(&compute_capability_);
@@ -106,6 +111,13 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
       }
       return false;
     }
+    // Reduction.
+    case HloOpcode::kReduce:
+      return absl::c_all_of(hlo.called_computations().front()->instructions(),
+                            [this](const HloInstruction* hlo) {
+                              return hlo->opcode() == HloOpcode::kParameter ||
+                                     this->IsSupported(*hlo);
+                            });
     default:
       return false;
   }

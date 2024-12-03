@@ -110,7 +110,8 @@ struct UnstackerMetadata {
       VLOG(3) << "Prepared module: " << module->name() << " for unstacking.";
     }
     std::vector<std::pair<HloInstruction*, WhileLoopConfig>> loops =
-        WhileLoopUnroller::GetUnrollableLoops(module, {});
+        WhileLoopUnroller::GetUnrollableLoops(module, {},
+                                              /*unroll_config=*/std::nullopt);
     for (const auto& [instr, while_loop_config] : loops) {
       metadata.unrollable_loop_bodies[instr->while_body()] = while_loop_config;
       metadata.bodies[instr->while_body()] = instr;
@@ -284,6 +285,15 @@ bool UnstackWhileOperandAtIndex(
 bool PropagateGteShapeChange(HloInstruction* gte,
                              UnstackerTransformer& unstacker) {
   VLOG(5) << "PropagateGteShapeChange(" << gte->name() << ")";
+
+  HloInstruction* parent_while = nullptr;
+  if (unstacker.GetMetadata().bodies.contains(gte->parent())) {
+    parent_while = unstacker.GetMetadata().bodies.at(gte->parent());
+    if (parent_while->while_body() != gte->parent()) {
+      parent_while = nullptr;
+    }
+  }
+
   std::vector<const HloInstruction*> handled_instrs;
   // TODO: b/343457903 - Use HloDataflowAnalysis to track the usage of a value
   // instead of manually applying bfs
@@ -295,6 +305,7 @@ bool PropagateGteShapeChange(HloInstruction* gte,
   std::deque<HloInstruction*> worklist;
   worklist.push_back(gte);
   visited.insert({gte, gte->tuple_index()});
+  unstacker.AddOperandChange(gte, gte->tuple_index());
   while (!worklist.empty()) {
     HloInstruction* changed_instr_to_propagate = worklist.front();
     // The index of the changed operand that needs to be propagated.
@@ -319,11 +330,24 @@ bool PropagateGteShapeChange(HloInstruction* gte,
         // instruction will get the new shape eventually and the
         // change_operand_index does not matter.
         visited.insert({user, changed_operand_index});
+        unstacker.AddOperandChange(user, changed_operand_index);
         worklist.push_back(user);
       } else if (user->opcode() == HloOpcode::kTuple) {
-        int64_t use_index = user->operand_index(changed_instr_to_propagate);
-        visited.insert({user, {use_index}});
-        worklist.push_back(user);
+        for (int64_t i = 0; i < user->operand_count(); ++i) {
+          if (user->operand(i) == changed_instr_to_propagate) {
+            visited.insert({user, i});
+            unstacker.AddOperandChange(user, i);
+            worklist.push_back(user);
+            if (parent_while != nullptr && user->IsRoot() &&
+                i != gte->tuple_index()) {
+              bool changed_nested_while =
+                  CanUnstackWhileOperand(parent_while, unstacker, i);
+              if (!changed_nested_while) {
+                return false;
+              }
+            }
+          }
+        }
       } else if (user->opcode() == HloOpcode::kWhile) {
         // Recursively check the inner while for unstacking and populate
         // unstacker instance.
@@ -333,6 +357,7 @@ bool PropagateGteShapeChange(HloInstruction* gte,
           return false;
         }
         visited.insert({user, changed_operand_index});
+        unstacker.AddOperandChange(user, changed_operand_index);
         worklist.push_back(user);
       } else {
         if (absl::c_find(handled_instrs, user) != handled_instrs.end()) {
@@ -357,6 +382,8 @@ bool PropagateGteShapeChange(HloInstruction* gte,
           for (HloInstruction* handled_instr_user : instr->users()) {
             if (user->shape() == gte->shape()) {
               visited.insert({handled_instr_user, changed_operand_index});
+              unstacker.AddOperandChange(handled_instr_user,
+                                         changed_operand_index);
               worklist.push_back(handled_instr_user);
             }
           }
@@ -364,9 +391,6 @@ bool PropagateGteShapeChange(HloInstruction* gte,
         }
       }
     }
-  }
-  for (const auto& [instr, index] : visited) {
-    unstacker.AddOperandChange(instr, index);
   }
   return true;
 }
@@ -398,6 +422,42 @@ bool CanPropagateGteShapeChangesInComputation(
   }
   VLOG(3) << "Finish propagating shape change of index " << idx
           << " in: " << comp->name();
+  return true;
+}
+
+std::unique_ptr<HloInstruction> DynamicSliceToSlice(
+    HloInstruction* dynamic_slice, HloInstruction* input, int64_t i) {
+  std::vector<int64_t> new_start_indices;
+  new_start_indices.reserve(dynamic_slice->shape().rank());
+  std::vector<int64_t> new_limit_indices;
+  new_limit_indices.reserve(dynamic_slice->shape().rank());
+  std::vector<int64_t> new_strides;
+  new_strides.reserve(dynamic_slice->shape().rank());
+  new_start_indices.push_back(i);
+  new_limit_indices.push_back(i + 1);
+  new_strides.push_back(1);
+  for (int64_t j = 1; j < dynamic_slice->shape().rank(); ++j) {
+    new_start_indices.push_back(0);
+    new_limit_indices.push_back(
+        dynamic_slice->mutable_operand(0)->shape().dimensions(j));
+    new_strides.push_back(1);
+  }
+  return HloInstruction::CreateSlice(dynamic_slice->shape(), input,
+                                     new_start_indices, new_limit_indices,
+                                     new_strides);
+}
+
+bool ShouldUnfuseSlices(const UnstackerMetadata& metadata, HloInstruction* ds) {
+  HloInstruction* input = ds->mutable_operand(0);
+  for (int64_t i = 0; i < input->shape().dimensions(0); ++i) {
+    HloInstruction* slice =
+        ds->AddInstruction(DynamicSliceToSlice(ds, input, i));
+    if (!metadata.unfuse_slice(slice)) {
+      CHECK_OK(slice->parent()->RemoveInstruction(slice));
+      return false;
+    }
+    CHECK_OK(slice->parent()->RemoveInstruction(slice));
+  }
   return true;
 }
 
@@ -450,32 +510,15 @@ void UnstackWhileInput(const UnstackerTransformer& unstacker,
       if (unstacker.GetPatternType() == PatternType::DSFusionPattern ||
           unstacker.GetPatternType() == PatternType::NestedDSFusionPattern ||
           unstacker.GetPatternType() == PatternType::DSFusionNoBitcastPattern) {
-        HloInstruction* dynamic_slice = nullptr;
         if (unstacker.GetPatternType() == PatternType::DSFusionPattern ||
             unstacker.GetPatternType() == PatternType::NestedDSFusionPattern) {
-          dynamic_slice = root_instr->mutable_operand(0);
+          slice = while_instr->AddInstruction(DynamicSliceToSlice(
+              root_instr->mutable_operand(0), old_while_input, i));
         } else if (unstacker.GetPatternType() ==
                    PatternType::DSFusionNoBitcastPattern) {
-          dynamic_slice = root_instr;
+          slice = while_instr->AddInstruction(
+              DynamicSliceToSlice(root_instr, old_while_input, i));
         }
-        std::vector<int64_t> new_start_indices;
-        new_start_indices.reserve(dynamic_slice->shape().rank());
-        std::vector<int64_t> new_limit_indices;
-        new_limit_indices.reserve(dynamic_slice->shape().rank());
-        std::vector<int64_t> new_strides;
-        new_strides.reserve(dynamic_slice->shape().rank());
-        new_start_indices.push_back(i);
-        new_limit_indices.push_back(i + 1);
-        new_strides.push_back(1);
-        for (int64_t j = 1; j < dynamic_slice->shape().rank(); ++j) {
-          new_start_indices.push_back(0);
-          new_limit_indices.push_back(
-              dynamic_slice->mutable_operand(0)->shape().dimensions(j));
-          new_strides.push_back(1);
-        }
-        slice = while_instr->AddInstruction(HloInstruction::CreateSlice(
-            dynamic_slice->shape(), old_while_input, new_start_indices,
-            new_limit_indices, new_strides));
       }
       if (slice == nullptr || !unstacker.GetMetadata().unfuse_slice(slice)) {
         std::vector<HloInstruction*> operands = {
@@ -529,19 +572,30 @@ bool CanUnstackWhileOperand(const HloInstruction* while_instr,
     return false;
   }
 
-  const HloInstruction* root_operand =
-      while_instr->while_body()->root_instruction()->operand(index);
+  HloInstruction* root_operand =
+      while_instr->while_body()->root_instruction()->mutable_operand(index);
   if (root_operand == nullptr) {
     return false;
   }
-  if (Match(root_operand, match::GetTupleElement(match::While()))) {
-    VLOG(3) << "Faced a gte originating from loop: "
-            << root_operand->ToString();
-    bool loop_feeding_root_changes_collected = CanUnstackWhileOperand(
-        root_operand->operand(0), unstacker, root_operand->tuple_index());
-    if (!loop_feeding_root_changes_collected) {
-      VLOG(3) << "Failed: loop " << root_operand->operand(0)->name()
-              << " output at " << index << " is not unstackable";
+
+  HloInstruction* gte_operand = nullptr;
+  // Currently, we only support unstacking of while operands that either:
+  // 1. Are parameters of the while_body.
+  // 2. Are get-tuple-elements of another while instruction.
+  if (Match(root_operand, match::GetTupleElement(match::Op(&gte_operand)))) {
+    if (Match(gte_operand, match::While())) {
+      VLOG(3) << "Faced a gte originating from loop: "
+              << root_operand->ToString();
+      bool loop_feeding_root_changes_collected = CanUnstackWhileOperand(
+          root_operand->operand(0), unstacker, root_operand->tuple_index());
+      if (!loop_feeding_root_changes_collected) {
+        VLOG(3) << "Failed: loop " << root_operand->operand(0)->name()
+                << " output at " << index << " is not unstackable";
+        return false;
+      }
+    } else if (!Match(gte_operand, match::Parameter().WithParameterNum(0))) {
+      VLOG(3) << "Failed: root operand of while_body at " << index
+              << " is not a parameter";
       return false;
     }
   }
@@ -659,13 +713,15 @@ Shape MakeUnstackedShapeFromSlice(const Shape& slice_shape, int64_t layers) {
 // parameters inside an unrollable loop. If so, it returns the loop config.
 std::optional<WhileLoopConfig> IsFusionInsideUnrollableLoopWithNumParameter(
     const UnstackerMetadata& metadata, const HloInstruction* instr,
-    int64_t num_fusion_params) {
+    std::optional<int64_t> num_fusion_params) {
   if (instr->opcode() != HloOpcode::kFusion) {
     return std::nullopt;
   }
-  if (instr->fused_parameters().size() != num_fusion_params) {
-    VLOG(3) << "Fusion has different number of parameters";
-    return std::nullopt;
+  if (num_fusion_params.has_value()) {
+    if (instr->fused_parameters().size() != num_fusion_params) {
+      VLOG(3) << "Fusion has different number of parameters";
+      return std::nullopt;
+    }
   }
   if (!metadata.unrollable_loop_bodies.contains(instr->parent())) {
     VLOG(5) << "Fusion not inside unrollable while body, " << instr->name()
@@ -682,7 +738,7 @@ std::optional<WhileLoopConfig> IsFusionInsideUnrollableLoopWithNumParameter(
 // dynamic-slice instruction.
 HloInstruction* GetMostMajorEffectivelyStaticDynamicSliceInFusion(
     const UnstackerMetadata& metadata, const HloInstruction* instr,
-    int64_t num_fusion_params, int64_t stacked_operand_idx) {
+    std::optional<int64_t> num_fusion_params, int64_t stacked_operand_idx) {
   std::optional<WhileLoopConfig> while_instr_config =
       IsFusionInsideUnrollableLoopWithNumParameter(metadata, instr,
                                                    num_fusion_params);
@@ -755,6 +811,9 @@ std::optional<PatternInfo> GetDSFusionPattern(const UnstackerMetadata& metadata,
   if (shape_covering_instr == nullptr) {
     return std::nullopt;
   }
+  if (!ShouldUnfuseSlices(metadata, shape_covering_instr)) {
+    return std::nullopt;
+  }
   HloInstruction* bitcast_operand = nullptr;
   if (Match(instr->fused_instructions_computation()->root_instruction(),
             match::Bitcast(match::Op(&bitcast_operand)))) {
@@ -762,7 +821,6 @@ std::optional<PatternInfo> GetDSFusionPattern(const UnstackerMetadata& metadata,
       PatternInfo pattern_info;
       pattern_info.type = PatternType::DSFusionPattern;
       pattern_info.instr = instr;
-      // const Shape& slice_shape = instr->shape();
       const Shape& slice_shape = shape_covering_instr->shape();
       const int64_t num_layers = instr->operand(0)->shape().dimensions(0);
       pattern_info.unstacked_shape =
@@ -1298,6 +1356,9 @@ std::optional<PatternInfo> GetReduceFusionPattern(
   if (shape_covering_instr == nullptr) {
     return std::nullopt;
   }
+  if (!ShouldUnfuseSlices(metadata, shape_covering_instr)) {
+    return std::nullopt;
+  }
   HloInstruction* reduce_operand = nullptr;
   HloInstruction* fusion_root =
       instr->fused_instructions_computation()->root_instruction();
@@ -1380,6 +1441,7 @@ absl::StatusOr<bool> HloUnstacker::Run(
     }
   }
 
+  int64_t num_unstacked = 0;
   bool unstacked = false;
   std::vector<const HloInstruction*> unstacked_instructions;
   for (HloInstruction* loop : entry_loops) {
@@ -1392,8 +1454,12 @@ absl::StatusOr<bool> HloUnstacker::Run(
       VLOG(3) << "Attempting to unstack " << loop->name() << " at " << i
               << " = " << loop->while_init()->operand(i)->shape().ToString(true)
               << loop->while_init()->operand(i)->ToShortString();
-      unstacked |=
+      bool current_unstacked =
           UnstackWhileOperandAtIndex(metadata, loop, i, unstacked_instructions);
+      if (current_unstacked) {
+        num_unstacked++;
+        unstacked = true;
+      }
       VLOG(3) << "###################";
     }
   }
@@ -1417,14 +1483,16 @@ absl::StatusOr<bool> HloUnstacker::Run(
   // Go over the loops in reverse order to unroll the inner loops first.
   for (int64_t i = loops_to_unroll.size() - 1; i >= 0; --i) {
     HloInstruction* loop = loops_to_unroll[i];
-    TF_ASSIGN_OR_RETURN(
-        bool unrolled,
-        WhileLoopUnroller::Unroll(loop, /*unroll_factor=*/-1,
-                                  /*wrap_in_trivial_loop=*/false,
-                                  /*force_unroll=*/true, /*prepare=*/false));
+    TF_ASSIGN_OR_RETURN(UnrollResult unroll_result,
+                        WhileLoopUnroller::UnrollAndReturnReplacement(
+                            loop, /*unroll_factor=*/-1,
+                            /*wrap_in_trivial_loop=*/false,
+                            /*force_unroll=*/true, /*prepare=*/false));
+    bool unrolled = unroll_result.unrolled;
     CHECK(unrolled);
   }
   VLOG(3) << "after unstacking \n" << module->ToString();
+  VLOG(3) << "Num unstacked: " << num_unstacked;
   return true;
 }
 

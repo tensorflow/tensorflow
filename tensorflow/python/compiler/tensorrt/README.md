@@ -1,5 +1,7 @@
 # Using TensorRT in TensorFlow (TF-TRT)
 
+Note: Starting from v.2.18.0, TensorFlow doesn't support TensorRT.
+
 This module provides necessary bindings and introduces `TRTEngineOp` operator
 that wraps a subgraph in TensorRT. This module is under active development.
 

@@ -16,11 +16,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_backend_compiler.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -35,18 +40,19 @@ limitations under the License.
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace ifrt_serving {
-namespace {
 
 tsl::thread::ThreadPool& GetThreadPool() {
   constexpr int kMaxParallelism = 16;
@@ -56,47 +62,119 @@ tsl::thread::ThreadPool& GetThreadPool() {
   return *thread_pool;
 }
 
-TEST(IfrtBackendCompilerTest, Basic) {
+class IfrtBackendCompilerTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    mlir::registerAllDialects(registry_);
+    mlir::RegisterAllTensorFlowDialects(registry_);
+    context_.appendDialectRegistry(registry_);
+
+    // Create contexts required for the compiler execution.
+    TF_ASSERT_OK_AND_ASSIGN(client_, xla::ifrt::test_util::GetClient());
+
+    core_selector_ = std::make_unique<IfrtServingCoreSelector>(
+        &mock_serving_device_selector_, client_->addressable_device_count());
+
+    runtime_context_.resource_context().CreateResource<IfrtModelContext>(
+        "IfrtModelContext", client_, core_selector_.get(), &GetThreadPool(),
+        /*compilation_environment_proto=*/nullptr);
+  }
+
+  void verifyModules() {
+    absl::MutexLock l(&ServingExecutableRegistry::mu_);
+    for (const auto& [_, executable] :
+         *ServingExecutableRegistry::executables_) {
+      absl::MutexLock l(&executable->mutex_);
+      executable->module_->walk([](mlir::func::FuncOp func) {
+        ASSERT_FALSE(func->hasAttr("tfrt_ifrt_serving.program_id"));
+      });
+    }
+  }
+
+  mlir::DialectRegistry registry_;
+  mlir::MLIRContext context_;
+  std::shared_ptr<xla::ifrt::Client> client_;
+
+  std::unique_ptr<tensorflow::tfrt_stub::Runtime> runtime_ =
+      tensorflow::tfrt_stub::DefaultTfrtRuntime(/*num_threads=*/1);
+  tensorflow::tfrt_stub::GraphExecutionOptions graph_execution_options_ =
+      tensorflow::tfrt_stub::GraphExecutionOptions(runtime_.get());
+  tfrt::ResourceContext resource_context_;
+  tensorflow::tfrt_stub::ModelRuntimeContext runtime_context_ =
+      tensorflow::tfrt_stub::ModelRuntimeContext(
+          &graph_execution_options_, /*export_dir=*/"", &resource_context_);
+
+  tsl::test_util::MockServingDeviceSelector mock_serving_device_selector_;
+  std::unique_ptr<IfrtServingCoreSelector> core_selector_;
+  IfrtBackendCompiler compiler_;
+};
+
+namespace {
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
+
+struct IfrtBackendCompilerTestParams {
+  std::string mlir_file_name;
+};
+
+class IfrtBackendCompilerParameterizedTest
+    : public IfrtBackendCompilerTest,
+      public ::testing::WithParamInterface<IfrtBackendCompilerTestParams> {};
+
+TEST_P(IfrtBackendCompilerParameterizedTest, CompilesOk) {
+  // Create test input module
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
+  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/", GetParam().mlir_file_name));
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
+
+  ASSERT_TRUE(mlir_module);
+  ASSERT_TRUE(mlir_module.get() != nullptr);
+
+  TF_ASSERT_OK(
+      compiler_.CompileTensorflow(runtime_context_, mlir_module.get()));
+  verifyModules();
+}
+
+INSTANTIATE_TEST_SUITE_P(IfrtBackendCompilerParameterizedTest,
+                         IfrtBackendCompilerParameterizedTest,
+                         ::testing::ValuesIn<IfrtBackendCompilerTestParams>({
+                             {.mlir_file_name = "ifrt_cluster.mlir"},
+                             {.mlir_file_name = "restore_with_reference.mlir"},
+                         }));
+
+TEST_F(IfrtBackendCompilerTest, CompileShallFailAfterModelIsFrozen) {
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
       absl::StrCat(kDataDirectory, "/ifrt_cluster.mlir"));
-
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
 
   ASSERT_TRUE(mlir_module);
   ASSERT_TRUE(mlir_module.get() != nullptr);
 
-  // Create contexts required for the compiler execution.
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
-                          xla::ifrt::test_util::GetClient());
+  TF_ASSERT_OK(
+      compiler_.CompileTensorflow(runtime_context_, mlir_module.get()));
 
-  std::unique_ptr<tensorflow::tfrt_stub::Runtime> runtime =
-      tensorflow::tfrt_stub::DefaultTfrtRuntime(/*num_threads=*/1);
-  tensorflow::tfrt_stub::GraphExecutionOptions graph_execution_options(
-      runtime.get());
-  tfrt::ResourceContext resource_context;
-  tensorflow::tfrt_stub::ModelRuntimeContext runtime_context(
-      &graph_execution_options, /*export_dir=*/"", &resource_context);
+  std::optional<IfrtModelContext*> ifrt_model_context =
+      runtime_context_.resource_context().GetResource<IfrtModelContext>(
+          "IfrtModelContext");
+  ASSERT_TRUE(ifrt_model_context.has_value());
 
-  tsl::test_util::MockServingDeviceSelector mock_serving_device_selector;
-  IfrtServingCoreSelector core_selector(&mock_serving_device_selector,
-                                        client->addressable_device_count());
+  TF_ASSERT_OK((*ifrt_model_context)->Freeze());
 
-  runtime_context.resource_context().CreateResource<IfrtModelContext>(
-      "IfrtModelContext", client, &core_selector, &GetThreadPool(),
-      /*compilation_environment_proto=*/nullptr);
+  mlir::OwningOpRef<mlir::ModuleOp> another_mlir_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
 
-  IfrtBackendCompiler compiler;
-  TF_ASSERT_OK(compiler.CompileTensorflow(runtime_context, mlir_module.get()));
+  EXPECT_THAT(
+      compiler_.CompileTensorflow(runtime_context_, another_mlir_module.get()),
+      StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          HasSubstr("Cannot compile IFRT programs after the model is frozen")));
 }
 
 }  // namespace

@@ -23,6 +23,9 @@ permissions:
   contents: read
 on:
   pull_request:
+  push:
+    branches:
+      - main
 
 env:
   # A bit tricky here: this lets us invoke python files outside of `bazel run`
@@ -37,7 +40,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    timeout-minutes: 1
+    timeout-minutes: 6
     if: |
       github.event.sender.type == 'User' ||
       contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')

@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 
 namespace tflite {
 namespace gpu {

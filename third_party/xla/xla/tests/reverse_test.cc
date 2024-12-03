@@ -13,47 +13,51 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
+#include <array>
+#include <cstdint>
+#include <numeric>
+#include <ostream>
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "xla/array2d.h"
+#include "absl/types/span.h"
 #include "xla/array4d.h"
-#include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/primitive_util.h"
+#include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-#ifdef XLA_BACKEND_SUPPORTS_BFLOAT16
-// Tests both F32 and BF16.
-static std::array<bool, 2> use_bfloat16_params{false, true};
-#else
-// Only tests F32.
-static std::array<bool, 1> use_bfloat16_params{false};
-#endif
+static std::array<PrimitiveType, 4> primitive_type_params{F32, BF16, F8E5M2,
+                                                          F8E4M3FN};
 
 struct ReverseSpec {
   std::vector<int64_t> input_dims;
   std::vector<int64_t> reversal;
-  bool use_bfloat16;
+  PrimitiveType test_type;
 
   std::string ToTestCaseName() const {
     return absl::StrFormat(
         "reverse_%s_in_dims_%s_%s", absl::StrJoin(input_dims, "x"),
-        absl::StrJoin(reversal, "x"), use_bfloat16 ? "bf16" : "f32");
+        absl::StrJoin(reversal, "x"),
+        primitive_util::LowercasePrimitiveTypeName(test_type));
   }
 };
 
 static std::vector<ReverseSpec> GetTestCases() {
   // clang-format off
-  return ExpandUseBfloat16<ReverseSpec>(
-      use_bfloat16_params,
+  return ExpandTestType<ReverseSpec>(
+      primitive_type_params,
       {{{}, {}},
         {{0, 0}, {0, 1}},
         {{0, 1}, {0, 1}},
@@ -74,7 +78,7 @@ void PrintTo(const ReverseSpec& spec, std::ostream* os) {
 class FloatReverseTest : public ClientLibraryTestBase,
                          public ::testing::WithParamInterface<ReverseSpec> {
  public:
-  FloatReverseTest() { set_use_bfloat16(GetParam().use_bfloat16); }
+  FloatReverseTest() { set_float_type(GetParam().test_type); }
 };
 
 TEST_P(FloatReverseTest, Reverses) {

@@ -17,10 +17,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/slicing.h"
-#include "xla/client/lib/svd.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/slicing.h"
+#include "xla/hlo/builder/lib/svd.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/bits.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {

@@ -87,7 +87,7 @@ TEST(TensorSliceTest, Serialization) {
   // Failed parsing
   {
     TensorSlice slice;
-    Status s = TensorSlice::Parse("-:-:1,3:4:5", &slice);
+    absl::Status s = TensorSlice::Parse("-:-:1,3:4:5", &slice);
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
     EXPECT_TRUE(
         absl::StrContains(s.message(),
@@ -96,7 +96,7 @@ TEST(TensorSliceTest, Serialization) {
   }
   {
     TensorSlice slice;
-    Status s = TensorSlice::Parse("-:-1,3", &slice);
+    absl::Status s = TensorSlice::Parse("-:-1,3", &slice);
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
     EXPECT_TRUE(absl::StrContains(
         s.message(),
@@ -122,7 +122,7 @@ TEST(TensorSliceTest, Serialization) {
   // int64 parsing failure
   {
     TensorSlice slice;
-    Status s =
+    absl::Status s =
         TensorSlice::Parse("19223372036854775808,19223372036854775808", &slice);
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
     EXPECT_TRUE(absl::StrContains(
@@ -246,7 +246,7 @@ TEST(TensorSliceTest, SliceTensorShape) {
     TensorSlice a = TensorSlice::ParseOrDie("1,1:1,4:-:-");
     TensorShape x({2, 4, 5, 8});
     TensorShape y;
-    Status s = a.SliceTensorShape(x, &y);
+    absl::Status s = a.SliceTensorShape(x, &y);
     EXPECT_EQ(s.code(), error::INTERNAL);
     EXPECT_TRUE(absl::StrContains(s.message(),
                                   "Extent in dimension 1 out of bounds: "

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
+#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 
 namespace mlir {
@@ -93,11 +94,19 @@ struct PassConfig {
       quant::QDQConversionMode::kQDQNone;
 
   // When set to true, StableHLO Quantizer is run. The full configuration for
-  // the quantizer is at `TocoFlags::quantization_config`.
+  // the quantizer is at `ConverterFlags::quantization_config`.
   bool enable_stablehlo_quantizer = false;
 
   // Enables the attempt to directly lower composites into tflite ops.
   bool enable_composite_direct_lowering = true;
+
+  // Specifies the framework of the original model.
+  tflite::ConverterFlags::ModelOriginFramework model_origin_framework =
+      tflite::ConverterFlags::UNSET;
+
+  // When set to true, convert +Inf/-Inf to MIN/MAX float value and output of
+  // convert only contains finite values.
+  bool canonicalizing_inf_as_min_max_float = true;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -126,7 +135,11 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << pass_config.legalize_custom_tensor_list_ops
             << "\nreduce_type_precision: " << pass_config.reduce_type_precision
             << "\nconvert_qdq_format: "
-            << GetQDQQuantModeString(pass_config.qdq_conversion_mode) << "\n";
+            << GetQDQQuantModeString(pass_config.qdq_conversion_mode)
+            << "\nmodel_origin_framework: "
+            << tflite::ConverterFlags::ModelOriginFramework_Name(
+                   pass_config.model_origin_framework)
+            << "\n";
 }
 
 }  // namespace TFL

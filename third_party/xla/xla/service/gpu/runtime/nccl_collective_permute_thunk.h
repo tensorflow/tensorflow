@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
@@ -104,18 +105,19 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
   const NcclCollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
-                                 NcclCommHandleWrapper comm_wrapper) override;
+                                 CommunicatorHandle comm_handle) override;
 
  private:
   const NcclP2PConfig config_;
   const Buffer buffer_;
   RecvPtrMap recv_ptr_map_;
   bool p2p_memcpy_enabled_ = false;
+  int64_t device_count_;
 };
 
 absl::Status RunCollectivePermute(
     NcclApi* nccl_api, NcclP2PConfig::SourceTargetMapEntry source_target,
-    DeviceBufferPair& buffer, se::Stream& stream, NcclApi::NcclCommHandle comm,
+    DeviceBufferPair& buffer, se::Stream& stream, Communicator* comm,
     absl::string_view device_string, int64_t current_id, bool use_memcpy,
     NcclCollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map);
 

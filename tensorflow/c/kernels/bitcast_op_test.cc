@@ -60,7 +60,7 @@ void TestBitcastOp(Tensor* input_tensor, DataType out_type,
   DummyDevice dummy_device(nullptr);
   params.device = &dummy_device;
   params.op_kernel = kernel.get();
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4UL> inputs;
   inputs.emplace_back(input_tensor);
   params.inputs = inputs;
 

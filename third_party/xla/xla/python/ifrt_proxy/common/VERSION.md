@@ -24,3 +24,46 @@
 *   Changes:
     *   Changed the serialization of client and device attributes to use `xla.ifrt.AttributeMapProto` instead of `map<string, xla.ifrt.proto.Variant>`.
 
+## Version 5
+
+*   Added date: 2024-09-20.
+*   Changes:
+    *   Batch array deletions and destruction on client before sending to server.
+
+## Version 6
+
+*   Added date: 2024-09-30.
+*   Changes:
+    *   Added `ExecuteOptions::fill_status`.
+
+## Version 7
+
+*   Added date: 2024-10-01.
+*   Changes:
+    *   Added support for `Client::GetAllDevices()`.
+
+## Version 8
+
+*   Added date: 2024-10-11.
+*   Changes:
+    *   Added support for `SingleDeviceShardSemantics` in Array assembly and disassembly operations.
+
+## Version 9
+
+*   Added date: 2024-10-31.
+*   Changes:
+    *   Added support for string Arrays (i.e., arrays with dtype `DType::kString`).
+
+## Version 10
+
+*   Added date: 2024-11-08.
+*   Changes:
+    *   MakeArrayFromHostBuffer uses client-generated array handles and sends data asynchronously.
+
+
+## Version kClientHandlesOptimization2
+
+*   Added date: 2024-11-19
+*   Changes:
+    *   Introduces a set of performance optimizations where the client generates array handles.
+

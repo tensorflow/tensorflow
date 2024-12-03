@@ -209,7 +209,7 @@ static void BM_SparseToDense(::testing::benchmark::State& state) {
   std::unique_ptr<Device> device(
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4UL> inputs;
 
   // Create a dense tensor with dims [1, ..., 1, N]
   Tensor output_shape(DT_INT32, TensorShape({NDIM}));
@@ -240,7 +240,7 @@ static void BM_SparseToDense(::testing::benchmark::State& state) {
                   .Input(FakeInput(DT_FLOAT))
                   .Finalize(&sparse_node_def));
 
-  Status status;
+  absl::Status status;
   std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                               cpu_allocator(), sparse_node_def,
                                               TF_GRAPH_DEF_VERSION, &status));

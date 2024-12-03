@@ -46,6 +46,9 @@ class ConstantValue {
   static ConstantValue GetOne(int32_t bitwidth, bool is_signed) {
     return ConstantValue(1, bitwidth, is_signed);
   }
+  static ConstantValue Get(int64_t value, int32_t bitwidth, bool is_signed) {
+    return ConstantValue(absl::bit_cast<uint64_t>(value), bitwidth, is_signed);
+  }
   static ConstantValue GetSigned(int64_t value, int32_t bitwidth) {
     return ConstantValue(absl::bit_cast<uint64_t>(value), bitwidth,
                          /*is_signed=*/true);

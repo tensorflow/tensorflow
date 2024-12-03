@@ -102,12 +102,20 @@ ENTRY e {
          "num_ctas":1}}}
 })";
 
+constexpr std::string_view kResultsInNoPtxHlo = R"(
+  ENTRY e {
+    a = f32[5,5] parameter(0)
+    ROOT _ = f32[5,5] custom-call(a, a), custom_call_target="__cublas$gemm",
+      backend_config="{ \"gemm_backend_config\": {\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}}"
+  })";
+
 std::string_view GetHlo(std::string_view name) {
   static const absl::flat_hash_map<std::string_view, std::string_view>* const
       kHloMap = new absl::flat_hash_map<std::string_view, std::string_view>(
           {{"simple", kSimpleHlo},
            {"parallel_compilation", kParallelCompilationHlo},
-           {"requires_sm90a", kSM90AHlo}});
+           {"requires_sm90a", kSM90AHlo},
+           {"results_in_no_ptx", kResultsInNoPtxHlo}});
   return kHloMap->at(name);
 }
 
@@ -187,9 +195,11 @@ class NVPTXCompilationTests
     debug_options->set_xla_gpu_enable_libnvptxcompiler(
         compilation_method == PtxCompilationMethod::kNvPtxCompiler);
 
-    debug_options->set_xla_gpu_enable_libnvjitlink(
-        compilation_method == PtxCompilationMethod::kNvJitLink ||
-        linking_method == PtxLinkingMethod::kNvJitLink);
+    debug_options->set_xla_gpu_libnvjitlink_mode(
+        (compilation_method == PtxCompilationMethod::kNvJitLink ||
+         linking_method == PtxLinkingMethod::kNvJitLink)
+            ? DebugOptions::LIB_NV_JIT_LINK_MODE_ENABLED
+            : DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
 
     debug_options->set_xla_gpu_enable_llvm_module_compilation_parallelism(
         linking_method != PtxLinkingMethod::kNone);
@@ -207,6 +217,12 @@ class NVPTXCompilationTests
 
     // We need individual functions to test parallel compilation.
     debug_options->set_xla_llvm_force_inline_before_split(false);
+  }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_autotune_level(0);
+    return debug_options;
   }
 
   void SetUp() override {
@@ -248,6 +264,11 @@ TEST_P(NVPTXCompilationTests, CompileProgram) {
               tsl::testing::IsOkAndHolds(::testing::NotNull()));
 }
 
+MATCHER(MatchesSectionNameAndBinarySize, "") {
+  return std::get<0>(arg).first == std::get<1>(arg).first &&
+         std::get<0>(arg).second.size() == std::get<1>(arg).second.size();
+}
+
 TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   std::string_view name = std::get<0>(GetParam());
   std::string_view hlo_text = GetHlo(name);
@@ -270,13 +291,14 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   absl::StatusOr<std::unique_ptr<Executable>> executable =
       compile(compilation_method, linking_method);
 
-  // Non parallel compilation (PtxLinkingMethod::kNone) generates slightly
-  // different code (different register assignment, different instruction
-  // ordering). Ideally we would do a fuzzy match, but for now let's just not
-  // compare between parallel and non-parallel compilation.
+  // Binaries produced in a separate linking step differ from binaries produced
+  // with combined compilation/linking. Therefore we only enable linking in the
+  // reference build when the build under test also uses a separate linking
+  // step.
   const PtxLinkingMethod reference_linking_method =
-      linking_method == PtxLinkingMethod::kNone ? PtxLinkingMethod::kNone
-                                                : PtxLinkingMethod::kNvLink;
+      (linking_method == PtxLinkingMethod::kNone) ? PtxLinkingMethod::kNone
+                                                  : PtxLinkingMethod::kNvLink;
+
   absl::StatusOr<std::unique_ptr<Executable>> reference =
       compile(PtxCompilationMethod::kPtxas, reference_linking_method);
 
@@ -288,14 +310,19 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   absl::Span<const uint8_t> reference_binary =
       static_cast<GpuExecutable*>(reference.value().get())->binary();
 
-  if (executable_binary != reference_binary) {
-    std::string test_name =
-        GenerateParametrizedTestname(name, compilation_method, linking_method);
-    DumpArtifactIfEnabled(absl::StrCat(test_name, "_executable.bin"),
-                          executable_binary);
-    DumpArtifactIfEnabled(absl::StrCat(test_name, "_reference.bin"),
-                          reference_binary);
+  if (executable_binary == reference_binary) {
+    // If the binaries are exactly the same, we can short circuit and don't need
+    // to parse them.
+    SUCCEED();
+    return;
   }
+
+  std::string test_name =
+      GenerateParametrizedTestname(name, compilation_method, linking_method);
+  DumpArtifactIfEnabled(absl::StrCat(test_name, "_executable.bin"),
+                        executable_binary);
+  DumpArtifactIfEnabled(absl::StrCat(test_name, "_reference.bin"),
+                        reference_binary);
 
   auto get_text_sections = [&](absl::Span<const uint8_t> binary)
       -> absl::StatusOr<absl::btree_map<std::string, std::string>> {
@@ -336,19 +363,34 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   TF_ASSERT_OK_AND_ASSIGN(auto reference_text_sections,
                           get_text_sections(reference_binary));
 
-  EXPECT_THAT(executable_text_sections, ::testing::Eq(reference_text_sections));
+  if (linking_method == reference_linking_method) {
+    EXPECT_THAT(executable_text_sections,
+                ::testing::Eq(reference_text_sections));
+    return;
+  }
+
+  // Different linking methods lead to slightly different code (different
+  // register assignment, different instruction ordering). Ideally we would
+  // disassemble the code and check for equivalence, but for now let's only
+  // compare the text section names and their sizes. If it turns out that
+  // this doesn't bring the necessary coverage or that it's too unstable
+  // we have to revisit that.
+  EXPECT_THAT(executable_text_sections,
+              ::testing::Pointwise(MatchesSectionNameAndBinarySize(),
+                                   reference_text_sections));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     NVPTXCompilationTest, NVPTXCompilationTests,
-    ::testing::Combine(
-        ::testing::Values("simple", "parallel_compilation", "requires_sm90a"),
-        ::testing::Values(PtxCompilationMethod::kNvPtxCompiler,
-                          PtxCompilationMethod::kPtxas,
-                          PtxCompilationMethod::kNvJitLink),
-        ::testing::Values(PtxLinkingMethod::kNone, PtxLinkingMethod::kNvLink,
-                          PtxLinkingMethod::kDriver,
-                          PtxLinkingMethod::kNvJitLink)),
+    ::testing::Combine(::testing::Values("simple", "parallel_compilation",
+                                         "requires_sm90a", "results_in_no_ptx"),
+                       ::testing::Values(PtxCompilationMethod::kNvPtxCompiler,
+                                         PtxCompilationMethod::kPtxas,
+                                         PtxCompilationMethod::kNvJitLink),
+                       ::testing::Values(PtxLinkingMethod::kNone,
+                                         PtxLinkingMethod::kNvLink,
+                                         PtxLinkingMethod::kDriver,
+                                         PtxLinkingMethod::kNvJitLink)),
     [](const ::testing::TestParamInfo<std::tuple<
            std::string_view, PtxCompilationMethod, PtxLinkingMethod>>& info) {
       return GenerateParametrizedTestname(std::get<0>(info.param),

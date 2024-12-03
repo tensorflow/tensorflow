@@ -40,6 +40,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 COMPRESSION_AUTO = "AUTO"
 COMPRESSION_NONE = None
+COMPRESSION_SNAPPY = "SNAPPY"
 _PARALLEL_EPOCHS = "parallel_epochs"
 _DISTRIBUTED_EPOCH = "distributed_epoch"
 
@@ -183,7 +184,11 @@ def _validate_job_name(job_name) -> None:
 
 
 def _validate_compression(compression) -> None:
-  valid_compressions = [COMPRESSION_AUTO, COMPRESSION_NONE]
+  valid_compressions = [
+      COMPRESSION_AUTO,
+      COMPRESSION_NONE,
+      COMPRESSION_SNAPPY,
+  ]
   if compression not in valid_compressions:
     raise ValueError(f"Invalid `compression` argument: {compression}. "
                      f"Must be one of {valid_compressions}.")
@@ -193,6 +198,8 @@ def _get_compression_proto(
     compression) -> data_service_pb2.DataServiceMetadata.Compression:
   if compression == COMPRESSION_AUTO:
     return data_service_pb2.DataServiceMetadata.COMPRESSION_SNAPPY
+  if compression == COMPRESSION_SNAPPY:
+    return data_service_pb2.DataServiceMetadata.COMPRESSION_FORCED_SNAPPY
   if compression == COMPRESSION_NONE:
     return data_service_pb2.DataServiceMetadata.COMPRESSION_OFF
   raise ValueError(f"Invalid `compression` argument: {compression}. "
@@ -492,7 +499,8 @@ def _distribute(
       at runtime.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
-      tf.data service runtime. `None` indicates not to compress.
+      tf.data service runtime. `None` indicates not to compress. "SNAPPY" forces
+      snappy compression.
     cross_trainer_cache: (Optional.) If a `CrossTrainerCache` object is
       provided, dataset iteration will be shared across concurrently running
       trainers. See
@@ -591,7 +599,7 @@ def distribute(
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
   ...     processing_mode="parallel_epochs", service=dispatcher.target))
-  >>> print(sorted(list(dataset.as_numpy_iterator())))
+  >>> sorted([a.item() for a in dataset.as_numpy_iterator()])
   [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9]
 
   "distributed_epoch", on the other hand, will still produce each element once:
@@ -606,7 +614,7 @@ def distribute(
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
   ...     processing_mode="distributed_epoch", service=dispatcher.target))
-  >>> print(sorted(list(dataset.as_numpy_iterator())))
+  >>> sorted([a.item() for a in dataset.as_numpy_iterator()])
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When using `apply(tf.data.experimental.service.distribute(...))`, the dataset
@@ -626,7 +634,7 @@ def distribute(
   ...    tf.data.experimental.service.distribute("parallel_epochs",
   ...                                            dispatcher.target))
   >>> dataset = dataset.map(lambda x: x+1)
-  >>> print(sorted(list(dataset.as_numpy_iterator())))
+  >>> sorted([a.item() for a in dataset.as_numpy_iterator()])
   [1, 1, 2, 2, 5, 5, 10, 10, 17, 17]
 
   In the above example, the dataset operations (before applying the `distribute`
@@ -751,7 +759,8 @@ def distribute(
       at runtime.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
-      tf.data service runtime. `None` indicates not to compress.
+      tf.data service runtime. `None` indicates not to compress. "SNAPPY" forces
+      the use of snappy compression.
     cross_trainer_cache: (Optional.) If a `CrossTrainerCache` object is
       provided, dataset iteration will be shared across concurrently running
       trainers. See
@@ -794,12 +803,13 @@ def _register_dataset(
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
-        address and `<protocol>` can optionally be used to override the default
-        protocol to use. If it's a tuple, it should be (protocol, address).
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset: A `tf.data.Dataset` to register with the tf.data service.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
-      tf.data service runtime. `None` indicates not to compress.
+      tf.data service runtime. `None` indicates not to compress. "SNAPPY" forces
+      the use of snappy compression.
     dataset_id: (Optional.) By default, tf.data service generates a unique
       (string) ID for each registered dataset. If a `dataset_id` is provided, it
       will use the specified ID. If a dataset with a matching ID already exists,
@@ -825,7 +835,10 @@ def _register_dataset(
     encoded_spec = nested_structure_coder.encode_structure(
         dataset.element_spec).SerializeToString()
 
-  if compression == COMPRESSION_AUTO:
+  if (
+      compression == COMPRESSION_AUTO
+      or compression == COMPRESSION_SNAPPY
+  ):
     dataset = dataset.map(
         lambda *x: compression_ops.compress(x),
         num_parallel_calls=dataset_ops.AUTOTUNE)
@@ -873,7 +886,7 @@ def register_dataset(
   ...     service=dispatcher.target,
   ...     dataset_id=dataset_id,
   ...     element_spec=dataset.element_spec)
-  >>> print(list(dataset.as_numpy_iterator()))
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   Args:
@@ -1100,7 +1113,7 @@ def from_dataset_id(processing_mode,
   ...     service=dispatcher.target,
   ...     dataset_id=dataset_id,
   ...     element_spec=dataset.element_spec)
-  >>> print(list(dataset.as_numpy_iterator()))
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   Args:

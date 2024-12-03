@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/save_restore_util.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -204,7 +204,7 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
   // the extraction failed to just ignore those values and work as if those are
   // empty.
   llvm::SmallVector<std::string, 4> original_shape_and_slices;
-  const Status extraction_status = ExtractConstStringVectorFromValue(
+  const absl::Status extraction_status = ExtractConstStringVectorFromValue(
       original_save.getShapeAndSlices(), original_shape_and_slices);
   if (extraction_status.ok()) {
     for (const std::string& shape_and_slice : original_shape_and_slices) {
@@ -388,9 +388,6 @@ StatusOr<mlir::Operation*> ExpandSaveV2Op(mlir::Operation* op) {
   auto save_v2 = mlir::cast<mlir::TF::SaveV2Op>(op);
 
   mlir::OpBuilder builder(save_v2);
-
-  absl::flat_hash_map<int64_t, std::pair<std::vector<int64_t>, Layout>>
-      tensor_shape_layout_map;
   std::vector<SavingTensorMetadata> metadata;
   for (const auto& it : llvm::enumerate(save_v2.getTensors())) {
     mlir::Value tensor = it.value();

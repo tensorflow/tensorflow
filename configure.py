@@ -16,24 +16,15 @@
 
 import argparse
 import errno
-import glob
 import json
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 
-# pylint: disable=g-import-not-at-top
-try:
-  from shutil import which
-except ImportError:
-  from distutils.spawn import find_executable as which
-# pylint: enable=g-import-not-at-top
 
-_DEFAULT_CUDA_VERSION = '11'
-_DEFAULT_CUDNN_VERSION = '2'
-_DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
 _SUPPORTED_ANDROID_NDK_VERSIONS = [19, 20, 21, 25]
@@ -128,6 +119,12 @@ def write_action_env_to_bazelrc(var_name, var):
   write_to_bazelrc('build --action_env {}="{}"'.format(var_name, str(var)))
 
 
+def write_repo_env_to_bazelrc(config_name, var_name, var):
+  write_to_bazelrc(
+      'build:{} --repo_env {}="{}"'.format(config_name, var_name, str(var))
+  )
+
+
 def run_shell(cmd, allow_non_zero=False, stderr=None):
   if stderr is None:
     stderr = sys.stdout
@@ -161,9 +158,9 @@ def get_python_path(environ_cp, python_bin_path):
   except subprocess.CalledProcessError:
     library_paths = [
         run_shell([
-            python_bin_path, '-c',
-            'from distutils.sysconfig import get_python_lib;'
-            'print(get_python_lib())'
+            python_bin_path,
+            '-c',
+            'import sysconfig;print(sysconfig.get_path("purelib")',
         ])
     ]
 
@@ -239,7 +236,7 @@ def setup_python(environ_cp):
   write_to_bazelrc('build --python_path=\"{}"'.format(python_bin_path))
   environ_cp['PYTHON_BIN_PATH'] = python_bin_path
 
-  # If choosen python_lib_path is from a path specified in the PYTHONPATH
+  # If chosen python_lib_path is from a path specified in the PYTHONPATH
   # variable, need to tell bazel to include PYTHONPATH
   if environ_cp.get('PYTHONPATH'):
     python_paths = environ_cp.get('PYTHONPATH').split(':')
@@ -423,9 +420,9 @@ def retrieve_bazel_version():
   Returns:
     The bazel version detected.
   """
-  bazel_executable = which('bazel')
+  bazel_executable = shutil.which('bazel')
   if bazel_executable is None:
-    bazel_executable = which('bazelisk')
+    bazel_executable = shutil.which('bazelisk')
     if bazel_executable is None:
       print('Cannot find bazel. Please install bazel/bazelisk.')
       sys.exit(1)
@@ -615,7 +612,7 @@ def set_clang_cuda_compiler_path(environ_cp):
     if not os.path.exists(default_clang_path):
       default_clang_path = '/usr/lib/llvm-16/bin/clang'
     if not os.path.exists(default_clang_path):
-      default_clang_path = which('clang') or ''
+      default_clang_path = shutil.which('clang') or ''
 
   clang_cuda_compiler_path = prompt_loop_or_load_from_env(
       environ_cp,
@@ -777,12 +774,7 @@ def get_ndk_api_level(environ_cp, android_ndk_home_path):
 
 def set_gcc_host_compiler_path(environ_cp):
   """Set GCC_HOST_COMPILER_PATH."""
-  default_gcc_host_compiler_path = which('gcc') or ''
-  cuda_bin_symlink = '%s/bin/gcc' % environ_cp.get('CUDA_TOOLKIT_PATH')
-
-  if os.path.islink(cuda_bin_symlink):
-    # os.readlink is only available in linux
-    default_gcc_host_compiler_path = os.path.realpath(cuda_bin_symlink)
+  default_gcc_host_compiler_path = shutil.which('gcc') or ''
 
   gcc_host_compiler_path = prompt_loop_or_load_from_env(
       environ_cp,
@@ -843,7 +835,7 @@ def set_clang_compiler_path(environ_cp):
     if not os.path.exists(default_clang_path):
       default_clang_path = '/usr/lib/llvm-16/bin/clang'
     if not os.path.exists(default_clang_path):
-      default_clang_path = which('clang') or ''
+      default_clang_path = shutil.which('clang') or ''
 
   clang_compiler_path = prompt_loop_or_load_from_env(
       environ_cp,
@@ -882,7 +874,7 @@ def set_clang_compiler_path_win(environ_cp):
   # Default path if clang-16 is installed by using apt-get install
   default_clang_path = 'C:/Program Files/LLVM/bin/clang.exe'
   if not os.path.exists(default_clang_path):
-    default_clang_path = which('clang') or ''
+    default_clang_path = shutil.which('clang') or ''
 
   clang_compiler_path = prompt_loop_or_load_from_env(
       environ_cp,
@@ -947,108 +939,42 @@ def disable_clang_offsetof_extension(clang_version):
     write_to_bazelrc('build --copt=-Wno-gnu-offsetof-extensions')
 
 
-def set_tf_cuda_paths(environ_cp):
-  """Set TF_CUDA_PATHS."""
-  ask_cuda_paths = (
-      'Please specify the comma-separated list of base paths to look for CUDA '
-      'libraries and headers. [Leave empty to use the default]: ')
-  tf_cuda_paths = get_from_env_or_user_or_default(environ_cp, 'TF_CUDA_PATHS',
-                                                  ask_cuda_paths, '')
-  if tf_cuda_paths:
-    environ_cp['TF_CUDA_PATHS'] = tf_cuda_paths
-
-
-def set_tf_cuda_version(environ_cp):
-  """Set TF_CUDA_VERSION."""
+def set_hermetic_cuda_version(environ_cp):
+  """Set HERMETIC_CUDA_VERSION."""
   ask_cuda_version = (
-      'Please specify the CUDA SDK version you want to use. '
-      '[Leave empty to default to CUDA %s]: ') % _DEFAULT_CUDA_VERSION
-  tf_cuda_version = get_from_env_or_user_or_default(environ_cp,
-                                                    'TF_CUDA_VERSION',
-                                                    ask_cuda_version,
-                                                    _DEFAULT_CUDA_VERSION)
-  environ_cp['TF_CUDA_VERSION'] = tf_cuda_version
+      'Please specify the hermetic CUDA version you want to use '
+      'or leave empty to use the default version. '
+  )
+  hermetic_cuda_version = get_from_env_or_user_or_default(
+      environ_cp, 'HERMETIC_CUDA_VERSION', ask_cuda_version, None
+  )
+  if hermetic_cuda_version:
+    environ_cp['HERMETIC_CUDA_VERSION'] = hermetic_cuda_version
+    write_repo_env_to_bazelrc(
+        'cuda', 'HERMETIC_CUDA_VERSION', hermetic_cuda_version
+    )
 
 
-def set_tf_cudnn_version(environ_cp):
-  """Set TF_CUDNN_VERSION."""
+def set_hermetic_cudnn_version(environ_cp):
+  """Set HERMETIC_CUDNN_VERSION."""
   ask_cudnn_version = (
-      'Please specify the cuDNN version you want to use. '
-      '[Leave empty to default to cuDNN %s]: ') % _DEFAULT_CUDNN_VERSION
-  tf_cudnn_version = get_from_env_or_user_or_default(environ_cp,
-                                                     'TF_CUDNN_VERSION',
-                                                     ask_cudnn_version,
-                                                     _DEFAULT_CUDNN_VERSION)
-  environ_cp['TF_CUDNN_VERSION'] = tf_cudnn_version
+      'Please specify the hermetic cuDNN version you want to use '
+      'or leave empty to use the default version. '
+  )
+  hermetic_cudnn_version = get_from_env_or_user_or_default(
+      environ_cp, 'HERMETIC_CUDNN_VERSION', ask_cudnn_version, None
+  )
+  if hermetic_cudnn_version:
+    environ_cp['HERMETIC_CUDNN_VERSION'] = hermetic_cudnn_version
+    write_repo_env_to_bazelrc(
+        'cuda', 'HERMETIC_CUDNN_VERSION', hermetic_cudnn_version
+    )
 
 
-def set_tf_tensorrt_version(environ_cp):
-  """Set TF_TENSORRT_VERSION."""
-  if not (is_linux() or is_windows()):
-    raise ValueError('Currently TensorRT is only supported on Linux platform.')
-
-  if not int(environ_cp.get('TF_NEED_TENSORRT', False)):
-    return
-
-  ask_tensorrt_version = (
-      'Please specify the TensorRT version you want to use. '
-      '[Leave empty to default to TensorRT %s]: ') % _DEFAULT_TENSORRT_VERSION
-  tf_tensorrt_version = get_from_env_or_user_or_default(
-      environ_cp, 'TF_TENSORRT_VERSION', ask_tensorrt_version,
-      _DEFAULT_TENSORRT_VERSION)
-  environ_cp['TF_TENSORRT_VERSION'] = tf_tensorrt_version
-
-
-def set_tf_nccl_version(environ_cp):
-  """Set TF_NCCL_VERSION."""
-  if not is_linux():
-    raise ValueError('Currently NCCL is only supported on Linux platform.')
-
-  if 'TF_NCCL_VERSION' in environ_cp:
-    return
-
-  ask_nccl_version = (
-      'Please specify the locally installed NCCL version you want to use. '
-      '[Leave empty to use http://github.com/nvidia/nccl]: ')
-  tf_nccl_version = get_from_env_or_user_or_default(environ_cp,
-                                                    'TF_NCCL_VERSION',
-                                                    ask_nccl_version, '')
-  environ_cp['TF_NCCL_VERSION'] = tf_nccl_version
-
-
-def get_native_cuda_compute_capabilities(environ_cp):
-  """Get native cuda compute capabilities.
-
-  Args:
-    environ_cp: copy of the os.environ.
-
-  Returns:
-    string of native cuda compute capabilities, separated by comma.
-  """
-  device_query_bin = os.path.join(
-      environ_cp.get('CUDA_TOOLKIT_PATH'), 'extras/demo_suite/deviceQuery')
-  if os.path.isfile(device_query_bin) and os.access(device_query_bin, os.X_OK):
-    try:
-      output = run_shell(device_query_bin).split('\n')
-      pattern = re.compile('\d*\\.\d*')
-      output = [pattern.search(x) for x in output if 'Capability' in x]
-      output = ','.join(x.group() for x in output if x is not None)
-    except subprocess.CalledProcessError:
-      output = ''
-  else:
-    output = ''
-  return output
-
-
-def set_tf_cuda_compute_capabilities(environ_cp):
-  """Set TF_CUDA_COMPUTE_CAPABILITIES."""
+def set_hermetic_cuda_compute_capabilities(environ_cp):
+  """Set HERMETIC_CUDA_COMPUTE_CAPABILITIES."""
   while True:
-    native_cuda_compute_capabilities = get_native_cuda_compute_capabilities(
-        environ_cp)
-    if not native_cuda_compute_capabilities:
-      default_cuda_compute_capabilities = _DEFAULT_CUDA_COMPUTE_CAPABILITIES
-    else:
-      default_cuda_compute_capabilities = native_cuda_compute_capabilities
+    default_cuda_compute_capabilities = _DEFAULT_CUDA_COMPUTE_CAPABILITIES
 
     ask_cuda_compute_capabilities = (
         'Please specify a list of comma-separated CUDA compute capabilities '
@@ -1060,15 +986,20 @@ def set_tf_cuda_compute_capabilities(environ_cp):
         'significantly increases your build time and binary size, and that '
         'TensorFlow only supports compute capabilities >= 3.5 [Default is: '
         '%s]: ' % default_cuda_compute_capabilities)
-    tf_cuda_compute_capabilities = get_from_env_or_user_or_default(
-        environ_cp, 'TF_CUDA_COMPUTE_CAPABILITIES',
-        ask_cuda_compute_capabilities, default_cuda_compute_capabilities)
+    hermetic_cuda_compute_capabilities = get_from_env_or_user_or_default(
+        environ_cp,
+        'HERMETIC_CUDA_COMPUTE_CAPABILITIES',
+        ask_cuda_compute_capabilities,
+        default_cuda_compute_capabilities,
+    )
     # Check whether all capabilities from the input is valid
     all_valid = True
     # Remove all whitespace characters before splitting the string
     # that users may insert by accident, as this will result in error
-    tf_cuda_compute_capabilities = ''.join(tf_cuda_compute_capabilities.split())
-    for compute_capability in tf_cuda_compute_capabilities.split(','):
+    hermetic_cuda_compute_capabilities = ''.join(
+        hermetic_cuda_compute_capabilities.split()
+    )
+    for compute_capability in hermetic_cuda_compute_capabilities.split(','):
       m = re.match('[0-9]+.[0-9]+', compute_capability)
       if not m:
         # We now support sm_35,sm_50,sm_60,compute_70.
@@ -1103,13 +1034,30 @@ def set_tf_cuda_compute_capabilities(environ_cp):
       break
 
     # Reset and Retry
-    environ_cp['TF_CUDA_COMPUTE_CAPABILITIES'] = ''
+    environ_cp['HERMETIC_CUDA_COMPUTE_CAPABILITIES'] = ''
 
-  # Set TF_CUDA_COMPUTE_CAPABILITIES
-  environ_cp['TF_CUDA_COMPUTE_CAPABILITIES'] = tf_cuda_compute_capabilities
-  write_action_env_to_bazelrc(
-      'TF_CUDA_COMPUTE_CAPABILITIES', tf_cuda_compute_capabilities
+  # Set HERMETIC_CUDA_COMPUTE_CAPABILITIES
+  environ_cp['HERMETIC_CUDA_COMPUTE_CAPABILITIES'] = (
+      hermetic_cuda_compute_capabilities
   )
+  write_repo_env_to_bazelrc(
+      'cuda',
+      'HERMETIC_CUDA_COMPUTE_CAPABILITIES',
+      hermetic_cuda_compute_capabilities,
+  )
+
+
+def set_cuda_local_path(environ_cp, dist_name, env_var):
+  ask_path = (
+      'Please specify the local {} path you want to use '
+      'or leave empty to use the default version. '
+  ).format(dist_name)
+  local_path = get_from_env_or_user_or_default(
+      environ_cp, env_var, ask_path, None
+  )
+  if local_path:
+    environ_cp[env_var] = local_path
+    write_repo_env_to_bazelrc('cuda', env_var, local_path)
 
 
 def set_other_cuda_vars(environ_cp):
@@ -1227,75 +1175,8 @@ def configure_ios(environ_cp):
     symlink_force(filepath, new_filepath)
 
 
-def validate_cuda_config(environ_cp):
-  """Run find_cuda_config.py and return cuda_toolkit_path, or None."""
-
-  def maybe_encode_env(env):
-    """Encodes unicode in env to str on Windows python 2.x."""
-    if not is_windows() or sys.version_info[0] != 2:
-      return env
-    for k, v in env.items():
-      if isinstance(k, unicode):
-        k = k.encode('ascii')
-      if isinstance(v, unicode):
-        v = v.encode('ascii')
-      env[k] = v
-    return env
-
-  cuda_libraries = ['cuda', 'cudnn']
-  if is_linux():
-    if int(environ_cp.get('TF_NEED_TENSORRT', False)):
-      cuda_libraries.append('tensorrt')
-    if environ_cp.get('TF_NCCL_VERSION', None):
-      cuda_libraries.append('nccl')
-  if is_windows():
-    if int(environ_cp.get('TF_NEED_TENSORRT', False)):
-      cuda_libraries.append('tensorrt')
-      print('WARNING: TensorRT support on Windows is experimental\n')
-
-  paths = glob.glob('**/third_party/gpus/find_cuda_config.py', recursive=True)
-  if not paths:
-    raise FileNotFoundError(
-        "Can't find 'find_cuda_config.py' script inside working directory")
-  proc = subprocess.Popen(
-      [environ_cp['PYTHON_BIN_PATH'], paths[0]] + cuda_libraries,
-      stdout=subprocess.PIPE,
-      env=maybe_encode_env(environ_cp))
-
-  if proc.wait():
-    # Errors from find_cuda_config.py were sent to stderr.
-    print('Asking for detailed CUDA configuration...\n')
-    return False
-
-  config = dict(
-      tuple(line.decode('ascii').rstrip().split(': ')) for line in proc.stdout)
-
-  print('Found CUDA %s in:' % config['cuda_version'])
-  print('    %s' % config['cuda_library_dir'])
-  print('    %s' % config['cuda_include_dir'])
-
-  print('Found cuDNN %s in:' % config['cudnn_version'])
-  print('    %s' % config['cudnn_library_dir'])
-  print('    %s' % config['cudnn_include_dir'])
-
-  if 'tensorrt_version' in config:
-    print('Found TensorRT %s in:' % config['tensorrt_version'])
-    print('    %s' % config['tensorrt_library_dir'])
-    print('    %s' % config['tensorrt_include_dir'])
-
-  if config.get('nccl_version', None):
-    print('Found NCCL %s in:' % config['nccl_version'])
-    print('    %s' % config['nccl_library_dir'])
-    print('    %s' % config['nccl_include_dir'])
-
-  print('\n')
-
-  environ_cp['CUDA_TOOLKIT_PATH'] = config['cuda_toolkit_path']
-  return True
-
-
 def get_gcc_compiler(environ_cp):
-  gcc_env = environ_cp.get('CXX') or environ_cp.get('CC') or which('gcc')
+  gcc_env = environ_cp.get('CXX') or environ_cp.get('CC') or shutil.which('gcc')
   if gcc_env is not None:
     gcc_version = run_shell([gcc_env, '--version']).split()
     if gcc_version[0] in ('gcc', 'g++'):
@@ -1343,9 +1224,6 @@ def main():
     # Windows.
     environ_cp['TF_DOWNLOAD_CLANG'] = '0'
     environ_cp['TF_NEED_MPI'] = '0'
-
-  if is_macos():
-    environ_cp['TF_NEED_TENSORRT'] = '0'
 
   if is_ppc64le():
     # Enable MMA Dynamic Dispatch support if 'gcc' and if linker >= 2.35
@@ -1395,62 +1273,14 @@ def main():
   else:
     environ_cp['TF_NEED_CUDA'] = str(
         int(get_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)))
-  if (environ_cp.get('TF_NEED_CUDA') == '1' and
-      'TF_CUDA_CONFIG_REPO' not in environ_cp):
+  if environ_cp.get('TF_NEED_CUDA') == '1':
+    set_hermetic_cuda_version(environ_cp)
+    set_hermetic_cudnn_version(environ_cp)
+    set_hermetic_cuda_compute_capabilities(environ_cp)
+    set_cuda_local_path(environ_cp, 'CUDA', 'LOCAL_CUDA_PATH')
+    set_cuda_local_path(environ_cp, 'CUDNN', 'LOCAL_CUDNN_PATH')
+    set_cuda_local_path(environ_cp, 'NCCL', 'LOCAL_NCCL_PATH')
 
-    set_action_env_var(
-        environ_cp,
-        'TF_NEED_TENSORRT',
-        'TensorRT',
-        False,
-        bazel_config_name='tensorrt')
-
-    environ_save = dict(environ_cp)
-    for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
-
-      if validate_cuda_config(environ_cp):
-        cuda_env_names = [
-            'TF_CUDA_VERSION',
-            'TF_CUBLAS_VERSION',
-            'TF_CUDNN_VERSION',
-            'TF_TENSORRT_VERSION',
-            'TF_NCCL_VERSION',
-            'TF_CUDA_PATHS',
-            # Items below are for backwards compatibility when not using
-            # TF_CUDA_PATHS.
-            'CUDA_TOOLKIT_PATH',
-            'CUDNN_INSTALL_PATH',
-            'NCCL_INSTALL_PATH',
-            'NCCL_HDR_PATH',
-            'TENSORRT_INSTALL_PATH'
-        ]
-        # Note: set_action_env_var above already writes to bazelrc.
-        for name in cuda_env_names:
-          if name in environ_cp:
-            write_action_env_to_bazelrc(name, environ_cp[name])
-        break
-
-      # Restore settings changed below if CUDA config could not be validated.
-      environ_cp = dict(environ_save)
-
-      set_tf_cuda_version(environ_cp)
-      set_tf_cudnn_version(environ_cp)
-      if is_windows():
-        set_tf_tensorrt_version(environ_cp)
-      if is_linux():
-        set_tf_tensorrt_version(environ_cp)
-        set_tf_nccl_version(environ_cp)
-
-      set_tf_cuda_paths(environ_cp)
-
-    else:
-      raise UserInputError(
-          'Invalid CUDA setting were provided %d '
-          'times in a row. Assuming to be a scripting mistake.'
-          % _DEFAULT_PROMPT_ASK_ATTEMPTS
-      )
-
-    set_tf_cuda_compute_capabilities(environ_cp)
     if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get(
         'LD_LIBRARY_PATH') != '1':
       write_action_env_to_bazelrc('LD_LIBRARY_PATH',

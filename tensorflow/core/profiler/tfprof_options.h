@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -98,8 +99,7 @@ static const char* const kPprofRequiredOpts[] = {
 
 struct Options {
  public:
-  static tensorflow::Status FromProtoStr(const string& opts_proto_str,
-                                         Options* opts);
+  static absl::Status FromProtoStr(const string& opts_proto_str, Options* opts);
 
   virtual ~Options() {}
   Options()
@@ -174,8 +174,8 @@ struct Options {
 // Parse the -output option.
 // 'output_opt': User input string with format: output_type:key=value,key=value.
 // 'output_type' and 'output_options' are extracted from 'output_opt'.
-tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
-                               std::map<string, string>* output_options);
+absl::Status ParseOutput(const string& output_opt, string* output_type,
+                         std::map<string, string>* output_options);
 
 }  // namespace tfprof
 }  // namespace tensorflow

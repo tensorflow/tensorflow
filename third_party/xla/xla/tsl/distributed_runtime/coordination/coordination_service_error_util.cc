@@ -41,9 +41,10 @@ absl::Status TrimCoordinationErrorMessage(const absl::Status& s) {
     // This error is not provided by us, so it's probably an RPC layer error.
     auto prefix_message =
         "Failed to send RPC to coordination service. Either the leader task "
-        "died/restarted unexpectedly or this task is experiencing network "
-        "issues. Check earlier logs from this task and the "
-        "leader (usually slice 0 process/task/worker 0)  to debug further.\n";
+        "was preempted/died/restarted unexpectedly or this task is "
+        "experiencing network issues. Check earlier logs from 1) this task, 2) "
+        "the leader (usually slice 0 task 0), and 3) cluster scheduler to debug"
+        " further.\n";
     status_message = absl::StrCat(
         prefix_message,
         // Replace the duplicated error message at the start with the prefix.

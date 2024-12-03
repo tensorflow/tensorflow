@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -105,12 +107,14 @@ absl::StatusOr<bool> AnnotateStreamAttributesForCopyStart(
 
 absl::StatusOr<bool> WrapIntoFusionAndAnnotateStreamAttributes(
     HloInstruction* instruction, int64_t channel_id,
-    GpuBackendConfig& instr_gpu_config) {
+    GpuBackendConfig& instr_gpu_config,
+    const se::DeviceDescription& device_description) {
   auto* computation = instruction->parent();
   auto* module = computation->parent();
   auto* fusion_instruction =
       computation->AddInstruction(HloInstruction::CreateFusion(
-          instruction->shape(), ChooseFusionKind(*instruction, *instruction),
+          instruction->shape(),
+          ChooseFusionKind(*instruction, *instruction, device_description),
           instruction));
   const absl::string_view wrapped_opcode =
       HloOpcodeString(instruction->opcode());
@@ -206,7 +210,8 @@ absl::StatusOr<bool> StreamAttributeAnnotator::Run(
                   instr->opcode() == HloOpcode::kDynamicUpdateSlice)) {
         TF_ASSIGN_OR_RETURN(bool comp_result,
                             WrapIntoFusionAndAnnotateStreamAttributes(
-                                instr, channel_id, instr_gpu_config.value()));
+                                instr, channel_id, instr_gpu_config.value(),
+                                device_description_));
         changed |= comp_result;
         continue;
       }

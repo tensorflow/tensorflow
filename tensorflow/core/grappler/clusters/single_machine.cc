@@ -70,7 +70,7 @@ SingleMachine::~SingleMachine() {
   thread_pool_.reset();
 }
 
-Status SingleMachine::Provision() {
+absl::Status SingleMachine::Provision() {
   // This is really ugly: to avoid leaking variables, we need to reset the tf
   // session every time we're done processing a grappler item. However,
   // variables are global, and therefore we can't have more than 1 session alive
@@ -96,7 +96,7 @@ Status SingleMachine::Provision() {
       }
       TfDeviceId tf_device_id(parsed.id);
       PlatformDeviceId platform_device_id;
-      Status s =
+      absl::Status s =
           GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id);
       if (!s.ok()) {
         return absl::UnavailableError(
@@ -123,7 +123,7 @@ Status SingleMachine::Provision() {
   return absl::OkStatus();
 }
 
-Status SingleMachine::Initialize(const GrapplerItem& item) {
+absl::Status SingleMachine::Initialize(const GrapplerItem& item) {
   mutex_lock l(this->last_graph_mu_);
   if (last_graph_ != &item.graph || last_graph_id_ != item.id) {
     init_ops_ = item.init_ops;
@@ -135,7 +135,7 @@ Status SingleMachine::Initialize(const GrapplerItem& item) {
   return absl::OkStatus();
 }
 
-Status SingleMachine::Shutdown() {
+absl::Status SingleMachine::Shutdown() {
   TF_RETURN_IF_ERROR(ShutdownSession());
 
   mutex_lock l(this->last_graph_mu_);
@@ -145,10 +145,10 @@ Status SingleMachine::Shutdown() {
   return absl::OkStatus();
 }
 
-Status SingleMachine::Run(const GraphDef& graph_def,
-                          const std::vector<std::pair<string, Tensor>>& feed,
-                          const std::vector<string>& fetch,
-                          RunMetadata* metadata) {
+absl::Status SingleMachine::Run(
+    const GraphDef& graph_def,
+    const std::vector<std::pair<string, Tensor>>& feed,
+    const std::vector<string>& fetch, RunMetadata* metadata) {
   mutex_lock l(this->last_graph_mu_);
   if (last_graph_ != &graph_def) {
     TF_RETURN_IF_ERROR(ResetSession());
@@ -206,20 +206,20 @@ Status SingleMachine::Run(const GraphDef& graph_def,
   return absl::OkStatus();
 }
 
-Status SingleMachine::EnablePeakMemoryStats() {
+absl::Status SingleMachine::EnablePeakMemoryStats() {
   EnableCPUAllocatorStats();
   cpu_allocator_stats_enabled_ = true;
   // No need to enable GPU allocator stats since its stats are always collected.
   return absl::OkStatus();
 }
 
-Status SingleMachine::GetPeakMemoryUsage(
+absl::Status SingleMachine::GetPeakMemoryUsage(
     std::unordered_map<string, uint64>* device_peak_memory) const {
   // Cpu_allocator->TracksAllocationSizes() returns true doesn't always mean the
   // the AllocatorStats would be collected.
   if (!cpu_allocator_stats_enabled_) {
-    return Status(absl::StatusCode::kInvalidArgument,
-                  "Tracking allocation for CPU is not enabled.");
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        "Tracking allocation for CPU is not enabled.");
   }
 
   const DeviceMgr* device_mgr;
@@ -230,8 +230,8 @@ Status SingleMachine::GetPeakMemoryUsage(
   for (Device* device : devices) {
     auto* allocator = device->GetAllocator(AllocatorAttributes());
     if (!allocator->TracksAllocationSizes()) {
-      return Status(absl::StatusCode::kInvalidArgument,
-                    "Tracking allocation is not enabled.");
+      return absl::Status(absl::StatusCode::kInvalidArgument,
+                          "Tracking allocation is not enabled.");
     }
     absl::optional<AllocatorStats> stats = allocator->GetStats();
     (*device_peak_memory)[device->name()] =
@@ -241,13 +241,13 @@ Status SingleMachine::GetPeakMemoryUsage(
   return absl::OkStatus();
 }
 
-Status SingleMachine::RunWithTimeout(
+absl::Status SingleMachine::RunWithTimeout(
     const std::vector<std::pair<string, Tensor>>& feed,
     const std::vector<string>& fetch, RunMetadata* run_metadata) {
   return RunWithTimeout(feed, fetch, run_metadata, timeout_s_);
 }
 
-Status SingleMachine::RunWithTimeout(
+absl::Status SingleMachine::RunWithTimeout(
     const std::vector<std::pair<string, Tensor>>& feed,
     const std::vector<string>& fetch, RunMetadata* run_metadata,
     int64_t timeout_s) {
@@ -257,7 +257,7 @@ Status SingleMachine::RunWithTimeout(
     CHECK(!closing_);
   }
 
-  auto status = std::make_shared<Status>();
+  auto status = std::make_shared<absl::Status>();
   auto local_metadata = std::make_shared<RunMetadata>();
   const bool executed_in_time = ExecuteWithTimeout(
       [this, status, local_metadata, feed, fetch]() {
@@ -274,7 +274,7 @@ Status SingleMachine::RunWithTimeout(
   return *status;
 }
 
-Status SingleMachine::CloseSession(bool use_timeout) {
+absl::Status SingleMachine::CloseSession(bool use_timeout) {
   if (!session_ || !thread_pool_) {
     return absl::OkStatus();
   }
@@ -320,7 +320,7 @@ Status SingleMachine::CloseSession(bool use_timeout) {
   return absl::OkStatus();
 }
 
-Status SingleMachine::ShutdownSession() {
+absl::Status SingleMachine::ShutdownSession() {
   TF_RETURN_IF_ERROR(CloseSession(true /*use_timeout*/));
 
   // Delete the threadpool: this ensures that all the pending closures complete
@@ -346,7 +346,7 @@ Status SingleMachine::ShutdownSession() {
   return absl::OkStatus();
 }
 
-Status SingleMachine::ResetSession() {
+absl::Status SingleMachine::ResetSession() {
   if (session_) {
     LOG(INFO) << "Cleaning up previous session";
 
@@ -444,12 +444,12 @@ void SingleMachine::MergeCosts(CostGraphDef* graph_costs,
   }
 }
 
-Status SingleMachine::ClearAllocatorStats() const {
+absl::Status SingleMachine::ClearAllocatorStats() const {
   // Cpu_allocator->TracksAllocationSizes() returns true doesn't always mean the
   // the AllocatorStats would be collected.
   if (!cpu_allocator_stats_enabled_) {
-    return Status(absl::StatusCode::kInvalidArgument,
-                  "Tracking allocation for CPU is not enabled.");
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        "Tracking allocation for CPU is not enabled.");
   }
 
   const DeviceMgr* device_mgr;
@@ -459,11 +459,11 @@ Status SingleMachine::ClearAllocatorStats() const {
   for (Device* device : devices) {
     auto* allocator = device->GetAllocator(AllocatorAttributes());
     if (!allocator->TracksAllocationSizes()) {
-      return Status(absl::StatusCode::kInvalidArgument,
-                    "Tracking allocation is not enabled.");
+      return absl::Status(absl::StatusCode::kInvalidArgument,
+                          "Tracking allocation is not enabled.");
     }
     if (!allocator->ClearStats()) {
-      return Status(
+      return absl::Status(
           absl::StatusCode::kInvalidArgument,
           absl::StrCat("Clearing allocation stats is not supported for ",
                        device->name()));

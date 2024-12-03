@@ -22,6 +22,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_STREAM_COMMON_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -31,12 +32,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/fft.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -62,15 +60,20 @@ class StreamCommon : public Stream {
   // StreamExecutor's platform.
   explicit StreamCommon(StreamExecutor *parent);
 
+  StreamCommon(StreamExecutor *parent,
+               std::optional<std::variant<StreamPriority, int>> priority);
+
   PlatformSpecificHandle platform_specific_handle() const override;
   bool ok() const override { return !InErrorState(); }
   absl::StatusOr<Stream *> GetOrCreateSubStream() override
       TF_LOCKS_EXCLUDED(mu_);
   void ReturnSubStream(Stream *sub_stream) override TF_LOCKS_EXCLUDED(mu_);
-  absl::Status BlockHostUntilDone() override TF_LOCKS_EXCLUDED(mu_);
   StreamExecutor *parent() const override {
     CHECK(parent_ != nullptr);
     return parent_;
+  }
+  std::variant<StreamPriority, int> priority() const override {
+    return stream_priority_;
   }
 
   CudaComputeCapability GetCudaComputeCapability() const override {
@@ -80,18 +83,10 @@ class StreamCommon : public Stream {
   RocmComputeCapability GetRocmComputeCapability() const override {
     return parent()->GetDeviceDescription().rocm_compute_capability();
   }
-  std::variant<StreamPriority, int> priority() const override {
-    return StreamPriority::Default;
-  }
-  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
-                      const Kernel &k, const KernelArgs &args) override;
-  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
-                      const ClusterDim &cluster_dims, const Kernel &k,
-                      const KernelArgs &args) override;
 
   // Doesn't do anything interesting by default; GpuStream connects this to NVTX
-  absl::string_view name() const override { return name_; }
-  void set_name(absl::string_view name) override { name_ = name; }
+  const std::string &GetName() const override { return name_; }
+  void SetName(std::string name) override { name_ = std::move(name); }
 
  protected:
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
@@ -105,8 +100,6 @@ class StreamCommon : public Stream {
 
   // Checks the status and logs the error message, if any.
   void CheckStatus(absl::Status status) TF_LOCKS_EXCLUDED(mu_);
-
-  void SetError() { CheckError(false /* = operation_retcode */); }
 
   std::string name_;
 
@@ -127,8 +120,7 @@ class StreamCommon : public Stream {
   std::vector<std::pair<std::unique_ptr<Stream>, bool>> sub_streams_
       ABSL_GUARDED_BY(mu_);
 
-  StreamCommon(const StreamCommon &) = delete;
-  void operator=(const StreamCommon &) = delete;
+  std::variant<StreamPriority, int> stream_priority_;
 };
 
 }  // namespace stream_executor

@@ -198,7 +198,7 @@ absl::StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(
   return func_def;
 }
 
-Status TFRDecomposeContext::DecomposeGraph(mlir::ModuleOp user_module) {
+absl::Status TFRDecomposeContext::DecomposeGraph(mlir::ModuleOp user_module) {
   // Call the decompose passes by using the external symbol table.
   if (failed(pm_.run(user_module))) {
     return errors::Internal("Failed to run the decompose passes.");
@@ -233,7 +233,7 @@ absl::StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
   return ctx->ExpandNode(node_def, func_name);
 }
 
-Status DecomposeGraph(mlir::ModuleOp user_module) {
+absl::Status DecomposeGraph(mlir::ModuleOp user_module) {
   mlir::MLIRContext* mlir_ctx = user_module.getContext();
   TF_ASSIGN_OR_RETURN(auto ctx, TFRDecomposeContext::Get(mlir_ctx));
   return ctx->DecomposeGraph(user_module);

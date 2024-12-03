@@ -52,25 +52,18 @@ HostPlatform::DescriptionForDevice(int ordinal) const {
 }
 
 absl::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
-  StreamExecutorConfig config;
-  config.ordinal = ordinal;
-  return GetExecutor(config);
-}
-
-absl::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
-    const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
-      config, [&]() { return GetUncachedExecutor(config); });
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
-HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = std::make_unique<HostExecutor>(this, config.ordinal);
+HostPlatform::GetUncachedExecutor(int ordinal) {
+  auto executor = std::make_unique<HostExecutor>(this, ordinal);
   auto init_status = executor->Init();
   if (!init_status.ok()) {
     return absl::InternalError(absl::StrFormat(
-        "failed initializing StreamExecutor for device ordinal %d: %s",
-        config.ordinal, init_status.ToString().c_str()));
+        "failed initializing StreamExecutor for device ordinal %d: %s", ordinal,
+        init_status.ToString().c_str()));
   }
 
   return std::move(executor);

@@ -44,11 +44,12 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
 
 #define GEN_PASS_DEF_VECTORIZELOADSANDSTORESPASS
 #include "xla/service/gpu/fusions/transforms/passes.h.inc"
 
-namespace {
+using mlir::Value;
 
 // Tries to find the stride of a symbol or dimension in an affine expression.
 // Returns std::nullopt if the stride could not be determined.
@@ -120,10 +121,13 @@ int64_t GetAlignmentOfRemainder(mlir::AffineExpr expr,
 // - checks that the upper bound is 2 or 4.
 // Returns a vector type with the given upper bound and the tensor's element
 // type.
+// All tensors are 1D after flatten-tensors pass.
 mlir::VectorType GetVectorType(mlir::RankedTensorType tensor_type,
                                mlir::scf::ForOp loop) {
-  // TODO(jreiffers): Support layouts.
   if (tensor_type.getEncoding()) {
+    return nullptr;
+  }
+  if (tensor_type.getRank() != 1) {
     return nullptr;
   }
   if (!mlir::VectorType::isValidElementType(tensor_type.getElementType())) {
@@ -135,40 +139,25 @@ mlir::VectorType GetVectorType(mlir::RankedTensorType tensor_type,
   }
   std::optional<int> vector_size =
       mlir::getConstantIntValue(loop.getUpperBound());
-  if (vector_size != 2 && vector_size != 4) {
+  if (vector_size != 2 && vector_size != 4 && vector_size != 8) {
     return nullptr;  // Unsupported vector size.
   }
-  if (tensor_type.getRank() > 1 &&
-      tensor_type.getShape().back() % *vector_size) {
+  if (tensor_type.getShape().back() % *vector_size) {
     return nullptr;  // Misaligned start indices.
   }
   return mlir::VectorType::get({*vector_size}, tensor_type.getElementType());
 }
 
-std::optional<llvm::SmallVector<mlir::Value>> GetVectorBaseIndices(
-    mlir::ValueRange indices, mlir::scf::ForOp loop,
-    mlir::VectorType vector_type, mlir::ImplicitLocOpBuilder& b) {
-  if (indices.empty()) {
-    return std::nullopt;
-  }
-
-  // The major dimensions' indices must all be defined outside the loop.
-  for (int i = 0; i < indices.size() - 1; ++i) {
-    if (!indices[i].getParentRegion()->isProperAncestor(
-            &loop.getBodyRegion())) {
-      return std::nullopt;
-    }
-  }
-
-  mlir::Value induction_var = loop.getInductionVar();
-  if (indices.back() == induction_var) {
-    llvm::SmallVector<mlir::Value> ret = indices;
-    ret.back() = b.create<mlir::arith::ConstantIndexOp>(0);
-    return ret;
+std::optional<Value> GetVectorBaseIndices(Value index, mlir::scf::ForOp loop,
+                                          mlir::VectorType vector_type,
+                                          mlir::ImplicitLocOpBuilder& b) {
+  Value induction_var = loop.getInductionVar();
+  if (index == induction_var) {
+    return b.create<mlir::arith::ConstantIndexOp>(0);
   }
 
   auto apply_indexing =
-      mlir::dyn_cast_or_null<ApplyIndexingOp>(indices.back().getDefiningOp());
+      mlir::dyn_cast_or_null<ApplyIndexingOp>(index.getDefiningOp());
   if (!apply_indexing) {
     return std::nullopt;
   }
@@ -192,6 +181,11 @@ std::optional<llvm::SmallVector<mlir::Value>> GetVectorBaseIndices(
                                ? mlir::getAffineDimExpr(index, b.getContext())
                                : mlir::getAffineSymbolExpr(
                                      index - map.getNumDims(), b.getContext());
+    } else if (!operand.getParentRegion()->isProperAncestor(
+                   &loop.getBodyRegion())) {
+      // If the operand is defined inside the loop, we can't hoist the
+      // apply_indexing outside the loop.
+      return std::nullopt;
     }
   }
   if (!induction_var_expr) {
@@ -212,11 +206,8 @@ std::optional<llvm::SmallVector<mlir::Value>> GetVectorBaseIndices(
   operands[induction_var_operand_index] =
       b.create<mlir::arith::ConstantIndexOp>(0);
 
-  llvm::SmallVector<mlir::Value> ret = indices;
-  ret.back() =
-      b.create<ApplyIndexingOp>(operands, apply_indexing.getIndexingMap())
-          ->getResult(0);
-  return ret;
+  return b.create<ApplyIndexingOp>(operands, apply_indexing.getIndexingMap())
+      ->getResult(0);
 }
 
 bool IsConflictFree(mlir::tensor::ExtractOp op) {
@@ -246,16 +237,14 @@ struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     b.setInsertionPoint(loop);
-    auto vector_indices =
-        GetVectorBaseIndices(op.getIndices(), loop, vector_type, b);
-    if (!vector_indices) {
+    auto vector_index =
+        GetVectorBaseIndices(op.getIndices().front(), loop, vector_type, b);
+    if (!vector_index) {
       return rewriter.notifyMatchFailure(
           op, "the instruction does not access contiguous elements");
     }
-
     auto loaded_vector = b.create<mlir::vector::TransferReadOp>(
-        vector_type, op.getTensor(), *vector_indices,
-        llvm::ArrayRef<bool>{true});
+        vector_type, op.getTensor(), *vector_index, llvm::ArrayRef<bool>{true});
     rewriter.replaceOpWithNewOp<mlir::vector::ExtractOp>(
         op, loaded_vector, loop.getInductionVar());
     return mlir::success();
@@ -296,9 +285,9 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     b.setInsertionPoint(loop);
-    auto vector_indices =
-        GetVectorBaseIndices(op.getIndices(), loop, vector_type, b);
-    if (!vector_indices) {
+    auto vector_index =
+        GetVectorBaseIndices(op.getIndices().front(), loop, vector_type, b);
+    if (!vector_index) {
       return rewriter.notifyMatchFailure(
           op, "the instruction does not access contiguous elements");
     }
@@ -313,7 +302,7 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
               .getInductionVar();
       auto insert_op = yield_b.create<mlir::vector::InsertOp>(
           yield_loc, op.getScalar(), bbarg.front(), induction_var);
-      return llvm::SmallVector<mlir::Value>{insert_op.getResult()};
+      return llvm::SmallVector<Value>{insert_op.getResult()};
     };
     int result_index = op->use_begin()->getOperandNumber();
     auto new_for = *loop.replaceWithAdditionalYields(
@@ -325,7 +314,7 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
 
     auto filled_vector = new_for->getResults().back();
     auto written = b.create<mlir::vector::TransferWriteOp>(
-        filled_vector, new_for.getInits()[result_index], *vector_indices,
+        filled_vector, new_for.getInits()[result_index], *vector_index,
         llvm::ArrayRef<bool>{true});
     new_for->getResult(result_index).replaceAllUsesWith(written.getResult());
 

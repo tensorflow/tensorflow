@@ -25,15 +25,15 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/group_events.h"
+#include "xla/tsl/profiler/utils/tf_op_utils.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/utils/group_events.h"
-#include "tsl/profiler/utils/tf_op_utils.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {

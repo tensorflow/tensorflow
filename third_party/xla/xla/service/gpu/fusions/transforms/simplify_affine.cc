@@ -41,9 +41,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/transforms/passes.h"
-#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
@@ -223,15 +223,16 @@ struct RewriteAffineApply : OpRewritePattern<mlir::affine::AffineApplyOp> {
   LogicalResult matchAndRewrite(mlir::affine::AffineApplyOp op,
                                 PatternRewriter& rewriter) const override {
     AffineMap affine_map = op.getAffineMap();
-    std::vector<DimVar> dim_ranges(affine_map.getNumDims());
-    std::vector<RangeVar> symbol_ranges(affine_map.getNumSymbols());
+    std::vector<IndexingMap::Variable> dim_ranges(affine_map.getNumDims());
+    std::vector<IndexingMap::Variable> symbol_ranges(
+        affine_map.getNumSymbols());
 
     for (int i = 0; i < affine_map.getNumInputs(); ++i) {
       if (auto range = GetRange(op->getOperand(i))) {
         if (i >= dim_ranges.size()) {
-          symbol_ranges[i - dim_ranges.size()] = RangeVar{*range};
+          symbol_ranges[i - dim_ranges.size()] = IndexingMap::Variable{*range};
         } else {
-          dim_ranges[i] = DimVar{*range};
+          dim_ranges[i] = IndexingMap::Variable{*range};
         }
       } else {
         return rewriter.notifyMatchFailure(op, "failed to deduce range");
@@ -355,6 +356,17 @@ std::optional<Interval> GetIVRange(mlir::Value iv) {
     if (mlir::matchPattern(for_op.getLowerBound(), mlir::m_ConstantInt(&lb)) &&
         mlir::matchPattern(for_op.getUpperBound(), mlir::m_ConstantInt(&ub))) {
       return {{lb.getSExtValue(), ub.getSExtValue() - 1}};
+    }
+  }
+  if (auto loop_op = mlir::dyn_cast<xla::gpu::LoopOp>(parent)) {
+    const auto& indexing_map = loop_op.getIndexingMap();
+    if (bbarg.getArgNumber() >= loop_op.getNumInductionVars() &&
+        bbarg.getArgNumber() <
+            loop_op.getNumInductionVars() + indexing_map.GetNumResults()) {
+      RangeEvaluator range_evaluator = indexing_map.GetRangeEvaluator();
+      return range_evaluator.ComputeExpressionRange(
+          indexing_map.GetAffineMap().getResult(bbarg.getArgNumber() -
+                                                loop_op.getNumInductionVars()));
     }
   }
   return std::nullopt;

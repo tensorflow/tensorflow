@@ -1,0 +1,73 @@
+# Copyright 2024 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+name: Bazel Dependency Violations
+permissions:
+  contents: read
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+env:
+  # Have `go install` place binaries in $PATH
+  GOBIN: "/usr/local/bin"
+
+jobs:
+  dependency-violations:
+    strategy:
+      matrix:
+        tag: [gpu, cuda-only, rocm-only]
+    name: no-${{ matrix.tag }}-targets-in-cpu-build
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 6
+    continue-on-error: true
+    steps:
+      - name: "Checking out repository"
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: "Install bazelisk"
+        run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
+      - name: "Run bazel build --nobuild //xla/... with retries"
+        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazelisk build --nobuild //xla/...
+      - name: "Run bazel cquery ... //xla/..."
+        run: |
+          set -euo pipefail
+          TAG_WITH_UNDERSCORES="${{ matrix.tag }}"
+          TAG_WITH_UNDERSCORES="${TAG_WITH_UNDERSCORES/-/_}"
+          if ! OUTPUT=$(bazelisk cquery --aspects build_tools/dependencies/aspects.bzl%validate_${TAG_WITH_UNDERSCORES}_tag //xla/... 2>&1); then
+            echo "Failed to run bazel cquery. Output:"
+            echo "$OUTPUT"
+            exit 1
+          fi
+          if echo "$OUTPUT" | grep 'Violation' >/dev/null; then
+            echo "The following dependency violations were found:"
+            echo "$OUTPUT" | grep 'Violation' | sed -e 's/^.*\[Violation\]/ -/'
+            echo ""
+            echo ""
+            echo "There are a couple of potential solutions for this/these violation(s):"
+            echo ""
+            echo "1. Tag the dependent target with the same tag as the dependee."
+            echo ""
+            echo "2. If unavoidable make the dependency selective using the"
+            echo "   'if_{gpu|cuda|rocm}_is_configured' macro. This is discouraged"
+            echo "   outside of stream_executor."
+            echo ""
+            exit 1
+          fi
+
+          echo "No dependency violations found for tag '${{ matrix.tag }}'."

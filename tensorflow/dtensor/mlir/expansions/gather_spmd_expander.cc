@@ -32,7 +32,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -245,11 +244,10 @@ StatusOr<Layout> GatherNdGetOutputLayoutFromInput(
   return Layout::GetLayout(output_specs, mesh);
 }
 
-Status GatherNdGetInputLayoutFromOutput(const Layout& output_layout,
-                                        Layout* params_layout, int params_rank,
-                                        Layout* indices_layout,
-                                        int indices_rank, int index_dimensions,
-                                        const Mesh& mesh) {
+absl::Status GatherNdGetInputLayoutFromOutput(
+    const Layout& output_layout, Layout* params_layout, int params_rank,
+    Layout* indices_layout, int indices_rank, int index_dimensions,
+    const Mesh& mesh) {
   // We copy the first indices_rank - 1 dimensions of the output layout to
   // indices_layout (with the last dimensions replicated) and the remaining
   // dimensions to params_layout (with the first index_dimensions dimensions

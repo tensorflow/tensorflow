@@ -14,6 +14,8 @@ package(
         "//tensorflow/core/tpu:__subpackages__",
         # For proto_serialization library
         "//tensorflow/cc/experimental/tf2:__subpackages__",
+        #For ordered_code library
+        "//tensorflow/python/profiler/internal:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -43,7 +45,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/core:bits",
+        "@local_xla//xla/tsl/lib/core:bits",
     ],
 )
 

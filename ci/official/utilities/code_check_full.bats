@@ -216,6 +216,9 @@ EOF
   bazel cquery \
     --experimental_cc_shared_library \
     --@local_config_cuda//:enable_cuda \
+    --@local_config_cuda//cuda:include_cuda_libs=false \
+    --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
+    --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
     "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cudart + "\
@@ -237,6 +240,9 @@ EOF
   bazel cquery \
     --experimental_cc_shared_library \
     --@local_config_cuda//:enable_cuda \
+    --@local_config_cuda//cuda:include_cuda_libs=false \
+    --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
+    --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
     --define framework_shared_object=false \
     "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\
@@ -310,7 +316,7 @@ EOF
 # See b/279852433 (internal).
 # TODO(b/279852433) Replace deps(//tensorflow/...) with deps(//...)
 @test "Verify that it's possible to query every TensorFlow target without BUILD errors" {
-    bazel query "deps(//tensorflow/...)" > /dev/null
+    bazel query "deps(//tensorflow/... -//tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test)" > /dev/null
 }
 
 teardown_file() {

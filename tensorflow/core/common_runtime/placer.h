@@ -86,8 +86,8 @@ class Placer {
   //
   // This method is not thread-safe.
   // Run() may be invoked at most once.
-  Status Run();
-  Status Run(const GraphOptimizationPassOptions& options);
+  absl::Status Run();
+  absl::Status Run(const GraphOptimizationPassOptions& options);
 
  private:
   // Returns true if the device type of 'candidate_device_name' is

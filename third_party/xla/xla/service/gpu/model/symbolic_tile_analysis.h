@@ -30,8 +30,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -43,6 +42,24 @@ namespace gpu {
 class SymbolicTileAnalysis;
 using SymbolicTileAnalysisOrError =
     std::variant<SymbolicTileAnalysis, FusionDecision>;
+
+// An interface to implement additional emitter-specific constraints. This
+// interface can be used as an extension point to further constrain the set of
+// given limitations of a particular codegen solution.
+class EmitterSpecificConstraints {
+ public:
+  virtual ~EmitterSpecificConstraints() = default;
+
+  virtual absl::StatusOr<bool> ParametersSatisfyConstraints(
+      absl::Span<const int64_t> tile_parameters) const = 0;
+};
+
+// TODO(b/367306544): get rid of the HloFusionAdaptor parameter once the
+// abstraction exists.
+using EmitterSpecificConstraintsBuilder =
+    std::function<std::unique_ptr<EmitterSpecificConstraints>(
+        const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&,
+        const HloFusionAdaptor&)>;
 
 // Constructs and holds symbolic tiles for all the instructions within a
 // computation. We may hold several different symbolic tiles for the same
@@ -59,14 +76,21 @@ class SymbolicTileAnalysis {
 
   // Tries to construct a symbolic tile analysis from a computation. Returns
   // a diagnostic if the construction fails for any reason.
+  //
+  // If `emitter_specific_constraints_builder` is provided, it will be used to
+  // construct emitter-specific constraints for the analysis.
   static SymbolicTileAnalysisOrError AnalyzeComputation(
-      const HloComputation& computation, mlir::MLIRContext* ctx);
+      const HloComputation& computation, mlir::MLIRContext* ctx,
+      EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
+          nullptr);
   static SymbolicTileAnalysisOrError AnalyzeFusion(
-      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx);
+      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx,
+      EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
+          nullptr);
 
   // Returns a graph of HLO instructions tiled with the given tile parameters.
   // The provided tile parameters must satisfy the analysis's constraints.
-  // By default, `ComputetiledHloInstructions` performs a check that the
+  // By default, `ComputeTiledHloInstructions` performs a check that the
   // constraints are satisfied by the chosen tiled parameters. Setting
   // `constraints_are_known_satisfied` to true bypasses this check.
   //
@@ -101,7 +125,8 @@ class SymbolicTileAnalysis {
   const ConstraintExpression& GetConstraints() const { return constraints_; }
 
   // Returns true if a list of tile parameters satisfies the symbolic tile
-  // analysis's constraints.
+  // analysis's constraints. If provided, also checks the emitter-specific
+  // constraints.
   //
   // Returns false if the constraints are not satisfied but can be evaluated
   // correctly. Returns an error if the constraints cannot be evaluated
@@ -115,8 +140,7 @@ class SymbolicTileAnalysis {
 
   // Returns a string representation of the analysis. Used only for error
   // messages and debugging.
-  std::string ToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+  std::string ToString() const;
 
   // Returns a list of tilings for the symbolic tiled HLO computation of the
   // analysis that are expected to perform well.
@@ -127,13 +151,16 @@ class SymbolicTileAnalysis {
   absl::StatusOr<std::vector<Tiling>> GetGoodTilings() const;
 
  private:
-  SymbolicTileAnalysis(std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
-                           symbolic_tiled_hlo_instructions,
-                       ConstraintExpression constraints,
-                       mlir::MLIRContext* context)
+  SymbolicTileAnalysis(
+      std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
+          symbolic_tiled_hlo_instructions,
+      ConstraintExpression constraints,
+      std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints,
+      mlir::MLIRContext* context)
       : symbolic_tiled_hlo_instructions_(
             std::move(symbolic_tiled_hlo_instructions)),
         constraints_(std::move(constraints)),
+        emitter_specific_constraints_(std::move(emitter_specific_constraints)),
         context_(context) {}
 
   // The tiled HLO instructions in def-before-use order.
@@ -142,6 +169,10 @@ class SymbolicTileAnalysis {
 
   // See the documentation of GetConstraints().
   ConstraintExpression constraints_;
+
+  // Additional emitter-specific constraints on tile parameters. May be null if
+  // no builder was provided when constructing the analysis.
+  std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints_;
 
   mlir::MLIRContext* context_;
 };

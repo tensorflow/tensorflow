@@ -170,6 +170,10 @@ cc_library_with_tflite(
         "//tensorflow/lite/tools/evaluation:utils",
     ],
     visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/tools:tool_params",
+    ],
     alwayslink = 1,
 )
 

@@ -6,7 +6,8 @@ def aar_with_jni(
         name,
         android_library,
         headers = None,
-        flatten_headers = False):
+        flatten_headers = False,
+        strip_headers_prefix = ""):
     """Generates an Android AAR with repo root license given an Android library target.
 
     Args:
@@ -18,6 +19,7 @@ def aar_with_jni(
           generated .aar file. This is useful for distributing self-contained
           .aars with native libs that can be used directly by native clients.
       flatten_headers: Whether to flatten the output paths of included headers.
+      strip_headers_prefix: The prefix to strip from the output paths of included headers.
     """
 
     # Generate dummy AndroidManifest.xml for dummy apk usage
@@ -83,9 +85,14 @@ zip $$origdir/$(location :{1}.aar) LICENSE
                 """.format(src)
             else:
                 cmd += """
-                    mkdir -p headers/$$(dirname $(location {0}))
-                    cp -RL $$origdir/$(location {0}) headers/$(location {0})
-                """.format(src)
+                    default_dir=$$(dirname $(rootpath {0}))
+                    modified_dir=$$(echo $$default_dir | sed -e 's/^{1}//g')
+                    mkdir -p headers/$$modified_dir
+                    cp -RL $$origdir/$(location {0}) headers/$$modified_dir
+                    if [ -n "{1}" ]; then
+                      sed -i -e 's/^#include \"{1}/#include \"/g' headers/$$modified_dir/$$(basename $(location {0}))
+                    fi
+                """.format(src, strip_headers_prefix.replace("/", "\\/"))
         cmd += "zip -r $$origdir/$(location :{0}.aar) headers".format(name)
 
     native.genrule(

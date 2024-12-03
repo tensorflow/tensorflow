@@ -39,9 +39,9 @@ namespace {
 
 void PickOutputMultiplier(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
-    const int8* input_data, const RuntimeShape& filter_shape,
-    const int8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
+    const int8_t* input_data, const RuntimeShape& filter_shape,
+    const int8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
     float* output_multiplier) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
@@ -50,7 +50,7 @@ void PickOutputMultiplier(
   const int pad_width = params.padding_values.width;
   const int pad_height = params.padding_values.height;
   const int depth_multiplier = params.depth_multiplier;
-  const int32 input_offset = params.input_offset;
+  const int32_t input_offset = params.input_offset;
 
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int input_height = input_shape.Dims(1);
@@ -72,7 +72,7 @@ void PickOutputMultiplier(
             const int output_channel = m + in_channel * depth_multiplier;
             const int in_x_origin = (out_x * stride_width) - pad_width;
             const int in_y_origin = (out_y * stride_height) - pad_height;
-            int32 acc = 0;
+            int32_t acc = 0;
             for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
               for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
                 const int in_x = in_x_origin + dilation_width_factor * filter_x;
@@ -83,9 +83,9 @@ void PickOutputMultiplier(
                     (in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
                     (in_y < input_height);
                 if (is_point_inside_image) {
-                  int32 input_val = input_data[Offset(input_shape, batch, in_y,
-                                                      in_x, in_channel)];
-                  int32 filter_val = filter_data[Offset(
+                  int32_t input_val = input_data[Offset(
+                      input_shape, batch, in_y, in_x, in_channel)];
+                  int32_t filter_val = filter_data[Offset(
                       filter_shape, 0, filter_y, filter_x, output_channel)];
                   acc += filter_val * (input_val + input_offset);
                 }

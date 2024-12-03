@@ -22,6 +22,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/casts.h"
 #include "absl/base/dynamic_annotations.h"
 

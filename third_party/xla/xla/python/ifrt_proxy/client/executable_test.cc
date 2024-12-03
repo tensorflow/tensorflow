@@ -28,6 +28,7 @@
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
@@ -240,7 +241,7 @@ TEST_F(LoadedExecutableTest, Execute) {
                                                           })pb")))))
       .WillOnce(MockClientSessionReturnResponse(response));
 
-  DeviceList devices({&device});
+  tsl::RCReference<DeviceList> devices = BasicDeviceList::Create({&device});
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> args;
   for (const uint64_t handle : {1000, 1001}) {

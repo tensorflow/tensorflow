@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/microfrontend/audio_microfrontend.h"
 
-#include <memory>
+#include <cstdint>
 #include <vector>
 
 #include <gmock/gmock.h>

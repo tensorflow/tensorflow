@@ -118,6 +118,13 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
 absl::string_view CollectiveOpGroupModeToString(
     CollectiveOpGroupMode group_mode);
 
+// Returns the group formation mode of instr, assuming that instr is, or is
+// dervied from, an HloAllGatherInstruction, HloAllReduceInstructionBase,
+// HloAllToAllInstruction, HloCollectiveBroadcastInstruction or
+// HloCollectivePermuteInstruction.
+absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
+    const HloInstruction* instr);
+
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
@@ -195,6 +202,10 @@ inline constexpr absl::string_view kNopCustomCallTarget = "AllocateBuffer";
 // replace a collective op and it returns a token.
 inline constexpr absl::string_view kNopReturnTokenCustomCallTarget =
     "NopReturnToken";
+
+// Returns true if instruction is a collective op that is not a collective
+// fusion.
+bool IsNonFusionCollective(const HloInstruction* instruction);
 
 // Returns true if instruction is a collective op or a collective fusion.
 bool IsCollective(const HloInstruction* instruction);

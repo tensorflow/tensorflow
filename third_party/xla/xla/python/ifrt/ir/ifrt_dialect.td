@@ -95,7 +95,7 @@ def Ifrt_UnspecifiedShardingAttr : AttrDef<Ifrt_Dialect,
 
 def Ifrt_IntervalAttr : AttrDef<Ifrt_Dialect, "IfrtInterval"> {
   let mnemonic = "interval";
-  let summary = [{
+  let description = [{
     Half-open interval attribute using the Python slice format
     `[start:end:step]`. Reverse iteration is not supported for simplicity.
     Therefore, `start` and `end` must be zero or positive, and `step`
@@ -133,7 +133,7 @@ def Ifrt_MappingAttrArrayAttr :
 
 def Ifrt_ArrayMappingAttr : AttrDef<Ifrt_Dialect, "IfrtArrayMapping"> {
   let mnemonic = "array_mapping";
-  let summary = [{
+  let description = [{
     Mapping of shards from an input array to an output array. The shards are
     chosen from input array with index `in_array_index` and are used to assemble
     the output array with index `out_array_index`.
@@ -152,6 +152,10 @@ def Ifrt_ArrayMappingAttrArrayAttr :
   let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
 }
 
+def Ifrt_IoAliasesAttr : TypedArrayAttrBase<
+    ConfinedAttr<DenseI32ArrayAttr, [DenseArrayCount<2>]>,
+    "Array of pairs of aliased input/output indices">;
+
 //===---------------------------------------------------------------------------
 // Types
 //===---------------------------------------------------------------------------
@@ -167,43 +171,22 @@ def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
     OptionalParameter<"::mlir::StringAttr">:$memory_kind_attr);
 
   let builders = [
+    // Constructs an array with unspecified sharding.
     TypeBuilder<(ins
       "::mlir::RankedTensorType":$shape,
-      "::xla::ifrt::IfrtShardingAttrInterface":$sharding_attr,
-      "::llvm::ArrayRef<int>":$devices), [{
-        return Base::get(
-          $_ctxt, shape, sharding_attr,
-          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices),
-          /*memory_kind=*/nullptr);
-      }]>,
-    TypeBuilder<(ins
-      "::mlir::RankedTensorType":$shape,
-      "::llvm::ArrayRef<int>":$devices), [{
+      "::xla::ifrt::IfrtDevicesAttr":$devices_attr,
+      "::mlir::StringAttr":$memory_kind_attr), [{
         return Base::get(
           $_ctxt, shape, ::xla::ifrt::IfrtUnspecifiedShardingAttr::get($_ctxt),
-          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices),
-          /*memory_kind=*/nullptr);
+          devices_attr, memory_kind_attr);
       }]>,
     TypeBuilder<(ins
       "::mlir::RankedTensorType":$shape,
-      "::xla::ifrt::ShardingParam":$sharding,
-      "::llvm::ArrayRef<int>":$devices), [{
+      "::xla::ifrt::IfrtShardingParamAttr":$sharding_attr,
+      "::xla::ifrt::IfrtDevicesAttr":$devices_attr,
+      "::mlir::StringAttr":$memory_kind_attr), [{
         return Base::get(
-          $_ctxt, shape,
-          ::xla::ifrt::IfrtShardingParamAttr::get($_ctxt, sharding),
-          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices),
-          /*memory_kind=*/nullptr);
-      }]>,
-    TypeBuilder<(ins
-      "::mlir::RankedTensorType":$shape,
-      "::xla::ifrt::ShardingParam":$sharding,
-      "::llvm::ArrayRef<int>":$devices,
-      "::std::string":$memory_kind), [{
-        return Base::get(
-          $_ctxt, shape,
-          ::xla::ifrt::IfrtShardingParamAttr::get($_ctxt, sharding),
-          ::xla::ifrt::IfrtDevicesAttr::get($_ctxt, devices),
-          ::mlir::StringAttr::get($_ctxt, memory_kind));
+          $_ctxt, shape, sharding_attr, devices_attr, memory_kind_attr);
       }]>
   ];
 

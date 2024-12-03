@@ -96,7 +96,7 @@ Status ResourceHandle::FromProto(const ResourceHandleProto& proto) {
     dtypes_and_shapes.push_back(DtypeAndPartialTensorShape{dtype, shape});
   }
   dtypes_and_shapes_ = std::move(dtypes_and_shapes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string ResourceHandle::SerializeAsString() const {
@@ -157,7 +157,7 @@ Status ResourceHandle::ValidateType(const TypeIndex& type_index) const {
         port::Demangle(type_index.name()), "' (hash code ",
         type_index.hash_code(), ")");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::atomic<int64_t> ResourceHandle::current_id_;

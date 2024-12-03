@@ -89,6 +89,7 @@ void BinaryElementwiseTester::Test(tflite::BuiltinOperator binary_op,
       input2_distribution = std::uniform_real_distribution<float>(0.1f, 1.0f);
       break;
     case BuiltinOperator_MUL:
+    case BuiltinOperator_PRELU:
       input1_distribution = std::uniform_real_distribution<float>(-5.0f, 5.0f);
       input2_distribution = std::uniform_real_distribution<float>(-5.0f, 5.0f);
       break;

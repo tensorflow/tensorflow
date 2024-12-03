@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/data/service/client/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"

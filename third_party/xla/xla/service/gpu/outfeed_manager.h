@@ -67,9 +67,6 @@ class OutfeedManager
                                           MutableBorrowingLiteral literal);
 };
 
-// Returns the GPU outfeed manager for the given stream executor.
-OutfeedManager* GetOrCreateOutfeedManager(se::StreamExecutor* executor);
-
 }  // namespace gpu
 }  // namespace xla
 

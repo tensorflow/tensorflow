@@ -34,7 +34,7 @@ using SetFunctionSignatureFn = std::function<void(
     const OpDef& first_function_signature,
     const OpDef& second_function_signature, OpDef* fused_function_signature)>;
 
-using StringCollection = gtl::InlinedVector<string, 2>;
+using StringCollection = absl::InlinedVector<string, 2UL>;
 
 // These functions are invoked with nodes from second function that were
 // previously taking arguments as input. The `arg_num` tells which

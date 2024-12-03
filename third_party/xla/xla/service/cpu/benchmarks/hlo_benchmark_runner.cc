@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/benchmarks/hlo_benchmark_runner.h"
 
+#include <cstddef>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -22,14 +23,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
-#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/tests/test_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test_benchmark.h"
@@ -41,8 +44,9 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                              absl::Span<const Literal* const> args,
                              StrToStrMapping replacements,
                              bool disable_parallel_task_assigner) {
+  xla::CpuClientOptions options;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                      GetTfrtCpuClient(CpuClientOptions()));
+                      xla::GetXlaPjrtCpuClient(options));
   PjRtDevice* device = client->devices().front();
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
@@ -63,12 +67,34 @@ absl::Status RunHloBenchmark(benchmark::State& state,
 
   // Convert literals to PjRtBuffers.
   std::vector<std::unique_ptr<PjRtBuffer>> args_buffers;
-  args_buffers.reserve(args.size());
 
-  for (const Literal* arg : args) {
-    TF_ASSIGN_OR_RETURN(args_buffers.emplace_back(),
-                        client->BufferFromHostLiteral(*arg, device));
-    TF_RETURN_IF_ERROR(args_buffers.back()->GetReadyFuture().Await());
+  size_t expected_arg_count =
+      module->entry_computation()->parameter_instructions().size();
+
+  // If the user has not passed any arguments we need to generate
+  // fake arguments based on the number of inputs to the hlo module.
+  if (args.empty()) {
+    TF_ASSIGN_OR_RETURN(std::vector<Literal> fake_args,
+                        MakeFakeArguments(module.get()));
+    args_buffers.reserve(fake_args.size());
+    for (const Literal& arg : fake_args) {
+      TF_ASSIGN_OR_RETURN(args_buffers.emplace_back(),
+                          client->BufferFromHostLiteral(arg, device));
+      TF_RETURN_IF_ERROR(args_buffers.back()->GetReadyFuture().Await());
+    }
+  } else {
+    if (expected_arg_count != args.size()) {
+      return absl::InvalidArgumentError(
+          "Number of arguments does not match the number of parameters in "
+          "the HLO module.");
+    }
+
+    args_buffers.reserve(args.size());
+    for (const Literal* arg : args) {
+      TF_ASSIGN_OR_RETURN(args_buffers.emplace_back(),
+                          client->BufferFromHostLiteral(*arg, device));
+      TF_RETURN_IF_ERROR(args_buffers.back()->GetReadyFuture().Await());
+    }
   }
 
   // Execute in synchronous mode to avoid thread hops.

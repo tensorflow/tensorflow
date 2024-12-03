@@ -35,8 +35,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-class DeviceMemoryAllocator;
-
 // void*-analogous device memory allocation. For the typed variation, see
 // DeviceMemory<T>.
 //

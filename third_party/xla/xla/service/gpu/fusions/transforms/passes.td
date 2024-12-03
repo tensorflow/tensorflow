@@ -74,8 +74,10 @@ def LowerTensorsPass : Pass<"xla-gpu-lower-tensors", "mlir::ModuleOp"> {
 
   let dependentDialects = [
     "mlir::LLVM::LLVMDialect",
+    "mlir::complex::ComplexDialect",
     "mlir::func::FuncDialect",
     "mlir::gpu::GPUDialect",
+    "mlir::math::MathDialect",
     "mlir::scf::SCFDialect",
     "mlir::tensor::TensorDialect",
     "xla::gpu::XlaGpuDialect",
@@ -155,10 +157,18 @@ def ExpandFloatOpsPass : Pass<"xla-gpu-expand-float-ops", "mlir::ModuleOp"> {
     "mlir::mhlo::MhloDialect"
   ];
 
-  let options = [
-    Option<"pre_ampere_", "pre-ampere", "bool", /*default=*/"false",
-           "Rewrite ops that are not supported on architectures before Ampere">,
+  let constructor = "CreateExpandFloatOpsPass()";
+}
+
+def ConvertFloatNvidiaPass : Pass<"xla-gpu-convert-float-nvidia", "mlir::ModuleOp"> {
+  let summary = "Convert floating point types using NVidia intrinsics.";
+
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::arith::ArithDialect",
   ];
+
+  let constructor = "CreateConvertFloatNvidiaPass()";
 }
 
 def LowerXlaGpuToScfPass :
@@ -167,9 +177,12 @@ def LowerXlaGpuToScfPass :
 
   let dependentDialects = [
     "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect", "mlir::scf::SCFDialect",
-    "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect",
+    "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect", "mlir::vector::VectorDialect",
   ];
 
+  let options = [
+    Option<"warp_size", "warp_size", "int64_t", /*default=*/"32", "Warp size.">,
+  ];
   let constructor = "CreateLowerXlaGpuToScfPass()";
 }
 
@@ -220,7 +233,10 @@ def LowerToLLVMPass :
     "mlir::NVVM::NVVMDialect",
   ];
 
-  let constructor = "CreateLowerToLLVMPass()";
+  let options = [
+    Option<"is_amd_gpu_", "is_amd_gpu", "bool", /*default=*/"false",
+           "True if AMD GPU.">,
+  ];
 }
 
 def VectorizeLoadsAndStoresPass :
@@ -238,6 +254,38 @@ def VectorizeLoadsAndStoresPass :
   ];
 
   let constructor = "CreateVectorizeLoadsAndStoresPass()";
+}
+
+def FuseLoopsPass : Pass<"xla-gpu-fuse-loops", "mlir::func::FuncOp"> {
+  let summary = "Fuse xla_gpu.loop.";
+  let description = [{
+    This pass fuses similar xla_gpu.loops into one if the second one is
+    extracting the same value from a vector in which the first one inserts to.
+
+    Before fuse-loops:
+      %loop0 = xla_gpu.loop (%tid, %bid) -> (%ra, %rb, %rc)[%i, %j]
+        in #indexing_map iter_args(%iter = %cst) -> (vector<8x1xf32>) {
+          %extracted = tensor.extract %arg0[%ra, %rb, %rc]
+          %1 = vector.insert %extracted, %iter [%i, %j]
+          xla_gpu.yield %1
+      }
+      %loop1 = xla_gpu.loop (%tid, %bid) -> (%ra, %rb)[%i, %j]
+        in #indexing_map1 iter_args(%iter = %shmem) -> (tensor<32x33xf32>) {
+          %2 = vector.extract %loop0  [%i, %j]
+          %inserted = tensor.insert %iter[%ra, %rb]
+          xla_gpu.yield %extracted
+      }
+
+    After fuse-loops:
+      %loop = xla_gpu.loop (%tid, %bid) -> (%ra, %rb, %rc, %rd, %re)[%i, %j] 
+        in #indexing_map iter_args(%iter = %shmem) -> (tensor<32x33xf32>) {
+          %extracted = tensor.extract %arg0[%ra, %rb, %rc]
+          %inserted = tensor.insert %extracted into %iter[%rd, %re]
+          xla_gpu.yield %inserted
+      }
+  }];
+  let dependentDialects = ["xla::gpu::XlaGpuDialect"];
+  let constructor = "CreateFuseLoopsPass()";
 }
 
 def PeelLoopsPass : Pass<"xla-gpu-peel-loops", "mlir::func::FuncOp"> {

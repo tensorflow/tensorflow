@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout_util.h"
 #include "xla/shape.h"
@@ -58,8 +60,8 @@ xla::Shape GetTPUInfeedLayout(const xla::Shape& shape) {
 // Updates the layout of the given infeed shape, optionally considering the
 // sharding of the op. If the op has tile sharding, assign the layout based on
 // the shard shape.
-Status UpdateInfeedLayout(xla::Shape* shape,
-                          std::optional<xla::OpSharding> sharding) {
+absl::Status UpdateInfeedLayout(xla::Shape* shape,
+                                std::optional<xla::OpSharding> sharding) {
   if (sharding && sharding->type() == xla::OpSharding::OTHER) {
     TF_ASSIGN_OR_RETURN(auto hlo_sharding,
                         xla::HloSharding::FromProto(*sharding));

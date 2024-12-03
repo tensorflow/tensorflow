@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/hlo_matchers.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
@@ -412,6 +413,13 @@ LogicalResult rewriteNonMatchInitValue<TFL::ReduceMinOp, void>(
   return failure();
 }
 
+template <>
+LogicalResult rewriteNonMatchInitValue<TFL::ReduceAnyOp, void>(
+    mhlo::ReduceOp reduce_op, Value input, arith::ConstantOp reduction_indices,
+    ConversionPatternRewriter& rewriter) {
+  return failure();
+}
+
 // Converts a mhlo.reduce op with a mlho binary operation into a tensorflow
 // reduction operation. If the initial value can be ignored, then convert it
 // into a single ReduceOp. Otherwise, convert it into a ReduceOp followed by
@@ -532,6 +540,32 @@ class ConvertReduceAdd
   }
 };
 
+class ConvertReduceMaxToReduceAny
+    : public ConvertReduce<mhlo::MaxOp, TFL::ReduceAnyOp> {
+ public:
+  using ConvertReduce::ConvertReduce;
+
+  LogicalResult MatchInitValue(Value init_value) const override {
+    // This pattern is applicable only if the initial value is a boolean with
+    // False value. Only then will it make sense to convert a
+    // mhlo.reduce with mhlo.maximum reducer to a TFL.ReduceAnyOp. Because the
+    // maximum value across a slice of a tensor compared to False can be viewed
+    // as, checking if ANY value in the slice is True.
+    auto type = mlir::cast<ShapedType>(init_value.getType()).getElementType();
+
+    if (!mlir::isa<IntegerType>(type) || !type.isSignlessInteger() ||
+        !(type.getIntOrFloatBitWidth() == 1))
+      return failure();
+
+    APInt const_value;
+    if (failed(GetConstantSplatValue(init_value, const_value)) ||
+        (const_value == 1))
+      return failure();
+
+    return success();
+  }
+};
+
 class ConvertReduceMax : public ConvertReduce<mhlo::MaxOp, TFL::ReduceMaxOp> {
  public:
   using ConvertReduce::ConvertReduce;
@@ -544,6 +578,9 @@ class ConvertReduceMax : public ConvertReduce<mhlo::MaxOp, TFL::ReduceMaxOp> {
           !const_value.isInfinity() || !const_value.isNegative())
         return failure();
     } else if (mlir::isa<IntegerType>(type) && type.isSignlessInteger()) {
+      // Do not handle the case where the mhlo.reduce of mhlo.maximum can be
+      // legalized to TFL.ReduceAny. This can be possible if the dtype is i1
+      if (type.getIntOrFloatBitWidth() == 1) return failure();
       APInt const_value;
       if (failed(GetConstantSplatValue(init_value, const_value)) ||
           !const_value.isMinSignedValue())
@@ -673,7 +710,8 @@ void PopulateReducePatterns(MLIRContext* ctx, RewritePatternSet& patterns,
 
   patterns.add<ConvertReduceOpToTFLiteArgmax, ConvertReduceOpToTFLiteArgmin,
                ConvertReduceMul, ConvertReduceAdd, ConvertReduceMax,
-               ConvertReduceMin, ConvertReduceAnd, ConvertReduceOr>(ctx);
+               ConvertReduceMaxToReduceAny, ConvertReduceMin, ConvertReduceAnd,
+               ConvertReduceOr>(ctx);
 
   target.addDynamicallyLegalOp<mhlo::ReduceOp>(IsReduceOpLegal);
 }

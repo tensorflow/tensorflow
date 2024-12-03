@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_STATUS_TO_FROM_PROTO_H_
 #define TENSORFLOW_TSL_PLATFORM_STATUS_TO_FROM_PROTO_H_
 
+#include "xla/tsl/protobuf/status.pb.h"
 #include "tsl/platform/status.h"
-#include "tsl/protobuf/status.pb.h"
 
 namespace tsl {
 

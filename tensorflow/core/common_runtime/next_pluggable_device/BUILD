@@ -88,6 +88,7 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/stream_executor/tpu:c_api_conversions",
         "@local_xla//xla/tsl/framework:device_id_utils",
     ],
@@ -335,12 +336,12 @@ tf_cc_test(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/protobuf:coordination_config_proto_cc",
-        "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
         "@local_xla//xla/tsl/distributed_runtime:call_options",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_client",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/protobuf:coordination_config_proto_cc",
+        "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 

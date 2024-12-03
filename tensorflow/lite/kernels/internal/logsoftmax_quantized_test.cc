@@ -34,11 +34,11 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-void RunLogSoftmaxFloatReference(const uint8* input_data,
+void RunLogSoftmaxFloatReference(const uint8_t* input_data,
                                  const RuntimeShape& shape_common,
-                                 int32 input_offset, const double input_scale,
+                                 int32_t input_offset, const double input_scale,
                                  int stride, float beta,
-                                 uint8* reference_output_data) {
+                                 uint8_t* reference_output_data) {
   const int ref_buffer_size = shape_common.FlatSize();
   std::vector<float> reference_dequant_data(ref_buffer_size);
   std::vector<float> reference_output_float_data(ref_buffer_size);
@@ -67,11 +67,11 @@ void RunLogSoftmaxFloatReference(const uint8* input_data,
 // - input and output data type
 // - Dequnatize function
 // - clamping values
-void RunLogSoftmaxFloatReference(const int8* input_data,
+void RunLogSoftmaxFloatReference(const int8_t* input_data,
                                  const RuntimeShape& shape_common,
-                                 int32 input_offset, const double input_scale,
+                                 int32_t input_offset, const double input_scale,
                                  int stride, float beta,
-                                 int8* reference_output_data) {
+                                 int8_t* reference_output_data) {
   const int ref_buffer_size = shape_common.FlatSize();
   std::vector<float> reference_dequant_data(ref_buffer_size);
   std::vector<float> reference_output_float_data(ref_buffer_size);
@@ -143,21 +143,22 @@ void CheckOutputData(const T* test_output, const T* reference_output,
 
 // Runs the LogSoftmax and compares against the float reference implementation
 // and the quantized reference implementation.
-void RunOneLogSoftmaxTest(const uint8* input_data,
-                          const RuntimeShape& shape_common, int32 input_offset,
-                          const double input_scale, int stride, float beta) {
+void RunOneLogSoftmaxTest(const uint8_t* input_data,
+                          const RuntimeShape& shape_common,
+                          int32_t input_offset, const double input_scale,
+                          int stride, float beta) {
   const int buffer_size = shape_common.FlatSize();
-  std::vector<uint8> optimized_logsoftmax_output(buffer_size);
-  std::vector<uint8> reference_float_logsoftmax_output(buffer_size);
-  std::vector<uint8> reference_quant_logsoftmax_output(buffer_size);
+  std::vector<uint8_t> optimized_logsoftmax_output(buffer_size);
+  std::vector<uint8_t> reference_float_logsoftmax_output(buffer_size);
+  std::vector<uint8_t> reference_quant_logsoftmax_output(buffer_size);
 
   RunLogSoftmaxFloatReference(input_data, shape_common, input_offset,
                               input_scale, stride, beta,
                               reference_float_logsoftmax_output.data());
 
-  int32 input_beta_multiplier;
+  int32_t input_beta_multiplier;
   int input_beta_left_shift;
-  int32 reverse_scaling_divisor;
+  int32_t reverse_scaling_divisor;
   int reverse_scaling_right_shift;
   static const int kScaledDiffIntegerBits = 5;
   tflite::PreprocessLogSoftmaxScalingExp(
@@ -201,20 +202,22 @@ void RunOneLogSoftmaxTest(const uint8* input_data,
 
 // Runs the LogSoftmax and compares against the float reference implementation
 // and the int8 quantized reference implementation.
-void RunOneLogSoftmaxTest(const int8* input_data,
-                          const RuntimeShape& shape_common, int32 input_offset,
-                          const double input_scale, int stride, float beta) {
+void RunOneLogSoftmaxTest(const int8_t* input_data,
+                          const RuntimeShape& shape_common,
+                          int32_t input_offset, const double input_scale,
+                          int stride, float beta) {
   const int buffer_size = shape_common.FlatSize();
-  std::vector<int8> quantized_logsoftmax_reference_implementation(buffer_size);
-  std::vector<int8> float_logsoftmax_optimized_implementation(buffer_size);
+  std::vector<int8_t> quantized_logsoftmax_reference_implementation(
+      buffer_size);
+  std::vector<int8_t> float_logsoftmax_optimized_implementation(buffer_size);
 
   RunLogSoftmaxFloatReference(input_data, shape_common, input_offset,
                               input_scale, stride, beta,
                               float_logsoftmax_optimized_implementation.data());
 
-  int32 input_beta_multiplier;
+  int32_t input_beta_multiplier;
   int input_beta_left_shift;
-  int32 reverse_scaling_divisor;
+  int32_t reverse_scaling_divisor;
   int reverse_scaling_right_shift;
   static const int kScaledDiffIntegerBits = 5;
   tflite::PreprocessLogSoftmaxScalingExp(
@@ -258,7 +261,7 @@ bool TryOneUniformLogSoftmax() {
   const int input_height = ExponentialRandomPositiveInt(0.8f, 20, 200);
   const int stride = ExponentialRandomPositiveInt(0.9f, 3, 8);
   const double input_scale = std::pow(10.0, UniformRandomFloat(-2.0, 1.0));
-  const int32 input_offset = UniformRandomInt(-256, 0);
+  const int32_t input_offset = UniformRandomInt(-256, 0);
   static constexpr float beta = 1.0f;
 
   auto shape_common =
@@ -291,7 +294,7 @@ bool TryOneSkyscraperLogSoftmax(bool small_depth) {
   const int input_height = ExponentialRandomPositiveInt(0.7f, 20, 200);
   const int stride = ExponentialRandomPositiveInt(0.9f, 3, 8);
   const double input_scale = std::pow(10.0, UniformRandomFloat(-2.0, 1.0));
-  const int32 input_offset = UniformRandomInt(-256, 0);
+  const int32_t input_offset = UniformRandomInt(-256, 0);
   static constexpr float beta = 1.0f;
   // Extra parameters for skyscraper input patterns.
   const double middle_proportion =
@@ -303,7 +306,7 @@ bool TryOneSkyscraperLogSoftmax(bool small_depth) {
       RuntimeShape({batch, input_height, input_width, input_depth});
   const int buffer_size = shape_common.FlatSize();
 
-  std::vector<uint8> input_data(buffer_size);
+  std::vector<uint8_t> input_data(buffer_size);
   FillRandomSkyscraper(&input_data, input_depth, middle_proportion, middle_min,
                        sides_max);
   RunOneLogSoftmaxTest(input_data.data(), shape_common, input_offset,

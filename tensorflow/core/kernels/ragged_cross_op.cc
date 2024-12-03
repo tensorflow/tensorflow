@@ -378,12 +378,12 @@ class RaggedCrossOp : public OpKernel {
 
  private:
   // Validates input tensors.
-  Status ValidateInput(const OpInputList& ragged_values_list,
-                       const OpInputList& ragged_splits_list,
-                       const OpInputList& sparse_indices_list,
-                       const OpInputList& sparse_values_list,
-                       const OpInputList& sparse_shape_list,
-                       const OpInputList& dense_list) {
+  absl::Status ValidateInput(const OpInputList& ragged_values_list,
+                             const OpInputList& ragged_splits_list,
+                             const OpInputList& sparse_indices_list,
+                             const OpInputList& sparse_values_list,
+                             const OpInputList& sparse_shape_list,
+                             const OpInputList& dense_list) {
     const auto num_ragged = ragged_values_list.size();
     const auto num_sparse = sparse_indices_list.size();
 
@@ -459,12 +459,13 @@ class RaggedCrossOp : public OpKernel {
   }
 
   // Build a feature reader for each input tensor, and store them in `features`.
-  Status BuildFeatureReaders(const OpInputList& ragged_values_list,
-                             const OpInputList& ragged_splits_list,
-                             const OpInputList& sparse_indices_list,
-                             const OpInputList& sparse_values_list,
-                             const OpInputList& dense_list, int64_t batch_size,
-                             FeatureReaders* features) {
+  absl::Status BuildFeatureReaders(const OpInputList& ragged_values_list,
+                                   const OpInputList& ragged_splits_list,
+                                   const OpInputList& sparse_indices_list,
+                                   const OpInputList& sparse_values_list,
+                                   const OpInputList& dense_list,
+                                   int64_t batch_size,
+                                   FeatureReaders* features) {
     features->reserve(input_order_.size());
 
     int next_ragged = 0;
@@ -522,9 +523,9 @@ class RaggedCrossOp : public OpKernel {
   }
 
   // Builds a RaggedReatureReader
-  static Status BuildRaggedFeatureReader(const Tensor& values,
-                                         const Tensor& splits,
-                                         FeatureReaders* features) {
+  static absl::Status BuildRaggedFeatureReader(const Tensor& values,
+                                               const Tensor& splits,
+                                               FeatureReaders* features) {
     if (values.dtype() != DT_INT64 && values.dtype() != DT_STRING) {
       return errors::InvalidArgument("Unexpected dtype for input ",
                                      (features->size() + 1), ": ",
@@ -556,8 +557,8 @@ class RaggedCrossOp : public OpKernel {
   }
 
   // Builds a DenseFaggedReatureReader.
-  static Status BuildDenseFeatureReader(const Tensor& values,
-                                        FeatureReaders* features) {
+  static absl::Status BuildDenseFeatureReader(const Tensor& values,
+                                              FeatureReaders* features) {
     if (values.dtype() == DT_INT64) {
       features->emplace_back(new DenseFeatureReader<int64_t>(values));
     } else if (values.dtype() == DT_STRING) {
@@ -571,10 +572,10 @@ class RaggedCrossOp : public OpKernel {
   }
 
   // Builds a SparseFaggedReatureReader.
-  static Status BuildSparseFeatureReader(const Tensor& indices,
-                                         const Tensor& values,
-                                         int64_t batch_size,
-                                         FeatureReaders* features) {
+  static absl::Status BuildSparseFeatureReader(const Tensor& indices,
+                                               const Tensor& values,
+                                               int64_t batch_size,
+                                               FeatureReaders* features) {
     if (values.dtype() == DT_INT64) {
       features->emplace_back(
           new SparseFeatureReader<int64_t>(indices, values, batch_size));
@@ -590,9 +591,10 @@ class RaggedCrossOp : public OpKernel {
   }
 
   // Allocates output tensors with proper size, and populates row_splits_out.
-  Status BuildOutputTensors(const FeatureReaders& features, int64_t batch_size,
-                            OpKernelContext* context, Tensor** values_out,
-                            Tensor** row_splits_out) {
+  absl::Status BuildOutputTensors(const FeatureReaders& features,
+                                  int64_t batch_size, OpKernelContext* context,
+                                  Tensor** values_out,
+                                  Tensor** row_splits_out) {
     // Allocate and populate the row_splits output tensor.
     TF_RETURN_IF_ERROR(context->allocate_output(
         1, TensorShape({batch_size + 1}), row_splits_out));

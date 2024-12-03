@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/make_padding.h"
 
+#include <any>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
@@ -37,7 +37,7 @@ bool IsConstZeros(const Node& node) {
     return false;
   }
   auto& attr =
-      absl::any_cast<const ConstTensorAttributes&>(node.operation.attributes);
+      std::any_cast<const ConstTensorAttributes&>(node.operation.attributes);
   for (auto f : attr.tensor.data) {
     if (f != 0) {
       return false;
@@ -62,7 +62,7 @@ class MakePaddingFromZerosConcat : public NodeTransformation {
       auto dep = graph->FindProducer(input->id);
       if (dep != nullptr && IsConstZeros(*dep)) {
         auto& concat_attr =
-            absl::any_cast<const ConcatAttributes&>(node->operation.attributes);
+            std::any_cast<const ConcatAttributes&>(node->operation.attributes);
         PadAttributes pad_attr;
         pad_attr.type = PaddingContentType::ZEROS;
         pad_attr.appended = BHWC(0, 0, 0, 0);
@@ -101,7 +101,7 @@ class MakePaddingFromZerosConcat : public NodeTransformation {
 }  // namespace
 
 std::unique_ptr<NodeTransformation> NewMakePaddingFromConcat() {
-  return absl::make_unique<MakePaddingFromZerosConcat>();
+  return std::make_unique<MakePaddingFromZerosConcat>();
 }
 
 }  // namespace gpu

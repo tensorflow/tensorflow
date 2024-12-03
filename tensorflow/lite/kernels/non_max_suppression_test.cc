@@ -210,7 +210,7 @@ TEST(NonMaxSuppressionV5OpModel, TestOutput) {
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({3}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0, 5, 0, 0, 0}));
   EXPECT_THAT(nms.GetSelectedScores(),
-              ElementsAreArray({0.95, 0.9, 0.3, 0.0, 0.0, 0.0}));
+              Pointwise(FloatingPointEq(), {0.95, 0.9, 0.3, 0.0, 0.0, 0.0}));
 
   // No candidate gets selected. But the outputs should be zeroed out.
   nms.SetScoreThreshold(0.99);
@@ -218,7 +218,7 @@ TEST(NonMaxSuppressionV5OpModel, TestOutput) {
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0, 0, 0, 0}));
   EXPECT_THAT(nms.GetSelectedScores(),
-              ElementsAreArray({0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
+              Pointwise(FloatingPointEq(), {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
 }
 
 TEST(NonMaxSuppressionV5OpModel, TestDynamicOutput) {
@@ -233,26 +233,29 @@ TEST(NonMaxSuppressionV5OpModel, TestDynamicOutput) {
   ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({2}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0}));
-  EXPECT_THAT(nms.GetSelectedScores(), ElementsAreArray({0.95, 0.9}));
+  EXPECT_THAT(nms.GetSelectedScores(),
+              Pointwise(FloatingPointEq(), {0.95, 0.9}));
 
   nms.SetMaxOutputSize(1);
   ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({1}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3}));
-  EXPECT_THAT(nms.GetSelectedScores(), ElementsAreArray({0.95}));
+  EXPECT_THAT(nms.GetSelectedScores(), Pointwise(FloatingPointEq(), {0.95}));
 
   nms.SetMaxOutputSize(3);
   ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({3}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0, 5}));
-  EXPECT_THAT(nms.GetSelectedScores(), ElementsAreArray({0.95, 0.9, 0.3}));
+  EXPECT_THAT(nms.GetSelectedScores(),
+              Pointwise(FloatingPointEq(), {0.95, 0.9, 0.3}));
 
   // No candidate gets selected. But the outputs should be zeroed out.
   nms.SetScoreThreshold(0.99);
   ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0}));
-  EXPECT_THAT(nms.GetSelectedScores(), ElementsAreArray({0.0, 0.0, 0.0}));
+  EXPECT_THAT(nms.GetSelectedScores(),
+              Pointwise(FloatingPointEq(), {0.0, 0.0, 0.0}));
 }
 }  // namespace
 }  // namespace tflite

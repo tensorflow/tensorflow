@@ -24,15 +24,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "xla/debug_options_flags.h"
-#include "xla/execution_options_util.h"
+#include "absl/types/span.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/backend.h"
@@ -43,27 +46,28 @@ limitations under the License.
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/dynamic_padder.h"
 #include "xla/service/executable.h"
-#include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_proto_util.h"
-#include "xla/service/platform_util.h"
-#include "xla/service/source_map_util.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/service/stream_pool.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
-#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
@@ -383,7 +387,12 @@ Service::ExecuteParallelAndRegisterResult(
       options.set_allocator(backend->memory_allocator());
       options.set_intra_op_thread_pool(
           backend->eigen_intra_op_thread_pool_device());
-      options.set_device_assignment(&device_assignment);
+      const DeviceAssignment* device_assignment_ptr = &device_assignment;
+      if (executables[i]->module_config().has_static_device_assignment()) {
+        device_assignment_ptr =
+            &executables[i]->module_config().static_device_assignment();
+      }
+      options.set_device_assignment(device_assignment_ptr);
       // Use run-time profile information from execution_profile on the 0th
       // device.
       if (i == 0) {
@@ -395,8 +404,7 @@ Service::ExecuteParallelAndRegisterResult(
       // Asynchronously launch the computation.
       TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                           executables[i]->ExecuteAsyncOnStream(
-                              &run_options, arguments[i][replica],
-                              /*hlo_execution_profile=*/nullptr));
+                              &run_options, arguments[i][replica]));
 
       result_buffers.push_back(std::move(result));
     }
@@ -439,7 +447,11 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   for (int64_t replica = 0; replica < replicas.size(); ++replica) {
     device_assignment(replica, 0) = replicas[replica]->device_ordinal();
   }
-
+  const DeviceAssignment* device_assignment_ptr = &device_assignment;
+  if (executable->module_config().has_static_device_assignment()) {
+    device_assignment_ptr =
+        &executable->module_config().static_device_assignment();
+  }
   // Set up run options.
   std::vector<ServiceExecutableRunOptions> run_options;
   run_options.reserve(streams.size());
@@ -447,10 +459,11 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     ExecutableRunOptions options;
     options.set_stream(stream.get());
     options.set_device_ordinal(stream->parent()->device_ordinal());
+    options.set_local_device_count(backend->device_count());
     options.set_allocator(backend->memory_allocator());
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
-    options.set_device_assignment(&device_assignment);
+    options.set_device_assignment(device_assignment_ptr);
     options.set_execution_profile(profile);
     run_options.emplace_back(options, backend->StreamBorrowerWithPriority());
   }

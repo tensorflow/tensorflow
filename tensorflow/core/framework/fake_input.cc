@@ -108,14 +108,14 @@ Status FakeInputImpl::AddInputToBuilder() {
             "': ", status.message());
       }
       SourceList(dts);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     DataType dt;
     TF_RETURN_IF_ERROR(GetDataType(&dt));
     builder_->Input(in_node_, 0, dt);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // static
@@ -134,13 +134,13 @@ Status FakeInputImpl::GetN(int* n) const {
                                      arg_->name(), "': ", status.message());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FakeInputImpl::GetDataType(DataType* dt) const {
   if (dt_specified_) {
     *dt = dt_;
-    return OkStatus();  // Ignore is_ref field of arg_.
+    return absl::OkStatus();  // Ignore is_ref field of arg_.
   } else if (arg_->type() != DT_INVALID) {
     *dt = arg_->type();
   } else if (!arg_->type_attr().empty()) {
@@ -162,7 +162,7 @@ Status FakeInputImpl::GetDataType(DataType* dt) const {
   if (arg_->is_ref()) {
     *dt = MakeRefType(*dt);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void FakeInputImpl::NSources(int n, DataType dt) const {
@@ -171,7 +171,7 @@ void FakeInputImpl::NSources(int n, DataType dt) const {
   for (int i = 0; i < n; ++i) {
     srcs.emplace_back(in_node_, i, dt);
   }
-  builder_->Input(gtl::ArraySlice<NodeDefBuilder::NodeOut>(srcs));
+  builder_->Input(absl::Span<const NodeDefBuilder::NodeOut>(srcs));
 }
 
 void FakeInputImpl::SourceList(DataTypeSlice dts) const {
@@ -180,7 +180,7 @@ void FakeInputImpl::SourceList(DataTypeSlice dts) const {
   for (size_t i = 0; i < dts.size(); ++i) {
     srcs.emplace_back(in_node_, i, dts[i]);
   }
-  builder_->Input(gtl::ArraySlice<NodeDefBuilder::NodeOut>(srcs));
+  builder_->Input(absl::Span<const NodeDefBuilder::NodeOut>(srcs));
 }
 
 }  // namespace

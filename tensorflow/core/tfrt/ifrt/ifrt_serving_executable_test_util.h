@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
@@ -68,10 +69,12 @@ class IfrtServingExecutableTestHelper {
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry_;
   IfrtRestoreTensorRegistry ifrt_restore_tensor_registry_;
   std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue_;
-  std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr_;
+  std::unique_ptr<tensorflow::DynamicDeviceMgr> device_mgr_;
 
   mlir::DialectRegistry registry_;
   std::unique_ptr<mlir::MLIRContext> context_;
+  std::unique_ptr<IfrtPersistentCompilationCache>
+      ifrt_persistent_compilation_cache_;
 };
 
 // Returns the path to the MLIR module for the given module name.

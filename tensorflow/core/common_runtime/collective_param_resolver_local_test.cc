@@ -162,7 +162,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
 
 TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
   CollectiveParams* cps[NUM_DEVS];
-  Status statuses[NUM_DEVS];
+  absl::Status statuses[NUM_DEVS];
   Notification note[NUM_DEVS];
   for (int i = 0; i < NUM_DEVS; ++i) {
     cps[i] = new CollectiveParams();
@@ -182,7 +182,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
           strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp,
                                 nullptr /*CancellationManager*/,
-                                [&statuses, &note, i](const Status& s) {
+                                [&statuses, &note, i](const absl::Status& s) {
                                   statuses[i] = s;
                                   note[i].Notify();
                                 });
@@ -226,7 +226,7 @@ void InitializeCollectiveParamsForBroadcast(int instance_key, int device_idx,
 TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
   constexpr int kInstanceKey = 5;
   CollectiveParams* cps[NUM_DEVS];
-  Status statuses[NUM_DEVS];
+  absl::Status statuses[NUM_DEVS];
   Notification note[NUM_DEVS];
   for (int i = 0; i < NUM_DEVS; ++i) {
     cps[i] = new CollectiveParams();
@@ -237,7 +237,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
           strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp,
                                 nullptr /*CancellationManager*/,
-                                [&statuses, &note, i](const Status& s) {
+                                [&statuses, &note, i](const absl::Status& s) {
                                   statuses[i] = s;
                                   note[i].Notify();
                                 });
@@ -268,7 +268,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
 TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcastForgotSender) {
   constexpr int kInstanceKey = 8;
   CollectiveParams* cps[NUM_DEVS];
-  Status statuses[NUM_DEVS];
+  absl::Status statuses[NUM_DEVS];
   Notification note[NUM_DEVS];
   for (int i = 0; i < NUM_DEVS; ++i) {
     cps[i] = new CollectiveParams();
@@ -279,7 +279,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcastForgotSender) {
           strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp,
                                 nullptr /*CancellationManager*/,
-                                [&statuses, &note, i](const Status& s) {
+                                [&statuses, &note, i](const absl::Status& s) {
                                   statuses[i] = s;
                                   note[i].Notify();
                                 });
@@ -327,7 +327,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingGroup) {
       cp[i] = MakeCollectiveParams(/*group_key*/ 100, /*instance_key*/ 100,
                                    /*is_source*/ i == 0);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp[i], &cancel_mgr,
-                                [&done, cp = cp[i]](const Status& s) {
+                                [&done, cp = cp[i]](const absl::Status& s) {
                                   EXPECT_EQ(s.code(),
                                             absl::StatusCode::kAborted);
                                   EXPECT_EQ(s.message(), "__aborted__");
@@ -338,7 +338,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingGroup) {
     });
   }
   start.Wait();
-  prl_->StartAbort(Status(absl::StatusCode::kAborted, "__aborted__"));
+  prl_->StartAbort(absl::Status(absl::StatusCode::kAborted, "__aborted__"));
   done.Wait();
 }
 
@@ -359,7 +359,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingInstance) {
                                      /*is_source*/ i == 0);
         prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp[i],
                                   &cancel_mgr,
-                                  [&done, cp = cp[i]](const Status& s) {
+                                  [&done, cp = cp[i]](const absl::Status& s) {
                                     EXPECT_EQ(s.code(), error::OK);
                                     done.DecrementCount();
                                     cp->Unref();
@@ -378,7 +378,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingInstance) {
       cp[i] = MakeCollectiveParams(group_key, instance_key + 1,
                                    /*is_source*/ i == 0);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp[i], &cancel_mgr,
-                                [&done, cp = cp[i]](const Status& s) {
+                                [&done, cp = cp[i]](const absl::Status& s) {
                                   EXPECT_EQ(s.code(),
                                             absl::StatusCode::kAborted);
                                   EXPECT_EQ(s.message(), "__aborted__");
@@ -389,7 +389,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingInstance) {
     });
   }
   start.Wait();
-  prl_->StartAbort(Status(absl::StatusCode::kAborted, "__aborted__"));
+  prl_->StartAbort(absl::Status(absl::StatusCode::kAborted, "__aborted__"));
   done.Wait();
 }
 
@@ -410,7 +410,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
                                      /*is_source*/ i == 0);
         prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp[i],
                                   &cancel_mgr,
-                                  [&done, cp = cp[i]](const Status& s) {
+                                  [&done, cp = cp[i]](const absl::Status& s) {
                                     EXPECT_EQ(s.code(), error::OK);
                                     done.DecrementCount();
                                     cp->Unref();
@@ -419,7 +419,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
     }
     done.Wait();
   }
-  prl_->StartAbort(Status(absl::StatusCode::kAborted, "__aborted__"));
+  prl_->StartAbort(absl::Status(absl::StatusCode::kAborted, "__aborted__"));
 
   auto complete_params = [this, &cancel_mgr](int group_key, int instance_key) {
     string device = "/job:localhost/replica:0/task:0/device:CPU:0";
@@ -428,7 +428,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
                                     /*is_source*/ true);
     core::ScopedUnref unref(cp);
     prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp, &cancel_mgr,
-                              [&done](const Status& s) {
+                              [&done](const absl::Status& s) {
                                 EXPECT_EQ(s.code(), absl::StatusCode::kAborted);
                                 EXPECT_EQ(s.message(), "__aborted__");
                                 done.Notify();
@@ -461,14 +461,14 @@ TEST_F(CollectiveParamResolverLocalTest, AbortNormalCompleteParamsAsync) {
           [this, i, device, &num_ok, &cancel_mgr, &done] {
             int key = 100;
             while (true) {
-              Status status;
+              absl::Status status;
               Notification n;
               auto* cp =
                   MakeCollectiveParams(/* group_key*/ key, /*instance_key*/ key,
                                        /*is_source*/ i == 0);
               prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp,
                                         &cancel_mgr,
-                                        [&status, &n](const Status& s) {
+                                        [&status, &n](const absl::Status& s) {
                                           status = s;
                                           n.Notify();
                                         });
@@ -490,7 +490,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortNormalCompleteParamsAsync) {
     // on different code points each time.
     int64_t delay_ms = random::New64() % 50000;
     Env::Default()->SleepForMicroseconds(delay_ms);
-    prl_->StartAbort(Status(absl::StatusCode::kAborted, "__aborted__"));
+    prl_->StartAbort(absl::Status(absl::StatusCode::kAborted, "__aborted__"));
     done.Wait();
     ResetParamResolver(ConfigProto());
   }

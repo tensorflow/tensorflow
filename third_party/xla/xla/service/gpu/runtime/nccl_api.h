@@ -25,10 +25,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
@@ -44,7 +48,7 @@ namespace xla::gpu {
 // NCCL library so that no other parts of XLA should include nccl.h header
 // directly (or indirectly).
 
-class NcclApi {
+class NcclApi : public GpuCollectives {
  public:
   virtual ~NcclApi() = default;
 
@@ -60,27 +64,18 @@ class NcclApi {
   // NCCL or a stub if XLA compiled without NCCL or CUDA support.
   static NcclApi* Default();
 
+  // Returns true if XLA is compiled with NCCL support, otherwise returns false.
+  // If false, Default() will return a stub implementation.
+  static bool HasNcclSupport();
+
   // Forward declarations of opaque structs corresponding to underlying platform
   // types (also defined as opaque structs).
-  struct NcclComm;
   struct NcclPersistentPlanAllocator;
   struct NcclRegisteredBuffer;
 
   // Convenience handles for defining API functions.
-  using NcclCommHandle = NcclComm*;
   using NcclPersistentPlanAllocatorHandle = NcclPersistentPlanAllocator*;
   using NcclRegisteredBufferHandle = NcclRegisteredBuffer*;
-
-  // RAII handle for NCCL communicator.
-  struct NcclCommDeleter {
-    void operator()(NcclCommHandle comm) {
-      if (auto destroyed = api->CommDestroy(comm); !destroyed.ok())
-        LOG(ERROR) << "Failed to destroy communicator: " << destroyed;
-    }
-    NcclApi* api;
-  };
-
-  using OwnedNcclComm = std::unique_ptr<NcclComm, NcclCommDeleter>;
 
   // Persistent plan allocator allows to pass XLA memory allocator to NCCL to
   // allocate device memory for persistent execution plans for NCCL operations
@@ -114,22 +109,22 @@ class NcclApi {
   class ScopedPersistentPlanAllocator {
    public:
     ScopedPersistentPlanAllocator(
-        NcclCommHandle comm,
+        Communicator* comm,
         tsl::RCReference<PersistentPlanAllocator> allocator);
     ~ScopedPersistentPlanAllocator();
 
    private:
-    NcclCommHandle comm_;
+    Communicator* comm_;
     NcclPersistentPlanAllocatorHandle recover_;
     tsl::RCReference<PersistentPlanAllocator> allocator_;
   };
 
   struct DeviceRank {
-    DeviceRank(se::StreamExecutor* device, int32_t rank)
+    DeviceRank(se::StreamExecutor* device, RankId rank)
         : device(device), rank(rank) {}
 
     se::StreamExecutor* device;
-    int32_t rank;
+    RankId rank;
   };
 
   // Returns a slice of device memory `buff` containing `count` values of data
@@ -144,7 +139,7 @@ class NcclApi {
   // Creates a new unique clique id.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclgetuniqueid
-  virtual absl::StatusOr<NcclCliqueId> GetUniqueId() = 0;
+  virtual absl::StatusOr<CliqueId> GetUniqueId() = 0;
 
   // Creates new communicators for given devices.
   //
@@ -152,9 +147,9 @@ class NcclApi {
   // multiple calls to ncclCommInitRank within a single group.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcomminitrank
-  virtual absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
-      int32_t nranks, const NcclCliqueId& clique_id,
-      absl::Span<const DeviceRank> ranks, const Config& config) = 0;
+  virtual absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  CommInitRanks(int32_t nranks, const CliqueId& clique_id,
+                absl::Span<const DeviceRank> ranks, const Config& config) = 0;
 
   // Creates new communicators by splitting `comms`.
   //
@@ -162,35 +157,30 @@ class NcclApi {
   // multiple calls to ncclCommSplit within a single group.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommsplit
-  virtual absl::StatusOr<std::vector<OwnedNcclComm>> CommSplit(
-      absl::Span<const NcclCommHandle> comms, int32_t color,
-      absl::Span<const int32_t> keys, std::optional<Config> config) = 0;
+  virtual absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommSplit(
+      absl::Span<const Communicator* const> comms, int32_t color,
+      absl::Span<const RankId> keys, std::optional<Config> config) = 0;
 
   // Abort any uncompleted operations and destroys the communicator. Frees
   // resources that are allocated to a communicator object comm.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommabort
-  virtual absl::Status CommAbort(NcclCommHandle comm) = 0;
+  virtual absl::Status CommAbort(Communicator* comm) = 0;
 
   // Finalize a communicator object comm.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommdestroy
-  virtual absl::Status CommFinalize(NcclCommHandle comm) = 0;
-
-  // Destroy a communicator object comm.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommdestroy
-  virtual absl::Status CommDestroy(NcclCommHandle comm) = 0;
+  virtual absl::Status CommFinalize(Communicator* comm) = 0;
 
   // Returns the number of ranks in the NCCL communicator comm.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommcount
-  virtual absl::StatusOr<int32_t> CommCount(NcclCommHandle comm) = 0;
+  virtual absl::StatusOr<int32_t> CommCount(Communicator* comm) = 0;
 
   // Queries the progress and potential errors of asynchronous operations
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommgetasyncerror
-  virtual absl::Status CommGetAsyncError(NcclCommHandle comm) = 0;
+  virtual absl::Status CommGetAsyncError(Communicator* comm) = 0;
 
   // Starts a group call.
   //
@@ -210,7 +200,7 @@ class NcclApi {
                                  se::DeviceMemoryBase recv_buffer,
                                  PrimitiveType dtype, size_t count,
                                  ReductionKind reduction_kind,
-                                 NcclCommHandle comm, se::Stream* stream) = 0;
+                                 Communicator* comm, se::Stream* stream) = 0;
 
   // Copy data in `send_buff` from the root GPU to the `recv_buff` on
   // all GPUs.
@@ -219,7 +209,7 @@ class NcclApi {
   virtual absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
                                  se::DeviceMemoryBase recv_buffer,
                                  PrimitiveType dtype, size_t count, size_t root,
-                                 NcclCommHandle comm, se::Stream* stream) = 0;
+                                 Communicator* comm, se::Stream* stream) = 0;
   // Reduce data in `send_buff` from all GPUs using the `reduction_kind`
   // operation and leave the reduced result scattered over the devices so that
   // the `recv_buff` on rank `i` will contain the i-th block of the result.
@@ -229,7 +219,7 @@ class NcclApi {
                                      se::DeviceMemoryBase recv_buffer,
                                      PrimitiveType dtype, size_t count,
                                      ReductionKind reduction_kind,
-                                     NcclCommHandle comm,
+                                     Communicator* comm,
                                      se::Stream* stream) = 0;
 
   // Gather `count` values from all GPUs into recv_buffer, receiving data from
@@ -239,34 +229,42 @@ class NcclApi {
   virtual absl::Status AllGather(se::DeviceMemoryBase send_buffer,
                                  se::DeviceMemoryBase recv_buffer,
                                  PrimitiveType dtype, size_t count,
-                                 NcclCommHandle comm, se::Stream* stream) = 0;
+                                 Communicator* comm, se::Stream* stream) = 0;
 
   // Send data from `send_buff` to rank `peer`.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/p2p.html#ncclsend
   virtual absl::Status Send(se::DeviceMemoryBase send_buffer,
                             PrimitiveType dtype, size_t count, int32_t peer,
-                            NcclCommHandle comm, se::Stream* stream) = 0;
+                            Communicator* comm, se::Stream* stream) = 0;
+  // Send a pointer `ptr` to rank `peer`.
+  virtual absl::Status SendPtrToPeer(void* ptr, int32_t peer,
+                                     Communicator* comm,
+                                     se::Stream* stream) = 0;
 
   // Receive data from rank `peer` into `recv_buff`.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/p2p.html#ncclrecv
   virtual absl::Status Recv(se::DeviceMemoryBase recv_buffer,
                             PrimitiveType dtype, size_t count, int32_t peer,
-                            NcclCommHandle comm, se::Stream* stream) = 0;
+                            Communicator* comm, se::Stream* stream) = 0;
+  // Receive a pointer from rank `peer` into `ptr`.
+  virtual absl::Status RecvPtrFromPeer(void* ptr, int32_t peer,
+                                       Communicator* comm,
+                                       se::Stream* stream) = 0;
 
   // Register `buffer` with communicator `comm` for zero-copy communication.
   // Returned handle can be used for future unregistration.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommregister
   virtual absl::StatusOr<NcclRegisteredBufferHandle> RegisterBuffer(
-      NcclCommHandle comm, se::DeviceMemoryBase buffer) = 0;
+      Communicator* comm, se::DeviceMemoryBase buffer) = 0;
 
   // Deregister buffer represented by `handle` from communicator `comm`.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommderegister
   virtual absl::StatusOr<NcclRegisteredBufferHandle> DeregisterBuffer(
-      NcclCommHandle comm, NcclRegisteredBufferHandle handle) = 0;
+      Communicator* comm, NcclRegisteredBufferHandle handle) = 0;
 };
 
 }  // namespace xla::gpu

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/core/collectives/clique_id.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/status_macros.h"
@@ -29,7 +30,7 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<gpu::NcclCliqueId> NcclIdStore::GetNcclUniqueId(
+absl::StatusOr<CliqueId> NcclIdStore::GetNcclUniqueId(
     const gpu::NcclCliqueKey& key) {
   // The caller must ensure that threads calling this method concurrently have
   // unique keys, otherwise the global key-value store may hold the wrong value.
@@ -40,7 +41,7 @@ absl::StatusOr<gpu::NcclCliqueId> NcclIdStore::GetNcclUniqueId(
       return it->second;
     }
   }
-  gpu::NcclCliqueId clique_id;
+  CliqueId clique_id;
   int primary_node_id = device_to_node_.at(key.devices()[0]);
   if (node_id_ == primary_node_id) {
     TF_ASSIGN_OR_RETURN(clique_id, gpu::NcclApi::Default()->GetUniqueId());
@@ -48,7 +49,7 @@ absl::StatusOr<gpu::NcclCliqueId> NcclIdStore::GetNcclUniqueId(
   } else {
     TF_ASSIGN_OR_RETURN(std::string id_str,
                         kv_store_->Get(key.ToString(), absl::Minutes(10)));
-    TF_ASSIGN_OR_RETURN(clique_id, gpu::NcclCliqueId::FromString(id_str));
+    clique_id = CliqueId(id_str);
   }
   absl::MutexLock lock(&mu_);
   auto result = cache_.emplace(key, std::move(clique_id));

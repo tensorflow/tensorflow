@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform.h"
@@ -33,7 +34,7 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
   absl::flat_hash_map<std::string, GpuDeviceInfoProto> gpu_specs;
   for (const std::string file_name :
        {"a100_pcie_80", "a100_sxm_40", "a100_sxm_80", "a6000", "h100_pcie",
-        "h100_sxm", "p100", "v100"}) {
+        "h100_sxm", "p100", "v100", "mi200"}) {
     GpuTargetConfigProto proto;
     std::string spec_string;
     TF_ASSERT_OK(tsl::ReadFileToString(
@@ -45,9 +46,10 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
         tsl::protobuf::TextFormat::ParseFromString(spec_string, &proto));
     gpu_specs[proto.device_description_str()] = proto.gpu_device_info();
   }
-
+  auto name = absl::AsciiStrToUpper(
+      xla::PlatformUtil::CanonicalPlatformName("gpu").value());
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          PlatformManager::PlatformWithName("CUDA"));
+                          PlatformManager::PlatformWithName(name));
   bool all_skipped = false;
   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
     TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,

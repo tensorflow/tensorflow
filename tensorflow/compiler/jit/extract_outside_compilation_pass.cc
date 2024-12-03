@@ -59,7 +59,7 @@ absl::StatusOr<Node*> AddHostComputeKeyPlaceholder(
   builder.Attr("dtype", DT_STRING);
   builder.Attr("shape", PartialTensorShape({2}));
   builder.Attr("_host_compute_call_node", xla_cluster_name);
-  Status s = builder.Finalize(&key_def);
+  absl::Status s = builder.Finalize(&key_def);
   if (!s.ok()) return s;
 
   Node* n = g->AddNode(key_def, &s);
@@ -85,8 +85,8 @@ std::vector<Node*> GatherNodesWithType(const Graph& g, const string& type) {
 }
 
 // Gets data types from `arg_nodes` and fills them into `recv_at_host_dtypes`.
-Status GetArgDataTypes(const std::vector<Node*>& arg_nodes,
-                       std::vector<DataType>* recv_at_host_dtypes) {
+absl::Status GetArgDataTypes(const std::vector<Node*>& arg_nodes,
+                             std::vector<DataType>* recv_at_host_dtypes) {
   recv_at_host_dtypes->resize(arg_nodes.size(), DT_INVALID);
   for (auto* n : arg_nodes) {
     int index;
@@ -185,8 +185,8 @@ absl::StatusOr<Node*> ReplaceArgNodesWithRecvAtHostNode(
 }
 
 // Gets data types from `ret_nodes` and fills them into `send_from_host_dtypes`.
-Status GetRetDataTypes(const std::vector<Node*>& ret_nodes,
-                       std::vector<DataType>* send_from_host_dtypes) {
+absl::Status GetRetDataTypes(const std::vector<Node*>& ret_nodes,
+                             std::vector<DataType>* send_from_host_dtypes) {
   send_from_host_dtypes->resize(ret_nodes.size(), DT_INVALID);
   for (auto* n : ret_nodes) {
     int index;
@@ -392,7 +392,7 @@ TF_ATTRIBUTE_NOINLINE absl::StatusOr<Node*> ReplaceOutsideCompilationCallNode(
 // Resets "_device_ordinal" attr to placeholder value for related nodes
 // (XlaRecvAtHost nodes; XlaSendFromHost nodes; If/While/FuncCall nodes
 // containing XlaRecvAtHost/XlaSendFromHost).
-Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
+absl::Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
   AttrValue device_ordinal_value;
   device_ordinal_value.set_placeholder("_device_ordinal");
   for (Node* n : g->nodes()) {
@@ -524,9 +524,9 @@ absl::StatusOr<Node*> AddOutsideCompilationInputArgToFunctionBody(
 
 // Add _Retval node that matches newly added `arg_node` and connect `arg_node`
 // to it.
-Status AddMatchingRetvalNode(const FunctionBody& function_body,
-                             const int arg_idx, const DataType& data_type,
-                             Node* arg_node) {
+absl::Status AddMatchingRetvalNode(const FunctionBody& function_body,
+                                   const int arg_idx, const DataType& data_type,
+                                   Node* arg_node) {
   NodeDefBuilder ret_builder(absl::StrCat("ret_", arg_idx), "_Retval");
   ret_builder.Attr("T", data_type);
   ret_builder.Attr("index", arg_idx);
@@ -562,11 +562,12 @@ void ReplaceLiftedArgNodePlaceholderWithArg(
 
 // Adds function def to function definition library and update the function
 // callsite operation `callsite_node` to invoke new function instead.
-Status AddFunctionWithNewName(const std::string& new_name,
-                              const std::string& func_attr_name,
-                              const FunctionDef& function_def,
-                              NameAttrList* func_attr, Node* callsite_node,
-                              FunctionLibraryDefinition* fld) {
+absl::Status AddFunctionWithNewName(const std::string& new_name,
+                                    const std::string& func_attr_name,
+                                    const FunctionDef& function_def,
+                                    NameAttrList* func_attr,
+                                    Node* callsite_node,
+                                    FunctionLibraryDefinition* fld) {
   TF_RETURN_IF_ERROR(fld->AddFunctionDef(function_def));
   func_attr->set_name(new_name);
   callsite_node->ClearAttr(func_attr_name);
@@ -576,7 +577,7 @@ Status AddFunctionWithNewName(const std::string& new_name,
 
 // Reconnect outside compilation lifted arguments in a functional While node to
 // its outside compilation tensor sources.
-Status PostprocessLiftedArgsForWhile(
+absl::Status PostprocessLiftedArgsForWhile(
     const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
     Graph* g, Node* n, FunctionLibraryDefinition* fld) {
   TF_RET_CHECK(n->IsWhileNode());
@@ -685,7 +686,7 @@ Status PostprocessLiftedArgsForWhile(
   return absl::OkStatus();
 }
 
-Status PostprocessLiftedArgsForIf(
+absl::Status PostprocessLiftedArgsForIf(
     const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
     Graph* g, Node* n, FunctionLibraryDefinition* fld) {
   TF_RET_CHECK(n->IsIfNode());
@@ -824,7 +825,7 @@ Status PostprocessLiftedArgsForIf(
   return absl::OkStatus();
 }
 
-Status PostprocessLiftedArgsForCall(
+absl::Status PostprocessLiftedArgsForCall(
     const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
     Graph* g, Node* n, FunctionLibraryDefinition* fld) {
   const FunctionDef* fdef = fld->Find(n->type_string());
@@ -941,7 +942,7 @@ absl::StatusOr<std::unordered_map<string, Node*>> OutsideCompilationAttrToNode(
   return outside_compilation_attr_to_node;
 }
 
-Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
+absl::Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
   TF_ASSIGN_OR_RETURN(auto outside_compilation_attr_to_node,
                       OutsideCompilationAttrToNode(*g));
 
@@ -986,7 +987,7 @@ Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
 // 2) a "key placeholder" node. Later in ExpandHostGraphIntoMainGraph(), we will
 //    replace this node with compilation result node.
 // 3) all outside compilation graphs.
-Status ConstructHostGraph(
+absl::Status ConstructHostGraph(
     const string& xla_cluster_name, const string& outside_compilation_attr_name,
     const std::vector<string>& outside_compilation_host_graphs,
     FunctionLibraryDefinition* fld, std::unique_ptr<Graph>* host_graph) {
@@ -1036,7 +1037,7 @@ Status ConstructHostGraph(
     std::map<const Node*, Node*> node_map;
     node_map[host_fbody->graph->source_node()] = (*host_graph)->source_node();
     node_map[host_fbody->graph->sink_node()] = (*host_graph)->sink_node();
-    Status s;
+    absl::Status s;
     ReverseDFS(
         *host_fbody->graph, /*enter=*/nullptr,
         [&](const Node* n) {
@@ -1122,11 +1123,11 @@ Status ConstructHostGraph(
 
 // Expand XLA computation's outside compilation host side graph into main graph.
 // Add a control edge between sequencer node and the XLA computation node.
-Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
-                                    FunctionLibraryDefinition* fld,
-                                    const string& host_graph_func_name,
-                                    Node* xla_computation_node,
-                                    Node* pivot_node) {
+absl::Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
+                                          FunctionLibraryDefinition* fld,
+                                          const string& host_graph_func_name,
+                                          Node* xla_computation_node,
+                                          Node* pivot_node) {
   // Temporarily use "0" as "_device_ordinal". It will be rewritten with the
   // correct value in a later pass. We cannot just use placeholder value here
   // because FunctionDef instantiation does not allow placeholder value for
@@ -1155,7 +1156,7 @@ Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
     node_map[host_graph->source_node()] = main_graph->source_node();
   }
   node_map[host_graph->sink_node()] = main_graph->sink_node();
-  Status s = absl::OkStatus();
+  absl::Status s = absl::OkStatus();
   auto copy_node_fn = [&](const Node* n) {
     if (!s.ok()) {
       return;
@@ -1205,9 +1206,9 @@ Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
 //    removed those placeholder nodes.
 // 2) Remove control edges.
 // 3) Prune nodes that are not useful for shape inference.
-Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
-                                  Graph* host_graph, Node* pivot_node,
-                                  FunctionLibraryDefinition* fld) {
+absl::Status RewriteShapeInferenceGraph(
+    const string& shape_inference_graph_name, Graph* host_graph,
+    Node* pivot_node, FunctionLibraryDefinition* fld) {
   // Use "0" as "_device_ordinal". It does not matter for shape inference.
   AttrValue device_ordinal_attr;
   device_ordinal_attr.set_i(0);
@@ -1355,9 +1356,9 @@ TF_ATTRIBUTE_NOINLINE absl::StatusOr<Node*> BuildSendIfPredNode(
 }
 
 // Replaces key placeholder node with an _Arg node.
-Status ReplaceKeyPlaceholderWithArgNode(const string& xla_cluster_name,
-                                        const string& func_name,
-                                        FunctionLibraryDefinition* fld) {
+absl::Status ReplaceKeyPlaceholderWithArgNode(const string& xla_cluster_name,
+                                              const string& func_name,
+                                              FunctionLibraryDefinition* fld) {
   // Temporarily use "0" as "_device_ordinal". It will be reset to placeholder
   // value after rewriting.
   AttrValue device_ordinal_attr;
@@ -1402,7 +1403,7 @@ Status ReplaceKeyPlaceholderWithArgNode(const string& xla_cluster_name,
 }
 
 // Builds host side graph for If node.
-TF_ATTRIBUTE_NOINLINE Status BuildHostGraphForIfNode(
+TF_ATTRIBUTE_NOINLINE absl::Status BuildHostGraphForIfNode(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name, const string& xla_cluster_name,
     const string& if_node_name, const string& host_transfer_key,
@@ -1482,7 +1483,7 @@ TF_ATTRIBUTE_NOINLINE Status BuildHostGraphForIfNode(
 }
 
 // Rewrites loop cond to add a node which sends loop cond to host.
-TF_ATTRIBUTE_NOINLINE Status AddSendLoopPredToLoopCond(
+TF_ATTRIBUTE_NOINLINE absl::Status AddSendLoopPredToLoopCond(
     const string& cond_xla_func_name, const string& host_transfer_key,
     NameAttrList* loop_cond_func, FunctionLibraryDefinition* fld,
     Node* while_node) {
@@ -1558,7 +1559,7 @@ TF_ATTRIBUTE_NOINLINE Status AddSendLoopPredToLoopCond(
 }
 
 // Rewrites while loop cond function for host.
-Status RewriteHostWhileLoopCond(
+absl::Status RewriteHostWhileLoopCond(
     const string& cond_host_func_name, const string& while_node_name,
     const string& host_transfer_key, const string& xla_cluster_attr_name,
     const string& xla_cluster_name, const string& outside_compilation_attr_name,
@@ -1632,7 +1633,7 @@ Status RewriteHostWhileLoopCond(
 }
 
 // Rewrites while loop body function for host.
-Status RewriteHostWhileLoopBody(
+absl::Status RewriteHostWhileLoopBody(
     const string& body_host_func_name, const string& while_node_name,
     const string& host_transfer_key, const string& xla_cluster_attr_name,
     const string& xla_cluster_name, const string& outside_compilation_attr_name,
@@ -1690,7 +1691,7 @@ Status RewriteHostWhileLoopBody(
 }
 
 // Builds host side graph for while node.
-TF_ATTRIBUTE_NOINLINE Status BuildHostGraphForWhileNode(
+TF_ATTRIBUTE_NOINLINE absl::Status BuildHostGraphForWhileNode(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name, const string& xla_cluster_name,
     const string& while_node_name, const string& host_transfer_key,
@@ -1757,7 +1758,7 @@ TF_ATTRIBUTE_NOINLINE Status BuildHostGraphForWhileNode(
 }
 
 // Builds host graph for func call nodes.
-Status BuildHostGraphForFuncCallNode(
+absl::Status BuildHostGraphForFuncCallNode(
     const string& xla_cluster_attr_name, const string& xla_cluster_name,
     const string& outside_compilation_attr_name,
     const string& func_call_node_name, const string& func_call_host_func_name,
@@ -1805,7 +1806,7 @@ Status BuildHostGraphForFuncCallNode(
   return absl::OkStatus();
 }
 
-TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
+TF_ATTRIBUTE_NOINLINE absl::Status ExtractOutsideCompilationForFuncCallNode(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name, const string& xla_cluster_name,
     const std::map<string, int>& host_compute_core, Graph* g, Node* n,
@@ -1891,7 +1892,7 @@ TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
   return absl::OkStatus();
 }
 
-Status ExtractOutsideCompilationForIfNode(
+absl::Status ExtractOutsideCompilationForIfNode(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name, const string& xla_cluster_name,
     const std::map<string, int>& host_compute_core, Graph* g, Node* n,
@@ -2010,7 +2011,7 @@ Status ExtractOutsideCompilationForIfNode(
   return absl::OkStatus();
 }
 
-Status ExtractOutsideCompilationForWhileNode(
+absl::Status ExtractOutsideCompilationForWhileNode(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name, const string& xla_cluster_name,
     const std::map<string, int>& host_compute_core, Graph* g, Node* n,
@@ -2111,7 +2112,7 @@ Status ExtractOutsideCompilationForWhileNode(
   return absl::OkStatus();
 }
 
-Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
+absl::Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
     Graph* g, const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name, const string& xla_cluster_name,
     const std::map<string, int>& host_compute_core, FunctionLibraryRuntime* flr,
@@ -2153,7 +2154,7 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
   return absl::OkStatus();
 }
 
-Status CopyOutsideCompilationConstNodes(
+absl::Status CopyOutsideCompilationConstNodes(
     Graph* g, const string& outside_compilation_attr_name) {
   for (Node* n : g->op_nodes()) {
     if (!n->IsConstant() ||
@@ -2200,7 +2201,7 @@ Status CopyOutsideCompilationConstNodes(
 
 }  // namespace
 
-Status RewriteOutsideCompilationSubgraphFn::operator()(
+absl::Status RewriteOutsideCompilationSubgraphFn::operator()(
     const std::vector<OutputTensor>& arg_source_tensors,
     std::unique_ptr<Graph>* graph, std::vector<int>* input_permutation,
     std::vector<int>* output_permutation, NodeDef* node_def) {
@@ -2304,7 +2305,7 @@ Status RewriteOutsideCompilationSubgraphFn::operator()(
   return absl::OkStatus();
 }
 
-Status ExtractOutsideCompilationForFunction(
+absl::Status ExtractOutsideCompilationForFunction(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name, const string& xla_cluster_name,
     const NameAttrList& func_name_attrs, const string& new_func_name,
@@ -2317,7 +2318,7 @@ Status ExtractOutsideCompilationForFunction(
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(
       flr->Instantiate(func_name, AttrSlice(&func_name_attrs.attr()), &handle));
-  Status ret_status = absl::OkStatus();
+  absl::Status ret_status = absl::OkStatus();
   auto cleanup_handle = gtl::MakeCleanup([&]() {
     auto s = flr->ReleaseHandle(handle);
     if (!s.ok()) {
@@ -2497,7 +2498,7 @@ Status ExtractOutsideCompilationForFunction(
   return ret_status;
 }
 
-Status ExtractOutsideCompilation(
+absl::Status ExtractOutsideCompilation(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name,
     const std::unordered_map<string, XlaClusterInfo>& clusters, Graph* g,

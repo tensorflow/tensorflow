@@ -17,12 +17,21 @@ limitations under the License.
 #define XLA_SERVICE_CPU_ONEDNN_CONVOLUTION_H_
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
+#include "xla/service/cpu/onednn_util.h"
+
 namespace xla {
 namespace cpu {
+
+constexpr auto kOnednnConvConfig = BackendConfigOneofCase::kOnednnConvConfig;
 
 extern "C" {
 extern void __xla_cpu_runtime_OneDnnConvolution(void* result, void** args);
 }  // extern "C"
+
+template <>
+struct PrimitiveTrait<kOnednnConvConfig> {
+  using pointer_type = xla::cpu::OneDnnConvolutionConfig*;
+};
 
 }  // namespace cpu
 }  // namespace xla

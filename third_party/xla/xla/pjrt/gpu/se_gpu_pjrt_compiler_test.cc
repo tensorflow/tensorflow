@@ -22,13 +22,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Parser/Parser.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/platform/status_matchers.h"
@@ -65,9 +65,9 @@ std::shared_ptr<xla::GpuTopology> GetGpuTopology(
     std::vector<int> device_ids, absl::string_view platform_version,
     int num_slices, int num_hosts_per_slice, int num_devices_per_host,
     int core_count_per_chip) {
-  return std::make_shared<xla::GpuTopology>(
-      device_ids, platform_version, num_slices, num_hosts_per_slice,
-      num_devices_per_host, core_count_per_chip);
+  return std::make_shared<xla::GpuTopology>(device_ids, platform_version,
+                                            num_slices, num_hosts_per_slice,
+                                            num_devices_per_host);
 }
 
 TEST(StreamExecutorGpuCompilerTest, NoClientXla) {

@@ -43,8 +43,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -93,8 +93,6 @@ class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
 
   absl::string_view DebugString() const override { return debug_string_; }
 
-  int core_on_chip() const { return core_index_; }
-
   absl::Span<int const> coords() const { return absl::MakeSpan(coords_); }
 
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
@@ -115,13 +113,10 @@ class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
 
   void SetCoords(std::array<int, 1> coords) { coords_ = coords; }
 
-  void SetCoreOnChip(int core_index) { core_index_ = core_index; }
-
  private:
   const int id_;
   const int process_index_;
   const std::string device_kind_;
-  int core_index_ = -1;
   std::string debug_string_ = "<unknown SE device>";
   std::string to_string_ = "<unknown SE device>";
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
@@ -295,7 +290,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
   PjRtPlatformId platform_id() const override { return platform_id_; }
   absl::string_view platform_name() const override { return platform_name_; }
   absl::string_view platform_version() const override { return "<unknown>"; }
-  PjRtRuntimeType runtime_type() const override { return kStreamExecutor; }
 
   // Most platforms expect device-to-device transfers to be enqueued on the
   // source d2d stream, but some platforms use the destination d2d stream. This
@@ -404,9 +398,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
   absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
     return client()->CreateDeviceToHostChannelHandle();
   }
-  absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    return client()->CreateHostToDeviceChannelHandle();
-  }
 
   // TODO(zhangqiaorjc): Experimental. Will be removed.
   absl::Status Defragment() override {
@@ -478,6 +469,12 @@ class PjRtStreamExecutorClient : public PjRtClient {
     std::vector<PjRtDevice*> addressable_devices;
   };
   absl::StatusOr<ExecutableExtras> GetExecutableExtras(CompileOptions* options);
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
+      const XlaComputation& computation,
+      const std::vector<const Shape*>& argument_layout_pointers,
+      LayoutCanonicalizationCallback layout_canonicalization_callback,
+      CompileOptions options);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBufferInternal(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -1063,6 +1060,8 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
       bool fill_future, PjRtDevice* device = nullptr) const;
+
+  absl::Status VerifyCompatibleDevices() const;
 
   // Create shared pointers so we can free them after the execution: with
   // asynchronous execution, the process being executed can outlive the

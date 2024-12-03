@@ -35,16 +35,16 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -78,8 +78,7 @@ MlirInputSlicesFusion::GetEpilogues(const HloFusionInstruction& fusion,
 
   // We don't actually use epilogues here, but this is how we tell the base
   // class not to emit code for the slices.
-  return {mlir_converter::EpilogueSpecification::FromOutputIndexing(
-      analysis_, roots, roots, *this, mlir_context)};
+  return {GetEpilogueForOutputIndexing(analysis_, roots, roots, mlir_context)};
 }
 
 LaunchDimensions MlirInputSlicesFusion::launch_dimensions() const {
@@ -98,6 +97,7 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
     const HloFusionInstruction& fusion) const {
   mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
+  auto thread_and_block_ids = EmitThreadAndBlockIds(builder);
 
   auto launch_dims = launch_dimensions();
   const auto& shape =
@@ -109,15 +109,13 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
   auto output_tensor_args =
       entry_function.getArguments().drop_front(num_inputs);
 
-  auto result_tensors = EmitThreadLoopNest(
-      builder, output_tensor_args, input_indexing,
-      [&](ValueRange output_tensors, ValueRange dim_values,
-          ValueRange symbol_values) -> SmallVector<Value> {
-        auto input_indices = mlir_converter::ApplyIndexing(
-            input_indexing, dim_values, symbol_values, builder);
+  auto result_tensors = mlir_converter::EmitXlaLoopOp(
+      builder, thread_and_block_ids, output_tensor_args, input_indexing,
+      [&](ValueRange symbol_values, ValueRange map_results,
+          ValueRange output_tensors) -> SmallVector<Value> {
         SmallVector<Value> input_operands(
             entry_function.getArguments().take_front(num_inputs));
-        absl::c_copy(input_indices, std::back_inserter(input_operands));
+        absl::c_copy(map_results, std::back_inserter(input_operands));
         SmallVector<Value> result_tensors;
         result_tensors.reserve(output_tensor_args.size());
 
@@ -135,14 +133,15 @@ absl::Status MlirInputSlicesFusion::EmitEntryFunction(
           auto output_indexing = ComputeThreadIdToOutputIndexing(
               output_index, entry_function.getContext());
           mlir::Value in_bounds = mlir_converter::CheckConstraints(
-              *output_indexing, dim_values, symbol_values, builder);
+              *output_indexing, thread_and_block_ids, symbol_values, builder);
           auto if_op = builder.create<mlir::scf::IfOp>(
               in_bounds,
               [&, output_index = output_index, output = output](
                   mlir::OpBuilder b, mlir::Location loc) {
                 mlir::ImplicitLocOpBuilder then_builder(loc, b);
                 auto output_indices = mlir_converter::ApplyIndexing(
-                    *output_indexing, dim_values, symbol_values, then_builder);
+                    *output_indexing, thread_and_block_ids, symbol_values,
+                    then_builder);
                 const auto* arg = analysis_.fusion_root(output_index)
                                       .instruction()
                                       .operand(0);

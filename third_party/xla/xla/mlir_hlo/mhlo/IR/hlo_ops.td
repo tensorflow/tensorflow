@@ -2150,7 +2150,7 @@ def MHLO_DynamicBroadcastInDimOp : MHLO_ShapedInterfaceOp<
     %result = "mhlo.dynamic_broadcast_in_dim"(%operand, %output_dimensions) {
       broadcast_dimensions = array<i64: 2, 1>,
       known_expanding_dimensions = array<i64: 0>,
-      known_non_expanding_dimensions = array<i64: 1>
+      known_nonexpanding_dimensions = array<i64: 1>
     } : (tensor<1x3xi64>, tensor<3xi64>) -> tensor<2x3x2xi64>
     ```
   }];
@@ -2418,7 +2418,7 @@ def MHLO_ConvolutionOp : MHLO_Op<"convolution", [Pure]> {
       MHLO_ConvDimensionNumbers:$dimension_numbers,
       ConfinedAttr<I64Attr, [IntPositive]>:$feature_group_count,
       ConfinedAttr<I64Attr, [IntPositive]>:$batch_group_count,
-      MHLO_PrecisionConfigAttr:$precision_config
+      OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config
   );
 
   let results = (outs MHLO_Tensor);
@@ -2608,7 +2608,7 @@ def MHLO_DotOp: MHLO_Op<"dot", [Pure]> {
   let arguments = (
     ins MHLO_Tensor:$lhs,
     MHLO_Tensor:$rhs,
-    MHLO_PrecisionConfigAttr:$precision_config
+    OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config
   );
   let results = (outs MHLO_Tensor);
   // Dot op required custom exporter to pass the preferred element type
@@ -2643,7 +2643,8 @@ def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", [Pure]> {
     MHLO_Tensor:$lhs,
     MHLO_Tensor:$rhs,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
-    MHLO_PrecisionConfigAttr:$precision_config
+    OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config,
+    OptionalAttr<MHLO_DotAlgorithmAttr>:$algorithm
   );
 
   let results = (outs MHLO_Tensor);
@@ -2667,7 +2668,7 @@ def MHLO_SparseDotOp: MHLO_Op<"sparse_dot", [Pure]> {
     OptionalAttr<MHLO_SparsityDescriptor>:$lhs_sparsity,
     OptionalAttr<MHLO_SparsityDescriptor>:$rhs_sparsity,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
-    MHLO_PrecisionConfigAttr:$precision_config
+    OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config
   );
   let results = (outs MHLO_Tensor);
   // SparseDot op required custom exporter to pass the preferred element type
@@ -3850,7 +3851,7 @@ def MHLO_DynamicConvOp : MHLO_Op<"dynamic_conv", [Pure]> {
       MHLO_ConvDimensionNumbers:$dimension_numbers,
       ConfinedAttr<I64Attr, [IntPositive]>:$feature_group_count,
       ConfinedAttr<I64Attr, [IntPositive]>:$batch_group_count,
-      MHLO_PrecisionConfigAttr:$precision_config
+      OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config
   );
   let results = (outs MHLO_Tensor);
   let hasCanonicalizer = 1;

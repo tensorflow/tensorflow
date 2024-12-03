@@ -57,8 +57,8 @@ class CuptiTraceCollector {
   // After CuptiTracer stop, collected per-thread callback data from threads
   // will be send here. Default behavior are: a) create merged annotation map
   // (for later activity event usage), and b) direct add all event by calling
-  // AddEvent(). If need_callback_events is false, only annotation map
-  // will be merged, all events will be dropped.
+  // AddEvent(). If need_callback_events is false, only annotation map and scope
+  // range id tree will be merged, all events will be dropped.
   virtual void OnTracerCollectedCallbackData(
       std::vector<CallbackAnnotationsAndEvents> callback_events,
       bool need_callback_events);
@@ -91,6 +91,8 @@ class CuptiTraceCollector {
 
  protected:
   CuptiTracerCollectorOptions options_;
+  // map of child_scope_id -> parent_scope_id
+  ScopeRangeIdTree scope_range_id_tree_;
 
  private:
   AnnotationMap annotation_map_;

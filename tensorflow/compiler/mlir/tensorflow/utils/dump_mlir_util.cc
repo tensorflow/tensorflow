@@ -28,11 +28,11 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "xla/tsl/lib/io/buffered_file.h"
 #include "tensorflow/core/platform/crash_analysis.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
-#include "tsl/lib/io/buffered_file.h"
 
 using llvm::raw_ostream;
 

@@ -87,10 +87,10 @@ limitations under the License.
 #include "xla/service/llvm_ir/tuple_ops.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/math/math_util.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/math/math_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -109,11 +109,21 @@ using llvm_ir::SetToFirstInsertPoint;
 
 namespace cpu {
 
+bool IsNativeConvertSupportedOnTargetCPU(std::string feature_string) {
+  return (absl::StrContains(feature_string, "+avxneconvert") ||
+          absl::StrContains(feature_string, "+amx-bf16"));
+}
+
 class IrEmitter::CpuElementalIrEmitter : public ElementalIrEmitter {
  public:
   CpuElementalIrEmitter(const HloModuleConfig& module_config,
                         IrEmitter* ir_emitter, llvm::Module* module)
-      : ElementalIrEmitter(module, ir_emitter->b()),
+      : ElementalIrEmitter(
+            module, ir_emitter->b(),
+            Options{/*xla_cpu_use_truncate_f32_to_bf16_conversion=*/
+                    !IsNativeConvertSupportedOnTargetCPU(
+                        ir_emitter->target_machine_features_
+                            .get_target_feature_string())}),
         hlo_module_config_(module_config),
         ir_emitter_(ir_emitter) {}
 
@@ -762,201 +772,6 @@ absl::Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
   absl::Status status = DefaultAction(reduce_window);
   allow_reassociation_ = saved_allow_reassociation;
   return status;
-}
-
-absl::Status IrEmitter::HandleSelectAndScatter(
-    HloInstruction* select_and_scatter) {
-  CHECK_EQ(select_and_scatter->operand_count(), 3);
-  const auto operand = select_and_scatter->operand(0);
-  const auto source = select_and_scatter->operand(1);
-
-  return HandleSelectAndScatter(select_and_scatter, GetIrArrayFor(operand),
-                                GetIrArrayFor(source),
-                                GetIrArrayFor(select_and_scatter));
-}
-
-absl::Status IrEmitter::HandleSelectAndScatter(
-    HloInstruction* select_and_scatter, const llvm_ir::IrArray& operand_array,
-    const llvm_ir::IrArray& source_array,
-    const llvm_ir::IrArray& output_array) {
-  CHECK_EQ(select_and_scatter->operand_count(), 3);
-  const auto operand = select_and_scatter->operand(0);
-  const auto source = select_and_scatter->operand(1);
-  const auto init_value = select_and_scatter->operand(2);
-  const Window& window = select_and_scatter->window();
-  PrimitiveType operand_element_type = operand->shape().element_type();
-  const int64_t rank = operand->shape().rank();
-  CHECK_EQ(rank, source->shape().rank());
-  CHECK_EQ(rank, window.dimensions_size());
-
-  // TODO(b/31410564): Implement dilation for select-and-scatter.
-  if (window_util::HasDilation(window)) {
-    return Unimplemented(
-        "Dilation for SelectAndScatter is not implemented on CPU. ");
-  }
-
-  // Pseudo code for select-and-scatter:
-  //
-  // initialized_flag is initially off for every window, and is turned on after
-  // the first iteration is completed and the first operand value is selected.
-  //
-  // output(*) = init_value
-  // for (coordinates S in the source) {
-  //   initialized_flag = false
-  //   for (coordinates W in the window) {
-  //     I = S * stride + W - pad_low
-  //     if I within bounds of operand:
-  //       if !initialized_flag or select(selected_value, operand(I)) == false:
-  //         selected_value = operand(I)
-  //         selected_index = I
-  //         initialized_flag = true
-  //   }
-  //   output(selected_index) = scatter(output(selected_index), source(S))
-  // }
-  //
-
-  // Initialize the output array with the given init_value.
-  TF_RETURN_IF_ERROR(EmitTargetElementLoop(
-      select_and_scatter, /*desc=*/IrName(select_and_scatter, "init"),
-      [this, init_value](const llvm_ir::IrArray::Index& target_index) {
-        llvm::Value* init_value_addr = GetEmittedValueFor(init_value);
-        return Load(IrShapeType(init_value->shape()), init_value_addr);
-      },
-      std::optional<llvm_ir::IrArray>(output_array)));
-
-  // Create a loop to iterate over the source array to scatter to the output.
-  llvm_ir::ForLoopNest source_loops(IrName(select_and_scatter), b());
-  const llvm_ir::IrArray::Index source_index =
-      source_loops.AddLoopsForShape(source->shape(), "source");
-  SetToFirstInsertPoint(source_loops.GetInnerLoopBodyBasicBlock(), b());
-
-  // Allocate space to keep the currently selected value, its index, and
-  // the boolean initialized_flag, which is initially set to false.
-  llvm::AllocaInst* selected_value_address = llvm_ir::EmitAllocaAtFunctionEntry(
-      llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
-      "selected_value_address", b(),
-      MinimumAlignmentForPrimitiveType(operand_element_type));
-  llvm::AllocaInst* selected_index_address =
-      llvm_ir::EmitAllocaAtFunctionEntryWithCount(
-          b()->getInt64Ty(), b()->getInt32(rank), "selected_index_address",
-          b());
-  llvm::AllocaInst* initialized_flag_address =
-      llvm_ir::EmitAllocaAtFunctionEntry(b()->getInt1Ty(),
-                                         "initialized_flag_address", b());
-  Store(b()->getInt1(false), initialized_flag_address);
-
-  // Create the inner loop to iterate over the window.
-  llvm_ir::ForLoopNest window_loops(IrName(select_and_scatter, "window"), b());
-  llvm::SmallVector<int64_t> window_size;
-  for (const auto& dim : window.dimensions()) {
-    window_size.push_back(dim.size());
-  }
-  const llvm_ir::IrArray::Index window_index = window_loops.AddLoopsForShape(
-      ShapeUtil::MakeShape(operand_element_type, window_size), "window");
-  SetToFirstInsertPoint(window_loops.GetInnerLoopBodyBasicBlock(), b());
-
-  // Compute the operand index to visit and evaluate the condition whether the
-  // operand index is within the bounds. The unsigned comparison includes
-  // checking whether the operand index >= 0.
-  llvm::SmallVector<llvm::Value*> operand_multi_index(source_index.size());
-  llvm::Value* in_bounds_condition = b()->getTrue();
-  for (int64_t i = 0; i < rank; ++i) {
-    llvm::Value* strided_index =
-        NSWMul(source_index[i], b()->getInt64(window.dimensions(i).stride()));
-    operand_multi_index[i] =
-        NSWSub(NSWAdd(strided_index, window_index[i]),
-               b()->getInt64(window.dimensions(i).padding_low()));
-    llvm::Value* index_condition =
-        ICmpULT(operand_multi_index[i],
-                b()->getInt64(ShapeUtil::GetDimension(operand->shape(), i)));
-    in_bounds_condition = And(in_bounds_condition, index_condition);
-  }
-  CHECK(in_bounds_condition != nullptr);
-
-  // Only need to do something if the operand index is within the bounds. First
-  // check if the initialized_flag is set.
-  llvm_ir::LlvmIfData if_in_bounds =
-      llvm_ir::EmitIfThenElse(in_bounds_condition, "in-bounds", b());
-  SetToFirstInsertPoint(if_in_bounds.true_block, b());
-  llvm_ir::LlvmIfData if_initialized =
-      llvm_ir::EmitIfThenElse(Load(initialized_flag_address->getAllocatedType(),
-                                   initialized_flag_address),
-                              "initialized", b());
-
-  // If the initialized_flag is false, initialize the selected value and index
-  // with the currently visiting operand.
-  SetToFirstInsertPoint(if_initialized.false_block, b());
-  const auto save_operand_index =
-      [&](const llvm_ir::IrArray::Index& operand_index) {
-        for (int64_t i = 0; i < rank; ++i) {
-          llvm::Value* selected_index_address_slot =
-              InBoundsGEP(selected_index_address->getAllocatedType(),
-                          selected_index_address, {b()->getInt32(i)});
-          Store(operand_index[i], selected_index_address_slot);
-        }
-      };
-  llvm_ir::IrArray::Index operand_index(
-      operand_multi_index, operand_array.GetShape(), b()->getInt64Ty());
-  llvm::Value* operand_data =
-      operand_array.EmitReadArrayElement(operand_index, b());
-  Store(operand_data, selected_value_address);
-  save_operand_index(operand_index);
-  Store(b()->getInt1(true), initialized_flag_address);
-
-  // If the initialized_flag is true, call the `select` function to potentially
-  // update the selected value and index with the currently visiting operand.
-  SetToFirstInsertPoint(if_initialized.true_block, b());
-  llvm::Value* operand_address =
-      operand_array.EmitArrayElementAddress(operand_index, b());
-  llvm::Value* operand_element =
-      Load(operand_array.GetElementLlvmType(), operand_address);
-  llvm::Value* result = EmitScalarReturningThreadLocalCall(
-      *select_and_scatter->select(),
-      {Load(selected_value_address->getAllocatedType(), selected_value_address),
-       operand_element},
-      "select_function");
-
-  // If the 'select' function returns false, update the selected value and the
-  // index to the currently visiting operand.
-  llvm::Value* cond = ICmpNE(
-      result,
-      llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0),
-      "boolean_predicate");
-  llvm_ir::LlvmIfData if_select_lhs =
-      llvm_ir::EmitIfThenElse(cond, "if-select-lhs", b());
-  SetToFirstInsertPoint(if_select_lhs.false_block, b());
-  Store(Load(operand_array.GetElementLlvmType(), operand_address),
-        selected_value_address);
-  save_operand_index(operand_index);
-
-  // After iterating over the window elements, scatter the source element to
-  // the selected index of the output. The value we store at the output
-  // location is computed by calling the `scatter` function with the source
-  // value and the current output value.
-  SetToFirstInsertPoint(window_loops.GetOuterLoopExitBasicBlock(), b());
-  llvm::SmallVector<llvm::Value*> selected_multi_index;
-  for (int64_t i = 0; i < rank; ++i) {
-    const std::vector<llvm::Value*> gep_index = {b()->getInt32(i)};
-    llvm::Value* selected_index_address_slot =
-        InBoundsGEP(selected_index_address->getAllocatedType(),
-                    selected_index_address, gep_index);
-    llvm::Type* type = llvm::GetElementPtrInst::getIndexedType(
-        selected_index_address->getAllocatedType(), gep_index);
-    selected_multi_index.push_back(Load(type, selected_index_address_slot));
-  }
-  llvm::Value* source_value =
-      source_array.EmitReadArrayElement(source_index, b());
-  llvm_ir::IrArray::Index selected_index(
-      selected_multi_index, output_array.GetShape(), source_index.GetType());
-  llvm::Value* output_value =
-      output_array.EmitReadArrayElement(selected_index, b());
-  llvm::Value* scatter_value = EmitScalarReturningThreadLocalCall(
-      *select_and_scatter->scatter(), {output_value, source_value},
-      "scatter_function");
-  output_array.EmitWriteArrayElement(selected_index, scatter_value, b());
-
-  SetToFirstInsertPoint(source_loops.GetOuterLoopExitBasicBlock(), b());
-  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleDot(HloInstruction* dot) {
@@ -1711,37 +1526,37 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
       return nullptr;
 
     case HloOpcode::kAdd:
-      return [root_is_integral](llvm::IRBuilder<>* b, llvm::Value* lhs,
+      return [root_is_integral](llvm::IRBuilderBase* b, llvm::Value* lhs,
                                 llvm::Value* rhs) {
         return root_is_integral ? b->CreateAdd(lhs, rhs)
                                 : b->CreateFAdd(lhs, rhs);
       };
 
     case HloOpcode::kMultiply:
-      return [root_is_integral](llvm::IRBuilder<>* b, llvm::Value* lhs,
+      return [root_is_integral](llvm::IRBuilderBase* b, llvm::Value* lhs,
                                 llvm::Value* rhs) {
         return root_is_integral ? b->CreateMul(lhs, rhs)
                                 : b->CreateFMul(lhs, rhs);
       };
 
     case HloOpcode::kAnd:
-      return [](llvm::IRBuilder<>* b, llvm::Value* lhs, llvm::Value* rhs) {
+      return [](llvm::IRBuilderBase* b, llvm::Value* lhs, llvm::Value* rhs) {
         return b->CreateAnd(lhs, rhs);
       };
 
     case HloOpcode::kOr:
-      return [](llvm::IRBuilder<>* b, llvm::Value* lhs, llvm::Value* rhs) {
+      return [](llvm::IRBuilderBase* b, llvm::Value* lhs, llvm::Value* rhs) {
         return b->CreateOr(lhs, rhs);
       };
 
     case HloOpcode::kXor:
-      return [](llvm::IRBuilder<>* b, llvm::Value* lhs, llvm::Value* rhs) {
+      return [](llvm::IRBuilderBase* b, llvm::Value* lhs, llvm::Value* rhs) {
         return b->CreateXor(lhs, rhs);
       };
 
     case HloOpcode::kMaximum:
       return [root_is_floating_point, root_is_signed, this](
-                 llvm::IRBuilder<>* b, llvm::Value* lhs,
+                 llvm::IRBuilderBase* b, llvm::Value* lhs,
                  llvm::Value* rhs) -> llvm::Value* {
         if (root_is_floating_point) {
           return llvm_ir::EmitFloatMax(
@@ -1758,7 +1573,7 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
 
     case HloOpcode::kMinimum:
       return [root_is_floating_point, root_is_signed, this](
-                 llvm::IRBuilder<>* b, llvm::Value* lhs,
+                 llvm::IRBuilderBase* b, llvm::Value* lhs,
                  llvm::Value* rhs) -> llvm::Value* {
         if (root_is_floating_point) {
           return llvm_ir::EmitFloatMin(
@@ -3232,7 +3047,7 @@ absl::Status EmitFastConcatenate(
     const HloInstruction* instr,
     absl::Span<const llvm_ir::IrArray> source_arrays,
     const llvm_ir::IrArray& target_array, llvm::Module* module,
-    llvm::IRBuilder<>& b) {
+    llvm::IRBuilderBase& b) {
   // We split the dimensions into three categories: the dimension over which we
   // are concatenating (concat_dim), the dimensions that are minor to it
   // (inner_dims) and the dimensions that are major to it (outer_dims).
@@ -3374,7 +3189,8 @@ struct EncodedInfo {
 
 template <typename Args>
 static EncodedInfo StoreEncodedTypes(std::string_view alloca_name,
-                                     const Args& args, llvm::IRBuilder<>& ir) {
+                                     const Args& args,
+                                     llvm::IRBuilderBase& ir) {
   // Store the types of `args` into the allocated memory. These types are stored
   // as int32_t values contiguously. All tuples are flattened to bare elements.
   int64_t total_elements = 0;
@@ -3402,7 +3218,8 @@ static EncodedInfo StoreEncodedTypes(std::string_view alloca_name,
 
 template <typename Args>
 static EncodedInfo StoreEncodedShapes(std::string_view alloca_name,
-                                      const Args& args, llvm::IRBuilder<>& ir) {
+                                      const Args& args,
+                                      llvm::IRBuilderBase& ir) {
   // Prepare metadata for all buffers. A tuple shape is flattened to only encode
   // information about its elements (buffers). Shapes metadata is encoded using
   // contiguous flattened dimension values:
@@ -3519,7 +3336,7 @@ void EmitTransferElements(llvm::Value* target, llvm::Value* source,
                           int64_t element_count, PrimitiveType primitive_type,
                           const llvm_ir::IrArray& target_array,
                           const llvm_ir::IrArray& source_array,
-                          llvm::Module* module, llvm::IRBuilder<>& b) {
+                          llvm::Module* module, llvm::IRBuilderBase& b) {
   unsigned primitive_type_size =
       ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
   llvm::Align element_alignment(tsl::MathUtil::GCD<unsigned>(
@@ -3817,7 +3634,7 @@ llvm::Value* IrEmitter::GetProfileCounterFor(
                                                  computation_to_profile_idx_);
 }
 
-void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
+void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilderBase* b,
                                                      llvm::Value* prof_counter,
                                                      llvm::Value* cycle_end,
                                                      llvm::Value* cycle_start) {
@@ -3830,21 +3647,23 @@ void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
   b->CreateStore(new_cycle_count, prof_counter);
 }
 
-llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(llvm::IRBuilder<>* b) {
+llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(
+    llvm::IRBuilderBase* b) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
   if (!use_rdtscp_) {
     llvm::Function* func_llvm_readcyclecounter =
-        llvm::Intrinsic::getDeclaration(module,
-                                        llvm::Intrinsic::readcyclecounter);
+        llvm::Intrinsic::getOrInsertDeclaration(
+            module, llvm::Intrinsic::readcyclecounter);
     return b->CreateCall(func_llvm_readcyclecounter);
   }
   llvm::Function* func_llvm_x86_rdtscp =
-      llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::x86_rdtscp);
+      llvm::Intrinsic::getOrInsertDeclaration(module,
+                                              llvm::Intrinsic::x86_rdtscp);
   llvm::Value* rdtscp_call = b->CreateCall(func_llvm_x86_rdtscp);
   return b->CreateExtractValue(rdtscp_call, {0});
 }
 
-void IrEmitter::ProfilingState::RecordCycleStart(llvm::IRBuilder<>* b,
+void IrEmitter::ProfilingState::RecordCycleStart(llvm::IRBuilderBase* b,
                                                  HloInstruction* hlo) {
   auto* cycle_start = ReadCycleCounter(b);
   cycle_start->setName(IrName(hlo, "cycle_start"));
@@ -3854,7 +3673,7 @@ void IrEmitter::ProfilingState::RecordCycleStart(llvm::IRBuilder<>* b,
   }
 }
 
-void IrEmitter::ProfilingState::RecordCycleDelta(llvm::IRBuilder<>* b,
+void IrEmitter::ProfilingState::RecordCycleDelta(llvm::IRBuilderBase* b,
                                                  HloInstruction* hlo,
                                                  llvm::Value* prof_counter) {
   auto* cycle_end = ReadCycleCounter(b);
@@ -3865,14 +3684,14 @@ void IrEmitter::ProfilingState::RecordCycleDelta(llvm::IRBuilder<>* b,
 }
 
 void IrEmitter::ProfilingState::RecordCompleteComputation(
-    llvm::IRBuilder<>* b, llvm::Value* prof_counter) {
+    llvm::IRBuilderBase* b, llvm::Value* prof_counter) {
   if (last_read_cycle_end_ && first_read_cycle_start_) {
     UpdateProfileCounter(b, prof_counter, last_read_cycle_end_,
                          first_read_cycle_start_);
   }
 }
 
-void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilder<>* b,
+void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilderBase* b,
                                                HloInstruction* hlo,
                                                llvm::Value* run_options) {
   if (!enabled_) {
@@ -3905,7 +3724,7 @@ void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilder<>* b,
   activity_ids_[hlo] = activity_id;
 }
 
-void IrEmitter::TracingState::EmitTracingEnd(llvm::IRBuilder<>* b,
+void IrEmitter::TracingState::EmitTracingEnd(llvm::IRBuilderBase* b,
                                              HloInstruction* hlo,
                                              llvm::Value* run_options) {
   if (!enabled_) {

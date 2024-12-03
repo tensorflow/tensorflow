@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 
@@ -236,7 +236,7 @@ TEST(CPUAllocatorTest, ProfilerReporting) {
 
   // Get profiling results
   tensorflow::profiler::XSpace xspace;
-  EXPECT_EQ(OkStatus(), profiler->CollectData(&xspace));
+  EXPECT_EQ(absl::OkStatus(), profiler->CollectData(&xspace));
 
   // Validate the output
   const auto plane = ::tsl::profiler::FindPlaneWithName(

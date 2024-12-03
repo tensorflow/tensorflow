@@ -41,7 +41,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -1742,6 +1742,16 @@ PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_CopyRawToHost(PJRT_Buffer_CopyRawToHost_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Buffer_CopyRawToHost_Args",
+      PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE, args->struct_size));
+  xla::PjRtFuture<> wrapped_promise = args->buffer->buffer->CopyRawToHost(
+      args->dst, args->offset, args->transfer_size);
+  args->event = new PJRT_Event{std::move(wrapped_promise)};
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Buffer_CopyToDevice_Args",
@@ -2519,6 +2529,7 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
 
       /*PJRT_ExecuteContext_Create=*/execute_context_create_fn,
       /*PJRT_ExecuteContext_Destroy=*/pjrt::PJRT_ExecuteContext_Destroy,
+      /*PJRT_Buffer_CopyRawToHost=*/pjrt::PJRT_Buffer_CopyRawToHost,
   };
 }
 

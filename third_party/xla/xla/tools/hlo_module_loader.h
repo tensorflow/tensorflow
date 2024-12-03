@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TOOLS_HLO_MODULE_LOADER_H_
 #define XLA_TOOLS_HLO_MODULE_LOADER_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/tools/run_hlo_module.pb.h"
 
 namespace xla {
@@ -60,7 +62,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     const hlo_module_loader_details::Config& ovr_config =
         hlo_module_loader_details::Config(),
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
-    BufferAssignmentProto* buffer_assignment_proto = nullptr);
+    BufferAssignmentProto* buffer_assignment_proto = nullptr,
+    bool fill_missing_layouts = true);
 
 // Loads an HLO module from file.
 // The file can be one of the followings:
@@ -82,7 +85,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
     const hlo_module_loader_details::Config& ovr_config =
         hlo_module_loader_details::Config(),
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
-    BufferAssignmentProto* buffer_assignment_proto = nullptr);
+    BufferAssignmentProto* buffer_assignment_proto = nullptr,
+    bool fill_missing_layouts = true);
 
 // Loads an HLO snapshot from a string, only for its inputs
 // The data format must be one of the following:

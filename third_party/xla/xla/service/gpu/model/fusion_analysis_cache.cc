@@ -79,7 +79,6 @@ const HloFusionAnalysis& HloFusionAnalysisCache::Get(
 }
 
 void HloFusionAnalysisCache::Invalidate(const HloInstruction& instruction) {
-  absl::MutexLock lock(&mutex_);
   analyses_.erase(instruction.unique_id());
 
   if (auto consumers =
@@ -97,8 +96,6 @@ void HloFusionAnalysisCache::Invalidate(const HloInstruction& instruction) {
 }
 
 void HloFusionAnalysisCache::Clear() {
-  absl::MutexLock lock(&mutex_);
-
   analyses_.clear();
   producer_consumer_analyses_.clear();
   consumers_for_producers_.clear();

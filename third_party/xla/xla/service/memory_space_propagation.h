@@ -16,33 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_PROPAGATION_H_
 #define XLA_SERVICE_MEMORY_SPACE_PROPAGATION_H_
 
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_pass_interface.h"
-
-namespace xla {
-
-// This is a legalization pass that propagates the memory space in the layout to
-// the fusion computations.
-class MemorySpacePropagation : public HloModulePass {
- public:
-  ~MemorySpacePropagation() override = default;
-  absl::string_view name() const override { return "memory-space-propagation"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  // Given the shape index (operand or output) and its corresponding instruction
-  // in the fused computation (parameter or root), propagates the memory space
-  // in the callee side. Returns true if the module is modified.
-  bool Propagate(ShapeIndexView index, const HloInstruction* callee_instruction,
-                 int64_t memory_space) const;
-
-  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/memory_space_propagation.h"
 
 #endif  // XLA_SERVICE_MEMORY_SPACE_PROPAGATION_H_

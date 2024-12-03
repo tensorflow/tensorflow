@@ -24,28 +24,28 @@ using ::testing::ElementsAre;
 TEST(TensorTest, GetTensorShape4D) {
   RuntimeShape d = GetTensorShape({2, 3, 4, 5});
   EXPECT_THAT(
-      std::vector<int32>(d.DimsData(), d.DimsData() + d.DimensionsCount()),
+      std::vector<int32_t>(d.DimsData(), d.DimsData() + d.DimensionsCount()),
       ElementsAre(2, 3, 4, 5));
 }
 
 TEST(TensorTest, GetTensorShape3D) {
   RuntimeShape d = GetTensorShape({3, 4, 5});
   EXPECT_THAT(
-      std::vector<int32>(d.DimsData(), d.DimsData() + d.DimensionsCount()),
+      std::vector<int32_t>(d.DimsData(), d.DimsData() + d.DimensionsCount()),
       ElementsAre(3, 4, 5));
 }
 
 TEST(TensorTest, GetTensorShape2D) {
   RuntimeShape d = GetTensorShape({4, 5});
   EXPECT_THAT(
-      std::vector<int32>(d.DimsData(), d.DimsData() + d.DimensionsCount()),
+      std::vector<int32_t>(d.DimsData(), d.DimsData() + d.DimensionsCount()),
       ElementsAre(4, 5));
 }
 
 TEST(TensorTest, GetTensorShape1D) {
   RuntimeShape d = GetTensorShape({5});
   EXPECT_THAT(
-      std::vector<int32>(d.DimsData(), d.DimsData() + d.DimensionsCount()),
+      std::vector<int32_t>(d.DimsData(), d.DimsData() + d.DimensionsCount()),
       ElementsAre(5));
 }
 

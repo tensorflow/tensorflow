@@ -20,10 +20,13 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
@@ -52,8 +55,8 @@ class ShapedBuffer {
                int physical_device_ordinal = -1);
 
   // Movable, but not copyable.
-  ShapedBuffer(ShapedBuffer&& s);
-  ShapedBuffer& operator=(ShapedBuffer&&);
+  ShapedBuffer(ShapedBuffer&& s) noexcept;
+  ShapedBuffer& operator=(ShapedBuffer&&) noexcept;
   ShapedBuffer(const ShapedBuffer&) = delete;
   ShapedBuffer& operator=(const ShapedBuffer&) = delete;
 
@@ -170,8 +173,8 @@ class ScopedShapedBuffer : public ShapedBuffer {
                               se::DeviceMemoryAllocator* allocator);
 
   // Movable, but not copyable.
-  ScopedShapedBuffer(ScopedShapedBuffer&& s);
-  ScopedShapedBuffer& operator=(ScopedShapedBuffer&&);
+  ScopedShapedBuffer(ScopedShapedBuffer&& s) noexcept;
+  ScopedShapedBuffer& operator=(ScopedShapedBuffer&&) noexcept;
   ScopedShapedBuffer(const ScopedShapedBuffer&) = delete;
   ScopedShapedBuffer& operator=(const ScopedShapedBuffer&) = delete;
 

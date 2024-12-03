@@ -28,6 +28,7 @@ namespace port {
 // and a multiple of sizeof(void*).
 void* AlignedMalloc(size_t size, int minimum_alignment);
 void AlignedFree(void* aligned_memory);
+void AlignedSizedFree(void* aligned_memory, size_t alignment, size_t size);
 
 void* Malloc(size_t size);
 void* Realloc(void* ptr, size_t size);

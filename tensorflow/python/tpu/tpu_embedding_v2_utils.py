@@ -292,7 +292,7 @@ class CustomOptimizer(_Optimizer):
       slot_initializers: Optional[List[init_ops_v2.Initializer]] = None,
       hyperparameters: Optional[List[Union[float, Callable[[], float]]]] = None,
   ) -> Any:
-    super().__init__(
+    super().__init__(  # pytype: disable=wrong-arg-types
         learning_rate,
         use_gradient_accumulation=False,
         clip_weight_min=None,

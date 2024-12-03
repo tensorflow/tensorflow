@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
@@ -31,9 +32,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
-#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
@@ -88,9 +89,9 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
       tail_map.Simplify();
 
       VLOG(5) << "Peeled indexing map\n"
-              << indexing_map.ToString() << "into\n"
-              << peeled_map.ToString() << "and\n"
-              << tail_map.ToString() << "\n";
+              << ToString(indexing_map) << "into\n"
+              << ToString(peeled_map) << "and\n"
+              << ToString(tail_map) << "\n";
       indexing_maps.pop_back();
       indexing_maps.push_back(tail_map);
       indexing_maps.push_back(peeled_map);
@@ -109,10 +110,11 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
       auto tail_loop = rewriter.create<LoopOp>(
           loc, indexing_map, loop_op.getDims(), inits,
           [&](OpBuilder& nested_b, Location nested_loc, ValueRange ivs,
-              ValueRange iter_args) {
+              ValueRange map_results, ValueRange iter_args) {
             OpBuilder::InsertionGuard guard(nested_b);
             mlir::IRMapping mapping;
             mapping.map(loop_op.getInductionVars(), ivs);
+            mapping.map(loop_op.getIndexingMapResults(), map_results);
             mapping.map(loop_op.getRegionIterArgs(), iter_args);
             for (auto& op : loop_op.getBody()->getOperations()) {
               nested_b.clone(op, mapping);

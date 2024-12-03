@@ -93,7 +93,7 @@ struct GemmImplUsingGemmlowp<
         dst_data, dst_params.rows, dst_params.cols);
 
     using ColVectorMap =
-        gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>;
+        gemmlowp::VectorMap<const int32_t, gemmlowp::VectorShape::Col>;
     gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent scale_stage;
     scale_stage.result_offset_after_shift = dst_params.zero_point;
     scale_stage.result_fixedpoint_multiplier = params.multiplier_fixedpoint;

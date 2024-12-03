@@ -25,15 +25,17 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/executable.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/tools/hlo_opt/opt_lib.h"
+#include "xla/tools/hlo_opt/compiled_opt_lib.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 
 namespace {
 
-class CpuOptProvider : public OptProvider {
+class CpuOptProvider : public CompiledOptProvider {
  public:
+  CpuOptProvider() : CompiledOptProvider() {}
+
   absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {
     if (s == "llvm-before-optimizations") {
@@ -42,16 +44,19 @@ class CpuOptProvider : public OptProvider {
       return static_cast<cpu::CpuExecutable*>(executable.get())
           ->ir_module_string();
     }
-    return OptProvider::GenerateStage(std::move(module), s);
+    return CompiledOptProvider::GenerateStage(std::move(module), s);
   }
 
   std::set<std::string> SupportedStages() override {
-    std::set<std::string> supported = OptProvider::SupportedStages();
+    std::set<std::string> supported = CompiledOptProvider::SupportedStages();
     supported.insert({"llvm-before-optimizations"});
     return supported;
   }
 
   std::string GetPlatformName() override { return "cpu"; }
+
+  // Register the CPU provider passes.
+  void RegisterProviderPasses(HloModule& module) override {}
 };
 
 }  // namespace

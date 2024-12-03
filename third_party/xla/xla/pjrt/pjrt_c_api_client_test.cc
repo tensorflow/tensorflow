@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/pjrt/pjrt_c_api_client.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -24,9 +25,17 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "xla/client/xla_builder.h"
+#include "absl/strings/str_format.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "stablehlo/dialect/Version.h"
+#include "xla/cpu_function_runtime.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -136,7 +145,8 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetCApiClient("cpu"));
   ASSERT_GT(client->addressable_devices().size(), 1);
-  std::vector<int32_t> data(4, 0);
+  alignas(cpu_function_runtime::MinAlign()) std::array<int32_t, 4> data;
+  data.fill(0);
   auto* data_ptr = data.data();
   Shape shape = ShapeUtil::MakeShape(S32, {4});
 
@@ -144,7 +154,9 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
       auto buffer,
       client->CreateViewOfDeviceBuffer(
           data_ptr, shape, client->addressable_devices()[0],
-          /*on_delete_callback=*/[data = std::move(data)]() mutable {}));
+          /*on_delete_callback=*/[data = std::move(data)]() mutable {
+            (void)data;
+          }));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> result,
@@ -156,6 +168,43 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
   std::vector<int32_t> expected(4, 0);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
+}
+
+TEST(PjRtClientTest, CompileUsesStableHloVersion) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* c_api, pjrt::PjrtApi("cpu"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  static auto PJRT_Client_Compile_Orig = c_api->PJRT_Client_Compile;
+  constexpr char kProgram[] = "func.func @main() {return}";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+  const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile =
+      [](PJRT_Client_Compile_Args* args) -> PJRT_Error* {
+    // TODO: (b/375454646) Eanble once frameworks have bugfix:
+    // https://github.com/openxla/xla/commit/2f99455cdf99e844ddad17de9f4714997023d243
+    // mlir::vhlo::Version version = mlir::vhlo::Version::getCurrentVersion();
+    mlir::vhlo::Version version = mlir::vhlo::Version(1, 7, 0);
+    std::string version_string = absl::StrFormat(
+        "%d.%d.%d", version.getMajor(), version.getMinor(), version.getPatch());
+    // MLIR doesn't have any functionality for retrieving the producer of
+    // bytecode files, so just scan the raw string.
+    EXPECT_TRUE(llvm::StringRef(args->program->code, args->program->code_size)
+                    .contains(version_string));
+    return PJRT_Client_Compile_Orig(args);
+  };
+  std::unique_ptr<PjRtLoadedExecutable> executable =
+      client->Compile(*module, CompileOptions()).value();
+  const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile = PJRT_Client_Compile_Orig;
+}
+
+TEST(PjRtCApiClientTest, WrapClientAroundCApi) {
+  const PJRT_Api* c_api = ::pjrt::cpu_plugin::GetCpuPjrtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          WrapClientAroundCApi(c_api));
+  EXPECT_EQ(client->platform_name(), xla::CpuName());
+  EXPECT_EQ(client->platform_id(), xla::CpuId());
 }
 
 }  // namespace

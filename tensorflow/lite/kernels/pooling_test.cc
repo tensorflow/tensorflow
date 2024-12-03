@@ -147,7 +147,7 @@ TEST(FloatPoolingOpTest, AveragePool) {
       3, 2, 10, 7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2.75, 5.75}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {2.75, 5.75}));
 }
 
 TEST(FloatPoolingOpTest, AveragePoolActivationRelu) {
@@ -161,7 +161,7 @@ TEST(FloatPoolingOpTest, AveragePoolActivationRelu) {
       3, 2, -10, 7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.0, 0.75}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {0.0, 0.75}));
 }
 
 TEST(FloatPoolingOpTest, AveragePoolActivationRelu1) {
@@ -175,14 +175,14 @@ TEST(FloatPoolingOpTest, AveragePoolActivationRelu1) {
       -3, -2, -10, 7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.0, 0.75}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {-1.0, 0.75}));
 
   m.SetInput({
       0, -6, -2, -4,   //
       -3, -2, 10, -7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.0, -0.75}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {-1.0, -0.75}));
 }
 
 TEST(FloatPoolingOpTest, AveragePoolActivationRelu6) {
@@ -196,14 +196,14 @@ TEST(FloatPoolingOpTest, AveragePoolActivationRelu6) {
       -3, -2, 10, 7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.0, 6.0}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {0.0, 6.0}));
 
   m.SetInput({
       0, 6, 12, 4,  //
       3, 2, 10, 7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2.75, 6.0}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {2.75, 6.0}));
 }
 
 TEST(FloatPoolingOpTest, AveragePoolPaddingSameStride1) {
@@ -217,8 +217,9 @@ TEST(FloatPoolingOpTest, AveragePoolPaddingSameStride1) {
       3, 2, 10, 7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({2.75, 5.0, 5.75, 5.5, 2.5, 6.0, 8.5, 7.0}));
+  EXPECT_THAT(
+      m.GetOutput(),
+      Pointwise(FloatingPointEq(), {2.75, 5.0, 5.75, 5.5, 2.5, 6.0, 8.5, 7.0}));
 }
 
 TEST(FloatPoolingOpTest, AveragePoolPaddingValidStride1) {
@@ -232,7 +233,7 @@ TEST(FloatPoolingOpTest, AveragePoolPaddingValidStride1) {
       3, 2, 10, 7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2.75, 5.0, 5.75}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {2.75, 5.0, 5.75}));
 }
 
 TEST(QuantizedPoolingOpTest, AveragePool) {
@@ -642,7 +643,7 @@ TEST(FloatPoolingOpTest, MaxPoolActivationRelu) {
       -3, -2, 10.5, 7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.0, 10.5}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {0.0, 10.5}));
 }
 
 TEST(FloatPoolingOpTest, MaxPoolActivationRelu1) {
@@ -656,14 +657,14 @@ TEST(FloatPoolingOpTest, MaxPoolActivationRelu1) {
       -3, -2, -0.3, 0.7,    //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.0, 0.7}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {-1.0, 0.7}));
 
   m.SetInput({
       -2.75, -6, -2, -4,  //
       -3, -2, 10, -7,     //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.0, 1.0}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {-1.0, 1.0}));
 }
 
 TEST(FloatPoolingOpTest, MaxPoolActivationRelu6) {
@@ -677,14 +678,14 @@ TEST(FloatPoolingOpTest, MaxPoolActivationRelu6) {
       -3, -2, 10, 7,    //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.0, 6.0}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {0.0, 6.0}));
 
   m.SetInput({
       0, 4.5, 12, 4,  //
       3, 2, 10, 7,    //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4.5, 6.0}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {4.5, 6.0}));
 }
 
 TEST(FloatPoolingOpTest, MaxPoolPaddingSameStride1) {
@@ -1062,7 +1063,7 @@ TEST(FloatPoolingOpTest, L2Pool) {
       3, 2, 10, 7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3.5, 6.5}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {3.5, 6.5}));
 }
 
 TEST(FloatPoolingOpTest, L2PoolActivationRelu) {
@@ -1117,7 +1118,7 @@ TEST(FloatPoolingOpTest, L2PoolPaddingSame) {
       3, 2, 10, 7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3.5, 6.5}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {3.5, 6.5}));
 }
 
 TEST(FloatPoolingOpTest, L2PoolPaddingSameSlide1) {
@@ -1134,7 +1135,7 @@ TEST(FloatPoolingOpTest, L2PoolPaddingSameSlide1) {
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {3.5, 6.0, 6.5, 5.70088, 2.54951, 7.2111, 8.63134, 7.0},
-                  /*max_abs_error=*/1e-4)));
+                  /*max_abs_err=*/1e-4)));
 }
 
 TEST(FloatPoolingOpTest, L2PoolPaddingValidSlide1) {
@@ -1148,7 +1149,7 @@ TEST(FloatPoolingOpTest, L2PoolPaddingValidSlide1) {
       3, 2, 10, 7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3.5, 6.0, 6.5}));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), {3.5, 6.0, 6.5}));
 }
 
 #if GTEST_HAS_DEATH_TEST

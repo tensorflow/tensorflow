@@ -41,7 +41,7 @@ OpTypeConstructor NoOp() {
 OpTypeConstructor NoOutputs() {
   return [](OpDef* op_def) {
     op_def->mutable_output_arg();
-    return OkStatus();
+    return absl::OkStatus();
   };
 }
 
@@ -50,7 +50,7 @@ OpTypeConstructor Nullary(FullTypeId t) {
     FullTypeDef* tdef =
         op_def->mutable_output_arg(0)->mutable_experimental_full_type();
     tdef->set_type_id(t);
-    return OkStatus();
+    return absl::OkStatus();
   };
 }
 
@@ -64,7 +64,7 @@ OpTypeConstructor Unary(FullTypeId t, const string& var_name) {
     arg->set_type_id(TFT_VAR);
     arg->set_s(var_name);
 
-    return OkStatus();
+    return absl::OkStatus();
   };
 }
 
@@ -77,7 +77,7 @@ OpTypeConstructor UnaryGeneric(FullTypeId t) {
     FullTypeDef* arg = tdef->add_args();
     arg->set_type_id(TFT_ANY);
 
-    return OkStatus();
+    return absl::OkStatus();
   };
 }
 
@@ -92,7 +92,7 @@ OpTypeConstructor UnaryTensorContainer(FullTypeId t, FullTypeId dtype) {
     FullTypeDef* targ = arg->add_args();
     targ->set_type_id(dtype);
 
-    return OkStatus();
+    return absl::OkStatus();
   };
 }
 
@@ -108,7 +108,7 @@ OpTypeConstructor UnaryTensorContainer(FullTypeId t, const string& var_name) {
     varg->set_type_id(TFT_VAR);
     varg->set_s(var_name);
 
-    return OkStatus();
+    return absl::OkStatus();
   };
 }
 
@@ -133,7 +133,7 @@ OpTypeConstructor VariadicTensorContainer(FullTypeId t,
     tvar->set_type_id(TFT_VAR);
     tvar->set_s(var_name);
 
-    return OkStatus();
+    return absl::OkStatus();
   };
 }
 
@@ -176,7 +176,7 @@ Status SubstituteVar(AttrMap& attrs, FullTypeDef& t) {
                                attr->DebugString(), " for name ", var_name));
   }
   t.clear_s();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SubstituteForEach(AttrMap& attrs, FullTypeDef& t) {
@@ -238,7 +238,7 @@ Status SubstituteForEach(AttrMap& attrs, FullTypeDef& t) {
                                attr->DebugString(), "\nfor name ", var_name));
   }
   t = result;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SubstituteGeneric(AttrMap& attrs, FullTypeDef& t) {
@@ -257,7 +257,7 @@ Status SubstituteGeneric(AttrMap& attrs, FullTypeDef& t) {
       break;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 inline Status SubstituteFromAttrs(AttrMap& attrs, FullTypeDef& t) {
@@ -281,7 +281,7 @@ inline Status SubstituteFromAttrs(AttrMap& attrs, FullTypeDef& t) {
     default:
       return SubstituteGeneric(attrs, t);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -312,7 +312,7 @@ Status SpecializeType(const AttrSlice& attrs, const OpDef& op_def,
         t.DebugString(), "\nfrom\n", attrs.SummarizeNode());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const FullTypeDef& GetArgDefaultUnset(const FullTypeDef& t, int i) {

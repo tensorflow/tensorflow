@@ -20,19 +20,21 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/lib/matrix.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/matrix.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/reference_util.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -312,6 +314,7 @@ class ParametricDotTest : public DotOperationTest,
       std::string_view name(
           ::testing::UnitTest::GetInstance()->current_test_info()->name());
       if (name.find("TestF16/270x270x520_MajorToMinor") != std::string::npos) {
+        GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
         execution_options_.mutable_debug_options()->set_xla_gpu_autotune_level(
             0);
         DotTestParam param = GetParam();
@@ -321,7 +324,6 @@ class ParametricDotTest : public DotOperationTest,
         propagate_grad_xy_ = param.dot_lhs_row_major ? 1 : 2;
       }
     }
-    ManifestCheckingTest::SetUp();
   }
 
   template <typename NativeT>
@@ -365,6 +367,27 @@ void ParametricDotTest::ComputeAndCompareR2WithError<uint8_t>(
   ComputeAndCompareR2(builder, expected, arguments);
 }
 
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError(
+    XlaBuilder* builder, const Array2D<tsl::float8_e5m2>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 3e-3);
+  error_spec.low_precision_fp_error_spec.type =
+      primitive_util::NativeToPrimitiveType<tsl::float8_e5m2>();
+  error_spec.low_precision_fp_error_spec.within_n_values = 1;
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError(
+    XlaBuilder* builder, const Array2D<tsl::float8_e4m3fn>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 3e-3);
+  error_spec.low_precision_fp_error_spec.type =
+      primitive_util::NativeToPrimitiveType<tsl::float8_e4m3fn>();
+  error_spec.low_precision_fp_error_spec.within_n_values = 1;
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
 template <typename NativeT>
 void ParametricDotTest::TestImpl() {
   DotTestParam param = GetParam();
@@ -487,6 +510,8 @@ XLA_TEST_P(ParametricDotTest, TestC64) { TestImpl<std::complex<float>>(); }
 XLA_TEST_P(ParametricDotTest, TestC128) { TestImpl<std::complex<double>>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32_t>(); }
+XLA_TEST_P(ParametricDotTest, TestF8E5M2) { TestImpl<tsl::float8_e5m2>(); }
+XLA_TEST_P(ParametricDotTest, TestF8E4M3FN) { TestImpl<tsl::float8_e4m3fn>(); }
 
 XLA_TEST_P(ParametricDotTest, TestU8) { TestImpl<uint8_t>(); }
 

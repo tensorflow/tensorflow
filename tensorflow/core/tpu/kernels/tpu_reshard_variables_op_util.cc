@@ -51,7 +51,7 @@ namespace tensorflow {
 namespace tpu {
 namespace reshard_variables {
 
-Status FlushProgramMemory(se::Platform* platform, int device_ordinal) {
+absl::Status FlushProgramMemory(se::Platform* platform, int device_ordinal) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<tpu::TpuNodeContext> node_interfaces,
                       tpu::TpuNodeContext::Create(device_ordinal));
 
@@ -60,7 +60,7 @@ Status FlushProgramMemory(se::Platform* platform, int device_ordinal) {
   return executor->UnloadAllPrograms();
 }
 
-Status CheckIsValidKey(const Tensor& key) {
+absl::Status CheckIsValidKey(const Tensor& key) {
   if (!TensorShapeUtils::IsVector(key.shape()) ||
       key.shape().dim_size(0) != 3) {
     return errors::InvalidArgument(
@@ -79,7 +79,7 @@ bool IsDefaultKey(const Tensor& key) { return key.vec<tstring>()(0).empty(); }
 
 // Looks up the input `key` in the compilation cache, populating
 // `*rendezvous_key_base` and `*entry`.
-Status GetComputationCacheEntry(
+absl::Status GetComputationCacheEntry(
     const Tensor& key, string* rendezvous_key_base,
     std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target) {
@@ -212,7 +212,7 @@ absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
 }
 
 // Perform a compaction to reduce fragmentation.
-Status PerformCompaction(stream_executor::Stream* stream) {
+absl::Status PerformCompaction(stream_executor::Stream* stream) {
   tsl::profiler::TraceMe trace_me("PerformCompaction", /*level=*/2);
   auto* ds_executor = down_cast<tpu::TpuExecutorInterface*>(stream->parent());
   TF_RETURN_IF_ERROR(ds_executor->EnqueueCompactionOnStreamForHbm(stream));
@@ -224,7 +224,7 @@ Status PerformCompaction(stream_executor::Stream* stream) {
 
 // Updates the variables to the execution result's buffers, and deallocates the
 // root tuple buffer.
-Status UpdateOutputVariables(
+absl::Status UpdateOutputVariables(
     OpKernelContext* context, xla::ScopedShapedBuffer result_buffers,
     absl::Span<const TensorShapeProto* const> output_tensor_shape_protos,
     xla::Backend* backend, se::Stream* stream, int device_ordinal,

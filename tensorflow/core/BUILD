@@ -68,6 +68,8 @@ load(
     "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
 )
+
+# Placeholder: load java_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -87,7 +89,16 @@ load(
     "tf_opts_nortti_if_lite_protos",
     "transitive_hdrs",
 )
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tensorflow_opensource_extra_deps", "tf_monitoring_framework_deps", "tf_selective_registration_deps")
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "cc_header_only_library",
+    "custom_op_cc_header_only_library",
+    "filegroup",
+    "get_compatible_with_portable",
+    "tensorflow_opensource_extra_deps",
+    "tf_monitoring_framework_deps",
+    "tf_selective_registration_deps",
+)
 
 # For platform specific build config
 load(
@@ -112,6 +123,7 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
+#  load("//tools/build_defs/go:go_library.bzl", "go_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -160,7 +172,6 @@ package_group(
 tf_proto_library(
     name = "protos_all",
     srcs = [],
-    cc_api_version = 2,
     create_go_proto = False,
     make_default_target_header_only = True,
     protodeps = [
@@ -176,9 +187,9 @@ tf_proto_library(
         "//tensorflow/core/grappler/costs:op_performance_data",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto",
-        "@local_tsl//tsl/protobuf:coordination_config_proto",
-        "@local_tsl//tsl/protobuf:distributed_runtime_payloads_proto",
-        "@local_tsl//tsl/protobuf:status_proto",
+        "@local_xla//xla/tsl/protobuf:coordination_config_proto",
+        "@local_xla//xla/tsl/protobuf:distributed_runtime_payloads_proto",
+        "@local_xla//xla/tsl/protobuf:status_proto",
     ],
     visibility = ["//visibility:public"],
 )
@@ -268,19 +279,19 @@ cc_library(
         # TODO(rmlarsen): Remove bfloat16.h once dependency in third_party/swift is updated.
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_headers",
-        "@local_tsl//tsl/lib/core:legacy_lib_core_headers",
+        "@local_xla//xla/tsl/lib/core:legacy_lib_core_headers",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_headers",
         "//tensorflow/core/lib/hash:legacy_lib_hash_all_headers",
         "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_headers",
         "//tensorflow/core/lib/io:legacy_lib_io_headers",
         "//tensorflow/core/lib/math:math_util.h",
-        "@local_tsl//tsl/lib/math:math_util.h",
+        "@local_xla//xla/tsl/lib/math:math_util.h",
         "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_headers",
         "//tensorflow/core/lib/random:legacy_lib_random_headers",
         "//tensorflow/core/lib/strings:legacy_lib_string_headers",
         "//tensorflow/core/platform:lib_hdrs",
         "//tensorflow/core/util:lib_hdrs",
-        "@local_tsl//tsl/lib/io:legacy_lib_io_headers",
+        "@local_xla//xla/tsl/lib/io:legacy_lib_io_headers",
         "@local_tsl//tsl/platform:lib_hdrs",
     ],
     visibility = ["//visibility:public"],
@@ -480,10 +491,10 @@ cc_library(
         "//tensorflow/core/framework:type_traits.h",
         "//tensorflow/core/platform:framework_lite_hdrs",
         "@local_tsl//tsl/platform:framework_lite_hdrs",
-        "@local_tsl//tsl/platform/default:integral_types.h",
-        "@local_tsl//tsl/platform/default:logging.h",
         "@local_xla//xla/tsl/framework:numeric_types.h",
         "@local_xla//xla/tsl/framework:type_traits.h",
+        "@local_xla//xla/tsl/platform/default:integral_types.h",
+        "@local_xla//xla/tsl/platform/default:logging.h",
     ],
     visibility = ["//visibility:public"],
     deps =
@@ -845,7 +856,7 @@ filegroup(
         "//tensorflow/core/graph:mobile_srcs_only_runtime",
         "//tensorflow/core/kernels:mobile_srcs",
         "//tensorflow/core/lib/io:mobile_srcs_only_runtime",
-        "@local_tsl//tsl/lib/io:mobile_srcs_only_runtime",
+        "@local_xla//xla/tsl/lib/io:mobile_srcs_only_runtime",
         "//tensorflow/core/nccl:mobile_srcs",
         "//tensorflow/core/profiler:mobile_srcs_only_runtime",
         "//tensorflow/core/public:mobile_srcs_only_runtime",
@@ -855,12 +866,12 @@ filegroup(
 
         # Sources for which we already have granular targets.
         "//tensorflow/core/lib/core:mobile_srcs_only_runtime",
-        "@local_tsl//tsl/lib/core:mobile_srcs_only_runtime",
+        "@local_xla//xla/tsl/lib/core:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/gtl:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/hash:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/histogram:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/math:mobile_srcs_only_runtime",
-        "@local_tsl//tsl/lib/math:mobile_srcs_only_runtime",
+        "@local_xla//xla/tsl/lib/math:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/monitoring:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/random:mobile_srcs_only_runtime",
         "//tensorflow/core/lib/strings:mobile_srcs_only_runtime",
@@ -1204,11 +1215,11 @@ filegroup(
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
         "//tensorflow/core/platform:legacy_lib_internal_headers",
         "//tensorflow/core/platform:lib_internal_private_hdrs",
-        "@local_tsl//tsl/lib/core:legacy_lib_core_all_headers",
-        "@local_tsl//tsl/lib/io:legacy_lib_io_all_headers",
-        "@local_tsl//tsl/lib/math:math_util.h",
         "@local_tsl//tsl/platform:legacy_lib_internal_headers",
         "@local_tsl//tsl/platform:lib_internal_private_hdrs",
+        "@local_xla//xla/tsl/lib/core:legacy_lib_core_all_headers",
+        "@local_xla//xla/tsl/lib/io:legacy_lib_io_all_headers",
+        "@local_xla//xla/tsl/lib/math:math_util.h",
     ] + glob(
         [
             "lib/**/*.h",
@@ -1237,9 +1248,9 @@ filegroup(
         "//tensorflow/core/platform:legacy_platform_lib_hdrs",
         "//tensorflow/core/platform:lib_internal_public_hdrs",
         "//tensorflow/core/util:lib_internal_public_hdrs",
-        "@local_tsl//tsl/lib/io:legacy_lib_internal_public_headers",
         "@local_tsl//tsl/platform:lib_internal_public_hdrs",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator_headers",
+        "@local_xla//xla/tsl/lib/io:legacy_lib_internal_public_headers",
     ],
     visibility = ["//visibility:private"],
 )
@@ -1442,7 +1453,7 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/lib/math:math_util",
+        "@local_xla//xla/tsl/lib/math:math_util",
         "@ml_dtypes//:float8",
         "@ml_dtypes//:intn",
         "@snappy",
@@ -1453,6 +1464,9 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
+        "//tensorflow/compiler/mlir/lite:model_flags_proto_cc_impl",
+        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc_impl",
+        "//tensorflow/compiler/mlir/lite:types_proto_cc_impl",
         "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_cc_impl",
@@ -1466,10 +1480,11 @@ cc_library(
         "@local_xla//xla:autotune_results_proto_cc_impl",
         "@local_xla//xla:autotuning_proto_cc_impl",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
-        "@local_tsl//tsl/protobuf:protos_all_cc_impl",
+        "@local_xla//xla/tsl/protobuf:protos_all_cc_impl",
         "@local_xla//xla:xla_proto_cc_impl",
         "@local_xla//xla:xla_data_proto_cc_impl",
         "@local_xla//xla/service:hlo_proto_cc_impl",
+        "@local_xla//xla/service:metrics_proto_cc_impl",
         "@local_xla//xla/service:buffer_assignment_proto_cc_impl",
         "@local_xla//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl",
         "@local_xla//xla/service/gpu:backend_configs_cc_impl",
@@ -1507,8 +1522,8 @@ cc_library(
     hdrs = [
         "//tensorflow/core/platform:tflite_portable_logging_hdrs",
         "@local_tsl//tsl/platform:tflite_portable_logging_hdrs",
-        "@local_tsl//tsl/platform/default:integral_types.h",
-        "@local_tsl//tsl/platform/default:logging.h",
+        "@local_xla//xla/tsl/platform/default:integral_types.h",
+        "@local_xla//xla/tsl/platform/default:logging.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
@@ -1529,11 +1544,13 @@ cc_library(
 alias(
     name = "portable_jpeg_internal",
     actual = "//tensorflow/core/lib/jpeg:portable_jpeg_internal",
+    visibility = ["//visibility:public"],
 )
 
 alias(
     name = "portable_gif_internal",
     actual = "//tensorflow/core/lib/gif:portable_gif_internal",
+    visibility = ["//visibility:public"],
 )
 
 alias(
@@ -1660,6 +1677,7 @@ tf_cuda_library(
         ":protos_all_cc",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/core/activity_watcher",
+        "//tensorflow/core/config:flag_defs",
         "//tensorflow/core/example:feature_util",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/framework:allocator_registry_impl",
@@ -1717,7 +1735,7 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-cc_header_only_library(
+custom_op_cc_header_only_library(
     name = "framework_headers_lib",
     # Fully depend on external repositories, because identifying the headers
     # is fragile.
@@ -1847,7 +1865,7 @@ cc_library(
     hdrs = [
         "//tensorflow/core/lib/gtl:legacy_lib_test_internal_headers",
         "//tensorflow/core/lib/io:legacy_lib_test_internal_headers",
-        "@local_tsl//tsl/lib/io:legacy_lib_test_internal_headers",
+        "@local_xla//xla/tsl/lib/io:legacy_lib_test_internal_headers",
     ],
     deps = [
         ":lib",
@@ -1876,7 +1894,7 @@ tf_cc_tests(
         "//tensorflow/core/lib/monitoring:sampler_test.cc",
         "//tensorflow/core/lib/strings:legacy_low_level_library_tests",
         "//tensorflow/core/lib/wav:wav_io_test.cc",
-        "@local_tsl//tsl/lib/core:legacy_lib_core_all_tests",
+        "@local_xla//xla/tsl/lib/core:legacy_lib_core_all_tests",
     ],
     deps = [
         ":lib",
@@ -2030,7 +2048,6 @@ transitive_hdrs(
 # py_proto_library(
 #     name = "protos_all_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":protos_all"],
 # )

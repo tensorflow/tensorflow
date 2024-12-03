@@ -1,5 +1,4 @@
 tf_staging/BUILD:
-tf_staging/ci/official/wheel_test/BUILD:
 tf_staging/tensorflow/__init__:.py
 tf_staging/tensorflow/api_template.__init__:.py
 tf_staging/tensorflow/api_template_v1.__init__:.py
@@ -8,6 +7,7 @@ tf_staging/tensorflow/compat_template.__init__:.py
 tf_staging/tensorflow/compat_template_v1.__init__:.py
 tf_staging/tensorflow/compiler/mlir/glob_lit_test.bzl:
 tf_staging/tensorflow/compiler/mlir/lite/core/special_rules.bzl:
+tf_staging/tensorflow/compiler/mlir/lite/schema/conversion_metadata_generated.h:
 tf_staging/tensorflow/compiler/mlir/lite/schema/schema_generated.h:
 tf_staging/tensorflow/compiler/mlir/lite/special_rules.bzl:
 tf_staging/tensorflow/compiler/mlir/quantization/stablehlo/internal_visibility_allowlist.bzl:
@@ -118,6 +118,7 @@ tf_staging/tensorflow/lite/lib_package/BUILD:
 tf_staging/tensorflow/lite/model.h:
 tf_staging/tensorflow/lite/model_builder.h:
 tf_staging/tensorflow/lite/namespace.h:
+tf_staging/tensorflow/lite/python/interpreter.py:
 tf_staging/tensorflow/lite/schema/conversion_metadata_generated.h:
 tf_staging/tensorflow/lite/schema/schema_generated.h:
 tf_staging/tensorflow/lite/signature_runner.h:
@@ -235,6 +236,7 @@ tf_staging/third_party/googleapis/build_rules.bzl:
 tf_staging/third_party/googleapis/googleapis.BUILD:
 tf_staging/third_party/googleapis/repository_rules.bzl:
 tf_staging/third_party/gpus/BUILD:
+tf_staging/third_party/gpus/compiler_common_tools.bzl:
 tf_staging/third_party/gpus/crosstool/BUILD.rocm.tpl:
 tf_staging/third_party/gpus/crosstool/BUILD.sycl.tpl:
 tf_staging/third_party/gpus/crosstool/BUILD.tpl:
@@ -252,6 +254,27 @@ tf_staging/third_party/gpus/cuda/LICENSE:
 tf_staging/third_party/gpus/cuda/build_defs.bzl.tpl:
 tf_staging/third_party/gpus/cuda/cuda_config.h.tpl:
 tf_staging/third_party/gpus/cuda/cuda_config.py.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/BUILD:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_cccl.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_configure.bzl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_cublas.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_cudart.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_cudnn.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_cudnn9.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_cufft.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_cupti.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_curand.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_cusolver.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_cusparse.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_json_init_repository.bzl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_nvcc.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_nvjitlink.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_nvml.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_nvprune.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_nvrtc.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_nvtx.BUILD.tpl:
+tf_staging/third_party/gpus/cuda/hermetic/cuda_redist_init_repositories.bzl:
 tf_staging/third_party/gpus/cuda_configure.bzl:
 tf_staging/third_party/gpus/find_cuda_config:.py
 tf_staging/third_party/gpus/rocm/BUILD.tpl:
@@ -284,6 +307,9 @@ tf_staging/third_party/nccl/archive.BUILD:
 tf_staging/third_party/nccl/archive.patch:
 tf_staging/third_party/nccl/build_defs.bzl.tpl:
 tf_staging/third_party/nccl/generated_names.bzl.tpl:
+tf_staging/third_party/nccl/hermetic/BUILD:
+tf_staging/third_party/nccl/hermetic/cuda_nccl.BUILD.tpl:
+tf_staging/third_party/nccl/hermetic/nccl_configure.bzl:
 tf_staging/third_party/nccl/nccl_configure.bzl:
 tf_staging/third_party/nccl/system.BUILD.tpl:
 tf_staging/third_party/nlohmann_json.BUILD:

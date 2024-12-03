@@ -245,9 +245,22 @@ HloInstruction* GetInGroupPartitionId(
 
 namespace {
 
+bool IsIota(absl::Span<const int64_t> x) {
+  for (int64_t i = 0; i < x.size(); ++i) {
+    if (x[i] != i) {
+      return false;
+    }
+  }
+  return true;
+}
+
 SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
     const SPMDCollectiveOpsCreator& creator,
     const std::vector<std::vector<int64_t>>& device_groups) {
+  if (device_groups.size() == 1 && IsIota(device_groups[0])) {
+    return creator;
+  }
+
   SPMDCollectiveOpsCreator result;
   auto device_groups_ptr =
       std::make_shared<const std::vector<std::vector<int64_t>>>(device_groups);
@@ -943,8 +956,7 @@ HloInstruction* ExchangeHaloCompact(
         (i + 1) * input_shard_size + right_halo_size_function.Calculate(i);
     max_window_size = std::max(max_window_size, limit - start);
     while (next_start < limit) {
-      halos[i].emplace_back();
-      Halo& halo = halos[i].back();
+      Halo& halo = halos[i].emplace_back();
       halo.my_index = i;
       halo.halo_offset = next_start - start;
       halo.start = next_start % input_shard_size;
@@ -1025,11 +1037,12 @@ HloInstruction* ExchangeHaloCompact(
   // Sort halos that are from the same src according to halo_offset, so that
   // they are more likely to have similar characteristics.
   for (int64_t i = 0; i < src_to_dst.size(); ++i) {
-    absl::c_sort(src_to_dst[i], [&](const std::pair<int64_t, int64_t>& a,
-                                    const std::pair<int64_t, int64_t>& b) {
-      return halos[a.first][a.second].halo_offset <
-             halos[b.first][b.second].halo_offset;
-    });
+    absl::c_stable_sort(src_to_dst[i],
+                        [&](const std::pair<int64_t, int64_t>& a,
+                            const std::pair<int64_t, int64_t>& b) {
+                          return halos[a.first][a.second].halo_offset <
+                                 halos[b.first][b.second].halo_offset;
+                        });
   }
 
   // Build collective permutes with distinct src/dst values.
@@ -2128,9 +2141,9 @@ HloSharding CreateMatchingShardingOnDims(
 std::optional<GatherScatterParallelDimSharding>
 GatherScatterOperandsShardedAcrossParallelDims(
     const HloInstruction& operand, const HloInstruction& indices,
-    const hlo_sharding_util::GatherScatterParallelDims& parallel_dims) {
-  auto& indices_parallel_dims = parallel_dims.indices_parallel_dims;
-  auto& operand_parallel_dims = parallel_dims.operand_parallel_dims;
+    const hlo_sharding_util::GatherScatterDims& parallel_dims) {
+  const auto& indices_parallel_dims = parallel_dims.indices_dims;
+  const auto& operand_parallel_dims = parallel_dims.operand_dims;
   if (indices_parallel_dims.size() != operand_parallel_dims.size()) {
     return std::nullopt;
   }
@@ -2141,32 +2154,26 @@ GatherScatterOperandsShardedAcrossParallelDims(
   if (idx_parallel_tiles_num == 1 && op_parallel_tiles_num == 1) {
     return std::nullopt;
   }
-  absl::InlinedVector<int64_t, 1> indices_parallel_dims_ordered_as_operand;
-  for (int idx : parallel_dims.index_parallel_in_dim) {
-    if (idx != -1) {
-      indices_parallel_dims_ordered_as_operand.push_back(idx);
-    }
-  }
+
   if (new_index_shard.IsReplicated()) {
     return GatherScatterParallelDimSharding{
         CreateMatchingShardingOnDims(indices.shape(), new_operand_shard,
-                                     indices_parallel_dims_ordered_as_operand,
+                                     indices_parallel_dims,
                                      operand_parallel_dims),
         new_operand_shard};
   }
   if (new_operand_shard.IsReplicated()) {
     return GatherScatterParallelDimSharding{
-        new_index_shard,
-        CreateMatchingShardingOnDims(operand.shape(), new_index_shard,
-                                     operand_parallel_dims,
-                                     indices_parallel_dims_ordered_as_operand)};
+        new_index_shard, CreateMatchingShardingOnDims(
+                             operand.shape(), new_index_shard,
+                             operand_parallel_dims, indices_parallel_dims)};
   }
 
   // Parallel dimension distribution needs to be the same, so try to steal
   // sharding from partial replication to compensate.
   if (idx_parallel_tiles_num != op_parallel_tiles_num) {
     auto to_adjust_dims = operand_parallel_dims;
-    auto target_dims = indices_parallel_dims_ordered_as_operand;
+    auto target_dims = indices_parallel_dims;
     HloSharding* target = &new_index_shard;
     HloSharding* to_adjust = &new_operand_shard;
     if (idx_parallel_tiles_num < op_parallel_tiles_num) {
@@ -2218,19 +2225,17 @@ GatherScatterOperandsShardedAcrossParallelDims(
   std::vector<int64_t> operand_shard_tile_dims(
       new_operand_shard.tile_assignment().dimensions().begin(),
       new_operand_shard.tile_assignment().dimensions().end());
-  for (int i = 0; i < indices_parallel_dims_ordered_as_operand.size(); ++i) {
+  for (int i = 0; i < indices_parallel_dims.size(); ++i) {
     operand_shard_tile_dims[operand_parallel_dims[i]] =
-        new_index_shard.tile_assignment().dim(
-            indices_parallel_dims_ordered_as_operand[i]);
+        new_index_shard.tile_assignment().dim(indices_parallel_dims[i]);
   }
   auto operand_shard_tiles =
       new_operand_shard.tile_assignment().Reshape(operand_shard_tile_dims);
-  new_operand_shard =
-      AlignShardingOnDims(new_operand_shard.ReplicateOnLastTileDim()
-                              ? HloSharding::PartialTile(operand_shard_tiles)
-                              : HloSharding::Tile(operand_shard_tiles),
-                          operand_parallel_dims, new_index_shard,
-                          indices_parallel_dims_ordered_as_operand);
+  new_operand_shard = AlignShardingOnDims(
+      new_operand_shard.ReplicateOnLastTileDim()
+          ? HloSharding::PartialTile(operand_shard_tiles)
+          : HloSharding::Tile(operand_shard_tiles),
+      operand_parallel_dims, new_index_shard, indices_parallel_dims);
   return GatherScatterParallelDimSharding{new_index_shard, new_operand_shard};
 }
 

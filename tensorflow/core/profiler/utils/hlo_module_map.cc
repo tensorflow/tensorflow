@@ -21,12 +21,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "tsl/profiler/lib/traceme_encode.h"
+
 #if GOOGLE_CUDA
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #endif
+#include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
 
 namespace tensorflow {
@@ -46,12 +53,10 @@ int64_t ShapeSize(const xla::Shape& shape) {
 HloInstructionWrapper::HloInstructionWrapper(
     const xla::HloInstruction* instr, const xla::HloCostAnalysis* cost_analysis)
     : instr_(instr),
-      op_full_name_(tsl::profiler::TraceMeOp(Metadata().op_name(),
-                                             Metadata().op_type())) {
-  if (cost_analysis != nullptr) {
-    flops_ = cost_analysis->flop_count(*instr_);
-    bytes_accessed_ = cost_analysis->bytes_accessed(*instr_);
-  }
+      op_full_name_(
+          tsl::profiler::TraceMeOp(Metadata().op_name(), Metadata().op_type())),
+      category_(instr_->ToCategory()) {
+  ProcessXlaCostAnalysis(cost_analysis);
 }
 
 HloModuleWrapper::HloModuleWrapper(
@@ -86,12 +91,45 @@ HloModuleWrapper::HloModuleWrapper(
   cost_analysis = &gpu_cost_analysis;
 #endif
 
+  // Populate instructions_by_name_ with module.
   for (const xla::HloComputation* computation : module_->computations()) {
     for (const xla::HloInstruction* instr : computation->instructions()) {
       instructions_by_name_.try_emplace(
           instr->name(), HloInstructionWrapper(instr, cost_analysis));
     }
   }
+  // Gather nested fusion instructions.
+  for (const xla::HloComputation* computation : module_->computations()) {
+    // Some modules still seem to have "dead" fusions computations. In this
+    // case, IsFusionComputation() = true but there is no parent
+    // FusionInstruction().
+    if (computation->FusionInstruction() != nullptr) {
+      GatherFusionInstructions(computation->FusionInstruction());
+    }
+  }
+}
+
+// Function to gather all the instructions in a fusion computation.
+void HloModuleWrapper::GatherFusionInstructions(xla::HloInstruction* inst) {
+  HloInstructionWrapper* fused_inst_wrapper =
+      GetMutableHloInstruction(inst->name());
+  DCHECK(fused_inst_wrapper != nullptr);
+  if (!fused_inst_wrapper->FusedChildren().empty()) return;
+  for (auto* fused : inst->fused_instructions()) {
+    const auto child_inst_wrapper = GetHloInstruction(fused->name());
+    DCHECK(child_inst_wrapper != nullptr);
+    fused_inst_wrapper->AddFusedChild(child_inst_wrapper);
+    if (fused->opcode() == xla::HloOpcode::kFusion) {
+      GatherFusionInstructions(fused);
+    }
+  }
+}
+
+HloInstructionWrapper* HloModuleWrapper::GetMutableHloInstruction(
+    absl::string_view hlo_name) {
+  auto it = instructions_by_name_.find(hlo_name);
+  if (it != instructions_by_name_.end()) return &it->second;
+  return nullptr;
 }
 
 const HloInstructionWrapper* HloModuleWrapper::GetHloInstruction(
@@ -120,6 +158,13 @@ void AddHloProto(HloModuleMap& hlo_module_map, uint64_t program_id,
   hlo_module_map.try_emplace(program_id,
                              HloModuleWrapper(std::move(hlo_module).value(),
                                               /*shape_func=*/nullptr));
+}
+
+void ProcessHloModuleMapFromXSpace(HloModuleMap& hlo_module_map,
+                                   const XSpace* space) {
+  for (auto& [program_id, hlo_proto] : ParseHloProtosFromXSpace(*space)) {
+    AddHloProto(hlo_module_map, program_id, *hlo_proto);
+  }
 }
 
 }  // namespace profiler

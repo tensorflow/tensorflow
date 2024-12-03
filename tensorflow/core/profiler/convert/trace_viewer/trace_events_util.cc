@@ -14,14 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
-#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {

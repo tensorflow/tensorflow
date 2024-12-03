@@ -33,7 +33,7 @@ MPVariable* CreateMakespanVar(const AutoShardingSolverRequest& request,
 }
 
 double EvaluateMakespan(const AutoShardingSolverRequest& request,
-                        const AutoShardingSolverResult& result,
+                        const AutoShardingSolverOutput& result,
                         AutoShardingEvaluation& evaluation) {
   return 0.0;  // TODO(moffitt): Implement this.
 }
@@ -43,6 +43,10 @@ StrategyShaver::StrategyShaver(const AutoShardingSolverRequest& request)
 
 NodeStrategies StrategyShaver::FindShavedStrategies() const {
   return {};  // TODO(moffitt): Implement this.
+}
+
+void SolverRequestCallback(const AutoShardingSolverRequest& request) {
+  // TODO(mofftt): Implement this.
 }
 
 }  // namespace spmd

@@ -63,19 +63,28 @@ AFTER_EXPIRE = (2020, 10, 26)
 
 def invert_philox(key, value):
   """Invert the Philox bijection."""
-  key = np.array(key, dtype=np.uint32)
-  value = np.array(value, dtype=np.uint32)
-  step = np.array([0x9E3779B9, 0xBB67AE85], dtype=np.uint32)
+  key = np.array(key, dtype=np.uint64)
+  value = np.array(value, dtype=np.uint64)
+  step = np.array([0x9E3779B9, 0xBB67AE85], dtype=np.uint64)
   for n in range(10)[::-1]:
     key0, key1 = key + n * step
-    v0 = value[3] * 0x991a7cdb & 0xffffffff
-    v2 = value[1] * 0x6d7cae67 & 0xffffffff
-    hi0 = v0 * 0xD2511F53 >> 32
-    hi1 = v2 * 0xCD9E8D57 >> 32
+    mask = np.uint64(0xffffffff)
+
+    v0_mul = np.uint64(0x991a7cdb)
+    v2_mul = np.uint64(0x6d7cae67)
+    v0 = value[3] * v0_mul & mask
+    v2 = value[1] * v2_mul & mask
+
+    hi0_mul = np.uint64(0xD2511F53)
+    hi1_mul = np.uint64(0xCD9E8D57)
+
+    shift_amount = np.uint64(32)
+    hi0 = v0 * hi0_mul >> shift_amount
+    hi1 = v2 * hi1_mul >> shift_amount
     v1 = hi1 ^ value[0] ^ key0
     v3 = hi0 ^ value[2] ^ key1
     value = v0, v1, v2, v3
-  return np.array(value)
+  return np.array(value, dtype=np.uint64)
 
 
 SEEDS = ((7, 17), (11, 5), (2, 3))

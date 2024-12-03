@@ -310,6 +310,8 @@ TfLiteStatus GetOutputShapeFromInput(TfLiteContext* context,
 
 std::string GetShapeDebugString(const TfLiteIntArray* shape);
 
+std::string GetTensorDebugString(const TfLiteTensor* tensor);
+
 #endif  // !defined(TF_LITE_STATIC_MEMORY)
 
 // Calculates the output_shape that is necessary for element-wise operations

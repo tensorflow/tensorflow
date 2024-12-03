@@ -1,0 +1,10 @@
+// RUN: test_correctness %s
+
+fusion {
+  in = f32[20,30] parameter(0)
+  updates = f32[5,6] parameter(1)
+  i0 = s32[] parameter(2)
+  i1 = s32[] parameter(3)
+  updated = f32[20,30] dynamic-update-slice(in, updates, i0, i1)
+  ROOT bitcast = f32[600] bitcast(updated)
+}

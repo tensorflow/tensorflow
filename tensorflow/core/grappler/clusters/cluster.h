@@ -52,13 +52,13 @@ class Cluster {
   // TensorFlow session successfully created. Returns an error otherwise.
   // There is no graceful degradation to handle the case where only a subset
   // of the requested resources are available.
-  virtual Status Provision() = 0;
+  virtual absl::Status Provision() = 0;
 
   // Attempts to shutdown the cluster.
   // Returns OK iff there are no pending calls to the Run() method and all the
   // resources used by the cluster could be released. Returns an error
   // otherwise.
-  virtual Status Shutdown() { return absl::OkStatus(); }
+  virtual absl::Status Shutdown() { return absl::OkStatus(); }
 
   // Whether soft placement is allowed. If allow_soft_placement is true,
   // an op will be placed on CPU if there's no GPU implementation for the OP
@@ -106,14 +106,14 @@ class Cluster {
 
   // Enables collecting the allocator stats. If called, must be called before
   // Provision().
-  virtual Status EnablePeakMemoryStats() {
+  virtual absl::Status EnablePeakMemoryStats() {
     return absl::UnimplementedError(strings ::StrCat(
         "Peak Memory Stats are not supported on ", type(), " clusters"));
   }
 
   // Returns peak memory of all devices during the session creation and session
   // runs.
-  virtual Status GetPeakMemoryUsage(
+  virtual absl::Status GetPeakMemoryUsage(
       std::unordered_map<string, uint64>* device_peak_memory) const {
     return absl::UnimplementedError(
         "GetPeakMemoryUsage is not implemented for this type of cluster.");
@@ -121,16 +121,16 @@ class Cluster {
 
   // Prepare the session to run the specified grappler item. This include
   // initializing all the model variables.
-  virtual Status Initialize(const GrapplerItem& item) = 0;
+  virtual absl::Status Initialize(const GrapplerItem& item) = 0;
 
   // Run the specified graph_def and return the corresponding metadata.
-  virtual Status Run(const GraphDef& graph_def,
-                     const std::vector<std::pair<string, Tensor>>& feed,
-                     const std::vector<string>& fetch,
-                     RunMetadata* metadata) = 0;
+  virtual absl::Status Run(const GraphDef& graph_def,
+                           const std::vector<std::pair<string, Tensor>>& feed,
+                           const std::vector<string>& fetch,
+                           RunMetadata* metadata) = 0;
 
   // Run the specified GrapplerItem and return the corresponding metadata.
-  virtual Status Run(const GrapplerItem& item, RunMetadata* metadata) {
+  virtual absl::Status Run(const GrapplerItem& item, RunMetadata* metadata) {
     return Run(item.graph, item.feed, item.fetch, metadata);
   }
 

@@ -21,15 +21,21 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/substitute.h"
-#include "mlir/IR/Value.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -41,7 +47,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
 namespace {
 
 NcclAllToAllConfig GetNcclAllToAllConfig(const HloAllToAllInstruction* instr) {
@@ -58,11 +63,12 @@ NcclAllToAllConfig GetNcclAllToAllConfig(const HloAllToAllInstruction* instr) {
 NcclAllToAllStartThunk::NcclAllToAllStartThunk(
     ThunkInfo thunk_info, NcclApi* nccl_api,
     const HloAllToAllInstruction* instr,
-    std::vector<NcclCollectiveThunk::Buffer> buffers)
+    std::vector<NcclCollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
     : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info, nccl_api,
                           IsSyncCollective(instr)),
       config_(GetNcclAllToAllConfig(instr)),
-      buffers_(std::move(buffers)) {
+      buffers_(std::move(buffers)),
+      p2p_memcpy_enabled_(p2p_memcpy_enabled) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
@@ -92,25 +98,129 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
   return GetNcclAllToAllConfig(instr).config.group_mode;
 }
 
+absl::Status NcclAllToAllStartThunk::Initialize(
+    const InitializeParams& params) {
+  TF_RETURN_IF_ERROR(NcclCollectiveThunk::Initialize(params));
+  device_count_ = params.local_device_count;
+  CHECK_GT(device_count_, 0);
+  VLOG(5) << "Local device count: " << device_count_;
+
+  if (is_local() && p2p_memcpy_enabled_) {
+    const CollectiveStreamId stream_id = nccl_stream_id();
+    AsyncStreamKind stream_kind = GetAsyncStreamKind();
+    TF_ASSIGN_OR_RETURN(
+        CommunicatorHandle comm_handle,
+        GetNcclComm(*params.collective_params, *params.collective_cliques,
+                    config().replica_groups, config().group_mode, stream_id,
+                    stream_kind));
+    TF_ASSIGN_OR_RETURN(int32_t num_participants,
+                        nccl_api()->CommCount(comm_handle.comm));
+    int local_id = params.stream->parent()->device_ordinal() % num_participants;
+    {
+      absl::MutexLock lock(&pointer_maps_mutex_);
+      if (!send_pointer_maps_.count(local_id)) {
+        for (int i = 0; i < num_participants; ++i) {
+          if (!params.stream->parent()->HostMemoryRegister(
+                  &send_pointer_maps_[local_id][i], sizeof(void*))) {
+            VLOG(5) << "Registering host send pointer for memcpy failed.";
+          }
+          if (!params.stream->parent()->HostMemoryRegister(
+                  &receive_pointer_maps_[local_id][i], sizeof(void*))) {
+            VLOG(5) << "Registering host recv pointer for memcpy failed.";
+          }
+        }
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status NcclAllToAllStartThunk::Cleanup(const CleanupParams& params) {
+  if (p2p_memcpy_enabled_) {
+    const CollectiveStreamId stream_id = nccl_stream_id();
+    AsyncStreamKind stream_kind = GetAsyncStreamKind();
+    TF_ASSIGN_OR_RETURN(
+        CommunicatorHandle comm_handle,
+        GetNcclComm(*params.collective_params, *params.collective_cliques,
+                    config().replica_groups, config().group_mode, stream_id,
+                    stream_kind));
+    TF_ASSIGN_OR_RETURN(int32_t num_participants,
+                        nccl_api()->CommCount(comm_handle.comm));
+
+    int local_id = params.executor->device_ordinal() % num_participants;
+    {
+      absl::MutexLock lock(&pointer_maps_mutex_);
+      if (send_pointer_maps_.count(local_id)) {
+        for (auto& [id, value] : send_pointer_maps_[local_id]) {
+          if (!params.executor->HostMemoryUnregister((void*)value)) {
+            VLOG(5) << "Unregistering host send pointer for memcpy failed.";
+          }
+        }
+      }
+      if (receive_pointer_maps_.count(local_id)) {
+        for (auto& [id, value] : receive_pointer_maps_[local_id]) {
+          if (!params.executor->HostMemoryUnregister((void*)value)) {
+            VLOG(5) << "Unregistering host recv pointer for memcpy failed.";
+          }
+        }
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::Status NcclAllToAllStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
-    NcclCommHandleWrapper comm_wrapper) {
+    CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
+  TF_ASSIGN_OR_RETURN(int32_t num_participants,
+                      nccl_api()->CommCount(comm_handle.comm));
+
+  if (is_local() && p2p_memcpy_enabled_) {
+    int local_id = stream.parent()->device_ordinal() % num_participants;
+    absl::flat_hash_map<int64_t, uint64_t>* send_pointer_map = nullptr;
+    absl::flat_hash_map<int64_t, uint64_t>* receive_pointer_map = nullptr;
+    {
+      absl::MutexLock lock(&pointer_maps_mutex_);
+      send_pointer_map = &send_pointer_maps_[local_id];
+      receive_pointer_map = &receive_pointer_maps_[local_id];
+    }
+    return xla::gpu::RunMemCpyAllToAll(nccl_api(), config_.has_split_dimension,
+                                       device_buffers, stream, comm_handle.comm,
+                                       *send_pointer_map, *receive_pointer_map);
+  }
   return xla::gpu::RunAllToAll(nccl_api(), config_.has_split_dimension,
-                               device_buffers, stream,
-                               comm_wrapper.comm_handle);
+                               device_buffers, stream, comm_handle.comm);
+}
+
+AsyncStreamKind NcclAllToAllStartThunk::GetAsyncStreamKind() const {
+  return (is_local() && p2p_memcpy_enabled_) ? AsyncStreamKind::kMemCpyP2P
+                                             : AsyncStreamKind::kCollective;
+}
+
+bool NcclAllToAllStartThunk::is_local() const {
+  for (const auto& replica_group : config_.config.replica_groups) {
+    const int64_t node_id = replica_group.replica_ids().at(0) / device_count_;
+    if (!absl::c_all_of(replica_group.replica_ids(),
+                        [this, node_id](const int64_t rank) {
+                          return rank / device_count_ == node_id;
+                        })) {
+      return false;
+    }
+  }
+  return true;
 }
 
 absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
-                         se::Stream& stream, NcclApi::NcclCommHandle comm) {
+                         se::Stream& stream, Communicator* comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal;
   TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
+      MaybeRegisterBuffers(nccl_api, stream.parent(), buffers, comm));
 
   TF_ASSIGN_OR_RETURN(int32_t num_participants, nccl_api->CommCount(comm));
 
@@ -161,6 +271,85 @@ absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
   }
 
   return nccl_api->GroupEnd();
+}
+
+absl::Status RunMemCpyAllToAll(
+    NcclApi* nccl_api, bool has_split_dimension,
+    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+    Communicator* comm,
+    absl::flat_hash_map<int64_t, uint64_t>& send_pointer_map,
+    absl::flat_hash_map<int64_t, uint64_t>& receive_pointer_map) {
+  int device_ordinal = stream.parent()->device_ordinal();
+  VLOG(3) << "Performing mem-copy-all-to-all from device ordinal: "
+          << device_ordinal;
+  TF_RETURN_IF_ERROR(
+      MaybeRegisterBuffers(nccl_api, stream.parent(), buffers, comm));
+
+  TF_ASSIGN_OR_RETURN(int32_t num_participants, nccl_api->CommCount(comm));
+
+  // AllToAll can operate in two modes. Either it specifies a split dimension,
+  // in which case inputs are split and outputs concatenated in that dimension
+  // (here, we only support dimension 0), or it takes a list of inputs
+  // and produces a tuple of outputs.
+  if (has_split_dimension) {
+    for (DeviceBufferPair& buffer : buffers) {
+      TF_RET_CHECK(buffer.element_count % num_participants == 0)
+          << "Buffer was not an exact multiple of the number of participants.";
+
+      size_t chunk_elements = buffer.element_count / num_participants;
+
+      TF_RETURN_IF_ERROR(nccl_api->GroupStart());
+      for (int peer = 0; peer < num_participants; ++peer) {
+        se::DeviceMemoryBase recv_slice =
+            NcclApi::Slice(buffer.destination_buffer, buffer.element_type,
+                           peer * chunk_elements, chunk_elements);
+        send_pointer_map[peer] = (uint64_t)recv_slice.opaque();
+
+        TF_RETURN_IF_ERROR(nccl_api->SendPtrToPeer(&send_pointer_map[peer],
+                                                   peer, comm, &stream));
+        TF_RETURN_IF_ERROR(nccl_api->RecvPtrFromPeer(&receive_pointer_map[peer],
+                                                     peer, comm, &stream));
+      }
+      TF_RETURN_IF_ERROR(nccl_api->GroupEnd());
+      TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+
+      for (int peer = 0; peer < num_participants; ++peer) {
+        se::DeviceMemoryBase send_slice =
+            NcclApi::Slice(buffer.source_buffer, buffer.element_type,
+                           peer * chunk_elements, chunk_elements);
+        se::DeviceMemoryBase dst_addr =
+            se::DeviceMemoryBase((void*)receive_pointer_map[peer]);
+        TF_RETURN_IF_ERROR(
+            stream.MemcpyD2D(&dst_addr, send_slice, send_slice.size()));
+      }
+    }
+  } else {
+    TF_RET_CHECK(buffers.size() == num_participants)
+        << "Number of inputs didn't match the number of participants.";
+
+    TF_RETURN_IF_ERROR(nccl_api->GroupStart());
+    for (int peer = 0; peer < num_participants; ++peer) {
+      send_pointer_map[peer] =
+          (uint64_t)buffers[peer].destination_buffer.opaque();
+
+      TF_RETURN_IF_ERROR(nccl_api->SendPtrToPeer(&send_pointer_map[peer], peer,
+                                                 comm, &stream));
+      TF_RETURN_IF_ERROR(nccl_api->RecvPtrFromPeer(&receive_pointer_map[peer],
+                                                   peer, comm, &stream));
+    }
+    TF_RETURN_IF_ERROR(nccl_api->GroupEnd());
+    TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+
+    for (int peer = 0; peer < num_participants; ++peer) {
+      // double buffer, exchange data with peer
+      se::DeviceMemoryBase dst_addr =
+          se::DeviceMemoryBase((void*)receive_pointer_map[peer]);
+      TF_RETURN_IF_ERROR(stream.MemcpyD2D(&dst_addr,
+                                          buffers[peer].source_buffer,
+                                          buffers[peer].source_buffer.size()));
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

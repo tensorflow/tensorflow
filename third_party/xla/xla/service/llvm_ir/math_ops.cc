@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/math_ops.h"
 
+#include <array>
+
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
@@ -25,7 +27,7 @@ limitations under the License.
 namespace xla {
 namespace llvm_ir {
 
-llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input,
+llvm::Value* EmitFastTanh(llvm::IRBuilderBase* b, llvm::Value* input,
                           bool with_fma) {
   llvm::Type* type = input->getType();
   const float plus_clamp =
@@ -83,7 +85,62 @@ llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input,
                          b->CreateFDiv(numerator, denominator));
 }
 
-llvm::Value* EmitErfF32(llvm::IRBuilder<>* b, llvm::Value* x) {
+llvm::Value* EmitFastTanhF64(llvm::IRBuilderBase* b, llvm::Value* input,
+                             bool with_fma) {
+  llvm::Type* type = input->getType();
+
+  // Clamp the inputs to the range [-c, c]. Everything outside this range will
+  // output -1.0 or 1.0. The value c is chosen as the smallest floating point
+  // argument such that the approximation is exactly 1.
+  // Taken from `ptanh_double` in
+  // Eigen/src/Core/arch/Default/GenericPacketMathFunctions.h.
+  constexpr bool fast_min_max = true;
+  const double clamp = with_fma ? 17.6610191624600077 : 17.714196154005176;
+  llvm::Value* plus_clamp = llvm::ConstantFP::get(type, clamp);
+  llvm::Value* minus_clamp = llvm::ConstantFP::get(type, -clamp);
+  llvm::Value* x = llvm_ir::EmitFloatMin(
+      llvm_ir::EmitFloatMax(input, minus_clamp, b, fast_min_max), plus_clamp, b,
+      fast_min_max);
+
+  // {alpha_19, alpha_17, ..., alpha_1}
+  static constexpr std::array<double, 10> numerator_coeffs{
+      2.6158007860482230e-23, 7.6534862268749319e-19,
+      3.1309488231386680e-15, 4.2303918148209176e-12,
+      2.4618379131293676e-09, 6.8644367682497074e-07,
+      9.3839087674268880e-05, 5.9809711724441161e-03,
+      1.5184719640284322e-01, 1.0};
+
+  // {beta_18, beta_16, ..., beta_0}
+  static constexpr std::array<double, 10> denominator_coeffs{
+      6.463747022670968018e-21, 5.782506856739003571e-17,
+      1.293019623712687916e-13, 1.123643448069621992e-10,
+      4.492975677839633985e-08, 8.785185266237658698e-06,
+      8.295161192716231542e-04, 3.437448108450402717e-02,
+      4.851805297361760360e-01, 1.0};
+
+  llvm::Value* x2 = b->CreateFMul(x, x);  // x^2.
+
+  // Compute numerator polynomial.
+  llvm::Value* numerator = llvm::ConstantFP::get(type, numerator_coeffs[0]);
+  for (int i = 1; i < numerator_coeffs.size(); ++i) {
+    llvm::Value* alpha = llvm::ConstantFP::get(type, numerator_coeffs[i]);
+    numerator = b->CreateFAdd(b->CreateFMul(x2, numerator), alpha);
+  }
+  // Multiply by `x` for the odd terms.
+  numerator = b->CreateFMul(x, numerator);
+
+  // Compute denominator polynomial.
+  llvm::Value* denominator = llvm::ConstantFP::get(type, denominator_coeffs[0]);
+  for (int i = 1; i < denominator_coeffs.size(); i++) {
+    llvm::Value* beta = llvm::ConstantFP::get(type, denominator_coeffs[i]);
+    denominator = b->CreateFAdd(b->CreateFMul(x2, denominator), beta);
+  }
+
+  // Divide the numerator by the denominator.
+  return b->CreateFDiv(numerator, denominator);
+}
+
+llvm::Value* EmitErfF32(llvm::IRBuilderBase* b, llvm::Value* x) {
   auto type = x->getType();
   constexpr float kErfInvOneMinusHalfULP = 3.832506856900711f;
   auto call_fabs = [b](llvm::Value* operand_value) {

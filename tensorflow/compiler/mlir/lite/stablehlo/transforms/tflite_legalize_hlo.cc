@@ -20,12 +20,14 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -34,18 +36,24 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/custom_call.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/dot_general.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/fft.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/gather.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/get_dimension_size.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/if.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/iota.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/pad.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce_window.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/slice.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/sort.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/while.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -61,6 +69,86 @@ arith::ConstantOp ShapeToConst(PatternRewriter& rewriter, Value value) {
                                          rewriter.getIntegerType(64));
   auto attr = DenseElementsAttr::get(attr_type, shape);
   return rewriter.create<arith::ConstantOp>(value.getLoc(), attr_type, attr);
+}
+
+// Returns true if broadcast_dimensions obey Tensorflow convention, as in new
+// dimensions are added as prefix.
+bool IsTFLStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
+                         Value output) {
+  // broadcast_dimensions is an increasing list by definition, thus it suffices
+  // to check the first element.
+  int64_t input_rank = broadcast_dimensions.getNumElements();
+  int64_t output_rank = mlir::cast<ShapedType>(output.getType()).getRank();
+  return input_rank == 0 ||
+         (broadcast_dimensions.getValues<APInt>()[0].getSExtValue() ==
+          output_rank - input_rank);
+}
+
+// Returns the intermediate shape that input tensor should be reshaped to during
+// legalization of BroadcastInDimOp.
+arith::ConstantOp ExpandedShape(OpBuilder& b, Value input,
+                                DenseIntElementsAttr broadcast_dimensions,
+                                Value output) {
+  // Initialize expanded shape with output rank and dimensions of 1.
+  llvm::SmallVector<Attribute> expanded_shape(
+      llvm::cast<ShapedType>(output.getType()).getRank(),
+      /*Value=*/b.getI32IntegerAttr(1));
+
+  // Set dimension sizes specified by broadcast_dimensions.
+  auto input_shape = llvm::cast<ShapedType>(input.getType()).getShape();
+
+  for (auto x : llvm::enumerate(broadcast_dimensions)) {
+    expanded_shape[x.value().getSExtValue()] =
+        b.getI32IntegerAttr(static_cast<int32_t>(input_shape[x.index()]));
+  }
+
+  // Create the expanded type wrapped in a arith::ConstantOp.
+  auto attr_type = RankedTensorType::get(
+      {static_cast<int64_t>(expanded_shape.size())}, b.getIntegerType(32));
+  auto attr = DenseElementsAttr::get(attr_type, expanded_shape);
+  return b.create<arith::ConstantOp>(output.getLoc(), attr_type, attr);
+}
+
+Value ExpandedDynamicShape(OpBuilder& b, Value input,
+                           DenseIntElementsAttr broadcast_dimensions,
+                           Value output) {
+  int64_t output_rank = mlir::cast<ShapedType>(output.getType()).getRank();
+  llvm::SmallVector<int64_t, 4> expanded_dimensions;
+  llvm::SmallSet<int64_t, 4> broadcast_dimensions_values;
+
+  for (auto x : llvm::enumerate(broadcast_dimensions)) {
+    broadcast_dimensions_values.insert(x.value().getSExtValue());
+  }
+
+  for (int64_t i = 0; i < output_rank; i++) {
+    if (!broadcast_dimensions_values.contains(i)) {
+      expanded_dimensions.push_back(i);
+    }
+  }
+
+  Value expanded_input = input;
+
+  for (int64_t i : expanded_dimensions) {
+    auto index_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({}, b.getI64Type()), {i});
+    Value index = b.create<arith::ConstantOp>(output.getLoc(), index_attr);
+
+    auto cur_type = llvm::cast<ShapedType>(expanded_input.getType());
+    auto cur_shape = cur_type.getShape();
+    llvm::SmallVector<int64_t> new_shape;
+
+    auto begin = cur_shape.begin();
+    new_shape.append(begin, begin + i);
+    new_shape.push_back(1);
+    new_shape.append(begin + i, cur_shape.end());
+
+    auto new_type = RankedTensorType::get(new_shape, cur_type.getElementType());
+
+    expanded_input = b.create<TFL::ExpandDimsOp>(output.getLoc(), new_type,
+                                                 expanded_input, index);
+  }
+
+  return expanded_input;
 }
 
 bool IsSign(APInt a, APInt sign) {
@@ -174,7 +262,7 @@ bool ValueGreaterThanZero(ElementsAttr float_or_int) {
 }
 
 #define GEN_PASS_DEF_LEGALIZEHLOTOTFLITEPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 bool SupportedComparisonType(mhlo::ComparisonTypeAttr comp_type) {
   if (!comp_type) return true;
@@ -201,20 +289,16 @@ bool IsNotOpLegal(mhlo::NotOp op) {
   return op.getType().getElementType().isInteger(64);
 }
 
-// Mark possible target ops from rounding patterns as having "unknown"
-// legality. This is required to schedule patterns on these ops even
-// though MhloDialect is explicitly marked legal (which cannot be changed
-// easily).
-void AddRoundingOpsAsUnknown(ConversionTarget& target) {
-  target.addDynamicallyLegalOp<
-      mhlo::FloorOp, mhlo::SubtractOp, mhlo::AndOp, mhlo::SelectOp, mhlo::RemOp,
-      mhlo::AddOp, mhlo::SignOp, mhlo::MulOp, mhlo::DivOp, mhlo::OrOp,
-      mhlo::BroadcastInDimOp, mhlo::ConstantOp, mhlo::RoundOp, mhlo::TupleOp>(
-      [](Operation* op) { return std::nullopt; });
-}
-
 bool IsCompareLegal(mhlo::CompareOp op) {
   return !SupportedComparisonType(op.getCompareTypeAttr());
+}
+
+bool IsAbsOpLegal(mhlo::AbsOp op) {
+  return !llvm::cast<ShapedType>(op.getOperand().getType())
+              .getElementType()
+              .isIntOrFloat() &&
+         !llvm::cast<mlir::ComplexType>(
+             op.getOperand().getType().getElementType());
 }
 
 void SetUnaryOpLegal(ConversionTarget& target) {
@@ -224,34 +308,128 @@ void SetUnaryOpLegal(ConversionTarget& target) {
                 .isIntOrFloat();
   };
   target.addDynamicallyLegalOp<
-      mhlo::AbsOp, mhlo::BitcastConvertOp, mhlo::CeilOp, mhlo::IsFiniteOp,
-      mhlo::CosineOp, mhlo::ExpOp, mhlo::Expm1Op, mhlo::FloorOp, mhlo::ImagOp,
-      mhlo::LogOp, mhlo::NegOp, mhlo::RealOp, mhlo::Log1pOp, mhlo::RsqrtOp,
-      mhlo::SineOp, mhlo::LogisticOp, mhlo::SignOp, mhlo::SqrtOp, mhlo::TanhOp,
-      mhlo::ConvertOp>(is_legal);
+      // go/keep-sorted start
+      // clang-format off
+      mhlo::BitcastConvertOp,
+      mhlo::CeilOp,
+      mhlo::ConvertOp,
+      mhlo::CosineOp,
+      mhlo::ExpOp,
+      mhlo::Expm1Op,
+      mhlo::FloorOp,
+      mhlo::ImagOp,
+      mhlo::IsFiniteOp,
+      mhlo::Log1pOp,
+      mhlo::LogOp,
+      mhlo::LogisticOp,
+      mhlo::NegOp,
+      mhlo::RealOp,
+      mhlo::RsqrtOp,
+      mhlo::SignOp,
+      mhlo::SineOp,
+      mhlo::SqrtOp,
+      mhlo::TanhOp
+      // clang-format on
+      // go/keep-sorted end
+      >(is_legal);
+}
+
+// mhlo "bitwise ops" can be both bitwise (floats/ints) or logical (bools).
+// TFL ops are only one of logical or bitwise.
+void SetBinaryBitwiseLegal(ConversionTarget& target) {
+  auto is_logical = [](Operation* op) {
+    return llvm::cast<ShapedType>(op->getResultTypes()[0])
+        .getElementType()
+        .isInteger(1);
+  };
+  auto is_bitwise = [&](Operation* op) { return !is_logical(op); };
+  target.addDynamicallyLegalOp<mhlo::OrOp, mhlo::AndOp>(is_bitwise);
+  target.addDynamicallyLegalOp<mhlo::XorOp>(is_logical);
 }
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_tflite_legalize_hlo.inc"
 void LegalizeHloToTfLitePass::runOnOperation() {
   MLIRContext* context = &getContext();
-  RewritePatternSet patterns(context);
-  patterns.add<odml::ConvertCustomCallOp, odml::LowerDotGeneralOp>(context);
-  populateWithGenerated(patterns);
+
+  // Apply large rounding related patterns first without dialect conversion.
+  // This unlocks cleaner match/fold behavior, making these patterns less
+  // sensitive to broadcasted constants.
+  {
+    RewritePatternSet patterns(context);
+    patterns.add<
+        // clang-format off
+        Phase1_Round,
+        Phase1_FloorMod,
+        Phase1_FloorMod2,
+        Phase1_FloorDiv,
+        Phase1_FloorDiv2,
+        Phase1_FloorDiv3,
+        Phase1_FloorDiv4,
+        Phase1_FloorDiv5
+        // clang-format on
+        >(context);
+
+    (void)applyPatternsAndFoldGreedily(getOperation().getOperation(),
+                                       std::move(patterns));
+  }
+
+  {
+    OpPassManager phase_2("builtin.module");
+    phase_2.addPass(mlir::odml::CreateUnfoldSplatConstantPass());
+    if (failed(runPipeline(phase_2, getOperation()))) {
+      return signalPassFailure();
+    }
+  }
 
   ConversionTarget target(*context);
   target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
 
-  target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
-  target.addIllegalOp<mhlo::DotGeneralOp, mhlo::DotOp, mhlo::TransposeOp,
-                      mhlo::ShiftRightArithmeticOp, mhlo::ShiftRightLogicalOp,
-                      mhlo::RemOp, mhlo::ReshapeOp, mhlo::DynamicReshapeOp>();
+  target.addDynamicallyLegalOp<mhlo::AbsOp>(IsAbsOpLegal);
   target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
   target.addDynamicallyLegalOp<mhlo::CompareOp>(IsCompareLegal);
+  target.addDynamicallyLegalOp<mhlo::TupleOp>(
+      [](mhlo::TupleOp op) { return std::nullopt; });
 
-  AddRoundingOpsAsUnknown(target);
+  target.addIllegalOp<
+      // go/keep-sorted start
+      // clang-format off
+      mhlo::AddOp,
+      mhlo::Atan2Op,
+      mhlo::BroadcastInDimOp,
+      mhlo::ClampOp,
+      mhlo::ConcatenateOp,
+      mhlo::ConstantOp,
+      mhlo::DivOp,
+      mhlo::DotGeneralOp,
+      mhlo::DotOp,
+      mhlo::DynamicBroadcastInDimOp,
+      mhlo::DynamicReshapeOp,
+      mhlo::MaxOp,
+      mhlo::MinOp,
+      mhlo::MulOp,
+      mhlo::PowOp,
+      mhlo::RemOp,
+      mhlo::ReshapeOp,
+      mhlo::ReverseOp,
+      mhlo::RoundNearestEvenOp,
+      mhlo::RoundOp,
+      mhlo::SelectOp,
+      mhlo::ShiftRightArithmeticOp,
+      mhlo::ShiftRightLogicalOp,
+      mhlo::SubtractOp,
+      mhlo::TransposeOp
+      // clang-format on
+      // go/keep-sorted end
+      >();
+
+  RewritePatternSet patterns(context);
+
+  populateWithGenerated(patterns);
+
   SetUnaryOpLegal(target);
+  SetBinaryBitwiseLegal(target);
 
   PopulatePadPatterns(context, patterns, target);
   PopulateReducePatterns(context, patterns, target);
@@ -260,6 +438,14 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   PopulateLegalizeConvPatterns(context, patterns, target);
   PopulateLegalizeSlicePatterns(context, patterns, target);
   PopulateSortPatterns(context, patterns, target);
+  PopulateIotaPatterns(context, patterns, target);
+  PopulateWhilePatterns(context, patterns, target);
+  PopulateGetDimensionSizePatterns(context, patterns, target);
+  PopulateIfPatterns(context, patterns, target);
+  PopulateFftPatterns(context, patterns, target);
+  PopulateCustomCallPatterns(context, patterns, target);
+
+  patterns.add<odml::LowerDotGeneralOp>(context);
 
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {

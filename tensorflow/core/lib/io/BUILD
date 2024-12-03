@@ -8,8 +8,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/c/experimental/filesystem:__pkg__",
-        "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
-        "@local_tsl//tsl/lib/io/snappy:__pkg__",
+        "@local_xla//xla/tsl/lib/io/snappy:__pkg__",
         "//third_party/py/tensorflow_io:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
@@ -31,7 +30,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/io:block",
+        "@local_xla//xla/tsl/lib/io:block",
     ],
 )
 
@@ -41,14 +40,14 @@ cc_library(
     deps = [
         ":inputstream_interface",
         "//tensorflow/core/platform:env",
-        "@local_tsl//tsl/lib/io:buffered_inputstream",
+        "@local_xla//xla/tsl/lib/io:buffered_inputstream",
     ],
 )
 
 cc_library(
     name = "compression",
     hdrs = ["compression.h"],
-    deps = ["@local_tsl//tsl/lib/io:compression"],
+    deps = ["@local_xla//xla/tsl/lib/io:compression"],
 )
 
 cc_library(
@@ -60,7 +59,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/io:inputbuffer",
+        "@local_xla//xla/tsl/lib/io:inputbuffer",
     ],
 )
 
@@ -72,7 +71,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/io:inputstream_interface",
+        "@local_xla//xla/tsl/lib/io:inputstream_interface",
     ],
 )
 
@@ -82,7 +81,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
-        "@local_tsl//tsl/lib/io:iterator",
+        "@local_xla//xla/tsl/lib/io:iterator",
     ],
 )
 
@@ -100,7 +99,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:stringpiece",
-        "@local_tsl//tsl/lib/io:proto_encode_helper",
+        "@local_xla//xla/tsl/lib/io:proto_encode_helper",
     ],
 )
 
@@ -111,7 +110,7 @@ cc_library(
         ":inputstream_interface",
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:env",
-        "@local_tsl//tsl/lib/io:random_inputstream",
+        "@local_xla//xla/tsl/lib/io:random_inputstream",
     ],
 )
 
@@ -127,7 +126,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/io:record_reader",
+        "@local_xla//xla/tsl/lib/io:record_reader",
     ],
 )
 
@@ -145,28 +144,28 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/io:record_writer",
+        "@local_xla//xla/tsl/lib/io:record_writer",
     ],
 )
 
 alias(
     name = "snappy_inputbuffer",
-    actual = "@local_tsl//tsl/lib/io/snappy:snappy_inputbuffer",
+    actual = "@local_xla//xla/tsl/lib/io/snappy:snappy_inputbuffer",
 )
 
 alias(
     name = "snappy_inputstream",
-    actual = "@local_tsl//tsl/lib/io/snappy:snappy_inputstream",
+    actual = "@local_xla//xla/tsl/lib/io/snappy:snappy_inputstream",
 )
 
 alias(
     name = "snappy_outputbuffer",
-    actual = "@local_tsl//tsl/lib/io/snappy:snappy_outputbuffer",
+    actual = "@local_xla//xla/tsl/lib/io/snappy:snappy_outputbuffer",
 )
 
 alias(
     name = "snappy_compression_options",
-    actual = "@local_tsl//tsl/lib/io/snappy:snappy_compression_options",
+    actual = "@local_xla//xla/tsl/lib/io/snappy:snappy_compression_options",
 )
 
 cc_library(
@@ -174,7 +173,7 @@ cc_library(
     hdrs = ["cache.h"],
     deps = [
         "//tensorflow/core/platform:stringpiece",
-        "@local_tsl//tsl/lib/io:cache",
+        "@local_xla//xla/tsl/lib/io:cache",
     ],
 )
 
@@ -186,14 +185,14 @@ cc_library(
     ],
     deps = [
         ":iterator",
-        "@local_tsl//tsl/lib/io:table",
+        "@local_xla//xla/tsl/lib/io:table",
     ],
 )
 
 cc_library(
     name = "table_options",
     hdrs = ["table_options.h"],
-    deps = ["@local_tsl//tsl/lib/io:table_options"],
+    deps = ["@local_xla//xla/tsl/lib/io:table_options"],
 )
 
 cc_library(
@@ -201,7 +200,7 @@ cc_library(
     hdrs = ["zlib_compression_options.h"],
     deps = [
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/io:zlib_compression_options",
+        "@local_xla//xla/tsl/lib/io:zlib_compression_options",
     ],
 )
 
@@ -215,7 +214,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/io:zlib_inputstream",
+        "@local_xla//xla/tsl/lib/io:zlib_inputstream",
     ],
 )
 
@@ -229,7 +228,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/io:zlib_outputbuffer",
+        "@local_xla//xla/tsl/lib/io:zlib_outputbuffer",
     ],
 )
 

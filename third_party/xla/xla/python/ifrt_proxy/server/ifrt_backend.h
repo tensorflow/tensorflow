@@ -23,6 +23,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -78,19 +79,33 @@ class IfrtBackend final : public BackendInterface {
   Future<Response> Process(std::unique_ptr<IfrtRequest> request) override;
 
  private:
-  // Generates unique handles for returning to the client. All object types
-  // currently use this single "handle space".
+  // Generates unique handles for returning to the client. Guaranteed to return
+  // handles that do not conflict with client-generated handles (via client-side
+  // RpcHelper). All object types currently use this single "handle space".
   class HandleGenerator {
    public:
-    uint64_t New();
+    explicit HandleGenerator(IfrtBackend* parent);
 
-    // Bulk allocates a given number of handles and saves them into the provided
-    // Span.
-    void BulkNew(absl::Span<uint64_t> handles);
+    // Returns the client-generated handle after performing some convenience
+    // checks, provided that the client is of a protocol_version capable of
+    // doing this. If the client has old protocol versions, generate a handle at
+    // the server.
+    absl::StatusOr<uint64_t> FromClientGenerated(uint64_t from_client);
+
+    // Performs the same function as `FromClientGenerated` but in bulk, and
+    // saves them into the provided Span.
+    absl::Status FromClientGeneratedBulk(
+        const tsl::protobuf::RepeatedField<uint64_t>& from_client,
+        absl::Span<uint64_t> result_handles);
+
+    uint64_t GenerateAtServer();
+
+    void GenerateAtServerBulk(absl::Span<uint64_t> result_handles);
 
    private:
+    IfrtBackend* const parent_;
     absl::Mutex mu_;
-    uint64_t current_ ABSL_GUARDED_BY(mu_) = 1;
+    uint64_t current_ ABSL_GUARDED_BY(mu_);
   };
 
   IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
@@ -104,6 +119,8 @@ class IfrtBackend final : public BackendInterface {
   Future<Response> AsyncExecute(
       std::function<absl::StatusOr<Response>()> handle_fn,
       tsl::thread::ThreadPool* thread_pool = nullptr);
+
+  Future<Response> ProcessInternal(std::unique_ptr<IfrtRequest> request);
 
   //////////////////////////////////////////////////////////////////////
   // Handlers for individual requests
@@ -162,6 +179,13 @@ class IfrtBackend final : public BackendInterface {
       std::unique_ptr<IfrtRequest> request);
 
   //////////////////////////////////////////////////////////////////////
+  // Auxiliary/Helper methods for the handler methods above
+  //
+
+  Future<BackendInterface::Response> HandleCopyToStringHostBufferRequest(
+      std::unique_ptr<IfrtRequest> request);
+
+  //////////////////////////////////////////////////////////////////////
   // Convenient methods for object lookups
   //
 
@@ -207,6 +231,9 @@ class IfrtBackend final : public BackendInterface {
   // Use a separate thread pool for compilation as XLA compilation often
   // requires a bigger stack.
   tsl::thread::ThreadPool compile_thread_pool_;
+
+  class InOrderRequestsProcessor;
+  std::unique_ptr<InOrderRequestsProcessor> in_order_requests_processor_;
 };
 
 }  // namespace proxy

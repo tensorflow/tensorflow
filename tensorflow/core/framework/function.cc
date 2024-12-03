@@ -90,7 +90,7 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
     for (int i = 0; i < v->list().type_size(); ++i) {
       dtypes->push_back(v->list().type(i));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   *is_type_list = false;
@@ -116,7 +116,7 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
     dtype = v->type();
   }
   dtypes->resize(num, dtype);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -166,7 +166,7 @@ Status ValidateSignatureWithAttrs(const OpDef& sig, AttrSlice attr_values) {
   }
 #endif
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // A helper class for instantiating functions. This contains shared information
@@ -229,7 +229,7 @@ class FunctionInstantiationHelper {
       result_.arg_types.push_back(dtypes[i]);
       ++arg_index;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status BuildNodeOutputIndex(const NodeDef& node, AttrSlice attrs,
@@ -259,7 +259,7 @@ class FunctionInstantiationHelper {
       }
       start += dtypes.size();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status InstantiateNode(const NodeDef& fnode, AttrSlice attrs) {
@@ -363,7 +363,7 @@ class FunctionInstantiationHelper {
       *gnode->mutable_experimental_type() = fnode.experimental_type();
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status AddReturnNode(
@@ -406,7 +406,7 @@ class FunctionInstantiationHelper {
       AddAttr("index", (*ret_index)++, gnode);
       result_.ret_types.push_back(dtypes[i]);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Adds the actual node inputs to the result graph by converting indexes to
@@ -452,7 +452,7 @@ class FunctionInstantiationHelper {
                           " name: "),
           name);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const NameInfoItem* GetItemOrNull(const string& name) const {
@@ -644,7 +644,7 @@ string Print(const FunctionDef& fdef) {
   return out;
 }
 
-string Print(gtl::ArraySlice<const NodeDef*> nodes) {
+string Print(absl::Span<const NodeDef* const> nodes) {
   std::vector<const NodeDef*> arg;
   std::vector<const NodeDef*> ret;
   std::vector<const NodeDef*> body;
@@ -738,7 +738,7 @@ Status AddDefaultAttrs(const string& op,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace
@@ -857,7 +857,7 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
   // Adds the actual node inputs using the input indexes.
   helper.AddNodeInputs();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string DebugString(const FunctionDef& func_def) { return Print(func_def); }
@@ -870,7 +870,7 @@ string DebugString(const GraphDef& instantiated_func_def) {
   return Print(ptrs);
 }
 
-string DebugString(gtl::ArraySlice<NodeDef> instantiated_func_nodes) {
+string DebugString(absl::Span<const NodeDef> instantiated_func_nodes) {
   std::vector<const NodeDef*> ptrs;
   for (const NodeDef& n : instantiated_func_nodes) {
     ptrs.push_back(&n);
@@ -1147,7 +1147,7 @@ FunctionCallFrame::FunctionCallFrame(DataTypeSlice arg_types,
 
 FunctionCallFrame::~FunctionCallFrame() {}
 
-Status FunctionCallFrame::SetArgs(gtl::ArraySlice<Tensor> args) {
+Status FunctionCallFrame::SetArgs(absl::Span<const Tensor> args) {
   // Input type checks.
   if (args.size() != arg_types_.size()) {
     return errors::InvalidArgument("Expects ", arg_types_.size(),
@@ -1162,7 +1162,7 @@ Status FunctionCallFrame::SetArgs(gtl::ArraySlice<Tensor> args) {
     }
     args_[i] = args[i];
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionCallFrame::GetRetvals(std::vector<Tensor>* rets) const {
@@ -1176,7 +1176,7 @@ Status FunctionCallFrame::GetRetvals(std::vector<Tensor>* rets) const {
       return errors::Internal("Retval[", i, "] does not have value");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionCallFrame::ConsumeRetvals(std::vector<Tensor>* rets,
@@ -1192,7 +1192,7 @@ Status FunctionCallFrame::ConsumeRetvals(std::vector<Tensor>* rets,
       return errors::Internal("Retval[", i, "] does not have value");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionCallFrame::GetArg(int index, const Tensor** val) {
@@ -1201,7 +1201,7 @@ Status FunctionCallFrame::GetArg(int index, const Tensor** val) {
                                    args_.size(), ")");
   }
   *val = &args_[index];
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
@@ -1221,7 +1221,7 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
   } else {
     return errors::Internal("Retval[", index, "] has already been set.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 FunctionRecord::FunctionRecord(const FunctionDef& fdef,
@@ -1446,7 +1446,7 @@ Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
           "exists.");
     }
     // Ignore duplicate FunctionDefs.
-    return OkStatus();
+    return absl::OkStatus();
   }
   const OpDef* op_def;
   if (default_registry_
@@ -1460,7 +1460,7 @@ Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
   registration->finalize();
   records_.insert({registration->fdef().signature().name(), registration});
   *added = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionLibraryDefinition::CopyFunctionDefFrom(
@@ -1485,7 +1485,7 @@ Status FunctionLibraryDefinition::CopyFunctionDefFrom(
           "' because a different function with the same name already "
           "exists.");
     } else {
-      return OkStatus();
+      return absl::OkStatus();
     }
   } else if (other_record->finalized()) {
     bool added;
@@ -1514,11 +1514,11 @@ Status FunctionLibraryDefinition::AddGradientDefHelper(const GradientDef& grad,
           "'", *entry, "'");
     }
     // Ignore duplicate GradientDefs
-    return OkStatus();
+    return absl::OkStatus();
   }
   *entry = grad.gradient_func();
   *added = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionLibraryDefinition::AddLibrary(
@@ -1567,7 +1567,7 @@ Status FunctionLibraryDefinition::AddLibrary(
       funcs_with_grads.push_back(grad.function_name());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionLibraryDefinition::AddLibrary(
@@ -1625,7 +1625,7 @@ Status FunctionLibraryDefinition::AddLibrary(
       funcs_with_grads.push_back(grad.function_name());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionLibraryDefinition::ReplaceFunction(
@@ -1636,7 +1636,7 @@ Status FunctionLibraryDefinition::ReplaceFunction(
   TF_RETURN_IF_ERROR(RemoveFunctionHelper(func));
   TF_RETURN_IF_ERROR(AddFunctionDefHelper(
       FunctionDef(fdef), StackTracesMap(stack_traces), &added));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionLibraryDefinition::ReplaceGradient(const GradientDef& grad) {
@@ -1644,13 +1644,13 @@ Status FunctionLibraryDefinition::ReplaceGradient(const GradientDef& grad) {
   bool added;
   TF_RETURN_IF_ERROR(RemoveGradient(grad.function_name()));
   TF_RETURN_IF_ERROR(AddGradientDefHelper(grad, &added));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionLibraryDefinition::RemoveFunction(const string& func) {
   mutex_lock l(mu_);
   TF_RETURN_IF_ERROR(RemoveFunctionHelper(func));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
@@ -1661,7 +1661,7 @@ Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
   }
   iter->second->Unref();
   records_.erase(iter);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void FunctionLibraryDefinition::Clear() {
@@ -1681,7 +1681,7 @@ Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
                                    func, "'.");
   }
   func_grad_.erase(i);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionLibraryDefinition::Remove(
@@ -1700,7 +1700,7 @@ Status FunctionLibraryDefinition::Remove(
       return s;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string FunctionLibraryDefinition::FindGradient(const string& func) const {
@@ -1718,7 +1718,7 @@ Status FunctionLibraryDefinition::LookUp(
   auto iter = records_.find(op);
   if (iter != records_.end()) {
     *op_reg_data = &iter->second->op_registration_data();
-    return OkStatus();
+    return absl::OkStatus();
   }
   return default_registry_->LookUp(op, op_reg_data);
 }
@@ -1796,7 +1796,7 @@ Status FunctionLibraryDefinition::GetAttr(const NodeDef& ndef,
                                           const string& attr, T* value) const {
   const FunctionDef* fdef = GetAttrImpl(ndef);
   if (fdef && TryGetNodeAttr(AttrSlice(&fdef->attr()), attr, value)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::InvalidArgument("Attr ", attr, " is not defined.");
 }
@@ -1837,7 +1837,7 @@ std::set<string> ReachableFunctions(const FunctionLibraryDefinition& flib,
 
   // Functions might be reachable from the nested function calls, so we keep a
   // queue of functions that we have to check.
-  gtl::InlinedVector<core::RefCountPtr<FunctionRecord>, 4> func_queue;
+  absl::InlinedVector<core::RefCountPtr<FunctionRecord>, 4> func_queue;
 
   // Add reachable and not already processed functions to the functions queue.
   const auto add_to_func_queue = [&](const string& func_name) {
@@ -2043,7 +2043,7 @@ void FunctionDefHelper::AttrValueWrapper::InitFromString(StringPiece val) {
 
 FunctionDefHelper::AttrValueWrapper FunctionDefHelper::FunctionRef(
     const string& name,
-    gtl::ArraySlice<std::pair<string, AttrValueWrapper>> attrs) {
+    absl::Span<const std::pair<string, AttrValueWrapper>> attrs) {
   AttrValueWrapper ret;
   ret.proto.mutable_func()->set_name(name);
   for (const auto& a : attrs) {
@@ -2081,11 +2081,11 @@ NodeDef FunctionDefHelper::Node::ToNodeDef() const {
 
 /* static */
 FunctionDef FunctionDefHelper::Create(
-    const string& function_name, gtl::ArraySlice<string> in_def,
-    gtl::ArraySlice<string> out_def, gtl::ArraySlice<string> attr_def,
-    gtl::ArraySlice<Node> node_def,
-    gtl::ArraySlice<std::pair<string, string>> ret_def,
-    gtl::ArraySlice<std::pair<string, string>> control_ret_def) {
+    const string& function_name, absl::Span<const string> in_def,
+    absl::Span<const string> out_def, absl::Span<const string> attr_def,
+    absl::Span<const Node> node_def,
+    absl::Span<const std::pair<string, string>> ret_def,
+    absl::Span<const std::pair<string, string>> control_ret_def) {
   FunctionDef fdef;
 
   // Signature
@@ -2131,20 +2131,20 @@ FunctionDef FunctionDefHelper::Create(
 
 /* static */
 FunctionDef FunctionDefHelper::Create(
-    const string& function_name, gtl::ArraySlice<string> in_def,
-    gtl::ArraySlice<string> out_def, gtl::ArraySlice<string> attr_def,
-    gtl::ArraySlice<Node> node_def,
-    gtl::ArraySlice<std::pair<string, string>> ret_def) {
+    const string& function_name, absl::Span<const string> in_def,
+    absl::Span<const string> out_def, absl::Span<const string> attr_def,
+    absl::Span<const Node> node_def,
+    absl::Span<const std::pair<string, string>> ret_def) {
   return Create(function_name, in_def, out_def, attr_def, node_def, ret_def,
                 /*control_ret_def=*/{});
 }
 
 /* static */
 FunctionDef FunctionDefHelper::Define(const string& name,
-                                      gtl::ArraySlice<string> arg_def,
-                                      gtl::ArraySlice<string> ret_def,
-                                      gtl::ArraySlice<string> attr_def,
-                                      gtl::ArraySlice<Node> node_def) {
+                                      absl::Span<const string> arg_def,
+                                      absl::Span<const string> ret_def,
+                                      absl::Span<const string> attr_def,
+                                      absl::Span<const Node> node_def) {
   FunctionDef fdef;
   OpDefBuilder b(name);
   for (const auto& a : arg_def) b.Input(a);
@@ -2209,10 +2209,10 @@ FunctionDef FunctionDefHelper::Define(const string& name,
   return fdef;
 }
 
-FunctionDef FunctionDefHelper::Define(gtl::ArraySlice<string> arg_def,
-                                      gtl::ArraySlice<string> ret_def,
-                                      gtl::ArraySlice<string> attr_def,
-                                      gtl::ArraySlice<Node> node_def) {
+FunctionDef FunctionDefHelper::Define(absl::Span<const string> arg_def,
+                                      absl::Span<const string> ret_def,
+                                      absl::Span<const string> attr_def,
+                                      absl::Span<const Node> node_def) {
   return Define("_", arg_def, ret_def, attr_def, node_def);
 }
 
@@ -2238,7 +2238,7 @@ Status GetOpGradientCreator(const string& op, Creator* creator) {
     return errors::NotFound("No gradient defined for op: ", op);
   }
   *creator = iter->second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace gradient

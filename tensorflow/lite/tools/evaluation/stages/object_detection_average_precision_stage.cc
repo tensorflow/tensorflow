@@ -16,7 +16,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <numeric>
+#include <vector>
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/c_api_types.h"

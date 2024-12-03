@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/gpu_fusible.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "tsl/platform/errors.h"
@@ -75,7 +75,7 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
       continue;
     }
     HloInstruction* root = fused_computation->root_instruction();
-    if (IsReductionFromOrToContiguousDimensions(*root) ||
+    if (IsReductionFromOrToContiguousDimensions(*root, device_description_) ||
         root->opcode() == HloOpcode::kScatter ||
         (hlo->IsMultiOutputFusion() &&
          absl::c_all_of(root->operands(), [](const HloInstruction* slice) {
@@ -89,7 +89,8 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
       if (copy_user->opcode() == HloOpcode::kGetTupleElement &&
           copy_user->user_count() == 1) {
         if (IsReductionFromOrToContiguousDimensions(
-                *(root->operand(copy_user->tuple_index())))) {
+                *(root->operand(copy_user->tuple_index())),
+                device_description_)) {
           other_users.push_back(user);
           continue;
         }

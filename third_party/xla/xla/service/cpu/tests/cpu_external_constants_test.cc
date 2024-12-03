@@ -61,7 +61,7 @@ class CpuExternalConstantsTest : public CpuCodegenTest {
 TEST_F(CpuExternalConstantsTest, DoNotExternalizeConstants) {
   TestWithArray(/*rows=*/4, /*cols=*/4, R"(
 CHECK-NOT: external unnamed_addr constant [16 x float]
-CHECK: @[[CST:.+]] = private unnamed_addr constant [64 x i8] {{.*}}, align 16
+CHECK: @[[CST:.+]] = private unnamed_addr constant [64 x i8] {{.*}}, align {{[0-9]+}}
 )");
 }
 

@@ -111,7 +111,7 @@ TEST_P(DatasetStoreTest, StoreAlreadyExists) {
 TEST_P(DatasetStoreTest, GetMissing) {
   std::unique_ptr<DatasetStore> store = MakeStore(GetParam());
   std::shared_ptr<const DatasetDef> result;
-  Status s = store->Get("missing", result);
+  absl::Status s = store->Get("missing", result);
   EXPECT_EQ(s.code(), error::NOT_FOUND);
 }
 

@@ -124,7 +124,7 @@ inline void DispatchDepthwiseConvGeneral(
     const RuntimeShape& filter_shape,
     const typename QuantizationTypeImpl<quantization_type>::ExternalType*
         filter_data,
-    const RuntimeShape& bias_shape, const int32* bias_data,
+    const RuntimeShape& bias_shape, const int32_t* bias_data,
     const std::int32_t* output_shift_adjust,
     const std::int32_t* output_multiplier_adjust,
     const RuntimeShape& output_shape,
@@ -139,11 +139,11 @@ inline void DispatchDepthwiseConvGeneral(
 template <>
 inline void DispatchDepthwiseConvGeneral<QuantizationType::kPerChannelInt8>(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
-    const int8* input_data, const RuntimeShape& filter_shape,
-    const int8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const std::int32_t* output_shift_adjust,
+    const int8_t* input_data, const RuntimeShape& filter_shape,
+    const int8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const std::int32_t* output_shift_adjust,
     const std::int32_t* output_multiplier_adjust,
-    const RuntimeShape& output_shape, int8* output_data, int thread_start,
+    const RuntimeShape& output_shape, int8_t* output_data, int thread_start,
     int thread_end, int thread_dim) {
   optimized_integer_ops::depthwise_conv::DepthwiseConvGeneral(
       params, output_multiplier_adjust, output_shift_adjust, input_shape,
@@ -160,7 +160,7 @@ inline void DispatchDepthwiseConvImpl(
     const RuntimeShape& filter_shape,
     const typename QuantizationTypeImpl<quantization_type>::ExternalType*
         filter_data,
-    const RuntimeShape& bias_shape, const int32* bias_data,
+    const RuntimeShape& bias_shape, const int32_t* bias_data,
     const RuntimeShape& output_shape,
     typename QuantizationTypeImpl<quantization_type>::ExternalType*
         output_data) {
@@ -349,7 +349,7 @@ inline void DispatchDepthwiseConvImpl(
   CpuBackendContext backend_context;
   backend_context.SetMaxNumThreads(test_param.num_threads);
   optimized_ops::DepthwiseConv<
-      typename QuantizationTypeImpl<quantization_type>::ExternalType, int32>(
+      typename QuantizationTypeImpl<quantization_type>::ExternalType, int32_t>(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
       bias_data, output_shape, output_data, &backend_context);
 }
@@ -363,7 +363,7 @@ inline void DispatchDepthwiseConvImpl<QuantizationType::kPerChannelInt8>(
     const RuntimeShape& filter_shape,
     const typename QuantizationTypeImpl<
         QuantizationType::kPerChannelInt8>::ExternalType* filter_data,
-    const RuntimeShape& bias_shape, const int32* bias_data,
+    const RuntimeShape& bias_shape, const int32_t* bias_data,
     const RuntimeShape& output_shape,
     typename QuantizationTypeImpl<
         QuantizationType::kPerChannelInt8>::ExternalType* output_data) {
@@ -530,7 +530,7 @@ inline void DispatchDepthwiseConv(
     const RuntimeShape& filter_shape,
     const typename QuantizationTypeImpl<quantization_type>::ExternalType*
         filter_data,
-    const RuntimeShape& bias_shape, const int32* bias_data,
+    const RuntimeShape& bias_shape, const int32_t* bias_data,
     const RuntimeShape& output_shape,
     typename QuantizationTypeImpl<quantization_type>::ExternalType*
         output_data) {
@@ -546,10 +546,10 @@ template <>
 struct ReferenceRunner<QuantizationType::kNonPerChannelUint8> {
   static inline void Run(
       const TestParam& test_param, const tflite::DepthwiseParams& op_params,
-      const uint8* input_data, const RuntimeShape& input_shape,
-      const uint8* filter_data, const RuntimeShape& filter_shape,
+      const uint8_t* input_data, const RuntimeShape& input_shape,
+      const uint8_t* filter_data, const RuntimeShape& filter_shape,
       const std::int32_t* bias_data, const RuntimeShape& bias_shape,
-      const RuntimeShape& output_shape, uint8* reference_output_data) {
+      const RuntimeShape& output_shape, uint8_t* reference_output_data) {
     switch (test_param.output_rounding) {
       case DepthwiseConvOutputRounding::kUpward:
         reference_ops::depthwise_conv::DepthwiseConvBasicKernel<
@@ -577,10 +577,10 @@ template <>
 struct ReferenceRunner<QuantizationType::kPerChannelInt8> {
   static inline void Run(
       const TestParam& test_param, const tflite::DepthwiseParams& op_params,
-      const int8* input_data, const RuntimeShape& input_shape,
-      const int8* filter_data, const RuntimeShape& filter_shape,
+      const int8_t* input_data, const RuntimeShape& input_shape,
+      const int8_t* filter_data, const RuntimeShape& filter_shape,
       const std::int32_t* bias_data, const RuntimeShape& bias_shape,
-      const RuntimeShape& output_shape, int8* reference_output_data) {
+      const RuntimeShape& output_shape, int8_t* reference_output_data) {
     switch (test_param.output_rounding) {
       case DepthwiseConvOutputRounding::kUpward:
         reference_ops::depthwise_conv::DepthwiseConvBasicKernel<
@@ -646,8 +646,8 @@ int TestOneDepthwiseConvWithGivenOutputShift(
   op_params.output_shift = -output_shift;
 
   const int depth = output_shape.Dims(3);
-  std::vector<int32> output_multiplier_per_channel(depth, output_multiplier);
-  std::vector<int32> output_shift_per_channel(depth, -output_shift);
+  std::vector<int32_t> output_multiplier_per_channel(depth, output_multiplier);
+  std::vector<int32_t> output_shift_per_channel(depth, -output_shift);
   if (output_multiplier_adjust != nullptr) {
     for (int i = 0; i < depth; ++i) {
       output_multiplier_per_channel[i] += output_multiplier_adjust[i];
@@ -898,8 +898,10 @@ bool TryTestDepthwiseConv(const TestParam& test_param,
   if (test_param.quantization_type == QuantizationType::kPerChannelInt8) {
     std::vector<std::int8_t> input_data(input_buffer_size);
     std::vector<std::int8_t> filter_data(filter_buffer_size);
-    FillRandom(&input_data, static_cast<int8>(-127), static_cast<int8>(127));
-    FillRandom(&filter_data, static_cast<int8>(-127), static_cast<int8>(127));
+    FillRandom(&input_data, static_cast<int8_t>(-127),
+               static_cast<int8_t>(127));
+    FillRandom(&filter_data, static_cast<int8_t>(-127),
+               static_cast<int8_t>(127));
 
     std::int32_t filter_offset = 0;
     EXPECT_TRUE(params_specialization == ParamsSpecialization::kSymmetric);

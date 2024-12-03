@@ -80,6 +80,33 @@ TEST(CombineAllOpStatsTest, CombineRunEnvironmentWithUnknownDevice) {
   EXPECT_EQ("TPU", dst_op_stats.run_environment().device_type());
 }
 
+TEST(CombineAllOpStatsTest, CombinePerfEnvOrderZero) {
+  // Ensure CombinePerfEnv behaves consistently regardless of order of op stats.
+  OpStats dst_op_stats1, dst_op_stats2, op_stats_1, op_stats_2;
+  op_stats_1.mutable_perf_env()->set_peak_tera_flops_per_second(100);
+  op_stats_2.mutable_perf_env()->set_peak_tera_flops_per_second(0);
+  // Construct dummy step_intersection which is required by CombineAllOpStats().
+  absl::flat_hash_map<uint32 /*=host_id*/, const StepDatabaseResult*> result;
+  StepIntersection dummy_step_intersection = StepIntersection(1, result);
+
+  OpStatsInfo op_stats_info_1(&op_stats_1, TPU, 0),
+      op_stats_info_2(&op_stats_2, TPU, 0);
+
+  // Test order 1.
+  std::vector<OpStatsInfo> all_op_stats_info = {op_stats_info_1,
+                                                op_stats_info_2};
+  CombineAllOpStats(all_op_stats_info, dummy_step_intersection, &dst_op_stats1);
+  EXPECT_EQ(100, dst_op_stats1.perf_env().peak_tera_flops_per_second());
+
+  // Test order 2.
+  all_op_stats_info = {
+      op_stats_info_2,
+      op_stats_info_1,
+  };
+  CombineAllOpStats(all_op_stats_info, dummy_step_intersection, &dst_op_stats2);
+  EXPECT_EQ(100, dst_op_stats2.perf_env().peak_tera_flops_per_second());
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

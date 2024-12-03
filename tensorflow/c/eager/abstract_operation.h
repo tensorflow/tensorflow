@@ -53,7 +53,7 @@ class AbstractOperation {
   // clients MUST call Release() in order to destroy an instance of this class.
   virtual void Release() = 0;
 
-  virtual Status Reset(const char* op, const char* raw_device_name) = 0;
+  virtual absl::Status Reset(const char* op, const char* raw_device_name) = 0;
 
   virtual const string& Name() const = 0;
 
@@ -78,47 +78,54 @@ class AbstractOperation {
   //
   // The value will override the previous value - that is, no "merging" of
   // existing and given constraints will be performed.
-  virtual Status SetDeviceName(const char* name) = 0;
+  virtual absl::Status SetDeviceName(const char* name) = 0;
 
-  virtual Status AddInput(AbstractTensorHandle* input) = 0;
-  virtual Status AddInputList(
+  virtual absl::Status AddInput(AbstractTensorHandle* input) = 0;
+  virtual absl::Status AddInputList(
       absl::Span<AbstractTensorHandle* const> inputs) = 0;
-  virtual Status Execute(absl::Span<AbstractTensorHandle*> retvals,
-                         int* num_retvals) = 0;
+  virtual absl::Status Execute(absl::Span<AbstractTensorHandle*> retvals,
+                               int* num_retvals) = 0;
 
-  virtual Status SetAttrString(const char* attr_name, const char* data,
-                               size_t length) = 0;
-  virtual Status SetAttrInt(const char* attr_name, int64_t value) = 0;
-  virtual Status SetAttrFloat(const char* attr_name, float value) = 0;
-  virtual Status SetAttrBool(const char* attr_name, bool value) = 0;
-  virtual Status SetAttrType(const char* attr_name, DataType value) = 0;
-  virtual Status SetAttrShape(const char* attr_name, const int64_t* dims,
-                              const int num_dims) = 0;
-  virtual Status SetAttrShape(const char* attr_name,
-                              const PartialTensorShape shape);
-  virtual Status SetAttrFunction(const char* attr_name,
-                                 const AbstractOperation* value) = 0;
-  virtual Status SetAttrFunctionName(const char* attr_name, const char* value,
+  virtual absl::Status SetAttrString(const char* attr_name, const char* data,
                                      size_t length) = 0;
-  virtual Status SetAttrTensor(const char* attr_name,
-                               AbstractTensorInterface* tensor) = 0;
-  virtual Status SetAttrStringList(const char* attr_name,
-                                   const void* const* values,
-                                   const size_t* lengths, int num_values) = 0;
-  virtual Status SetAttrStringList(const char* attr_name,
-                                   absl::Span<string const> values);
-  virtual Status SetAttrFloatList(const char* attr_name, const float* values,
-                                  int num_values) = 0;
-  virtual Status SetAttrIntList(const char* attr_name, const int64_t* values,
-                                int num_values) = 0;
-  virtual Status SetAttrTypeList(const char* attr_name, const DataType* values,
-                                 int num_values) = 0;
-  virtual Status SetAttrBoolList(const char* attr_name,
-                                 const unsigned char* values,
-                                 int num_values) = 0;
-  virtual Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
-                                  const int* num_dims, int num_values) = 0;
-  virtual Status SetAttrFunctionList(
+  virtual absl::Status SetAttrInt(const char* attr_name, int64_t value) = 0;
+  virtual absl::Status SetAttrFloat(const char* attr_name, float value) = 0;
+  virtual absl::Status SetAttrBool(const char* attr_name, bool value) = 0;
+  virtual absl::Status SetAttrType(const char* attr_name, DataType value) = 0;
+  virtual absl::Status SetAttrShape(const char* attr_name, const int64_t* dims,
+                                    const int num_dims) = 0;
+  virtual absl::Status SetAttrShape(const char* attr_name,
+                                    const PartialTensorShape shape);
+  virtual absl::Status SetAttrFunction(const char* attr_name,
+                                       const AbstractOperation* value) = 0;
+  virtual absl::Status SetAttrFunctionName(const char* attr_name,
+                                           const char* value,
+                                           size_t length) = 0;
+  virtual absl::Status SetAttrTensor(const char* attr_name,
+                                     AbstractTensorInterface* tensor) = 0;
+  virtual absl::Status SetAttrStringList(const char* attr_name,
+                                         const void* const* values,
+                                         const size_t* lengths,
+                                         int num_values) = 0;
+  virtual absl::Status SetAttrStringList(const char* attr_name,
+                                         absl::Span<string const> values);
+  virtual absl::Status SetAttrFloatList(const char* attr_name,
+                                        const float* values,
+                                        int num_values) = 0;
+  virtual absl::Status SetAttrIntList(const char* attr_name,
+                                      const int64_t* values,
+                                      int num_values) = 0;
+  virtual absl::Status SetAttrTypeList(const char* attr_name,
+                                       const DataType* values,
+                                       int num_values) = 0;
+  virtual absl::Status SetAttrBoolList(const char* attr_name,
+                                       const unsigned char* values,
+                                       int num_values) = 0;
+  virtual absl::Status SetAttrShapeList(const char* attr_name,
+                                        const int64_t** dims,
+                                        const int* num_dims,
+                                        int num_values) = 0;
+  virtual absl::Status SetAttrFunctionList(
       const char* attr_name, absl::Span<const AbstractOperation*> values) = 0;
 
  private:
@@ -127,12 +134,12 @@ class AbstractOperation {
 
 // TODO(b/193656009): Defining these in a cc file causes linker errors with
 // fastbuild.
-inline Status AbstractOperation::SetAttrShape(const char* attr_name,
-                                              const PartialTensorShape shape) {
+inline absl::Status AbstractOperation::SetAttrShape(
+    const char* attr_name, const PartialTensorShape shape) {
   return SetAttrShape(attr_name, shape.dim_sizes().data(), shape.dims());
 }
 
-inline Status AbstractOperation::SetAttrStringList(
+inline absl::Status AbstractOperation::SetAttrStringList(
     const char* attr_name, absl::Span<string const> values) {
   std::vector<const char*> raw_strs;
   std::vector<size_t> lengths;

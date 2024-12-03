@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
@@ -68,13 +69,15 @@ IfrtServingExecutableTestHelper::IfrtServingExecutableTestHelper(
   work_queue_ = tfrt::CreateMultiThreadedWorkQueue(
       /*num_threads=*/4, /*num_blocking_threads=*/4);
 
-  auto device_mgr_or = ifrt_serving::CreateTfStaticDeviceMgr();
+  auto device_mgr_or = ifrt_serving::CreateTfDynamicDeviceMgr();
   TF_CHECK_OK(device_mgr_or.status());
   device_mgr_ = std::move(device_mgr_or.value());
 
   mlir::registerAllDialects(registry_);
   mlir::RegisterAllTensorFlowDialects(registry_);
   context_ = std::make_unique<mlir::MLIRContext>(registry_);
+  ifrt_persistent_compilation_cache_ =
+      std::make_unique<IfrtPersistentCompilationCache>();
 }
 
 std::unique_ptr<IfrtServingExecutable>
@@ -87,7 +90,8 @@ IfrtServingExecutableTestHelper::MakeExecutable(int64_t program_id,
       thread_pool_.get(), &ifrt_loaded_variable_registry_,
       &ifrt_restore_tensor_registry_, work_queue_.get(), device_mgr_.get(),
       tensorflow::IdentityShapeRepresentationFn(), core_selector_.get(),
-      /*compilation_environment_proto=*/nullptr);
+      /*compilation_environment_proto=*/nullptr,
+      ifrt_persistent_compilation_cache_.get());
   TF_CHECK_OK(executable_or.status());
   return std::move(executable_or.value());
 }

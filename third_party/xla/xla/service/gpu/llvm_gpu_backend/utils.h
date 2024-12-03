@@ -16,25 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_LLVM_GPU_BACKEND_UTILS_H_
 #define XLA_SERVICE_GPU_LLVM_GPU_BACKEND_UTILS_H_
 
-#include <memory>
 #include <string>
 
 #include "absl/strings/string_view.h"
 
-namespace llvm {
-class LLVMContext;
-class Module;
-}  // namespace llvm
-
 namespace xla {
 namespace gpu {
-
-// Convenience function for loading a LLVM module from an IR file. The module
-// is created in the given LLVM context.
-//
-// If loading fails for some reason, dies printing a diagnostic error.
-std::unique_ptr<llvm::Module> LoadIRModule(const std::string& filename,
-                                           llvm::LLVMContext* llvm_context);
 
 // Convenience function for replacing the extension of the given filename.
 // If the filename has no extension, the new extension is appended to its name.

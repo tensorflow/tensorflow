@@ -38,11 +38,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
@@ -159,9 +159,11 @@ bool IsAlignedSlice(const HloInstruction* slice) {
 //   param = (s32[], s32[], s32[16]{0}, s32[16]{0}) parameter(0)
 //   // the index in `gte` has to be the loop iteration index
 //   gte = s32[] get-tuple-element(param), index=0
-//   c0 = s32[] constant(0) compare = pred[] compare(gte, c0), direction=LT
+//   c0 = s32[] constant(0)
+//   compare = pred[] compare(gte, c0), direction=LT
 //   c_trip_count = s32[] constant(16)
-//   add = s32[] add(gte, c_trip_count) select = s32[] select(compare, add, gte)
+//   add = s32[] add(gte, c_trip_count)
+//   select = s32[] select(compare, add, gte)
 // clang-format on
 
 bool IsLoopIterationNumber(const HloInstruction& offset) {
@@ -251,8 +253,12 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr) {
   // the matched instructions that we have seen so far.
   InstructionSet processed_instrs;
 
-  const auto& aliasing_pairs =
-      Cast<HloCustomCallInstruction>(instr)->output_to_operand_aliasing();
+  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+      aliasing_pairs;
+  if (instr->opcode() == HloOpcode::kCustomCall) {
+    aliasing_pairs =
+        Cast<HloCustomCallInstruction>(instr)->output_to_operand_aliasing();
+  }
   absl::flat_hash_set<int64_t> aliased_operands;
   for (const auto& pair : aliasing_pairs) {
     aliased_operands.insert(pair.second.first);
@@ -383,7 +389,7 @@ absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
     for (HloInstruction* operand : instr->operands()) {
       if (!matched_instrs.contains(operand) &&
           absl::c_find(captures, operand) == captures.end()) {
-        captures.emplace_back(operand);
+        captures.push_back(operand);
       }
     }
   }
@@ -429,7 +435,7 @@ absl::Status CreateRootTuple(
 absl::StatusOr<HloComputation*> CreateFusionBody(
     HloModule* module, DataflowPathView sliced_operand_paths,
     DataflowPathsView sliced_user_paths, DataflowPathView captures) {
-  HloComputation::Builder builder("address-computation");
+  HloComputation::Builder builder("dynamic-slice-fusion");
 
   // A mapping from original instructions to instructions in the fusion body.
   absl::flat_hash_map<const HloInstruction*, HloInstruction*> instr_mapping;
@@ -512,20 +518,18 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   absl::flat_hash_map<HloInstruction*,
                       std::pair<UseDefDataflowPaths, DefUseDataflowPaths>>
-      matches;
+      matches_kv;
 
+  std::vector<HloInstruction*> matches;
   // Collect all potential custom call matches in the non-fusion computations.
   for (HloComputation* computation : module->computations()) {
     if (computation->IsFusionComputation()) continue;
     for (HloInstruction* instr : computation->instructions()) {
-      UseDefDataflowPaths sliced_operand_paths = {instr};
-      bool has_sliced_operand_paths = false;
-      if (IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
-        sliced_operand_paths = GetSlicedOperandPaths(instr);
-        has_sliced_operand_paths = sliced_operand_paths.size() > 1;
-      }
-      if (instr->opcode() == HloOpcode::kReduceScatter ||
+      if ((instr->opcode() == HloOpcode::kReduceScatter &&
+           instr->shape().IsArray()) ||
           IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
+        UseDefDataflowPaths sliced_operand_paths = GetSlicedOperandPaths(instr);
+        bool has_sliced_operand_paths = sliced_operand_paths.size() > 1;
         DefUseDataflowPaths sliced_user_paths = GetSlicedUserPaths(instr);
         bool has_sliced_user_paths = absl::c_any_of(
             sliced_user_paths,
@@ -540,8 +544,9 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
         }
 
         if (has_sliced_operand_paths || has_sliced_user_paths) {
-          matches[instr] = std::make_pair(std::move(sliced_operand_paths),
-                                          std::move(sliced_user_paths));
+          matches_kv[instr] = std::make_pair(std::move(sliced_operand_paths),
+                                             std::move(sliced_user_paths));
+          matches.push_back(instr);
         }
       }
     }
@@ -549,7 +554,8 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
 
   if (matches.empty()) return false;
 
-  for (auto& [hero, paths] : matches) {
+  for (HloInstruction* hero : matches) {
+    auto& paths = matches_kv[hero];
     auto& [sliced_operand_paths, sliced_user_paths] = paths;
     std::vector<HloInstruction*> matched_instrs;
     absl::c_copy(sliced_operand_paths, std::back_inserter(matched_instrs));

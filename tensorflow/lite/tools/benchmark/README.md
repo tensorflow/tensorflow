@@ -80,6 +80,15 @@ and the following optional parameters:
     and the path to include the name of the output file; otherwise results are
     printed to `stdout`.
 
+*  `export_model_runtime_info`: `bool` (default="false") \
+    Exports the model runtime information in a proto format as specified
+     in `tensorflow/lite/profiling/proto/model_runtime_info.proto`.
+*  `model_runtime_info_output_file`: `str` (default="") \
+    File path to export model runtime data to. The results are printed to
+    `stdout` if option is not set. Requires `export_model_runtime_info` to be
+    `true` and the path to include the name of the output file; otherwise
+    results are printed to `stdout`.
+
 *   `profiling_output_csv_file`: `str` (default="") \
 
     WARNING: Deprecated, prefer using `op_profiling_output_mode` and
@@ -89,6 +98,15 @@ and the following optional parameters:
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
     and the path to include the name of the output CSV; otherwise results are
     printed to `stdout`.
+
+*  `output_filepath`: `str` (default="") \
+    File path to save output tensor data to. If specified, the output tensor
+    values are saved as binary data in the file.
+
+*  `output_proto_filepath`: `str` (default="") \
+    File path to save output tensor data as tensorflow example proto. If
+    specified, the output tensor values are saved in tensorflow example and then
+    serialized to the file.
 
 *   `print_preinvoke_state`: `bool` (default=false) \
     Whether to print out the TfLite interpreter internals just before calling

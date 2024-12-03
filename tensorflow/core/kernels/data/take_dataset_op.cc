@@ -83,18 +83,18 @@ int64_t TakeDataset::CardinalityInternal(CardinalityOptions options) const {
   return std::min(n, count_);
 }
 
-Status TakeDataset::InputDatasets(
+absl::Status TakeDataset::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
   inputs->push_back(input_);
   return absl::OkStatus();
 }
 
-Status TakeDataset::CheckExternalState() const {
+absl::Status TakeDataset::CheckExternalState() const {
   return input_->CheckExternalState();
 }
 
-Status TakeDataset::Get(OpKernelContext* ctx, int64 index,
-                        std::vector<Tensor>* out_tensors) const {
+absl::Status TakeDataset::Get(OpKernelContext* ctx, int64 index,
+                              std::vector<Tensor>* out_tensors) const {
   TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
   return input_->Get(ctx, index, out_tensors);
 }
@@ -110,8 +110,9 @@ class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
 
   bool SymbolicCheckpointCompatible() const override { return true; }
 
-  Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence) override {
+  absl::Status GetNextInternal(IteratorContext* ctx,
+                               std::vector<Tensor>* out_tensors,
+                               bool* end_of_sequence) override {
     *end_of_sequence = true;
     return absl::OkStatus();
   }
@@ -123,13 +124,13 @@ class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
                                      /*ratio=*/1);
   }
 
-  Status SaveInternal(SerializationContext* ctx,
-                      IteratorStateWriter* writer) override {
+  absl::Status SaveInternal(SerializationContext* ctx,
+                            IteratorStateWriter* writer) override {
     return absl::OkStatus();
   }
 
-  Status RestoreInternal(IteratorContext* ctx,
-                         IteratorStateReader* reader) override {
+  absl::Status RestoreInternal(IteratorContext* ctx,
+                               IteratorStateReader* reader) override {
     return absl::OkStatus();
   }
 };
@@ -141,12 +142,13 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
 
   bool SymbolicCheckpointCompatible() const override { return true; }
 
-  Status Initialize(IteratorContext* ctx) override {
+  absl::Status Initialize(IteratorContext* ctx) override {
     return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
   }
 
-  Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence) override {
+  absl::Status GetNextInternal(IteratorContext* ctx,
+                               std::vector<Tensor>* out_tensors,
+                               bool* end_of_sequence) override {
     mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
     if (!input_impl_) {
       *end_of_sequence = true;
@@ -173,8 +175,8 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
                                      /*ratio=*/1);
   }
 
-  Status SaveInternal(SerializationContext* ctx,
-                      IteratorStateWriter* writer) override {
+  absl::Status SaveInternal(SerializationContext* ctx,
+                            IteratorStateWriter* writer) override {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurIndex, i_));
     TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kInputImplEmpty,
@@ -185,8 +187,8 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
     return absl::OkStatus();
   }
 
-  Status RestoreInternal(IteratorContext* ctx,
-                         IteratorStateReader* reader) override {
+  absl::Status RestoreInternal(IteratorContext* ctx,
+                               IteratorStateReader* reader) override {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &i_));
     int64_t input_empty;
@@ -219,9 +221,9 @@ std::unique_ptr<IteratorBase> TakeDataset::MakeIteratorInternal(
   }
 }
 
-Status TakeDataset::AsGraphDefInternal(SerializationContext* ctx,
-                                       DatasetGraphDefBuilder* b,
-                                       Node** output) const {
+absl::Status TakeDataset::AsGraphDefInternal(SerializationContext* ctx,
+                                             DatasetGraphDefBuilder* b,
+                                             Node** output) const {
   Node* input_graph_node = nullptr;
   TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
   Node* count = nullptr;

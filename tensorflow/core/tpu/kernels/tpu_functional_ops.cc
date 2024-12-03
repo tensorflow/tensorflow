@@ -155,8 +155,9 @@ struct TPUVariableInfo {
 
 // Check the descendants to parse the placement information for the input node.
 // num_cores_per_replica descriables how many cores the single model uses.
-Status ParseTPUVariableInfor(const Node* node, const int num_cores_per_replica,
-                             TPUVariableInfo* var_info) {
+absl::Status ParseTPUVariableInfor(const Node* node,
+                                   const int num_cores_per_replica,
+                                   TPUVariableInfo* var_info) {
   int core = 0;
   bool use_fast_mem = false;
   VLOG(3) << "Parse tpu variable information for " << node->name();
@@ -201,8 +202,8 @@ Status ParseTPUVariableInfor(const Node* node, const int num_cores_per_replica,
 }
 
 // Helper to instantiate function "func" in the library "lib".
-Status Instantiate(FunctionLibraryRuntime* lib, const NameAttrList& func,
-                   FunctionLibraryRuntime::Handle* handle) {
+absl::Status Instantiate(FunctionLibraryRuntime* lib, const NameAttrList& func,
+                         FunctionLibraryRuntime::Handle* handle) {
   return lib->Instantiate(func.name(), AttrSlice(&func.attr()), handle);
 }
 
@@ -256,8 +257,8 @@ void SetXlaShardingNodeAttr(Node* xla_sharding_node, int num_cores_per_replica,
 
 // If 'device_name' is a TPU device, set its device_ordinal to 'device_ordinal'
 // and set '*rewritten' to true. Otherwise, do nothing.
-Status UpdateTPUDeviceOrdinal(int device_ordinal, string* device_name,
-                              bool* rewritten) {
+absl::Status UpdateTPUDeviceOrdinal(int device_ordinal, string* device_name,
+                                    bool* rewritten) {
   DeviceNameUtils::ParsedName device;
   if (!DeviceNameUtils::ParseFullName(*device_name, &device)) {
     return absl::InvalidArgumentError(
@@ -300,8 +301,8 @@ const Edge* FindHostToDeviceEdge(Node* arg_node) {
   return candidate_edge;
 }
 
-Status CreateInputProxy(Graph* graph, const Edge* candidate_edge,
-                        const Edge** tpu_input_edge) {
+absl::Status CreateInputProxy(Graph* graph, const Edge* candidate_edge,
+                              const Edge** tpu_input_edge) {
   std::vector<const Edge*> edges_to_replace;
   for (const Edge* input_edge : candidate_edge->src()->out_edges()) {
     if (!input_edge->IsControlEdge() &&
@@ -333,7 +334,7 @@ Status CreateInputProxy(Graph* graph, const Edge* candidate_edge,
   return absl::OkStatus();
 }
 
-Status GetClusterName(Graph* graph, string* cluster_name) {
+absl::Status GetClusterName(Graph* graph, string* cluster_name) {
   *cluster_name = "";
   for (const Node* node : graph->nodes()) {
     if (node->attrs().Find(kTpuReplicateAttr) == nullptr) continue;
@@ -434,7 +435,7 @@ string HashShapeAndType(const string prefix, const std::vector<int>& input_dims,
 }
 
 // Get the information for input and output tensors (shapes, dtypes, etc).
-Status GetInputOutputInfo(
+absl::Status GetInputOutputInfo(
     Graph* graph, GraphShapeInfo& tpu_inferred_info,
     std::map<int, InferredShape>& arg_shapes, EdgeShapes& tpu_input_shapes,
     absl::flat_hash_map<const Edge*, DataType>& tpu_input_dtypes,
@@ -484,7 +485,7 @@ Status GetInputOutputInfo(
 }
 
 // Converts a integer vector that represents the shapes to a Tensorshape.
-Status ConvertEdgeShapesToTensorShapes(
+absl::Status ConvertEdgeShapesToTensorShapes(
     const std::map<std::string, std::vector<int>>& named_input_shapes,
     std::vector<TensorShape>* shapes) {
   shapes->resize(named_input_shapes.size());
@@ -506,7 +507,7 @@ Status ConvertEdgeShapesToTensorShapes(
 
 // Get the TF fingerprint with the information from the TPUCompileOp or
 // _TPUCompileMlirOp.
-Status MaybeRegisterFingerprint(
+absl::Status MaybeRegisterFingerprint(
     Graph* graph,
     const std::map<std::string, std::vector<int>>& named_input_shapes,
     uint64_t input_hash) {
@@ -774,7 +775,7 @@ GroupedEdges GroupTensorsForOutputPacking(Graph* graph,
 // dimensions are the same, and split them on TPU to reduce input overhead.
 // `tpu_input_shapes` maps an edge to the shape of its output tensor.
 // `grouped_input_edges` maps tensor name to all edges output from this tensor.
-Status CreateConcatAndSplitNodesForInputTensor(
+absl::Status CreateConcatAndSplitNodesForInputTensor(
     Graph* graph, const string& cluster_name, EdgeShapes* tpu_input_shapes,
     const absl::flat_hash_map<std::string, std::vector<const Edge*>>&
         grouped_input_edges,
@@ -953,7 +954,7 @@ Status CreateConcatAndSplitNodesForInputTensor(
 // dimensions are the same, and split them on CPU to reduce outfeed overhead.
 // `tpu_inferred_info` maps an edge to the inferred shape of its output tensor.
 // `shape_to_output` maps tensor name to all edges output from this tensor.
-Status CreateConcatAndSplitNodesForOutputTensor(
+absl::Status CreateConcatAndSplitNodesForOutputTensor(
     Graph* graph, const string& cluster_name, EdgeShapes* tpu_output_shapes,
     GraphShapeInfo* tpu_inferred_info, GroupedEdges shape_to_output,
     int32_t minimum_output_tensors_packing) {
@@ -1093,9 +1094,9 @@ Status CreateConcatAndSplitNodesForOutputTensor(
   return absl::OkStatus();
 }
 
-Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
-                              EdgeShapes* tpu_input_shapes,
-                              int num_cores_per_replica) {
+absl::Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
+                                    EdgeShapes* tpu_input_shapes,
+                                    int num_cores_per_replica) {
   std::vector<const Edge*> tpu_input_edges_original;
   for (const auto& it : *tpu_input_shapes)
     if (!it.second.empty()) tpu_input_edges_original.push_back(it.first);
@@ -1231,7 +1232,7 @@ Status InsertReshapeNodePairs(Graph* graph, const string& cluster_name,
 
 void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                                         DoneCallback done) {
-  Status init_status;
+  absl::Status init_status;
   absl::call_once(once_, [&]() {
     library_runtime_ = ctx->function_library();
     if (library_runtime_ == nullptr) {
@@ -1393,10 +1394,9 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                    std::move(done));
 }
 
-Status TPUPartitionedCallOp::GetTpuCoreOrdinal(OpKernelContext* ctx,
-                                               uint64_t input_hash,
-                                               int64_t* ordinal_selector_req_id,
-                                               int32_t* core_ordinal) {
+absl::Status TPUPartitionedCallOp::GetTpuCoreOrdinal(
+    OpKernelContext* ctx, uint64_t input_hash, int64_t* ordinal_selector_req_id,
+    int32_t* core_ordinal) {
   tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-GetTpuCoreOrdinal");
   const Tensor* device_ordinal_t;
   TF_RETURN_IF_ERROR(ctx->input(kDeviceOrdinalAttr, &device_ordinal_t));
@@ -1409,7 +1409,7 @@ Status TPUPartitionedCallOp::GetTpuCoreOrdinal(OpKernelContext* ctx,
   return absl::OkStatus();
 }
 
-Status TPUPartitionedCallOp::InitializeVarOnTPU(
+absl::Status TPUPartitionedCallOp::InitializeVarOnTPU(
     OpKernelContext* ctx, const core::RefCountPtr<Var>& var, NodeDef* ndef,
     int device_ordinal, bool fast_mem) {
   const string device = strings::StrCat(kTPUDeviceNamePrefix, device_ordinal);
@@ -1467,10 +1467,10 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
   std::vector<Tensor> dummy_args;
   std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
   Notification done;
-  Status status;
+  absl::Status status;
   tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-InitializeVarOnTPU");
   library_runtime_->Run(opts, fhandle, dummy_args, dummy_rets,
-                        [dummy_rets, &done, &status](const Status& s) {
+                        [dummy_rets, &done, &status](const absl::Status& s) {
                           status = s;
                           delete dummy_rets;
                           done.Notify();
@@ -1490,7 +1490,7 @@ Status TPUPartitionedCallOp::InitializeVarOnTPU(
   return absl::OkStatus();
 }
 
-Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
+absl::Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
     OpKernelContext* ctx, const core::RefCountPtr<Var>& var,
     std::vector<NodeDef>& ndefs, int split_dim,
     const std::vector<string>& tpu_devices) {
@@ -1628,7 +1628,7 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
   opts.rendezvous = &rendez;
 
   BlockingCounter bcount(functions.size());
-  std::vector<Status> statuses(functions.size());
+  std::vector<absl::Status> statuses(functions.size());
   for (int i = 0; i < functions.size(); i++) {
     const DeviceAndFHandle& entry = functions[i];
     const string& target_device = entry.device;
@@ -1641,12 +1641,13 @@ Status TPUPartitionedCallOp::InitializeShardedVarOnTPU(
 
     tsl::profiler::TraceMe trace_me(
         "TPUPartitionedCallOp-InitializeShardedVarOnTPU");
-    library_runtime_->Run(opts, handle, dummy_args, dummy_rets,
-                          [dummy_rets, i, &bcount, &statuses](const Status& s) {
-                            statuses[i] = s;
-                            delete dummy_rets;
-                            bcount.DecrementCount();
-                          });
+    library_runtime_->Run(
+        opts, handle, dummy_args, dummy_rets,
+        [dummy_rets, i, &bcount, &statuses](const absl::Status& s) {
+          statuses[i] = s;
+          delete dummy_rets;
+          bcount.DecrementCount();
+        });
   }
   bcount.Wait();
 
@@ -1672,7 +1673,7 @@ bool TPUPartitionedCallOp::IsInputToTPUReplicate(Node* node) {
   return false;
 }
 
-Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
+absl::Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
     Graph* graph, OpKernelContext* ctx, int device_ordinal,
     bool enable_spmd_xla_partitioning, const TPUMetadata& tpu_metadata) {
   // Currently variable deduplication is not supported for XLA SPMD
@@ -1810,7 +1811,8 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
       TF_RETURN_IF_ERROR(library_runtime_->device_mgr()->LookupDevice(
           strings::StrCat(kTPUDeviceNamePrefix, device_ordinal), &d));
       Var* tpu_var;
-      Status status = d->resource_manager()->Lookup(cname, sname, &tpu_var);
+      absl::Status status =
+          d->resource_manager()->Lookup(cname, sname, &tpu_var);
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(InitializeVarOnTPU(ctx, var, &ndef, device_ordinal,
                                               var_info.fast_mem));
@@ -1836,7 +1838,7 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
   return absl::OkStatus();
 }
 
-Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
+absl::Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
     Graph* graph, OpKernelContext* ctx, int device_ordinal,
     ResourceHandle& handle, Node* variable, const TPUMetadata& tpu_metadata) {
   if (device_ordinal >= tpu_metadata.topology.num_tpu_devices_per_task()) {
@@ -1995,7 +1997,7 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
   replicated_builder.Input(replicated_inputs);
   NodeDef replicated_node_def;
   TF_RETURN_IF_ERROR(replicated_builder.Finalize(&replicated_node_def));
-  Status replicated_s;
+  absl::Status replicated_s;
   Node* tpu_replicated_input_node =
       graph->AddNode(replicated_node_def, &replicated_s);
   if (!replicated_s.ok()) {
@@ -2021,7 +2023,7 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
   graph->RemoveNode(variable);
 
   std::vector<NodeDef> ndefs;
-  Status status;
+  absl::Status status;
   for (int i = 0; i < num_cores_per_replica; i++) {
     Device* d;
     TF_RETURN_IF_ERROR(
@@ -2050,7 +2052,7 @@ Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
   return absl::OkStatus();
 }
 
-Status TPUPartitionedCallOp::InferShapesWithResourceVar(
+absl::Status TPUPartitionedCallOp::InferShapesWithResourceVar(
     Graph* graph, OpKernelContext* ctx,
     std::map<int, InferredShape>& arg_shapes,
     GraphShapeInfo* tpu_inferred_info) {
@@ -2119,7 +2121,7 @@ Status TPUPartitionedCallOp::InferShapesWithResourceVar(
   return absl::OkStatus();
 }
 
-Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
+absl::Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
     Graph* graph, const std::string& cluster_name, int num_cores_per_replica,
     OpKernelContext* ctx) {
   for (Node* replicated_input_node : graph->nodes()) {
@@ -2235,7 +2237,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
 // (2) and (3) are controlled by flags --minimum_input_tensors_packing
 // and --input_shape_opt, respectively, while (4) is controlled by
 // --minimum_output_tensors_packing.
-Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
+absl::Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
     Graph* graph, bool enable_spmd_xla_partitioning, int num_cores_per_replica,
     std::map<std::string, std::vector<int>>& named_input_shapes,
     OpKernelContext* ctx) {
@@ -2345,7 +2347,7 @@ Status TPUPartitionedCallOp::OptimizeTpuInputOutputTensors(
   return absl::OkStatus();
 }
 
-Status TPUPartitionedCallOp::GetGraphFromFunction(
+absl::Status TPUPartitionedCallOp::GetGraphFromFunction(
     Graph* graph, int device_ordinal, bool* use_spmd_for_xla_partitioning,
     TPUMetadata* tpu_metadata) {
   FunctionLibraryRuntime::InstantiateOptions opts;
@@ -2459,7 +2461,7 @@ Status TPUPartitionedCallOp::GetGraphFromFunction(
   return absl::OkStatus();
 }
 
-Status TPUPartitionedCallOp::PlacementHelper(
+absl::Status TPUPartitionedCallOp::PlacementHelper(
     const DeviceSet& device_set,
     const GraphOptimizationPassOptions& optimization_options,
     const string& function_name) {
@@ -2475,7 +2477,7 @@ Status TPUPartitionedCallOp::PlacementHelper(
   return absl::OkStatus();
 }
 
-Status TPUPartitionedCallOp::PartitionHelper(
+absl::Status TPUPartitionedCallOp::PartitionHelper(
     const DeviceSet& device_set,
     const GraphOptimizationPassOptions& optimization_options, Graph* graph,
     std::unordered_map<std::string, std::unique_ptr<Graph>>* subgraphs) {
@@ -2525,7 +2527,7 @@ Status TPUPartitionedCallOp::PartitionHelper(
   return absl::OkStatus();
 }
 
-Status TPUPartitionedCallOp::InstantiatePartition(
+absl::Status TPUPartitionedCallOp::InstantiatePartition(
     const Graph& graph, const string& function_name,
     const string& target_device, FHandle* handle,
     std::unique_ptr<FunctionLibraryDefinition>* out_flib_def) {
@@ -2544,9 +2546,10 @@ Status TPUPartitionedCallOp::InstantiatePartition(
                                        opts, handle);
 }
 
-Status TPUPartitionedCallOp::SetDeviceOrdinal(const DeviceSet& device_set,
-                                              int device_ordinal, Graph* graph,
-                                              bool* modified) {
+absl::Status TPUPartitionedCallOp::SetDeviceOrdinal(const DeviceSet& device_set,
+                                                    int device_ordinal,
+                                                    Graph* graph,
+                                                    bool* modified) {
   int ordinal = -1;
   for (Node* node : graph->op_nodes()) {
     if (node->type_string() == kVarHandleOp) {
@@ -2615,7 +2618,7 @@ Status TPUPartitionedCallOp::SetDeviceOrdinal(const DeviceSet& device_set,
   return absl::OkStatus();
 }
 
-Status TPUPartitionedCallOp::InstantiateFunctionsFromSubgraphs(
+absl::Status TPUPartitionedCallOp::InstantiateFunctionsFromSubgraphs(
     const DeviceSet& device_set, int replica_id, uint64_t cache_hash,
     int num_cores_per_replica,
     std::unordered_map<std::string, std::unique_ptr<Graph>> subgraphs) {
@@ -2701,7 +2704,7 @@ void TPUPartitionedCallOp::ExecuteRemoteFunction(
 
   tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteRemote");
   library_runtime_->Run(opts, handle, dummy_args, dummy_rets,
-                        [dummy_rets, done, ctx](const Status& status) {
+                        [dummy_rets, done, ctx](const absl::Status& status) {
                           if (!status.ok()) {
                             done->UpdateStatus(status);
                           }
@@ -2727,7 +2730,7 @@ void TPUPartitionedCallOp::ExecuteLocalFunction(
 
   tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-ExecuteLocal");
   library_runtime_->Run(opts, handle, args, rets,
-                        [rets, done, ctx](const Status& status) {
+                        [rets, done, ctx](const absl::Status& status) {
                           if (!status.ok()) {
                             done->UpdateStatus(status);
                           } else {
@@ -2764,7 +2767,7 @@ void TPUPartitionedCallOp::ExecuteFunctions(
   StatusCallback callback(
       [rendez = rendez, local_cm, done = std::move(done),
        device_ordinal = device_ordinal, req_id = ordinal_selector_req_id, ctx,
-       ordinal_selector = ordinal_selector_](const Status& status) {
+       ordinal_selector = ordinal_selector_](const absl::Status& status) {
         delete local_cm;
         rendez->Unref();
         if (!status.ok()) ctx->SetStatus(status);

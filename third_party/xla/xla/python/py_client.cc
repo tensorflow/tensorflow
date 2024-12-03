@@ -57,9 +57,9 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
-#include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/callback.h"
+#include "xla/python/guard_lib.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -84,17 +84,12 @@ limitations under the License.
 #include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/traceback.h"
-#include "xla/python/transfer_guard_lib.h"
 #include "xla/python/types.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/platform_util.h"  // IWYU pragma: keep
-#include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
-#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
@@ -179,6 +174,15 @@ std::vector<nb_class_ptr<PyDevice>> PyClient::LocalDevices() {
   return devices;
 }
 
+std::vector<nb_class_ptr<PyDevice>> PyClient::GetAllDevices() {
+  std::vector<nb_class_ptr<PyDevice>> devices;
+  devices.reserve(ifrt_client_->GetAllDevices().size());
+  for (ifrt::Device* device : ifrt_client_->GetAllDevices()) {
+    devices.push_back(GetPyDevice(device));
+  }
+  return devices;
+}
+
 absl::StatusOr<nb_class_ptr<PyDevice>> PyClient::DeviceFromLocalHardwareId(
     int local_hardware_id) {
   TF_ASSIGN_OR_RETURN(ifrt::Device * device,
@@ -199,86 +203,93 @@ nb::list PyClient::LiveExecutables() {
 
 absl::Status PyClient::Defragment() {
   CHECK(PyGILState_Check());
-  auto runtime_type = ifrt_client_->runtime_type();
-  if (runtime_type == PjRtRuntimeTypeString(PjRtRuntimeType::kTfrt)) {
+  if (!llvm::isa<ifrt::PjRtCompatibleClient>(ifrt_client_.get())) {
+    return absl::UnimplementedError(
+        "Defragmentation is not supported on this runtime.");
+  }
+  ifrt::PlatformId platform_id = ifrt_client_->platform_id();
+  bool is_gpu_client = platform_id == CudaId() || platform_id == RocmId() ||
+                       platform_id == SyclId();
+
+  if (!is_gpu_client) {
     return pjrt_client()->Defragment();
-  } else if (runtime_type ==
-             PjRtRuntimeTypeString(PjRtRuntimeType::kStreamExecutor)) {
-    struct TmpBuffer {
-      // Non-empty for buffers found in a PyArray_Storage. Multiple Arrays
-      // can reference the same PjRtBuffer.
-      std::vector<std::shared_ptr<PjRtBuffer>*> pjrt_buffer_ptrs;
-      // TODO(skyewm): maybe use py_buffer's HostValue
-      std::shared_ptr<Literal> host_copy;
-    };
+  }
 
-    // Synchronously copy all buffers to host
-    absl::flat_hash_map<PjRtBuffer*, TmpBuffer> pjrt_buf_to_tmp_buffer;
+  struct TmpBuffer {
+    // Non-empty for buffers found in a PyArray_Storage. Multiple Arrays
+    // can reference the same PjRtBuffer.
+    std::vector<std::shared_ptr<PjRtBuffer>*> pjrt_buffer_ptrs;
+    // TODO(skyewm): maybe use py_buffer's HostValue
+    std::shared_ptr<Literal> host_copy;
+  };
 
-    for (PyArray_Storage* array = arrays_; array; array = array->next) {
-      // TODO(hyeontaek): Support non-PjRt Arrays.
-      // TODO(hyeontaek): Re-construct ifrt::Array with new PjRtBuffer so that
-      // std::shared_ptr<PjRtBuffer> does not need to be updated in-place.
-      if (array->ifrt_array == nullptr) {
+  // Synchronously copy all buffers to host
+  absl::flat_hash_map<PjRtBuffer*, TmpBuffer> pjrt_buf_to_tmp_buffer;
+
+  for (PyArray_Storage* array = arrays_; array; array = array->next) {
+    // TODO(hyeontaek): Support non-PjRt Arrays.
+    // TODO(hyeontaek): Re-construct ifrt::Array with new PjRtBuffer so that
+    // std::shared_ptr<PjRtBuffer> does not need to be updated in-place.
+    if (array->ifrt_array == nullptr) {
+      continue;
+    }
+    auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(
+        array->ifrt_array.get());
+    if (arr == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend "
+          "only.");
+    }
+    TF_ASSIGN_OR_RETURN(absl::Span<std::shared_ptr<PjRtBuffer>> pjrt_buffers,
+                        arr->mutable_pjrt_buffers());
+    for (int i = 0; i < pjrt_buffers.size(); ++i) {
+      std::shared_ptr<PjRtBuffer>& pjrt_buf_ptr = pjrt_buffers[i];
+      if (pjrt_buf_ptr->IsDeleted()) {
         continue;
       }
-      auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(
-          array->ifrt_array.get());
-      if (arr == nullptr) {
-        throw XlaRuntimeError(
-            "This operation is implemented for a PjRt-compatible backend "
-            "only.");
+      auto [iter, inserted] =
+          pjrt_buf_to_tmp_buffer.insert({pjrt_buf_ptr.get(), TmpBuffer()});
+      if (inserted) {
+        TF_ASSIGN_OR_RETURN(iter->second.host_copy,
+                            pjrt_buf_ptr->ToLiteralSync());
       }
-      TF_ASSIGN_OR_RETURN(absl::Span<std::shared_ptr<PjRtBuffer>> pjrt_buffers,
-                          arr->mutable_pjrt_buffers());
-      for (int i = 0; i < pjrt_buffers.size(); ++i) {
-        std::shared_ptr<PjRtBuffer>& pjrt_buf_ptr = pjrt_buffers[i];
-        if (pjrt_buf_ptr->IsDeleted()) {
-          continue;
-        }
-        auto [iter, inserted] =
-            pjrt_buf_to_tmp_buffer.insert({pjrt_buf_ptr.get(), TmpBuffer()});
-        if (inserted) {
-          TF_ASSIGN_OR_RETURN(iter->second.host_copy,
-                              pjrt_buf_ptr->ToLiteralSync());
-        }
-        iter->second.pjrt_buffer_ptrs.push_back(&pjrt_buf_ptr);
-      }
+      iter->second.pjrt_buffer_ptrs.push_back(&pjrt_buf_ptr);
     }
-
-    // All buffers successfully copied to host, delete on-device copies.
-    //
-    // Use blocking delete operation to ensure all memory is actually cleared
-    // before we start rewriting buffers.
-    //
-    // Die instead of returning a bad status because program presumably can't
-    // continue if we fail to reconstitute device buffers.
-    for (const auto& it : pjrt_buf_to_tmp_buffer) {
-      PjRtBuffer* pjrt_buf = it.first;
-      TF_CHECK_OK(tensorflow::down_cast<PjRtStreamExecutorBuffer*>(pjrt_buf)
-                      ->Release(/*wait_for_operations_to_complete=*/true)
-                      .status());
-    }
-
-    // Copy host copies back to device and update PyArrays in-place.
-    for (auto& it : pjrt_buf_to_tmp_buffer) {
-      PjRtBuffer* pjrt_buf = it.first;
-      TmpBuffer& tmp_buffer = it.second;
-      std::unique_ptr<PjRtBuffer> new_copy =
-          pjrt_client()
-              ->BufferFromHostLiteral(*tmp_buffer.host_copy, pjrt_buf->device())
-              .value();
-      TF_CHECK_OK(new_copy->BlockHostUntilReady());
-
-      std::shared_ptr<PjRtBuffer> new_pjrt_buf_ptr(new_copy.release());
-      for (std::shared_ptr<PjRtBuffer>* pjrt_buffer_ptr :
-           tmp_buffer.pjrt_buffer_ptrs) {
-        *pjrt_buffer_ptr = new_pjrt_buf_ptr;
-      }
-    }
-
-    // TODO(skyewm): delete executables?
   }
+
+  // All buffers successfully copied to host, delete on-device copies.
+  //
+  // Use blocking delete operation to ensure all memory is actually cleared
+  // before we start rewriting buffers.
+  //
+  // Die instead of returning a bad status because program presumably can't
+  // continue if we fail to reconstitute device buffers.
+  for (const auto& it : pjrt_buf_to_tmp_buffer) {
+    PjRtBuffer* pjrt_buf = it.first;
+    TF_CHECK_OK(pjrt_buf
+                    ->ReleaseDeviceMemoryOwnership(
+                        /*wait_for_operations_to_complete=*/true)
+                    .status());
+  }
+
+  // Copy host copies back to device and update PyArrays in-place.
+  for (auto& it : pjrt_buf_to_tmp_buffer) {
+    PjRtBuffer* pjrt_buf = it.first;
+    TmpBuffer& tmp_buffer = it.second;
+    std::unique_ptr<PjRtBuffer> new_copy =
+        pjrt_client()
+            ->BufferFromHostLiteral(*tmp_buffer.host_copy, pjrt_buf->device())
+            .value();
+    TF_CHECK_OK(new_copy->GetReadyFuture().Await());
+
+    std::shared_ptr<PjRtBuffer> new_pjrt_buf_ptr(new_copy.release());
+    for (std::shared_ptr<PjRtBuffer>* pjrt_buffer_ptr :
+         tmp_buffer.pjrt_buffer_ptrs) {
+      *pjrt_buffer_ptr = new_pjrt_buf_ptr;
+    }
+  }
+
+  // TODO(skyewm): delete executables?
   return absl::OkStatus();
 }
 
@@ -419,6 +430,11 @@ PyClient::CompileIfrtProgram(
             *stats->bytes_limit);
       }
     }
+
+    if (pjrt_compatible_client->pjrt_client()->key_value_store().has_value()) {
+      options.executable_build_options.set_key_value_store(
+          *pjrt_compatible_client->pjrt_client()->key_value_store());
+    }
   }
 
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
@@ -444,20 +460,9 @@ PyClient::CompileIfrtProgram(
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseMlirModuleString(mlir_module, context));
   if (options.executable_build_options.use_shardy_partitioner()) {
-    mlir::PassManager pm(&context);
-    // Since Shardy is inside the middle of the XLA pipeline, after converting
-    // down to HLO, we need to run the Shardy export pipeline to preserve the
-    // SDY ops and sharding attributes for when we come back from HLO to MLIR
-    // when Shardy propagation is run.
-    xla::sdy::addSdyRoundTripExportPipeline(pm);
-    // TODO(bartchr): remove setting `kPythonIntegrationComplete` in follow-up
-    // now that both JAX and PartIR are integrated with Shardy.
-    xla::sdy::addFrontendAttribute(*module,
-                                   xla::sdy::kPythonIntegrationComplete,
-                                   mlir::StringAttr::get(&context, "t"));
-    TF_RETURN_IF_ERROR(
-        tsl::StatusScopedDiagnosticHandler(&context).consumeStatus(
-            pm.run(*module)));
+    // Since Shardy is located in the middle of the XLA pipeline, we need to
+    // export it before going to HLO while preserving Shardy ops and attrs.
+    TF_RETURN_IF_ERROR(ExportShardyForHloRoundTrip(*module));
   }
   return CompileIfrtProgram(
       client, std::make_unique<xla::ifrt::HloProgram>(module.get()),
@@ -649,12 +654,6 @@ PyClient::GetEmitPythonCallbackDescriptor(nb::callable callable,
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
                                              &XlaPythonCpuCallback);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM || TENSORFLOW_USE_SYCL
-XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
-    "xla_python_gpu_callback", &XlaPythonGpuCallback,
-    absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
-#endif
-
 /* static */ int PyClient::tp_traverse(PyObject* self, visitproc visit,
                                        void* arg) {
   PyClient* c = nb::inst_ptr<PyClient>(self);
@@ -699,6 +698,9 @@ PyType_Slot PyClient::slots_[] = {
       .def("local_device_count", &PyClient::addressable_device_count)
       .def("devices", &PyClient::Devices)
       .def("local_devices", &PyClient::LocalDevices)
+      // TODO(hyeontaek): Remove this method once we have a unified API for
+      // enumerating devices with different criteria.
+      .def("_get_all_devices", &PyClient::GetAllDevices)
       .def("device_from_local_hardware_id",
            xla::ValueOrThrowWrapper(&PyClient::DeviceFromLocalHardwareId))
       .def("live_executables", &PyClient::LiveExecutables)

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_FRAMEWORK_DEVICE_ID_H_
 #define XLA_TSL_FRAMEWORK_DEVICE_ID_H_
 
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace tsl {
 

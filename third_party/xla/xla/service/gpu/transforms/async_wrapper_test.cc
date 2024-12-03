@@ -23,12 +23,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/status_matchers.h"
 
 namespace xla::gpu {
@@ -70,9 +70,7 @@ TEST_F(AsyncWrapperTest, BasicFusion) {
   std::unique_ptr<VerifiedHloModule> module =
       ParseAndReturnVerifiedModule(hlo_text).value();
 
-  AsyncWrapper wrapper([](const HloInstruction* instruction) {
-    return instruction->opcode() == HloOpcode::kFusion;
-  });
+  AsyncWrapper wrapper(HloPredicateIsOp<HloOpcode::kFusion>);
   EXPECT_THAT(wrapper.HloModulePass::Run(module.get()), IsOkAndHolds(true));
   EXPECT_EQ(CountAsyncInstructions(module->entry_computation()), 4);
 

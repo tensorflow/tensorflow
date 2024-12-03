@@ -37,11 +37,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/Support/LLVM.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -57,11 +52,9 @@ limitations under the License.
 #include "xla/service/gpu/runtime/for_all_thunks.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
+#include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/hlo_execution_profile.h"
-#include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/rendezvous.h"
@@ -77,15 +70,13 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/event_based_timer.h"
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/gpu/gpu_activation.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/scoped_module_handle.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -100,16 +91,6 @@ namespace xla {
 namespace gpu {
 
 using ::tsl::profiler::ScopedAnnotation;
-
-static bool NeedsAsyncCommsStream(Thunk& thunk) {
-  switch (thunk.kind()) {
-    case Thunk::Kind::kNcclAllReduceStart:
-    case Thunk::Kind::kNcclAllReduceDone:
-      return true;
-    default:
-      return false;
-  }
-}
 
 // Returns the set of `ExecutionStreamIds` requested by all `Thunks` in the
 // `GpuExecutable`. At run time `Thunks` may use additional streams to launch
@@ -192,6 +173,8 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
         << std::get<se::CudaComputeCapability>(gpu_version_).ToString()
         << "}, but was {" << std::get<se::CudaComputeCapability>(cc).ToString()
         << "}";
+  } else if (platform_id == stream_executor::sycl::kSyclPlatformId) {
+    // TODO: Add check.
   } else {
     return Internal("Unknown platform");
   }
@@ -266,7 +249,7 @@ class ResourceRequests : public Thunk::ResourceRequests {
     NcclClique::AcquiredCliquesMap cliques_map;
 
     for (const CliqueRequest& r : ordered_cliques) {
-      std::optional<int64_t> rank = r.key.rank(params.global_device_id);
+      std::optional<RankId> rank = r.key.rank(params.global_device_id);
 
       if (!rank.has_value()) {
         return absl::InternalError(absl::StrCat(
@@ -351,7 +334,8 @@ absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
                                  se::Stream* stream_to_sync);
 
 absl::Status RendezvousAfterInitialization(
-    const ServiceExecutableRunOptions* run_options);
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options);
 
 absl::Status ExecuteThunks(
     const DebugOptions* debug_options, const std::string& module_name,
@@ -375,6 +359,13 @@ absl::Status ExecuteThunks(
   bool use_highest_priority_for_async_stream =
       debug_options
           ? debug_options->xla_gpu_enable_highest_priority_async_stream()
+          : false;
+
+  bool requires_exclusive_lock_on_gpu =
+      run_options->run_options().gpu_executable_run_options()
+          ? run_options->run_options()
+                .gpu_executable_run_options()
+                ->requires_exclusive_lock_on_gpu()
           : false;
 
   se::Stream* main_stream = run_options->stream();
@@ -468,7 +459,9 @@ absl::Status ExecuteThunks(
         command_buffer_trace_stream,
         &collective_params,
         &collective_cliques,
-        run_options->run_options().ffi_execution_context()};
+        run_options->run_options().ffi_execution_context(),
+        run_options->local_device_count(),
+        requires_exclusive_lock_on_gpu};
 
     tsl::profiler::TraceMe trace([&] { return "Thunks::Initialize"; });
     TF_RETURN_IF_ERROR(thunk_sequence.Initialize(initialize_params));
@@ -478,7 +471,8 @@ absl::Status ExecuteThunks(
   // only in presence of collective cliques which means that we have collective
   // operations in the XLA operations that tend to cause deadlocks.
   if (!collective_cliques.empty()) {
-    TF_RETURN_IF_ERROR(RendezvousAfterInitialization(run_options));
+    TF_RETURN_IF_ERROR(
+        RendezvousAfterInitialization(run_options, debug_options));
   }
 
   // Prepare parameters for thunks execution.
@@ -511,7 +505,8 @@ bool operator==(const InitializationKey& a, const InitializationKey& b) {
 }  // namespace
 
 absl::Status RendezvousAfterInitialization(
-    const ServiceExecutableRunOptions* run_options) {
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options) {
   // Thunk initialization can allocate new control data structures on device
   // that can lead to deadlocks if other replicas are executing concurrently
   // (i.e. this happens if we try to instantiate CUDA graph when other replica
@@ -563,8 +558,16 @@ absl::Status RendezvousAfterInitialization(
       run_options->device_ordinal(),
       run_options->run_options().run_id().ToInt());
 
-  RendezvousSingle(rendezvous_name, rendezvous_key, num_local_participants,
-                   absl::Seconds(10), absl::Seconds(30));
+  RendezvousSingle(
+      rendezvous_name, rendezvous_key, num_local_participants,
+      absl::Seconds(
+          debug_options
+              ? debug_options->xla_gpu_executable_warn_stuck_timeout_seconds()
+              : 10),
+      absl::Seconds(
+          debug_options
+              ? debug_options->xla_gpu_executable_terminate_timeout_seconds()
+              : 30));
 
   return absl::OkStatus();
 }
@@ -625,7 +628,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   if (!(executor->GetPlatform()->id() ==
             stream_executor::cuda::kCudaPlatformId &&
         binary().empty() && text().empty())) {
-    TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
+    TF_ASSIGN_OR_RETURN(module_handle, executor->LoadModule(module_spec));
   }
 
   // A flag signalling if constant initialization submitted memcpy operations
@@ -786,15 +789,13 @@ absl::StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
 
 absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    std::vector<ExecutionInput> arguments) {
   return ExecuteAsyncOnStreamImpl(run_options, absl::MakeSpan(arguments));
 }
 
 absl::StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   TF_ASSIGN_OR_RETURN(ExecutionOutput out,
                       ExecuteAsyncOnStreamImpl(run_options, arguments));
   return out.ConsumeResult();
@@ -808,12 +809,9 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
   se::StreamExecutor* executor = run_options->stream()->parent();
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // GpuExecutable always bound to a single GpuContext during its execution, so
   // we activate it once to skip expensive context activations later.
-  se::gpu::GpuExecutor* gpu_executor = se::gpu::ExtractGpuExecutor(executor);
-  se::gpu::ScopedActivateExecutorContext activation(gpu_executor);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  auto activation = executor->Activate();
 
   // Force synchronous execution if the allocator requires it.
   const bool block_host_until_done =
@@ -826,7 +824,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   std::variant<absl::ReaderMutexLock, absl::WriterMutexLock> gpu_lock(
       std::in_place_index_t<0>{}, &GetGpuMutex(executor));
 
-  // Maybe update to a writer lock to get exlcusive acess to underlying GPU.
+  // Maybe update to a writer lock to get exclusive access to underlying GPU.
   if (auto* gpu_opts = run_options->run_options().gpu_executable_run_options();
       gpu_opts && gpu_opts->requires_exclusive_lock_on_gpu()) {
     gpu_lock.emplace<1>(&GetGpuMutex(executor));
@@ -878,9 +876,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         }
         module_allocations_[executor][i] =
             buffer_allocations.GetDeviceAddress(i);
-        VLOG(5) << "Gpu address changed for module " << module_name_
-                << ", allocation info: \n"
-                << allocations[i].ToShortString();
+        VLOG(5) << "Gpu address changed for module " << module_name_;
       }
     }
   }

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "pybind11/pybind11.h"  // from @pybind11
-#include "stablehlo/integrations/python/PortableApi.h"  // from @stablehlo
+#include "stablehlo/integrations/python/StablehloApi.h"  // from @stablehlo
 
 namespace mlir {
 namespace stablehlo {

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_color.h"
 #include "tensorflow/core/profiler/lib/context_types.h"
@@ -44,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/context_types.h"
-#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -68,6 +69,8 @@ struct JsonTraceOptions {
   TraceEventsColorerInterface* colorer = nullptr;
 
   bool generate_stack_frames = true;
+  bool use_new_backend = false;
+  std::string code_link;
 };
 
 // Counts generated JSON events by type.
@@ -193,7 +196,7 @@ class JsonEventWriter {
         }
         switch (event.flow_entry_type()) {
           case TraceEvent::FLOW_NONE:
-            // The caller prevents this case from happenning.
+            // The caller prevents this case from happening.
             break;
           case TraceEvent::FLOW_START:
             output_->Append(R"(,"flow_out":true)");
@@ -222,7 +225,7 @@ class JsonEventWriter {
         }
         switch (event.flow_entry_type()) {
           case TraceEvent::FLOW_NONE:
-            // The caller prevents this case from happenning.
+            // The caller prevents this case from happening.
             break;
           case TraceEvent::FLOW_START:
             output_->Append(R"(,"ph":"b")");
@@ -514,8 +517,11 @@ void TraceEventsToJson(const JsonTraceOptions& options,
   // uses higher-precision when manipulating event times. Note that the
   // timestamps of trace events are always given in microseconds.
   output->Append(
-      R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true},)");
+      R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true}, "codeLink":")",
+      options.code_link, R"(",)");
 
+  output->Append(absl::StrFormat(R"("useNewBackend": %s,)",
+                                 options.use_new_backend ? "true" : "false"));
   WriteDetails(options.details, output);
   WriteSelectedDeviceIds(options.selected_device_ids, output);
   WriteReturnedEventsSize(events.NumEvents(), output);

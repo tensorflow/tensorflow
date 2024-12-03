@@ -38,8 +38,9 @@ constexpr char kTensor2FileName[] = "memmapped_package://t2";
 constexpr char kProtoFileName[] = "memmapped_package://b";
 constexpr int kTestGraphDefVersion = 666;
 
-Status CreateMemmappedFileSystemFile(const string& filename, bool corrupted,
-                                     Tensor* test_tensor) {
+absl::Status CreateMemmappedFileSystemFile(const string& filename,
+                                           bool corrupted,
+                                           Tensor* test_tensor) {
   Env* env = Env::Default();
   MemmappedFileSystemWriter writer;
   TF_RETURN_IF_ERROR(writer.InitializeToFile(env, filename));

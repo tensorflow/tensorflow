@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/serving_device_selector.h"

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <ostream>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -34,6 +35,17 @@ struct SDPATestParams {
   int kv_heads;
   int head_dim;  // embedding_dim//q_heads
 };
+
+void PrintTo(const SDPATestParams& p, std::ostream* os) {
+  if (p.model_name != kOdmlSdpaCustom) {
+    *os << "{ TFLite file: " << p.model_name << ".tflite.bin }";
+  } else {
+    *os << "{ Custom test: " << p.custom_test_name << ", b:" << p.batch
+        << ", isl:" << p.input_seq_len << ", msl:" << p.max_seq_len
+        << ", q:" << p.q_heads << ", k:" << p.kv_heads << "h:" << p.head_dim
+        << " }";
+  }
+}
 
 std::string TestName(const testing::TestParamInfo<SDPATestParams>& info) {
   if (info.param.model_name != kOdmlSdpaCustom) {

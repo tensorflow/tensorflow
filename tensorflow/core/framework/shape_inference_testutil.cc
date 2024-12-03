@@ -30,9 +30,9 @@ namespace shape_inference {
 
 using errors::Unknown;
 
-Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
-                                           const string& ins,
-                                           const string& expected_outs) {
+absl::Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
+                                                 const string& ins,
+                                                 const string& expected_outs) {
   const OpRegistrationData* op_reg_data;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
 
@@ -230,7 +230,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
 }
 
 // static
-Status ShapeInferenceTestutil::MakeShapeFromString(
+absl::Status ShapeInferenceTestutil::MakeShapeFromString(
     InferenceContext::ShapeManager* manager, const string& spec,
     ShapeHandle* output) {
   if (spec == "?") {

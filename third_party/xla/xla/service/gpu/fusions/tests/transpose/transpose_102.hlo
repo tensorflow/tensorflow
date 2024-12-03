@@ -1,0 +1,6 @@
+// RUN: test_correctness %s
+
+fusion {
+  %p0 = s8[160,170,3] parameter(0)
+  ROOT %transpose = s8[170,160,3] transpose(%p0), dimensions={1,0,2}
+}

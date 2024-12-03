@@ -31,7 +31,7 @@ TEST_P(BatchFunctionKernelEnvTest, Basic) {
   tensorflow::setenv("TF_NUM_BATCH_THREADS", "0", 1 /* overwrite */);
 
   const bool adaptive_scheduler_enabled = GetParam();
-  Status status = Init(adaptive_scheduler_enabled);
+  absl::Status status = Init(adaptive_scheduler_enabled);
   if (adaptive_scheduler_enabled) {
     EXPECT_THAT(status, tensorflow::testing::StatusIs(
                             error::FAILED_PRECONDITION,

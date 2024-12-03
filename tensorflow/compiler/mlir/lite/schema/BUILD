@@ -12,6 +12,8 @@ package(
 
 exports_files(
     srcs = [
+        "conversion_metadata.fbs",
+        "debug_metadata.fbs",
         "schema.fbs",
         "schema_v0.fbs",
         "schema_v1.fbs",
@@ -25,6 +27,7 @@ exports_files(
 filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
+        ":debug_metadata_fbs_srcs",
         ":schema_fbs_srcs",
         ":schema_utils.h",
     ],
@@ -41,6 +44,23 @@ flatbuffer_cc_library(
 flatbuffer_cc_library(
     name = "schema_fbs_with_mutable",
     srcs = ["schema.fbs"],
+    compatible_with = get_compatible_with_portable(),
+    flatc_args = [
+        "--gen-mutable",
+        "--gen-object-api",
+    ],
+    out_prefix = "mutable/",
+)
+
+flatbuffer_cc_library(
+    name = "debug_metadata_fbs",
+    srcs = ["debug_metadata.fbs"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+flatbuffer_cc_library(
+    name = "debug_metadata_fbs_with_mutable",
+    srcs = ["debug_metadata.fbs"],
     compatible_with = get_compatible_with_portable(),
     flatc_args = [
         "--gen-mutable",

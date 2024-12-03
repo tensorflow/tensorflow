@@ -17,14 +17,15 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_state.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -34,10 +35,11 @@ using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
 TEST(PjRtUtilTest, SetGetAndDeletePjRtClient) {
+  xla::CpuClientOptions options;
+  options.asynchronous = true;
+  options.cpu_device_count = 1;
   TF_ASSERT_OK(SetPjRtClientInTFGlobalResourceManager(
-      DEVICE_CPU,
-      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
-          .value()));
+      DEVICE_CPU, xla::GetXlaPjrtCpuClient(options).value()));
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetPjRtClient(DEVICE_CPU));
   EXPECT_THAT(pjrt_client, ::testing::NotNull());
 }

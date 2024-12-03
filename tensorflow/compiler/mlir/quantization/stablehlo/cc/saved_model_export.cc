@@ -240,7 +240,7 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
                                      FunctionDefLibrary()};
   std::unique_ptr<Graph> graph;
   absl::flat_hash_set<Node*> control_ret_nodes{};
-  TF_RETURN_IF_ERROR(tensorflow::tf2xla::v2::ConvertMlirToGraph(
+  TF_RETURN_IF_ERROR(tensorflow::tf2xla::v2::ConvertTfExecutorToGraph(
       module_op, config, &graph, &flib_def, &control_ret_nodes));
 
   GraphDef graph_def{};

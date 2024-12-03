@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
@@ -52,9 +53,11 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
+
 namespace {
 
 namespace m = ::xla::match;
@@ -2719,6 +2722,16 @@ TEST_F(HloInstructionTest, VerifyBodyComputationPointsToWhile) {
     }
   }
   EXPECT_EQ(num_while_body_comp, 1);
+
+  for (HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kWhile) {
+      HloComputation* while_body = instruction->while_body();
+      EXPECT_TRUE(while_body->IsWhileBodyComputation());
+      HloInstruction* while_back_ref = while_body->WhileCallInstruction();
+      EXPECT_EQ(while_back_ref->while_body(), while_body);
+    }
+  }
 }
 
 TEST_F(HloInstructionTest,
@@ -2888,6 +2901,30 @@ TEST_F(HloInstructionTest, BackendConfigNotCopiedToDerivedWithDiffOpcode) {
   EXPECT_FALSE(add2->has_backend_config());
 }
 
+TEST_F(HloInstructionTest, BackendConfigNotCopiedToDerivedWithConfig) {
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto p0 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto p1 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p1"));
+  auto add = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p1));
+
+  gpu::GpuBackendConfig gpu_config0;
+  gpu::GpuBackendConfig gpu_config1;
+  gpu_config0.set_operation_queue_id(2);
+  gpu_config1.set_operation_queue_id(3);
+
+  TF_ASSERT_OK(add->set_backend_config(gpu_config0));
+  auto add2 = b.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p0));
+  TF_ASSERT_OK(add2->set_backend_config(gpu_config1));
+
+  add->SetupDerivedInstruction(add2);
+  auto backend_config = add2->backend_config<gpu::GpuBackendConfig>();
+  EXPECT_TRUE(backend_config.ok());
+  EXPECT_EQ(backend_config->operation_queue_id(), 3);
+}
+
 TEST_F(HloInstructionTest,
        MergeMultiOutputProducerFusionIntoMultiOutputFusion) {
   const std::string& hlo_string = R"(
@@ -3048,5 +3085,292 @@ TEST_F(HloInstructionTest,
                                   m::Add(m::Parameter(0), m::Parameter(1)))));
 }
 
+TEST_F(HloInstructionTest, UnfuseInstruction) {
+  const std::string& hlo_string = R"(
+    HloModule mof
+    fusion_comp {
+      param0 = f32[10]{0} parameter(0)
+      param1 = f32[10]{0} parameter(1)
+      add = f32[10]{0} add(param0, param1)
+      ROOT res = (f32[10]{0}, f32[10]{0}) tuple(param1, add)
+    }
+
+    ENTRY main {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      fusion.1 = (f32[10]{0}, f32[10]{0}) fusion(p0, p1), kind=kLoop, calls=fusion_comp
+      gte0 = f32[10]{0} get-tuple-element(fusion.1), index=0
+      gte1 = f32[10]{0} get-tuple-element(fusion.1), index=1
+      ROOT res = (f32[10]{0}, f32[10]{0}) tuple(gte0, gte1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion.1");
+  HloInstruction* add = fusion->fused_instructions_computation()
+                            ->root_instruction()
+                            ->mutable_operand(1);
+  TF_ASSERT_OK_AND_ASSIGN(auto unfused, fusion->UnfuseInstruction(add));
+  EXPECT_THAT(unfused, GmockMatch(m::Add(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(HloInstructionTest, UnfuseInstruction2) {
+  const std::string& hlo_string = R"(
+    HloModule mof
+    fusion_comp {
+      param0 = f32[10]{0} parameter(0)
+      param1 = f32[10]{0} parameter(1)
+      add = f32[10]{0} add(param0, param1)
+      add2 = f32[10]{0} add(add, param1)
+      ROOT res = (f32[10]{0}, f32[10]{0}) tuple(param1, add2)
+    }
+
+    ENTRY main {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      fusion.1 = (f32[10]{0}, f32[10]{0}) fusion(p0, p1), kind=kLoop, calls=fusion_comp
+      gte0 = f32[10]{0} get-tuple-element(fusion.1), index=0
+      gte1 = f32[10]{0} get-tuple-element(fusion.1), index=1
+      ROOT res = (f32[10]{0}, f32[10]{0}) tuple(gte0, gte1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion.1");
+  HloInstruction* add2 = fusion->fused_instructions_computation()
+                             ->root_instruction()
+                             ->mutable_operand(1);
+  HloInstruction* add = add2->mutable_operand(0);
+
+  // add2 is not unfusable since it has non-const non-parameter operands.
+  EXPECT_FALSE(fusion->UnfuseInstruction(add2).ok());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto unfused, fusion->UnfuseInstruction(add));
+  EXPECT_THAT(unfused, GmockMatch(m::Add(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(HloInstructionTest, UnfuseInstructionWithConstantOperand) {
+  const std::string& hlo_string = R"(
+    HloModule mof
+    fusion_comp {
+      param0 = f32[10]{0} parameter(0)
+      param1 = f32[10]{0} parameter(1)
+      const = f32[] constant(1.0)
+      broadcast = f32[10]{0} broadcast(const), dimensions={}
+      add = f32[10]{0} add(param0, broadcast)
+      ROOT res = (f32[10]{0}, f32[10]{0}) tuple(param1, add)
+    }
+
+    ENTRY main {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      fusion.1 = (f32[10]{0}, f32[10]{0}) fusion(p0, p1), kind=kLoop, calls=fusion_comp
+      gte0 = f32[10]{0} get-tuple-element(fusion.1), index=0
+      gte1 = f32[10]{0} get-tuple-element(fusion.1), index=1
+      ROOT res = (f32[10]{0}, f32[10]{0}) tuple(gte0, gte1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion.1");
+  HloInstruction* add = fusion->fused_instructions_computation()
+                            ->root_instruction()
+                            ->mutable_operand(1);
+  TF_ASSERT_OK_AND_ASSIGN(auto unfused, fusion->UnfuseInstruction(add));
+  EXPECT_THAT(unfused,
+              GmockMatch(m::Add(m::Parameter(0), m::Broadcast(m::Constant()))));
+}
+
+TEST_F(HloInstructionTest, RaggedDotHasPrecisionConfig) {
+  constexpr char kHloString[] = R"(
+  HloModule module
+  ENTRY entry_computation {
+    a = f32[11,5] parameter(0)
+    b = f32[3,5,7] parameter(1)
+    c = u32[3] parameter(2)
+    ROOT dot = f32[11,7] ragged-dot(a, b, c), lhs_contracting_dims={1}, rhs_contracting_dims={1}, lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  auto* ragged_dot = module->entry_computation()->root_instruction();
+
+  EXPECT_THAT(ragged_dot->precision_config().operand_precision(),
+              ::testing::ElementsAre(PrecisionConfig::DEFAULT,
+                                     PrecisionConfig::DEFAULT));
+}
+
+TEST_F(HloInstructionTest, ValidResultAccuracy) {
+  ResultAccuracy result_accuracy_proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        tolerance { rtol: 0.4 atol: 0.0 ulps: 1 }
+      )pb",
+      &result_accuracy_proto));
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+  auto exp = builder.AddInstruction(HloInstruction::CreateUnary(
+      r0f32_, HloOpcode::kExp, foo, result_accuracy_proto));
+  // exp->set_result_accuracy(result_accuracy_proto);
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      result_accuracy_proto,
+      Cast<HloUnaryInstruction>(exp)->result_accuracy()));
+
+  // mode: HIGHEST
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        mode: HIGHEST
+      )pb",
+      &result_accuracy_proto));
+  exp = builder.AddInstruction(HloInstruction::CreateUnary(
+      r0f32_, HloOpcode::kExp, foo, result_accuracy_proto));
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      result_accuracy_proto,
+      Cast<HloUnaryInstruction>(exp)->result_accuracy()));
+}
+
+TEST_F(HloInstructionTest, InvalidResultAccuracy) {
+  ResultAccuracy result_accuracy_proto;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        tolerance { rtol: -0.4 }
+      )pb",
+      &result_accuracy_proto));
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+  ASSERT_DEATH(builder.AddInstruction(HloInstruction::CreateUnary(
+                   r0f32_, HloOpcode::kExp, foo, result_accuracy_proto)),
+               "Invalid result accuracy");
+}
+
+TEST_F(HloInstructionTest, CreateFromProtoExp) {
+  HloInstructionProto proto_valid;
+  proto_valid.set_opcode("exponential");
+  proto_valid.set_name("exp");
+  proto_valid.mutable_shape()->set_element_type(PrimitiveType::F32);
+  proto_valid.mutable_result_accuracy()->mutable_tolerance()->set_rtol(0.4);
+  proto_valid.mutable_result_accuracy()->mutable_tolerance()->set_atol(
+      0.0);  // NOLINT
+  proto_valid.mutable_result_accuracy()->mutable_tolerance()->set_ulps(1);
+  proto_valid.add_operand_ids(0);
+  ResultAccuracy r;
+  r.mutable_tolerance()->set_rtol(0.4);
+  r.mutable_tolerance()->set_atol(0.0);  // NOLINT
+  r.mutable_tolerance()->set_ulps(1);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloInstruction> hlo,
+      HloInstruction::CreateFromProto(
+          proto_valid,
+          {{0, HloInstruction::CreateParameter(0, r0f32_, "foo").get()}}));
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      Cast<HloUnaryInstruction>(hlo.get())->result_accuracy(), r));
+  HloInstructionProto proto_invalid;
+  proto_invalid.set_opcode("exponential");
+  proto_invalid.set_name("exp");
+  proto_invalid.mutable_shape()->set_element_type(PrimitiveType::F32);
+  proto_invalid.mutable_result_accuracy()->mutable_tolerance()->set_rtol(0.4);
+  proto_invalid.mutable_result_accuracy()->mutable_tolerance()->set_atol(
+      0.0);  // NOLINT
+  proto_invalid.mutable_result_accuracy()->mutable_tolerance()->set_ulps(-1);
+  proto_invalid.add_operand_ids(0);
+  auto hlo_invalid = HloInstruction::CreateFromProto(
+      proto_invalid,
+      {{0, HloInstruction::CreateParameter(0, r0f32_, "foo").get()}});
+  EXPECT_THAT(hlo_invalid.status().message(),
+              ::testing::HasSubstr("Negative tolerance"));
+}
+
+TEST_F(HloInstructionTest, HloUnaryInstruction) {
+  std::unique_ptr<HloInstruction> parameter =
+      HloInstruction::CreateParameter(0, r0f32_, "foo");
+  ResultAccuracy default_result_accuracy;
+  default_result_accuracy.set_mode(ResultAccuracy::DEFAULT);
+  auto exp_instruction = std::make_unique<HloUnaryInstruction>(
+      r0f32_, HloOpcode::kExp, parameter.get(), default_result_accuracy);
+  // don't print the attribute if the result accuracy is set to default.
+  EXPECT_EQ(exp_instruction->ToString(),
+            "%exponential = f32[] exponential(f32[] %foo)");
+  ResultAccuracy numeric_accuracy;
+  numeric_accuracy.mutable_tolerance()->set_rtol(0.4);
+  exp_instruction->set_result_accuracy(numeric_accuracy);
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      numeric_accuracy, exp_instruction->result_accuracy()));
+  EXPECT_EQ(exp_instruction->ToString(),
+            "%exponential = f32[] exponential(f32[] %foo), "
+            "result_accuracy={tolerance={atol=0,rtol=0.4,ulps=0}}");
+
+  ResultAccuracy mode_accuracy;
+  mode_accuracy.set_mode(ResultAccuracy::HIGHEST);
+  exp_instruction->set_result_accuracy(mode_accuracy);
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      mode_accuracy, exp_instruction->result_accuracy()));
+  EXPECT_EQ(exp_instruction->ToString(),
+            "%exponential = f32[] exponential(f32[] %foo), "
+            "result_accuracy={mode=highest}");
+}
+
+TEST_F(HloInstructionTest, ExpInvalidResultAccuracy) {
+  const char* const hlo_string = R"(
+  HloModule exponential_hw
+
+  ENTRY exponential_hw {
+    %exponent = f32[] parameter(0)
+    ROOT %exponential = f32[] exponential(f32[] %exponent), result_accuracy={mode=foo}
+  }
+  )";
+  EXPECT_THAT(ParseAndReturnVerifiedModule(hlo_string).status().message(),
+              ::testing::HasSubstr("Unknown accuracy mode"));
+}
+
+TEST_F(HloInstructionTest, NegativeResultAccuracy) {
+  const char* const hlo_string = R"(
+  HloModule negate
+
+  ENTRY negate {
+    %operand = f32[] parameter(0)
+    ROOT %negate = f32[] negate(f32[] %operand), result_accuracy={tolerance={rtol=0.5, atol=1.0, ulps=2}}
+  }
+  )";
+  // Negate is not a valid op for result accuracy.
+  EXPECT_THAT(ParseAndReturnVerifiedModule(hlo_string).status().message(),
+              ::testing::HasSubstr("unexpected attribute \"result_accuracy\""));
+}
+
+TEST_F(HloInstructionTest, ResultAccuracyString) {
+  ResultAccuracy numeric_accuracy;
+  numeric_accuracy.mutable_tolerance()->set_rtol(0.4);
+  EXPECT_EQ(ResultAccuracyToleranceToString(numeric_accuracy.tolerance()),
+            "tolerance={atol=0,rtol=0.4,ulps=0}");
+  ResultAccuracy mode_accuracy;
+  mode_accuracy.set_mode(ResultAccuracy::HIGHEST);
+  EXPECT_EQ(ResultAccuracyToString(mode_accuracy.mode()), "highest");
+}
+
+TEST_F(HloInstructionTest, CreateUnaryWithResultAccuracy) {
+  ResultAccuracy result_accuracy;
+  result_accuracy.mutable_tolerance()->set_rtol(0.4);
+  std::unique_ptr<HloInstruction> unary_inst = HloInstruction::CreateUnary(
+      r0f32_, HloOpcode::kExp,
+      HloInstruction::CreateParameter(0, r0f32_, "foo").get(), result_accuracy);
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      result_accuracy,
+      Cast<HloUnaryInstruction>(unary_inst.get())->result_accuracy()));
+}
+
+TEST_F(HloInstructionTest, CreateUnaryWithResultAccuracyInvalid) {
+  ResultAccuracy result_accuracy;
+  result_accuracy.mutable_tolerance()->set_rtol(-0.4);
+  ASSERT_DEATH(HloInstruction::CreateUnary(
+                   r0f32_, HloOpcode::kExp,
+                   HloInstruction::CreateParameter(0, r0f32_, "foo").get(),
+                   result_accuracy),
+               "Invalid result accuracy");
+}
 }  // namespace
 }  // namespace xla

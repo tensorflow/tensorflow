@@ -16,6 +16,7 @@ load("//third_party/robin_map:workspace.bzl", robin_map = "repo")
 load("//third_party/shardy:workspace.bzl", shardy = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/triton:workspace.bzl", triton = "repo")
+load("//third_party/uv:workspace.bzl", uv = "repo")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -27,6 +28,7 @@ def _initialize_third_party():
     shardy()
     stablehlo()
     triton()
+    uv()
 
 # Define all external repositories required by TensorFlow
 def _tf_repositories():
@@ -50,9 +52,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "313f4a38a54e578ed668809697c96754497141ba62332bdcc019faaeb1e3c6f6",
-        strip_prefix = "cudnn-frontend-1.6.0",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.6.0.zip"),
+        sha256 = "5f77784dc3ccbca7aca5ea0b5a6e31b95aa85023c5942d22be5fa8dd6c339d81",
+        strip_prefix = "cudnn-frontend-1.8.0",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.8.0.zip"),
     )
 
     tf_http_archive(

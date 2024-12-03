@@ -18,29 +18,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/match.h"
-#include "absl/strings/str_join.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/compile.h"
 #include "tensorflow/compiler/aot/flags.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
-#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "xla/debug_options_flags.h"
-#include "xla/service/compiler.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tfcompile {

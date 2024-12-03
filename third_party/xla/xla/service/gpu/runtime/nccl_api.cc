@@ -17,29 +17,36 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/nccl_communicator.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -112,6 +119,8 @@ static absl::StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType dtype,
     case S8:
     case F8E5M2:
     case F8E4M3FN:
+    case F8E5M2FNUZ:
+    case F8E4M3FNUZ:
       return ncclInt8;
     case PRED:
     case U8:
@@ -169,12 +178,10 @@ static ncclRedOp_t ToNcclReduction(ReductionKind kind) {
 // Casting between opaque API structs and NCCL types.
 //==-----------------------------------------------------------------------===//
 
-static NcclApi::NcclCommHandle Cast(ncclComm_t comm) {
-  return reinterpret_cast<NcclApi::NcclCommHandle>(comm);
-}
-
-static ncclComm_t Cast(NcclApi::NcclCommHandle comm) {
-  return reinterpret_cast<ncclComm_t>(comm);
+static ncclComm_t Cast(const Communicator* comm) {
+  auto* nccl_communicator = tsl::down_cast<const NcclCommunicator*>(comm);
+  CHECK(nccl_communicator != nullptr) << "Unsupported XLA communicator";
+  return nccl_communicator->comm();
 }
 
 #if WITH_PERSISTENT_PLAN_ALLOCATOR_SUPPORT
@@ -257,7 +264,7 @@ absl::Status PersistentPlanAllocator::Deallocate(se::DeviceMemoryBase mem) {
 }
 
 ScopedPersistentPlanAllocator::ScopedPersistentPlanAllocator(
-    NcclCommHandle comm, tsl::RCReference<PersistentPlanAllocator> allocator)
+    Communicator* comm, tsl::RCReference<PersistentPlanAllocator> allocator)
     : comm_(comm), allocator_(std::move(allocator)) {
 #if WITH_PERSISTENT_PLAN_ALLOCATOR_SUPPORT
   XLA_NCCL_CHECK(
@@ -285,23 +292,22 @@ ScopedPersistentPlanAllocator::~ScopedPersistentPlanAllocator() {
 // itself. It is available only if NCCL + CUDA are configured at compile time.
 class DefaultNcclApi final : public NcclApi {
  public:
-  absl::StatusOr<NcclCliqueId> GetUniqueId() final;
+  absl::StatusOr<CliqueId> GetUniqueId() final;
 
-  absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
-      int32_t nranks, const NcclCliqueId& clique_id,
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommInitRanks(
+      int32_t nranks, const CliqueId& clique_id,
       absl::Span<const DeviceRank> ranks, const Config& config) final;
 
-  absl::StatusOr<std::vector<OwnedNcclComm>> CommSplit(
-      absl::Span<const NcclCommHandle> comms, int32_t color,
-      absl::Span<const int32_t> keys, std::optional<Config> config) final;
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommSplit(
+      absl::Span<const Communicator* const> comms, int32_t color,
+      absl::Span<const RankId> keys, std::optional<Config> config) final;
 
-  absl::Status CommAbort(NcclCommHandle comm) final;
-  absl::Status CommFinalize(NcclCommHandle comm) final;
-  absl::Status CommDestroy(NcclCommHandle comm) final;
+  absl::Status CommAbort(Communicator* comm) final;
+  absl::Status CommFinalize(Communicator* comm) final;
 
-  absl::StatusOr<int32_t> CommCount(NcclCommHandle comm) final;
+  absl::StatusOr<int32_t> CommCount(Communicator* comm) final;
 
-  absl::Status CommGetAsyncError(NcclCommHandle comm) final;
+  absl::Status CommGetAsyncError(Communicator* comm) final;
 
   absl::Status GroupStart() final;
   absl::Status GroupEnd() final;
@@ -309,37 +315,41 @@ class DefaultNcclApi final : public NcclApi {
   absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
                          size_t count, ReductionKind reduction_kind,
-                         NcclCommHandle comm, se::Stream* stream) final;
+                         Communicator* comm, se::Stream* stream) final;
 
   absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                         size_t count, size_t root, NcclCommHandle comm,
+                         size_t count, size_t root, Communicator* comm,
                          se::Stream* stream) final;
 
   absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
                              se::DeviceMemoryBase recv_buffer,
                              PrimitiveType dtype, size_t count,
-                             ReductionKind reduction_kind, NcclCommHandle comm,
+                             ReductionKind reduction_kind, Communicator* comm,
                              se::Stream* stream) final;
 
   absl::Status AllGather(se::DeviceMemoryBase send_buffer,
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                         size_t count, NcclCommHandle comm,
+                         size_t count, Communicator* comm,
                          se::Stream* stream) final;
 
   absl::Status Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
-                    size_t count, int32_t peer, NcclCommHandle comm,
+                    size_t count, int32_t peer, Communicator* comm,
                     se::Stream* stream) final;
+  absl::Status SendPtrToPeer(void* ptr, int32_t peer, Communicator* comm,
+                             se::Stream* stream) final;
 
   absl::Status Recv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                    size_t count, int32_t peer, NcclCommHandle comm,
+                    size_t count, int32_t peer, Communicator* comm,
                     se::Stream* stream) final;
+  absl::Status RecvPtrFromPeer(void* ptr, int32_t peer, Communicator* comm,
+                               se::Stream* stream) final;
 
   absl::StatusOr<NcclRegisteredBufferHandle> RegisterBuffer(
-      NcclCommHandle comm, se::DeviceMemoryBase buffer) final;
+      Communicator* comm, se::DeviceMemoryBase buffer) final;
 
   absl::StatusOr<NcclRegisteredBufferHandle> DeregisterBuffer(
-      NcclCommHandle comm, NcclRegisteredBufferHandle handle) final;
+      Communicator* comm, NcclRegisteredBufferHandle handle) final;
 };
 
 NcclApi* NcclApi::Default() {
@@ -347,24 +357,28 @@ NcclApi* NcclApi::Default() {
   return nccl_api;
 }
 
-static_assert(NCCL_UNIQUE_ID_BYTES == NcclCliqueId::kSize,
-              "size of nccl unique id must match the clique id size");
+bool NcclApi::HasNcclSupport() { return true; }
 
-static ncclUniqueId AsNcclUniqueId(const NcclCliqueId& clique_id) {
+static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
+  if (clique_id.size() != NCCL_UNIQUE_ID_BYTES) {
+    return Internal(
+        "CliqueId size is not equal to NCCL_UNIQUE_ID_BYTES: %d vs %d",
+        clique_id.size(), NCCL_UNIQUE_ID_BYTES);
+  }
   ncclUniqueId id;
   absl::c_copy(clique_id.data(), id.internal);
   return id;
 }
 
-absl::StatusOr<NcclCliqueId> DefaultNcclApi::GetUniqueId() {
+absl::StatusOr<CliqueId> DefaultNcclApi::GetUniqueId() {
   VLOG(3) << "Get NCCL unique id";
   ncclUniqueId id;
   XLA_NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
-  return NcclCliqueId(id.internal);
+  return CliqueId(std::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
 }
 
-absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>>
-DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
+absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+DefaultNcclApi::CommInitRanks(int32_t nranks, const CliqueId& clique_id,
                               absl::Span<const DeviceRank> ranks,
                               const Config& config) {
   VLOG(1) << "Initialize NCCL communicator for " << ranks.size()
@@ -381,7 +395,7 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
   }
 
   std::vector<ncclComm_t> comm_handles;
-  std::vector<OwnedNcclComm> comms;
+  std::vector<std::unique_ptr<Communicator>> comms;
 
   comm_handles.resize(ranks.size(), nullptr);
   comms.reserve(ranks.size());
@@ -391,28 +405,33 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
     VLOG(1) << "Initialize NCCL communicator for rank #" << ranks[i].rank
             << " of " << nranks
             << "; fingerprint(id)=" << clique_id.fingerprint();
+    auto activate_context = ranks[i].device->Activate();
 
-    se::gpu::ScopedActivateExecutorContext activate_context(ranks[i].device);
-
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankConfig(
-        &comm_handles[i], nranks, AsNcclUniqueId(clique_id), ranks[i].rank,
-        &comm_config));
+    TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(clique_id));
+    XLA_NCCL_RETURN_IF_ERROR(
+        ncclCommInitRankConfig(&comm_handles[i], nranks, nccl_unique_id,
+                               ranks[i].rank.value(), &comm_config));
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 
   for (ncclComm_t comm_handle : comm_handles) {
-    comms.emplace_back(Cast(comm_handle), NcclCommDeleter{this});
+    comms.emplace_back(std::make_unique<NcclCommunicator>(comm_handle));
   }
 
   return comms;
 }
 
-absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
-    absl::Span<const NcclCommHandle> comms, int32_t color,
-    absl::Span<const int32_t> keys, std::optional<Config> config) {
+absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+DefaultNcclApi::CommSplit(absl::Span<const Communicator* const> comms,
+                          int32_t color, absl::Span<const RankId> keys,
+                          std::optional<Config> config) {
+  auto rank_formatter = [](std::string* str, RankId rank) {
+    absl::StrAppend(str, rank.value());
+  };
+
   VLOG(1) << absl::StreamFormat(
       "Split %d NCCL communicators using color %d and keys: [%s]", comms.size(),
-      color, absl::StrJoin(keys, ","));
+      color, absl::StrJoin(keys, ",", rank_formatter));
 
 #if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
   if (keys.size() != comms.size()) {
@@ -444,17 +463,17 @@ absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
   for (size_t i = 0; i < comms.size(); ++i) {
     VLOG(1) << "Split NCCL communicator " << comms[i] << " with color " << color
             << " and key " << keys[i];
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(Cast(comms[i]), color, keys[i],
-                                           &split_comms_handles[i],
-                                           /*config=*/comm_config_ptr));
+    XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(
+        Cast(comms[i]), color, keys[i].value(), &split_comms_handles[i],
+        /*config=*/comm_config_ptr));
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 
-  std::vector<OwnedNcclComm> split_comms;
+  std::vector<std::unique_ptr<Communicator>> split_comms;
   split_comms.reserve(split_comms_handles.size());
   for (size_t i = 0; i < split_comms_handles.size(); ++i) {
-    split_comms.emplace_back(Cast(split_comms_handles[i]),
-                             NcclCommDeleter{this});
+    split_comms.emplace_back(
+        std::make_unique<NcclCommunicator>(split_comms_handles[i]));
   }
   return split_comms;
 #else
@@ -464,29 +483,24 @@ absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
 #endif  // !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
 }
 
-absl::Status DefaultNcclApi::CommAbort(NcclCommHandle comm) {
+absl::Status DefaultNcclApi::CommAbort(Communicator* comm) {
   VLOG(1) << "Abort NCCL communicator: " << comm;
   return XLA_NCCL_STATUS(ncclCommAbort(Cast(comm)));
 }
 
-absl::Status DefaultNcclApi::CommFinalize(NcclCommHandle comm) {
+absl::Status DefaultNcclApi::CommFinalize(Communicator* comm) {
   VLOG(1) << "Finalize NCCL communicator: " << comm;
   return XLA_NCCL_STATUS(ncclCommFinalize(Cast(comm)));
 }
 
-absl::Status DefaultNcclApi::CommDestroy(NcclCommHandle comm) {
-  VLOG(1) << "Destroy NCCL communicator: " << comm;
-  return XLA_NCCL_STATUS(ncclCommDestroy(Cast(comm)));
-}
-
-absl::StatusOr<int32_t> DefaultNcclApi::CommCount(NcclCommHandle comm) {
+absl::StatusOr<int32_t> DefaultNcclApi::CommCount(Communicator* comm) {
   VLOG(5) << "Get the number of ranks in NCCL communicator: " << comm;
   int32_t count;
   XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(Cast(comm), &count));
   return count;
 }
 
-absl::Status DefaultNcclApi::CommGetAsyncError(NcclCommHandle comm) {
+absl::Status DefaultNcclApi::CommGetAsyncError(Communicator* comm) {
   VLOG(5) << "Get last async error for NCCL communicator: " << comm;
 
   ncclResult_t async_err;
@@ -512,8 +526,7 @@ absl::Status DefaultNcclApi::AllReduce(se::DeviceMemoryBase send_buffer,
                                        se::DeviceMemoryBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
                                        ReductionKind reduction_kind,
-                                       NcclCommHandle comm,
-                                       se::Stream* stream) {
+                                       Communicator* comm, se::Stream* stream) {
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL AllReduce operation on device #%d; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=%p; "
@@ -533,7 +546,7 @@ absl::Status DefaultNcclApi::AllReduce(se::DeviceMemoryBase send_buffer,
 absl::Status DefaultNcclApi::Broadcast(se::DeviceMemoryBase send_buffer,
                                        se::DeviceMemoryBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
-                                       size_t root, NcclCommHandle comm,
+                                       size_t root, Communicator* comm,
                                        se::Stream* stream) {
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL Broadcast operation on device #%d; send_buffer=%p; "
@@ -554,7 +567,7 @@ absl::Status DefaultNcclApi::ReduceScatter(se::DeviceMemoryBase send_buffer,
                                            se::DeviceMemoryBase recv_buffer,
                                            PrimitiveType dtype, size_t count,
                                            ReductionKind reduction_kind,
-                                           NcclCommHandle comm,
+                                           Communicator* comm,
                                            se::Stream* stream) {
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL ReduceScatter operation on device #%d; send_buffer=%p; "
@@ -575,8 +588,7 @@ absl::Status DefaultNcclApi::ReduceScatter(se::DeviceMemoryBase send_buffer,
 absl::Status DefaultNcclApi::AllGather(se::DeviceMemoryBase send_buffer,
                                        se::DeviceMemoryBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
-                                       NcclCommHandle comm,
-                                       se::Stream* stream) {
+                                       Communicator* comm, se::Stream* stream) {
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL AllGather operation on device #%d; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; comm=%p; stream=%p",
@@ -593,7 +605,7 @@ absl::Status DefaultNcclApi::AllGather(se::DeviceMemoryBase send_buffer,
 
 absl::Status DefaultNcclApi::Send(se::DeviceMemoryBase send_buffer,
                                   PrimitiveType dtype, size_t count,
-                                  int32_t peer, NcclCommHandle comm,
+                                  int32_t peer, Communicator* comm,
                                   se::Stream* stream) {
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL Send operation on device #%d; send_buffer=%p; dtype=%s; "
@@ -609,9 +621,20 @@ absl::Status DefaultNcclApi::Send(se::DeviceMemoryBase send_buffer,
                peer, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
 }
 
+absl::Status DefaultNcclApi::SendPtrToPeer(void* ptr, int32_t peer,
+                                           Communicator* comm,
+                                           se::Stream* stream) {
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL RecvPtrFromPeer operation on device #%d;  "
+      "peer=%d; comm=%p; stream=%p",
+      stream->parent()->device_ordinal(), peer, comm, stream);
+  return XLA_NCCL_STATUS(ncclSend(ptr, 1, ncclUint64, peer, Cast(comm),
+                                  se::gpu::AsGpuStreamValue(stream)));
+}
+
 absl::Status DefaultNcclApi::Recv(se::DeviceMemoryBase recv_buffer,
                                   PrimitiveType dtype, size_t count,
-                                  int32_t peer, NcclCommHandle comm,
+                                  int32_t peer, Communicator* comm,
                                   se::Stream* stream) {
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL Recv operation on device #%d; recv_buffer=%p; dtype=%s; "
@@ -627,8 +650,20 @@ absl::Status DefaultNcclApi::Recv(se::DeviceMemoryBase recv_buffer,
                peer, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
 }
 
+absl::Status DefaultNcclApi::RecvPtrFromPeer(void* ptr, int32_t peer,
+                                             Communicator* comm,
+                                             se::Stream* stream) {
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL RecvPtrFromPeer operation on device #%d; "
+      "peer=%d; comm=%p; stream=%p",
+      stream->parent()->device_ordinal(), peer, comm, stream);
+
+  return XLA_NCCL_STATUS(ncclRecv(ptr, 1, ncclUint64, peer, Cast(comm),
+                                  se::gpu::AsGpuStreamValue(stream)));
+}
+
 absl::StatusOr<NcclApi::NcclRegisteredBufferHandle>
-DefaultNcclApi::RegisterBuffer(NcclCommHandle comm,
+DefaultNcclApi::RegisterBuffer(Communicator* comm,
                                se::DeviceMemoryBase buffer) {
   VLOG(3) << absl::StreamFormat(
       "Register buffer for NCCL communicator; buffer=%p; size=%d; comm=%p",
@@ -642,7 +677,7 @@ DefaultNcclApi::RegisterBuffer(NcclCommHandle comm,
 }
 
 absl::StatusOr<NcclApi::NcclRegisteredBufferHandle>
-DefaultNcclApi::DeregisterBuffer(NcclCommHandle comm,
+DefaultNcclApi::DeregisterBuffer(Communicator* comm,
                                  NcclRegisteredBufferHandle handle) {
   VLOG(3) << absl::StreamFormat(
       "Deregister buffer for NCCL communicator; handle=%p; comm=%p", handle,

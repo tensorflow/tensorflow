@@ -16,29 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_ROOT_INSTRUCTION_SINKER_H_
 #define XLA_SERVICE_ROOT_INSTRUCTION_SINKER_H_
 
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-
-namespace xla {
-
-// Given a scheduled HLO module, this pass sinks the ROOT of the instruction to
-// the bottom of the non-fusion computations. To avoid dependency violations of
-// moving the ROOT instruction, it creates a new ROOT instruction that looks
-// like the following:
-//   - For tuple ROOT type:
-//        new_root = tuple(gte(old_root), gte(old_root), ...)
-//   - For non-tuple ROOT type:
-//        new_root = bitcast(old_root)
-class RootInstructionSinker : public HloModulePass {
- public:
-  ~RootInstructionSinker() override = default;
-  absl::string_view name() const override { return "root-instruction-sinker"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/root_instruction_sinker.h"
 
 #endif  // XLA_SERVICE_ROOT_INSTRUCTION_SINKER_H_

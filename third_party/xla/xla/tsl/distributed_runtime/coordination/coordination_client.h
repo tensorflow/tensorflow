@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 
 #include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/status.h"
-#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tsl {
 using tensorflow::BarrierRequest;
@@ -120,7 +120,8 @@ class CoordinationClient {
                                    DeleteKeyValueResponse* response,
                                    StatusCallback done) = 0;
 
-  virtual void BarrierAsync(const BarrierRequest* request,
+  virtual void BarrierAsync(CallOptions* call_opts,
+                            const BarrierRequest* request,
                             BarrierResponse* response, StatusCallback done) = 0;
 
   virtual void CancelBarrierAsync(const CancelBarrierRequest* request,

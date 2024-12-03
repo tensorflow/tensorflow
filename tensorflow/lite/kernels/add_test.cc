@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -143,7 +144,8 @@ TEST(FloatAddOpModel, NoActivationInplaceInput0) {
   TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
   output_tensor->data.data = input_tensor->data.data;
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+  EXPECT_THAT(m.GetOutput(),
+              Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3}));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
 
@@ -159,7 +161,8 @@ TEST(FloatAddOpModel, NoActivationInplaceInput1) {
   TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
   output_tensor->data.data = input_tensor->data.data;
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+  EXPECT_THAT(m.GetOutput(),
+              Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3}));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
 
@@ -170,7 +173,8 @@ TEST(FloatAddOpModel, NoActivation) {
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+  EXPECT_THAT(m.GetOutput(),
+              Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3}));
 }
 
 TEST(FloatAddOpModel, ActivationRELU_N1_TO_1) {
@@ -180,7 +184,8 @@ TEST(FloatAddOpModel, ActivationRELU_N1_TO_1) {
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.0, 0.4, 1.0, 1.0}));
+  EXPECT_THAT(m.GetOutput(),
+              Pointwise(FloatingPointEq(), {-1.0, 0.4, 1.0, 1.0}));
 }
 
 TEST(FloatAddOpModel, VariousInputShapes) {
@@ -194,7 +199,7 @@ TEST(FloatAddOpModel, VariousInputShapes) {
     m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5, 1.1, 0.1});
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(),
-                ElementsAreArray({-1.9, 0.4, 1.0, 1.3, 2.2, 2.1}))
+                Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3, 2.2, 2.1}))
         << "With shape number " << i;
   }
 }
@@ -363,7 +368,7 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), testing::ContainerEq(output_ref));
+  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), output_ref));
 }
 
 template <typename IntegerType>

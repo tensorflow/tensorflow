@@ -32,27 +32,27 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Declare here, so we don't need a public header.
-Status QuantizeNodes(const GraphDef& input_graph_def,
-                     const TransformFuncContext& context,
-                     GraphDef* output_graph_def);
-Status RemoveRedundantQuantizations(const GraphDef& input_graph_def,
-                                    const TransformFuncContext& context,
-                                    GraphDef* output_graph_def);
-Status QuantizePlaceholders(const GraphDef& input_graph_def,
-                            const TransformFuncContext& context,
-                            GraphDef* output_graph_def);
-Status ConvertFakeQuantsToRequantize(const GraphDef& input_graph_def,
-                                     const TransformFuncContext& context,
-                                     GraphDef* output_graph_def);
-Status MergeAdjacentRequantizes(const GraphDef& input_graph_def,
-                                const TransformFuncContext& context,
-                                GraphDef* output_graph_def);
-Status HoistFakeQuants(const GraphDef& input_graph_def,
-                       const TransformFuncContext& context,
-                       GraphDef* output_graph_def);
-Status MergeDuplicateNodes(const GraphDef& input_graph_def,
+absl::Status QuantizeNodes(const GraphDef& input_graph_def,
                            const TransformFuncContext& context,
                            GraphDef* output_graph_def);
+absl::Status RemoveRedundantQuantizations(const GraphDef& input_graph_def,
+                                          const TransformFuncContext& context,
+                                          GraphDef* output_graph_def);
+absl::Status QuantizePlaceholders(const GraphDef& input_graph_def,
+                                  const TransformFuncContext& context,
+                                  GraphDef* output_graph_def);
+absl::Status ConvertFakeQuantsToRequantize(const GraphDef& input_graph_def,
+                                           const TransformFuncContext& context,
+                                           GraphDef* output_graph_def);
+absl::Status MergeAdjacentRequantizes(const GraphDef& input_graph_def,
+                                      const TransformFuncContext& context,
+                                      GraphDef* output_graph_def);
+absl::Status HoistFakeQuants(const GraphDef& input_graph_def,
+                             const TransformFuncContext& context,
+                             GraphDef* output_graph_def);
+absl::Status MergeDuplicateNodes(const GraphDef& input_graph_def,
+                                 const TransformFuncContext& context,
+                                 GraphDef* output_graph_def);
 
 class QuantizeNodesTest : public ::testing::Test {
  protected:

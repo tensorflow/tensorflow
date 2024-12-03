@@ -1,6 +1,6 @@
 // RUN: dtensor-opt %s -split-input-file -dtensor-annotate-global-shape -dtensor-layout-propagation-v2 -dtensor-spmd-expansion -verify-diagnostics | FileCheck %s
 
-// Check Squeeze with postive index.
+// Check Squeeze with positive index.
 
 // CHECK-LABEL: func @main
 func.func @main(%arg0: tensor<i32> , %arg1: tensor<2x1xf32> { tf._layout = "sharding_specs:x,unsharded, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"}) -> tensor<2xf32> {

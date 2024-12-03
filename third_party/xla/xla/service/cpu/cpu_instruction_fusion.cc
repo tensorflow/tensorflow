@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 
+#include <cstdint>
+
+#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/instruction_fusion.h"
@@ -79,22 +83,23 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   if (CanBeOutputFused(producer, consumer)) {
     VLOG(2) << "Fusion OK: Can create output fusion.";
-    return {};
+    return FusionDecision::Allow();
   }
 
   if (CanBeOutputFusedIntoSomeOperand(producer)) {
-    return "Bailing because producer can be output-fused into some operand.";
+    return FusionDecision::Forbid(
+        "Bailing because producer can be output-fused into some operand.");
   }
 
   if (!CanBeLoopFused(*producer)) {
-    return "Producer is not loop-fusible.";
+    return FusionDecision::Forbid("Producer is not loop-fusible.");
   }
 
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
   if (producer->opcode() != HloOpcode::kFusion && is_expensive(*producer) &&
       ReusesOperandElements(consumer, operand_index)) {
-    return "Fusion is not profitable.";
+    return FusionDecision::Forbid("Fusion is not profitable.");
   }
 
   RETURN_IF_NOT_FUSIBLE(InstructionFusion::ShouldFuse(consumer, operand_index));
@@ -103,12 +108,14 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   // just a constant and another node.
   if (producer->opcode() == HloOpcode::kConstant &&
       consumer->opcode() != HloOpcode::kFusion) {
-    return "Not fusing: insufficient non-constant nodes.";
+    return FusionDecision::Forbid(
+        "Not fusing: insufficient non-constant nodes.");
   }
 
   // Output fusion is not currently supported on CPUs.
   if (producer->opcode() == HloOpcode::kFusion) {
-    return "Not fusing: producer is itself a fusion node.";
+    return FusionDecision::Forbid(
+        "Not fusing: producer is itself a fusion node.");
   }
 
   // Don't fuse if fusing would cause too much code duplication because of
@@ -126,7 +133,7 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     }
     if (fusion_node_evaluations_.at(consumer).CodeDuplicationTooHigh(
             producer)) {
-      return "Code duplication too high";
+      return FusionDecision::Forbid("Code duplication too high");
     }
   }
 
@@ -149,13 +156,13 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
           ShapeUtil::ByteSizeOfElements(consumer->operand(0)->shape()) <
               kFusionThresholdBytes) {
         VLOG(2) << "Fusing small matrix-vector product.";
-        return {};
+        return FusionDecision::Allow();
       } else if (consumer->operand(1)->shape().rank() == 1 &&
                  operand_index == 0 &&
                  ShapeUtil::ByteSizeOfElements(consumer->operand(1)->shape()) <
                      kFusionThresholdBytes) {
         VLOG(2) << "Fusing small matrix-vector product.";
-        return {};
+        return FusionDecision::Allow();
       }
     }
   }
@@ -166,26 +173,28 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
       !absl::c_linear_search(
           consumer->dimensions(),
           LayoutUtil::Minor(consumer->operand(0)->shape().layout(), 0))) {
-    return "Not fusing reductions over major dimensions";
+    return FusionDecision::Forbid(
+        "Not fusing reductions over major dimensions");
   }
   if (producer->opcode() == HloOpcode::kReduce &&
       !absl::c_linear_search(
           producer->dimensions(),
           LayoutUtil::Minor(producer->operand(0)->shape().layout(), 0))) {
-    return "Not fusing reductions over major dimensions";
+    return FusionDecision::Forbid(
+        "Not fusing reductions over major dimensions");
   }
 
   if (consumer->IsLoopFusion()) {
     VLOG(2) << "Fusing: consumer is a fusion node.";
-    return {};
+    return FusionDecision::Allow();
   }
 
   if (CanBeLoopFused(*consumer)) {
     VLOG(2) << "Fusing: consumer is elementwise or fusible.";
-    return {};
+    return FusionDecision::Allow();
   }
 
-  return "Not fusing: not found a fusible case";
+  return FusionDecision::Forbid("Not fusing: not found a fusible case");
 }
 
 HloInstruction::FusionKind CpuInstructionFusion::ChooseKind(

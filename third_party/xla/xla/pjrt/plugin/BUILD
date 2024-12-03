@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 # Configuration file for an XLA plugin.
 #

@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/xla_data.pb.h"
@@ -102,7 +103,7 @@ class CollectiveDeviceList {
     return iota_replica_group_list_;
   }
 
-  std::string ToString() const;
+  std::string ToString(bool print_full_replica_group_list = false) const;
 
   CollectiveDeviceListProto ToProto() const;
 

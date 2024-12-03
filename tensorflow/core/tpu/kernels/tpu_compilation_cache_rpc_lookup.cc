@@ -65,7 +65,7 @@ TpuCompilationCacheRpcLookup::TpuCompilationCacheRpcLookup(
   VLOG(1) << "Created RPC lookup cache size " << max_cache_size_ << " bytes.";
 }
 
-Status TpuCompilationCacheRpcLookup::Lookup(
+absl::Status TpuCompilationCacheRpcLookup::Lookup(
     const std::string& proto_key,
     std::unique_ptr<CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target) {
@@ -100,7 +100,7 @@ Status TpuCompilationCacheRpcLookup::Lookup(
   return absl::OkStatus();
 }
 
-Status TpuCompilationCacheRpcLookup::Lookup(
+absl::Status TpuCompilationCacheRpcLookup::Lookup(
     int64_t uid, int proto_index,
     std::unique_ptr<CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target) {
@@ -146,7 +146,7 @@ Status TpuCompilationCacheRpcLookup::Lookup(
   return absl::OkStatus();
 }
 
-Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
+absl::Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
     const std::string& local_proto_key,
     const tpu::GetTpuProgramRequest& request,
     std::shared_ptr<CacheEntry>* cache_entry) {
@@ -159,7 +159,7 @@ Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
   client_context.set_compression_algorithm(GRPC_COMPRESS_GZIP);
 
   ResponseType response;
-  Status s =
+  absl::Status s =
       FromGrpcStatus(stub_->GetTpuProgram(&client_context, request, &response));
   VLOG(1) << "Looked up key " << local_proto_key
           << " in remote subgraph cache status " << s;

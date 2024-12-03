@@ -58,7 +58,6 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -415,7 +414,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 //===----------------------------------------------------------------------===//
 
 // Follow async operation use-def chain to find the start of the async chain.
-AsyncStartOp findAsyncChainStart(Operation* op) {
+static AsyncStartOp findAsyncChainStart(Operation* op) {
   Operation* start = op;
   while (start != nullptr && !isa<AsyncStartOp>(start)) {
     start = start->getOperand(0).getDefiningOp();
@@ -423,8 +422,8 @@ AsyncStartOp findAsyncChainStart(Operation* op) {
   return dyn_cast_or_null<AsyncStartOp>(start);
 }
 
-Type maybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types,
-                         bool expectsTuple = false) {
+static Type maybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types,
+                                bool expectsTuple = false) {
   if (!expectsTuple && types.size() == 1 && !isa<TupleType>(types[0]))
     return types[0];
   return TupleType::get(ctx, TypeRange(types));
@@ -903,13 +902,31 @@ LogicalResult DotOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult DotGeneralOp::verify() {
+  bool isDefaultPrecisionConfig =
+      !getPrecisionConfig().has_value() ||
+      llvm::all_of(getPrecisionConfig().value(), [](Attribute attr) {
+        return cast<PrecisionAttr>(attr).getValue() == Precision::DEFAULT;
+      });
+  bool hasAlgorithmSpecified = getAlgorithm().has_value();
+  if (hasAlgorithmSpecified) {
+    DotAlgorithmAttr attr = getAlgorithm().value();
+    if (failed(DotAlgorithmAttr::verify(
+            [&] { return this->emitError(); }, attr.getLhsPrecisionType(),
+            attr.getRhsPrecisionType(), attr.getAccumulationType(),
+            attr.getLhsComponentCount(), attr.getRhsComponentCount(),
+            attr.getNumPrimitiveOperations(),
+            attr.getAllowImpreciseAccumulation())))
+      return failure();
+  }
+
   return hlo::verifyDotGeneralOp(
       getLoc(), getLhs(), getRhs(),
       getDotDimensionNumbersAttr().getLhsBatchingDimensions(),
       getDotDimensionNumbersAttr().getRhsBatchingDimensions(),
       getDotDimensionNumbersAttr().getLhsContractingDimensions(),
       getDotDimensionNumbersAttr().getRhsContractingDimensions(),
-      getPrecisionConfig(), getResult());
+      getPrecisionConfig(), isDefaultPrecisionConfig, hasAlgorithmSpecified,
+      getResult());
 }
 
 LogicalResult DotGeneralOp::reifyReturnTypeShapes(
@@ -947,6 +964,17 @@ LogicalResult DotGeneralOp::reifyReturnTypeShapes(
   reifiedReturnShapes.push_back(
       builder.create<tensor::FromElementsOp>(getLoc(), dimensions));
   return success();
+}
+
+LogicalResult DotAlgorithmAttr::verify(
+    ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
+    Type lhsPrecisionType, Type rhsPrecisionType, Type accumulationType,
+    int64_t lhsComponentCount, int64_t rhsComponentCount,
+    int64_t numPrimitiveOperations, bool allowImpreciseAccumulation) {
+  return hlo::verifyDotAlgorithmAttr(
+      emitError, lhsPrecisionType, rhsPrecisionType, accumulationType,
+      lhsComponentCount, rhsComponentCount, numPrimitiveOperations,
+      allowImpreciseAccumulation);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1002,8 +1030,9 @@ LogicalResult SparseDotOp::verify() {
 //===----------------------------------------------------------------------===//
 // FftOp
 //===----------------------------------------------------------------------===//
-LogicalResult verify1dTensor(std::optional<Location> loc,
-                             DenseIntElementsAttr attr, std::string attrName) {
+static LogicalResult verify1dTensor(std::optional<Location> loc,
+                                    DenseIntElementsAttr attr,
+                                    std::string attrName) {
   auto rank = attr.getType().getRank();
   if (rank != 1) {
     return emitOptionalError(loc, attrName, " has rank ", rank,
@@ -1221,8 +1250,8 @@ LogicalResult GatherOp::inferReturnTypeComponents(
 //===----------------------------------------------------------------------===//
 
 // Canonicalize mhlo.dynamic_gather to mhlo.gather when slice_sizes is constant.
-LogicalResult simplifyDynamicGatherToGather(DynamicGatherOp op,
-                                            PatternRewriter& rewriter) {
+static LogicalResult simplifyDynamicGatherToGather(DynamicGatherOp op,
+                                                   PatternRewriter& rewriter) {
   DenseIntElementsAttr dynamicGatherSliceSizes;
   if (!matchPattern(op.getSliceSizes(), m_Constant(&dynamicGatherSliceSizes))) {
     return failure();
@@ -1633,7 +1662,7 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
           op.getContext(), {}, {}, {lhsContractDim}, {rhsContractDim});
       auto dotOp = rewriter.create<mhlo::DotGeneralOp>(
           op.getLoc(), op.getType(), lhs, rhs, dotNums,
-          op.getPrecisionConfig().value_or(nullptr));
+          op.getPrecisionConfig().value_or(nullptr), DotAlgorithmAttr{});
 
       rewriter.replaceOp(op, dotOp.getResult());
       return success();
@@ -1669,7 +1698,7 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
         {lhsContractDim + 1}, {rhsContractDim == 0 ? 2 : 0});
     auto dotOp = rewriter.create<mhlo::DotGeneralOp>(
         op.getLoc(), dotTy, lhs, rhs, dotNums,
-        op.getPrecisionConfig().value_or(nullptr));
+        op.getPrecisionConfig().value_or(nullptr), DotAlgorithmAttr{});
 
     llvm::SmallVector<int64_t> perms;
     perms.resize(3, dNums.getOutputBatchDimension() == 0 ? 0 : 2);
@@ -3371,7 +3400,7 @@ Operation* ReduceWindowOp::getReductionOp(int resultIndex) {
   return nullptr;
 }
 
-bool isSplatZero(SplatElementsAttr attr) {
+static bool isSplatZero(SplatElementsAttr attr) {
   if (!attr) return false;
   if (isa<FloatType>(attr.getElementType())) {
     return attr.getSplatValue<APFloat>().isZero();
@@ -3609,7 +3638,7 @@ LogicalResult ReduceOp::fold(FoldAdaptor /*adaptor*/,
   return failure();
 }
 
-bool hasSameOperandAndResultTypes(Operation& op) {
+static bool hasSameOperandAndResultTypes(Operation& op) {
   Type expected;
   if (op.getNumResults() != 0) expected = op.getResult(0).getType();
   if (op.getNumOperands() != 0) expected = op.getOperand(0).getType();
@@ -3976,12 +4005,16 @@ LogicalResult SelectOp::reifyReturnTypeShapes(
 
 OpFoldResult SetDimensionSizeOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
-  DenseElementsAttr input = dyn_cast_or_null<DenseElementsAttr>(operands[0]);
-  if (input) return input;
 
+  // Even if all operands are constants, we can't fold SetDimensionSize to a
+  // constant, since mhlo.constant doesn't support dynamic dimensions. We can,
+  // however, replace the op with its operand, in the case where the (constant)
+  // bound of a dimension is the same as the full extent of said dimension.
   DenseElementsAttr size = dyn_cast_or_null<DenseElementsAttr>(operands[1]);
   if (!size || !size.isSplat()) return {};
 
+  // TODO(b/377537099): This is the result type, which is always dynamic in the
+  // dimension we're looking at. So the code below doesn't do anything.
   auto ty = dyn_cast<RankedTensorType>(getType());
   if (!ty) return {};
 
@@ -4588,9 +4621,9 @@ struct Abs {
   }
 };
 
-double rsqrt(double d) { return 1.0 / std::sqrt(d); }
+static double rsqrt(double d) { return 1.0 / std::sqrt(d); }
 
-double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
+static double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
 
 // NOLINTBEGIN(bugprone-macro-parentheses)
 #define UNARY_FOLDER(Op, Func)                                                \
@@ -4828,7 +4861,7 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-bool isSplatOne(SplatElementsAttr attr) {
+static bool isSplatOne(SplatElementsAttr attr) {
   if (!attr) return false;
   if (isa<FloatType>(attr.getElementType())) {
     return attr.getSplatValue<APFloat>().convertToDouble() == 1.0;
@@ -5756,8 +5789,8 @@ LogicalResult ScatterOp::verify() {
       getScatterDimensionNumbers().getIndexVectorDim(), getUpdateComputation());
 }
 
-llvm::SmallVector<Attribute, 4> evaluateMhloRegion(Region& region,
-                                                   ArrayRef<Attribute> inputs) {
+static llvm::SmallVector<Attribute, 4> evaluateMhloRegion(
+    Region& region, ArrayRef<Attribute> inputs) {
   if (region.getNumArguments() != inputs.size()) return {};
 
   llvm::DenseMap<Value, Attribute> values;
@@ -5854,9 +5887,9 @@ LogicalResult ScatterOp::fold(
     // value.
     indexIndex.clear();
     if (indexVectorDim == 0) indexIndex.push_back(0);
+    auto updateWindowDims = getScatterDimensionNumbers().getUpdateWindowDims();
     for (int64_t i = 0; i < static_cast<int64_t>(updateIndex.size()); ++i) {
-      if (llvm::count(getScatterDimensionNumbers().getUpdateWindowDims(), i) ==
-          0)
+      if (!llvm::is_contained(updateWindowDims, i))
         indexIndex.push_back(updateIndex[i]);
       if (static_cast<int64_t>(indexIndex.size()) == indexVectorDim)
         indexIndex.push_back(0);
@@ -5864,6 +5897,14 @@ LogicalResult ScatterOp::fold(
 
     // Compute the index for the given update value in the base tensor.
     baseIndex.assign(baseType.getRank(), 0);
+    auto inputBatchingDims =
+        getScatterDimensionNumbers().getInputBatchingDims();
+    auto scatterIndicesBatchingDims =
+        getScatterDimensionNumbers().getScatterIndicesBatchingDims();
+    for (auto [operandDim, indicesDim] :
+         llvm::zip_equal(inputBatchingDims, scatterIndicesBatchingDims)) {
+      baseIndex[operandDim] = indexIndex[indicesDim];
+    }
     uint64_t indexCount = indexType.getShape()[indexVectorDim];
     for (uint64_t i = 0; i < indexCount; ++i) {
       uint64_t operandDim =
@@ -5875,9 +5916,10 @@ LogicalResult ScatterOp::fold(
     uint64_t updateWindowDimIndex = 0;
     auto insertedWindowDims =
         getScatterDimensionNumbers().getInsertedWindowDims();
-    auto updateWindowDims = getScatterDimensionNumbers().getUpdateWindowDims();
     for (uint64_t i = 0; i < baseIndex.size(); ++i) {
-      if (llvm::count(insertedWindowDims, i)) continue;
+      if (llvm::is_contained(insertedWindowDims, i) ||
+          llvm::is_contained(inputBatchingDims, i))
+        continue;
       baseIndex[i] += updateIndex[updateWindowDims[updateWindowDimIndex]];
       updateWindowDimIndex++;
     }
@@ -6950,8 +6992,8 @@ static LogicalResult verifyArgResultAliasAttr(StringAttr attrName,
 // Each CrossProgramPrefetchAttr specifies a parameter and a ShapeIndex
 // (1) the parameter must be valid
 // (2) there must be a subshape at the given indices
-LogicalResult verifyCrossProgramPrefetchAttr(CrossProgramPrefetchAttr cpp,
-                                             ModuleOp module) {
+static LogicalResult verifyCrossProgramPrefetchAttr(
+    CrossProgramPrefetchAttr cpp, ModuleOp module) {
   func::FuncOp main = module.lookupSymbol<func::FuncOp>("main");
   if (cpp.getParameter() >= main.getNumArguments() || cpp.getParameter() < 0)
     return module->emitOpError()
@@ -7055,7 +7097,7 @@ Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
   return builder.create<mhlo::ConstantOp>(loc, type, elementsAttr);
 }
 
-int64_t getNumLeafBuffers(Type type) {
+static int64_t getNumLeafBuffers(Type type) {
   if (auto tuple = dyn_cast<TupleType>(type)) {
     auto ans = 0;
     for (auto type : tuple.getTypes()) ans += getNumLeafBuffers(type);

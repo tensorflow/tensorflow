@@ -37,12 +37,13 @@ from typing import (
 
 import numpy as np
 
+from . import config
+from . import guard_lib
 from . import ifrt_programs
 from . import ifrt_proxy
 from . import jax_jit
 from . import mlir
 from . import ops
-from . import outfeed_receiver
 from . import pmap_lib
 from . import profiler
 from . import pytree
@@ -73,6 +74,8 @@ class PrimitiveType(enum.IntEnum):
   U16: PrimitiveType
   U32: PrimitiveType
   U64: PrimitiveType
+  F8E3M4: PrimitiveType
+  F8E4M3: PrimitiveType
   F8E4M3FN: PrimitiveType
   F8E4M3B11FNUZ: PrimitiveType
   F8E4M3FNUZ: PrimitiveType
@@ -89,6 +92,11 @@ class PrimitiveType(enum.IntEnum):
   TOKEN: PrimitiveType
 
 # === BEGIN xla_compiler.cc
+
+class ArrayCopySemantics(enum.IntEnum):
+  ALWAYS_COPY: ArrayCopySemantics
+  REUSE_INPUT: ArrayCopySemantics
+  DONATE_INPUT: ArrayCopySemantics
 
 class Layout:
   @overload
@@ -281,6 +289,11 @@ def register_custom_call_partitioner(
 ) -> None: ...
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
 
+class AutotuneCacheMode(enum.IntEnum):
+  UNSPECIFIED: AutotuneCacheMode
+  UPDATE: AutotuneCacheMode
+  READ: AutotuneCacheMode
+
 class DebugOptions:
   def __repr__(self) -> str: ...
   xla_cpu_enable_fast_math: bool
@@ -318,6 +331,10 @@ class DebugOptions:
   xla_gpu_dump_autotune_results_to: str
   xla_gpu_load_autotune_results_from: str
   xla_gpu_dump_autotune_logs_to: str
+  xla_gpu_kernel_cache_file: str
+  xla_gpu_enable_llvm_module_compilation_parallelism: bool
+  xla_gpu_per_fusion_autotune_cache_dir: str
+  xla_gpu_experimental_autotune_cache_mode: AutotuneCacheMode
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int
@@ -405,6 +422,10 @@ class HloSharding:
   def manual() -> HloSharding: ...
   @staticmethod
   def unknown() -> HloSharding: ...
+  @staticmethod
+  def subgroup_with_device_ordering(
+      tile_assignment: np.ndarray,
+      subgroup_types: Sequence[OpSharding.Type]) -> HloSharding: ...
   def __eq__(self, other: HloSharding) -> bool: ...
   def __hash__(self) -> int: ...
   def __repr__(self) -> str: ...
@@ -423,10 +444,10 @@ class HloSharding:
   def to_proto(self) -> OpSharding: ...
 
 class FftType(enum.IntEnum):
-  FFT: int
-  IFFT: int
-  RFFT: int
-  IRFFT: int
+  FFT: FftType
+  IFFT: FftType
+  RFFT: FftType
+  IRFFT: FftType
 
 # === END xla_compiler.cc
 
@@ -494,6 +515,7 @@ class Client:
   def local_device_count(self) -> int: ...
   def devices(self) -> List[Device]: ...
   def local_devices(self) -> List[Device]: ...
+  def _get_all_devices(self) -> List[Device]: ...
   def device_from_local_hardware_id(self, int) -> Device: ...
   def live_buffers(self) -> List[Any]: ...
   def live_arrays(self) -> List[ArrayImpl]: ...
@@ -635,6 +657,7 @@ def batched_copy_array_to_devices_with_sharding(
     arrays: Sequence[ArrayImpl],
     devices: Sequence[List[Device]],
     sharding: Sequence[Any],
+    array_copy_semantics: Sequence[ArrayCopySemantics],
 ) -> Sequence[ArrayImpl]: ...
 
 def batched_block_until_ready(x: Sequence[ArrayImpl]) -> None: ...
@@ -818,6 +841,7 @@ def get_distributed_runtime_client(
     max_missing_heartbeats: Optional[int] = ...,
     missed_heartbeat_callback: Optional[Any] = ...,
     shutdown_on_destruction: Optional[bool] = ...,
+    use_compression: Optional[bool] = ...,
 ) -> DistributedRuntimeClient: ...
 
 class PreemptionSyncManager:
@@ -840,7 +864,7 @@ class PmapFunction:
 
 def weakref_lru_cache(
     cache_context_fn: Callable, call: Callable, maxsize=...
-): ...
+) -> WeakrefLRUCache: ...
 
 class DeviceList:
   def __init__(self, device_assignment: Tuple[Device, ...]): ...
@@ -874,6 +898,7 @@ class NamedSharding(Sharding):
       memory_kind: Optional[str] = None,
       _parsed_pspec: Any = None,
       _manual_axes: frozenset[Any] = frozenset(),
+      _logical_device_ids: tuple[int, ...] | None = None,
   ): ...
   mesh: Any
   spec: Any
@@ -881,6 +906,7 @@ class NamedSharding(Sharding):
   _parsed_pspec: Any
   _internal_device_list: DeviceList
   _manual_axes: frozenset[Any]
+  _logical_device_ids: tuple[int, ...] | None
 
 class SingleDeviceSharding(Sharding):
   def __init__(self, device: Device, *, memory_kind: Optional[str] = None): ...
@@ -929,7 +955,7 @@ def pjit(
     cache_miss: Callable,
     static_argnums: Sequence[int],
     static_argnames: Sequence[str],
-    donate_argnums: Sequence[int],
+    global_cache_key: Any,
     pytree_registry: pytree.PyTreeRegistry,
     shard_arg_fallback: Callable,
     cache: Optional[PjitFunctionCache] = ...,
@@ -953,6 +979,25 @@ class FlattenCallGraph(HloPassInterface):
 
 class TupleSimplifer(HloPassInterface):
   def __init__(self) -> None: ...
+
+
+class WeakrefLRUCacheInfo:
+  @property
+  def hits(self) -> int: ...
+  @property
+  def misses(self) -> int: ...
+  @property
+  def maxsize(self) -> int: ...
+  @property
+  def currsize(self) -> int: ...
+
+
+class WeakrefLRUCache:
+  def __call__(self, weakref_key: Any, *args, **kwargs) -> Any: ...
+  def cache_keys(self) -> list[Any]: ...
+  def cache_info(self) -> WeakrefLRUCacheInfo: ...
+  def cache_clear(self): ...
+
 
 def is_asan() -> bool: ...
 def is_msan() -> bool: ...

@@ -14,16 +14,25 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
+#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
@@ -32,48 +41,71 @@ limitations under the License.
 #include "tsl/platform/test.h"
 
 namespace stream_executor::gpu {
+namespace {
 
-TEST(GpuKernelTest, Add) {
-  using AddI32Kernel =
-      TypedKernelFactory<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
-                         DeviceMemory<int32_t>>;
-  auto name = absl::AsciiStrToUpper(
-      xla::PlatformUtil::CanonicalPlatformName("gpu").value());
-  Platform* platform = PlatformManager::PlatformWithName(name).value();
-  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+using AddI32Kernel =
+    TypedKernelFactory<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
+                       DeviceMemory<int32_t>>;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+class GpuKernelTest : public ::testing::Test {
+ public:
+  void SetUp() override {
+    auto name = absl::AsciiStrToUpper(
+        xla::PlatformUtil::CanonicalPlatformName("gpu").value());
+    Platform* platform = PlatformManager::PlatformWithName(name).value();
+    executor_ = platform->ExecutorForDevice(0).value();
+  }
 
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-#if defined(GOOGLE_CUDA)
-  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
-#elif defined(TENSORFLOW_USE_ROCM)
-  spec.AddCudaCubinInMemory(internal::kAddI32KernelModule, "add");
-#endif
+  void RunAddI32Kernel(const MultiKernelLoaderSpec& spec) {
+    TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
+    TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor_, spec));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
+    int64_t length = 4;
+    int64_t byte_length = sizeof(int32_t) * length;
 
-  int64_t length = 4;
-  int64_t byte_length = sizeof(int32_t) * length;
+    // Prepare arguments: a=1, b=2, c=0
+    DeviceMemory<int32_t> a = executor_->AllocateArray<int32_t>(length, 0);
+    DeviceMemory<int32_t> b = executor_->AllocateArray<int32_t>(length, 0);
+    DeviceMemory<int32_t> c = executor_->AllocateArray<int32_t>(length, 0);
 
-  // Prepare arguments: a=1, b=2, c=0
-  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+    TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
+    TF_ASSERT_OK(stream->Memset32(&b, 2, byte_length));
+    TF_ASSERT_OK(stream->MemZero(&c, byte_length));
 
-  TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
-  TF_ASSERT_OK(stream->Memset32(&b, 2, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
+    // Launch kernel.
+    ASSERT_TRUE(
+        stream->ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c).ok());
 
-  // Launch kernel.
-  ASSERT_TRUE(stream->ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c).ok());
+    // Copy data back to host.
+    std::vector<int32_t> dst(4, 42);
+    TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
 
-  // Copy data back to host.
-  std::vector<int32_t> dst(4, 42);
-  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+    std::vector<int32_t> expected = {3, 3, 3, 3};
+    ASSERT_EQ(dst, expected);
+  }
 
-  std::vector<int32_t> expected = {3, 3, 3, 3};
-  ASSERT_EQ(dst, expected);
+  StreamExecutor* executor_;
+};
+
+TEST_F(GpuKernelTest, LoadAndRunKernelFromPtx) {
+  if (executor_->GetPlatform()->id() ==
+      stream_executor::rocm::kROCmPlatformId) {
+    GTEST_SKIP() << "There is no PTX or any equivalent abstraction for ROCm.";
+  }
+
+  RunAddI32Kernel(GetAddI32PtxKernelSpec());
 }
 
+TEST_F(GpuKernelTest, LoadAndRunKernelFromCubin) {
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  TF_ASSERT_OK_AND_ASSIGN(auto binary, GetGpuTestKernelsFatbin());
+  spec.AddCudaCubinInMemory(binary, "AddI32");
+  RunAddI32Kernel(spec);
+}
+
+TEST_F(GpuKernelTest, LoadAndRunKernelFromSymbol) {
+  RunAddI32Kernel(GetAddI32KernelSpec());
+}
+
+}  // namespace
 }  // namespace stream_executor::gpu

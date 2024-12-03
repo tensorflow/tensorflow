@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <Python.h>
 
+#include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil    // IWYU pragma: keep

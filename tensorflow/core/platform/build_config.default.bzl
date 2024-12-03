@@ -45,7 +45,7 @@ def tf_protos_all():
             Label("//tensorflow/core:protos_all_cc_impl"),
             "@local_xla//xla:autotune_results_proto_cc_impl",
             "@local_xla//xla:autotuning_proto_cc_impl",
-            "@local_tsl//tsl/protobuf:protos_all_cc_impl",
+            "@local_xla//xla/tsl/protobuf:protos_all_cc_impl",
         ],
         otherwise = [Label("//tensorflow/core:protos_all_cc")],
     )

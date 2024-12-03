@@ -13,7 +13,6 @@ package(
 tf_proto_library(
     name = "layout_proto",
     srcs = ["layout.proto"],
-    cc_api_version = 2,
     create_go_proto = False,
     create_java_proto = False,
 )
@@ -28,7 +27,6 @@ alias(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "layout_proto_py_pb2",
-#     api_version = 2,
 #     deps = [":layout_proto"],
 # )
 # copybara:uncomment_end

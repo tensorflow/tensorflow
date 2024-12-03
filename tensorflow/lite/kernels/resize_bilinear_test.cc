@@ -289,7 +289,7 @@ TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesUInt8) {
                                             9, 12, 14,   //
                                             12, 14, 16,  //
                                         },
-                                        /*max_abs_error=*/1)));
+                                        /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest,
@@ -312,7 +312,7 @@ TEST_P(ResizeBilinearOpTest,
                                             8, 10, 13,   //
                                             12, 14, 16,  //
                                         },
-                                        /*max_abs_error=*/1)));
+                                        /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesInt8) {
@@ -333,7 +333,7 @@ TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesInt8) {
                                              9, 12, 13,   //
                                              12, 14, 16,  //
                                          },
-                                         /*max_abs_error=*/1)));
+                                         /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesInt16) {
@@ -357,7 +357,7 @@ TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesInt16) {
                                               9, 12, 13,   //
                                               12, 14, 16,  //
                                           },
-                                          /*max_abs_error=*/1)));
+                                          /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeUInt8) {
@@ -373,7 +373,7 @@ TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeUInt8) {
                                             7, 9, 10, 12, 11, 14,    //
                                             10, 12, 12, 14, 14, 16,  //
                                         },
-                                        /*max_abs_error=*/1)));
+                                        /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeInt8) {
@@ -389,7 +389,7 @@ TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeInt8) {
                                              7, 9, 10, 12, 11, 13,    //
                                              10, 12, 12, 14, 14, 16,  //
                                          },
-                                         /*max_abs_error=*/1)));
+                                         /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeInt16) {
@@ -408,7 +408,7 @@ TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeInt16) {
                                               7, 9, 10, 12, 11, 13,    //
                                               10, 12, 12, 14, 14, 16,  //
                                           },
-                                          /*max_abs_error=*/1)));
+                                          /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest, HorizontalResizeExtremeValuesUInt8) {

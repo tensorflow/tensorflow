@@ -52,10 +52,10 @@ struct BufferizeJITExecuteOp
 
 }  // namespace
 
-void populateExtraBufferizePatterns(
-    ConversionTarget &target, MLIRContext *context,
-    bufferization::BufferizeTypeConverter *converter,
-    RewritePatternSet *patterns) {
+void populateExtraBufferizePatterns(ConversionTarget &target,
+                                    MLIRContext *context,
+                                    TypeConverter *converter,
+                                    RewritePatternSet *patterns) {
   target.addLegalDialect<tf_framework::TFFrameworkDialect>();
   auto typesAreLegal = [converter](Operation *op) {
     return converter->isLegal(op->getOperandTypes()) &&

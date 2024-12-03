@@ -387,8 +387,12 @@ class OptimizationOptions(options_lib.OptionsBase):
   map_fusion = options_lib.create_option(
       name="map_fusion",
       ty=bool,
-      docstring="Whether to fuse map transformations. If None, defaults to "
-      "False.")
+      docstring=(
+          "Whether to fuse map transformations with `num_parallel_calls` set to"
+          " `tf.data.AUTOTUNE`, no captured inputs and same `deterministic`"
+          " value. If None, defaults to False."
+      ),
+  )
 
   map_parallelization = options_lib.create_option(
       name="map_parallelization",
@@ -473,6 +477,44 @@ class OptimizationOptions(options_lib.OptionsBase):
     """Change the mutability value to `mutable` on this options and children."""
     # pylint: disable=protected-access
     object.__setattr__(self, "_mutable", mutable)
+
+
+@tf_export("data.experimental.ServiceOptions")
+class ServiceOptions(options_lib.OptionsBase):
+  """Represents options for tf.data service.
+
+  You can set the service options of a dataset through the
+  `experimental_service` property of `tf.data.Options`; the property is an
+  instance of `tf.data.experimental.ServiceOptions`.
+
+  ```python
+  options = tf.data.Options()
+  options.experimental_service.pinned = True
+  dataset = dataset.with_options(options)
+  ```
+  """
+
+  pinned = options_lib.create_option(
+      name="pinned",
+      ty=bool,
+      docstring=(
+          "If true, the tf.data service client allocates data to pinned memory,"
+          " which faciliates more efficient copying from host memory to GPU"
+          " memory downstream. For gRPC, compression must be disabled for this"
+          " to take effect. For alternative data transfer protocols, this may"
+          " or may not take effect, depending on the implementation."
+      ),
+  )
+
+  def _to_proto(self):
+    pb = dataset_options_pb2.ServiceOptions()
+    if self.pinned is not None:
+      pb.pinned = self.pinned
+    return pb
+
+  def _from_proto(self, pb):
+    if pb.WhichOneof("optional_pinned") is not None:
+      self.pinned = pb.pinned
 
 
 @deprecation.deprecated_endpoints("data.experimental.ThreadingOptions")
@@ -614,6 +656,16 @@ class Options(options_lib.OptionsBase):
       "Note that symbolic checkpointing is not supported for "
       "transformations that can reorder elements.")
 
+  experimental_service = options_lib.create_option(
+      name="experimental_service",
+      ty=ServiceOptions,
+      docstring=(
+          "The tf.data service options associated with the dataset. See "
+          "`tf.data.experimental.ServiceOptions` for more details."
+      ),
+      default_factory=ServiceOptions,
+  )
+
   experimental_threading = options_lib.create_option(
       name="experimental_threading",
       ty=ThreadingOptions,
@@ -704,6 +756,7 @@ class Options(options_lib.OptionsBase):
     if self.framework_type:
       for framework_type in self.framework_type:
         pb.framework_type.append(framework_type)
+    pb.service_options.CopyFrom(self.experimental_service._to_proto())  # pylint: disable=protected-access
     pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
     return pb
 
@@ -729,6 +782,7 @@ class Options(options_lib.OptionsBase):
       self.framework_type = []
       for framework_type in pb.framework_type:
         self.framework_type.append(framework_type)
+    self.experimental_service._from_proto(pb.service_options)  # pylint: disable=protected-access
     self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
 
   def _set_mutable(self, mutable):

@@ -24,8 +24,8 @@ limitations under the License.
 #include <initializer_list>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <optional>
-#include <string>
 #include <tuple>
 #include <utility>
 #include <variant>
@@ -33,6 +33,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -45,8 +46,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -61,13 +64,14 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/dnn.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -360,27 +364,61 @@ std::optional<MatchedFp8Param> MatchFp8Param(HloInstruction *instr) {
 // dimension. Keeps the layout the same.
 HloInstruction *TransposeMatrix(HloInstruction *instr, int64_t contracting_dim,
                                 absl::Span<const int64_t> batch_dims) {
+  auto input_shape = instr->shape();
   // Identify the dimensional order which describes a transpose of the
   // contracting and non-contracting dimensions of the GEMM.
-  std::vector<int64_t> permutation(instr->shape().dimensions_size(), -1);
+  std::vector<int64_t> permutation(input_shape.dimensions_size(), -1);
   // Discard the batch dimensions.
   for (int64_t batch_dim : batch_dims) {
     permutation[batch_dim] = batch_dim;
   }
   // Identify the non-contracting dimension.
   int non_contracting_dim;
-  for (int i = 0; i < instr->shape().dimensions_size(); ++i) {
+  for (int i = 0; i < input_shape.dimensions_size(); ++i) {
     if (permutation[i] == -1 && contracting_dim != i) {
       non_contracting_dim = i;
     }
   }
-  permutation[non_contracting_dim] = contracting_dim;
-  permutation[contracting_dim] = non_contracting_dim;
 
-  Shape new_shape = ShapeUtil::PermuteDimensions(permutation, instr->shape());
-  *new_shape.mutable_layout() = instr->shape().layout();
-  return instr->AddInstruction(
-      HloInstruction::CreateTranspose(new_shape, instr, permutation));
+  if (Layout::Equal()(input_shape.layout(),
+                      LayoutUtil::GetDefaultLayoutForShape(input_shape))) {
+    permutation[non_contracting_dim] = contracting_dim;
+    permutation[contracting_dim] = non_contracting_dim;
+
+    Shape new_shape = ShapeUtil::PermuteDimensions(permutation, input_shape);
+    *new_shape.mutable_layout() = input_shape.layout();
+
+    return instr->AddInstruction(
+        HloInstruction::CreateTranspose(new_shape, instr, permutation));
+  }
+
+  Shape normalized_input_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+          input_shape);
+  auto a0 = MakeBitcastHlo(instr, normalized_input_shape);
+
+  std::vector<int64_t> layout_permuation(
+      input_shape.layout().minor_to_major().begin(),
+      input_shape.layout().minor_to_major().end());
+  absl::c_reverse(layout_permuation);
+  auto inv_perm = InversePermutation(layout_permuation);
+
+  int new_contracting_dim = inv_perm[contracting_dim];
+  int new_non_contracting_dim = inv_perm[non_contracting_dim];
+  absl::c_iota(permutation, 0);
+  std::swap(permutation[new_contracting_dim],
+            permutation[new_non_contracting_dim]);
+
+  Shape transpose_shape =
+      ShapeUtil::PermuteDimensions(permutation, a0->shape());
+  *transpose_shape.mutable_layout() = a0->shape().layout();
+
+  HloInstruction *normalized_transpose = instr->AddInstruction(
+      HloInstruction::CreateTranspose(transpose_shape, a0, permutation));
+
+  Shape final_shape = ShapeUtil::PermuteDimensions(inv_perm, transpose_shape);
+  *final_shape.mutable_layout() = input_shape.layout();
+  return MakeBitcastHlo(normalized_transpose, final_shape);
 }
 
 // If the bias is a sequence of ops that depend only on broadcasts of
@@ -550,7 +588,7 @@ auto OptionalBitcast(HloInstruction **optional_bitcast, Pattern pattern) {
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
   explicit GemmRewriterVisitor(const se::GpuComputeCapability &gpu_version,
-                               const int32_t toolkit_version,
+                               se::SemanticVersion toolkit_version,
                                const GemmRewriterOptions options)
       : gpu_version_(gpu_version),
         toolkit_version_(toolkit_version),
@@ -631,7 +669,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                  const_cast<HloInstruction *>(instr->operand(0)))) &&
             (b = MatchFp8Param(
                  const_cast<HloInstruction *>(instr->operand(1))))) {
-          if (IsRocm(gpu_version_) && toolkit_version_ < 60200 &&
+          if (IsRocm(gpu_version_) &&
+              toolkit_version_ < stream_executor::SemanticVersion{6, 2, 0} &&
               instr->shape().element_type() != F16 &&
               instr->shape().element_type() != F32) {
             TF_ASSIGN_OR_RETURN(
@@ -653,20 +692,50 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         break;
       }
       case GemmRewriterOptions::DType::kNonFp8Only: {
-        // Rewrite non-FP8 GEMMs into a cublas or cublasLT Custom Call.
-        TF_ASSIGN_OR_RETURN(
-            absl::string_view gemm_custom_call_target,
-            GetNonFp8GemmCustomCallTarget(*instr, gemm_backend_config));
-        const Shape &output_shape = instr->shape();
-        HloInstruction *gemm_call =
-            instr->AddInstruction(HloInstruction::CreateCustomCall(
-                output_shape,
-                {instr->mutable_operand(0), instr->mutable_operand(1)},
-                gemm_custom_call_target));
-        TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gpu_backend_config));
-        TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
+        if (gemm_backend_config.precision_config().algorithm() ==
+            PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
+          TF_RETURN_IF_ERROR(TurnDotIntoConvertAndDotForBF16BF16F32(
+              instr, gemm_backend_config, gpu_backend_config));
+        } else {
+          // Rewrite non-FP8 GEMMs into a cublas or cublasLT Custom Call.
+          TF_ASSIGN_OR_RETURN(
+              absl::string_view gemm_custom_call_target,
+              GetNonFp8GemmCustomCallTarget(*instr, gemm_backend_config));
+          const Shape &output_shape = instr->shape();
+          HloInstruction *gemm_call =
+              instr->AddInstruction(HloInstruction::CreateCustomCall(
+                  output_shape,
+                  {instr->mutable_operand(0), instr->mutable_operand(1)},
+                  gemm_custom_call_target));
+          TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gpu_backend_config));
+          TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
+        }
       } break;
     };
+    return absl::OkStatus();
+  }
+
+  absl::Status TurnDotIntoConvertAndDotForBF16BF16F32(
+      HloInstruction *instr, GemmBackendConfig &gemm_backend_config,
+      GpuBackendConfig &gpu_backend_config) {
+    auto lhs_shape = instr->operand(0)->shape();
+    lhs_shape.set_element_type(BF16);
+    auto lhs_convert = instr->mutable_operand(0)->AddInstruction(
+        HloInstruction::CreateConvert(lhs_shape, instr->mutable_operand(0)));
+    auto rhs_shape = instr->operand(1)->shape();
+    rhs_shape.set_element_type(BF16);
+    auto rhs_convert = instr->mutable_operand(1)->AddInstruction(
+        HloInstruction::CreateConvert(rhs_shape, instr->mutable_operand(1)));
+    gemm_backend_config.mutable_precision_config()->clear_algorithm();
+    TF_ASSIGN_OR_RETURN(
+        absl::string_view gemm_custom_call_target,
+        GetNonFp8GemmCustomCallTarget(*instr, gemm_backend_config));
+    const Shape &output_shape = instr->shape();
+    HloInstruction *gemm_call =
+        instr->AddInstruction(HloInstruction::CreateCustomCall(
+            output_shape, {lhs_convert, rhs_convert}, gemm_custom_call_target));
+    TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gpu_backend_config));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
     return absl::OkStatus();
   }
 
@@ -1008,7 +1077,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return false;
       }
       // FP8 GEMM kernels are only available with CUDA 12.0 and above
-      if (toolkit_version_ < 12000) {
+      if (toolkit_version_ < stream_executor::SemanticVersion{12, 0, 0}) {
         VLOG(1) << "FP8 Custom Calls require CUDA 12.0 or newer.";
         return false;
       }
@@ -1021,7 +1090,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         VLOG(1) << "FP8 Custom Calls require MI300, or later architectures.";
         return false;
       }
-      if (toolkit_version_ < 60000) {
+      if (toolkit_version_ < stream_executor::SemanticVersion{6, 0, 0}) {
         // FP8 GEMM kernels are only available with ROCm 6.0 and above
         VLOG(1) << "FP8 Custom Calls require ROCm 6.0 or newer.";
         return false;
@@ -1072,17 +1141,26 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    absl::Span<const int64_t> batch_dims =
+    absl::Span<const int64_t> a_batch_dims =
+        gemm_backend_config.dot_dimension_numbers().lhs_batch_dimensions();
+    absl::Span<const int64_t> b_batch_dims =
         gemm_backend_config.dot_dimension_numbers().rhs_batch_dimensions();
+    const size_t num_batch_dims = a_batch_dims.size();
 
     // cuBLASLt FP8 GEMM kernels require the scaling factors to be in F32
     // format. Set the factors to one when no scaling factors were captured.
-    Literal one_literal = LiteralUtil::One(F32);
-    HloInstruction *one = instr->AddInstruction(
-        HloInstruction::CreateConstant(one_literal.Clone()));
     std::array<bool, 2> mult_scale{a.mult_scale, b.mult_scale};
     std::array<HloInstruction *, 2> scales{a.scale, b.scale}, inv_scales,
         scales_f32;
+    HloInstruction *one_constant = nullptr;
+    auto one = [&one_constant, instr]() -> HloInstruction * {
+      if (!one_constant) {
+        one_constant = instr->AddInstruction(
+            HloInstruction::CreateConstant(LiteralUtil::One(F32)));
+      }
+      return one_constant;
+    };
+
     for (int i = 0; i < scales.size(); ++i) {
       if (scales[i]) {
         if (!ShapeUtil::IsScalar(scales[i]->shape())) {
@@ -1093,7 +1171,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         }
         if (!mult_scale[i]) {
           inv_scales[i] = instr->AddInstruction(HloInstruction::CreateBinary(
-              scales[i]->shape(), HloOpcode::kDivide, one, scales[i]));
+              scales[i]->shape(), HloOpcode::kDivide, one(), scales[i]));
         }
         scales_f32[i] = mult_scale[i] ? scales[i] : inv_scales[i];
         if (scales_f32[i]->shape().element_type() != F32) {
@@ -1101,7 +1179,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
               ShapeUtil::MakeScalarShape(F32), scales_f32[i]));
         }
       } else {
-        scales_f32[i] = one;
+        scales_f32[i] = one();
       }
     }
 
@@ -1110,7 +1188,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (IsCuda(gpu_version_) && (d_type == F8E4M3FN || d_type == F8E5M2)) {
       supported_d_type = true;
     }
-    if (IsRocm(gpu_version_) && toolkit_version_ >= 60200 &&
+    if (IsRocm(gpu_version_) &&
+        toolkit_version_ >= stream_executor::SemanticVersion{6, 2, 0} &&
         (d_type == F8E4M3FNUZ || d_type == F8E5M2FNUZ)) {
       supported_d_type = true;
     }
@@ -1118,7 +1197,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       VLOG(1) << "Failed to rewrite " << instr->ToShortString()
               << " into FP8 Custom Call. Output element type must be "
               << (IsCuda(gpu_version_) ? "F8E4M3FN, F8E5M2, BF16, F16 or F32. "
-                  : toolkit_version_ >= 60200
+                  : toolkit_version_ >=
+                          stream_executor::SemanticVersion{6, 2, 0}
                       ? "F8E4M3FNUZ, F8E5M2FNUZ, BF16, F16 or F32. "
                       : "BF16, F16 or F32. ")
               << "Actual element type is " << PrimitiveType_Name(d_type);
@@ -1139,22 +1219,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                  "dimension.";
       return false;
     }
-    if ((a.commutative_ops.empty() ? a.fp8_input
-                                   : a.commutative_ops.back().first)
-                    ->shape()
-                    .dimensions_size() -
-                batch_dims.size() !=
-            2 ||
-        (b.commutative_ops.empty() ? b.fp8_input
-                                   : b.commutative_ops.back().first)
-                    ->shape()
-                    .dimensions_size() -
-                batch_dims.size() !=
-            2) {
-      VLOG(1) << "Failed to rewrite " << instr->ToShortString()
-              << "into FP8 Custom Call. A and B must have one non-contracting "
-                 "dimension.";
-      return false;
+    for (const MatchedFp8Param &param : {a, b}) {
+      const HloInstruction *input = param.commutative_ops.empty()
+                                        ? param.fp8_input
+                                        : param.commutative_ops.back().first;
+      if (input->shape().rank() != num_batch_dims + 2) {
+        VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+                << "into FP8 Custom Call. Inputs must have exactly one "
+                   "contracting and one non-contracting dimension.";
+        return false;
+      }
     }
 
     // Sequentially apply the collected unary, dynamic-slice, pad and select ops
@@ -1175,7 +1249,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                   ShapeUtil::ChangeElementType(op.first->operand(1)->shape(),
                                                x->shape().element_type()),
                   op.first->mutable_operand(1)));
-          operands.emplace_back(convert);
+          operands.push_back(convert);
         }
         // Convert and insert the additional operands of select ops.
         if (op.first->opcode() == HloOpcode::kSelect) {
@@ -1207,7 +1281,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     DotDimensionNumbers *dim_nums =
         gemm_backend_config.mutable_dot_dimension_numbers();
-    int batch_dim_offset = batch_dims.size();
 
     // cuBLASLt FP8 GEMM kernels currently require the first operand, i.e. A, to
     // be row-major. If A is column-major, swap the contracting and
@@ -1215,37 +1288,40 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // column-major.
     // TODO(philipphack): Remove once cuBLASLt supports A being column-major
     if (gemm_config.lhs_layout.order == MatrixLayout::Order::kColumnMajor) {
-      CHECK(a_contracting_dims[0] == batch_dim_offset ||
-            a_contracting_dims[0] == batch_dim_offset + 1);
-      if (a_contracting_dims[0] == batch_dim_offset) {
-        dim_nums->set_lhs_contracting_dimensions(0, batch_dim_offset + 1);
+      CHECK(a_contracting_dims[0] == num_batch_dims ||
+            a_contracting_dims[0] == num_batch_dims + 1);
+      if (a_contracting_dims[0] == num_batch_dims) {
+        dim_nums->set_lhs_contracting_dimensions(0, num_batch_dims + 1);
       } else {
-        dim_nums->set_lhs_contracting_dimensions(0, batch_dim_offset);
+        dim_nums->set_lhs_contracting_dimensions(0, num_batch_dims);
       }
       a.fp8_input =
-          TransposeMatrix(a.fp8_input, a_contracting_dims[0], batch_dims);
+          TransposeMatrix(a.fp8_input, a_contracting_dims[0], a_batch_dims);
     }
 
     // Similarly, cuBLASLt requires the second operand to be column-major, so
     // make it column-major if it is currently row-major.
     if (gemm_config.rhs_layout.order == MatrixLayout::Order::kRowMajor) {
-      CHECK(b_contracting_dims[0] == batch_dim_offset ||
-            b_contracting_dims[0] == batch_dim_offset + 1);
-      if (b_contracting_dims[0] == batch_dim_offset) {
-        dim_nums->set_rhs_contracting_dimensions(0, batch_dim_offset + 1);
+      CHECK(b_contracting_dims[0] == num_batch_dims ||
+            b_contracting_dims[0] == num_batch_dims + 1);
+      if (b_contracting_dims[0] == num_batch_dims) {
+        dim_nums->set_rhs_contracting_dimensions(0, num_batch_dims + 1);
       } else {
-        dim_nums->set_rhs_contracting_dimensions(0, batch_dim_offset);
+        dim_nums->set_rhs_contracting_dimensions(0, num_batch_dims);
       }
       b.fp8_input =
-          TransposeMatrix(b.fp8_input, b_contracting_dims[0], batch_dims);
+          TransposeMatrix(b.fp8_input, b_contracting_dims[0], b_batch_dims);
     }
 
-    a.fp8_input = PadOperandToMultipleOf16(batch_dims, a.fp8_input);
-    b.fp8_input = PadOperandToMultipleOf16(batch_dims, b.fp8_input);
-    Shape new_output_shape = PadShapeToMultipleOf16(instr->shape(), batch_dims);
+    a.fp8_input = PadOperandToMultipleOf16(a_batch_dims, a.fp8_input);
+    b.fp8_input = PadOperandToMultipleOf16(b_batch_dims, b.fp8_input);
+    std::vector<int64_t> out_batch_dims(num_batch_dims);
+    std::iota(out_batch_dims.begin(), out_batch_dims.end(), 0);
+    Shape new_output_shape =
+        PadShapeToMultipleOf16(instr->shape(), out_batch_dims);
 
     std::vector<HloInstruction *> operands_list = {
-        a.fp8_input, b.fp8_input, scales_f32[0], scales_f32[1], one, one};
+        a.fp8_input, b.fp8_input, scales_f32[0], scales_f32[1]};
 
     HloInstruction *new_custom_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
@@ -1411,13 +1487,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    // If necessary, invert the scaling factor of D and convert to F32.
+    // If necessary, invert the scaling factor of D and convert to F32. When no
+    // scaling factor was captured, set the factor to one.
     if (d_scale) {
       TF_ASSIGN_OR_RETURN(d_scale,
                           InvertAndConvertScalar(d_scale, !mult_scale));
-      TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(
-          gemm_backend_config.beta() == 0.0 ? 5 : 6, d_scale));
+    } else {
+      d_scale = instr->AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::One(F32)));
     }
+    existing_gemm->AppendOperand(d_scale);
 
     // If present, elide the calculation of the maximum of the absolute values
     // of the result of the GEMM.
@@ -1780,7 +1859,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // CUBLAS_STATUS_NOT_SUPPORTED in some cases when fusing gelu into an FP8
     // matmul. We cannot check the patch version, so disable this fusion with
     // CUDA versions less than 12.4.
-    if (IsCuda(gpu_version_) && toolkit_version_ < 12040 &&
+    if (IsCuda(gpu_version_) &&
+        toolkit_version_ < stream_executor::SemanticVersion{12, 4, 0} &&
         IsCublasLtMatmulF8(*gemm)) {
       return absl::OkStatus();
     }
@@ -1827,7 +1907,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
  private:
   se::GpuComputeCapability gpu_version_;
-  int32_t toolkit_version_;
+  stream_executor::SemanticVersion toolkit_version_;
   GemmRewriterOptions options_;
 
   // Choose cublas or cublasLt for the target of the custom call that instr will
@@ -1882,12 +1962,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (!absl::c_linear_search(supported_type, output_type)) return false;
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
                         se::gpu::AsBlasDataType(output_type));
-    // TODO(tdanyluk): Investigate why don't we use the actual precision (and
-    // algorithm) here? Why do we use the default?
-    TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
-                        se::gpu::GetBlasComputationType(
-                            PrecisionConfig::ALG_UNSET, a_dtype, output_type,
-                            stream_executor::blas::kDefaultComputePrecision));
+    TF_ASSIGN_OR_RETURN(
+        const se::blas::ComputationType compute_type,
+        se::gpu::GetBlasComputationType(
+            instr.precision_config().algorithm(), a_dtype, output_type,
+            stream_executor::blas::kDefaultComputePrecision));
     se::blas::DataType scale_type =
         se::gpu::GetScaleType(output_dtype, compute_type);
 
@@ -1978,7 +2057,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         backend_config.precision_config().operand_precision());
     const PrecisionConfig::Algorithm algorithm =
         backend_config.precision_config().algorithm();
-    if (!algorithm_util::IsSupportedByCublasOrCublasLt(algorithm)) return false;
+    if (!algorithm_util::IsSupportedByCublasOrCublasLt(algorithm, gpu_version_))
+      return false;
 
     TF_ASSIGN_OR_RETURN(
         const se::blas::ComputationType compute_type,
@@ -2204,16 +2284,20 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return f32_dot;
   }
 
-  // Turns an F8 dot into an F16 dot, converting operands to F16 and
+  // Turns an F8 dot into an F16 dot, converting operands to F16 (or BF16) and
   // converting the output back to F8.
   absl::StatusOr<HloInstruction *> TurnF8DotIntoF16Dot(HloInstruction *instr) {
     DCHECK(IsF8Type(instr->operand(0)));
     DCHECK(IsF8Type(instr->operand(1)));
 
-    // Convert operands to F16
+    // If the output type is BF16, the input types have to be BF16 as well.
+    PrimitiveType conv_type =
+        instr->shape().element_type() == BF16 ? BF16 : F16;
+
+    // Convert operands to F16 (or BF16).
     for (int i = 0; i < 2; ++i) {
       Shape operand_f16_shape = instr->operand(i)->shape();
-      operand_f16_shape.set_element_type(F16);
+      operand_f16_shape.set_element_type(conv_type);
       HloInstruction *convert =
           instr->AddInstruction(HloInstruction::CreateConvert(
               operand_f16_shape, instr->mutable_operand(i)));
@@ -2335,7 +2419,7 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
 
 absl::StatusOr<bool> RunOnComputation(HloComputation *computation,
                                       se::GpuComputeCapability gpu_version,
-                                      int32_t toolkit_version,
+                                      se::SemanticVersion toolkit_version,
                                       GemmRewriterOptions options) {
   GemmRewriterVisitor visitor(gpu_version, toolkit_version, options);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
@@ -2347,7 +2431,8 @@ absl::StatusOr<bool> RunOnComputation(HloComputation *computation,
 }  // anonymous namespace
 
 GemmRewriter::GemmRewriter(se::GpuComputeCapability gpu_version,
-                           int32_t toolkit_version, GemmRewriterOptions options)
+                           se::SemanticVersion toolkit_version,
+                           GemmRewriterOptions options)
     : gpu_version_(gpu_version),
       toolkit_version_(toolkit_version),
       options_(options) {}

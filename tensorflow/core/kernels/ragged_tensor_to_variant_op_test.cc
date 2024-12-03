@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {

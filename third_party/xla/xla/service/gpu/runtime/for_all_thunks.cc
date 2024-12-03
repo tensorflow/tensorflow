@@ -35,7 +35,7 @@ void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn,
   fn(thunk);
   // ... and then handle all nested `Thunks` recursively.
   switch (thunk->kind()) {
-    case Thunk::kAddressComputation:
+    case Thunk::kDynamicSlice:
       ForAllThunks(fn, tensorflow::down_cast<const DynamicSliceThunk*>(thunk)
                            ->embedded_thunk());
       break;
@@ -106,6 +106,8 @@ void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn,
     case Thunk::kPartitionId:
     case Thunk::kRecv:
     case Thunk::kRecvDone:
+    case Thunk::kNcclGroupStart:
+    case Thunk::kNcclGroupDone:
     case Thunk::kReplicaId:
     case Thunk::kSend:
     case Thunk::kSendDone:

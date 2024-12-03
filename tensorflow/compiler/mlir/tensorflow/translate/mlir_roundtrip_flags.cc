@@ -120,7 +120,7 @@ static Status HandleSubtype(absl::string_view subtype,
   if (shape_and_type.size() > 2) {
     return errors::FailedPrecondition("Invalid argument: '", subtype,
                                       "', expected a single shape and type pair"
-                                      " seperated with a ':'");
+                                      " separated with a ':'");
   } else if (shape_and_type.size() == 2) {
     const auto& shape_str = shape_and_type[0];
     TF_ASSIGN_OR_RETURN(dims, ParseShapeStr(shape_str));
