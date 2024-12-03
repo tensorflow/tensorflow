@@ -730,7 +730,8 @@ absl::Status FunctionalHloRunner::PrepareHloModuleForCompilation(
   }
 
   if (preproc_options.flatten_while_loop() ||
-      preproc_options.remove_infeed_outfeed) {
+      preproc_options.remove_infeed_outfeed ||
+      preproc_options.remove_conditional) {
     // The pipeline will check for the presence of
     // debug_options().xla_disable_hlo_passes().
     HloPassPipeline pipeline("control-flow-flattening-pipeline");
@@ -745,7 +746,13 @@ absl::Status FunctionalHloRunner::PrepareHloModuleForCompilation(
             while_execution_count,
             /*remove_infeed_outfeed=*/preproc_options.remove_infeed_outfeed,
             /*flatten_while_loop=*/preproc_options.flatten_while_loop(),
-            /*remove_comm=*/false, /*remove_host_transfer=*/true});
+            /*remove_comm=*/false,
+            /*remove_host_transfer=*/true,
+            /*remove_id=*/false,
+            /*remove_conditional=*/
+            preproc_options.remove_conditional.value_or(false),
+            /*conditional_value=*/
+            preproc_options.conditional_value.value_or(false)});
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
   return absl::OkStatus();

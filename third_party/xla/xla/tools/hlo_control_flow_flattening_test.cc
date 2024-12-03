@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/transforms/despecializer.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/spmd/spmd_partitioner.h"
@@ -367,6 +369,83 @@ TEST_F(HloControlFlowFlatteningTest, Outfeed) {
   auto custom_call = module->entry_computation()->root_instruction();
   EXPECT_EQ(custom_call->name(), "outfeed.23");
   EXPECT_THAT(custom_call, op::CustomCall(op::Parameter(0), op::AfterAll()));
+}
+
+TEST_F(HloControlFlowFlatteningTest, PredicatedConditional) {
+  absl::string_view hlo_string = R"(
+
+  HloModule pred_conditional, entry_computation_layout={()->f32[]}
+
+  Negate {
+    x = f32[] parameter(0)
+    ROOT negate = f32[] negate(x)
+  }
+
+  Identity {
+    y = f32[] parameter(0)
+    ROOT copy = f32[] copy(y)
+  }
+
+  ENTRY Parameters1.v4 {
+    constant = pred[] constant(true)
+    constant.1 = f32[] constant(56)
+    constant.2 = f32[] constant(12)
+    ROOT conditional = f32[] conditional(constant, constant.1, constant.2), true_computation=Negate, false_computation=Identity
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
+      .remove_conditional = true, .conditional_value = false});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  auto conditional = module->entry_computation()->root_instruction();
+  EXPECT_EQ(conditional->name(), "conditional");
+  EXPECT_EQ(conditional->operand(0)->literal().Get<bool>({}), false);
+}
+
+TEST_F(HloControlFlowFlatteningTest, IndexedConditional) {
+  absl::string_view hlo_string = R"(
+  HloModule indexed_conditional, entry_computation_layout={()->f32[]}
+
+  %Negate (x: f32[]) -> f32[] {
+    %x = f32[] parameter(0)
+    ROOT %negate = f32[] negate(f32[] %x)
+  }
+
+  %Identity (y: f32[]) -> f32[] {
+    %y = f32[] parameter(0)
+    ROOT %copy = f32[] copy(f32[] %y)
+  }
+
+  %Floor (z: f32[]) -> f32[] {
+    %z = f32[] parameter(0)
+    ROOT %floor = f32[] floor(f32[] %z)
+  }
+
+  ENTRY %Parameters1.v4 () -> f32[] {
+    %constant = s32[] constant(1)
+    %constant.1 = f32[] constant(56)
+    %constant.2 = f32[] constant(12)
+    %constant.3 = f32[] constant(13)
+    ROOT %conditional = f32[] conditional(s32[] %constant, f32[] %constant.1, f32[] %constant.2, f32[] %constant.3), branch_computations={%Negate, %Identity, %Floor}
+  }
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
+      .remove_conditional = true, .conditional_value = false});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  auto conditional = module->entry_computation()->root_instruction();
+  EXPECT_EQ(conditional->name(), "conditional");
+  EXPECT_EQ(conditional->operand(0)->literal().Get<int32_t>({}), 2);
 }
 
 TEST_F(HloControlFlowFlatteningTest, AllReduce) {

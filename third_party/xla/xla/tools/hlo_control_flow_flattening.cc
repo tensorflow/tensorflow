@@ -419,6 +419,30 @@ absl::Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
   return absl::OkStatus();
 }
 
+absl::Status HloControlFlowFlattening::SetConditionalValue(
+    HloInstruction* conditional) const {
+  HloComputation* computation = conditional->parent();
+  std::string original_op_name(conditional->mutable_operand(0)->name());
+  if (conditional->operand(0)->shape().element_type() == PRED) {
+    // Predicated (if/else) conditional.
+    HloInstruction* new_parameter =
+        computation->AddInstruction(HloInstruction::CreateConstant(
+            LiteralUtil::CreateR0<bool>(conditional_value_)));
+    new_parameter->SetAndSanitizeName(original_op_name + "_flattened");
+    TF_RETURN_IF_ERROR(conditional->ReplaceOperandWith(0, new_parameter));
+  } else {
+    // Indexed (switch/case/default) conditional. Uses the N-1'th
+    // branch_computation as default index.
+    HloInstruction* new_parameter =
+        computation->AddInstruction(HloInstruction::CreateConstant(
+            LiteralUtil::CreateR0<int32_t>(conditional->branch_count() - 1)));
+    new_parameter->SetAndSanitizeName(original_op_name + "_flattened");
+    TF_RETURN_IF_ERROR(conditional->ReplaceOperandWith(0, new_parameter));
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> HloControlFlowFlattening::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -504,6 +528,10 @@ absl::StatusOr<bool> HloControlFlowFlattening::Run(
                    instruction->custom_call_target() == "SliceId"))) {
         VLOG(1) << "Remove " << instruction->name();
         TF_RETURN_IF_ERROR(RemoveId(instruction));
+        changed = true;
+      } else if (remove_conditional_ &&
+                 instruction->opcode() == HloOpcode::kConditional) {
+        TF_RETURN_IF_ERROR(SetConditionalValue(instruction));
         changed = true;
       }
     }

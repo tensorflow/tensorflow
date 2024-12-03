@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_TOOLS_HLO_CONTROL_FLOW_FLATTENING_H_
 #define XLA_TOOLS_HLO_CONTROL_FLOW_FLATTENING_H_
 
+#include <stdbool.h>
+
 #include <limits>
 #include <string>
 #include <utility>
@@ -51,6 +53,8 @@ class HloControlFlowFlattening : public HloModulePass {
     bool remove_host_transfer = false;
     // Removes partition-id, replica-id, and slice-id.
     bool remove_id = false;
+    bool remove_conditional = false;
+    bool conditional_value = false;
   };
   explicit HloControlFlowFlattening(const Options& options)
       : while_execution_count_(options.while_execution_count),
@@ -59,6 +63,8 @@ class HloControlFlowFlattening : public HloModulePass {
         remove_infeed_outfeed_(options.remove_infeed_outfeed),
         flatten_while_loop_(options.flatten_while_loop),
         remove_host_transfer_(options.remove_host_transfer),
+        remove_conditional_(options.remove_conditional),
+        conditional_value_(options.conditional_value),
         remove_comm_(options.remove_comm),
         remove_id_(options.remove_id) {}
   ~HloControlFlowFlattening() override = default;
@@ -80,6 +86,8 @@ class HloControlFlowFlattening : public HloModulePass {
                                 const CallGraph& call_graph) const;
   // Replaces an id with a zero constant.
   absl::Status RemoveId(HloInstruction* hlo) const;
+  // Sets the conditional value to use the default branch.
+  absl::Status SetConditionalValue(HloInstruction* conditional) const;
 
   int while_execution_count_;
   int max_outer_loop_count_;
@@ -87,6 +95,8 @@ class HloControlFlowFlattening : public HloModulePass {
   bool remove_infeed_outfeed_;
   bool flatten_while_loop_;
   bool remove_host_transfer_;
+  bool remove_conditional_;
+  bool conditional_value_;
 
  protected:
   // Replaces a collective op with a custom call and returns the custom call.

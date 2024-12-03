@@ -150,6 +150,10 @@ class FunctionalHloRunner {
     // If set, we will remove all infeed and outfeed operations.
     bool remove_infeed_outfeed = true;
 
+    std::optional<bool> remove_conditional = std::nullopt;
+
+    std::optional<bool> conditional_value = std::nullopt;
+
     // Should we flatten all while loops?
     bool flatten_while_loop() const {
       return while_execution_count.has_value();

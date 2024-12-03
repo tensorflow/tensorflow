@@ -583,6 +583,8 @@ xla_cc_test(
     srcs = ["hlo_control_flow_flattening_test.cc"],
     deps = [
         ":hlo_control_flow_flattening",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms:despecializer",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:collective_ops_utils",
