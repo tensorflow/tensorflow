@@ -170,7 +170,7 @@ absl::Status NcclCollectivePermuteStartThunk::Initialize(
 
 absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
-    NcclCommHandleWrapper comm_wrapper) {
+    CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -190,9 +190,8 @@ absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
                     p2p_memcpy_enabled_;
 
   return ::xla::gpu::RunCollectivePermute(
-      nccl_api(), source_target, device_buffers[0], stream,
-      comm_wrapper.comm_handle, device_string, current_id, use_memcpy,
-      recv_ptr_map_);
+      nccl_api(), source_target, device_buffers[0], stream, comm_handle.comm,
+      device_string, current_id, use_memcpy, recv_ptr_map_);
 }
 
 absl::Status RunCollectivePermute(

@@ -90,13 +90,13 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
 
 absl::Status NcclAllGatherStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
-    NcclCommHandleWrapper comm_wrapper) {
+    CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
   return xla::gpu::RunAllGather(nccl_api(), device_buffers, stream,
-                                comm_wrapper.comm_handle);
+                                comm_handle.comm);
 }
 
 absl::Status RunAllGather(NcclApi* nccl_api,

@@ -252,7 +252,7 @@ absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
                        stream_kind, std::move(participant_groups));
 }
 
-absl::StatusOr<NcclCommHandleWrapper> GetNcclComm(
+absl::StatusOr<CommunicatorHandle> GetNcclComm(
     const Thunk::CollectiveExecuteParams& params,
     const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
@@ -268,7 +268,7 @@ absl::StatusOr<NcclCommHandleWrapper> GetNcclComm(
   TF_ASSIGN_OR_RETURN(Communicator * comm,
                       collective_cliques.GetComm(std::move(clique_key), *rank));
 
-  return NcclCommHandleWrapper(comm, is_local);
+  return CommunicatorHandle(comm, is_local);
 }
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
@@ -420,7 +420,7 @@ absl::Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   const NcclStreamId stream_id = nccl_stream_id();
   AsyncStreamKind stream_kind = GetAsyncStreamKind();
   TF_ASSIGN_OR_RETURN(
-      NcclCommHandleWrapper comm_handle,
+      CommunicatorHandle comm_handle,
       GetNcclComm(*params.collective_params, *params.collective_cliques,
                   config().replica_groups, config().group_mode, stream_id,
                   stream_kind));

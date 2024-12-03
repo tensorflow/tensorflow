@@ -70,7 +70,7 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
  protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
-                                 NcclCommHandleWrapper comm_wrapper) override;
+                                 CommunicatorHandle comm_handle) override;
 
   AsyncStreamKind GetAsyncStreamKind() const override;
 

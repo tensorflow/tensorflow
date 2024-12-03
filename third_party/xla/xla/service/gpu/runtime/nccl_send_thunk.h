@@ -45,7 +45,7 @@ class NcclSendThunk : public NcclCollectiveThunk {
   const NcclCollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
-                                 NcclCommHandleWrapper comm_wrapper) override;
+                                 CommunicatorHandle comm_handle) override;
   AsyncStreamKind GetAsyncStreamKind() const override { return stream_kind_; }
   bool NeedFirstCallRendzevous() const override { return false; }
 

@@ -59,12 +59,12 @@ NcclCollectiveBroadcastStartThunk::GetGroupMode(
 
 absl::Status NcclCollectiveBroadcastStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
-    NcclCommHandleWrapper comm_wrapper) {
+    CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_, config_.operand_element_type));
-  return ::xla::gpu::RunCollectiveBroadcast(
-      device_buffers, stream, comm_wrapper.comm_handle, nccl_api());
+  return ::xla::gpu::RunCollectiveBroadcast(device_buffers, stream,
+                                            comm_handle.comm, nccl_api());
 }
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
