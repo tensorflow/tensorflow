@@ -3643,20 +3643,15 @@ func.func @if(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (ten
 // mhlo.fft
 //===----------------------------------------------------------------------===//
 
-// CHECK-LABEL: rfft_2d
-func.func @rfft_2d(%arg0: tensor<1x512xf32>) -> tensor<1x257xcomplex<f32>> {
-  %0 = "mhlo.fft"(%arg0) <{fft_length = dense<512> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<1x512xf32>) -> tensor<1x257xcomplex<f32>>
-  func.return %0 : tensor<1x257xcomplex<f32>>
+// CHECK-LABEL: legalize_fft_mhlo_fft_type_rfft
+func.func @legalize_fft_mhlo_fft_type_rfft(%arg0 : tensor<1x1x512xf32>) -> tensor<1x1x257xcomplex<f32>> {
+  %270 = "mhlo.fft"(%arg0) <{fft_length = dense<512> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<1x1x512xf32>) -> tensor<1x1x257xcomplex<f32>>
+  return %270: tensor<1x1x257xcomplex<f32>>
 }
 
-// CHECK: %cst = arith.constant dense<-2> : tensor<i32>
-// CHECK: %0 = "tfl.expand_dims"(%arg0, %cst) : (tensor<1x512xf32>, tensor<i32>) -> tensor<1x1x512xf32>
-// CHECK-DAG: %cst_0 = arith.constant dense<1> : tensor<1xi32>
-// CHECK-DAG: %cst_1 = arith.constant dense<512> : tensor<1xi32>
-// CHECK: %1 = "tfl.concatenation"(%cst_0, %cst_1) <{axis = 0 : i32, fused_activation_function = "NONE"}> : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
-// CHECK: %2 = "tfl.rfft2d"(%0, %1) : (tensor<1x1x512xf32>, tensor<2xi32>) -> tensor<1x1x257xcomplex<f32>>
-// CHECK: %3 = "tfl.squeeze"(%2) <{squeeze_dims = [-2]}> : (tensor<1x1x257xcomplex<f32>>) -> tensor<1x257xcomplex<f32>>
-// CHECK: return %3 : tensor<1x257xcomplex<f32>>
+// CHECK:  %cst = arith.constant dense<512> : tensor<2xi32>
+// CHECK:  %0 = "tfl.rfft2d"(%arg0, %cst) : (tensor<1x1x512xf32>, tensor<2xi32>) -> tensor<1x1x257xcomplex<f32>>
+// CHECK:  return %0 : tensor<1x1x257xcomplex<f32>>
 
 // -----
 

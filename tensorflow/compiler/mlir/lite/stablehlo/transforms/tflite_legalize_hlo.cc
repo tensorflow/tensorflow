@@ -442,7 +442,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   PopulateWhilePatterns(context, patterns, target);
   PopulateGetDimensionSizePatterns(context, patterns, target);
   PopulateIfPatterns(context, patterns, target);
-  PopulateFftPatterns(context, patterns, target);
+  PopulateLegalizeFftPatterns(context, patterns, target);
   PopulateCustomCallPatterns(context, patterns, target);
 
   patterns.add<odml::LowerDotGeneralOp>(context);

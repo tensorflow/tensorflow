@@ -806,3 +806,29 @@ func.func @shape_assertion_custom_call(%arg1: tensor<?x5xi32>) -> tensor<i32> {
 }
 
 // CHECK-NOT: mhlo.custom_call
+
+//===----------------------------------------------------------------------===//
+// mhlo.fft
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: rfft_2d
+func.func @rfft_2d(%arg0: tensor<1x512xf32>) -> tensor<1x257xcomplex<f32>> {
+  %0 = "mhlo.fft"(%arg0) <{fft_length = dense<512> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<1x512xf32>) -> tensor<1x257xcomplex<f32>>
+  func.return %0 : tensor<1x257xcomplex<f32>>
+}
+
+// CHECK:  %0 = mhlo.reshape %arg0 : (tensor<1x512xf32>) -> tensor<1x1x512xf32>
+// CHECK:  %1 = "mhlo.fft"(%0) <{fft_length = dense<[1, 512]> : tensor<2xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<1x1x512xf32>) -> tensor<1x1x257xcomplex<f32>>
+// CHECK:  %2 = mhlo.reshape %1 : (tensor<1x1x257xcomplex<f32>>) -> tensor<1x257xcomplex<f32>>
+// CHECK:  return %2 : tensor<1x257xcomplex<f32>>
+
+// -----
+
+// CHECK-LABEL: @fft
+func.func @fft(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>> {
+  %0 = "mhlo.fft"(%arg0) <{ fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type FFT> }> : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>>
+  func.return %0 : tensor<3x9xcomplex<f32>>
+}
+
+// CHECK: %0 = "mhlo.fft"(%arg0) <{fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type FFT>}> : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>>
+// CHECK: return %0 : tensor<3x9xcomplex<f32>>
