@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/inference_stats_combiner.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/gtl/map_util.h"

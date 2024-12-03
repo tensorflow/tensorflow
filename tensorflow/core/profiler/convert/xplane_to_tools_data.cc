@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/hlo_to_tools_data.h"
 #include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
+#include "tensorflow/core/profiler/convert/multi_xspace_to_inference_stats.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_hlo_stats.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_trace_container.h"
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
+#include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
@@ -329,6 +331,14 @@ absl::StatusOr<std::string> ConvertDcnCollectiveStatsToToolData(
   return dcnSlackAnalysis.SerializeAsString();
 }
 
+absl::StatusOr<std::string> ConvertMultiXSpacesToInferenceStats(
+    const SessionSnapshot& session_snapshot) {
+  InferenceStats inference_stats;
+  TF_RETURN_IF_ERROR(
+      ConvertMultiXSpaceToInferenceStats(session_snapshot, &inference_stats));
+  return inference_stats.SerializeAsString();
+}
+
 }  // namespace
 
 absl::StatusOr<std::string> ConvertMultiXSpacesToToolData(
@@ -364,6 +374,8 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToToolData(
     return GetAvailableToolNames(session_snapshot);
   } else if (tool_name == "_xplane.pb") {  // internal test only.
     return PreprocessXSpace(session_snapshot);
+  } else if (tool_name == "inference_profile") {
+    return ConvertMultiXSpacesToInferenceStats(session_snapshot);
   } else {
     return errors::InvalidArgument(
         "Can not find tool: ", tool_name,
