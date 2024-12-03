@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/public/saved_model_api.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "tensorflow/c/tf_shape.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
