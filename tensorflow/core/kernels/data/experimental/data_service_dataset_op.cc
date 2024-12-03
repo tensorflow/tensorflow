@@ -703,7 +703,8 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
     OP_REQUIRES_OK(ctx, compression.status());
     should_uncompress =
         should_uncompress &&
-        (*compression == DataServiceMetadata::COMPRESSION_SNAPPY);
+        (*compression == DataServiceMetadata::COMPRESSION_SNAPPY ||
+         *compression == DataServiceMetadata::COMPRESSION_FORCED_SNAPPY);
   }
   if (should_uncompress) {
     absl::StatusOr<bool> disable_compression_at_runtime =

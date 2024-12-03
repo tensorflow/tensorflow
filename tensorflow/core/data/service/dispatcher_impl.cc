@@ -1287,8 +1287,7 @@ absl::Status DataServiceDispatcherImpl::DisableCompressionAtRuntime(
   std::shared_ptr<const Dataset> dataset;
   mutex_lock l(mu_);
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
-  if (dataset->metadata.compression() !=
-      DataServiceMetadata::COMPRESSION_SNAPPY) {
+  if (dataset->metadata.compression() == DataServiceMetadata::COMPRESSION_OFF) {
     response->set_no_compression_to_disable(true);
     return absl::OkStatus();
   }

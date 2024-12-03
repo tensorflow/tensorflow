@@ -40,6 +40,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 COMPRESSION_AUTO = "AUTO"
 COMPRESSION_NONE = None
+COMPRESSION_SNAPPY = "SNAPPY"
 _PARALLEL_EPOCHS = "parallel_epochs"
 _DISTRIBUTED_EPOCH = "distributed_epoch"
 
@@ -183,7 +184,11 @@ def _validate_job_name(job_name) -> None:
 
 
 def _validate_compression(compression) -> None:
-  valid_compressions = [COMPRESSION_AUTO, COMPRESSION_NONE]
+  valid_compressions = [
+      COMPRESSION_AUTO,
+      COMPRESSION_NONE,
+      COMPRESSION_SNAPPY,
+  ]
   if compression not in valid_compressions:
     raise ValueError(f"Invalid `compression` argument: {compression}. "
                      f"Must be one of {valid_compressions}.")
@@ -193,6 +198,8 @@ def _get_compression_proto(
     compression) -> data_service_pb2.DataServiceMetadata.Compression:
   if compression == COMPRESSION_AUTO:
     return data_service_pb2.DataServiceMetadata.COMPRESSION_SNAPPY
+  if compression == COMPRESSION_SNAPPY:
+    return data_service_pb2.DataServiceMetadata.COMPRESSION_FORCED_SNAPPY
   if compression == COMPRESSION_NONE:
     return data_service_pb2.DataServiceMetadata.COMPRESSION_OFF
   raise ValueError(f"Invalid `compression` argument: {compression}. "
@@ -492,7 +499,8 @@ def _distribute(
       at runtime.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
-      tf.data service runtime. `None` indicates not to compress.
+      tf.data service runtime. `None` indicates not to compress. "SNAPPY" forces
+      snappy compression.
     cross_trainer_cache: (Optional.) If a `CrossTrainerCache` object is
       provided, dataset iteration will be shared across concurrently running
       trainers. See
@@ -751,7 +759,8 @@ def distribute(
       at runtime.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
-      tf.data service runtime. `None` indicates not to compress.
+      tf.data service runtime. `None` indicates not to compress. "SNAPPY" forces
+      the use of snappy compression.
     cross_trainer_cache: (Optional.) If a `CrossTrainerCache` object is
       provided, dataset iteration will be shared across concurrently running
       trainers. See
@@ -794,12 +803,13 @@ def _register_dataset(
     service: A string or a tuple indicating how to connect to the tf.data
       service. If it's a string, it should be in the format
       `[<protocol>://]<address>`, where `<address>` identifies the dispatcher
-        address and `<protocol>` can optionally be used to override the default
-        protocol to use. If it's a tuple, it should be (protocol, address).
+      address and `<protocol>` can optionally be used to override the default
+      protocol to use. If it's a tuple, it should be (protocol, address).
     dataset: A `tf.data.Dataset` to register with the tf.data service.
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
-      tf.data service runtime. `None` indicates not to compress.
+      tf.data service runtime. `None` indicates not to compress. "SNAPPY" forces
+      the use of snappy compression.
     dataset_id: (Optional.) By default, tf.data service generates a unique
       (string) ID for each registered dataset. If a `dataset_id` is provided, it
       will use the specified ID. If a dataset with a matching ID already exists,
@@ -825,7 +835,10 @@ def _register_dataset(
     encoded_spec = nested_structure_coder.encode_structure(
         dataset.element_spec).SerializeToString()
 
-  if compression == COMPRESSION_AUTO:
+  if (
+      compression == COMPRESSION_AUTO
+      or compression == COMPRESSION_SNAPPY
+  ):
     dataset = dataset.map(
         lambda *x: compression_ops.compress(x),
         num_parallel_calls=dataset_ops.AUTOTUNE)
