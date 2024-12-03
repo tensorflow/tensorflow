@@ -624,44 +624,18 @@ static absl::Status SortInplace(
     // Sorts array using builtin comparator functor
     auto builtin_sort = [&](PrimitiveType type,
                             SortThunk::SortDirection direction) {
-      switch (type) {
-        case S8:
-          Sort1DArrInplace<S8>(sort_dims, offset, data, is_stable, direction);
-          break;
-        case S16:
-          Sort1DArrInplace<S16>(sort_dims, offset, data, is_stable, direction);
-          break;
-        case S32:
-          Sort1DArrInplace<S32>(sort_dims, offset, data, is_stable, direction);
-          break;
-        case S64:
-          Sort1DArrInplace<S64>(sort_dims, offset, data, is_stable, direction);
-          break;
-        case U8:
-          Sort1DArrInplace<U8>(sort_dims, offset, data, is_stable, direction);
-          break;
-        case U16:
-          Sort1DArrInplace<U16>(sort_dims, offset, data, is_stable, direction);
-          break;
-        case U32:
-          Sort1DArrInplace<U32>(sort_dims, offset, data, is_stable, direction);
-          break;
-        case U64:
-          Sort1DArrInplace<U64>(sort_dims, offset, data, is_stable, direction);
-          break;
-        case F16:
-          Sort1DArrInplace<F16>(sort_dims, offset, data, is_stable, direction);
-          break;
-        case F32:
-          Sort1DArrInplace<F32>(sort_dims, offset, data, is_stable, direction);
-          break;
-        case F64:
-          Sort1DArrInplace<F64>(sort_dims, offset, data, is_stable, direction);
-          break;
-        default:
-          sort(std::integral_constant<size_t, 1>{});
-          break;
-      }
+      primitive_util::ArrayTypeSwitch<void>(
+          [&](auto cst_type) {
+            if constexpr ((primitive_util::IsFloatingPointType(cst_type) ||
+                           primitive_util::IsIntegralType(cst_type)) &&
+                          primitive_util::BitWidth(cst_type) >= 8) {
+              Sort1DArrInplace<cst_type>(sort_dims, offset, data, is_stable,
+                                         direction);
+            } else {
+              sort(std::integral_constant<size_t, 1>{});
+            }
+          },
+          type);
     };
 
     // use "sort" for statically known number of sorted inputs (expected to be
