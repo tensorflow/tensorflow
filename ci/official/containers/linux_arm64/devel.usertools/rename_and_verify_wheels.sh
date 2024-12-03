@@ -17,7 +17,7 @@
 
 # Check and rename wheels with auditwheel. Inserts the platform tags like
 # "manylinux_xyz" into the wheel filename.
-set -euxo pipefail
+set -exo pipefail
 
 for wheel in /tf/pkg/*.whl; do
   echo "Checking and renaming $wheel..."

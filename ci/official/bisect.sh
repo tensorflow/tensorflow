@@ -32,7 +32,7 @@
 #   export TF_BISECT_BAD=a_failing_commit_sha
 #   export TF_ANY_TARGETS="quoted list of targets, like on the command line"
 #   export TF_ANY_MODE=test
-set -euxo pipefail
+set -exo pipefail
 cd "$(dirname "$0")/../../"  # tensorflow/
 export TFCI="$(echo $TFCI | sed 's/,nightly_upload/,public_cache,disk_cache/')"
 git bisect start "$TF_BISECT_BAD" "$TF_BISECT_GOOD"
