@@ -504,5 +504,59 @@ TEST_F(CollectiveCombinerUtilsTest,
       });
 }
 
+TEST_F(CollectiveCombinerUtilsTest,
+       ContainsPipelinedInstructionReturnsTrueForPipelinedInstructions) {
+  // The IR is the minimal valid example of a while loop with AR inside. Three
+  // are annotated as pipelined and three are not. Various configurations of the
+  // combiner are tested to ensure the expected behaviour.
+  constexpr absl::string_view kHloText = R"(
+    HloModule module
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY entry {
+      p0 = bf16[1] parameter(0)
+      ROOT ar.pipelined.1 = bf16[1] all-reduce(p0),
+        to_apply=add,
+        backend_config={"collective_backend_config": {"is_pipelined": true}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_TRUE(ContainsPipelinedInstruction(*module));
+}
+
+TEST_F(CollectiveCombinerUtilsTest,
+       ContainsPipelinedInstructionReturnsFalseForNonPipelinedInstructions) {
+  // The IR is the minimal valid example of a while loop with AR inside. Three
+  // are annotated as pipelined and three are not. Various configurations of the
+  // combiner are tested to ensure the expected behaviour.
+  constexpr absl::string_view kHloText = R"(
+    HloModule module
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY entry {
+      p0 = bf16[1] parameter(0)
+      ar.0 = bf16[1] all-reduce(p0),
+        to_apply=add
+      ROOT ar.1 = bf16[1] all-reduce(ar.0),
+        to_apply=add,
+        backend_config={"collective_backend_config": {"is_pipelined": false}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  EXPECT_FALSE(ContainsPipelinedInstruction(*module));
+}
+
 }  // namespace
 }  // namespace xla::gpu
