@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/core/collectives/clique_id.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
@@ -41,8 +42,7 @@ class NcclIdStore {
         device_to_node_(std::move(device_to_node)),
         kv_store_(std::move(kv_store)) {}
 
-  absl::StatusOr<gpu::NcclCliqueId> GetNcclUniqueId(
-      const gpu::NcclCliqueKey& key);
+  absl::StatusOr<CliqueId> GetNcclUniqueId(const gpu::NcclCliqueKey& key);
 
  private:
   const int node_id_;
@@ -50,8 +50,7 @@ class NcclIdStore {
   const std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   absl::Mutex mu_;
-  absl::flat_hash_map<gpu::NcclCliqueKey, gpu::NcclCliqueId> cache_
-      ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<gpu::NcclCliqueKey, CliqueId> cache_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace xla

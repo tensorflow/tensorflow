@@ -126,12 +126,9 @@ bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
 // NcclCliqueId
 //===----------------------------------------------------------------------===//
 
-// TODO(b/380457503): Remove this alias once we migrate to CliqueId.
-using NcclCliqueId = CliqueId;
-
 // A callback to get a unique clique id (see `ncclUniqueId` documentation).
 using NcclCliqueIdCallback =  // NOLINT
-    std::function<absl::StatusOr<NcclCliqueId>(const NcclCliqueKey&)>;
+    std::function<absl::StatusOr<CliqueId>(const NcclCliqueKey&)>;
 
 }  // namespace xla::gpu
 

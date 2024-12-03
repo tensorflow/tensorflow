@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
@@ -109,7 +110,7 @@ static bool TerminateOnNcclError() {
 //===----------------------------------------------------------------------===//
 
 NcclCliqueCommunicators::NcclCliqueCommunicators(
-    NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
+    NcclCliqueKey clique_key, std::optional<CliqueId> clique_id,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
     : clique_key_(std::move(clique_key)),
       clique_id_(std::move(clique_id)),

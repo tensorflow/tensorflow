@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/nccl_communicator.h"
+#include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/primitive_util.h"
@@ -291,10 +292,10 @@ ScopedPersistentPlanAllocator::~ScopedPersistentPlanAllocator() {
 // itself. It is available only if NCCL + CUDA are configured at compile time.
 class DefaultNcclApi final : public NcclApi {
  public:
-  absl::StatusOr<NcclCliqueId> GetUniqueId() final;
+  absl::StatusOr<CliqueId> GetUniqueId() final;
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommInitRanks(
-      int32_t nranks, const NcclCliqueId& clique_id,
+      int32_t nranks, const CliqueId& clique_id,
       absl::Span<const DeviceRank> ranks, const Config& config) final;
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommSplit(
@@ -358,8 +359,7 @@ NcclApi* NcclApi::Default() {
 
 bool NcclApi::HasNcclSupport() { return true; }
 
-static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(
-    const NcclCliqueId& clique_id) {
+static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
   if (clique_id.size() != NCCL_UNIQUE_ID_BYTES) {
     return Internal(
         "CliqueId size is not equal to NCCL_UNIQUE_ID_BYTES: %d vs %d",
@@ -370,15 +370,15 @@ static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(
   return id;
 }
 
-absl::StatusOr<NcclCliqueId> DefaultNcclApi::GetUniqueId() {
+absl::StatusOr<CliqueId> DefaultNcclApi::GetUniqueId() {
   VLOG(3) << "Get NCCL unique id";
   ncclUniqueId id;
   XLA_NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
-  return NcclCliqueId(std::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
+  return CliqueId(std::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
+DefaultNcclApi::CommInitRanks(int32_t nranks, const CliqueId& clique_id,
                               absl::Span<const DeviceRank> ranks,
                               const Config& config) {
   VLOG(1) << "Initialize NCCL communicator for " << ranks.size()

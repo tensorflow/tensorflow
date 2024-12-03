@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
@@ -86,12 +87,10 @@ static absl::Status UnimplementedError() {
 
 class NcclApiStub final : public NcclApi {
  public:
-  absl::StatusOr<NcclCliqueId> GetUniqueId() final {
-    return UnimplementedError();
-  }
+  absl::StatusOr<CliqueId> GetUniqueId() final { return UnimplementedError(); }
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommInitRanks(
-      int32_t, const NcclCliqueId&, absl::Span<const DeviceRank>,
+      int32_t, const CliqueId&, absl::Span<const DeviceRank>,
       const Config&) final {
     return UnimplementedError();
   }

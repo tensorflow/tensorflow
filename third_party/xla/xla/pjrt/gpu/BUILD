@@ -218,6 +218,7 @@ cc_library(
     hdrs = ["nccl_id_store.h"],
     deps = [
         "//xla:status_macros",
+        "//xla/core/collectives:clique_id",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:global_device_id",
         "//xla/service/gpu/runtime:nccl_api",

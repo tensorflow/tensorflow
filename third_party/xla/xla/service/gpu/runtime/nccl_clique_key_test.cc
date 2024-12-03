@@ -24,13 +24,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_map.h"
-#include "absl/status/status.h"
+#include "xla/core/collectives/clique_id.h"
 #include "xla/service/global_device_id.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 
 namespace xla::gpu {
-using ::tsl::testing::StatusIs;
+
 static NcclCliqueKey GetBaseCliqueKey() {
   return NcclCliqueKey({GlobalDeviceId(0), GlobalDeviceId(1)}, NcclStreamId(0),
                        AsyncStreamKind::kCollective,
@@ -152,14 +151,14 @@ TEST(NcclCliqueKeyGetterTest, ToString) {
 TEST(NcclCliqueIdGettersTest, Data) {
   std::array<char, 128> id;
   std::fill(id.begin(), id.end(), 0x01);
-  NcclCliqueId clique_id(id.data());
+  CliqueId clique_id(id.data());
   EXPECT_EQ(std::memcmp(clique_id.data().data(), id.data(), 128), 0);
 }
 
 TEST(NcclCliqueIdStringTest, ToString) {
   std::array<char, 128> id;
   std::fill(id.begin(), id.end(), 0x01);
-  NcclCliqueId clique_id(id.data());
+  CliqueId clique_id(id.data());
   for (int i = 0; i < 128; ++i) {
     EXPECT_THAT(clique_id.ToString().substr(i, 1), "\x1");
   }
