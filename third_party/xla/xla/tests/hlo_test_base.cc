@@ -59,8 +59,8 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/filecheck.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/new_hlo_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
@@ -120,7 +120,7 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
                          bool verifier_layout_sensitive,
                          bool allow_mixed_precision_in_hlo_verifier,
                          HloPredicate instruction_can_change_layout_func)
-    : NewHloTestBase(
+    : HloRunnerAgnosticTestBase(
           /*test_runner=*/GetHloRunnerForTest(test_platform).value(),
           /*reference_runner=*/
           GetHloRunnerForReference(reference_platform).value(),

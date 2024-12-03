@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
-#include "xla/tests/new_hlo_test_base.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
@@ -35,13 +35,14 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class RaggedAllToAllDecomposerTest : public NewHloTestBase {
+class RaggedAllToAllDecomposerTest : public HloRunnerAgnosticTestBase {
  public:
   RaggedAllToAllDecomposerTest()
-      : NewHloTestBase(std::make_unique<HloRunner>(
-                           PlatformUtil::GetDefaultPlatform().value()),
-                       std::make_unique<HloRunner>(
-                           PlatformUtil::GetDefaultPlatform().value())) {}
+      : HloRunnerAgnosticTestBase(
+            std::make_unique<HloRunner>(
+                PlatformUtil::GetDefaultPlatform().value()),
+            std::make_unique<HloRunner>(
+                PlatformUtil::GetDefaultPlatform().value())) {}
 };
 
 TEST_F(RaggedAllToAllDecomposerTest, SimpleRaggedAllToAllIsSupported) {

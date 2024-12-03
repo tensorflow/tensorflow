@@ -19,6 +19,20 @@ package_group(
 )
 
 cc_library(
+    name = "gpu_clique",
+    srcs = ["gpu_clique.cc"],
+    hdrs = ["gpu_clique.h"],
+    deps = [
+        ":gpu_clique_key",
+        "//xla/core/collectives:clique",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "@com_google_absl//absl/container:btree",
+    ],
+)
+
+cc_library(
     name = "gpu_clique_key",
     srcs = ["gpu_clique_key.cc"],
     hdrs = ["gpu_clique_key.h"],
@@ -72,6 +86,7 @@ cc_library(
     ],
 )
 
+# TODO(b/380457503): Update visibility to "//visibility:private".
 cc_library(
     name = "nccl_collectives",
     hdrs = if_gpu_is_configured(["nccl_collectives.h"]),
@@ -89,6 +104,26 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rccl",
     ]),
+)
+
+# TODO(b/380457503): Update visibility to "//visibility:private".
+cc_library(
+    name = "nccl_clique",
+    srcs = ["nccl_clique.cc"],
+    hdrs = ["nccl_clique.h"],
+    deps = [
+        ":gpu_clique",
+        "//xla/core/collectives:clique",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/service/gpu/runtime:nccl_api",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:logging",
+    ],
 )
 
 # TODO(b/380457503): Update visibility to "//visibility:private".

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/nccl_clique.h"
 #include "xla/core/collectives/clique.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
@@ -76,39 +77,13 @@ absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
 // NcclClique
 //===----------------------------------------------------------------------===//
 
-// A group of NCCL communicators making up a clique. With NCCL it's notoriously
-// easy to get a deadlock, so we take extra care by grouping communicators into
-// cliques and making sure that we have a well defined order of all collective
-// operations that does not lead to deadlocks.
-class NcclCliqueCommunicators : public Clique {
- public:
-  NcclCliqueCommunicators(
-      GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
-      absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators);
-
-  // Return true if clique is local: all communicators belong to current
-  // process. Non-local cliques spans multiple processes (typically hosts).
-  bool IsLocal() const;
-
-  const GpuCliqueKey& clique_key() const { return clique_key_; }
-  const std::optional<CliqueId>& clique_id() const { return clique_id_; }
-
-  std::string DebugString() const final;
-
-  absl::Status HealthCheck() const final;
-
- private:
-  GpuCliqueKey clique_key_;
-  std::optional<CliqueId> clique_id_;
-};
-
 struct NcclCliqueName {
-  static std::string ToString(const NcclCliqueCommunicators& comms) {
+  static std::string ToString(const NcclCliqueImpl& comms) {
     return absl::StrFormat("lockable clique %s", comms.clique_key().ToString());
   }
 };
 
-class NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
+class NcclClique : public Lockable<NcclCliqueImpl, NcclCliqueName> {
  public:
   // We keep acquired cliques in a sorted container to guarantee that all
   // participants iterate over cliques in the same order.
