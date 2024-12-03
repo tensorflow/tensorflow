@@ -1781,3 +1781,67 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
     ],
 )
+
+cc_library(
+    name = "assemble_compilation_provider",
+    srcs = ["assemble_compilation_provider.cc"],
+    hdrs = ["assemble_compilation_provider.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":compilation_provider",
+        ":composite_compilation_provider",
+        ":defer_relocatable_compilation_compilation_provider",
+        ":driver_compilation_provider",
+        ":nvjitlink_compilation_provider",
+        ":nvjitlink_known_issues",
+        ":nvjitlink_support",
+        ":nvptxcompiler_compilation_provider",
+        ":ptx_compiler_support",
+        ":subprocess_compilation",
+        ":subprocess_compilation_provider",
+        "//xla:xla_proto_cc",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "assemble_compilation_provider_test",
+    srcs = ["assemble_compilation_provider_test.cc"],
+    data = [
+        ":nvlink",
+        ":ptxas",
+    ],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":assemble_compilation_provider",
+        ":compilation_provider",
+        ":cuda_platform",
+        ":nvjitlink_support",
+        ":ptx_compiler_support",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:cuda_root_path",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)

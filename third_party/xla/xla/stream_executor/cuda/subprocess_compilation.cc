@@ -213,7 +213,7 @@ absl::StatusOr<std::string> FindCudaExecutable(
                             kNoExcludedVersions);
 }
 
-static absl::StatusOr<std::string> FindPtxAsExecutable(
+absl::StatusOr<std::string> FindPtxAsExecutable(
     std::string_view preferred_cuda_dir) {
   static constexpr SemanticVersion kMinimumSupportedPtxAsVersion{11, 8, 0};
   static constexpr SemanticVersion kBuggyPtxAsVersions[] = {{12, 3, 103}};
@@ -453,7 +453,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsmUsingFatbin(
   return std::vector<uint8_t>(result_blob.begin(), result_blob.end());
 }
 
-static absl::StatusOr<std::string> FindNvlinkExecutable(
+absl::StatusOr<std::string> FindNvlinkExecutable(
     std::string_view preferred_cuda_dir) {
   static constexpr SemanticVersion kMinimumNvlinkVersion{11, 8, 0};
   static constexpr absl::Span<const SemanticVersion> kNoExcludedVersions{};

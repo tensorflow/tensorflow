@@ -61,6 +61,16 @@ absl::StatusOr<std::string> FindCudaExecutable(
 absl::StatusOr<std::string> FindCudaExecutable(
     std::string_view binary_name, std::string_view preferred_cuda_dir);
 
+// Returns the path to the first found ptxas binary that fulfills our version
+// requirements.
+absl::StatusOr<std::string> FindPtxAsExecutable(
+    std::string_view preferred_cuda_dir);
+
+// Returns the path to the first found nvlink binary that fulfills our version
+// requirements.
+absl::StatusOr<std::string> FindNvlinkExecutable(
+    std::string_view preferred_cuda_dir);
+
 // Runs tool --version and parses its version string. All the usual CUDA
 // tools are supported.
 absl::StatusOr<SemanticVersion> GetToolVersion(std::string_view tool_path);
