@@ -16,15 +16,21 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 #define XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 
+#include <functional>
 #include <map>
 #include <optional>
 
+#include "absl/status/statusor.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
+
+// A callback to get a unique clique id.
+using CliqueIdCallback =  // NOLINT
+    std::function<absl::StatusOr<CliqueId>(const CliqueKey&)>;
 
 // GPU-specific executable options.
 // We keep these separate from ExecutableRunOptions to avoid adding
@@ -40,11 +46,10 @@ class GpuExecutableRunOptions {
   const std::optional<std::map<int, GlobalDeviceId>>& gpu_global_device_ids()
       const;
 
-  // Callback that returns a ncclUniqueId encoded as a string for a group of
-  // communicating GPU devices. Used only on NVidia GPUs.
-  GpuExecutableRunOptions& set_nccl_clique_id_callback(
-      NcclCliqueIdCallback nccl_clique_id_callback);
-  const NcclCliqueIdCallback& nccl_clique_id_callback() const;
+  // Callback that returns a unique clieque id for a given clique key.
+  GpuExecutableRunOptions& set_clique_id_callback(
+      CliqueIdCallback clique_id_callback);
+  const CliqueIdCallback& clique_id_callback() const;
 
   // Whether the run requires an exclusive lock on the GPU.
   bool requires_exclusive_lock_on_gpu() const {
@@ -57,24 +62,21 @@ class GpuExecutableRunOptions {
     return *this;
   }
 
-  bool enable_mock_nccl_collectives() const {
-    return enable_mock_nccl_collectives_;
-  }
+  bool enable_mock_collectives() const { return enable_mock_collectives_; }
 
   // Enables mocking nccl collective operations on the GPU.
-  GpuExecutableRunOptions& set_enable_mock_nccl_collectives() {
-    enable_mock_nccl_collectives_ = true;
+  GpuExecutableRunOptions& set_enable_mock_collectives() {
+    enable_mock_collectives_ = true;
     return *this;
   }
 
  private:
   bool requires_exclusive_lock_on_gpu_ = false;
-  bool enable_mock_nccl_collectives_ = false;
+  bool enable_mock_collectives_ = false;
   std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids_;
-  NcclCliqueIdCallback nccl_clique_id_callback_;
+  CliqueIdCallback clique_id_callback_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_

@@ -134,9 +134,9 @@ Thunk::CollectiveExecuteParams::Create(
                             ? &*gpu_options->gpu_global_device_ids()
                             : nullptr;
 
-  auto* nccl_callback = gpu_options && gpu_options->nccl_clique_id_callback()
-                            ? &gpu_options->nccl_clique_id_callback()
-                            : nullptr;
+  auto* clique_id_callback = gpu_options && gpu_options->clique_id_callback()
+                                 ? &gpu_options->clique_id_callback()
+                                 : nullptr;
 
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       GetGlobalDeviceId(device_id_map, local_device_ordinal));
@@ -145,7 +145,7 @@ Thunk::CollectiveExecuteParams::Create(
       run_options.stream()->parent(), run_options.run_options().run_id(),
       async_streams, local_device_ordinal, global_device_id,
       run_options.run_options().device_assignment(), device_id_map,
-      nccl_callback, collective_max_nchannels, p2p_max_nchannels);
+      clique_id_callback, collective_max_nchannels, p2p_max_nchannels);
 }
 
 Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
@@ -153,7 +153,7 @@ Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
     absl::Span<se::Stream* const> async_streams, int64_t local_device_ordinal,
     GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
     const GlobalDeviceIdMap* global_device_id_map,
-    const NcclCliqueIdCallback* nccl_clique_id_callback,
+    const CliqueIdCallback* nccl_clique_id_callback,
     int64_t collective_max_nchannels, int64_t p2p_max_nchannels)
     : executor(executor),
       run_id(run_id),
@@ -188,7 +188,7 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                        run_options.run_options().gpu_executable_run_options()
                            ? run_options.run_options()
                                  .gpu_executable_run_options()
-                                 ->enable_mock_nccl_collectives()
+                                 ->enable_mock_collectives()
                            : false,
                        run_options.run_options().gpu_executable_run_options()
                            ? run_options.run_options()

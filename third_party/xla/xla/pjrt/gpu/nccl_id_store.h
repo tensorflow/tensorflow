@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
@@ -42,7 +43,7 @@ class NcclIdStore {
         device_to_node_(std::move(device_to_node)),
         kv_store_(std::move(kv_store)) {}
 
-  absl::StatusOr<CliqueId> GetNcclUniqueId(const gpu::NcclCliqueKey& key);
+  absl::StatusOr<CliqueId> GetNcclUniqueId(const CliqueKey& key);
 
  private:
   const int node_id_;

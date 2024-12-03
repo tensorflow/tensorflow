@@ -22,37 +22,45 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/status_macros.h"
+#include "xla/util.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 
-absl::StatusOr<CliqueId> NcclIdStore::GetNcclUniqueId(
-    const gpu::NcclCliqueKey& key) {
+absl::StatusOr<CliqueId> NcclIdStore::GetNcclUniqueId(const CliqueKey& key) {
+  auto* gpu_key = tsl::down_cast<const gpu::NcclCliqueKey*>(&key);
+  if (gpu_key == nullptr) {
+    return InvalidArgument("Expected GPU clique key");
+  }
+
   // The caller must ensure that threads calling this method concurrently have
   // unique keys, otherwise the global key-value store may hold the wrong value.
   {
     absl::MutexLock lock(&mu_);
-    auto it = cache_.find(key);
+    auto it = cache_.find(*gpu_key);
     if (it != cache_.end()) {
       return it->second;
     }
   }
   CliqueId clique_id;
-  int primary_node_id = device_to_node_.at(key.devices()[0]);
+  int primary_node_id = device_to_node_.at(gpu_key->devices()[0]);
   if (node_id_ == primary_node_id) {
     TF_ASSIGN_OR_RETURN(clique_id, gpu::NcclApi::Default()->GetUniqueId());
-    TF_RETURN_IF_ERROR(kv_store_->Set(key.ToString(), clique_id.ToString()));
+    TF_RETURN_IF_ERROR(
+        kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
   } else {
     TF_ASSIGN_OR_RETURN(std::string id_str,
-                        kv_store_->Get(key.ToString(), absl::Minutes(10)));
+                        kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
     clique_id = CliqueId(id_str);
   }
   absl::MutexLock lock(&mu_);
-  auto result = cache_.emplace(key, std::move(clique_id));
+  auto result = cache_.emplace(*gpu_key, std::move(clique_id));
   TF_RET_CHECK(result.second) << "Unique ID already in cache.";
   return result.first->second;
 }

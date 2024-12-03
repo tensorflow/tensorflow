@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -252,10 +254,9 @@ absl::Status ResolveDeviceAssignment(
   }
   const std::string& communicator_key =
       params->group.runtime_details.communicator_key;
-  gpu_options.set_nccl_clique_id_callback(
-      [=](const xla::gpu::NcclCliqueKey& key) {
-        return xla::CliqueId(communicator_key);
-      });
+  gpu_options.set_clique_id_callback([=](const xla::CliqueKey& key) {
+    return xla::CliqueId(communicator_key);
+  });
   run_options.set_device_assignment(&device_assignment);
   run_options.set_gpu_executable_run_options(&gpu_options);
   return absl::OkStatus();

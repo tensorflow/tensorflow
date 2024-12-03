@@ -86,14 +86,6 @@ class NcclCliqueKey : public CliqueKey {
 bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
 bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
 
-//===----------------------------------------------------------------------===//
-// NcclCliqueId
-//===----------------------------------------------------------------------===//
-
-// A callback to get a unique clique id (see `ncclUniqueId` documentation).
-using NcclCliqueIdCallback =  // NOLINT
-    std::function<absl::StatusOr<CliqueId>(const NcclCliqueKey&)>;
-
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_RUNTIME_NCCL_CLIQUE_KEY_H_

@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/lockable.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -67,8 +68,8 @@ bool IsGlobalNcclConfig();
 
 // Returns a clique id callback passed as an argument if it's not null or a
 // default callback to get create a clique id if we are running in local mode.
-absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
-    const NcclCliqueIdCallback* clique_id_callback,  // may be null
+absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
+    const CliqueIdCallback* clique_id_callback,  // may be null
     bool is_local);
 
 //===----------------------------------------------------------------------===//
@@ -169,7 +170,7 @@ class NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
 // cliques.
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
     se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
-    const NcclCliqueIdCallback& clique_id_callback, RankId rank,
+    const CliqueIdCallback& clique_id_callback, RankId rank,
     size_t num_local_participants,
     const NcclClique::AcquiredCliquesMap& acquired_cliques,
     int64_t max_nchannels = 0);

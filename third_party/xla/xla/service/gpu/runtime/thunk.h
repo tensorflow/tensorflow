@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
@@ -264,7 +265,7 @@ class Thunk {
 
     const DeviceAssignment* device_assn;
     const GlobalDeviceIdMap* global_device_id_map;
-    const NcclCliqueIdCallback* nccl_clique_id_callback;
+    const CliqueIdCallback* nccl_clique_id_callback;
 
     int64_t collective_max_nchannels;
     int64_t p2p_max_nchannels;
@@ -276,7 +277,7 @@ class Thunk {
                             GlobalDeviceId global_device_id,
                             const DeviceAssignment* device_assn,
                             const GlobalDeviceIdMap* global_device_id_map,
-                            const NcclCliqueIdCallback* nccl_clique_id_callback,
+                            const CliqueIdCallback* nccl_clique_id_callback,
                             int64_t collective_max_nchannels,
                             int64_t p2p_max_nchannels);
   };

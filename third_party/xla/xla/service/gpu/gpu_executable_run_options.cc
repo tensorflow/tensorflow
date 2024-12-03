@@ -21,10 +21,8 @@ limitations under the License.
 
 #include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 GpuExecutableRunOptions& GpuExecutableRunOptions::set_gpu_global_device_ids(
     std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids) {
@@ -37,16 +35,14 @@ GpuExecutableRunOptions::gpu_global_device_ids() const {
   return gpu_global_device_ids_;
 }
 
-GpuExecutableRunOptions& GpuExecutableRunOptions::set_nccl_clique_id_callback(
-    NcclCliqueIdCallback nccl_clique_id_callback) {
-  nccl_clique_id_callback_ = std::move(nccl_clique_id_callback);
+GpuExecutableRunOptions& GpuExecutableRunOptions::set_clique_id_callback(
+    CliqueIdCallback clique_id_callback) {
+  clique_id_callback_ = std::move(clique_id_callback);
   return *this;
 }
 
-const NcclCliqueIdCallback& GpuExecutableRunOptions::nccl_clique_id_callback()
-    const {
-  return nccl_clique_id_callback_;
+const CliqueIdCallback& GpuExecutableRunOptions::clique_id_callback() const {
+  return clique_id_callback_;
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

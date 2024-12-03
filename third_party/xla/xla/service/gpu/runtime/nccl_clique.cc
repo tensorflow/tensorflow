@@ -39,11 +39,13 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/lockable.h"
@@ -60,7 +62,7 @@ limitations under the License.
 namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
-// NcclCliqueIdCallback
+// CliqueIdCallback
 //===----------------------------------------------------------------------===//
 
 bool IsGlobalNcclConfig() {
@@ -68,16 +70,16 @@ bool IsGlobalNcclConfig() {
   return nccl_comm_id != nullptr;
 }
 
-absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
-    const NcclCliqueIdCallback* clique_id_callback, bool is_local) {
+absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
+    const CliqueIdCallback* clique_id_callback, bool is_local) {
   if (clique_id_callback != nullptr) return clique_id_callback;
 
   TF_RET_CHECK(is_local || IsGlobalNcclConfig())
       << "If non-local devices are taking part of a collective API on "
          "GPU, the nccl_clique_id_callback must be provided by the client.";
 
-  static auto* local_callback = new NcclCliqueIdCallback(
-      [](const NcclCliqueKey&) { return NcclApi::Default()->GetUniqueId(); });
+  static auto* local_callback = new CliqueIdCallback(
+      [](const CliqueKey&) { return NcclApi::Default()->GetUniqueId(); });
   return local_callback;
 }
 
@@ -252,8 +254,8 @@ static auto DeviceRanksToString(absl::Span<const NcclApi::DeviceRank> ranks) {
 // all participating ranks that own a shared pointer).
 static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
     se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
-    const NcclCliqueIdCallback& clique_id_callback,
-    int32_t num_local_participants, RankId rank, NcclApi::Config& config) {
+    const CliqueIdCallback& clique_id_callback, int32_t num_local_participants,
+    RankId rank, NcclApi::Config& config) {
   int nranks = clique_key.devices().size();
   VLOG(3) << "Initialize NCCL clique " << clique_key.ToString() << " rank #"
           << rank << "; num_local_participants=" << num_local_participants;
@@ -494,7 +496,7 @@ using AcquiredCliquesMap = NcclClique::AcquiredCliquesMap;
 
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
     se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
-    const NcclCliqueIdCallback& clique_id_callback, RankId rank,
+    const CliqueIdCallback& clique_id_callback, RankId rank,
     size_t num_local_participants, const AcquiredCliquesMap& acquired_cliques,
     int64_t max_nchannels) {
   VLOG(2) << "Acquire NCCL clique " << clique_key.ToString() << "; run"
