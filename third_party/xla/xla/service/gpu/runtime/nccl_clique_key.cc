@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/service/global_device_id.h"
 #include "tsl/platform/casts.h"
@@ -36,7 +37,7 @@ namespace xla::gpu {
 //===----------------------------------------------------------------------===//
 
 NcclCliqueKey::NcclCliqueKey(
-    std::vector<GlobalDeviceId> devices, NcclStreamId stream_id,
+    std::vector<GlobalDeviceId> devices, CollectiveStreamId stream_id,
     AsyncStreamKind stream_kind,
     std::vector<std::vector<GlobalDeviceId>> participant_groups)
     : CliqueKey(std::move(devices)),
@@ -56,7 +57,7 @@ NcclCliqueKey::NcclCliqueKey(
   absl::c_sort(participant_groups_, compare_groups);
 }
 
-NcclStreamId NcclCliqueKey::stream_id() const { return stream_id_; }
+CollectiveStreamId NcclCliqueKey::stream_id() const { return stream_id_; }
 
 bool NcclCliqueKey::IsSubsetOf(const CliqueKey& other) const {
   auto* other_nccl = tsl::down_cast<const NcclCliqueKey*>(&other);

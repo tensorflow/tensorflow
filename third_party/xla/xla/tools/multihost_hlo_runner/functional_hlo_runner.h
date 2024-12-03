@@ -270,7 +270,8 @@ class FunctionalHloRunner {
       const PreprocessingOptions& preproc_options,
       const RawCompileOptions& raw_compile_options, std::string_view hlo_file,
       InputFormat input_format, int task_id = 0, int num_nodes = 1,
-      std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr);
+      std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr,
+      bool use_gpu_count_workaround = true);
 
   // Compiles and runs the given HLO module with the given arguments for each
   // device. The given arguments is a map from device ID to a list of arguments.

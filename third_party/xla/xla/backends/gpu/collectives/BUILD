@@ -17,6 +17,16 @@ package_group(
 )
 
 cc_library(
+    name = "gpu_collectives",
+    srcs = ["gpu_collectives.cc"],
+    hdrs = ["gpu_collectives.h"],
+    deps = [
+        "//xla/core/collectives",
+        "//xla/tsl/lib/gtl:int_type",
+    ],
+)
+
+cc_library(
     name = "nccl_errors",
     hdrs = if_gpu_is_configured(["nccl_errors.h"]),
     visibility = ["//visibility:private"],
