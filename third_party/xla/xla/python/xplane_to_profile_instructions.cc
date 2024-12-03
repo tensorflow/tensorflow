@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/types.h"
+#include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {

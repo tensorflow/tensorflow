@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/python/refine_polymorphic_shapes.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 

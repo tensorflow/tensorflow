@@ -972,6 +972,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
         "@local_tsl//tsl/profiler/lib:profiler_interface",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
 )
 
@@ -1127,6 +1128,7 @@ cc_library(
         "//xla/hlo/transforms:flatten_call_graph",
         "//xla/hlo/transforms:hlo_dce",
         "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:status_casters",
