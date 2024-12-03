@@ -77,8 +77,10 @@ class ModelRepacker {
 
  private:
   explicit ModelRepacker(LiteRtModelT::Ref model) : model_(model) {
-    model_.get().flatbuffer_model->operator_codes.emplace_back(
-        MakeCustomOpCode(model_.get().custom_op_code));
+    if (!model_.get().custom_op_code.empty()) {
+      model_.get().flatbuffer_model->operator_codes.emplace_back(
+          MakeCustomOpCode(model_.get().custom_op_code));
+    }
     op_code_map_ =
         BuildOpCodeMap(model_.get().flatbuffer_model->operator_codes);
   }
