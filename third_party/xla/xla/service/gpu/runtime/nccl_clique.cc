@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/lockable.h"
 #include "xla/service/rendezvous.h"
 #include "xla/status_macros.h"
@@ -112,7 +112,7 @@ static bool TerminateOnNcclError() {
 //===----------------------------------------------------------------------===//
 
 NcclCliqueCommunicators::NcclCliqueCommunicators(
-    NcclCliqueKey clique_key, std::optional<CliqueId> clique_id,
+    GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
     : clique_key_(std::move(clique_key)),
       clique_id_(std::move(clique_id)),
@@ -158,7 +158,7 @@ namespace {
 // Container for initialized and ready to use local (in-process) NCCL cliques.
 struct NcclCliques {
   absl::Mutex mu;
-  absl::node_hash_map<NcclCliqueKey, NcclClique> map ABSL_GUARDED_BY(mu);
+  absl::node_hash_map<GpuCliqueKey, NcclClique> map ABSL_GUARDED_BY(mu);
 };
 }  // namespace
 
@@ -186,7 +186,7 @@ static absl::Status CheckComm(Communicator* comm) {
 }
 
 // Runs async check on all communicators in a clique.
-static void CheckClique(const NcclCliqueKey& clique_key,
+static void CheckClique(const GpuCliqueKey& clique_key,
                         NcclClique& lockable_clique) {
   if (TerminateOnNcclError()) {
     absl::Status status = lockable_clique.CheckAsyncErrors();
@@ -253,7 +253,7 @@ static auto DeviceRanksToString(absl::Span<const NcclApi::DeviceRank> ranks) {
 // a lock that gives an access to initialized clique (access is shared between
 // all participating ranks that own a shared pointer).
 static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
-    se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
+    se::StreamExecutor* device, RunId run_id, GpuCliqueKey clique_key,
     const CliqueIdCallback& clique_id_callback, int32_t num_local_participants,
     RankId rank, NcclApi::Config& config) {
   int nranks = clique_key.devices().size();
@@ -359,7 +359,7 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
 // Computes a unique NCCL communicator split color from a clique key. We use a
 // deterministic hash function to guarantee that all participating processes get
 // the same color value for a clique.
-static int32_t GetCommSplitColor(const NcclCliqueKey& clique_key) {
+static int32_t GetCommSplitColor(const GpuCliqueKey& clique_key) {
   std::vector<int64_t> global_device_ids;
   global_device_ids.reserve(clique_key.devices().size());
 
@@ -377,11 +377,11 @@ static int32_t GetCommSplitColor(const NcclCliqueKey& clique_key) {
 // `parent_clique` clique (access is shared between all participating ranks that
 // own a shared pointer).
 static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
-    se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
+    se::StreamExecutor* device, RunId run_id, GpuCliqueKey clique_key,
     std::shared_ptr<NcclClique::Lock> parent_clique,
     int32_t num_local_participants, RankId rank, NcclApi::Config& config) {
   // Find our rank in the parent clique.
-  const NcclCliqueKey& parent_clique_key = (*parent_clique)->clique_key();
+  const GpuCliqueKey& parent_clique_key = (*parent_clique)->clique_key();
   RankId parent_rank =
       *parent_clique_key.rank(clique_key.devices()[rank.value()]);
 
@@ -495,7 +495,7 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
 using AcquiredCliquesMap = NcclClique::AcquiredCliquesMap;
 
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
-    se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
+    se::StreamExecutor* device, RunId run_id, GpuCliqueKey clique_key,
     const CliqueIdCallback& clique_id_callback, RankId rank,
     size_t num_local_participants, const AcquiredCliquesMap& acquired_cliques,
     int64_t max_nchannels) {

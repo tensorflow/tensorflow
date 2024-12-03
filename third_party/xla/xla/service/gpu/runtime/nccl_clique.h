@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/lockable.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -55,7 +55,7 @@ namespace xla::gpu {
 // participating devices and properties of collective operations launched on
 // them, e.g. mixing NCCL operations launched from CUDA graphs with regularly
 // launched operations is prone to dead locks, and we keep them separate. See
-// NcclCliqueKey for details.
+// GpuCliqueKey for details.
 //
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/communicators.html#using-multiple-nccl-communicators-concurrently
 
@@ -96,7 +96,7 @@ class NcclCliqueCommunicators {
   };
 
   NcclCliqueCommunicators(
-      NcclCliqueKey clique_key, std::optional<CliqueId> clique_id,
+      GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators);
 
   // Returns a NCCL communicator for a given rank if it's in a clique.
@@ -109,7 +109,7 @@ class NcclCliqueCommunicators {
   // Calls `fn` for each communicator in the clique.
   void ForEachComm(absl::FunctionRef<void(RankId, Communicator*)> fn);
 
-  const NcclCliqueKey& clique_key() const { return clique_key_; }
+  const GpuCliqueKey& clique_key() const { return clique_key_; }
   const std::optional<CliqueId>& clique_id() const { return clique_id_; }
   size_t num_communicators() const { return communicators_.size(); }
 
@@ -118,7 +118,7 @@ class NcclCliqueCommunicators {
   AsyncErrorChecker GetChecker() { return AsyncErrorChecker(*this); }
 
  private:
-  NcclCliqueKey clique_key_;
+  GpuCliqueKey clique_key_;
   std::optional<CliqueId> clique_id_;
 
   // TODO(ezhulenev): Switch this map to GlobalDeviceId key.
@@ -136,8 +136,8 @@ class NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
   // We keep acquired cliques in a sorted container to guarantee that all
   // participants iterate over cliques in the same order.
   using AcquiredCliquesMap =
-      absl::btree_map<NcclCliqueKey, std::shared_ptr<NcclClique::Lock>,
-                      std::greater<NcclCliqueKey>>;
+      absl::btree_map<GpuCliqueKey, std::shared_ptr<NcclClique::Lock>,
+                      std::greater<GpuCliqueKey>>;
 
   // Construct the lockable clique.
   // Note that async errors can be checked without acquiring the lock.
@@ -145,7 +145,7 @@ class NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
   // error checks, the constructor intentionally leaks the reference
   // to the communicators from an acquired lock.
   NcclClique(
-      NcclCliqueKey clique_key, std::optional<CliqueId> clique_id,
+      GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
       : Lockable(std::move(clique_key), clique_id, std::move(communicators)),
         async_error_checker_(Acquire()->GetChecker()) {}
@@ -169,7 +169,7 @@ class NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
 // created communicators or maybe created by splitting of the already acquired
 // cliques.
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
-    se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
+    se::StreamExecutor* device, RunId run_id, GpuCliqueKey clique_key,
     const CliqueIdCallback& clique_id_callback, RankId rank,
     size_t num_local_participants,
     const NcclClique::AcquiredCliquesMap& acquired_cliques,

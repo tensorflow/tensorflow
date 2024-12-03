@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/for_all_thunks.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -187,7 +187,7 @@ namespace {
 // Shared resources required for thunk initialization and execution.
 class ResourceRequests : public Thunk::ResourceRequests {
  public:
-  absl::Status AddClique(const NcclCliqueKey& clique_key,
+  absl::Status AddClique(const GpuCliqueKey& clique_key,
                          int32_t num_local_participants) final {
     VLOG(5) << "Add collective clique request: " << clique_key.ToString()
             << "; num_local_participants: " << num_local_participants;
@@ -286,7 +286,7 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
  private:
   struct CliqueRequest {
-    NcclCliqueKey key;
+    GpuCliqueKey key;
     int64_t num_local_participants;
     int64_t id;
   };
@@ -326,7 +326,7 @@ class ResourceRequests : public Thunk::ResourceRequests {
     return cliques;
   }
 
-  absl::flat_hash_map<NcclCliqueKey, CliqueRequest> cliques_;
+  absl::flat_hash_map<GpuCliqueKey, CliqueRequest> cliques_;
 };
 
 absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,

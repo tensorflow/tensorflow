@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
@@ -215,7 +215,7 @@ NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
       nccl_api_(nccl_api),
       async_events_(is_sync ? nullptr : new AsyncEvents()) {}
 
-absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
+absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, CollectiveStreamId stream_id,
@@ -248,9 +248,9 @@ absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
   static const bool enable_per_stream_comms =
       xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_per_stream_comms();
 
-  return NcclCliqueKey(std::move(participants),
-                       enable_per_stream_comms ? stream_id : kNoStreamId,
-                       stream_kind, std::move(participant_groups));
+  return GpuCliqueKey(std::move(participants),
+                      enable_per_stream_comms ? stream_id : kNoStreamId,
+                      stream_kind, std::move(participant_groups));
 }
 
 absl::StatusOr<CommunicatorHandle> GetNcclComm(
@@ -259,9 +259,9 @@ absl::StatusOr<CommunicatorHandle> GetNcclComm(
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, CollectiveStreamId stream_id,
     AsyncStreamKind stream_kind) {
-  TF_ASSIGN_OR_RETURN(NcclCliqueKey clique_key,
-                      GetNcclCliqueKey(params, replica_groups, group_mode,
-                                       stream_id, stream_kind));
+  TF_ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
+                      GetGpuCliqueKey(params, replica_groups, group_mode,
+                                      stream_id, stream_kind));
 
   std::optional<RankId> rank = clique_key.rank(params.global_device_id);
   TF_ASSIGN_OR_RETURN(bool is_local,
@@ -379,10 +379,10 @@ absl::StatusOr<se::Event*> NcclCollectiveThunk::AsyncEvents::GetEvent(
 absl::Status NcclCollectiveThunk::Prepare(const PrepareParams& params,
                                           ResourceRequests& resource_requests) {
   TF_ASSIGN_OR_RETURN(
-      NcclCliqueKey clique_key,
-      GetNcclCliqueKey(*params.collective_params, config().replica_groups,
-                       config().group_mode, nccl_stream_id(),
-                       GetAsyncStreamKind()));
+      GpuCliqueKey clique_key,
+      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
+                      config().group_mode, nccl_stream_id(),
+                      GetAsyncStreamKind()));
   TF_ASSIGN_OR_RETURN(
       size_t num_local_participants,
       GetNumLocalParticipants(*params.collective_params,
@@ -398,10 +398,10 @@ absl::Status NcclCollectiveThunk::Initialize(const InitializeParams& params) {
 }
 
 namespace {
-// Wrap NcclCliqueKey into a unique struct to guarantee we do not accidentally
+// Wrap GpuCliqueKey into a unique struct to guarantee we do not accidentally
 // try to run multiple unrelated rendezvous for a same key.
 struct FirstCallRendezvousKey {
-  NcclCliqueKey clique_key;
+  GpuCliqueKey clique_key;
 
   template <typename H>
   friend H AbslHashValue(H h, const FirstCallRendezvousKey& key) {
@@ -453,9 +453,9 @@ absl::Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   // ahead on one rank leads to deadlocks in NCCL.
   if (NeedFirstCallRendzevous() && !first_call_rendezvous_flag_.IsCompleted()) {
     TF_ASSIGN_OR_RETURN(
-        NcclCliqueKey clique_key,
-        GetNcclCliqueKey(*params.collective_params, config().replica_groups,
-                         config().group_mode, stream_id, stream_kind));
+        GpuCliqueKey clique_key,
+        GetGpuCliqueKey(*params.collective_params, config().replica_groups,
+                        config().group_mode, stream_id, stream_kind));
 
     TF_ASSIGN_OR_RETURN(
         size_t num_local_participants,

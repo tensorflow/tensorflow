@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/statusor.h"
@@ -56,7 +56,7 @@ Thunk::CollectiveCliques::CollectiveCliques(
     : cliques_map_(std::move(cliques_map)) {}
 
 absl::StatusOr<Communicator*> Thunk::CollectiveCliques::GetComm(
-    const NcclCliqueKey& clique_key, RankId rank) const {
+    const GpuCliqueKey& clique_key, RankId rank) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);
   if (clique == cliques_map_.end()) {
@@ -76,7 +76,7 @@ absl::StatusOr<Communicator*> Thunk::CollectiveCliques::GetComm(
 }
 
 absl::StatusOr<bool> Thunk::CollectiveCliques::is_local_clique(
-    const NcclCliqueKey& clique_key) const {
+    const GpuCliqueKey& clique_key) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);
   if (clique == cliques_map_.end()) {
@@ -88,7 +88,7 @@ absl::StatusOr<bool> Thunk::CollectiveCliques::is_local_clique(
 }
 
 absl::StatusOr<size_t> Thunk::CollectiveCliques::num_communicators(
-    const NcclCliqueKey& clique_key) const {
+    const GpuCliqueKey& clique_key) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);
   if (clique == cliques_map_.end()) {

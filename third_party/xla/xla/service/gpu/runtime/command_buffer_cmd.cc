@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
@@ -60,7 +61,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_to_all_thunk.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_broadcast_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
@@ -1614,10 +1614,10 @@ absl::Status CollectiveCmd::Prepare(
     const Thunk::PrepareParams& params,
     Thunk::ResourceRequests& resource_requests) {
   TF_ASSIGN_OR_RETURN(
-      NcclCliqueKey clique_key,
-      GetNcclCliqueKey(*params.collective_params, config().replica_groups,
-                       config().group_mode, nccl_stream_id(),
-                       GetAsyncStreamKind()));
+      GpuCliqueKey clique_key,
+      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
+                      config().group_mode, nccl_stream_id(),
+                      GetAsyncStreamKind()));
   TF_ASSIGN_OR_RETURN(
       size_t num_local_participants,
       GetNumLocalParticipants(*params.collective_params,

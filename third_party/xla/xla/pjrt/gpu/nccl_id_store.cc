@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
@@ -34,7 +34,7 @@ limitations under the License.
 namespace xla {
 
 absl::StatusOr<CliqueId> NcclIdStore::GetNcclUniqueId(const CliqueKey& key) {
-  auto* gpu_key = tsl::down_cast<const gpu::NcclCliqueKey*>(&key);
+  auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
   if (gpu_key == nullptr) {
     return InvalidArgument("Expected GPU clique key");
   }
