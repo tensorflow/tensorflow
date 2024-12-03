@@ -418,6 +418,9 @@ class NearComparator {
     } else {
       float_distance = CalculateFloatDistance<T>(expected, actual);
       abs_error = FpAbsoluteValue(actual - expected);
+      if (!std::numeric_limits<T>::is_signed && IsNaN(abs_error)) {
+        abs_error = FpAbsoluteValue(expected - actual);
+      }
 
       // Avoid division by 0 even though it's well-defined because ubsan can be
       // configured to treat this as a fatal error.

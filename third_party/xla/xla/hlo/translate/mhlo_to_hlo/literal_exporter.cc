@@ -41,6 +41,12 @@ xla::Array<T> ArrayFromDenseElementsAttr(mlir::DenseElementsAttr dense_attr) {
   xla::Array<T> array(shape.dimensions());
   if constexpr (!xla::primitive_util::IsSubByteNonPredType(type)) {
     array.SetValues(dense_attr.getValues<T>());
+  } else if constexpr (xla::primitive_util::IsMXType(type)) {
+    // Bitcast MX floating point types from APFloat.
+    auto values = dense_attr.getValues<llvm::APFloat>();
+    for (int i = 0; i < values.size(); i++) {
+      array.data()[i] = T::FromRep(values[i].bitcastToAPInt().getZExtValue());
+    }
   } else {
     // The only way to get subbyte integers from getValues() is to get them as
     // APInts.

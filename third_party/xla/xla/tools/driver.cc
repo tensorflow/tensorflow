@@ -119,6 +119,7 @@ enum PrimitiveType {
   F64,
   C64,
   C128,
+  F4E2M1FN,
   F8E5M2,
   F8E4M3,
   F8E4M3FN,
@@ -126,22 +127,18 @@ enum PrimitiveType {
   F8E5M2FNUZ,
   F8E4M3FNUZ,
   F8E3M4,
+  F8E8M0FNU,
 };
 
 const std::vector<std::string>& primitive_strings() {
-  static auto vec = new std::vector<std::string>({"s2",         "s4",
-                                                  "s8",         "s16",
-                                                  "s32",        "s64",
-                                                  "u2",         "u4",
-                                                  "u8",         "u16",
-                                                  "u32",        "u64",
-                                                  "f16",        "bf16",
-                                                  "f32",        "f64",
-                                                  "c64",        "c128",
-                                                  "f8e5m2",     "f8e4m3",
-                                                  "f8e4m3fn",   "f8e4m3b11fnuz",
-                                                  "f8e5m2fnuz", "f8e4m3fnuz",
-                                                  "f8e3m4"});
+  static auto vec = new std::vector<std::string>(
+      {"s2",     "s4",         "s8",         "s16",
+       "s32",    "s64",        "u2",         "u4",
+       "u8",     "u16",        "u32",        "u64",
+       "f16",    "bf16",       "f32",        "f64",
+       "c64",    "c128",       "f4e2m1fn",   "f8e3m4",
+       "f8e4m3", "f8e4m3fn",   "f8e4m3fnuz", "f8e4m3b11fnuz",
+       "f8e5m2", "f8e5m2fnuz", "f8e8m0fnu"});
   return *vec;
 }
 
@@ -418,6 +415,7 @@ void Fill(void* buffer, const ArrayShape& shape) {
     case F64:
       return FillFloatT<double>(buffer, num_elements);
 
+    case F4E2M1FN:
     case F8E5M2:
     case F8E4M3:
     case F8E4M3FN:
@@ -425,6 +423,7 @@ void Fill(void* buffer, const ArrayShape& shape) {
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:
     case F8E3M4:
+    case F8E8M0FNU:
     case F16:
     case BF16:
     case C64:
@@ -476,6 +475,7 @@ void Display(const void* buffer, const ArrayShape& shape) {
     case F64:
       return DisplayT<double>(buffer, num_elements);
 
+    case F4E2M1FN:
     case F8E5M2:
     case F8E4M3:
     case F8E4M3FN:
@@ -483,6 +483,7 @@ void Display(const void* buffer, const ArrayShape& shape) {
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:
     case F8E3M4:
+    case F8E8M0FNU:
     case F16:
     case BF16:
     case C64:

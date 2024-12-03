@@ -1,5 +1,8 @@
 # PJRT C API changelog
 
+## 0.58
+* Added types F4E2M1FN and F8E8M0FNU.
+
 ## 0.57
 * Rearranged fields in the PJRT_Api
 * Update outdated struct sizes from previous changes to

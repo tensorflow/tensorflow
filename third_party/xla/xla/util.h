@@ -416,6 +416,9 @@ std::string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
 
+// Returns a string which can losslessly round trip to a float4 E2M1FN.
+std::string RoundTripFpToString(tsl::float4_e2m1fn value);
+
 // Returns a string which can losslessly round trip to a float8 E5M2.
 std::string RoundTripFpToString(tsl::float8_e5m2 value);
 
@@ -436,6 +439,9 @@ std::string RoundTripFpToString(tsl::float8_e4m3fnuz value);
 
 // Returns a string which can losslessly round trip to a float8 E3M4.
 std::string RoundTripFpToString(tsl::float8_e3m4 value);
+
+// Returns a string which can losslessly round trip to a float8 E8M0FNU.
+std::string RoundTripFpToString(tsl::float8_e8m0fnu value);
 
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);
@@ -652,8 +658,9 @@ template <typename T>
 auto SignAndMagnitude(T x) {
   using BitType = UnsignedIntegerTypeForSizeType<sizeof(T)>;
   BitType x_abs_bits = Eigen::numext::bit_cast<BitType>(Eigen::numext::abs(x));
-  const BitType x_bits = Eigen::numext::bit_cast<BitType>(x);
-  const BitType x_sign = x_bits ^ x_abs_bits;
+  // Eigen implements the sign value to be either all-zeros (for positive input)
+  // or all-ones (for negative input).
+  BitType x_sign = Eigen::numext::bit_cast<BitType>(Eigen::numext::signbit(x));
   if constexpr (!has_negative_zero_v<T>) {
     //  f8e4m3b11, f8e4m3fnuz, and f8e5m2fnuz don't support -0, adjust negative
     //  numbers to fill in the gap.
@@ -664,12 +671,17 @@ auto SignAndMagnitude(T x) {
   return std::make_pair(x_sign, x_abs_bits);
 }
 
+template <>
+inline auto SignAndMagnitude(tsl::float8_e8m0fnu x) {
+  uint8_t x_bits = Eigen::numext::bit_cast<uint8_t>(x);
+  return std::make_pair(static_cast<uint8_t>(0), x_bits);
+}
+
 template <typename T>
 auto SignAndMagnitudeToTwosComplement(T sign, T magnitude) {
   static_assert(!std::numeric_limits<T>::is_signed);
   using SignedType = std::make_signed_t<T>;
-  return static_cast<SignedType>(magnitude) ^
-         (static_cast<SignedType>(sign) < 0 ? SignedType{-1} : SignedType{0});
+  return static_cast<SignedType>(magnitude) ^ static_cast<SignedType>(sign);
 }
 
 // Returns the signed magnitude of T.
@@ -677,6 +689,11 @@ template <typename T>
 auto ToSignMagnitude(T input) {
   auto [sign, magnitude] = SignAndMagnitude(input);
   return SignAndMagnitudeToTwosComplement(sign, magnitude);
+}
+
+template <>
+inline auto ToSignMagnitude(tsl::float8_e8m0fnu x) {
+  return Eigen::numext::bit_cast<uint8_t>(x);
 }
 
 template <typename T>
