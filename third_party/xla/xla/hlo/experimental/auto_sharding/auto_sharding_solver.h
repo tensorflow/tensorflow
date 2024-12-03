@@ -37,6 +37,10 @@ struct AutoShardingSolverOutput {
   bool operator==(const AutoShardingSolverOutput& other) const;
 };
 
+// Scale down values to reduce the range of costs & coefficients in the solver.
+AutoShardingSolverRequest ScaleRequest(
+    const AutoShardingSolverRequest& request);
+
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& request);
 
@@ -96,10 +100,6 @@ operations_research::MPVariable* CreateMakespanVar(
 double EvaluateMakespan(const AutoShardingSolverRequest& request,
                         const AutoShardingSolverOutput& result,
                         AutoShardingEvaluation& evaluation);
-
-// Scale down values to reduce the range of costs & coefficients in the solver.
-AutoShardingSolverRequest ScaleRequest(
-    const AutoShardingSolverRequest& request);
 
 // Determines if strategy 'first' is dominated by strategy 'second' (i.e., its
 // costs are all equal or worse, and it has identical alias mappings).

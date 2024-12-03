@@ -81,6 +81,89 @@ bool AutoShardingSolverOutput::operator==(
          is_optimal == other.is_optimal && peak_times == other.peak_times;
 }
 
+namespace {
+
+double MaxCoeff(
+    const tsl::protobuf::RepeatedPtrField<AutoShardingSolverRequest_Costs>&
+        cost_mat) {
+  double max_coeff = 0.0;
+  for (auto& costs : cost_mat) {
+    for (auto& cost : costs.costs()) {
+      if (cost < kInfinityCost) {
+        max_coeff = std::max(max_coeff, cost);
+      }
+    }
+  }
+  return max_coeff;
+}
+
+void ScaleCoeffs(
+    double scaling_factor,
+    tsl::protobuf::RepeatedPtrField<AutoShardingSolverRequest_Costs>*
+        cost_mat) {
+  for (auto& costs : *cost_mat) {
+    for (auto& cost : *costs.mutable_costs()) {
+      if (cost < kInfinityCost) {
+        cost = floor(cost * scaling_factor);
+      }
+    }
+  }
+}
+
+}  // namespace
+
+AutoShardingSolverRequest ScaleRequest(
+    const AutoShardingSolverRequest& request) {
+  if (!request.has_coeff_limit()) return request;
+  VLOG(0) << "Scaling request by coefficient limit: "
+          << request.coeff_limit().coeff();
+  double max_coeff = 0.0;
+  max_coeff = std::max(max_coeff, MaxCoeff(request.communication_costs()));
+  max_coeff = std::max(max_coeff, MaxCoeff(request.computation_costs()));
+  max_coeff = std::max(max_coeff, MaxCoeff(request.resharding_costs()));
+  if (max_coeff <= request.coeff_limit().coeff()) return request;
+  const double scaling_factor = request.coeff_limit().coeff() / max_coeff;
+  AutoShardingSolverRequest scaled_request = request;
+  ScaleCoeffs(scaling_factor, scaled_request.mutable_communication_costs());
+  ScaleCoeffs(scaling_factor, scaled_request.mutable_computation_costs());
+  ScaleCoeffs(scaling_factor, scaled_request.mutable_resharding_costs());
+  return scaled_request;
+}
+
+namespace {
+
+double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
+  double min_memory_budget_required_estimate = 0.0;
+  for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
+    double min_memory_budget_required_estimate_local = 0.0;
+    for (NodeIdx node_idx : request.live(time_idx).nodes()) {
+      const auto& m = request.memory_costs(node_idx).costs();
+      const double fixed_memory_cost = *std::min_element(m.begin(), m.end());
+      min_memory_budget_required_estimate_local += fixed_memory_cost;
+    }
+    min_memory_budget_required_estimate =
+        std::max(min_memory_budget_required_estimate,
+                 min_memory_budget_required_estimate_local);
+  }
+  return min_memory_budget_required_estimate;
+}
+
+std::vector<NodeStrategyIdx> GetChosenNodeStrategy(
+    const AutoShardingSolverRequest& request,
+    const std::vector<std::vector<MPVariable*>>& s) {
+  std::vector<NodeStrategyIdx> chosen_node_strategy(request.num_nodes(), -1);
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
+    for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+      // if lhs == 1
+      if (s[node_idx][j]->solution_value() > 0.5) {
+        chosen_node_strategy[node_idx] = j;
+        break;
+      }
+    }
+  }
+  return chosen_node_strategy;
+}
+
 void PrintLargestInstructions(
     const std::vector<NodeStrategyIdx>& chosen_strategy,
     const AutoShardingSolverRequest& request) {
@@ -142,67 +225,123 @@ absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
     const std::vector<std::vector<MPVariable*>>& s,
     const std::vector<std::vector<MPVariable*>>& e,
     const MPVariable* overbudget_var, const MPVariable* makespan_var,
-    MPSolver& solver);
+    MPSolver& solver) {
+  auto status = solver.Solve();
+  LOG(INFO) << "Solver absl::Status: " << status;
 
-double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
-  double min_memory_budget_required_estimate = 0.0;
-  for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
-    double min_memory_budget_required_estimate_local = 0.0;
-    for (NodeIdx node_idx : request.live(time_idx).nodes()) {
-      const auto& m = request.memory_costs(node_idx).costs();
-      const double fixed_memory_cost = *std::min_element(m.begin(), m.end());
-      min_memory_budget_required_estimate_local += fixed_memory_cost;
-    }
-    min_memory_budget_required_estimate =
-        std::max(min_memory_budget_required_estimate,
-                 min_memory_budget_required_estimate_local);
-  }
-  return min_memory_budget_required_estimate;
-}
-
-double MaxCoeff(
-    const tsl::protobuf::RepeatedPtrField<AutoShardingSolverRequest_Costs>&
-        cost_mat) {
-  double max_coeff = 0.0;
-  for (auto& costs : cost_mat) {
-    for (auto& cost : costs.costs()) {
-      if (cost < kInfinityCost) {
-        max_coeff = std::max(max_coeff, cost);
+  bool is_optimal = false;
+  if (status == operations_research::MPSolver::INFEASIBLE) {
+    LOG(ERROR) << "MPSolver could not find any feasible solution.";
+#ifdef PLATFORM_GOOGLE
+    if (request.compute_iis()) {
+      operations_research::MPModelRequest model_request;
+      solver.ExportModelToProto(model_request.mutable_model());
+      if (solver.ProblemType() ==
+          operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
+        model_request.set_solver_type(
+            operations_research::MPModelRequest::SAT_INTEGER_PROGRAMMING);
+      } else if (solver.ProblemType() == operations_research::MPSolver::
+                                             SCIP_MIXED_INTEGER_PROGRAMMING) {
+        model_request.set_solver_type(operations_research::MPModelRequest::
+                                          SCIP_MIXED_INTEGER_PROGRAMMING);
+      }
+      model_request.set_solver_time_limit_seconds(100);
+      auto iis = MPSolver::ComputeIrreducibleInfeasibleSubset(model_request);
+      LOG(INFO) << iis.status().DebugString();
+      LOG(INFO) << "Infeasible constraints: ";
+      for (int index : iis.constraint_index()) {
+        LOG(INFO) << " - " << model_request.model().constraint(index).name();
+      }
+      for (int index : iis.general_constraint_index()) {
+        LOG(INFO)
+            << " - "
+            << model_request.model().general_constraint(index).DebugString();
       }
     }
+#endif
+    return absl::InternalError(
+        "MPSolver could not find any feasible solution.");
+  } else if (status == operations_research::MPSolver::MODEL_INVALID) {
+    LOG(FATAL) << "The MIP fed to the solver is invalid. This is most likely a "
+                  "bug and should be reported.";
+    return absl::InternalError("Invalid MIP.");
+  } else if (status == operations_research::MPSolver::NOT_SOLVED) {
+    LOG(WARNING) << "Solver timeout; no solution was produced";
+    return absl::InternalError("Solver timed out.");
+  } else if (status != operations_research::MPSolver::OPTIMAL) {
+    LOG(WARNING) << "Solver timeout; moving forward with a suboptimal solution";
+  } else {
+    is_optimal = true;
   }
-  return max_coeff;
-}
+  // Fingerprint the model & solution (useful when checking for determinism).
+  // We use TensorFlow's fingerprint library here, which differs from CP-SAT's.
+  operations_research::MPModelProto model_proto;
+  solver.ExportModelToProto(&model_proto);
+  uint64_t model_fprint = tsl::Fingerprint64(model_proto.SerializeAsString());
+  operations_research::MPSolutionResponse response;
+  solver.FillSolutionResponseProto(&response);
+  response.clear_solve_info();  // Remove for fingerprint; can vary between runs
+  uint64_t solution_fprint = tsl::Fingerprint64(response.SerializeAsString());
 
-void ScaleCoeffs(
-    double scaling_factor,
-    tsl::protobuf::RepeatedPtrField<AutoShardingSolverRequest_Costs>*
-        cost_mat) {
-  for (auto& costs : *cost_mat) {
-    for (auto& cost : *costs.mutable_costs()) {
-      if (cost < kInfinityCost) {
-        cost = floor(cost * scaling_factor);
-      }
-    }
+  LOG(INFO) << "Objective value: " << solver.Objective().Value()
+            << " Model fingerprint: " << model_fprint
+            << " Solution fingerprint: " << solution_fprint;
+  if (solver.Objective().Value() >= kInfinityCost) {
+    LOG(WARNING) << "Objective (" << solver.Objective().Value()
+                 << ") is larger than kInfinityCost. It means the solver "
+                    "chooses a solution with kInfinityCost and there may be "
+                    "numerical issues when the solver considering other costs.";
   }
-}
+  if (VLOG_IS_ON(10)) {
+    // Print solver information for debugging. This hasn't been useful so far,
+    // so leave it at VLOG level 10.
+    VLOG(10) << "MODEL:";
+    XLA_VLOG_LINES(10, model_proto.DebugString());
+    VLOG(10) << "RESPONSE:";
+    XLA_VLOG_LINES(10, response.DebugString());
+  }
 
-AutoShardingSolverRequest ScaleRequest(
-    const AutoShardingSolverRequest& request) {
-  if (!request.has_coeff_limit()) return request;
-  VLOG(0) << "Scaling request by coefficient limit: "
-          << request.coeff_limit().coeff();
-  double max_coeff = 0.0;
-  max_coeff = std::max(max_coeff, MaxCoeff(request.communication_costs()));
-  max_coeff = std::max(max_coeff, MaxCoeff(request.computation_costs()));
-  max_coeff = std::max(max_coeff, MaxCoeff(request.resharding_costs()));
-  if (max_coeff <= request.coeff_limit().coeff()) return request;
-  const double scaling_factor = request.coeff_limit().coeff() / max_coeff;
-  AutoShardingSolverRequest scaled_request = request;
-  ScaleCoeffs(scaling_factor, scaled_request.mutable_communication_costs());
-  ScaleCoeffs(scaling_factor, scaled_request.mutable_computation_costs());
-  ScaleCoeffs(scaling_factor, scaled_request.mutable_resharding_costs());
-  return scaled_request;
+  // Return value
+  size_t num_edges = request.edges_size();
+  double unsalted_objective = 0.0;
+  const std::vector<NodeStrategyIdx> chosen_node_strategy =
+      GetChosenNodeStrategy(request, s);
+  for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
+    const NodeStrategyIdx j = chosen_node_strategy[node_idx];
+    unsalted_objective += request.computation_costs(node_idx).costs(j) +
+                          request.communication_costs(node_idx).costs(j);
+  }
+  const auto chosen_edge_strategy = [&](EdgeIdx edge_idx) {
+    const auto& edge = request.edges(edge_idx);
+    return chosen_node_strategy[edge.first()] * request.s_len(edge.second()) +
+           chosen_node_strategy[edge.second()];
+  };
+  for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
+    const EdgeStrategyIdx j = chosen_edge_strategy(edge_idx);
+    unsalted_objective += request.resharding_costs(edge_idx).costs(j);
+  }
+  if (overbudget_var) {
+    unsalted_objective += request.overbudget_coeff().coeff() *
+                          overbudget_var->solution_value() *
+                          request.memory_budget();
+  }
+  if (makespan_var) {
+    unsalted_objective +=
+        request.makespan_coeff().coeff() * makespan_var->solution_value();
+  }
+
+  LOG(INFO) << "Unsalted objective value: " << unsalted_objective;
+  LOG(INFO) << "N = " << request.num_nodes();
+  if (request.memory_budget() < 0) {
+    LOG(INFO) << "memory budget: -1";
+  } else {
+    LOG(INFO) << "memory budget: "
+              << request.memory_budget() / (1024 * 1024 * 1024) << " GB";
+  }
+  PrintLargestInstructions(chosen_node_strategy, request);
+  return AutoShardingSolverOutput{.s_val = std::move(chosen_node_strategy),
+                                  .cost = solver.Objective().Value(),
+                                  .is_optimal = is_optimal};
 }
 
 // Given the live matrix and memory costs (for nodes or edges), reduce terms and
@@ -327,6 +466,8 @@ void AddMemoryTerms(
     }
   }
 }
+
+}  // namespace
 
 // Taking an auto-sharding problem (`request`) as an input, calls the OR tools
 // CP-SAT solver and outputs a solution to the input problem.
@@ -818,146 +959,6 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
   const auto duration = end_time - start_time;
   LOG(INFO) << "Solver took " << absl::ToInt64Milliseconds(duration) << " ms";
   return result;
-}
-
-std::vector<NodeStrategyIdx> GetChosenNodeStrategy(
-    const AutoShardingSolverRequest& request,
-    const std::vector<std::vector<MPVariable*>>& s) {
-  std::vector<NodeStrategyIdx> chosen_node_strategy(request.num_nodes(), -1);
-  for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
-    for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
-      // if lhs == 1
-      if (s[node_idx][j]->solution_value() > 0.5) {
-        chosen_node_strategy[node_idx] = j;
-        break;
-      }
-    }
-  }
-  return chosen_node_strategy;
-}
-
-absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
-    const AutoShardingSolverRequest& request,
-    const std::vector<std::vector<MPVariable*>>& s,
-    const std::vector<std::vector<MPVariable*>>& e,
-    const MPVariable* overbudget_var, const MPVariable* makespan_var,
-    MPSolver& solver) {
-  auto status = solver.Solve();
-  LOG(INFO) << "Solver absl::Status: " << status;
-
-  bool is_optimal = false;
-  if (status == operations_research::MPSolver::INFEASIBLE) {
-    LOG(ERROR) << "MPSolver could not find any feasible solution.";
-#ifdef PLATFORM_GOOGLE
-    if (request.compute_iis()) {
-      operations_research::MPModelRequest model_request;
-      solver.ExportModelToProto(model_request.mutable_model());
-      if (solver.ProblemType() ==
-          operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
-        model_request.set_solver_type(
-            operations_research::MPModelRequest::SAT_INTEGER_PROGRAMMING);
-      } else if (solver.ProblemType() == operations_research::MPSolver::
-                                             SCIP_MIXED_INTEGER_PROGRAMMING) {
-        model_request.set_solver_type(operations_research::MPModelRequest::
-                                          SCIP_MIXED_INTEGER_PROGRAMMING);
-      }
-      model_request.set_solver_time_limit_seconds(100);
-      auto iis = MPSolver::ComputeIrreducibleInfeasibleSubset(model_request);
-      LOG(INFO) << iis.status().DebugString();
-      LOG(INFO) << "Infeasible constraints: ";
-      for (int index : iis.constraint_index()) {
-        LOG(INFO) << " - " << model_request.model().constraint(index).name();
-      }
-      for (int index : iis.general_constraint_index()) {
-        LOG(INFO)
-            << " - "
-            << model_request.model().general_constraint(index).DebugString();
-      }
-    }
-#endif
-    return absl::InternalError(
-        "MPSolver could not find any feasible solution.");
-  } else if (status == operations_research::MPSolver::MODEL_INVALID) {
-    LOG(FATAL) << "The MIP fed to the solver is invalid. This is most likely a "
-                  "bug and should be reported.";
-    return absl::InternalError("Invalid MIP.");
-  } else if (status == operations_research::MPSolver::NOT_SOLVED) {
-    LOG(WARNING) << "Solver timeout; no solution was produced";
-    return absl::InternalError("Solver timed out.");
-  } else if (status != operations_research::MPSolver::OPTIMAL) {
-    LOG(WARNING) << "Solver timeout; moving forward with a suboptimal solution";
-  } else {
-    is_optimal = true;
-  }
-  // Fingerprint the model & solution (useful when checking for determinism).
-  // We use TensorFlow's fingerprint library here, which differs from CP-SAT's.
-  operations_research::MPModelProto model_proto;
-  solver.ExportModelToProto(&model_proto);
-  uint64_t model_fprint = tsl::Fingerprint64(model_proto.SerializeAsString());
-  operations_research::MPSolutionResponse response;
-  solver.FillSolutionResponseProto(&response);
-  response.clear_solve_info();  // Remove for fingerprint; can vary between runs
-  uint64_t solution_fprint = tsl::Fingerprint64(response.SerializeAsString());
-
-  LOG(INFO) << "Objective value: " << solver.Objective().Value()
-            << " Model fingerprint: " << model_fprint
-            << " Solution fingerprint: " << solution_fprint;
-  if (solver.Objective().Value() >= kInfinityCost) {
-    LOG(WARNING) << "Objective (" << solver.Objective().Value()
-                 << ") is larger than kInfinityCost. It means the solver "
-                    "chooses a solution with kInfinityCost and there may be "
-                    "numerical issues when the solver considering other costs.";
-  }
-  if (VLOG_IS_ON(10)) {
-    // Print solver information for debugging. This hasn't been useful so far,
-    // so leave it at VLOG level 10.
-    VLOG(10) << "MODEL:";
-    XLA_VLOG_LINES(10, model_proto.DebugString());
-    VLOG(10) << "RESPONSE:";
-    XLA_VLOG_LINES(10, response.DebugString());
-  }
-
-  // Return value
-  size_t num_edges = request.edges_size();
-  double unsalted_objective = 0.0;
-  const std::vector<NodeStrategyIdx> chosen_node_strategy =
-      GetChosenNodeStrategy(request, s);
-  for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
-    const NodeStrategyIdx j = chosen_node_strategy[node_idx];
-    unsalted_objective += request.computation_costs(node_idx).costs(j) +
-                          request.communication_costs(node_idx).costs(j);
-  }
-  const auto chosen_edge_strategy = [&](EdgeIdx edge_idx) {
-    const auto& edge = request.edges(edge_idx);
-    return chosen_node_strategy[edge.first()] * request.s_len(edge.second()) +
-           chosen_node_strategy[edge.second()];
-  };
-  for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
-    const EdgeStrategyIdx j = chosen_edge_strategy(edge_idx);
-    unsalted_objective += request.resharding_costs(edge_idx).costs(j);
-  }
-  if (overbudget_var) {
-    unsalted_objective += request.overbudget_coeff().coeff() *
-                          overbudget_var->solution_value() *
-                          request.memory_budget();
-  }
-  if (makespan_var) {
-    unsalted_objective +=
-        request.makespan_coeff().coeff() * makespan_var->solution_value();
-  }
-
-  LOG(INFO) << "Unsalted objective value: " << unsalted_objective;
-  LOG(INFO) << "N = " << request.num_nodes();
-  if (request.memory_budget() < 0) {
-    LOG(INFO) << "memory budget: -1";
-  } else {
-    LOG(INFO) << "memory budget: "
-              << request.memory_budget() / (1024 * 1024 * 1024) << " GB";
-  }
-  PrintLargestInstructions(chosen_node_strategy, request);
-  return AutoShardingSolverOutput{.s_val = std::move(chosen_node_strategy),
-                                  .cost = solver.Objective().Value(),
-                                  .is_optimal = is_optimal};
 }
 
 bool CostComponents::operator==(const CostComponents& other) const {
