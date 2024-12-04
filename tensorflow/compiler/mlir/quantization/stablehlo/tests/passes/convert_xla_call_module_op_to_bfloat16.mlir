@@ -15,11 +15,13 @@ module {
     // CHECK: %[[CAST_0:.*]] = "tf.Cast"(%[[ARG_0]]) <{Truncate = false}> : (tensor<10xf32>) -> tensor<10xbf16>
     // CHECK: %[[CAST_1:.*]] = "tf.Cast"(%[[ARG_1]]) <{Truncate = false}> : (tensor<10xf32>) -> tensor<10xbf16>
     // CHECK: %[[RESULT:.*]]:2 = "tf.XlaCallModule"(%[[CAST_0]], %[[CAST_1]], %[[ARG_2]])
+    // CHECK-SAME: _stablehlo_version = "1.0.0"
     // CHECK-SAME: (tensor<10xbf16>, tensor<10xbf16>, tensor<6xi32>) -> (tensor<10xbf16>, tensor<6xi32>)
     // CHECK: %[[RESULT_CAST:.*]] = "tf.Cast"(%[[RESULT]]#0) <{Truncate = false}> : (tensor<10xbf16>) -> tensor<10xf32>
     %0:2 = "tf.XlaCallModule"(%arg0, %arg1, %arg2) {
       Sout = [#tf_type.shape<10>], dim_args_spec = [],
       _entry_function = @main_0,
+      _stablehlo_version = "1.0.0",
       _stablehlo_module_attrs = { mhlo.num_partitions = 1 }, module = "",
       platforms = [], version = 5 : i64
     } : (tensor<10xf32>, tensor<10xf32>, tensor<6xi32>) -> (tensor<10xf32>, tensor<6xi32>)
