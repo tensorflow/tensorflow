@@ -233,6 +233,7 @@ absl::StatusOr<HloInstruction*> ReshapeMover::ApplyInverseRearrange(
       // To make algsimp's life a little easier, don't insert a nop reshape.
       Shape new_shape = ShapeUtil::ChangeElementType(
           rearrange->operand(0)->shape(), operand->shape().element_type());
+      UpdateLayout(&new_shape);
       if (operand->shape() != new_shape) {
         return MakeReshapeHlo(new_shape, operand);
       } else {
@@ -265,13 +266,13 @@ absl::StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
       FirstNontrivialRearrange(instruction->operands());
   CHECK(rearrange != nullptr);
 
-  const Shape& new_operand_shape = rearrange->operand(0)->shape();
+  Shape new_operand_shape = rearrange->operand(0)->shape();
   VLOG(3) << "** Sinking reshape or transpose: "
           << instruction->ToString(print_no_metadata)
           << "\n\tfirst rearrange operand: "
           << rearrange->ToString(print_no_metadata)  //
           << "\n\tnew operand shape: "
-          << ShapeUtil::HumanString(new_operand_shape);
+          << ShapeUtil::HumanStringWithLayout(new_operand_shape);
 
   auto operands = instruction->operands();
   for (size_t i = 0; i < operands.size(); ++i) {
@@ -283,11 +284,11 @@ absl::StatusOr<bool> ReshapeMover::SinkRearrangeOperands(
             << " to: " << operands[i]->ToString(print_no_metadata);
   }
 
-  HloInstruction* new_elementwise =
-      computation->AddInstruction(instruction->CloneWithNewOperands(
-          ShapeUtil::ChangeElementType(new_operand_shape,
-                                       instruction->shape().element_type()),
-          operands));
+  new_operand_shape = ShapeUtil::ChangeElementType(
+      new_operand_shape, instruction->shape().element_type());
+  UpdateLayout(&new_operand_shape);
+  HloInstruction* new_elementwise = computation->AddInstruction(
+      instruction->CloneWithNewOperands(new_operand_shape, operands));
 
   std::unique_ptr<HloInstruction> new_rearrange;
   switch (rearrange->opcode()) {

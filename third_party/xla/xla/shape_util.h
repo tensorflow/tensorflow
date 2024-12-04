@@ -1038,6 +1038,14 @@ class ShapeUtil {
   // due to the tiling requirement.
   static int64_t ArrayDataSize(const Shape& shape);
 
+  // Updates element_size_in_bits on each subshape's layout. If
+  // 'pack_subbyte_types' is true, sets the element size to the dtype bitwidth
+  // for subbyte types (S4, U4, etc) and 0 for non-subbyte types, which
+  // indicates that for arrays of subbyte types, multiple elements are packed in
+  // a single byte. If 'pack_subbyte_types' is false, sets the element size to 0
+  // for all types.
+  static void UpdateElementSizeInBits(Shape* s, bool pack_subbyte_types);
+
  private:
   // Fills *shape ignoring dynamic dimensions. Returns true on success.
   // REQUIRES: *shape is empty.

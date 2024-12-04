@@ -38,14 +38,27 @@ XLA_TEST_F(HloTestBase, InputIsOutput) {
 }
 
 XLA_TEST_F(HloTestBase, Reshape) {
-  // Tests that the convert is not moved after the reshape. Currently reshape
-  // and most other ops are unsupported in int4
   const std::string hlo_text = R"(
   HloModule Reshape
   ENTRY main {
     x = s4[2,3] parameter(0)
-    y = s8[2,3] convert(x)
-    ROOT reshape = s8[3,2] reshape(y)
+    ROOT reshape = s4[3,2] reshape(x)
+  }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, MultiReshape) {
+  // Test reshaping multiple arrays to the same shape.
+  const std::string hlo_text = R"(
+  HloModule MultiReshape
+
+  ENTRY main {
+    x = s4[2,3,4] parameter(0)
+    x_reshaped = s4[4,6] reshape(x)
+    y = s4[4,3,2] parameter(1)
+    y_reshaped = s4[4,6] reshape(y)
+    ROOT z = s4[4,6] add(x_reshaped, y_reshaped)
   }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
@@ -67,13 +80,38 @@ XLA_TEST_F(HloTestBase, Slice) {
 
 XLA_TEST_F(HloTestBase, Add) {
   const std::string hlo_text = R"(
-  HloModule HorizontalLoopFusion
+  HloModule Add
 
   ENTRY main {
     x = s4[5,5] parameter(0)
-    x8 = s8[5,5] convert(x)
-    y8 = add(x8, x8)
-    ROOT y = s4[5,5] convert(y8)
+    ROOT y = add(x, x)
+  }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, Dot) {
+  const std::string hlo_text = R"(
+  HloModule Dot
+
+  ENTRY main {
+    x = s4[5,5] parameter(0)
+    y = s4[5,5] parameter(1)
+    ROOT z = dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, MixedTypeDot) {
+  const std::string hlo_text = R"(
+  HloModule Dot
+
+  ENTRY main {
+    x = s4[5,5] parameter(0)
+    x_bf16 = bf16[5,5] convert(x)
+    y = bf16[5,5] parameter(1)
+    ROOT z = dot(x_bf16, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
@@ -85,8 +123,28 @@ XLA_TEST_F(HloTestBase, NonMajorToMinorLayout) {
   HloModule NonMajorToMinorLayout
   ENTRY main {
     x = s4[2,2]{0,1} parameter(0)
-    y = s8[2,2]{0,1} convert(x)
-    ROOT transpose = s8[2,2]{0,1} transpose(y), dimensions={1,0}
+    ROOT transpose = s4[2,2]{0,1} transpose(x), dimensions={1,0}
+  })";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, Transpose4d) {
+  const std::string hlo_text = R"(
+  ENTRY main {
+    x = s4[2,2,2,2] parameter(0)
+    ROOT y = s4[2,2,2,2] transpose(x), dimensions={3,2,1,0}
+  })";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, TransposeDot) {
+  const std::string hlo_text = R"(
+  ENTRY main {
+    x = s4[32,32,32] parameter(0)
+    y = s4[32,32,32] parameter(1)
+    xt = s4[32,32,32] transpose(x), dimensions={2,1,0}
+    yt = s4[32,32,32] transpose(y), dimensions={2,0,1}
+    ROOT output = dot(xt, yt), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
   })";
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
@@ -158,6 +216,63 @@ XLA_TEST_F(HloTestBase, HorizontalLoopFusion) {
     ROOT t = (s4[10], s4[13]) tuple(y4, y4_b)
   }
 )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, ReduceMultipleDimensions) {
+  const std::string hlo_text = R"(
+  add_computation {
+    x = s4[] parameter(0)
+    y = s4[] parameter(1)
+    ROOT z = s4[] add(x, y)
+  }
+
+  ENTRY main {
+    x = s4[3,4,5] parameter(0)
+    zero = s4[] constant(0)
+    ROOT reduce.10 = s4[5] reduce(x, zero), dimensions={0,1}, to_apply=add_computation
+  }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, ReduceToScalar) {
+  const std::string hlo_text = R"(
+  add_computation {
+    x = s4[] parameter(0)
+    y = s4[] parameter(1)
+    ROOT z = s4[] add(x, y)
+  }
+
+  ENTRY main {
+    x = s4[30,40,50] parameter(0)
+    zero = s4[] constant(0)
+    ROOT reduce = s4[] reduce(x, zero), dimensions={0,1,2}, to_apply=add_computation
+  }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, dynamic_slice_fusion) {
+  const std::string hlo_text = R"(
+  ENTRY main {
+    input = s4[101,9] parameter(0)
+    index = s32[] parameter(1)
+    input_doubled = add(input, input)
+    ROOT dus = s4[51,6] dynamic-slice(input_doubled, index, index), dynamic_slice_sizes={51,6}
+  })";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, dynamic_update_slice_fusion) {
+  const std::string hlo_text = R"(
+  ENTRY main {
+    input = s4[101,9] parameter(0)
+    slice = s4[101,6] parameter(1)
+    index = s32[] parameter(2)
+    input_doubled = add(input, input)
+    ROOT dus = s4[101,9] dynamic-update-slice(input_doubled, slice, index, index)
+  })";
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 

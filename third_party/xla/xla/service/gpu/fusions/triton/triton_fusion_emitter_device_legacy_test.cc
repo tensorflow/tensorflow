@@ -161,24 +161,6 @@ ENTRY e {
   EXPECT_TRUE(Run(kHloText, /*run_hlo_passes=*/false));
 }
 
-TEST_F(TritonGemmTest, RejectDotInt4HLO) {
-  constexpr std::string_view kHloText = R"(
-    HloModule t
-
-    ENTRY main {
-      lhs = s4[16,32,64]{2,1,0} parameter(0)
-      rhs = s4[16,64,16]{2,1,0} parameter(1)
-      ROOT dot = s4[16,32,16]{2,1,0} dot(lhs, rhs),
-          lhs_contracting_dims={2},
-          rhs_contracting_dims={1},
-          lhs_batch_dims={0},
-          rhs_batch_dims={0}
-    }
-  )";
-  EXPECT_THAT(GetOptimizedModule(kHloText).status(),
-              StatusIs(tsl::error::INVALID_ARGUMENT));
-}
-
 TEST_F(TritonGemmTest, Int4NegatePlusConvertHLO) {
   constexpr std::string_view kHloText = R"(
     HloModule t

@@ -3950,11 +3950,10 @@ cc_library(
     srcs = ["cpu_gpu_shape_verifier.cc"],
     hdrs = ["cpu_gpu_shape_verifier.h"],
     deps = [
+        ":collective_ops_utils",
         ":hlo_verifier",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
@@ -3966,6 +3965,7 @@ xla_cc_test(
     srcs = ["cpu_gpu_shape_verifier_test.cc"],
     deps = [
         ":cpu_gpu_shape_verifier",
+        ":hlo_module_config",
         ":hlo_verifier",
         "//xla/hlo/parser:hlo_parser",
         "//xla/tests:hlo_test_base",

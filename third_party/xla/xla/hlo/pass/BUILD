@@ -29,6 +29,7 @@ cc_library(
         "hlo_pass_interface.h",
     ],
     deps = [
+        "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
