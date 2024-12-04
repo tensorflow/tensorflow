@@ -1,0 +1,214 @@
+Cherry-picked https://github.com/triton-lang/triton/commit/7f063387991744e2d6d3fbc1e9485ccfaa70f053
+which is already upstream. This can be removed by the integrator.
+diff --git a/lib/Conversion/TritonGPUToLLVM/MemoryOpToLLVM.cpp b/lib/Conversion/TritonGPUToLLVM/MemoryOpToLLVM.cpp
+--- a/lib/Conversion/TritonGPUToLLVM/MemoryOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/MemoryOpToLLVM.cpp
+@@ -138,12 +138,17 @@ public:
+ 
+   // FIXME [Dot LL]
+   // Do for all DotOperandEncodingAttr once we have LLs for all of them
+-  static bool isSupportedDotOpLayout(Attribute layout) {
++  static bool isSupportedDotOpLayout(RankedTensorType type) {
++    auto layout = type.getEncoding();
++    auto bitwidth = type.getElementType().getIntOrFloatBitWidth();
+     if (auto dot = dyn_cast<DotOperandEncodingAttr>(layout)) {
++      auto kWidth = dot.getKWidth();
+       // Use when the SharedToDotOperandMMAv2OrV3 is known to be buggy:
+       // - kWidth == 8
++      // - kWidth == 4, bitwidth = 32
+       if (auto mma = dyn_cast<NvidiaMmaEncodingAttr>(dot.getParent())) {
+-        bool legacyLoweringIsBuggy = dot.getKWidth() >= 8;
++        bool legacyLoweringIsBuggy =
++            kWidth >= 8 || (kWidth == 4 && bitwidth == 32);
+         return legacyLoweringIsBuggy && mma.isAmpere();
+       }
+       if (isa<AMDMfmaEncodingAttr>(dot.getParent()))
+@@ -162,7 +167,7 @@ public:
+     if (isa<SharedEncodingAttr>(srcLayout) &&
+         (isa<BlockedEncodingAttr, MmaEncodingTrait, SliceEncodingAttr>(
+              dstLayout) ||
+-         isSupportedDotOpLayout(dstLayout))) {
++         isSupportedDotOpLayout(dstTy))) {
+       return lowerSharedToDistributed(op, adaptor, getTypeConverter(),
+                                       rewriter);
+     }
+@@ -202,7 +207,7 @@ private:
+     auto dstShape = dstTy.getShape();
+     auto srcSharedLayout = cast<SharedEncodingAttr>(srcTy.getEncoding());
+     auto dstLayout = dstTy.getEncoding();
+-    assert((dstShape.size() <= 2 || isSupportedDotOpLayout(dstLayout)) &&
++    assert((dstShape.size() <= 2 || isSupportedDotOpLayout(dstTy)) &&
+            "Unexpected rank of ConvertLayout(shared->distributed)");
+ 
+     auto smemObj = LLVM::getSharedMemoryObjectFromStruct(
+diff --git a/python/test/regression/test_cast_matmul.py b/python/test/regression/test_cast_matmul.py
+--- a/python/test/regression/test_cast_matmul.py
++++ b/python/test/regression/test_cast_matmul.py
+@@ -13,6 +13,11 @@ import triton
+ import triton.language as tl
+ 
+ input_dtypes = ["float16", "float32", "float64"]
++if triton.runtime.driver.active.get_current_target().backend == "cuda":
++    input_dtypes += ["int8", "float8_e5m2"]
++    cc = torch.cuda.get_device_capability(0)
++    if cc >= (8, 9):
++        input_dtypes += ["float8_e4m3fn"]
+ out_dtypes = ["float16", "float32"]
+ 
+ 
+@@ -65,7 +70,7 @@ def matmul_kernel(A, B, C, M, N, K,  #
+ 
+ @pytest.mark.parametrize("M, K, N, w_dtype, x_dtype, out_dtype",
+                          [(M, K, N, w, x, o)  #
+-                          for (M, K, N) in [(128, 128, 128), (1280, 768, 1024)]  #
++                          for (M, K, N) in [(128, 128, 128), (768, 768, 1024)]  #
+                           for w in input_dtypes
+                           for x in input_dtypes  #
+                           for o in out_dtypes])
+@@ -73,10 +78,20 @@ def test_cast_matmul(M, K, N, w_dtype, x
+     if x_dtype == w_dtype:
+         pytest.skip("skip the same input dtype")
+     device = torch.cuda.current_device()
+-    x_dtype = getattr(torch, x_dtype)
+-    w_dtype = getattr(torch, w_dtype)
+-    a = torch.randn((M, K), device=device, dtype=x_dtype)
+-    b = torch.randn((K, N), device=device, dtype=w_dtype)
++    x_dtype: torch.dtype = getattr(torch, x_dtype)
++    w_dtype: torch.dtype = getattr(torch, w_dtype)
++
++    def init_tensor(dtype, shape):
++        if dtype == torch.int8:
++            return torch.randint(0, 3, shape, device=device, dtype=dtype)
++        elif dtype == torch.float8_e4m3fn or dtype == torch.float8_e5m2:
++            return torch.randn(shape, device=device, dtype=torch.float16).to(dtype)
++        else:
++            return torch.randn(shape, device=device, dtype=dtype)
++
++    a = init_tensor(w_dtype, (M, K))
++    b = init_tensor(x_dtype, (K, N))
++
+     torch_dtype = getattr(torch, out_dtype)
+     triton_dtype = getattr(tl, out_dtype)  # <- here force dot_out_dtype
+     out_torch = torch.matmul(a.to(torch_dtype), b.to(torch_dtype))
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandMMAv2OrV3.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandMMAv2OrV3.cpp
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandMMAv2OrV3.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ConvertLayoutOpToLLVM/SharedToDotOperandMMAv2OrV3.cpp
+@@ -226,11 +226,6 @@ SmallVector<Value> MMA16816SmemLoader::c
+                                                          Value cSwizzleOffset) {
+   Value warpB = multiDimWarpId[0];
+   Value warpOff = kOrder == 2 ? multiDimWarpId[1] : multiDimWarpId[2];
+-  int cTileShape = tileShape[order[0]];
+-  int sTileShape = tileShape[order[1]];
+-  if (!needTrans) {
+-    std::swap(cTileShape, sTileShape);
+-  }
+ 
+   SmallVector<Value> offs(numPtrs);
+ 
+@@ -239,7 +234,6 @@ SmallVector<Value> MMA16816SmemLoader::c
+   int laneHeight = 8;
+   int quadWidth = laneWidth * kWidth;
+   int quadHeight = laneHeight;
+-  int numQuadI = 2;
+ 
+   // outer index base
+   Value iBase = udiv(lane, i32_val(laneWidth));
+diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp
+@@ -90,6 +90,7 @@ ValueTableV2 getValuesFromDotOperandLayo
+     // we split the MMA into 4 sub-MMAs, each with a stride 4 x 32-bit along the
+     // K dimension.
+     llvm::SmallVector<unsigned> si;
++    auto kIters = kWidth / (32 / bitwidth);
+ 
+     if (dot.getOpIdx() == 0) {
+       // Original register layout:
+@@ -106,11 +107,46 @@ ValueTableV2 getValuesFromDotOperandLayo
+       //  2nd MMA: [[2, 3], [10, 11], [18, 19], [26, 27]]
+       //  3rd MMA: [[4, 5], [12, 13], [20, 21], [28, 29]]
+       //  4th MMA: [[6, 7], [14, 15], [22, 23], [30, 31]]
+-      for (size_t kRep = 0; kRep < kWidth / numElemsPerVec; ++kRep)
+-        for (size_t tile = 0; tile < 4; ++tile)
+-          for (size_t e = 0; e < numElemsPerVec; ++e) {
+-            si.push_back(kRep * numElemsPerVec + tile * kWidth + e);
+-          }
++      if (kIters <= repK) {
++        for (size_t kRep = 0; kRep < kWidth / numElemsPerVec; ++kRep)
++          for (size_t tile = 0; tile < 4; ++tile)
++            for (size_t e = 0; e < numElemsPerVec; ++e) {
++              si.push_back(kRep * numElemsPerVec + tile * kWidth + e);
++            }
++      } else {
++        // Original register layout:
++        //
++        //      tile0         tile1
++        //   [0, 1, 2, 3], [0, 1, 2, 3]
++        //   [4, 5, 6, 7], [4, 5, 6, 7]
++        //
++        //      tile2         tile3
++        //   [8, 9, 10, 11], [8, 9, 10, 11]
++        //   [12, 13, 14, 15], [12, 13, 14, 15]
++        //
++        // Each element in the layout is a single bf16.
++        // The converted register layout should be:
++        //
++        // 1st MMA: [[0, 1], [4, 5], [2, 3], [6, 7]]
++        // 2nd MMA: [[0, 1], [4, 5], [2, 3], [6, 7]]
++        // 3rd MMA: [[8, 9], [12, 13], [10, 11], [14, 15]]
++        // 4th MMA: [[8, 9], [12, 13], [10, 11], [14, 15]]
++        //
++        // Additionally, we should reorder the elements by moving the duplicated
++        // elements to the end.  In the example above, we convert the order from
++        // tile0, tile1, tile2, tile3 to tile0, tile2, tile1, tile3, so that
++        // only the first two tiles will be used in the computation.
++        size_t elemsPerTile = 2 * 2 * kWidth;
++        size_t elemsPerMma = 2 * 2 * numElemsPerVec;
++        for (size_t mma = 0; mma < elemsPerTile / elemsPerMma; ++mma)
++          for (size_t tile = 0; tile < elems.size() / elemsPerTile; ++tile)
++            for (size_t kTile = 0; kTile < 2; ++kTile)
++              for (size_t mTile = 0; mTile < 2; ++mTile)
++                for (size_t e = 0; e < numElemsPerVec; ++e) {
++                  si.push_back(mma * elemsPerMma + tile * elemsPerTile +
++                               mTile * kWidth + kTile * numElemsPerVec + e);
++                }
++      }
+     } else {
+       // Original register layout:
+       //
+@@ -122,11 +158,30 @@ ValueTableV2 getValuesFromDotOperandLayo
+       //  2nd MMA: [[2, 3], [10, 11]]
+       //  3rd MMA: [[4, 5], [12, 13]]
+       //  4th MMA: [[6, 7], [14, 15]]
+-      for (size_t kRep = 0; kRep < kWidth / numElemsPerVec; ++kRep)
+-        for (size_t tile = 0; tile < 2; ++tile)
+-          for (size_t e = 0; e < numElemsPerVec; ++e) {
+-            si.push_back(kRep * numElemsPerVec + tile * kWidth + e);
+-          }
++      if (kIters <= repK) {
++        for (size_t kRep = 0; kRep < kWidth / numElemsPerVec; ++kRep)
++          for (size_t tile = 0; tile < 2; ++tile)
++            for (size_t e = 0; e < numElemsPerVec; ++e) {
++              si.push_back(kRep * numElemsPerVec + tile * kWidth + e);
++            }
++      } else {
++        // Original register layout:
++        //
++        //       tile0          tile1
++        //   [0, 1, 2, 3]^T, [0, 1, 2, 3]^T
++        //
++        // We should reorder the elements by moving the duplicated elements to
++        // the end.
++        size_t elemsPerTile = 2 * kWidth;
++        size_t elemsPerMma = 2 * numElemsPerVec;
++        for (size_t mma = 0; mma < elemsPerTile / elemsPerMma; ++mma)
++          for (size_t tile = 0; tile < elems.size() / elemsPerTile; ++tile)
++            for (size_t kTile = 0; kTile < 2; ++kTile)
++              for (size_t e = 0; e < numElemsPerVec; ++e) {
++                si.push_back(mma * elemsPerMma + tile * elemsPerTile +
++                             kTile * numElemsPerVec + e);
++              }
++      }
+     }
+ 
+     auto step = si.size();
