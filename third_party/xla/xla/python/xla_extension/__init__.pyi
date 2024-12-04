@@ -509,6 +509,7 @@ class HostBufferSemantics(enum.IntEnum):
 
 class Client:
   platform: str
+  _raw_platform: str
   platform_version: str
   runtime_type: str
   def device_count(self) -> int: ...
