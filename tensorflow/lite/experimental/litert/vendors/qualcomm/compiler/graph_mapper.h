@@ -18,8 +18,8 @@
 #include <cstdint>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/QnnCommon.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -84,8 +84,15 @@ class GraphMapper {
   // Finalize QNN Graph. Call this after all ops have been mapped.
   LiteRtStatus Finalize();
 
+  inline void RegisterOutput(LiteRtTensor litert_tensor) {
+    graph_outpus_.insert(litert_tensor);
+  }
+
  private:
   const Subgraph subgraph_;
+
+  // Set of all outputs of the graph.
+  absl::flat_hash_set<LiteRtTensor> graph_outpus_;
 
   // Maps evaluated tensors to their resolved QNN Tensor ID.
   absl::flat_hash_map<LiteRtTensor, uint32_t> current_scope_;

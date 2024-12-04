@@ -103,6 +103,14 @@ LiteRtStatus GraphMapper::LegalizeAndRegister(LiteRtTensor litert_tensor,
   litert::Tensor tensor(litert_tensor);
   LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeTensor(tensor, qnn_tensor));
   LITERT_RETURN_STATUS_IF_NOT_OK(AssignTensorName(qnn_tensor));
+
+  // Set tensor as graph output if it is used by other Ops.
+  if (graph_outpus_.contains(litert_tensor)) {
+    LITERT_LOG(LITERT_INFO, "Setting tensor %d as Graph output",
+               qnn_tensor.v2.id);
+    qnn_tensor.v2.type = QNN_TENSOR_TYPE_APP_READ;
+  }
+
   LITERT_RETURN_STATUS_IF_QNN_NOT_OK(
       qnn_.Api()->tensorCreateGraphTensor(QnnGraph(), &qnn_tensor));
 

@@ -114,6 +114,9 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
         graph_mapper.PushToScope(subgraph_input.Get(), qnn_subgraph_input));
   }
 
+  for (const auto& subgraph_output : graph_mapper.Graph().Outputs()) {
+    graph_mapper.RegisterOutput(subgraph_output.Get());
+  }
   //
   // Topologically traverse graph, legalizing and updating tensors in scope
   //
