@@ -37,22 +37,6 @@ namespace mhlo {
 #define GEN_PASS_DECL
 #include "mhlo/transforms/mhlo_passes.h.inc"
 
-/// Lowers HLO control flow ops to SCF.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeControlFlowPass();
-
-// Expand feature rich mhlo ops to simpler mhlo ops.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createMhloExpandOpsSimplifierPass();
-
-// Rewrites scatter into transposes, reshapes and a simpler scatter.
-std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeScatterPass();
-
-// Rewrites gather into transposes, reshapes and a simpler gather.
-std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeGatherPass();
-
-// Rewrites dot operands that contain unit dimension.
-std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeDotPass();
-
 /// Lowers from HLO dialect to Arithmetic dialect.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToArithmeticPass();
 
@@ -88,16 +72,6 @@ createSymbolicShapeOptimizationPass();
 // Pass to simplify shape ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createShapeSimplification();
 
-// Group reduction and parallel dimensions of reduction operations and realize
-// them through equivalent 1D or 2D reductions.
-std::unique_ptr<OperationPass<func::FuncOp>> createGroupReductionDimensionsPass(
-    bool preferColumnsReductions = true);
-
-std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexPass();
-
-std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeDotGeneralToDotPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeDotToDotGeneralPass();
 std::unique_ptr<OperationPass<func::FuncOp>>

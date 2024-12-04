@@ -39,39 +39,9 @@ def ChloLegalizeToHloPass : Pass<"chlo-legalize-to-hlo", "func::FuncOp"> {
   ];
 }
 
-def HloCanonicalizeScatterPass : Pass<"hlo-canonicalize-scatter", "func::FuncOp"> {
-  let summary = "Rewrites scatter into transposes, reshapes and a simple scatter.";
-  let constructor = "createHloCanonicalizeScatterPass()";
-  let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
-}
-
-def HloCanonicalizeGatherPass : Pass<"hlo-canonicalize-gather", "func::FuncOp"> {
-  let summary = "Rewrites gather into transposes, reshapes and a simple gather.";
-  let constructor = "createHloCanonicalizeGatherPass()";
-  let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
-}
-
-def HloCanonicalizeDotPass : Pass<"hlo-canonicalize-dot", "func::FuncOp"> {
-  let summary = "Rewrites dot operands that contain unit dimension.";
-  let constructor = "createHloCanonicalizeDotPass()";
-  let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
-}
-
 def HloLegalizeToArithmeticPass :Pass<"hlo-legalize-to-arithmetic", "ModuleOp"> {
   let summary = "Legalize from HLO dialect to arithmetic dialect.";
   let constructor = "createLegalizeToArithmeticPass()";
-}
-
-def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "func::FuncOp"> {
-  let summary = "Legalize from MHLO control flow to SCF control flow.";
-  let constructor = "createLegalizeControlFlowPass()";
-  let dependentDialects = ["scf::SCFDialect", "tensor::TensorDialect"];
-}
-
-def LegalizeDotGeneralToDotPass : Pass<"mhlo-legalize-dot-general-to-dot", "func::FuncOp"> {
-  let summary = "Legalizes dot_general ops to dot ops.";
-  let constructor = "createLegalizeDotGeneralToDotPass()";
-  let dependentDialects = ["mhlo::MhloDialect"];
 }
 
 def LegalizeDotToDotGeneralPass : Pass<"mhlo-legalize-dot-to-dot-general", "func::FuncOp"> {
@@ -103,17 +73,6 @@ def HloLegalizeToLinalgPass : Pass<"hlo-legalize-to-linalg", "func::FuncOp"> {
                         "Lower to primitive Linalg ops (map, reduce and "
                         "transpose) when possible, instead of linalg.generic">];
 }
-
-def LowerComplexPass : Pass<"mhlo-test-lower-complex", "func::FuncOp"> {
-  let summary = "Lower complex operations into non-complex operations.";
-  let constructor = "createLowerComplexPass()";
-}
-
-def LegalizeGeneralDotPass : Pass<"mhlo-test-lower-general-dot", "func::FuncOp"> {
-  let summary = "Tests lowering general dot to a non-batched dot when possible.";
-  let constructor = "createLegalizeGeneralDotPass()";
-}
-
 
 def TestMaterializeBroadcastsPass : Pass<"mhlo-test-materialize-broadcasts", "func::FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
@@ -195,21 +154,6 @@ def ShapeSimplification
   let constructor = "createShapeSimplification()";
 }
 
-def GroupReductionDimensionsPass
-    : Pass<"group-reduction-dimensions", "func::FuncOp"> {
-  let summary = "Group dimensions of reduction operations";
-  let description = "Group reduction and parallel dimensions of reduction "
-    "operations and realize them through equivalent 1D or 2D reductions, if "
-    "possible.";
-  let constructor = "createGroupReductionDimensionsPass()";
-  let options = [
-    Option<"prefer_columns_reductions_", "prefer-columns-reductions", "bool",
-           /*default=*/"true", "When simplifying reductions, prefer to use "
-           "column reductions over row reductions.">,
-  ];
-  let dependentDialects = ["tensor::TensorDialect"];
-}
-
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "func::FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
   let constructor = "createTestUnfuseBatchNormPass()";
@@ -237,12 +181,6 @@ def FlattenTuplePass : Pass<"mhlo-flatten-tuple", "func::FuncOp"> {
 def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
   let summary = "Pass to transform the IR to be on signless integers.";
   let constructor = "createConvertToSignlessPass()";
-}
-
-def MhloExpandOpsSimplifierPass
-    : Pass<"mhlo-expand-ops-simplifier", "func::FuncOp"> {
-  let summary = "Expand feature rich mhlo ops into a set of simpler mhlo ops.";
-  let constructor = "createMhloExpandOpsSimplifierPass()";
 }
 
 def CollapseElementwiseMapPass

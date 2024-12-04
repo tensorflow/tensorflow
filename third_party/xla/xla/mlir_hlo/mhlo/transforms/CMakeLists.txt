@@ -22,10 +22,6 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR})
 
-set(LLVM_TARGET_DEFINITIONS lower_complex/lower_complex_patterns.td)
-mlir_tablegen(lower_complex/generated_lower_complex.inc -gen-rewriters)
-add_public_tablegen_target(MLIRMhloLowerComplexIncGen)
-
 set(LLVM_TARGET_DEFINITIONS chlo_legalize_to_hlo/chlo_legalize_to_hlo_patterns.td)
 mlir_tablegen(chlo_legalize_to_hlo/generated_chlo_legalize_to_hlo.inc -gen-rewriters)
 add_public_tablegen_target(MLIRChloLegalizeToHloIncGen)
@@ -37,22 +33,13 @@ add_mlir_library(MhloPasses
   collapse_elementwise_map/collapse_elementwise_map.cc
   convert_to_signless/convert_to_signless_pass.cc
   expand_hlo_tuples/expand_hlo_tuples.cc
-  expand_ops_simplifier/expand_ops_simplifier.cc
-  group_reduction_dimensions/group_reduction_dimensions.cc
-  legalize_dot_general_to_dot/legalize_dot_general_to_dot.cc
   legalize_dot_to_dot_general/legalize_dot_to_dot_general.cc
   legalize_einsum_to_dot_general/legalize_einsum_to_dot_general.cc
   legalize_torch_index_select_to_gather/legalize_torch_index_select_to_gather.cc
   legalize_trigonometric_to_approximation/legalize_trigonometric_to_approximation.cc
-  lower_complex/lower_complex.cc
-  lower_complex/lower_complex_patterns.td
-  lower_general_dot/lower_general_dot.cc
   materialize_broadcasts/materialize_broadcasts.cc
   materialize_broadcasts/materialize_broadcasts_pass.cc
   merge_assuming_ops/merge_assuming_ops.cc
-  mhlo_canonicalize_dot/mhlo_canonicalize_dot.cc
-  mhlo_canonicalize_gather/mhlo_canonicalize_gather.cc
-  mhlo_canonicalize_scatter/mhlo_canonicalize_scatter.cc
   mhlo_flatten_tuple/mhlo_flatten_tuple.cc
   prepare_for_export/prepare_for_export.cc
   optimize_mhlo/optimize_mhlo.cc
@@ -66,7 +53,6 @@ add_mlir_library(MhloPasses
 
   DEPENDS
   MLIRhlo_opsIncGen
-  MLIRMhloLowerComplexIncGen
   MLIRMhloPassIncGen
 
   LINK_COMPONENTS
@@ -127,27 +113,6 @@ add_mlir_library(MhloToArithmeticConversion
   MLIRMathDialect
   MLIRSCFDialect
   MLIRTransforms
-  MLIRTransformUtils
-)
-
-add_mlir_library(MhloToStandard
-  legalize_control_flow/legalize_control_flow.cc
-
-  DEPENDS
-  MLIRhlo_opsIncGen
-  MLIRMhloPassIncGen
-  MhloTypeConversion
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  MhloDialect
-  MLIRIR
-  MLIRMathDialect
-  MLIRPass
-  MLIRSCFDialect
-  MLIRTensorDialect
   MLIRTransformUtils
 )
 
@@ -246,7 +211,6 @@ target_link_libraries(AllMhloPasses INTERFACE
   MhloPasses
   MhloToArithmeticConversion
   MhloToMemrefConversion
-  MhloToStandard
   HloToLinalgUtils
   MhloToLinalg
   MhloToStablehlo
