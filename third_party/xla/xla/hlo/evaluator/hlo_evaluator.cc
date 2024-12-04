@@ -899,8 +899,7 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
     const auto& computation_shape =
         computation.parameter_instruction(i)->shape();
     const auto& arg_shape = arg_literals[i]->shape();
-    if (!Shape::Equal().MinorToMajorOnlyInLayout()(computation_shape,
-                                                   arg_shape)) {
+    if (!Shape::Equal().IgnoreLayout()(computation_shape, arg_shape)) {
       return InvalidArgument(
           "Shape mismatch at parameter %d. Computation expected %s, but arg "
           "was %s.",
@@ -1291,11 +1290,24 @@ absl::Status HloEvaluator::EvaluateInternal(
 
 absl::Status HloEvaluator::HandleBitcast(const HloInstruction* bitcast) {
   const Literal& operand_literal = GetEvaluatedLiteralFor(bitcast->operand(0));
-  Literal result(bitcast->shape());
+  if (!ShapeUtil::IsEffectiveScalar(bitcast->shape())) {
+    if (!bitcast->shape().has_layout()) {
+      return InvalidArgument(
+          "Evaluator cannot evaluate bitcast for non-scalar operand with "
+          "unknown layout.");
+    }
+    TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(bitcast->shape()));
+  }
   // Bitcast output is allowed to be smaller than the input if the backend-
   // specific buffer sizes for the input and output are the same. Since the HLO
   // evaluator doesn't have access to the backend-specific shape size function,
   // assume it's OK to bitcast if output <= input.
+  Shape result_shape = bitcast->shape();
+  if (!result_shape.has_layout()) {
+    *result_shape.mutable_layout() =
+        LayoutUtil::GetDefaultLayoutForShape(result_shape);
+  }
+  Literal result(result_shape);
   TF_RET_CHECK(operand_literal.size_bytes() >= result.size_bytes());
   memcpy(result.untyped_data(), operand_literal.untyped_data(),
          result.size_bytes());
@@ -1372,8 +1384,8 @@ absl::Status HloEvaluator::HandleParameter(const HloInstruction* parameter) {
 #ifndef NDEBUG
     const Literal* input_literal = arg_literals_[parameter->parameter_number()];
     VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
-    DCHECK(Shape::Equal().MinorToMajorOnlyInLayout()(parameter->shape(),
-                                                     input_literal->shape()))
+    DCHECK(Shape::Equal().IgnoreLayout()(parameter->shape(),
+                                         input_literal->shape()))
         << "parameter shape is: "
         << ShapeUtil::HumanStringWithLayout(parameter->shape())
         << ", but input literal shape is: "
@@ -4723,7 +4735,7 @@ absl::Status HloEvaluator::Preprocess(const HloInstruction* hlo) {
       }
     }
   }
-  return ShapeUtil::ValidateShape(hlo->shape());
+  return ShapeUtil::ValidateShapeWithOptionalLayout(hlo->shape());
 }
 
 absl::Status HloEvaluator::Postprocess(const HloInstruction* hlo) {

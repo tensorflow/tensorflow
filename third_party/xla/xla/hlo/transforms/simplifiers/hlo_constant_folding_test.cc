@@ -275,12 +275,15 @@ TEST_F(HloConstantFoldingTest, ConstantFoldReduceNoLayout) {
                           ParseAndReturnVerifiedModule(kConstantFoldReduce));
   HloInstruction* add = (*m->computations().begin())->root_instruction();
   LayoutUtil::ClearLayout(add->mutable_shape());
+
   HloConstantFolding const_folder;
   TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(m.get()));
-  EXPECT_FALSE(result);
+  EXPECT_TRUE(result);
 
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Reduce()));
+  EXPECT_EQ(6, m->entry_computation()
+                   ->root_instruction()
+                   ->literal()
+                   .GetFirstElement<int32_t>());
 }
 
 const char* const kConstantFoldLargePad = R"(

@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_element_type_converter.h"
 #include "xla/layout_util.h"
@@ -4563,6 +4564,71 @@ ENTRY main {
         absl::c_equal(args[0].data<bfloat16>(), actual.data<bfloat16>()));
   } else {
     EXPECT_TRUE(absl::c_equal(args[0].data<float>(), actual.data<float>()));
+  }
+}
+
+TEST_P(HloEvaluatorBf16Test, BitcastWithoutLayout) {
+  const absl::string_view hlo_text_base = R"(
+HloModule Bitcast
+
+ENTRY main {
+  param = %s[2,4] parameter(0)
+  ROOT bitcast = %s[4,2,1] bitcast(%s[2,4] param)
+}
+)";
+  std::string hlo_text;
+  Literal arg;
+  if (use_bfloat16_) {
+    hlo_text = absl::StrFormat(hlo_text_base, "bf16", "bf16", "bf16");
+    arg = LiteralUtil::CreateR2<bfloat16>(
+        {{bfloat16(1), bfloat16(2), bfloat16(3), bfloat16(4)},
+         {bfloat16(5), bfloat16(6), bfloat16(7), bfloat16(8)}});
+  } else {
+    hlo_text = absl::StrFormat(hlo_text_base, "f32", "f32", "f32");
+    arg = LiteralUtil::CreateR2<float>({{1., 2., 3., 4.}, {5., 6., 7., 8.}});
+  }
+
+  HloParserOptions parser_config;
+  parser_config.set_fill_missing_layouts(false);
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnUnverifiedModule(
+                                  hlo_text, HloModuleConfig(), parser_config));
+
+  absl::StatusOr<Literal> actual = Evaluate({&arg});
+  EXPECT_FALSE(actual.ok());
+  EXPECT_EQ(actual.status().message(),
+            "Evaluator cannot evaluate bitcast for non-scalar operand with "
+            "unknown layout.");
+}
+
+TEST_P(HloEvaluatorBf16Test, EffectiveScalarBitcastWithoutLayout) {
+  const absl::string_view hlo_text_base = R"(
+HloModule Bitcast
+
+ENTRY main {
+  param = %s[1,1] parameter(0)
+  ROOT bitcast = %s[1,1,1] bitcast(%s[1,1] param)
+}
+)";
+  std::string hlo_text;
+  Literal arg;
+  if (use_bfloat16_) {
+    hlo_text = absl::StrFormat(hlo_text_base, "bf16", "bf16", "bf16");
+    arg = LiteralUtil::CreateR2<bfloat16>({{bfloat16(2)}});
+  } else {
+    hlo_text = absl::StrFormat(hlo_text_base, "f32", "f32", "f32");
+    arg = LiteralUtil::CreateR2<float>({{2.}});
+  }
+
+  HloParserOptions parser_config;
+  parser_config.set_fill_missing_layouts(false);
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnUnverifiedModule(
+                                  hlo_text, HloModuleConfig(), parser_config));
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal actual, Evaluate({&arg}));
+  if (use_bfloat16_) {
+    EXPECT_TRUE(absl::c_equal(arg.data<bfloat16>(), actual.data<bfloat16>()));
+  } else {
+    EXPECT_TRUE(absl::c_equal(arg.data<float>(), actual.data<float>()));
   }
 }
 
