@@ -1738,6 +1738,42 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "gemm_fusion_swap_operands",
+    srcs = ["gemm_fusion_swap_operands.cc"],
+    hdrs = ["gemm_fusion_swap_operands.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service/gpu:triton_fusion_analysis",
+        "//xla/service/gpu/fusions/triton:triton_support",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "gemm_fusion_swap_operands_test",
+    srcs = ["gemm_fusion_swap_operands_test.cc"],
+    deps = [
+        ":gemm_fusion_swap_operands",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
 xla_cc_test(
     name = "gemm_fusion_test",
     srcs = ["gemm_fusion_test.cc"],

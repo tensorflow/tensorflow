@@ -1415,6 +1415,15 @@ TEST(ShapeUtilTest, DecomposeBitcastToTrt) {
   EXPECT_FALSE(decomposition_trt.IsTranspose2Identity());
 }
 
+TEST(ShapeUtilTest, ReorderDimensionsTest) {
+  EXPECT_EQ(ShapeUtil::ReorderLogicalDimensions(
+                ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 3, 12, 17},
+                                                    {1, 2, 0, 3}),
+                {0, 2, 1, 3})
+                .ToString(true),
+            "f32[16,12,3,17]{2,1,0,3}");
+}
+
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {
   EXPECT_FALSE(ShapeUtil::ReshapeIsBitcast(
       ShapeUtil::MakeShapeWithDenseLayout(F32, {3, 2, 2}, {0, 1, 2}),

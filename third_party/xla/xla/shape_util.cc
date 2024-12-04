@@ -1757,6 +1757,26 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
   return output_shape_with_layout;
 }
 
+/* static */ Shape ShapeUtil::ReorderLogicalDimensions(
+    const Shape& shape, absl::Span<const int64_t> permutation) {
+  CHECK(shape.IsArray());
+  const std::vector<bool> dynamic_dimensions =
+      Permute(shape.dynamic_dimensions(), permutation);
+
+  Shape new_shape(shape.element_type(),
+                  Permute(shape.dimensions(), permutation),
+                  absl::InlinedVector<bool, 8>(dynamic_dimensions.begin(),
+                                               dynamic_dimensions.end()),
+                  {});
+  if (shape.has_layout()) {
+    *new_shape.mutable_layout() = shape.layout();
+    for (int64_t& dim : *new_shape.mutable_layout()->mutable_minor_to_major()) {
+      dim = permutation[dim];
+    }
+  }
+  return new_shape;
+}
+
 /* static */ Shape ShapeUtil::DeleteDimension(int64_t dim_to_delete,
                                               Shape shape) {
   CHECK(shape.IsArray());

@@ -883,6 +883,11 @@ class ShapeUtil {
   static std::optional<Shape> AlignLayouts(const Shape& input_shape,
                                            const Shape& output_shape);
 
+  // Returns a shape with the given logical dimensions reordered, updating the
+  // layout so that physical dimensions are preserved.
+  static Shape ReorderLogicalDimensions(const Shape& shape,
+                                        absl::Span<const int64_t> permutation);
+
   // Returns a shape with the given dimension deleted.
   // For example:
   // • `DeleteDimension(1, T[m, n, k]) = T[m, k]`
