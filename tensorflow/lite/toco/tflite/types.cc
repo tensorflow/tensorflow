@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/types.h"
 
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <string>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "flatbuffers/buffer.h"  // from @flatbuffers
