@@ -32,8 +32,6 @@ namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-using errors::InvalidArgument;
-
 namespace functor {
 
 template <typename T>
@@ -107,7 +105,8 @@ class RangeOp : public OpKernel {
                     static_cast<uint64_t>(Eigen::numext::abs(delta)));
       OP_REQUIRES(context,
                   size_unsigned <= std::numeric_limits<int64_t>::max(),
-                  InvalidArgument("Requires ((limit - start) / delta) <= ",
+                  errors::InvalidArgument(
+                                  "Requires ((limit - start) / delta) <= ",
                                   std::numeric_limits<int64_t>::max()));
       size = static_cast<int64_t>(size_unsigned); 
     } else {
