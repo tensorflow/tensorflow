@@ -468,9 +468,9 @@ class Interpreter:
       if num_threads < -1:
         raise ValueError('num_threads should be >= -1')
       if num_threads == 0:
-          num_threads = 1
+        num_threads = 1
       elif num_threads == -1:
-          pass
+        pass
       self._interpreter.SetNumThreads(num_threads)
 
     if model_path and not model_content:
