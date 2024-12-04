@@ -2636,10 +2636,13 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloPassPipeline& pipeline =
         main_pipeline.AddPass<HloPassPipeline>("async-to-sync-converter");
 
-    if (module->config()
-            .debug_options()
-            .xla_gpu_enable_pipelined_collectives() ||
-        module->config().debug_options().xla_gpu_enable_pipelined_p2p()) {
+    if (!module->config()
+             .debug_options()
+             .xla_gpu_enable_experimental_pipeline_parallelism_opt() &&
+        (module->config()
+             .debug_options()
+             .xla_gpu_enable_pipelined_collectives() ||
+         module->config().debug_options().xla_gpu_enable_pipelined_p2p())) {
       pipeline.AddPass<PipelinedP2PRewriter>();
     }
     pipeline.AddPass<GpuConvertAsyncCollectivesToSync>(is_nop);
