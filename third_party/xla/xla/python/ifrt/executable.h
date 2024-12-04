@@ -97,7 +97,7 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different implementations and platforms.
-  virtual absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const = 0;
+  virtual absl::StatusOr<AttributeMap> GetCostAnalysis() const = 0;
 
   // Returns the compile options used to compile this executable.
   // TODO(phawkins): consider removing this API and having the client remember
@@ -126,6 +126,10 @@ struct ExecuteOptions {
   // If true, populate `ExecuteResult::status`. Otherwise, the status is left as
   // an invalid future.
   bool fill_status = false;
+
+  // Custom execution options specific to the runtime. The user and the runtime
+  // are responsible for ensuring version compatibility.
+  std::optional<AttributeMap> custom_options;
 
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
 
@@ -201,11 +205,11 @@ class LoadedExecutable
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different implementations and platforms.
-  virtual absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const = 0;
+  virtual absl::StatusOr<AttributeMap> GetCostAnalysis() const = 0;
 
   // `LoadedExecutable` methods.
 
-  using ExecuteOptions = xla::ifrt::ExecuteOptions;
+  using ExecuteOptions = ::xla::ifrt::ExecuteOptions;
 
   // Result from an execution.
   struct ExecuteResult {
