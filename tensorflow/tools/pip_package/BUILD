@@ -10,7 +10,7 @@ load(
 load("@local_xla//xla/tsl:tsl.bzl", "if_cuda_libs")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
-load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap", "tf_additional_license_deps")
 load("//tensorflow/tools/pip_package/utils:data_deps.bzl", "collect_data_files")
 load("//tensorflow/tools/pip_package/utils:py_deps.bzl", "transitive_py_deps")
 load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "tf_wheel", "tf_wheel_dep")
@@ -298,14 +298,27 @@ tf_wheel(
         ":py_deps",
         "//tensorflow:tf_python_api_gen_v2",
     ] + select({
-        "//tensorflow:dynamic_loaded_kernels": DYNAMIC_LOADED_KERNELS,
+        "//tensorflow:dynamic_loaded_kernels": if_pywrap(
+            if_false = DYNAMIC_LOADED_KERNELS,
+            if_true = [],
+        ),
         "//conditions:default": [],
     }) + select({
-        "//conditions:default": [
-            "//tensorflow:tensorflow_cc",
-            "//tensorflow:tensorflow_framework",
-        ],
-        "//tensorflow:windows": ["//tensorflow/python:pywrap_tensorflow_import_lib_file"],
+        "//conditions:default": if_pywrap(
+            if_false = [
+                "//tensorflow:tensorflow_cc",
+                "//tensorflow:tensorflow_framework",
+            ],
+            if_true = [
+                "//tensorflow/python:_pywrap_tensorflow_binaries",
+            ],
+        ),
+        "//tensorflow:windows": if_pywrap(
+            if_false = [
+                "//tensorflow/python:pywrap_tensorflow_import_lib_file",
+            ],
+            if_true = [],
+        ),
     }) + if_mkl_ml(["@local_xla//xla/tsl/mkl:intel_binary_blob"]),
     xla_aot_compiled = [
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
