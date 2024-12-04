@@ -55,17 +55,17 @@ static constexpr auto Sm90 = Arch::kSm90;        // NOLINT
 //     want to minimize the number of headers included in .cu.cc files as NVCC
 //     does not particularly like templates defined in ABSL.
 //
-extern template struct Adaptor<F32xF32ToF32<Default>>;
-extern template struct DeviceKernel<F32xF32ToF32<Default>>;
+extern template class Adaptor<F32xF32ToF32<Default>>;
+extern template class DeviceKernel<F32xF32ToF32<Default>>;
 
-extern template struct Adaptor<Bf16xBf16ToBf16<Default>>;
-extern template struct DeviceKernel<Bf16xBf16ToBf16<Default>>;
+extern template class Adaptor<Bf16xBf16ToBf16<Default>>;
+extern template class DeviceKernel<Bf16xBf16ToBf16<Default>>;
 
-extern template struct Adaptor<Bf16xBf16ToBf16<Sm80>>;
-extern template struct DeviceKernel<Bf16xBf16ToBf16<Sm80>>;
+extern template class Adaptor<Bf16xBf16ToBf16<Sm80>>;
+extern template class DeviceKernel<Bf16xBf16ToBf16<Sm80>>;
 
-extern template struct Adaptor<Bf16xBf16ToBf16<Sm90>>;
-extern template struct DeviceKernel<Bf16xBf16ToBf16<Sm90>>;
+extern template class Adaptor<Bf16xBf16ToBf16<Sm90>>;
+extern template class DeviceKernel<Bf16xBf16ToBf16<Sm90>>;
 
 //===----------------------------------------------------------------------===//
 // CUTLASS kernel arguments packing

@@ -21,8 +21,8 @@ namespace xla::gpu::kernel::gemm_universal {
 
 using CutlassGemm = F32xF32ToF32<Arch::kDefault>;
 
-extern template struct Adaptor<CutlassGemm>;
-extern template struct DeviceKernel<CutlassGemm>;
+extern template class Adaptor<CutlassGemm>;
+extern template class DeviceKernel<CutlassGemm>;
 
 extern "C" void xla_cutlass_kernel_block_dim(int32_t m, int32_t n, int32_t k,
                                              uint32_t* x, uint32_t* y,
