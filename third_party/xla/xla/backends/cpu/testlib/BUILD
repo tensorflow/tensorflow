@@ -37,6 +37,7 @@ xla_cc_test(
         ":llvm_ir_kernel_emitter",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/codegen:kernel_spec",
         "//xla/codegen/testlib:kernel_runner",
         "//xla/runtime:buffer_use",
