@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/op_renderer.h"
 
 #include <iterator>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
