@@ -51,7 +51,7 @@ using ::tsl::testing::IsOkAndHolds;
 
 class LayoutAssignmentTest : public HloTestBase {
  public:
-  se::DeviceDescription GetDeviceDescription() {
+  const se::DeviceDescription& GetDeviceDescription() {
     return backend().default_stream_executor()->GetDeviceDescription();
   }
 
@@ -59,7 +59,7 @@ class LayoutAssignmentTest : public HloTestBase {
     return GetDeviceDescription().cuda_compute_capability();
   }
 
-  se::GpuComputeCapability GetGpuComputeCapability() {
+  const se::GpuComputeCapability& GetGpuComputeCapability() {
     return GetDeviceDescription().gpu_compute_capability();
   }
 
