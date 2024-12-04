@@ -18,7 +18,6 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_ROCM_HIPBLASLT_WRAPPER_H_
 
 #define __HIP_DISABLE_CPP_FUNCTIONS__
-#define LEGACY_HIPBLAS_DIRECT
 
 #include "rocm/rocm_config.h"
 
