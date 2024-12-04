@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 
-#include <chrono>  // NOLINT(build/c++11)
+#include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <memory>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
