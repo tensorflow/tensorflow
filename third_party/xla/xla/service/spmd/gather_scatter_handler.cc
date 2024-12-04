@@ -294,6 +294,17 @@ absl::StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
   const hlo_sharding_util::GatherScatterDims index_passthrough_dims =
       hlo_sharding_util::GetGatherScatterIndexPassThroughDims(
           *gather, visitor->call_graph());
+
+  // Improve indices sharding from the output sharding.
+  HloSharding indices_sharding = indices.sharding();
+  if (hlo_sharding_util::MergeShardingIfCompatible(
+          hlo_sharding_util::PropagateShardingAlongDimsAndReplicateOthers(
+              output_sharding, index_passthrough_dims.output_dims,
+              index_passthrough_dims.indices_dims, indices.rank()),
+          &indices_sharding)) {
+    indices = indices.Reshard(indices_sharding);
+  }
+
   // Compute output sharding.
   HloSharding passthrough_sharding =
       hlo_sharding_util::PropagateShardingAlongDimsAndReplicateOthers(
@@ -1364,10 +1375,21 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
 
   SpmdBuilder* b = visitor->builder();
   // Parse non-variadic computation only. Variadic case will be replicated.
-  const HloSharding original_indices_sharding = indices.sharding();
   const hlo_sharding_util::GatherScatterDims index_passthrough_dims =
       hlo_sharding_util::GetGatherScatterIndexPassThroughDims(
           *scatter, visitor->call_graph());
+
+  // Improve indices sharding from the update sharding.
+  HloSharding indices_sharding = indices.sharding();
+  if (hlo_sharding_util::MergeShardingIfCompatible(
+          hlo_sharding_util::PropagateShardingAlongDimsAndReplicateOthers(
+              updates[0].sharding(), index_passthrough_dims.output_dims,
+              index_passthrough_dims.indices_dims, indices.rank()),
+          &indices_sharding)) {
+    indices = indices.Reshard(indices_sharding);
+  }
+  const HloSharding original_indices_sharding = indices.sharding();
+
   HloSharding passthrough_sharding =
       hlo_sharding_util::PropagateShardingAlongDimsAndReplicateOthers(
           indices.sharding(), index_passthrough_dims.indices_dims,
