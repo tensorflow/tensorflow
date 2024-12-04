@@ -190,7 +190,7 @@ absl::StatusOr<std::string> SerializeUsingNativeBytecode(
   // TODO: b/285913864 - Remove post enabling frameworks to set it.
   config.setDesiredBytecodeVersion(1);
   // In
-  // https://github.com/google/jax/commit/184e3a88004680dbf34328b05c5fc0d869cc4a93,
+  // https://github.com/jax-ml/jax/commit/184e3a88004680dbf34328b05c5fc0d869cc4a93,
   // fields on some ops were changed to use Dense{Bool,I64}ArrayAttr instead of
   // I64DenseElementsAttr (DenseIntElementsAttr). Some clients still expect
   // dense elements, not dense arrays, so convert the arrays to elements before

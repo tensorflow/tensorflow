@@ -39,7 +39,7 @@ from local_xla.xla import xla_data_pb2
 # pylint: enable=g-direct-tensorflow-import,unused-import
 
 # NOTE: `import <name> as <name>` is required for names to be exported.
-# See PEP 484 & <https://github.com/google/jax/issues/7570>
+# See PEP 484 & <https://github.com/jax-ml/jax/issues/7570>
 # pylint: disable=g-importing-member,useless-import-alias,unused-import,g-multiple-import
 # LINT.IfChange
 from ._types import (

@@ -410,7 +410,7 @@ static const size_t kMaxIntraOpThreads = 256;
 static tsl::ThreadOptions GetThreadOptions() {
   tsl::ThreadOptions thread_options;
   // On Mac OS the default stack size is 512KiB, which is too small for some
-  // BLAS and LAPACK functions (https://github.com/google/jax/issues/20428).
+  // BLAS and LAPACK functions (https://github.com/jax-ml/jax/issues/20428).
   // On Linux we also observed that 2MB wasn't enough to run some OpenBLAS
   // functions.
   thread_options.stack_size = 8 * 1024 * 1024;

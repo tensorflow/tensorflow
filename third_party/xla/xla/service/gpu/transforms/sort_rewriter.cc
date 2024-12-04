@@ -436,7 +436,11 @@ bool IsCubCompatibleSort(const HloSortInstruction* sort_op) {
     return false;
   }
   if (!CreateRunner(*sort_analysis).ok()) {
-    VLOG(2) << "Unsupported operand types (no compiled CUB kernels)";
+    VLOG(2) << "Unsupported operand types (no compiled CUB kernels): "
+            << PrimitiveType_Name(sort_analysis->key_type) << " "
+            << (sort_analysis->value_type.has_value()
+                    ? PrimitiveType_Name(sort_analysis->value_type.value())
+                    : "");
     return false;
   }
   VLOG(2) << "Sort operation is compatible";
