@@ -760,6 +760,17 @@ message HloSnapshot {
   string execution_platform = 4;
 }
 
+message HloInputs {
+  repeated LiteralProto arguments = 1;
+}
+
+message HloUnoptimizedSnapshot {
+  // The unoptimized hlo graph.
+  HloModuleProto hlo_module = 1;
+
+  repeated HloInputs partitions = 2;
+}
+
 // Metadata for an HLO module. Dumped after HLO passes and before LLO lowering
 // with filename module_####.metadata.textproto, where #### is
 // canonical_module_id.
