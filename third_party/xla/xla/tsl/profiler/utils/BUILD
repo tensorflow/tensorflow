@@ -510,7 +510,6 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "no_init.h",
-        "trace_filter_utils.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],

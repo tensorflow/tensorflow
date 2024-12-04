@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/allocator_retry.h"
-#include "xla/tsl/profiler/utils/trace_filter_utils.h"
 #include "xla/tsl/protobuf/bfc_memory_map.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
@@ -47,9 +46,6 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 namespace tsl {
-
-const uint64_t kDefaultMemoryFilterMask = tsl::profiler::TraceMeFiltersToMask(
-    {tsl::profiler::TraceMeFilter::kTraceMemory});
 
 constexpr BFCAllocator::ChunkHandle BFCAllocator::kInvalidChunkHandle;
 
@@ -567,8 +563,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                                {"data_type", annotation.pending_data_type},
                                {"shape", annotation.pending_shape_func()}});
           },
-      /*level=*/tsl::profiler::TraceMeLevel::kInfo,
-      /*filter_mask=*/kDefaultMemoryFilterMask);
+      /*level=*/tsl::profiler::TraceMeLevel::kInfo);
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
