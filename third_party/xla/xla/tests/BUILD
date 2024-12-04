@@ -867,7 +867,6 @@ cc_library(
         ":client_library_test_base",
         ":hlo_test_base",
         ":test_macros_header",
-        ":xla_internal_test_main",
         "//xla:execution_options_util",
         "//xla:status_macros",
         "//xla:test",
@@ -1746,7 +1745,6 @@ xla_test_library(
         ":client_library_test_base",
         ":hlo_test_base",
         ":test_macros_header",
-        ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array3d",
         "//xla:array4d",
@@ -1782,7 +1780,10 @@ xla_test(
         "test_xla_cpu_thunks",
     ],
     xla_test_library_deps = [":reduce_window_test_library"],
-    deps = [":test_macros_header"],
+    deps = [
+        ":test_macros_header",
+        ":xla_internal_test_main",
+    ],
 )
 
 xla_test(
