@@ -5,7 +5,6 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_hipblaslt",
     "if_rocm_is_configured",
     "rocm_copts",
 )
@@ -313,9 +312,8 @@ cc_library(
     hdrs = ["ir_emitter_unnested.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
-    ]) + if_rocm_hipblaslt([
-        "TF_HIPBLASLT=1",
     ]),
+    tags = ["gpu"],
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
@@ -358,12 +356,14 @@ cc_library(
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/kernels:topk_custom_kernel",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
+        "//xla/service/gpu/runtime:cholesky_thunk",
         "//xla/service/gpu/runtime:command_buffer_cmd",
         "//xla/service/gpu/runtime:command_buffer_cmd_emitter",
         "//xla/service/gpu/runtime:command_buffer_thunk",
         "//xla/service/gpu/runtime:conditional_thunk",
         "//xla/service/gpu/runtime:convolution_thunk",
         "//xla/service/gpu/runtime:copy_thunk",
+        "//xla/service/gpu/runtime:cub_sort_thunk",
         "//xla/service/gpu/runtime:cudnn_thunk",
         "//xla/service/gpu/runtime:custom_call_target",
         "//xla/service/gpu/runtime:custom_call_thunk",
@@ -376,7 +376,6 @@ cc_library(
         "//xla/service/gpu/runtime:nccl_all_reduce_thunk",
         "//xla/service/gpu/runtime:nccl_all_to_all_thunk",
         "//xla/service/gpu/runtime:nccl_api",
-        "//xla/service/gpu/runtime:nccl_clique",
         "//xla/service/gpu/runtime:nccl_collective_broadcast_thunk",
         "//xla/service/gpu/runtime:nccl_collective_permute_thunk",
         "//xla/service/gpu/runtime:nccl_collective_thunk",
@@ -390,20 +389,20 @@ cc_library(
         "//xla/service/gpu/runtime:send_recv_thunk",
         "//xla/service/gpu/runtime:sequential_thunk",
         "//xla/service/gpu/runtime:thunk",
+        "//xla/service/gpu/runtime:triangular_solve_thunk",
         "//xla/service/gpu/runtime:wait_for_streams_thunk",
         "//xla/service/gpu/runtime:while_thunk",
         "//xla/service/llvm_ir:buffer_assignment_util",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:kernel_support_library",
-        "//xla/service/llvm_ir:llvm_loop",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:loop_emitter",
         "//xla/service/llvm_ir:sort_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_blas_lt",
-        "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -433,13 +432,7 @@ cc_library(
         "@local_tsl//tsl/platform:human_readable_json",
         "@local_tsl//tsl/platform:statusor",
         "@triton//:TritonDialects",
-    ] + if_gpu_is_configured([
-        "//xla/service/gpu/runtime:cholesky_thunk",
-        "//xla/service/gpu/runtime:cub_sort_thunk",
-        "//xla/service/gpu/runtime:triangular_solve_thunk",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ],
 )
 
 cc_library(
@@ -1279,6 +1272,7 @@ cc_library(
     hdrs = [
         "compile_module_to_llvm_ir.h",
     ],
+    tags = ["gpu"],
     deps = [
         ":executable_proto_cc",
         ":execution_stream_assignment",

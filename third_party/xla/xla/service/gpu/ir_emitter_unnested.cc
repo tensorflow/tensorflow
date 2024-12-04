@@ -27,6 +27,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -111,12 +112,15 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
+#include "xla/service/gpu/runtime/cholesky_thunk.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/service/gpu/runtime/command_buffer_thunk.h"
 #include "xla/service/gpu/runtime/conditional_thunk.h"
 #include "xla/service/gpu/runtime/convolution_thunk.h"
 #include "xla/service/gpu/runtime/copy_thunk.h"
+#include "xla/service/gpu/runtime/cub_sort_thunk.h"
+#include "xla/service/gpu/runtime/cudnn_thunk.h"
 #include "xla/service/gpu/runtime/custom_call_target.h"
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
 #include "xla/service/gpu/runtime/fft_thunk.h"
@@ -141,6 +145,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/send_recv_thunk.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/gpu/runtime/triangular_solve_thunk.h"
 #include "xla/service/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/service/gpu/runtime/while_thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -159,6 +164,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -166,13 +172,6 @@ limitations under the License.
 #include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/statusor.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/runtime/cholesky_thunk.h"
-#include "xla/service/gpu/runtime/cub_sort_thunk.h"
-#include "xla/service/gpu/runtime/cudnn_thunk.h"
-#include "xla/service/gpu/runtime/triangular_solve_thunk.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -651,8 +650,6 @@ absl::Status IrEmitterUnnested::EmitGemmThunk(
   return absl::OkStatus();
 }
 
-#if GOOGLE_CUDA || TF_HIPBLASLT
-
 absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
     const HloCustomCallInstruction* instr) {
   TF_ASSIGN_OR_RETURN(const auto gpu_config,
@@ -767,16 +764,17 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
       BufferAllocation::Slice b_scale,
       GetAllocationSliceForHlo(instr->operand(a_scale_index + 1)));
 
+  bool is_cuda = std::holds_alternative<stream_executor::CudaComputeCapability>(
+      ir_emitter_context_->gpu_compute_capability());
+  bool is_fp8 = instr->shape().tuple_shapes(0).element_type() == F8E4M3FN ||
+                instr->shape().tuple_shapes(0).element_type() == F8E5M2;
   // cublasLT requires c_scale/d_scale to be null when C/D is not FP8.
   // Currently, C cannot be FP8.
   BufferAllocation::Slice c_scale, d_scale;
-#if GOOGLE_CUDA
-  if (instr->shape().tuple_shapes(0).element_type() == F8E4M3FN ||
-      instr->shape().tuple_shapes(0).element_type() == F8E5M2) {
+  if (is_cuda && is_fp8) {
     TF_ASSIGN_OR_RETURN(d_scale,
                         GetAllocationSliceForHlo(instr->operands().back()));
   }
-#endif
 
   BufferAllocation::Slice bias;
   if (has_vector_bias) {
@@ -817,9 +815,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
-#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
-#if GOOGLE_CUDA
 absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
     const HloCustomCallInstruction* instr) {
   bool has_bias = instr->operand_count() > 1;
@@ -963,16 +959,12 @@ absl::Status IrEmitterUnnested::EmitCuDnnThunk(
   return absl::OkStatus();
 }
 
-#endif  // GOOGLE_CUDA
-
 absl::StatusOr<BufferAllocation::Slice>
 IrEmitterUnnested::GetAllocationSliceForHlo(const HloInstruction* instr,
                                             const ShapeIndex& index) const {
   return xla::gpu::GetAllocationSlice(ir_emitter_context_->buffer_assignment(),
                                       instr, index);
 }
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 absl::Status IrEmitterUnnested::EmitCubDeviceRadixSort(
     const HloCustomCallInstruction* instr) {
@@ -1064,7 +1056,6 @@ absl::Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
 
   return absl::OkStatus();
 }
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 absl::Status IrEmitterUnnested::EmitCustomCallThunk(
     const HloCustomCallInstruction* instr) {
@@ -1240,8 +1231,6 @@ absl::Status IrEmitterUnnested::EmitFftThunk(const HloFftInstruction* instr) {
   return absl::OkStatus();
 }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
     const HloInstruction* instr) {
   TF_RET_CHECK(instr->operand_count() == 2);
@@ -1319,7 +1308,6 @@ absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
   }
   return absl::OkStatus();
 }
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 absl::Status IrEmitterUnnested::EmitTopKCustomCall(
     const HloCustomCallInstruction* instr) {
@@ -1369,9 +1357,6 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
 
 absl::Status IrEmitterUnnested::EmitTritonCustomCall(
     const HloCustomCallInstruction* instr) {
-#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
-  return absl::UnimplementedError("Triton support requires CUDA or ROCm");
-#else
   auto generate = [this, &instr]() -> absl::StatusOr<KernelReuseCache::Entry> {
     mlir::MLIRContext& mlir_context = *ir_emitter_context_->mlir_context();
     LoadMlirDialectsForTriton(mlir_context);
@@ -1498,7 +1483,6 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
       instr, entry->kernel_name, kernel_arguments.args(),
       entry->launch_dimensions, entry->cluster_dim, entry->shmem_bytes));
   return absl::OkStatus();
-#endif  // GOOGLE_CUDA
 }
 
 absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
@@ -1561,7 +1545,6 @@ absl::Status IrEmitterUnnested::EmitAsyncCustomCallStart(
     }
     return status;
   }
-#if GOOGLE_CUDA || TF_HIPBLASLT
   if (IsCublasLtMatmul(*wrapped)) {
     auto status = EmitCublasLtMatmulThunk(custom_call);
     if (status.ok()) {
@@ -1576,7 +1559,6 @@ absl::Status IrEmitterUnnested::EmitAsyncCustomCallStart(
     }
     return status;
   }
-#endif  // GOOGLE_CUDA || TF_HIPBLASLT
   return Internal("Unsupported async custom call instruction: %s",
                   HloOpcodeString(wrapped->opcode()));
 }
@@ -2577,8 +2559,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           // We'll launch the fusion computation on a concurrent stream. The
           // concurrent stream needs to first wait until the main stream has
           // finished calculating any values that may be used as inputs to the
-          // fusion computation. We enforce this by inlining a `WaitForStreams`
-          // thunk.
+          // fusion computation. We enforce this by inlining a
+          // `WaitForStreams` thunk.
           auto* async_start = Cast<HloAsyncInstruction>(instr);
           const ExecutionStreamAssignment& stream_assignment =
               ir_emitter_context_->execution_stream_assignment();
@@ -2615,15 +2597,12 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       if (IsLegacyCublasMatmul(*instr)) {
         return EmitGemmThunk(custom_call);
       }
-#if GOOGLE_CUDA || TF_HIPBLASLT
       if (IsCublasLtMatmul(*instr)) {
         return EmitCublasLtMatmulThunk(custom_call);
       }
       if (IsCublasLtMatmulF8(*instr)) {
         return EmitCublasLtMatmulThunkF8(custom_call);
       }
-#endif  // GOOGLE_CUDA || TF_HIPBLASLT
-#if GOOGLE_CUDA
       if (IsCudnnConvolutionReorder(*instr)) {
         return EmitConvolutionReorderThunk(custom_call);
       }
@@ -2633,14 +2612,12 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       if (IsCustomCallTofMHA(*instr) || IsCustomCallTofMHAF8(*instr)) {
         return EmitCuDnnThunk(custom_call);
       }
-#endif  // GOOGLE_CUDA
       if (IsCustomCallToTopK(*instr)) {
         return EmitTopKCustomCall(custom_call);
       }
       if (IsCustomCallToDnnConvolution(*instr)) {
         return EmitConvolutionThunk(custom_call);
       }
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       if (IsCustomCallToCusolver(*instr)) {
         return EmitCholeskyThunk(instr);
       }
@@ -2650,7 +2627,6 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       if (IsCubDeviceRadixSort(*instr)) {
         return EmitCubDeviceRadixSort(custom_call);
       }
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       if (custom_call->custom_call_target() == "PadToStatic") {
         return EmitPadToStatic(custom_call);
       }
