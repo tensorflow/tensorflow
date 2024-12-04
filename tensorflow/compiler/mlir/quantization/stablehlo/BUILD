@@ -413,6 +413,7 @@ tf_cc_test(
         "@local_xla//xla:literal",
         "@local_xla//xla:literal_util",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:pjrt_executable",
