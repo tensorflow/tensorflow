@@ -645,9 +645,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(CreateExpandFloatOpsPass());
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createConvertSCFToCFPass());
-  bool is_amd = std::holds_alternative<se::RocmComputeCapability>(
-      device.gpu_compute_capability());
-  pm.addPass(CreateLowerToLLVMPass(is_amd));
+  pm.addPass(CreateLowerToLLVMPass(device));
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 }
 

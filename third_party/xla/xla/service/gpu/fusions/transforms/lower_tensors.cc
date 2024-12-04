@@ -60,6 +60,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/fusions/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -69,7 +70,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-#define GEN_PASS_DECL_LOWERTENSORSPASS
 #define GEN_PASS_DEF_LOWERTENSORSPASS
 #include "xla/service/gpu/fusions/transforms/passes.h.inc"
 
@@ -1055,16 +1055,20 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
   explicit LowerTensorsPass(const LowerTensorsPassOptions& options)
       : LowerTensorsPassBase(options) {}
 
-  void runOnOperation() override {
-    se::GpuDeviceInfoProto device_info;
-    CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
-                                                     &device_info));
-    se::DeviceDescription device_description(device_info);
+  explicit LowerTensorsPass(const se::DeviceDescription& device_description)
+      : device_description_(device_description) {}
 
+  void runOnOperation() override {
+    if (!gpu_device_info_.empty()) {
+      se::GpuDeviceInfoProto device_info;
+      CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
+                                                       &device_info));
+      device_description_ = se::DeviceDescription(device_info);
+    }
     MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet tensor_patterns(mlir_context);
 
-    tensor_patterns.add<RewriteAtomicRMW>(mlir_context, &device_description);
+    tensor_patterns.add<RewriteAtomicRMW>(mlir_context, &device_description_);
     tensor_patterns
         .add<RewriteAllocateShared, RewriteNonScalarConstants,
              RewriteSyncThreads, RewriteTensorExtract, RewriteTransferRead,
@@ -1115,6 +1119,7 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       signalPassFailure();
     });
   }
+  se::DeviceDescription device_description_;
 };
 
 }  // namespace
@@ -1128,10 +1133,7 @@ std::unique_ptr<::mlir::Pass> CreateLowerTensorsPass(
 
 std::unique_ptr<::mlir::Pass> CreateLowerTensorsPass(
     const se::DeviceDescription& device_description) {
-  std::string ascii_proto;
-  CHECK(tsl::protobuf::TextFormat::PrintToString(
-      device_description.ToGpuProto(), &ascii_proto));
-  return CreateLowerTensorsPass(ascii_proto);
+  return std::make_unique<LowerTensorsPass>(device_description);
 }
 
 }  // namespace gpu

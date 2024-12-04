@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <variant>
 
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -41,21 +42,32 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "xla/service/gpu/fusions/transforms/passes.h"
+#include "xla/stream_executor/device_description.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace gpu {
+namespace {
 
 #define GEN_PASS_DEF_LOWERTOLLVMPASS
-#define GEN_PASS_DECL_LOWERTOLLVMPASS
 #include "xla/service/gpu/fusions/transforms/passes.h.inc"
-
-namespace {
 
 class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
  public:
-  using LowerToLLVMPassBase::LowerToLLVMPassBase;
+  explicit LowerToLLVMPass(const LowerToLLVMPassOptions& options)
+      : LowerToLLVMPassBase(options) {}
+
+  explicit LowerToLLVMPass(const se::DeviceDescription& device_description)
+      : device_description_(device_description) {}
 
   void runOnOperation() override {
+    if (!gpu_device_info_.empty()) {
+      se::GpuDeviceInfoProto device_info;
+      CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
+                                                       &device_info));
+      device_description_ = se::DeviceDescription(device_info);
+    }
     // Populate type conversions.
     mlir::LowerToLLVMOptions llvm_opts(&getContext(),
                                        mlir::DataLayout(getOperation()));
@@ -68,11 +80,14 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
     mlir::arith::populateArithExpandOpsPatterns(patterns);
     mlir::arith::populateArithToLLVMConversionPatterns(type_converter,
                                                        patterns);
-    if (!this->is_amd_gpu_) {
-      mlir::populateGpuToNVVMConversionPatterns(type_converter, patterns);
-    } else {
+    if (std::holds_alternative<se::RocmComputeCapability>(
+            device_description_.gpu_compute_capability())) {
       mlir::populateGpuToROCDLConversionPatterns(
           type_converter, patterns, mlir::gpu::amd::Runtime::Unknown);
+      mlir::configureGpuToROCDLConversionLegality(target);
+    } else {
+      mlir::populateGpuToNVVMConversionPatterns(type_converter, patterns);
+      mlir::configureGpuToNVVMConversionLegality(target);
     }
     mlir::populateFuncToLLVMConversionPatterns(type_converter, patterns);
     mlir::populateVectorToLLVMConversionPatterns(type_converter, patterns);
@@ -81,11 +96,6 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
     mlir::populateComplexToLLVMConversionPatterns(type_converter, patterns);
 
     //  Setup target.
-    if (!this->is_amd_gpu_) {
-      mlir::configureGpuToNVVMConversionLegality(target);
-    } else {
-      mlir::configureGpuToROCDLConversionLegality(target);
-    }
     target.addIllegalDialect<mlir::arith::ArithDialect, mlir::func::FuncDialect,
                              mlir::complex::ComplexDialect>();
     target.addLegalOp<mlir::ModuleOp>();
@@ -107,12 +117,23 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
       signalPassFailure();
     }
   }
+
+ private:
+  se::DeviceDescription device_description_;
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(bool is_amd_gpu) {
-  return createLowerToLLVMPass(LowerToLLVMPassOptions{is_amd_gpu});
+std::unique_ptr<::mlir::Pass> CreateLowerToLLVMPass(
+    const std::string& gpu_device_info) {
+  LowerToLLVMPassOptions options;
+  options.gpu_device_info_ = gpu_device_info;
+  return std::make_unique<LowerToLLVMPass>(options);
+}
+
+std::unique_ptr<::mlir::Pass> CreateLowerToLLVMPass(
+    const se::DeviceDescription& device_description) {
+  return std::make_unique<LowerToLLVMPass>(device_description);
 }
 
 }  // namespace gpu

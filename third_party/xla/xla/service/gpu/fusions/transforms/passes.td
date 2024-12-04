@@ -230,9 +230,10 @@ def LowerToLLVMPass :
   ];
 
   let options = [
-    Option<"is_amd_gpu_", "is_amd_gpu", "bool", /*default=*/"false",
-           "True if AMD GPU.">,
+    Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
+           "Serialized stream_executor::GPUDeviceInfo proto.">,
   ];
+  let constructor = "CreateLowerToLLVMPass()";
 }
 
 def VectorizeLoadsAndStoresPass :

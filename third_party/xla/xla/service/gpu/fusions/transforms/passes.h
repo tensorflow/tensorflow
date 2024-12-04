@@ -46,11 +46,13 @@ std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass();
 std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass();
 std::unique_ptr<mlir::Pass> CreateFlattenTensorsPass();
 std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
-    const std::string& gpu_device_info =
-        "cuda_compute_capability { major: 6 }");
+    const std::string& gpu_device_info = "");
 std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
     const se::DeviceDescription& device_description);
-std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(bool use_rocdl);
+std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(
+    const std::string& gpu_device_info = "");
+std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(
+    const se::DeviceDescription& device_description);
 std::unique_ptr<mlir::Pass> CreateLowerXlaGpuToScfPass(int64_t warp_size = 32);
 std::unique_ptr<mlir::Pass> CreateLowerXlaGpuLoopsToScfPass();
 std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
