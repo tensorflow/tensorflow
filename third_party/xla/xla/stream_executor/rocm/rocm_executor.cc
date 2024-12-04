@@ -280,10 +280,6 @@ absl::StatusOr<int64_t> GetMaxRegistersPerBlock(hipDevice_t device) {
                                      hipDeviceAttributeMaxRegistersPerBlock);
 }
 
-absl::StatusOr<int64_t> GetThreadsPerWarp(hipDevice_t device) {
-  return GetSimpleAttribute<int64_t>(device, hipDeviceAttributeWarpSize);
-}
-
 absl::Status GetGridLimits(int* x, int* y, int* z, hipDevice_t device) {
   int value;
   TF_RETURN_IF_ERROR(
@@ -1040,7 +1036,17 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   desc.set_threads_per_core_limit(
       GetMaxThreadsPerMultiprocessor(device).value());
   desc.set_registers_per_block_limit(GetMaxRegistersPerBlock(device).value());
-  desc.set_threads_per_warp(GetThreadsPerWarp(device).value());
+  // "wavefront_size defaults 6 for all targets before GFX10. For GFX10 onwards
+  // defaults to 6 if target feature wavefrontsize64 is enabled, otherwise 5.
+  // Note that wavefront size is specified as a power of two, so a value of n
+  // means a size of 2^n".
+  // https://llvm.org/docs/AMDGPUUsage.html#amd-kernel-code-t
+  if (desc.rocm_compute_capability().core_isa_version() >=
+      RocmComputeCapability::kGfx10) {
+    desc.set_threads_per_warp(32);
+  } else {
+    desc.set_threads_per_warp(64);
+  }
   desc.set_registers_per_core_limit(64 * 1024);
   desc.set_compile_time_toolkit_version(
       SemanticVersion{HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH});

@@ -136,6 +136,7 @@ cc_library(
         ":semantic_version",
         "//xla/tsl/lib/math:math_util",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
     ],

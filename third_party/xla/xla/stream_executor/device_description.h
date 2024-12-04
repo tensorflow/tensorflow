@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -158,10 +159,20 @@ class RocmComputeCapability {
   // gcn_arch_name example --  gfx90a:sramecc+:xnack-
   // gfx_version is the "gfx90a" part of the gcn_arch_name
   explicit RocmComputeCapability(std::string gcn_arch_name)
-      : gcn_arch_name_(std::move(gcn_arch_name)) {}
+      : gcn_arch_name_(std::move(gcn_arch_name)) {
+    if (is_gcn5() || gfx9_mi100_or_later()) {
+      core_isa_version_ = CoreIsaVersion::kGfx9;
+    } else if (gfx10_rx68xx() || gfx10_rx69xx()) {
+      core_isa_version_ = CoreIsaVersion::kGfx10;
+    } else if (gfx11_rx7900()) {
+      core_isa_version_ = CoreIsaVersion::kGfx11;
+    } else {
+      ABSL_UNREACHABLE();
+    }
+  }
 
   explicit RocmComputeCapability(const RocmComputeCapabilityProto &proto)
-      : gcn_arch_name_(proto.gcn_arch_name()) {}
+      : RocmComputeCapability(proto.gcn_arch_name()) {}
 
   RocmComputeCapability() = default;
 
@@ -180,26 +191,34 @@ class RocmComputeCapability {
     return absl::StrJoin(kSupportedGfxVersions, ", ");
   }
 
+  enum CoreIsaVersion {
+    kGfx9,
+    kGfx10,
+    kGfx11,
+  };
+
+  CoreIsaVersion core_isa_version() const { return core_isa_version_; }
+
+  // Returns true if this is the GCN5 architecture.
+  bool is_gcn5() const {
+    static constexpr absl::string_view kList[] = {"gfx900", "gfx906"};
+    return absl::c_linear_search(kList, gfx_version());
+  }
+
   bool gfx9_mi100() const { return gfx_version() == "gfx908"; }
 
   bool gfx9_mi200() const { return gfx_version() == "gfx90a"; }
 
   bool gfx9_mi300() const {
     static constexpr absl::string_view kList[] = {"gfx940", "gfx941", "gfx942"};
-    return absl::c_count(kList, gfx_version()) != 0;
+    return absl::c_linear_search(kList, gfx_version());
   }
 
   bool gfx9_mi100_or_later() const {
-    static constexpr absl::string_view kList[] = {"gfx908", "gfx90a", "gfx940",
-                                                  "gfx941", "gfx942"};
-    return absl::c_count(kList, gfx_version()) != 0;
+    return gfx9_mi100() || gfx9_mi200_or_later();
   }
 
-  bool gfx9_mi200_or_later() const {
-    static constexpr absl::string_view kList[] = {"gfx90a", "gfx940", "gfx941",
-                                                  "gfx942"};
-    return absl::c_count(kList, gfx_version()) != 0;
-  }
+  bool gfx9_mi200_or_later() const { return gfx9_mi200() || gfx9_mi300(); }
 
   bool gfx10_rx68xx() const { return gfx_version() == "gfx1030"; }
 
@@ -248,6 +267,7 @@ class RocmComputeCapability {
 
  private:
   std::string gcn_arch_name_ = "gfx000";  // default to invalid arch.
+  CoreIsaVersion core_isa_version_;
 
   static constexpr absl::string_view kSupportedGfxVersions[]{
       "gfx900",                       // MI25

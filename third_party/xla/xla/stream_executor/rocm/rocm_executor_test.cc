@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_executor.h"
 
+#include <cstdint>
 #include <memory>
 #include <variant>
 
@@ -76,6 +77,23 @@ TEST(RocmExecutorTest, GetRocmKernel) {
 
   EXPECT_THAT(rocm_executor->GetRocmKernel(nullptr),
               StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST(RocmExecutorTest, CheckWarpSize) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("ROCM"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  auto rocm_executor = dynamic_cast<RocmExecutor*>(executor);
+  ASSERT_NE(rocm_executor, nullptr);
+  int64_t warp_size = rocm_executor->GetDeviceDescription().threads_per_warp();
+  const auto compute_capability =
+      rocm_executor->GetDeviceDescription().rocm_compute_capability();
+  if (compute_capability.core_isa_version() <= RocmComputeCapability::kGfx9) {
+    EXPECT_EQ(warp_size, 64);
+  } else {
+    EXPECT_EQ(warp_size, 32);
+  }
 }
 
 }  // namespace
