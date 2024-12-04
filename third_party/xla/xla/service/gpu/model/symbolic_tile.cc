@@ -50,6 +50,7 @@ namespace gpu {
 namespace {
 
 using ::llvm::SmallVector;
+using ::mlir::AffineBinaryOpExpr;
 using ::mlir::AffineConstantExpr;
 using ::mlir::AffineDimExpr;
 using ::mlir::AffineExpr;
@@ -89,12 +90,19 @@ struct SizeAndStrideExpression {
   AffineExpr stride;
   ConstraintExpression constraints;
 
-  SizeAndStrideExpression(AffineExpr size, AffineExpr stride,
-                          ConstraintExpression constraints =
-                              ConstraintExpression::GetAlwaysSatisfied())
-      : size(std::move(size)),
-        stride(std::move(stride)),
-        constraints(std::move(constraints)) {}
+  explicit SizeAndStrideExpression(
+      AffineExpr size, int64_t stride,
+      ConstraintExpression constraints =
+          ConstraintExpression::GetAlwaysSatisfied())
+      : SizeAndStrideExpression(
+            size, getAffineConstantExpr(stride, size.getContext()),
+            std::move(constraints)) {}
+
+  explicit SizeAndStrideExpression(
+      AffineExpr size, AffineExpr stride,
+      ConstraintExpression constraints =
+          ConstraintExpression::GetAlwaysSatisfied())
+      : size(size), stride(stride), constraints(std::move(constraints)) {}
 };
 
 // Extracts size and stride expressions from the operands to a modulo
@@ -103,14 +111,18 @@ struct SizeAndStrideExpression {
 // TODO(b/349487906): Currently, this fails when the stride is not exactly unit.
 std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromMod(
     AffineExpr lhs, AffineExpr modulus) {
+  if (modulus.getKind() != AffineExprKind::Constant) {
+    return std::nullopt;
+  }
   // TODO(b/349487906): handle the non-one stride case, both in the code and in
   // the proof.
+
   // Let f(d0) = d0 mod c. Then, given an input tile size n,
   // {f(x) | x in Fin(n)} contains:
   //   * n elements if n < c (and we add a constraint that c % n == 0)
   //   * c elements if n >= c (and we add a constraint that n % c == 0)
   // Given these constraints and assumptions, we derive
-  //   card({f(x) | x in Fin(n)}) = n - ((n - 1) floordiv n) * n.
+  //   card({f(x) | x in Fin(n)}) = n - ((n - 1) floordiv c) * c.
   // Proof:
   //   * n < c (and c % n == 0):
   //       n - ((n - 1) floordiv c) * c
@@ -119,29 +131,57 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromMod(
   //   * n >= c (and n % c == 0):
   //       n - ((n - 1) floordiv c) * c
   //     = n - (n / c - 1) * c    (n % c == 0 => (n - 1) floordiv c = n / c - 1)
-  //     = n - (n - c)
-  //     = c
-  CHECK(modulus.getKind() == AffineExprKind::Constant);
-  if (lhs.getKind() != AffineExprKind::DimId) {
+  //     = n - (n - c) = c
+  auto make_result = [&](AffineExpr dividend) {
+    AffineExpr size = dividend - (dividend - 1).floorDiv(modulus) * modulus;
+    // modulus % dividend == 0 || dividend % modulus == 0.
+    Interval zero_interval{/*lower=*/0, /*upper=*/0};
+    ConstraintExpression constraints =
+        Constraint{modulus % dividend, zero_interval} ||
+        Constraint{dividend % modulus, zero_interval};
+    // Stride is effectively 1 % modulus = 1.
+    return SizeAndStrideExpression(size, /*stride=*/1, std::move(constraints));
+  };
+
+  if (llvm::isa<AffineDimExpr>(lhs)) {
+    return make_result(lhs);
+  }
+
+  if (lhs.getKind() != AffineExprKind::FloorDiv) {
+    return std::nullopt;
+  }
+  AffineExpr dim = llvm::cast<AffineBinaryOpExpr>(lhs).getLHS();
+  AffineExpr den = llvm::cast<AffineBinaryOpExpr>(lhs).getRHS();
+  if (dim.getKind() != AffineExprKind::DimId ||
+      den.getKind() != AffineExprKind::Constant) {
     return std::nullopt;
   }
 
-  AffineExpr size = lhs - mlir::getAffineBinaryOpExpr(AffineExprKind::FloorDiv,
-                                                      lhs - 1, modulus) *
-                              modulus;
-
-  Interval zero_interval{/*lower=*/0, /*upper=*/0};
-  // TODO(b/349487906): the below also becomes more complicated if stride is
-  // not unit.
-  //
-  // tile_size % modulus == 0 || modulus % tile_size == 0
-  ConstraintExpression constraints = Constraint{lhs % modulus, zero_interval} ||
-                                     Constraint{modulus % lhs, zero_interval};
-
-  // In this case, stride is effectively 1 mod modulus = 1.
-  return SizeAndStrideExpression(
-      size, /*stride=*/getAffineConstantExpr(1, lhs.getContext()),
-      std::move(constraints));
+  // Let f(d0) = d0 floordiv d mod c. Then, given an input tile size n,
+  // {f(x) | x in Fin(n)} contains:
+  //   * n ceildiv d elements if n ceildiv d < c
+  //     (and we add a constraint that c % (n ceildiv d) == 0)
+  //   * c elements if n ceildiv d >= c
+  //     (and we add a constraint that (n ceildiv d) % c == 0)
+  // Given these constraints and assumptions, we derive
+  //   card({f(x) | x in Fin(n)}) =
+  //       n ceildiv d - (n ceildiv d - 1) floordiv c * c
+  // Proof:
+  //   * n ceildiv d < c (and c % (n ceildiv d) == 0):
+  //       n ceildiv d - (n ceildiv d - 1) floordiv c * c
+  //         because (n ceildiv d) < c => (n ceildiv d - 1) floordiv c == 0
+  //     = n ceildiv d - 0 * c
+  //     = n ceildiv d
+  //   * n ceildiv d >= c (and (n ceildiv d) % c == 0):
+  //       n ceildiv d - (n ceildiv d - 1) floordiv c * c
+  //         because (n ceildiv d) % c == 0
+  //                           => n ceildiv d floordiv c == n ceildiv d / c
+  //     = n ceildiv d - (n ceildiv d / c - 1) * c
+  //     = n ceildiv d - (n ceildiv d - c)
+  //     = c
+  // We represent `n ceildiv d` as `(n + d - 1) floordiv d`, since indexing
+  // maps are not compatible with CeilDiv affine expressions.
+  return make_result((dim + (den - 1)).floorDiv(den));
 }
 
 // Extracts size and stride expressions from the operands to a floordiv
@@ -164,10 +204,7 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStrideFromFloorDiv(
   //
   // We represent `a ceildiv b` as `(a + b - 1) floordiv b`, since indexing
   // maps are not compatible with CeilDiv affine expressions.
-  AffineExpr size = mlir::getAffineBinaryOpExpr(AffineExprKind::FloorDiv,
-                                                num + (den - 1), den);
-  return SizeAndStrideExpression(
-      size, /*stride=*/getAffineConstantExpr(1, num.getContext()));
+  return SizeAndStrideExpression((num + (den - 1)).floorDiv(den), /*stride=*/1);
 }
 
 // See documentation of `DestructureSummation` for an explanation of the
@@ -176,7 +213,7 @@ void DestructureSummationImpl(AffineExpr expr,
                               std::vector<AffineExpr>& summands) {
   switch (expr.getKind()) {
     case AffineExprKind::Add: {
-      const auto add = llvm::cast<mlir::AffineBinaryOpExpr>(expr);
+      const auto add = llvm::cast<AffineBinaryOpExpr>(expr);
       DestructureSummationImpl(add.getLHS(), summands);
       DestructureSummationImpl(add.getRHS(), summands);
       break;
@@ -591,10 +628,9 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
 
   switch (strided_indexing.getKind()) {
     case AffineExprKind::DimId:
-      return SizeAndStrideExpression(/*size=*/strided_indexing,
-                                     /*stride=*/getAffineConstantExpr(1, ctx));
-    case mlir::AffineExprKind::Mul: {
-      const auto mul = llvm::cast<mlir::AffineBinaryOpExpr>(strided_indexing);
+      return SizeAndStrideExpression(/*size=*/strided_indexing, /*stride=*/1);
+    case AffineExprKind::Mul: {
+      const auto mul = llvm::cast<AffineBinaryOpExpr>(strided_indexing);
       AffineExpr lhs = mul.getLHS();
       std::optional<SizeAndStrideExpression> maybe_size_and_stride =
           ExtractSizeAndStride(lhs, dimension_intervals, symbol_intervals);
@@ -606,19 +642,19 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
           /*size=*/maybe_size_and_stride->size,
           /*stride=*/maybe_size_and_stride->stride * mul.getRHS());
     }
-    case mlir::AffineExprKind::Mod: {
-      auto mod = llvm::cast<mlir::AffineBinaryOpExpr>(strided_indexing);
+    case AffineExprKind::Mod: {
+      auto mod = llvm::cast<AffineBinaryOpExpr>(strided_indexing);
       return ExtractSizeAndStrideFromMod(mod.getLHS(), mod.getRHS());
     }
-    case mlir::AffineExprKind::FloorDiv: {
-      auto floor_div = llvm::cast<mlir::AffineBinaryOpExpr>(strided_indexing);
+    case AffineExprKind::FloorDiv: {
+      auto floor_div = llvm::cast<AffineBinaryOpExpr>(strided_indexing);
       return ExtractSizeAndStrideFromFloorDiv(floor_div.getLHS(),
                                               floor_div.getRHS());
     }
-    case mlir::AffineExprKind::Constant:
+    case AffineExprKind::Constant:
       return SizeAndStrideExpression(/*size=*/getAffineConstantExpr(1, ctx),
-                                     /*stride=*/getAffineConstantExpr(0, ctx));
-    case mlir::AffineExprKind::SymbolId: {
+                                     /*stride=*/0);
+    case AffineExprKind::SymbolId: {
       auto symbol = llvm::cast<AffineSymbolExpr>(strided_indexing);
       const Interval& symbol_interval = symbol_intervals[symbol.getPosition()];
       if (symbol_interval.lower != 0) {
@@ -627,9 +663,9 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
 
       return SizeAndStrideExpression(
           /*size=*/getAffineConstantExpr(symbol_interval.upper + 1, ctx),
-          /*stride=*/getAffineConstantExpr(1, ctx));
+          /*stride=*/1);
     }
-    case mlir::AffineExprKind::Add: {
+    case AffineExprKind::Add: {
       std::optional<std::vector<SizeAndStrideExpression>>
           maybe_sizes_and_strides =
               ExtractSizesAndStridesFromMultivariateSummation(
@@ -640,7 +676,7 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
       return CombineSizesAndStrides(std::move(*maybe_sizes_and_strides),
                                     dimension_intervals);
     }
-    case mlir::AffineExprKind::CeilDiv:
+    case AffineExprKind::CeilDiv:
       break;
   };
   LOG(FATAL) << "unreachable";
@@ -839,14 +875,14 @@ void ConstraintExpression::Print(std::ostream& out) const {
 
 namespace {
 
-bool IsConstraintAlwaysSatisfied(mlir::AffineExpr expr, Interval interval) {
+bool IsConstraintAlwaysSatisfied(AffineExpr expr, Interval interval) {
   if (AffineConstantExpr constant = mlir::dyn_cast<AffineConstantExpr>(expr)) {
     return interval.Contains(constant.getValue());
   }
   return false;
 }
 
-bool IsConstraintUnsatisfiable(mlir::AffineExpr expr, Interval interval) {
+bool IsConstraintUnsatisfiable(AffineExpr expr, Interval interval) {
   if (!interval.IsFeasible()) {
     return true;
   }
