@@ -28,6 +28,11 @@ class Communicator {
  public:
   virtual ~Communicator() = default;
 
+  // Abort any uncompleted operations and destroys the underlying communicator
+  // object. It is undefined behavior to use the communicator after calling
+  // this method.
+  virtual absl::Status Abort() = 0;
+
   // Checks the health of the communicator. It might return an error from the
   // previously launched asynchronous collective operations, and it does not
   // have to wait for the completion of scheduled operations.

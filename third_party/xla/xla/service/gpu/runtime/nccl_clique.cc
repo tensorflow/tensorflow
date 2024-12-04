@@ -138,13 +138,13 @@ static NcclCliques& GetNcclCliques() {
 // error state. It will free resources that are allocated to a communicator
 // and abort any uncompleted operations before destroying the communicator.
 static absl::Status CheckComm(Communicator* comm) {
-  absl::Status async_err = comm->HealthCheck();
-  if (!async_err.ok()) {
+  absl::Status health = comm->HealthCheck();
+  if (!health.ok()) {
     LOG(ERROR) << "Aborting communicator: " << comm
-               << " due to async NCCL error: " << async_err;
-    TF_RETURN_IF_ERROR(NcclApi::Default()->CommAbort(comm));
+               << " due to error: " << health;
+    TF_RETURN_IF_ERROR(comm->Abort());
   }
-  return async_err;
+  return health;
 }
 
 // Runs async check on all communicators in a clique.

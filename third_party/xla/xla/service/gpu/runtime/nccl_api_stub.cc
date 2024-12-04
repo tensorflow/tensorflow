@@ -100,8 +100,6 @@ class NcclApiStub final : public NcclApi {
     return UnimplementedError();
   }
 
-  absl::Status CommAbort(Communicator*) final { return UnimplementedError(); }
-
   absl::Status CommFinalize(Communicator*) final {
     return UnimplementedError();
   }

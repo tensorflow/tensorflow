@@ -45,6 +45,11 @@ NcclCommunicator::~NcclCommunicator() {
   XLA_NCCL_LOG_IF_ERROR(ncclCommDestroy(comm_));
 }
 
+absl::Status NcclCommunicator::Abort() {
+  VLOG(1) << "Abort NCCL communicator: " << ToString();
+  return XLA_NCCL_STATUS(ncclCommAbort(comm_));
+}
+
 absl::Status NcclCommunicator::HealthCheck() const {
   VLOG(5) << "Get last async error for NCCL communicator: " << ToString();
 

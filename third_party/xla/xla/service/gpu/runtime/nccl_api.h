@@ -161,12 +161,6 @@ class NcclApi : public GpuCollectives {
       absl::Span<const Communicator* const> comms, int32_t color,
       absl::Span<const RankId> keys, std::optional<Config> config) = 0;
 
-  // Abort any uncompleted operations and destroys the communicator. Frees
-  // resources that are allocated to a communicator object comm.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommabort
-  virtual absl::Status CommAbort(Communicator* comm) = 0;
-
   // Finalize a communicator object comm.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommdestroy

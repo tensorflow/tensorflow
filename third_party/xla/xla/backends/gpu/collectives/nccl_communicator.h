@@ -40,6 +40,7 @@ class NcclCommunicator : public Communicator {
   explicit NcclCommunicator(ncclComm_t comm);
   ~NcclCommunicator() override;
 
+  absl::Status Abort() final;
   absl::Status HealthCheck() const final;
 
   std::string ToString() const final;
