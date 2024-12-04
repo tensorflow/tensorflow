@@ -1008,7 +1008,7 @@ ENTRY main {
 TEST_F(TritonGemmTest, UseTensorCoresForF32OnAmpere) {
   constexpr std::string_view kHloText = R"(
 triton_gemm_r {
-  parameter_0 = f16[80,15]{1,0} parameter(0)
+  parameter_0 = s8[80,15]{1,0} parameter(0)
   convert.3 = f32[80,15]{1,0} convert(parameter_0)
   parameter_1 = f32[16,15]{1,0} parameter(1)
   ROOT r.1 = f32[80,16]{1,0} dot(convert.3, parameter_1),
@@ -1017,7 +1017,7 @@ triton_gemm_r {
 
 ENTRY e {
   p1 = f32[16,15]{1,0} parameter(1)
-  p0 = f16[80,15]{1,0} parameter(0)
+  p0 = s8[80,15]{1,0} parameter(0)
   ROOT triton_gemm_r = f32[80,16]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm_r,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm", triton_gemm_config:
@@ -4575,7 +4575,7 @@ ENTRY e {
   TF_ASSERT_OK(
       CreateTritonIrAndFileCheckForDot(this, hlo_text, "triton_dot", R"(
 CHECK:      tt.dot
-CHECK-NOT:  inputPrecision = tf32
+CHECK:      inputPrecision = tf32
   )"));
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));

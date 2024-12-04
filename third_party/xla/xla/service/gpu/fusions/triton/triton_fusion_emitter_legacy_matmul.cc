@@ -1673,20 +1673,9 @@ mt::InputPrecision InferDotPrecision(const HloDotInstruction* dot_instr) {
   if (algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3) {
     return mt::InputPrecision::TF32x3;
   }
-  // TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
-  bool is_unsupported_bitwidth =
-      HloBfsAnyOf({dot_instr}, [&](const HloInstruction* node) {
-        if (node->opcode() != HloOpcode::kConvert) {
-          return false;
-        }
-        int in_width =
-            primitive_util::BitWidth(node->operand(0)->shape().element_type());
-        return in_width <= 8 && node->shape().element_type() == F32;
-      });
 
-  return IsTf32Allowed(dot_instr) && !is_unsupported_bitwidth
-             ? mt::InputPrecision::TF32
-             : mt::InputPrecision::IEEE;
+  return IsTf32Allowed(dot_instr) ? mt::InputPrecision::TF32
+                                  : mt::InputPrecision::IEEE;
 }
 
 bool Is6xBfloat16MatMul(const HloDotInstruction* dot_instr,
