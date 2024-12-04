@@ -100,10 +100,6 @@ class NcclApiStub final : public NcclApi {
     return UnimplementedError();
   }
 
-  absl::StatusOr<int32_t> CommCount(Communicator*) final {
-    return UnimplementedError();
-  }
-
   absl::Status GroupStart() final { return UnimplementedError(); }
   absl::Status GroupEnd() final { return UnimplementedError(); }
 

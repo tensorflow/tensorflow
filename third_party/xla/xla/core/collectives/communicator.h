@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef XLA_CORE_COLLECTIVES_COMMUNICATOR_H_
 #define XLA_CORE_COLLECTIVES_COMMUNICATOR_H_
 
+#include <cstddef>
 #include <ostream>
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 
 namespace xla {
 
@@ -37,6 +39,9 @@ class Communicator {
   // previously launched asynchronous collective operations, and it does not
   // have to wait for the completion of scheduled operations.
   virtual absl::Status HealthCheck() const = 0;
+
+  // Returns the number of ranks in the communicator.
+  virtual absl::StatusOr<size_t> NumRanks() const = 0;
 
   virtual std::string ToString() const = 0;
 };

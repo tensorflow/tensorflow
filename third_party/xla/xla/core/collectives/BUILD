@@ -42,6 +42,7 @@ cc_library(
     hdrs = ["communicator.h"],
     deps = [
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 

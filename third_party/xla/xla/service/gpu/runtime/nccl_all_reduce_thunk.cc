@@ -232,21 +232,20 @@ absl::Status RunReduceScatter(NcclApi* nccl_api, ReductionKind reduction_kind,
   TF_RETURN_IF_ERROR(
       MaybeRegisterBuffers(nccl_api, stream.parent(), buffers, comm));
 
-  TF_ASSIGN_OR_RETURN(int32_t num_participants, nccl_api->CommCount(comm));
+  TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
   TF_RETURN_IF_ERROR(nccl_api->GroupStart());
 
   for (DeviceBufferPair& buffer : buffers) {
     // buffer.element_count is the source buffers element count. For
     // ncclReduceScatter, we need the destination buffers element count.
-    TF_RET_CHECK(buffer.element_count % num_participants == 0)
+    TF_RET_CHECK(buffer.element_count % num_ranks == 0)
         << "Source buffer was not an exact multiple of the number of "
            "participants.";
 
     TF_RETURN_IF_ERROR(nccl_api->ReduceScatter(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
-        buffer.element_count / num_participants, reduction_kind, comm,
-        &stream));
+        buffer.element_count / num_ranks, reduction_kind, comm, &stream));
   }
 
   return nccl_api->GroupEnd();

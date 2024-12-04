@@ -113,13 +113,12 @@ absl::Status NcclAllToAllStartThunk::Initialize(
         GetNcclComm(*params.collective_params, *params.collective_cliques,
                     config().replica_groups, config().group_mode, stream_id,
                     stream_kind));
-    TF_ASSIGN_OR_RETURN(int32_t num_participants,
-                        nccl_api()->CommCount(comm_handle.comm));
-    int local_id = params.stream->parent()->device_ordinal() % num_participants;
+    TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
+    int local_id = params.stream->parent()->device_ordinal() % num_ranks;
     {
       absl::MutexLock lock(&pointer_maps_mutex_);
       if (!send_pointer_maps_.count(local_id)) {
-        for (int i = 0; i < num_participants; ++i) {
+        for (int i = 0; i < num_ranks; ++i) {
           if (!params.stream->parent()->HostMemoryRegister(
                   &send_pointer_maps_[local_id][i], sizeof(void*))) {
             VLOG(5) << "Registering host send pointer for memcpy failed.";
@@ -144,10 +143,9 @@ absl::Status NcclAllToAllStartThunk::Cleanup(const CleanupParams& params) {
         GetNcclComm(*params.collective_params, *params.collective_cliques,
                     config().replica_groups, config().group_mode, stream_id,
                     stream_kind));
-    TF_ASSIGN_OR_RETURN(int32_t num_participants,
-                        nccl_api()->CommCount(comm_handle.comm));
+    TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
 
-    int local_id = params.executor->device_ordinal() % num_participants;
+    int local_id = params.executor->device_ordinal() % num_ranks;
     {
       absl::MutexLock lock(&pointer_maps_mutex_);
       if (send_pointer_maps_.count(local_id)) {
@@ -176,11 +174,10 @@ absl::Status NcclAllToAllStartThunk::RunNcclCollective(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  TF_ASSIGN_OR_RETURN(int32_t num_participants,
-                      nccl_api()->CommCount(comm_handle.comm));
+  TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
 
   if (is_local() && p2p_memcpy_enabled_) {
-    int local_id = stream.parent()->device_ordinal() % num_participants;
+    int local_id = stream.parent()->device_ordinal() % num_ranks;
     absl::flat_hash_map<int64_t, uint64_t>* send_pointer_map = nullptr;
     absl::flat_hash_map<int64_t, uint64_t>* receive_pointer_map = nullptr;
     {
@@ -222,7 +219,7 @@ absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
   TF_RETURN_IF_ERROR(
       MaybeRegisterBuffers(nccl_api, stream.parent(), buffers, comm));
 
-  TF_ASSIGN_OR_RETURN(int32_t num_participants, nccl_api->CommCount(comm));
+  TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
   TF_RETURN_IF_ERROR(nccl_api->GroupStart());
 
@@ -232,12 +229,12 @@ absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
   // and produces a tuple of outputs.
   if (has_split_dimension) {
     for (DeviceBufferPair& buffer : buffers) {
-      TF_RET_CHECK(buffer.element_count % num_participants == 0)
+      TF_RET_CHECK(buffer.element_count % num_ranks == 0)
           << "Buffer was not an exact multiple of the number of participants.";
 
-      size_t chunk_elements = buffer.element_count / num_participants;
+      size_t chunk_elements = buffer.element_count / num_ranks;
 
-      for (int peer = 0; peer < num_participants; ++peer) {
+      for (int peer = 0; peer < num_ranks; ++peer) {
         se::DeviceMemoryBase send_slice =
             NcclApi::Slice(buffer.source_buffer, buffer.element_type,
                            peer * chunk_elements, chunk_elements);
@@ -254,7 +251,7 @@ absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
       }
     }
   } else {
-    TF_RET_CHECK(buffers.size() == num_participants)
+    TF_RET_CHECK(buffers.size() == num_ranks)
         << "Number of inputs didn't match the number of participants.";
 
     for (size_t i = 0; i < buffers.size(); ++i) {
@@ -285,7 +282,7 @@ absl::Status RunMemCpyAllToAll(
   TF_RETURN_IF_ERROR(
       MaybeRegisterBuffers(nccl_api, stream.parent(), buffers, comm));
 
-  TF_ASSIGN_OR_RETURN(int32_t num_participants, nccl_api->CommCount(comm));
+  TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
   // AllToAll can operate in two modes. Either it specifies a split dimension,
   // in which case inputs are split and outputs concatenated in that dimension
@@ -293,13 +290,13 @@ absl::Status RunMemCpyAllToAll(
   // and produces a tuple of outputs.
   if (has_split_dimension) {
     for (DeviceBufferPair& buffer : buffers) {
-      TF_RET_CHECK(buffer.element_count % num_participants == 0)
+      TF_RET_CHECK(buffer.element_count % num_ranks == 0)
           << "Buffer was not an exact multiple of the number of participants.";
 
-      size_t chunk_elements = buffer.element_count / num_participants;
+      size_t chunk_elements = buffer.element_count / num_ranks;
 
       TF_RETURN_IF_ERROR(nccl_api->GroupStart());
-      for (int peer = 0; peer < num_participants; ++peer) {
+      for (int peer = 0; peer < num_ranks; ++peer) {
         se::DeviceMemoryBase recv_slice =
             NcclApi::Slice(buffer.destination_buffer, buffer.element_type,
                            peer * chunk_elements, chunk_elements);
@@ -313,7 +310,7 @@ absl::Status RunMemCpyAllToAll(
       TF_RETURN_IF_ERROR(nccl_api->GroupEnd());
       TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
-      for (int peer = 0; peer < num_participants; ++peer) {
+      for (int peer = 0; peer < num_ranks; ++peer) {
         se::DeviceMemoryBase send_slice =
             NcclApi::Slice(buffer.source_buffer, buffer.element_type,
                            peer * chunk_elements, chunk_elements);
@@ -324,11 +321,11 @@ absl::Status RunMemCpyAllToAll(
       }
     }
   } else {
-    TF_RET_CHECK(buffers.size() == num_participants)
+    TF_RET_CHECK(buffers.size() == num_ranks)
         << "Number of inputs didn't match the number of participants.";
 
     TF_RETURN_IF_ERROR(nccl_api->GroupStart());
-    for (int peer = 0; peer < num_participants; ++peer) {
+    for (int peer = 0; peer < num_ranks; ++peer) {
       send_pointer_map[peer] =
           (uint64_t)buffers[peer].destination_buffer.opaque();
 
@@ -340,7 +337,7 @@ absl::Status RunMemCpyAllToAll(
     TF_RETURN_IF_ERROR(nccl_api->GroupEnd());
     TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
-    for (int peer = 0; peer < num_participants; ++peer) {
+    for (int peer = 0; peer < num_ranks; ++peer) {
       // double buffer, exchange data with peer
       se::DeviceMemoryBase dst_addr =
           se::DeviceMemoryBase((void*)receive_pointer_map[peer]);

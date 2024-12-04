@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/nccl_communicator.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include "absl/status/status.h"
@@ -59,6 +61,13 @@ absl::Status NcclCommunicator::HealthCheck() const {
 
   return Internal("%s. Last NCCL error (maybe unrelated): %s",
                   ncclGetLastError(comm_), ncclGetErrorString(async_err));
+}
+
+absl::StatusOr<size_t> NcclCommunicator::NumRanks() const {
+  VLOG(5) << "Get the number of ranks in NCCL communicator: " << ToString();
+  int32_t count;
+  XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm_, &count));
+  return count;
 }
 
 std::string NcclCommunicator::ToString() const {

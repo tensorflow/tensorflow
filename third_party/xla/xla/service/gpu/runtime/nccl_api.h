@@ -161,11 +161,6 @@ class NcclApi : public GpuCollectives {
       absl::Span<const Communicator* const> comms, int32_t color,
       absl::Span<const RankId> keys, std::optional<Config> config) = 0;
 
-  // Returns the number of ranks in the NCCL communicator comm.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommcount
-  virtual absl::StatusOr<int32_t> CommCount(Communicator* comm) = 0;
-
   // Starts a group call.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/group.html#ncclgroupstart
