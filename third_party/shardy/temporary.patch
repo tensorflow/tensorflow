@@ -1,15 +1,32 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398d..5a42c18 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,12 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
++@@ -161,6 +161,7 @@
++     deps = [
++         "//libc:__support_cpp_limits",
++         "//libc:__support_cpp_type_traits",
+++        "//libc:__support_ctype_utils",
++         "//libc:__support_macros_properties_architectures",
++         "//libc:errno.__internal__",
++         "//libc/test/UnitTest:LibcUnitTest",
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index c761fc3..6c488b6 100644
+index 6c488b6..1d68a17 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "bd92e46204331b9af296f53abb708317e72ab7a8"
--    LLVM_SHA256 = "60f71fc5b237e10729edbed8cbe23b7081dabe254fbcb1ea82db8789cb7eaecf"
-+    LLVM_COMMIT = "fed3a9b8f81f5f4450e515f4499ecfda95804e95"
-+    LLVM_SHA256 = "9e68d2771835414170b4d4bf47d6a6f1a18fc78305c0b7fd796cb5bad59f56fd"
+-    LLVM_COMMIT = "fed3a9b8f81f5f4450e515f4499ecfda95804e95"
+-    LLVM_SHA256 = "9e68d2771835414170b4d4bf47d6a6f1a18fc78305c0b7fd796cb5bad59f56fd"
++    LLVM_COMMIT = "a201ba1b57aa57df8e31603b496793fa39d31936"
++    LLVM_SHA256 = "5b755d3d4bc4e2d57976a77b2056be0f4f2afe76115bdeee9cf4ec6533828f05"
  
      tf_http_archive(
          name = name,
