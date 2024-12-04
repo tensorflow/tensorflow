@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_COLLECTIVES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_COLLECTIVES_H_
 
+#include <functional>
+
+#include "absl/status/statusor.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 
 namespace xla::gpu {
@@ -23,6 +28,17 @@ namespace xla::gpu {
 // XLA:GPU extension of the Collectives interface with GPU-specific APIs.
 class GpuCollectives : public Collectives {
  public:
+  // A callback to get a unique clique id.
+  using CliqueIdCallback =  // NOLINT
+      std::function<absl::StatusOr<CliqueId>(const CliqueKey&)>;
+
+  // Returns true if collectives backend uses global config.
+  virtual bool IsGlobalConfig() const = 0;
+
+  // Returns a clique id callback passed as an argument if it's not null or a
+  // default callback to get create a clique id if we are running in local mode.
+  virtual absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
+      const CliqueIdCallback* clique_id_callback, bool is_local) = 0;
 };
 
 }  // namespace xla::gpu

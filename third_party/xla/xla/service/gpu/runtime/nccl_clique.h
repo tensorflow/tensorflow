@@ -60,19 +60,6 @@ namespace xla::gpu {
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/communicators.html#using-multiple-nccl-communicators-concurrently
 
 //===----------------------------------------------------------------------===//
-// NcclUniqueId
-//===----------------------------------------------------------------------===//
-
-// Returns true if the NCCL config is global (NCCL_COMM_ID env variable is set).
-bool IsGlobalNcclConfig();
-
-// Returns a clique id callback passed as an argument if it's not null or a
-// default callback to get create a clique id if we are running in local mode.
-absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
-    const CliqueIdCallback* clique_id_callback,  // may be null
-    bool is_local);
-
-//===----------------------------------------------------------------------===//
 // NcclClique
 //===----------------------------------------------------------------------===//
 

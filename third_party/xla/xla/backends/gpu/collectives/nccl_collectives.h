@@ -16,12 +16,26 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 
-#include "xla/core/collectives/collectives.h"
+#include "absl/status/statusor.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/service/gpu/runtime/nccl_api.h"
 
 namespace xla::gpu {
 
 // XLA host-initiated collectives implemented on top of NCCL.
-class NcclCollectives : public Collectives {};
+//
+// TODO(ezhulenev): Instead of NcclApi, we should inherit from GpuCollectives.
+class NcclCollectives : public NcclApi {
+ public:
+  // Returns true if the collectives backend uses.
+  bool IsGlobalConfig() const final;
+
+  absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
+      const CliqueIdCallback* clique_id_callback, bool is_local) final;
+
+  absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final;
+};
 
 }  // namespace xla::gpu
 

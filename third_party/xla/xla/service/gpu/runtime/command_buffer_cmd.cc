@@ -1607,9 +1607,9 @@ absl::Status CollectiveCmd::Prepare(
     Thunk::ResourceRequests& resource_requests) {
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
-      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, nccl_stream_id(),
-                      GetAsyncStreamKind()));
+      GetGpuCliqueKey(nccl_api_, *params.collective_params,
+                      config().replica_groups, config().group_mode,
+                      nccl_stream_id(), GetAsyncStreamKind()));
   TF_ASSIGN_OR_RETURN(
       size_t num_local_participants,
       GetNumLocalParticipants(*params.collective_params,
@@ -1674,7 +1674,7 @@ absl::Status AllReduceCmd::Record(const Thunk::ExecuteParams& execute_params,
 
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetNcclComm(*execute_params.collective_params,
+      GetNcclComm(nccl_api(), *execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
   Communicator* comm = comm_handle.comm;
@@ -1746,7 +1746,7 @@ absl::Status ReduceScatterCmd::Record(
 
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetNcclComm(*execute_params.collective_params,
+      GetNcclComm(nccl_api(), *execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
   Communicator* comm = comm_handle.comm;
@@ -1816,7 +1816,7 @@ absl::Status AllToAllCmd::Record(const Thunk::ExecuteParams& execute_params,
 
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetNcclComm(*execute_params.collective_params,
+      GetNcclComm(nccl_api(), *execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
   Communicator* comm = comm_handle.comm;
@@ -1884,7 +1884,7 @@ absl::Status AllGatherCmd::Record(const Thunk::ExecuteParams& execute_params,
 
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetNcclComm(*execute_params.collective_params,
+      GetNcclComm(nccl_api(), *execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
   Communicator* comm = comm_handle.comm;
@@ -1953,7 +1953,7 @@ absl::Status CollectiveBroadcastCmd::Record(
 
   TF_ASSIGN_OR_RETURN(
       CommunicatorHandle comm_handle,
-      GetNcclComm(*execute_params.collective_params,
+      GetNcclComm(nccl_api(), *execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
   Communicator* comm = comm_handle.comm;

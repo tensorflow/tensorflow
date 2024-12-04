@@ -110,9 +110,9 @@ absl::Status NcclAllToAllStartThunk::Initialize(
     AsyncStreamKind stream_kind = GetAsyncStreamKind();
     TF_ASSIGN_OR_RETURN(
         CommunicatorHandle comm_handle,
-        GetNcclComm(*params.collective_params, *params.collective_cliques,
-                    config().replica_groups, config().group_mode, stream_id,
-                    stream_kind));
+        GetNcclComm(nccl_api(), *params.collective_params,
+                    *params.collective_cliques, config().replica_groups,
+                    config().group_mode, stream_id, stream_kind));
     TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
     int local_id = params.stream->parent()->device_ordinal() % num_ranks;
     {
@@ -140,9 +140,9 @@ absl::Status NcclAllToAllStartThunk::Cleanup(const CleanupParams& params) {
     AsyncStreamKind stream_kind = GetAsyncStreamKind();
     TF_ASSIGN_OR_RETURN(
         CommunicatorHandle comm_handle,
-        GetNcclComm(*params.collective_params, *params.collective_cliques,
-                    config().replica_groups, config().group_mode, stream_id,
-                    stream_kind));
+        GetNcclComm(nccl_api(), *params.collective_params,
+                    *params.collective_cliques, config().replica_groups,
+                    config().group_mode, stream_id, stream_kind));
     TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
 
     int local_id = params.executor->device_ordinal() % num_ranks;

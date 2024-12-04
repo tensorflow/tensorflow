@@ -77,6 +77,9 @@ cc_library(
     hdrs = ["gpu_collectives.h"],
     deps = [
         "//xla/core/collectives",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -94,6 +97,7 @@ cc_library(
 # TODO(b/380457503): Update visibility to "//visibility:private".
 cc_library(
     name = "nccl_collectives",
+    srcs = if_gpu_is_configured(["nccl_collectives.cc"]),
     hdrs = if_gpu_is_configured(["nccl_collectives.h"]),
     local_defines = if_cuda_is_configured([
         "GOOGLE_CUDA=1",
@@ -101,8 +105,16 @@ cc_library(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     deps = [
+        ":gpu_collectives",
         ":nccl_communicator",
+        ":nccl_errors",
+        "//xla:status_macros",
         "//xla/core/collectives",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "//xla/service/gpu/runtime:nccl_api_header",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:logging",
     ] + if_cuda_is_configured([
         "@local_config_nccl//:nccl",
     ]) + if_rocm_is_configured([

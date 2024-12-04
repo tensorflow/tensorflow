@@ -33,7 +33,9 @@ cc_library(
     name = "collectives",
     hdrs = ["collectives.h"],
     deps = [
+        ":clique_id",
         ":communicator",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 

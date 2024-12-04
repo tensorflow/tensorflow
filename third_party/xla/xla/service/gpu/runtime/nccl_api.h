@@ -136,11 +136,6 @@ class NcclApi : public GpuCollectives {
     return buff.GetByteSlice(offset * multiplier, count * multiplier);
   }
 
-  // Creates a new unique clique id.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclgetuniqueid
-  virtual absl::StatusOr<CliqueId> GetUniqueId() = 0;
-
   // Creates new communicators for given devices.
   //
   // This API doesn't have a corresponding API in NCCL and implemented as

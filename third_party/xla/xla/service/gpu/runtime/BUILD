@@ -203,6 +203,30 @@ alias(
     actual = if_nccl(":_nccl_api_impl", ":_nccl_api_stub"),
 )
 
+# TODO(ezhulenev): Remove this header once all users of NCCL API are migrated to the new API.
+cc_library(
+    name = "nccl_api_header",
+    hdrs = ["nccl_api.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/service:collective_ops_utils",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
 cc_library(
     name = "_nccl_api_impl",
     srcs = if_gpu_is_configured(
@@ -217,6 +241,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/backends/gpu/collectives:nccl_collectives",
         "//xla/backends/gpu/collectives:nccl_communicator",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:communicator",
@@ -261,6 +286,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/backends/gpu/collectives:nccl_collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",

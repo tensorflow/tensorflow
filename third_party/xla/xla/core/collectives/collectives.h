@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_CORE_COLLECTIVES_COLLECTIVES_H_
 #define XLA_CORE_COLLECTIVES_COLLECTIVES_H_
 
+#include "absl/status/statusor.h"
+#include "xla/core/collectives/clique_id.h"
+
 namespace xla {
 
 // Collectives is a base class for host-initiated collective operations in XLA.
@@ -31,6 +34,9 @@ namespace xla {
 class Collectives {
  public:
   virtual ~Collectives() = default;
+
+  // Creates a unique CliqueId.
+  virtual absl::StatusOr<CliqueId> CreateUniqueCliqueId() const = 0;
 };
 
 }  // namespace xla

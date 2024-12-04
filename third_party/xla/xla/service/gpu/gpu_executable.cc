@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/for_all_thunks.h"
+#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
@@ -258,9 +259,9 @@ class ResourceRequests : public Thunk::ResourceRequests {
       }
 
       bool is_local = r.key.devices().size() == r.num_local_participants;
-      TF_ASSIGN_OR_RETURN(
-          const CliqueIdCallback* clique_id_callback,
-          GetCliqueIdCallback(params.nccl_clique_id_callback, is_local));
+      TF_ASSIGN_OR_RETURN(const CliqueIdCallback* clique_id_callback,
+                          NcclApi::Default()->GetCliqueIdCallback(
+                              params.nccl_clique_id_callback, is_local));
 
       int64_t max_channels = r.key.stream_kind() == AsyncStreamKind::kCollective
                                  ? params.collective_max_nchannels

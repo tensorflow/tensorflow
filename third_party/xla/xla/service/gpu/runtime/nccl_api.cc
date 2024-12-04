@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/nccl_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_communicator.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
@@ -290,10 +291,8 @@ ScopedPersistentPlanAllocator::~ScopedPersistentPlanAllocator() {
 
 // This a default NCCL API implementation that forwards all API calls to NCCL
 // itself. It is available only if NCCL + CUDA are configured at compile time.
-class DefaultNcclApi final : public NcclApi {
+class DefaultNcclApi final : public NcclCollectives {
  public:
-  absl::StatusOr<CliqueId> GetUniqueId() final;
-
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommInitRanks(
       int32_t nranks, const CliqueId& clique_id,
       absl::Span<const DeviceRank> ranks, const Config& config) final;
@@ -361,13 +360,6 @@ static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
   ncclUniqueId id;
   absl::c_copy(clique_id.data(), id.internal);
   return id;
-}
-
-absl::StatusOr<CliqueId> DefaultNcclApi::GetUniqueId() {
-  VLOG(3) << "Get NCCL unique id";
-  ncclUniqueId id;
-  XLA_NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
-  return CliqueId(std::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>

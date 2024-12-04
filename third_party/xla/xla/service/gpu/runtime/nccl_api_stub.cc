@@ -86,8 +86,6 @@ static absl::Status UnimplementedError() {
 
 class NcclApiStub final : public NcclApi {
  public:
-  absl::StatusOr<CliqueId> GetUniqueId() final { return UnimplementedError(); }
-
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommInitRanks(
       int32_t, const CliqueId&, absl::Span<const DeviceRank>,
       const Config&) final {
@@ -97,6 +95,17 @@ class NcclApiStub final : public NcclApi {
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommSplit(
       absl::Span<const Communicator* const>, int32_t, absl::Span<const RankId>,
       std::optional<Config>) final {
+    return UnimplementedError();
+  }
+
+  absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final {
+    return UnimplementedError();
+  }
+
+  bool IsGlobalConfig() const final { return false; }
+
+  absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
+      const CliqueIdCallback*, bool) final {
     return UnimplementedError();
   }
 

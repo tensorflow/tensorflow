@@ -29,6 +29,9 @@ limitations under the License.
 namespace xla::gpu {
 
 // A callback to get a unique clique id.
+//
+// TODO(b/380457503): Delete this alias and switch to
+// GpuCollectives::CliqueIdCallback.
 using CliqueIdCallback =  // NOLINT
     std::function<absl::StatusOr<CliqueId>(const CliqueKey&)>;
 

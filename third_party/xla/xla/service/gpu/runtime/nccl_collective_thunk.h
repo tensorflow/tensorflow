@@ -281,7 +281,7 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 //===----------------------------------------------------------------------===//
 
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
-    const Thunk::CollectiveExecuteParams& params,
+    NcclApi* nccl_api, const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, CollectiveStreamId stream_id,
     AsyncStreamKind stream_kind);
@@ -293,7 +293,7 @@ absl::StatusOr<size_t> GetNumLocalParticipants(
 
 // Returns a nccl comm and a flag indicating if it's a local communicator.
 absl::StatusOr<CommunicatorHandle> GetNcclComm(
-    const Thunk::CollectiveExecuteParams& params,
+    NcclApi* nccl_api, const Thunk::CollectiveExecuteParams& params,
     const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, CollectiveStreamId stream_id,

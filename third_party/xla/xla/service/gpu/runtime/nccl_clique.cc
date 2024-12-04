@@ -63,28 +63,6 @@ limitations under the License.
 namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
-// CliqueIdCallback
-//===----------------------------------------------------------------------===//
-
-bool IsGlobalNcclConfig() {
-  static const char* const nccl_comm_id = std::getenv("NCCL_COMM_ID");
-  return nccl_comm_id != nullptr;
-}
-
-absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
-    const CliqueIdCallback* clique_id_callback, bool is_local) {
-  if (clique_id_callback != nullptr) return clique_id_callback;
-
-  TF_RET_CHECK(is_local || IsGlobalNcclConfig())
-      << "If non-local devices are taking part of a collective API on "
-         "GPU, the nccl_clique_id_callback must be provided by the client.";
-
-  static auto* local_callback = new CliqueIdCallback(
-      [](const CliqueKey&) { return NcclApi::Default()->GetUniqueId(); });
-  return local_callback;
-}
-
-//===----------------------------------------------------------------------===//
 // NcclClique Acquire and Initialization Timeouts
 //===----------------------------------------------------------------------===//
 
