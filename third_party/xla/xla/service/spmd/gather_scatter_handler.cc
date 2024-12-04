@@ -623,16 +623,9 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
   const auto output_parallel_dims = parallel_dims.output_dims;
   operand = operand.Reshard(gather_sharding->operand_sharding);
   indices = indices.Reshard(gather_sharding->indices_sharding);
-  HloSharding gather_output_sharding = hlo_sharding_util::
-      GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
-          indices.sharding(), output_shape.rank(), indices_parallel_dims,
-          output_parallel_dims);
-  if (!need_offset) {
-    hlo_sharding_util::MergeShardingIfCompatible(
-        hlo_sharding_util::GatherOutputShardingFromIndex(indices.sharding(),
-                                                         gather),
-        &gather_output_sharding);
-  }
+  HloSharding gather_output_sharding =
+      hlo_sharding_util::GatherOutputShardingFromIndex(indices.sharding(),
+                                                       gather);
 
   // Refine output sharding from the operand. it should be inferred from
   // operand sharding, so that the partitioned gather can be either 1)
@@ -1103,16 +1096,9 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
     operand = operand.Reshard(scatter_sharding->operand_sharding);
   }
   indices = indices.Reshard(scatter_sharding->indices_sharding);
-  HloSharding update_sharding = hlo_sharding_util::
-      GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
-          indices.sharding(), updates[0].rank(), indices_parallel_dims,
-          update_parallel_dims);
-  if (!need_offset) {
-    hlo_sharding_util::MergeShardingIfCompatible(
-        hlo_sharding_util::ScatterUpdateShardingFromIndex(indices.sharding(),
-                                                          scatter),
-        &update_sharding);
-  }
+  HloSharding update_sharding =
+      hlo_sharding_util::ScatterUpdateShardingFromIndex(indices.sharding(),
+                                                        scatter);
 
   // Refine update sharding from the operand. it should be inferred from
   // operand sharding, so that the partitioned scatter can be either 1)

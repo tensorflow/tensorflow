@@ -11461,10 +11461,8 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[4,4,2,2]"), op::AllReduce());
   auto indices = AllOf(op::Shape("s32[2,4,2]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[4,2,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(
-      root, op::AllReduce(op::DynamicUpdateSlice(
-                _, op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)),
-                _, _, _, _)));
+  EXPECT_THAT(root, op::AllReduce(op::AllReduce(
+                        op::DynamicUpdateSlice(_, gather, _, _, _, _))));
 }
 
 TEST_P(SpmdPartitioningTest, Gather_b303520921) {
@@ -11570,7 +11568,7 @@ ENTRY %module {
     s32[8,4,2,2]{3,2,1,0} %parameter.0,
     s32[2,8,4]{2,1,0} %concatenate.19), offset_dims={2,3},
     collapsed_slice_dims={0,1}, start_index_map={1,0}, index_vector_dim=0,
-    slice_sizes={1,1,2,2}, sharding={replicated}
+    slice_sizes={1,1,2,2}, sharding={devices=[4,2,1,1]<=[8]}
 })";
   for (const PartitioningMethod& method :
        {PartitioningMethod::kIndexParallel,
@@ -11589,11 +11587,7 @@ ENTRY %module {
     auto indices = AllOf(op::Shape("s32[2,2,2]"), op::Subtract());
     auto gather =
         AllOf(op::Shape("s32[2,2,2,2]"), op::Gather(operand, indices));
-    EXPECT_THAT(
-        module->entry_computation()->root_instruction(),
-        op::AllReduce(op::DynamicUpdateSlice(
-            _, op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)), _,
-            _, _, _)));
+    EXPECT_THAT(module->entry_computation()->root_instruction(), gather);
   }
 }
 
