@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_GPU_BLAS_LT_ADAPTOR_H_
 
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 
 #include "xla/stream_executor/blas.h"
@@ -69,15 +70,12 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
                           blas::CallContext context) override {
     if (IsGpuBlasLtEnabled()) {
       auto &runner = gpu::BlasLtGemmRunner::i(stream);
-      auto workspace = TBlasSupport::GetWorkspace();
-      WorkspaceScratchAllocator allocator{
-          workspace ? *workspace : DeviceMemoryBase{nullptr, 0}};
+      auto allocator = CreateAllocator(TBlasSupport::GetWorkspace());
       switch (dtype) {
         case blas::DataType::kFloat:
           return DoBlasGemmImpl<float>(stream, transa, transb, m, n, k, dtype,
                                        alpha, a, lda, b, ldb, beta, c, ldc,
-                                       numeric_options, context,
-                                       workspace ? &allocator : nullptr);
+                                       numeric_options, context, allocator);
         case blas::DataType::kBF16:
           return DoBlasGemmImpl<Eigen::bfloat16>(
               stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
@@ -245,9 +243,7 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
       const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,
       DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count,
       const NumericOptions &numeric_options, blas::CallContext context) {
-    auto workspace = TBlasSupport::GetWorkspace();
-    WorkspaceScratchAllocator allocator{
-        workspace ? *workspace : DeviceMemoryBase{nullptr, 0}};
+    auto allocator = CreateAllocator(TBlasSupport::GetWorkspace());
     auto &runner = gpu::BlasLtGemmRunner::i(stream);
     auto memory_c = DeviceMemory<T>(*c);
     auto alpha_v = *static_cast<const T *>(alpha);
@@ -255,7 +251,7 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
     return runner.RunStridedBatched(
         *stream, transa, transb, m, n, k, alpha_v, DeviceMemory<T>(a), lda,
         stride_a, DeviceMemory<T>(b), ldb, stride_b, beta_v, &memory_c, ldc,
-        stride_c, batch_count, workspace ? &allocator : nullptr);
+        stride_c, batch_count, allocator);
   }
 
   bool CheckStatus(absl::Status status) {
@@ -290,6 +286,11 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
     static const std::atomic_bool result =
         xla::GetDebugOptionsFromFlags().xla_gpu_enable_cublaslt();
     return result;
+  }
+
+  std::unique_ptr<ScratchAllocator> CreateAllocator(DeviceMemoryBase *memory) {
+    return memory ? std::make_unique<WorkspaceScratchAllocator>(*memory)
+                  : nullptr;
   }
 };
 
