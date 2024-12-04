@@ -2091,8 +2091,7 @@ CpuExecutableAotCompilationResult::LoadExecutable(
   TF_ASSIGN_OR_RETURN(
       JitCompiler jit_compiler,
       JitCompiler::Create(CompilerTargetOptions(module->config()),
-                          std::move(jit_compiler_options),
-                          /*task_runner=*/nullptr));
+                          std::move(jit_compiler_options)));
 
   // We might have an XLA:CPU executable that has only runtime thunks and
   // doesn't have any corresponding object files, and it's absolutely fine.

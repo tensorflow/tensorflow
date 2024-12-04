@@ -17,11 +17,9 @@ limitations under the License.
 #define XLA_CODEGEN_TESTLIB_KERNEL_RUNNER_H_
 
 #include <cstddef>
-#include <memory>
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "xla/codegen/kernel_spec.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
 
@@ -30,8 +28,6 @@ namespace xla {
 // A base API for running XLA kernels. Intended for use in tests only.
 class KernelRunner {
  public:
-  explicit KernelRunner(std::unique_ptr<KernelSpec> kernel_spec);
-
   virtual ~KernelRunner() = default;
 
   // Kernel argument is a non-owning view into the byte array on the host.
@@ -47,11 +43,6 @@ class KernelRunner {
   // and they might read and write into the given buffers. Memory access kind is
   // available in the KernelSpec buffer uses.
   virtual absl::Status Call(absl::Span<const Argument> arguments) = 0;
-
-  const KernelSpec& kernel_spec() const { return *kernel_spec_; }
-
- private:
-  std::unique_ptr<KernelSpec> kernel_spec_;
 };
 
 // A collection of utility functions for working with KernelRunners.

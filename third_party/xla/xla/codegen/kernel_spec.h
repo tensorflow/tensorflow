@@ -44,8 +44,7 @@ class KernelSpec {
 
   KernelSpec(se::ClusterDim cluster_dim, se::BlockDim block_dim,
              se::ThreadDim thread_dim, std::optional<size_t> scratch_bytes,
-             BufferUses buffer_uses,
-             std::shared_ptr<KernelSource> kernel_source);
+             BufferUses buffer_uses);
 
   virtual ~KernelSpec() = default;
 
@@ -72,7 +71,7 @@ class KernelSpec {
   const BufferUses& buffer_uses() const { return buffer_uses_; }
 
   // Compiled kernel source (backend specific).
-  std::shared_ptr<KernelSource> kernel_source() const { return kernel_source_; }
+  virtual KernelSource& kernel_source() = 0;
 
  private:
   se::ClusterDim cluster_dim_;
@@ -80,7 +79,6 @@ class KernelSpec {
   se::ThreadDim thread_dim_;
   std::optional<size_t> scratch_bytes_;
   BufferUses buffer_uses_;
-  std::shared_ptr<KernelSource> kernel_source_;
 };
 
 }  // namespace xla

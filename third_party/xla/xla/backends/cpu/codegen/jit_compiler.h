@@ -113,7 +113,7 @@ class JitCompiler {
   // Creates a new instance of the JitCompiler.
   static absl::StatusOr<JitCompiler> Create(llvm::TargetOptions target_options,
                                             Options options,
-                                            TaskRunner task_runner);
+                                            TaskRunner task_runner = nullptr);
 
   // Adds a LLVM module to the dynamic library at `dylib_index`.
   absl::Status AddModule(llvm::orc::ThreadSafeModule module,

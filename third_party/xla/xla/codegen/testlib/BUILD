@@ -21,10 +21,7 @@ cc_library(
     deps = [
         "//xla:literal",
         "//xla:shape_util",
-        "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/codegen:kernel_emitter",
-        "//xla/codegen:kernel_spec",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",

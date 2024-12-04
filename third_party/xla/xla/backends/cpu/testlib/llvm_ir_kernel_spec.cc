@@ -13,25 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/kernel_spec.h"
+#include "xla/backends/cpu/testlib/llvm_ir_kernel_spec.h"
 
-#include <cstddef>
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
+#include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/launch_dim.h"
 
-namespace xla {
+namespace xla::cpu {
 
-KernelSpec::KernelSpec(se::ClusterDim cluster_dim, se::BlockDim block_dim,
-                       se::ThreadDim thread_dim,
-                       std::optional<size_t> scratch_bytes,
-                       BufferUses buffer_uses)
-    : cluster_dim_(cluster_dim),
-      block_dim_(block_dim),
-      thread_dim_(thread_dim),
-      scratch_bytes_(scratch_bytes),
-      buffer_uses_(std::move(buffer_uses)) {}
+LlvmIrKernelSpec::LlvmIrKernelSpec(
+    se::ThreadDim thread_dim, std::vector<BufferAllocation> buffer_allocations,
+    BufferUses buffer_uses, std::unique_ptr<LlvmIrKernelSource> kernel_source)
+    : KernelSpec(se::ClusterDim(), se::BlockDim(), thread_dim, std::nullopt,
+                 std::move(buffer_uses)),
+      buffer_allocations_(std::move(buffer_allocations)),
+      kernel_source_(std::move(kernel_source)) {}
 
-}  // namespace xla
+}  // namespace xla::cpu

@@ -16,11 +16,8 @@ limitations under the License.
 #include "xla/codegen/testlib/kernel_runner.h"
 
 #include <cstddef>
-#include <memory>
-#include <utility>
 
 #include "absl/types/span.h"
-#include "xla/codegen/kernel_spec.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
@@ -29,9 +26,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 
 namespace xla {
-
-KernelRunner::KernelRunner(std::unique_ptr<KernelSpec> kernel_spec)
-    : kernel_spec_(std::move(kernel_spec)) {}
 
 KernelRunner::Argument KernelRunnerUtil::CreateArgument(
     Literal& literal, const ShapeIndex& index) {

@@ -39,5 +39,6 @@ cc_library(
     deps = [
         ":kernel_spec",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:JITLink",
     ],
 )

@@ -15,14 +15,78 @@ limitations under the License.
 
 #include "xla/backends/cpu/testlib/kernel_runner.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "xla/util.h"
+#include "llvm/Target/TargetOptions.h"
+#include "xla/backends/cpu/codegen/jit_compiler.h"
+#include "xla/backends/cpu/runtime/function_library.h"
+#include "xla/backends/cpu/runtime/kernel.h"
+#include "xla/backends/cpu/runtime/kernel_c_api.h"
+#include "xla/backends/cpu/testlib/llvm_ir_kernel_spec.h"
+#include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
+absl::StatusOr<KernelRunner> KernelRunner::Create(
+    std::unique_ptr<KernelSpec> kernel_spec) {
+  // Use dynamic_cast rather than tsl::down_cast to allow for future
+  // creation of KernelRunner from different kernel spec types.
+  if (auto* llvm_kernel_spec =
+          dynamic_cast<LlvmIrKernelSpec*>(kernel_spec.get())) {
+    return Create(std::move(*llvm_kernel_spec));
+  }
+
+  return absl::InvalidArgumentError("Unrecognised kernel spec type");
+}
+
+absl::StatusOr<KernelRunner> KernelRunner::Create(
+    LlvmIrKernelSpec kernel_spec) {
+  LlvmIrKernelSource& kernel_source = kernel_spec.kernel_source();
+
+  TF_ASSIGN_OR_RETURN(
+      JitCompiler compiler,
+      JitCompiler::Create(llvm::TargetOptions{}, JitCompiler::Options{}));
+
+  // intentional copy as we need to use the kernel name after consuming
+  // (std::move) the kernel source.
+  std::string kernel_name = kernel_source.kernel_name();
+
+  TF_RETURN_IF_ERROR(
+      compiler.AddModule(std::move(kernel_source).thread_safe_module()));
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> library,
+                      std::move(compiler).Compile(
+                          {FunctionLibrary::Sym<XLA_CPU_Kernel>(kernel_name)}));
+
+  TF_ASSIGN_OR_RETURN(XLA_CPU_Kernel * kernel_fn,
+                      library->ResolveFunction<XLA_CPU_Kernel>(kernel_name));
+
+  Kernel::ThreadDim thread_dim = kernel_spec.thread_dim();
+  return KernelRunner(std::move(library), Kernel(1, kernel_fn), thread_dim);
+}
+
+KernelRunner::KernelRunner(std::unique_ptr<FunctionLibrary> library,
+                           Kernel kernel, Kernel::ThreadDim thread_dim)
+    : library_(std::move(library)),
+      kernel_(std::move(kernel)),
+      thread_dim_(thread_dim) {}
+
 absl::Status KernelRunner::Call(absl::Span<const Argument> arguments) {
-  return Unimplemented("XLA:CPU KernelRunner is not implemented.");
+  std::vector<XLA_CPU_KernelArg> kernel_args;
+  for (const Argument& arg : arguments) {
+    kernel_args.push_back({arg.data(), arg.size()});
+  }
+
+  return kernel_.Launch(thread_dim_, kernel_args);
 }
 
 }  // namespace xla::cpu

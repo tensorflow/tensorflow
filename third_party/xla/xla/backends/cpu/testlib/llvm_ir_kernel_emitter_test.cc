@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 
+#include <memory>
 #include <string_view>
 
+#include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -36,7 +38,8 @@ TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
   LlvmIrKernelEmitter::KernelArg arg{1024, BufferUse::kWrite};
   LlvmIrKernelEmitter emitter(kLlvmIr, "noop", se::ThreadDim(), {arg});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel, emitter.EmitKernelSpec());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelSpec> kernel,
+                          emitter.EmitKernelSpec());
 
   // Check that kernel arguments were converted to buffer allocations.
   ASSERT_EQ(kernel->buffer_uses().size(), 1);
@@ -48,9 +51,8 @@ TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
   EXPECT_EQ(buffer_use.slice().size(), 1024);
 
   // Check that LLVM IR was parsed and loaded as a LLVM IR kernel source.
-  auto* src = tsl::down_cast<LlvmIrKernelSource*>(&*kernel->kernel_source());
-  ASSERT_NE(src, nullptr);
-  EXPECT_EQ(src->kernel_function()->getName(), "noop");
+  auto& src = tsl::down_cast<LlvmIrKernelSource&>(kernel->kernel_source());
+  EXPECT_EQ(src.kernel_function()->getName(), "noop");
 }
 
 }  // namespace xla::cpu
