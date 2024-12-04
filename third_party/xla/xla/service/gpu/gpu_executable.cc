@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/runtime/annotation.h"
-#include "xla/service/gpu/runtime/for_all_thunks.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
@@ -99,13 +98,11 @@ using ::tsl::profiler::ScopedAnnotation;
 static absl::flat_hash_set<ExecutionStreamId> GetExecutionStreamIds(
     const SequentialThunk& thunks) {
   absl::flat_hash_set<ExecutionStreamId> stream_ids;
-  ForAllThunks(
-      [&](const Thunk* thunk) {
-        if (thunk->execution_stream_id() > 0) {
-          stream_ids.insert(thunk->execution_stream_id());
-        }
-      },
-      &thunks);
+  thunks.ForAllThunks([&](const Thunk* thunk) {
+    if (thunk->execution_stream_id() > 0) {
+      stream_ids.insert(thunk->execution_stream_id());
+    }
+  });
   return stream_ids;
 }
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -364,6 +365,10 @@ bool Thunk::IsCollective() const {
     default:
       return false;
   }
+}
+
+void Thunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
+  fn(this);
 }
 
 }  // namespace gpu

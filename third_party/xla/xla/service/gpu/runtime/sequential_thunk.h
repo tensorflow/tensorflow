@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "xla/service/gpu/runtime/thunk.h"
 
@@ -41,6 +42,8 @@ class SequentialThunk : public Thunk {
                        ResourceRequests& resource_requests) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
 
  private:
   // The list of sub-thunks.

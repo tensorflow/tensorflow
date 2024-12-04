@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/STLExtras.h"
@@ -254,5 +255,10 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
+void DynamicSliceThunk::ForAllThunks(
+    absl::FunctionRef<void(const Thunk*)> fn) const {
+  fn(this);
+  embedded_thunk_->ForAllThunks(fn);
+}
 }  // namespace gpu
 }  // namespace xla

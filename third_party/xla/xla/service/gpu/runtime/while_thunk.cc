@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
@@ -140,6 +141,12 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     ++iter;
   }
   return absl::OkStatus();
+}
+
+void WhileThunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
+  fn(this);
+  condition_thunk_sequence_->ForAllThunks(fn);
+  body_thunk_sequence_->ForAllThunks(fn);
 }
 
 }  // namespace gpu
