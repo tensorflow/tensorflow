@@ -1,32 +1,33 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 5a42c18..509398d 100644
+index 509398d..bb2be30 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,12 +1 @@
+@@ -1 +1,13 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/libc/test/src/stdlib/BUILD.bazel
--@@ -161,6 +161,7 @@
--     deps = [
--         "//libc:__support_cpp_limits",
--         "//libc:__support_cpp_type_traits",
--+        "//libc:__support_ctype_utils",
--         "//libc:__support_macros_properties_architectures",
--         "//libc:errno.__internal__",
--         "//libc/test/UnitTest:LibcUnitTest",
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++@@ -2937,6 +2937,8 @@
++     ]),
++     hdrs = glob([
++         "include/llvm/ExecutionEngine/Orc/Shared/*.h",
+++    ] + [
+++        "include/llvm/ExecutionEngine/Orc/SymbolStringPool.h",
++     ]),
++     copts = llvm_copts,
++     deps = [
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 1d68a17..adc9951 100644
+index adc9951..47d284d 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "a201ba1b57aa57df8e31603b496793fa39d31936"
--    LLVM_SHA256 = "5b755d3d4bc4e2d57976a77b2056be0f4f2afe76115bdeee9cf4ec6533828f05"
-+    LLVM_COMMIT = "109e4a147faa80aa0ef4da92da203dd6732ee415"
-+    LLVM_SHA256 = "108a121809bbf74eb8515df3c45a3f9f70b49d3aa11f9e263e6abe47c1cee4e4"
+-    LLVM_COMMIT = "109e4a147faa80aa0ef4da92da203dd6732ee415"
+-    LLVM_SHA256 = "108a121809bbf74eb8515df3c45a3f9f70b49d3aa11f9e263e6abe47c1cee4e4"
++    LLVM_COMMIT = "9c9d4b9e73c19842c4fde581cec0295abed8c977"
++    LLVM_SHA256 = "0c0fb301ce5da9ea3042fd35856924ed3f89c73aa0fc062b38d96d6a0d0bfc4d"
  
      tf_http_archive(
          name = name,
