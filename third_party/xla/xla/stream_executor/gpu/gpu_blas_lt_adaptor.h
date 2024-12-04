@@ -79,7 +79,7 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
         case blas::DataType::kBF16:
           return DoBlasGemmImpl<Eigen::bfloat16>(
               stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
-              beta, c, ldc, numeric_options, context, &allocator);
+              beta, c, ldc, numeric_options, context, allocator);
         default:
           LOG(ERROR) << "Not supported type by blaslt" << dtype
                      << "fall back to blas";
