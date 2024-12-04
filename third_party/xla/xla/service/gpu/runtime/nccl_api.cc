@@ -302,8 +302,6 @@ class DefaultNcclApi final : public NcclApi {
       absl::Span<const Communicator* const> comms, int32_t color,
       absl::Span<const RankId> keys, std::optional<Config> config) final;
 
-  absl::Status CommFinalize(Communicator* comm) final;
-
   absl::StatusOr<int32_t> CommCount(Communicator* comm) final;
 
   absl::Status GroupStart() final;
@@ -478,11 +476,6 @@ DefaultNcclApi::CommSplit(absl::Span<const Communicator* const> comms,
       absl::StrFormat("%s:%d: NCCL operation ncclCommSplit not implemented",
                       __FILE__, __LINE__));
 #endif  // !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
-}
-
-absl::Status DefaultNcclApi::CommFinalize(Communicator* comm) {
-  VLOG(1) << "Finalize NCCL communicator: " << comm;
-  return XLA_NCCL_STATUS(ncclCommFinalize(Cast(comm)));
 }
 
 absl::StatusOr<int32_t> DefaultNcclApi::CommCount(Communicator* comm) {
