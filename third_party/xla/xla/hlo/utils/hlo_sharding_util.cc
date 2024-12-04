@@ -65,6 +65,82 @@ limitations under the License.
 namespace xla {
 namespace hlo_sharding_util {
 
+// Apply the formatting steps to get a shardable shape.
+HloInstruction* FormatShape(HloInstruction* data,
+                            absl::Span<const FormattingStep> formatting_steps,
+                            HloComputation* computation) {
+  for (const FormattingStep& step : formatting_steps) {
+    switch (step.formatting_opcode) {
+      case HloOpcode::kBitcast:
+      case HloOpcode::kCopy: {
+        data = computation->AddInstruction(HloInstruction::CreateUnary(
+            step.output_shape, step.formatting_opcode, data));
+        break;
+      }
+      case HloOpcode::kReshape: {
+        data = computation->AddInstruction(
+            HloInstruction::CreateReshape(step.output_shape, data));
+        break;
+      }
+      case HloOpcode::kPad: {
+        PaddingConfig padding_config;
+        for (int64_t i = 0; i < step.output_shape.rank(); ++i) {
+          auto padding_config_dim = padding_config.add_dimensions();
+          padding_config_dim->set_edge_padding_low(0);
+          padding_config_dim->set_interior_padding(0);
+          padding_config_dim->set_edge_padding_high(
+              step.output_shape.dimensions(i) - data->shape().dimensions(i));
+        }
+        HloInstruction* padding =
+            step.padding_value
+                ? step.padding_value
+                : computation->AddInstruction(HloInstruction::CreateConstant(
+                      LiteralUtil::Zero(step.output_shape.element_type())));
+        data = computation->AddInstruction(HloInstruction::CreatePad(
+            step.output_shape, data, padding, padding_config));
+        break;
+      }
+      default:
+        LOG(FATAL) << "Unsupported formatting step";
+    }
+  }
+  return data;
+}
+
+HloInstruction* ReverseFormatShape(
+    HloInstruction* data, absl::Span<const FormattingStep> formatting_steps,
+    HloComputation* computation) {
+  for (int64_t i = formatting_steps.size() - 1; i >= 0; --i) {
+    const FormattingStep& step = formatting_steps[i];
+    const Shape& previous_shape =
+        step.reverse_input_shape ? *step.reverse_input_shape : step.input_shape;
+    switch (step.formatting_opcode) {
+      case HloOpcode::kBitcast:
+      case HloOpcode::kCopy: {
+        data = computation->AddInstruction(HloInstruction::CreateUnary(
+            previous_shape, step.formatting_opcode, data));
+        break;
+      }
+      case HloOpcode::kReshape: {
+        data = computation->AddInstruction(
+            HloInstruction::CreateReshape(previous_shape, data));
+        break;
+      }
+      case HloOpcode::kPad: {
+        std::vector<int64_t> start_indices(previous_shape.rank(), 0);
+        std::vector<int64_t> strides(previous_shape.rank(), 1);
+        data = computation->AddInstruction(
+            HloInstruction::CreateSlice(previous_shape, data, start_indices,
+                                        previous_shape.dimensions(), strides));
+        break;
+      }
+      default:
+        LOG(FATAL) << "Unsupported formatting step";
+    }
+  }
+  return data;
+}
+
 void GatherScatterDims::append(const GatherScatterDims& other) {
   operand_dims.insert(operand_dims.end(), other.operand_dims.begin(),
                       other.operand_dims.end());

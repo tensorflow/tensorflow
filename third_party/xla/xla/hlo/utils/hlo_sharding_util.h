@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/literal.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/shape.h"
@@ -41,6 +42,18 @@ limitations under the License.
 
 namespace xla {
 namespace hlo_sharding_util {
+
+// Class representing a formatting step
+// TODO(tongfei): We have a similar thing in tpu_cross_replica_sharding_util,
+// but it is buried in sharding config specific to cross-replica sharding.
+// Refactoring could allow us to unify.
+struct FormattingStep {
+  Shape input_shape;
+  Shape output_shape;
+  std::optional<Shape> reverse_input_shape;
+  HloOpcode formatting_opcode;
+  HloInstruction* padding_value;
+};
 
 struct GatherScatterDims {
   absl::InlinedVector<int64_t, 1> operand_dims;
@@ -56,6 +69,16 @@ struct GatherScatterDims {
       int64_t index_vector_dim,
       absl::Span<const int64_t> offset_or_window_dims);
 };
+
+// Apply the formatting steps.
+HloInstruction* FormatShape(HloInstruction* data,
+                            absl::Span<const FormattingStep> formatting_steps,
+                            HloComputation* computation);
+
+// Reverse the formatting steps.
+HloInstruction* ReverseFormatShape(
+    HloInstruction* data, absl::Span<const FormattingStep> formatting_steps,
+    HloComputation* computation);
 
 // Determines if the first operand 'potential_subsharding' is a subsharding of
 // the second operand 'sharding'. Subsharding means that the tiles in

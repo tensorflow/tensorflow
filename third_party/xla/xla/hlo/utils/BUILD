@@ -111,6 +111,7 @@ cc_library(
     deps = [
         ":hlo_container_util",
         "//xla:array",
+        "//xla:literal",
         "//xla:literal_util",
         "//xla:protobuf_util",
         "//xla:shape_util",
