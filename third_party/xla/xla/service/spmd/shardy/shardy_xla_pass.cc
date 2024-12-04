@@ -316,6 +316,9 @@ absl::StatusOr<bool> ShardyXLA::Run(
     if (shardyDir.empty()) {
       LOG(WARNING) << "\"sponge\" specified as dump directory but "
                       "TEST_UNDECLARED_OUTPUTS_DIR is not set!";
+    } else {
+      LOG(INFO) << "Shardy dump directory is sponge on undeclared outputs dir: "
+                << shardyDir;
     }
   }
 
