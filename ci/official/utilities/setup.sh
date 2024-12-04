@@ -136,10 +136,12 @@ fi
 
 # Re-try `bazel --version` multiple times to get around
 # Bazel download issues.
+set +e
 MAX_RETRIES=2
 for ((i=1; i <= $MAX_RETRIES; i++)); do
   tfrun bazel --version
 done
+set -e
 
 # Single handler for all cleanup actions, triggered on an EXIT trap.
 # TODO(angerson) Making this use different scripts may be overkill.
