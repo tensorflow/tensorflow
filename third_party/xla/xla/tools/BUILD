@@ -245,9 +245,9 @@ xla_cc_test(
         "nomsan",  # No msan for precompiled Nvidia binaries.
     ],
     deps = [
+        "//xla/tsl/platform:subprocess",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:subprocess",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -301,6 +301,7 @@ xla_cc_binary(
         "//xla/service:hlo_runner",
         "//xla/service:local_service",
         "//xla/service:platform_util",
+        "//xla/tsl/platform:subprocess",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/algorithm:container",
@@ -309,7 +310,6 @@ xla_cc_binary(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:subprocess",
     ] + if_cuda_or_rocm([
         "//xla/service:gpu_plugin",
     ]) + if_cuda([
@@ -328,10 +328,10 @@ xla_cc_test(
         ":interactive_graphviz",
     ],
     deps = [
+        "//xla/tsl/platform:subprocess",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:subprocess",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -539,12 +539,12 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:subprocess",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:subprocess",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],

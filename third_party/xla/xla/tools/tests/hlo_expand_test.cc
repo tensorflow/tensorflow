@@ -17,8 +17,8 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "xla/tsl/platform/subprocess.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/subprocess.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

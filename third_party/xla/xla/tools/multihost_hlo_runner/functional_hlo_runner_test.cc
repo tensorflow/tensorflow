@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/subprocess.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

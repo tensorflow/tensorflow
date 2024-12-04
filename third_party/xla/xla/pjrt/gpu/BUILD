@@ -190,6 +190,7 @@ xla_cc_test(
         "//xla/stream_executor:stream",
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:subprocess",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -208,7 +209,6 @@ xla_cc_test(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:subprocess",
     ],
 )
 

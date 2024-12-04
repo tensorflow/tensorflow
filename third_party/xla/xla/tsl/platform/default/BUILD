@@ -18,6 +18,7 @@ package(
         "//tensorflow/core/lib/jpeg:__pkg__",
         "//tensorflow/core/platform:__pkg__",
         "@local_tsl//tsl/platform:__pkg__",
+        "//xla/tsl/platform:__pkg__",
     ]),
     licenses = ["notice"],
 )
@@ -438,7 +439,7 @@ cc_library(
 cc_library(
     name = "subprocess",
     srcs = ["subprocess.cc"],
-    hdrs = ["@local_tsl//tsl/platform:subprocess.h"],
+    hdrs = ["//xla/tsl/platform:subprocess.h"],
     tags = [
         "manual",
         "no_oss",

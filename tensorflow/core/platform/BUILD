@@ -840,7 +840,7 @@ cc_library(
         "subprocess.h",
     ],
     deps = [
-        "@local_tsl//tsl/platform:subprocess",
+        "@local_xla//xla/tsl/platform:subprocess",
     ],
 )
 

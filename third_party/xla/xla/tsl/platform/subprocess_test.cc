@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/subprocess.h"
+#include "xla/tsl/platform/subprocess.h"
 
 #include <stdlib.h>
 
@@ -38,26 +38,26 @@ namespace {
 
 
 string EchoProgram() {
-  std::string path =
-      io::JoinPath(testing::TslSrcRoot(), "platform", "testdata", "test_echo");
+  std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
+                                  "testdata", "test_echo");
   return tsl::io::AppendDotExeIfWindows(path);
 }
 
 string EchoArgv1Program() {
-  std::string path = io::JoinPath(testing::TslSrcRoot(), "platform", "testdata",
-                                  "test_echo_argv_1");
+  std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
+                                  "testdata", "test_echo_argv_1");
   return tsl::io::AppendDotExeIfWindows(path);
 }
 
 string NoopProgram() {
-  std::string path =
-      io::JoinPath(testing::TslSrcRoot(), "platform", "testdata", "test_noop");
+  std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
+                                  "testdata", "test_noop");
   return tsl::io::AppendDotExeIfWindows(path);
 }
 
 string StdErrProgram() {
-  std::string path = io::JoinPath(testing::TslSrcRoot(), "platform", "testdata",
-                                  "test_stderr");
+  std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
+                                  "testdata", "test_stderr");
   return tsl::io::AppendDotExeIfWindows(path);
 }
 

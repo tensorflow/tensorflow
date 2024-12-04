@@ -4,12 +4,19 @@ load(
 )
 load(
     "//xla/tsl:tsl.bzl",
+    "if_not_fuchsia",
     "internal_visibility",
 )
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_platform_alias",
+    "tf_windows_aware_platform_deps",
+    "tsl_cc_test",
+)
+load(
+    "//xla/tsl/platform:rules_cc.bzl",
+    "cc_library",
 )
 
 package(
@@ -21,7 +28,9 @@ package(
 )
 
 exports_files(
-    [],
+    [
+        "subprocess.h",
+    ],
     visibility = internal_visibility([
         "//tensorflow/core/platform:__subpackages__",
         "@local_tsl//tsl:__subpackages__",
@@ -77,6 +86,7 @@ filegroup(
 filegroup(
     name = "lib_hdrs",
     srcs = [
+        "subprocess.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -105,7 +115,7 @@ filegroup(
 
 filegroup(
     name = "mobile_srcs_only_runtime",
-    srcs = [],
+    srcs = [] + if_not_fuchsia(["subprocess.h"]),
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([
         "@local_tsl//tsl/platform:__pkg__",
@@ -222,4 +232,33 @@ filegroup(
     name = "tensor_float_32_hdr",
     srcs = [],
     compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "subprocess",
+    textual_hdrs = [
+        "subprocess.h",
+    ],
+    deps = tf_windows_aware_platform_deps("subprocess"),
+)
+
+tsl_cc_test(
+    name = "subprocess_test",
+    size = "small",
+    srcs = ["subprocess_test.cc"],
+    data = [
+        "//xla/tsl/platform/testdata:test_echo",
+        "//xla/tsl/platform/testdata:test_echo_argv_1",
+        "//xla/tsl/platform/testdata:test_noop",
+        "//xla/tsl/platform/testdata:test_stderr",
+    ],
+    tags = ["no_oss"],  # TODO(b/327036247): revisit after this moves to XLA
+    deps = [
+        ":subprocess",
+        "//xla/tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:strcat",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
 )
