@@ -124,7 +124,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/maybe_owning.h"
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_reduce_reassociate.h"
@@ -155,6 +154,7 @@ limitations under the License.
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
+#include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/fusion_dispatch_pipeline.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/fusions/triton/triton_support.h"
@@ -875,8 +875,7 @@ absl::Status RunCollectiveOptimizationPasses(
 
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
       debug_options.xla_gpu_enable_pipelined_all_reduce() ||
-      hlo_query::ExecTimeOptimizationEffort(*hlo_module) >=
-          kExtraCollectiveOptimizations) {
+      IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(*hlo_module)) {
     CollectivePipeliner::Config config{
         /*level_to_operate_on=*/0,
         /*max_pipelining_per_loop=*/INT64_MAX,
@@ -899,8 +898,7 @@ absl::Status RunCollectiveOptimizationPasses(
   }
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
       debug_options.xla_gpu_enable_pipelined_all_gather() ||
-      hlo_query::ExecTimeOptimizationEffort(*hlo_module) >=
-          kExtraCollectiveOptimizations) {
+      IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(*hlo_module)) {
     CollectivePipeliner::Config config{
         /*level_to_operate_on=*/0,
         /*max_pipelining_per_loop=*/INT64_MAX,
@@ -923,8 +921,7 @@ absl::Status RunCollectiveOptimizationPasses(
   }
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
       debug_options.xla_gpu_enable_pipelined_reduce_scatter() ||
-      hlo_query::ExecTimeOptimizationEffort(*hlo_module) >=
-          kExtraCollectiveOptimizations) {
+      IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(*hlo_module)) {
     CollectivePipeliner::Config config{
         /*level_to_operate_on=*/0,
         /*max_pipelining_per_loop=*/INT64_MAX,
@@ -1088,8 +1085,7 @@ void AddDoubleBufferingPasses(const HloModule& module,
   }
   if (opts.xla_gpu_enable_while_loop_unrolling() ==
           DebugOptions::WHILE_LOOP_UNROLLING_AUTO_UNROLL &&
-      hlo_query::ExecTimeOptimizationEffort(module) >=
-          kExtraCollectiveOptimizations &&
+      IsPassEnabledAtOptimizationEffort<DoubleBufferLoopUnrolling>(module) &&
       !opts.xla_gpu_enable_while_loop_double_buffering()) {
     unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kAuto;
   }

@@ -1402,6 +1402,7 @@ cc_library(
         ":cublas_cudnn",
         ":executable_proto_cc",
         ":execution_stream_assignment",
+        ":flag_utils",
         ":fusion_dispatch_pipeline",
         ":fusion_pipeline",
         ":gpu_all_gather_combiner",
@@ -2127,6 +2128,7 @@ cc_library(
     hdrs = ["gpu_hlo_schedule.h"],
     deps = [
         ":backend_configs_cc",
+        ":flag_utils",
         ":gpu_latency_hiding_scheduler",
         "//xla:shape_util",
         "//xla:util",
@@ -3253,6 +3255,35 @@ xla_cc_test(
         "//xla/stream_executor/cuda:compilation_options",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "flag_utils",
+    srcs = ["flag_utils.cc"],
+    hdrs = ["flag_utils.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service:collective_pipeliner",
+        "//xla/service:hlo_module_config",
+        "//xla/service:latency_hiding_scheduler",
+        "//xla/service/gpu/transforms:double_buffer_loop_unrolling",
+    ],
+)
+
+xla_cc_test(
+    name = "flag_utils_test",
+    srcs = ["flag_utils_test.cc"],
+    deps = [
+        ":flag_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms:hlo_dce",
+        "//xla/service:collective_pipeliner",
+        "//xla/service:hlo_module_config",
+        "//xla/service:latency_hiding_scheduler",
+        "//xla/service/gpu/transforms:double_buffer_loop_unrolling",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
     ],
 )
