@@ -70,6 +70,16 @@ PrimitiveType GetUniqueOutputTypeOfFusible(const HloInstruction& fusible) {
   return first_output_type;
 }
 
+bool IsShapeDefaultMemorySpace(const Shape& shape) {
+  bool are_all_subshapes_default_space = true;
+  ShapeUtil::ForEachSubshape(
+      shape, [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        are_all_subshapes_default_space &=
+            LayoutUtil::MemorySpace(subshape) == Layout::kDefaultMemorySpace;
+      });
+  return are_all_subshapes_default_space;
+}
+
 class HorizontalLoopFusionImpl {
  public:
   explicit HorizontalLoopFusionImpl(
@@ -178,6 +188,13 @@ bool IsFusibleCandidate(const HloInstruction& instr,
   if (IsNestableVariadicReduction(instr, device_description) ||
       IsNestableVariadicReduceWindow(instr)) {
     return false;
+  }
+
+  // Only consider instructions with default memory space operands and outputs
+  // to be fusable.
+  if (!IsShapeDefaultMemorySpace(instr.shape())) return false;
+  for (auto operand : instr.operands()) {
+    if (!IsShapeDefaultMemorySpace(operand->shape())) return false;
   }
 
   // Require no further check for element-wise instructions.
