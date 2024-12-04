@@ -234,9 +234,9 @@ tf_cc_binary(
     deps = [
         ":init_mlir",
         "//tensorflow/compiler/mlir/lite/tools:translate_cl_options",
+        "//tensorflow/compiler/mlir/lite/tools:translate_registration",
         "//tensorflow/compiler/mlir/tensorflow:tf_xla_mlir_translate",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
-        "//tensorflow/compiler/mlir/tensorflow:translate_registration",
         "//tensorflow/compiler/mlir/tf2xla/tests/registration:graph_to_tf_executor_registration",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
