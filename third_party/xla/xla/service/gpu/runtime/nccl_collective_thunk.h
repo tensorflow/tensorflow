@@ -56,8 +56,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class NcclClique;
-
 struct NcclCollectiveConfig {
   int64_t operand_count;
   std::vector<PrimitiveType> operand_element_type;

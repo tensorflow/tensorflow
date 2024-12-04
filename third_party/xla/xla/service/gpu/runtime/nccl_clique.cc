@@ -112,10 +112,6 @@ static bool TerminateOnNcclError() {
 // NcclClique
 //===----------------------------------------------------------------------===//
 
-std::string NcclClique::DebugString() const {
-  return absl::StrFormat("NcclClique: %s", value().DebugString());
-}
-
 namespace {
 // Container for initialized and ready to use local (in-process) NCCL cliques.
 struct NcclCliques {
@@ -513,7 +509,5 @@ absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
   return InitializeNcclClique(device, run_id, clique_key, clique_id_callback,
                               num_local_participants, rank, config);
 }
-
-absl::Status NcclClique::HealthCheck() const { return value().HealthCheck(); }
 
 }  // namespace xla::gpu

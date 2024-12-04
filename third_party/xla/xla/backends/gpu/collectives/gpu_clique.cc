@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/service/lockable.h"
 #include "tsl/platform/logging.h"
 
 namespace xla::gpu {
@@ -61,6 +62,23 @@ absl::Status GpuClique::HealthCheck() const {
     }
   });
   return health_check;
+}
+
+std::string GpuClique::LockableName::ToString(const GpuClique& clique) {
+  return absl::StrFormat("lockable clique %s", clique.key().ToString());
+}
+
+LockableGpuClique::LockableGpuClique(
+    GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
+    absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
+    : Lockable(std::move(clique_key), clique_id, std::move(communicators)) {}
+
+absl::Status LockableGpuClique::HealthCheck() const {
+  return value().HealthCheck();
+}
+
+std::string LockableGpuClique::DebugString() const {
+  return absl::StrFormat("LockableGpuClique: %s", value().DebugString());
 }
 
 }  // namespace xla::gpu

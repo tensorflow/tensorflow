@@ -76,33 +76,8 @@ absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
 // NcclClique
 //===----------------------------------------------------------------------===//
 
-struct NcclCliqueName {
-  static std::string ToString(const GpuClique& clique) {
-    return absl::StrFormat("lockable clique %s", clique.key().ToString());
-  }
-};
-
-class NcclClique : public Lockable<GpuClique, NcclCliqueName> {
- public:
-  // We keep acquired cliques in a sorted container to guarantee that all
-  // participants iterate over cliques in the same order.
-  using AcquiredCliquesMap =
-      absl::btree_map<GpuCliqueKey, std::shared_ptr<NcclClique::Lock>,
-                      std::greater<GpuCliqueKey>>;
-
-  // Construct the lockable clique.
-  NcclClique(
-      GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
-      absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
-      : Lockable(std::move(clique_key), clique_id, std::move(communicators)) {}
-
-  std::string DebugString() const;
-
-  // Checks for async errors for all the communicators in the clique without
-  // taking the lock. If at least one of the communicators has an async error,
-  // it returns one of the errors.
-  absl::Status HealthCheck() const;
-};
+// TODO(b/380457503): Delete this alias.
+using NcclClique = LockableGpuClique;
 
 // Acquires an shared access to a NCCL clique (NcclClique::Lock collectively
 // owned by `num_local_participants` threads). XLA uses this lock to serialize

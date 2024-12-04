@@ -16,19 +16,25 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/container/btree_map.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/clique.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/service/lockable.h"
 
 namespace xla::gpu {
+
+class LockableGpuClique;
 
 // A group of GPU communicators making up a clique for a given clique key.
 class GpuClique : public Clique {
@@ -48,8 +54,37 @@ class GpuClique : public Clique {
   absl::Status HealthCheck() const final;
 
  private:
+  friend LockableGpuClique;
+
+  // A functor to give human-readable names to lockable GPU cliques.
+  struct LockableName {
+    static std::string ToString(const GpuClique& clique);
+  };
+
   GpuCliqueKey key_;
   std::optional<CliqueId> id_;
+};
+
+// A lockable version of GpuClique that guarantees exclusive access to the
+// clique communicators.
+class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
+ public:
+  // We keep acquired cliques in a sorted container to guarantee that all
+  // participants iterate over cliques in the same order.
+  using AcquiredCliquesMap =
+      absl::btree_map<GpuCliqueKey, std::shared_ptr<LockableGpuClique::Lock>,
+                      std::greater<GpuCliqueKey>>;
+
+  LockableGpuClique(
+      GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
+      absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators);
+
+  std::string DebugString() const;
+
+  // Checks for async errors for all the communicators in the clique without
+  // taking the lock. If at least one of the communicators has an async error,
+  // it returns one of the errors.
+  absl::Status HealthCheck() const;
 };
 
 }  // namespace xla::gpu
