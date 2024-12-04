@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>  // NOLINT
 #include <ostream>
 #include <string>
 #include <utility>
@@ -179,7 +180,10 @@ Expected<SmallVec<CompilerPlugin>> CompilerPlugin::LoadPlugins(
     absl::Span<const absl::string_view> lib_search_paths) {
   std::vector<std::string> plugin_lib_paths;
   for (auto search_path : lib_search_paths) {
-    LITERT_EXPECT_OK(FindLiteRtSharedLibs(search_path, plugin_lib_paths));
+    // Skip paths that are not valid.
+    if (std::filesystem::exists(search_path)) {
+      LITERT_EXPECT_OK(FindLiteRtSharedLibs(search_path, plugin_lib_paths));
+    }
   }
 
   SmallVec<CompilerPlugin> loaded_plugins;

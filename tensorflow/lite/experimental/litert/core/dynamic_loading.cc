@@ -17,13 +17,13 @@
 #include <dlfcn.h>
 
 #ifndef __ANDROID__
-#include <glob.h>
 #if __has_include(<link.h>)
 #include <link.h>
 #endif
 #endif
 
 #include <cstddef>
+#include <filesystem>  // NOLINT
 #include <string>
 #include <vector>
 
@@ -61,51 +61,44 @@ LiteRtStatus CloseLib(void* lib_handle) {
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus MakePluginLibGlobPattern(absl::string_view search_path,
-                                      std::string& pattern) {
-  bool search_path_ends_with_slash =
-      !search_path.empty() && (search_path[search_path.size() - 1] == '/');
-  LITERT_ENSURE(!search_path_ends_with_slash, kLiteRtStatusErrorInvalidArgument,
-                "Search paths must not have trailing slash");
+namespace {
 
-  // NOTE: Compiler plugin shared libraries also have "Plugin" somewhere after
-  // the standard prefix.
-  constexpr absl::string_view kGlobPluginLibTemplate = "%s/%s*Plugin*.so";
-  pattern = absl::StrFormat(kGlobPluginLibTemplate, search_path,
-                            kLiteRtSharedLibPrefix);
+LiteRtStatus FindLiteRtSharedLibsHelper(const std::string& search_path,
+                                        std::vector<std::string>& results) {
+  LITERT_LOG(LITERT_INFO, "FindLiteRtSharedLibsHelper %s", search_path.c_str());
+  if (!std::filesystem::exists(search_path)) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+
+  const std::string compiler_plugin_lib_pattern =
+      absl::StrFormat("%s%s", kLiteRtSharedLibPrefix, "CompilerPlugin");
+  for (const auto& entry : std::filesystem::directory_iterator(search_path)) {
+    const auto& path = entry.path();
+    LITERT_LOG(LITERT_INFO, "Checking %s", path.c_str());
+    if (entry.is_regular_file()) {
+      auto stem = path.stem().string();
+      auto ext = path.extension().string();
+      LITERT_LOG(LITERT_INFO, "Found file %s, stem=%s, ext=%s", path.c_str(),
+                 stem.c_str(), ext.c_str());
+      if (stem.find(compiler_plugin_lib_pattern) == 0 && ext == ".so") {
+        LITERT_LOG(LITERT_INFO, ">>> FOUND MATCH %s", path.c_str());
+        results.push_back(path);
+      }
+    } else if (entry.is_directory()) {
+      LITERT_LOG(LITERT_INFO, "Found directory %s", path.c_str());
+      FindLiteRtSharedLibsHelper(path, results);
+    }
+  }
+
   return kLiteRtStatusOk;
 }
 
+}  // namespace
+
 LiteRtStatus FindLiteRtSharedLibs(absl::string_view search_path,
                                   std::vector<std::string>& results) {
-#ifndef __ANDROID__
-  std::string glob_pattern;
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      MakePluginLibGlobPattern(search_path, glob_pattern));
-
-  glob_t glob_result = {};
-  const int glob_status =
-      glob(glob_pattern.c_str(), GLOB_ERR, nullptr, &glob_result);
-  if (glob_status == GLOB_NOMATCH || glob_status == GLOB_ABORTED) {
-    LITERT_LOG(LITERT_WARNING, "%s", "Didn't find any plugin libs to load\n");
-    globfree(&glob_result);
-    return kLiteRtStatusOk;
-  } else if (glob_status != 0) {
-    LITERT_LOG(LITERT_ERROR, "Glob failed with code: %d\n", glob_status);
-    globfree(&glob_result);
-    return kLiteRtStatusErrorNotFound;
-  }
-
-  for (size_t i = 0; i < glob_result.gl_pathc; ++i) {
-    results.emplace_back().assign(glob_result.gl_pathv[i]);
-    LITERT_LOG(LITERT_INFO, "Glob matched: %s\n", results.back().c_str());
-  }
-
-  globfree(&glob_result);
-  return kLiteRtStatusOk;
-#endif
-  // TODO: Glob is not supported on android.
-  return kLiteRtStatusErrorUnsupported;
+  std::string root(search_path.data());
+  return FindLiteRtSharedLibsHelper(root, results);
 }
 
 }  // namespace litert::internal

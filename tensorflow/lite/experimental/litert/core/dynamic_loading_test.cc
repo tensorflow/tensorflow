@@ -32,8 +32,8 @@ using ::testing::HasSubstr;
 using ::testing::UniqueTestDirectory;
 
 constexpr absl::string_view kNotLiteRtSo = "notLibLiteRt.so";
-constexpr absl::string_view kLiteRtSo1 = "libLiteRtPlugin_1.so";
-constexpr absl::string_view kLiteRtSo2 = "libLiteRtPlugin_2.so";
+constexpr absl::string_view kLiteRtSo1 = "libLiteRtCompilerPlugin_1.so";
+constexpr absl::string_view kLiteRtSo2 = "libLiteRtCompilerPlugin_2.so";
 
 TEST(TestDynamicLoading, GlobNoMatch) {
   const auto dir = UniqueTestDirectory();
