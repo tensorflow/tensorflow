@@ -44,6 +44,9 @@ AutoShardingSolverRequest ScaleRequest(
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& request);
 
+absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
+    const AutoShardingSolverRequest& request);
+
 enum AutoShardingViolationCode {
   kAliasViolationCode,     // Some node's strategy does not match its alias
   kFollowerViolationCode,  // Some node's strategy does not match its follower
