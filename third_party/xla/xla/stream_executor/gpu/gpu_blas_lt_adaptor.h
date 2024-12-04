@@ -70,7 +70,8 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
     if (IsGpuBlasLtEnabled()) {
       auto &runner = gpu::BlasLtGemmRunner::i(stream);
       auto workspace = TBlasSupport::GetWorkspace();
-      WorkspaceScratchAllocator allocator{*workspace};
+      WorkspaceScratchAllocator allocator{
+          workspace ? *workspace : DeviceMemoryBase{nullptr, 0}};
       switch (dtype) {
         case blas::DataType::kFloat:
           return DoBlasGemmImpl<float>(stream, transa, transb, m, n, k, dtype,
@@ -245,7 +246,8 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
       DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count,
       const NumericOptions &numeric_options, blas::CallContext context) {
     auto workspace = TBlasSupport::GetWorkspace();
-    WorkspaceScratchAllocator allocator{*workspace};
+    WorkspaceScratchAllocator allocator{
+        workspace ? *workspace : DeviceMemoryBase{nullptr, 0}};
     auto &runner = gpu::BlasLtGemmRunner::i(stream);
     auto memory_c = DeviceMemory<T>(*c);
     auto alpha_v = *static_cast<const T *>(alpha);
