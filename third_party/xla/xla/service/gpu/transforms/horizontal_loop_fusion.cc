@@ -234,21 +234,13 @@ bool IsProfitableFusionCandidate(const HloInstruction& instr,
   if (root->opcode() == HloOpcode::kTuple) {
     // Since all output shapes are the same, use the first shape as the
     // representative.
-    Shape shape = root->operand(0)->shape();
-    if (ShapeUtil::ElementsIn(shape) > kShapeThreshold) {
-      VLOG(2) << "Profitable check failed due to element count with "
-                 "sliced_input_fusion="
-              << sliced_input_fusion;
-      return false;
-    }
-  } else {
-    Shape shape = root->shape();
-    if (ShapeUtil::ElementsIn(shape) > kShapeThreshold) {
-      VLOG(2) << "Profiltable check failed due to element size with "
-                 "sliced_input_fusion="
-              << sliced_input_fusion;
-      return false;
-    }
+    root = root->operand(0);
+  }
+  if (ShapeUtil::ElementsIn(root->shape()) > kShapeThreshold) {
+    VLOG(2) << "Profitable check failed due to element count with "
+               "sliced_input_fusion="
+            << sliced_input_fusion;
+    return false;
   }
 
   // Having too many instructions is not easily profitable.
