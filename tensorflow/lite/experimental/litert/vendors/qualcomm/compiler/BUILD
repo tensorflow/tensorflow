@@ -120,6 +120,7 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:embedding_lookup_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:fully_connected_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:legalization",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:logical_and_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:mul_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:reshape_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:rsqrt_op_legalization",

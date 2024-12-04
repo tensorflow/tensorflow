@@ -59,6 +59,7 @@ const auto kSupportedOps =
                     "simple_fully_connected_op.tflite",
                     "fully_connected_3d.tflite",
                     "simple_embedding_lookup_op.tflite",
+                    "simple_logical_and_op.tflite",
                     kFeedForwardModel,
                     kKeyEinsumModel,
                     kQueryEinsumModel,
