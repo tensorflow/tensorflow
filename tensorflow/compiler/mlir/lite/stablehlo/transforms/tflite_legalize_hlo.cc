@@ -297,7 +297,23 @@ bool IsAbsOpLegal(mhlo::AbsOp op) {
   return !llvm::cast<ShapedType>(op.getOperand().getType())
               .getElementType()
               .isIntOrFloat() &&
-         !llvm::cast<mlir::ComplexType>(
+         !llvm::isa<mlir::ComplexType>(
+             op.getOperand().getType().getElementType());
+}
+
+bool IsImagOpLegal(mhlo::ImagOp op) {
+  return llvm::cast<ShapedType>(op.getOperand().getType())
+             .getElementType()
+             .isIntOrFloat() ||
+         !llvm::isa<mlir::ComplexType>(
+             op.getOperand().getType().getElementType());
+}
+
+bool IsRealOpLegal(mhlo::RealOp op) {
+  return llvm::cast<ShapedType>(op.getOperand().getType())
+             .getElementType()
+             .isIntOrFloat() ||
+         !llvm::isa<mlir::ComplexType>(
              op.getOperand().getType().getElementType());
 }
 
@@ -317,13 +333,11 @@ void SetUnaryOpLegal(ConversionTarget& target) {
       mhlo::ExpOp,
       mhlo::Expm1Op,
       mhlo::FloorOp,
-      mhlo::ImagOp,
       mhlo::IsFiniteOp,
       mhlo::Log1pOp,
       mhlo::LogOp,
       mhlo::LogisticOp,
       mhlo::NegOp,
-      mhlo::RealOp,
       mhlo::RsqrtOp,
       mhlo::SignOp,
       mhlo::SineOp,
@@ -387,6 +401,8 @@ void LegalizeHloToTfLitePass::runOnOperation() {
 
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
   target.addDynamicallyLegalOp<mhlo::AbsOp>(IsAbsOpLegal);
+  target.addDynamicallyLegalOp<mhlo::ImagOp>(IsImagOpLegal);
+  target.addDynamicallyLegalOp<mhlo::RealOp>(IsRealOpLegal);
   target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
   target.addDynamicallyLegalOp<mhlo::CompareOp>(IsCompareLegal);
   target.addDynamicallyLegalOp<mhlo::TupleOp>(

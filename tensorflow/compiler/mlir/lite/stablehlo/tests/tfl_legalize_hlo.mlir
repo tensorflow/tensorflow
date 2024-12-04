@@ -3664,3 +3664,42 @@ func.func @fft(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>> {
 // CHECK: %0 = "mhlo.fft"(%arg0) <{fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type FFT>}> : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>>
 // CHECK: return %0 : tensor<3x9xcomplex<f32>>
 
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.imag
+//===----------------------------------------------------------------------===//
+
+func.func @mhlo_imag_test1(%arg0: tensor<1x2049xcomplex<f32>>) -> tensor<1x2049xf32> {
+  %339 = mhlo.imag %arg0 : (tensor<1x2049xcomplex<f32>>) -> tensor<1x2049xf32>
+  return %339 : tensor<1x2049xf32>
+  // CHECK:  %0 = "tfl.imag"(%arg0) : (tensor<1x2049xcomplex<f32>>) -> tensor<1x2049xf32>
+  // CHECK:  return %0 : tensor<1x2049xf32>
+}
+
+func.func @mhlo_imag_test_neg(%arg0: tensor<1x2049xf32>) -> tensor<1x2049xf32> {
+  %339 = mhlo.imag %arg0 : (tensor<1x2049xf32>) -> tensor<1x2049xf32>
+  return %339 : tensor<1x2049xf32>
+  // CHECK:  %0 = mhlo.imag %arg0 : tensor<1x2049xf32>
+  // CHECK:  return %0 : tensor<1x2049xf32>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.real
+//===----------------------------------------------------------------------===//
+
+func.func @mhlo_real_test1(%arg0: tensor<1x2049xcomplex<f32>>) -> tensor<1x2049xf32> {
+  %339 = mhlo.real %arg0 : (tensor<1x2049xcomplex<f32>>) -> tensor<1x2049xf32>
+  return %339 : tensor<1x2049xf32>
+  // CHECK:  %0 = "tfl.real"(%arg0) : (tensor<1x2049xcomplex<f32>>) -> tensor<1x2049xf32>
+  // CHECK:  return %0 : tensor<1x2049xf32>
+}
+
+func.func @mhlo_real_test_neg(%arg0: tensor<1x2049xf32>) -> tensor<1x2049xf32> {
+  %339 = mhlo.real %arg0 : (tensor<1x2049xf32>) -> tensor<1x2049xf32>
+  return %339 : tensor<1x2049xf32>
+  // CHECK:  %0 = mhlo.real %arg0 : tensor<1x2049xf32>
+  // CHECK:  return %0 : tensor<1x2049xf32>
+}
