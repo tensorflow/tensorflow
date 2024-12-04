@@ -144,6 +144,9 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflFullyConnected:
       out << "TFL_FULLY_CONNECTED";
       break;
+    case kLiteRtOpCodeTflEmbeddingLookup:
+      out << "TFL_EMBEDDING_LOOKUP";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;

@@ -47,6 +47,9 @@ static constexpr absl::string_view kRMSNormModel = "norm.tflite";
 // ROPE sub-module of a toy LLM.
 static constexpr absl::string_view kROPEModel = "rope.tflite";
 
+// ROPE sub-module of a toy LLM, uses embedding_lookup op for sin/cos.
+static constexpr absl::string_view kLookUpROPEModel = "lookup_rope.tflite";
+
 // Scale dot product attentionsub-module of a toy LLM.
 static constexpr absl::string_view kSDPAModel = "sdpa.tflite";
 
