@@ -13,27 +13,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
+#include "xla/types.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -1524,6 +1533,86 @@ ENTRY entry {
                           CreateExecutable(std::move(module),
                                            /*run_hlo_passes=*/true));
   EXPECT_TRUE(executable->has_module());
+}
+
+class RaggedAllToAllTestE2E : public CollectiveOpsTestE2E {
+ public:
+  struct RaggedTensor {
+    RaggedTensor(absl::Span<float const> data,
+                 absl::Span<const int32_t> offsets,
+                 absl::Span<const int32_t> sizes)
+        : data(LiteralUtil::CreateR1<float>(data)),
+          offsets(LiteralUtil::CreateR1<int32_t>(offsets)),
+          sizes(LiteralUtil::CreateR1<int32_t>(sizes)) {}
+
+    Literal data;
+    Literal offsets;
+    Literal sizes;
+  };
+
+  std::vector<Literal*> ToReplicaLiteralPtrs(RaggedTensor& input,
+                                             RaggedTensor& output) {
+    return {&input.data,  &output.data,    &input.offsets,
+            &input.sizes, &output.offsets, &output.sizes};
+  }
+};
+
+TEST_F(RaggedAllToAllTestE2E, RaggedAllToAll) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule module, entry_computation_layout={(f32[4], f32[4], s32[2], s32[2],
+s32[2], s32[2])->f32[4]}, num_partitions=1
+
+ENTRY entry {
+    input = f32[4] parameter(0)
+    output = f32[4] parameter(1)
+    input_offsets = s32[2] parameter(2)
+    send_sizes = s32[2] parameter(3)
+    output_offsets = s32[2] parameter(4)
+    recv_sizes = s32[2] parameter(5)
+    ROOT ra2a = f32[4] ragged-all-to-all(input, output, input_offsets,
+    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+}
+)";
+
+  const int64_t kNumReplicas = 2;
+  const int64_t kNumPartitions = 1;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  // before ra2a:
+  //  r0: c0 = {1},    c1 = {2}
+  //  r1: c0 = {3, 4}, c1 = {5}
+  RaggedTensor r0_input(/*data=*/{1., 2., 0., 0.},
+                        /*offsets=*/{0, 1}, /*sizes=*/{1, 1});
+  RaggedTensor r1_input(/*data=*/{3., 4., 5., 0.},
+                        /*offsets=*/{0, 2}, /*sizes=*/{2, 1});
+
+  // after ra2a:
+  //  r0: c0 = {1},    c1 = {3, 4}
+  //  r1: c0 = {2},    c1 = {5}
+  RaggedTensor r0_output(/*data=*/{0., 0., 0., 0.},
+                         /*offsets=*/{0, 1}, /*sizes=*/{1, 2});
+  RaggedTensor r1_output(/*data=*/{0., 0., 0., 0.},
+                         /*offsets=*/{0, 1}, /*sizes=*/{1, 1});
+
+  std::vector<std::vector<Literal*>> input_literal_ptrs = {
+      ToReplicaLiteralPtrs(r0_input, r0_output),
+      ToReplicaLiteralPtrs(r1_input, r1_output)};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), input_literal_ptrs,
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<float>({1., 3., 4., 0}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({2., 5., 0., 0.}, results[1]);
 }
 
 }  // namespace

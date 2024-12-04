@@ -296,6 +296,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
   opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
   opts.set_xla_gpu_enable_scatter_determinism_expander(true);
+  opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(true);
   return opts;
 }
 
@@ -2104,6 +2105,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "performance."
       "Note that even when this flag is disabled, scatter operations may still "
       "be deterministic, although with additional overhead."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_unsupported_enable_ragged_all_to_all_decomposer",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer),
+      debug_options->xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(),
+      "Internal: Enable the RaggedAllToAllDecomposer, an experimental pass "
+      "that rewrites ragged-all-to-all as a dense all-to-all operation."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

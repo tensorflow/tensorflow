@@ -164,6 +164,9 @@ message DebugOptions {
   // with priority fusion.
   bool xla_gpu_experimental_enable_triton_softmax_priority_fusion = 325;
 
+  // Internal testing flag to switch RaggedAllToAllDecomposer on or off.
+  bool xla_gpu_unsupported_enable_ragged_all_to_all_decomposer = 350;
+
   // Internal debug/testing flag to switch Triton GEMM fusions on or off.
   bool xla_gpu_unsupported_enable_triton_gemm = 322;
 
@@ -1069,7 +1072,7 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 350
+  // Next id: 351
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
