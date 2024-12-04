@@ -41,14 +41,30 @@ namespace {
 //
 // Several tests requires at least four GPUs.  For instructions on running this
 // within Google, see go/multi-gpu-unit-test.
-class CollectivePipelineParallelismTest : public HloTestBase {
+class CollectivePipelineParallelismTest
+    : public HloTestBase,
+      public ::testing::WithParamInterface<bool> {
  public:
   CollectivePipelineParallelismTest() {
     VLOG(1) << "Running with " << num_devices() << " devices";
   }
+
+  HloModuleConfig GetModuleConfigForTest(int64_t replica_count = 1,
+                                         int64_t num_partitions = 1) const {
+    HloModuleConfig config =
+        HloTestBase::GetModuleConfigForTest(replica_count, num_partitions);
+
+    // Set debug options.
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_experimental_pipeline_parallelism_opt(
+        GetParam());
+    config.set_debug_options(debug_options);
+
+    return config;
+  }
 };
 
-XLA_TEST_F(CollectivePipelineParallelismTest,
+XLA_TEST_P(CollectivePipelineParallelismTest,
            CollectivePermute_CircularPipelinePreOptimization) {
   const absl::string_view kModuleStr = R"(
   HloModule test
@@ -84,11 +100,14 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
     ROOT data_out = f32[2,2] get-tuple-element(while_res), index=1
   }
   )";
+
   const int64_t kNumReplicas = 4;
+  const int64_t kNumPartitions = 1;
   SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  // Parse HLO module.
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
   std::unique_ptr<VerifiedHloModule> module;
   TF_ASSERT_OK_AND_ASSIGN(module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -213,7 +232,7 @@ std::string GetModuleStrWithCommonComputations(
 //   - no collective pipelining
 //
 // Every stage of the pipeline is a single linear layer.
-XLA_TEST_F(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
+XLA_TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
     tuple = (f32[16,16], f32[4,16], f32[4,16], f32[16], u32[]) parameter(0)
@@ -276,10 +295,12 @@ XLA_TEST_F(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
   )";
 
   const int64_t kNumReplicas = 4;
+  const int64_t kNumPartitions = 1;
   SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  // Parse HLO module.
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(GetModuleStrWithCommonComputations(
@@ -330,7 +351,7 @@ XLA_TEST_F(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
 //   - no collective pipelining
 //
 // Every stage of the pipeline is a single linear layer.
-XLA_TEST_F(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
+XLA_TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
     tuple = (f32[16,16], f32[5,16], f32[5,16], f32[16], u32[]) parameter(0)
@@ -394,10 +415,12 @@ XLA_TEST_F(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
   )";
 
   const int64_t kNumReplicas = 4;
+  const int64_t kNumPartitions = 1;
   SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  // Parse HLO module.
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(GetModuleStrWithCommonComputations(
@@ -447,7 +470,7 @@ XLA_TEST_F(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
 //   - no collective pipelining
 //
 // Every stage of the pipeline is a single linear layer.
-XLA_TEST_F(CollectivePipelineParallelismTest,
+XLA_TEST_P(CollectivePipelineParallelismTest,
            NaiveBFSMicrobatch4CircularRepeat2Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
@@ -512,10 +535,12 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
   )";
 
   const int64_t kNumReplicas = 4;
+  const int64_t kNumPartitions = 1;
   SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  // Parse HLO module.
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(GetModuleStrWithCommonComputations(
@@ -567,7 +592,7 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
 //   - no collective pipelining
 //
 // Every stage of the pipeline is a single linear layer.
-XLA_TEST_F(CollectivePipelineParallelismTest,
+XLA_TEST_P(CollectivePipelineParallelismTest,
            NaiveBFSMicrobatch5CircularRepeat2Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
@@ -648,10 +673,12 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
   )";
 
   const int64_t kNumReplicas = 4;
+  const int64_t kNumPartitions = 1;
   SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  // Parse HLO module.
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(GetModuleStrWithCommonComputations(
@@ -705,7 +732,7 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
 //   - no collective pipelining
 //
 // Every stage of the pipeline is a single linear layer.
-XLA_TEST_F(CollectivePipelineParallelismTest,
+XLA_TEST_P(CollectivePipelineParallelismTest,
            NaiveWoDirectBufferDependencyBFSMicrobatch5CircularRepeat2Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
@@ -786,10 +813,12 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
   )";
 
   const int64_t kNumReplicas = 4;
+  const int64_t kNumPartitions = 1;
   SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  // Parse HLO module.
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       ParseAndReturnVerifiedModule(GetModuleStrWithCommonComputations(
@@ -833,7 +862,7 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
                                            ErrorSpec{1e-5, 1e-5}));
 }
 
-XLA_TEST_F(CollectivePipelineParallelismTest, SendRecvLoop) {
+XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
   const absl::string_view kModuleStr = R"(
     HloModule test, num_partitions=4
 
@@ -917,7 +946,7 @@ XLA_TEST_F(CollectivePipelineParallelismTest, SendRecvLoop) {
   LiteralTestUtil::ExpectR2Equal<float>({{1, 1}, {1, 1}}, results[3]);
 }
 
-XLA_TEST_F(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
+XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
   const absl::string_view kModuleStr = R"(
     HloModule test, num_partitions=2
 
@@ -1000,7 +1029,7 @@ XLA_TEST_F(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
   LiteralTestUtil::ExpectR2Equal<float>({{1, 1}, {1, 1}}, results[1]);
 }
 
-XLA_TEST_F(CollectivePipelineParallelismTest,
+XLA_TEST_P(CollectivePipelineParallelismTest,
            PartiallyPipelinedAsyncSendRecvLoop) {
   const absl::string_view kModuleStr = R"(
     HloModule test, num_partitions=4
@@ -1098,7 +1127,7 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
   LiteralTestUtil::ExpectR2Equal<float>({{1, 1}, {1, 1}}, results[3]);
 }
 
-XLA_TEST_F(CollectivePipelineParallelismTest,
+XLA_TEST_P(CollectivePipelineParallelismTest,
            PartiallyPipelinedAsyncSendRecvLoop2Devices) {
   const absl::string_view kModuleStr = R"(
     HloModule test, num_partitions=2
@@ -1193,6 +1222,10 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[0]);
   LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[1]);
 }
+
+INSTANTIATE_TEST_SUITE_P(CollectivePipelineParallelismTestWithAndWithoutOpts,
+                         CollectivePipelineParallelismTest, ::testing::Bool(),
+                         ::testing::PrintToStringParamName());
 
 }  // namespace
 }  // namespace xla

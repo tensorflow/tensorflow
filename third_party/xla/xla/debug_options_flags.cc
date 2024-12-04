@@ -1608,6 +1608,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_collective_permute_decomposer_threshold(),
       "Collective permute decomposer threshold."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_experimental_pipeline_parallelism_opt",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_enable_experimental_pipeline_parallelism_opt),
+      debug_options->xla_gpu_enable_experimental_pipeline_parallelism_opt(),
+      "Experimental optimizations for SPMD-based pipeline parallelism on "
+      "GPU."));
+  flag_list->push_back(tsl::Flag(
       "xla_partitioning_algorithm", setter_for_xla_partitioning_algorithm,
       DebugOptions::PartitioningAlgorithm_Name(
           debug_options->xla_partitioning_algorithm()),

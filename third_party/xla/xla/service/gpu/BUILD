@@ -1530,6 +1530,7 @@ cc_library(
         "//xla/service/gpu/transforms:async_wrapper",
         "//xla/service/gpu/transforms:collective_permute_cycle_decomposer",
         "//xla/service/gpu/transforms:collective_permute_valid_iteration_annotator",
+        "//xla/service/gpu/transforms:collective_select_folder",
         "//xla/service/gpu/transforms:command_buffer_scheduling",
         "//xla/service/gpu/transforms:conv_rewriter",
         "//xla/service/gpu/transforms:convert_async_collectives_to_sync",
