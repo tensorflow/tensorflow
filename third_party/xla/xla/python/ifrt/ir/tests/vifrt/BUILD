@@ -9,6 +9,7 @@ lit_test_suite(
     name = "all_tests",
     srcs = glob(["*.mlir"]),
     cfg = "//xla:lit.cfg.py",
+    data = ["ifrt_legalize_to_vifrt.0_1_0.mlir.bytes"],
     tools = [
         "//xla/python/ifrt/ir/tests:ifrt-opt",
         "//xla/python/ifrt/ir/tests:ifrt-translate",
