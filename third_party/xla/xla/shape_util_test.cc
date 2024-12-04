@@ -1099,6 +1099,21 @@ TEST(ShapeUtilTest, MakeShapeWithDescendingLayoutAndSamePhysicalLayout) {
                            F32, {128, 24, 48, 48, 4}, {4, 3, 2, 1, 0}));
 }
 
+TEST(ShapeUtilTest,
+     MakeShapeWithDescendingLayoutAndSamePhysicalLayoutWithDynamicDims) {
+  Shape shape =
+      ShapeUtil::MakeShape(F32, {128, 24, Shape::kUnboundedSize, 48, 48},
+                           {false, false, true, false, false});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({2, 4, 3, 1, 0});
+  Shape new_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape);
+  Shape expected_shape =
+      ShapeUtil::MakeShape(F32, {128, 24, 48, 48, Shape::kUnboundedSize},
+                           {false, false, false, false, true});
+  *expected_shape.mutable_layout() = LayoutUtil::MakeLayout({4, 3, 2, 1, 0});
+  EXPECT_EQ(new_shape, expected_shape);
+}
+
 TEST(ShapeUtilTest, DeduceTransposeDimensionsForBitcast) {
   Shape input_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3}, {1, 0});
   Shape output_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {3, 5}, {0, 1});

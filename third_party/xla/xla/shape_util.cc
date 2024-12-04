@@ -425,7 +425,11 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
         shape.layout().tail_padding_alignment_in_elements());
   }
   for (int i = 0; i < shape.dimensions_size(); ++i) {
-    new_shape.set_dynamic_dimension(i, shape.is_dynamic_dimension(i));
+    int dim = i;
+    if (shape.has_layout()) {
+      dim = LayoutUtil::Major(shape.layout(), dim);
+    }
+    new_shape.set_dynamic_dimension(i, shape.is_dynamic_dimension(dim));
   }
   new_shape.mutable_layout()->set_memory_space(shape.layout().memory_space());
   return new_shape;
