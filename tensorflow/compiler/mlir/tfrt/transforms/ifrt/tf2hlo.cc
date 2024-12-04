@@ -269,5 +269,10 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   return result;
 }
 
+absl::StatusOr<Tf2HloResult> TfToHloCompiler::CompileTfToHlo(
+    const Tf2HloArg& arg) {
+  return tensorflow::ifrt_serving::CompileTfToHlo(arg);
+}
+
 }  // namespace ifrt_serving
 }  // namespace tensorflow

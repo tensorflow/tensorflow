@@ -85,21 +85,27 @@ inline ::testing::PolymorphicMatcher<ProtoStringMatcher> EqualsProto(
   return ::testing::MakePolymorphicMatcher(ProtoStringMatcher(x));
 }
 
-TEST(Tf2HloTest, Empty) {
+class Tf2HloTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    mlir::DialectRegistry registry;
+    mlir::registerAllDialects(registry);
+    mlir::RegisterAllTensorFlowDialects(registry);
+    context_ = std::make_unique<mlir::MLIRContext>(registry);
+  }
+  TfToHloCompiler tf_to_hlo_compiler_;
+  std::unique_ptr<mlir::MLIRContext> context_;
+};
+
+TEST_F(Tf2HloTest, Empty) {
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
       absl::StrCat(kDataDirectory, "/tf2hlo_empty.mlir"));
 
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, context_.get());
 
   ASSERT_TRUE(mlir_module);
   ASSERT_TRUE(mlir_module.get() != nullptr);
@@ -129,27 +135,21 @@ TEST(Tf2HloTest, Empty) {
       .topology = std::make_shared<xla::ifrt::PjRtTopology>(cpu_topology_ptr),
       .platform_name = xla::CpuName(),
   };
-  auto result = CompileTfToHlo(arg);
+  auto result = tf_to_hlo_compiler_.CompileTfToHlo(arg);
 
   TF_ASSERT_OK(result.status());
 }
 
 // Multiple input and multiple out.
-TEST(Tf2HloTest, Tuple) {
+TEST_F(Tf2HloTest, Tuple) {
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
       absl::StrCat(kDataDirectory, "/tf2hlo_tuple.mlir"));
 
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, context_.get());
 
   ASSERT_TRUE(mlir_module);
   ASSERT_TRUE(mlir_module.get() != nullptr);
@@ -184,27 +184,21 @@ TEST(Tf2HloTest, Tuple) {
       .platform_name = xla::CpuName(),
   };
 
-  auto result = CompileTfToHlo(arg);
+  auto result = tf_to_hlo_compiler_.CompileTfToHlo(arg);
 
   TF_ASSERT_OK(result.status());
 }
 
 // Spmd and device assignment is given
-TEST(Tf2HloTest, Spmd) {
+TEST_F(Tf2HloTest, Spmd) {
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
       absl::StrCat(kDataDirectory, "/tf2hlo_spmd_with_device_assignment.mlir"));
 
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, context_.get());
 
   ASSERT_TRUE(mlir_module);
   ASSERT_TRUE(mlir_module.get() != nullptr);
@@ -238,7 +232,7 @@ TEST(Tf2HloTest, Spmd) {
       .platform_name = xla::CpuName(),
   };
 
-  auto result = CompileTfToHlo(arg);
+  auto result = tf_to_hlo_compiler_.CompileTfToHlo(arg);
 
   LOG(INFO) << result->compile_metadata;
   TF_ASSERT_OK(result.status());
@@ -280,21 +274,15 @@ TEST(Tf2HloTest, Spmd) {
 }
 
 // Spmd and use default device assignment b/c no device assignment is given
-TEST(Tf2HloTest, UsingDefaultDeviceAssignment) {
+TEST_F(Tf2HloTest, UsingDefaultDeviceAssignment) {
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
       absl::StrCat(kDataDirectory, "/tf2hlo_spmd_no_device_assignment.mlir"));
 
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, context_.get());
 
   ASSERT_TRUE(mlir_module);
   ASSERT_TRUE(mlir_module.get() != nullptr);
@@ -330,7 +318,7 @@ TEST(Tf2HloTest, UsingDefaultDeviceAssignment) {
       .platform_name = xla::CpuName(),
   };
 
-  auto result = CompileTfToHlo(arg);
+  auto result = tf_to_hlo_compiler_.CompileTfToHlo(arg);
 
   LOG(INFO) << result->compile_metadata;
   TF_ASSERT_OK(result.status());
@@ -397,22 +385,16 @@ TEST(Tf2HloTest, UsingDefaultDeviceAssignment) {
 }
 
 // Multiple input and multiple out.
-TEST(Tf2HloTest, XlaCallHostCallback) {
+TEST_F(Tf2HloTest, XlaCallHostCallback) {
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
       absl::StrCat(kDataDirectory, "/xla_call_host_callback.mlir"));
 
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path,
-                                            mlir::ParserConfig(&context));
+                                            mlir::ParserConfig(context_.get()));
 
   ASSERT_TRUE(mlir_module);
   ASSERT_TRUE(mlir_module.get() != nullptr);
@@ -447,7 +429,7 @@ TEST(Tf2HloTest, XlaCallHostCallback) {
       .platform_name = xla::CpuName(),
   };
 
-  auto result = CompileTfToHlo(arg);
+  auto result = tf_to_hlo_compiler_.CompileTfToHlo(arg);
 
   TF_ASSERT_OK(result.status());
 
@@ -460,21 +442,15 @@ TEST(Tf2HloTest, XlaCallHostCallback) {
 
 // On GPU enabled build, the compilation should pass. On a GPU disabled build,
 // the compilation should fail with a correct error message.
-TEST(Tf2HloTest, GpuCompile) {
+TEST_F(Tf2HloTest, GpuCompile) {
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
       absl::StrCat(kDataDirectory, "/tf2hlo_gpu.mlir"));
 
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, context_.get());
 
   ASSERT_TRUE(mlir_module);
   ASSERT_TRUE(mlir_module.get() != nullptr);
@@ -505,7 +481,7 @@ TEST(Tf2HloTest, GpuCompile) {
       .platform_name = xla::CudaName(),
   };
 
-  auto result = CompileTfToHlo(arg);
+  auto result = tf_to_hlo_compiler_.CompileTfToHlo(arg);
 #if defined(GOOGLE_CUDA)
   LOG(INFO) << "GPU compile success";
   EXPECT_OK(result);
@@ -516,21 +492,15 @@ TEST(Tf2HloTest, GpuCompile) {
 #endif
 }
 
-TEST(Tf2HloTest, SameArgProduceSameKeyFingerprint) {
+TEST_F(Tf2HloTest, SameArgProduceSameKeyFingerprint) {
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
       absl::StrCat(kDataDirectory, "/xla_call_host_callback.mlir"));
 
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path,
-                                            mlir::ParserConfig(&context));
+                                            mlir::ParserConfig(context_.get()));
 
   ASSERT_TRUE(mlir_module);
   ASSERT_TRUE(mlir_module.get() != nullptr);
@@ -577,21 +547,15 @@ TEST(Tf2HloTest, SameArgProduceSameKeyFingerprint) {
   EXPECT_THAT(arg0.Key(), IsOkAndHolds(arg1.Key().value()));
 }
 
-TEST(Tf2HloTest, DifferentCompileMetadataProduceDifferentKeyFingerprint) {
+TEST_F(Tf2HloTest, DifferentCompileMetadataProduceDifferentKeyFingerprint) {
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
       absl::StrCat(kDataDirectory, "/xla_call_host_callback.mlir"));
 
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path,
-                                            mlir::ParserConfig(&context));
+                                            mlir::ParserConfig(context_.get()));
 
   ASSERT_TRUE(mlir_module);
   ASSERT_TRUE(mlir_module.get() != nullptr);
