@@ -73,13 +73,13 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
       auto allocator = CreateAllocator(TBlasSupport::GetWorkspace());
       switch (dtype) {
         case blas::DataType::kFloat:
-          return DoBlasGemmImpl<float>(stream, transa, transb, m, n, k, dtype,
-                                       alpha, a, lda, b, ldb, beta, c, ldc,
-                                       numeric_options, context, allocator);
+          return DoBlasGemmImpl<float>(
+              stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
+              beta, c, ldc, numeric_options, context, allocator.get());
         case blas::DataType::kBF16:
           return DoBlasGemmImpl<Eigen::bfloat16>(
               stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
-              beta, c, ldc, numeric_options, context, allocator);
+              beta, c, ldc, numeric_options, context, allocator.get());
         default:
           LOG(ERROR) << "Not supported type by blaslt" << dtype
                      << "fall back to blas";
@@ -251,7 +251,7 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
     return runner.RunStridedBatched(
         *stream, transa, transb, m, n, k, alpha_v, DeviceMemory<T>(a), lda,
         stride_a, DeviceMemory<T>(b), ldb, stride_b, beta_v, &memory_c, ldc,
-        stride_c, batch_count, allocator);
+        stride_c, batch_count, allocator.get());
   }
 
   bool CheckStatus(absl::Status status) {
