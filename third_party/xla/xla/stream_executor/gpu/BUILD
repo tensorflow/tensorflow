@@ -340,6 +340,7 @@ gpu_only_cc_library(
         "//tensorflow/core/kernels:__subpackages__",
     ]),
     deps = [
+        "//xla/tsl/platform:subprocess",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -350,7 +351,6 @@ gpu_only_cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:subprocess",
     ],
 )
 

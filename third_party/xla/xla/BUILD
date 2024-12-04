@@ -1101,12 +1101,12 @@ xla_cc_test(
     deps =
         [
             ":parse_flags_from_env",
+            "//xla/tsl/platform:subprocess",
             "//xla/tsl/util:command_line_flags",
             "@com_google_absl//absl/strings:str_format",
             "@local_tsl//tsl/platform:env",
             "@local_tsl//tsl/platform:logging",
             "@local_tsl//tsl/platform:macros",
-            "@local_tsl//tsl/platform:subprocess",
             "@local_tsl//tsl/platform:test",
         ],
 )

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_SUBPROCESS_H_
-#define TENSORFLOW_TSL_PLATFORM_SUBPROCESS_H_
+#ifndef XLA_TSL_PLATFORM_SUBPROCESS_H_
+#define XLA_TSL_PLATFORM_SUBPROCESS_H_
 
 #include <memory>
 #include <vector>
@@ -70,4 +70,4 @@ std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv);
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
 
-#endif  // TENSORFLOW_TSL_PLATFORM_SUBPROCESS_H_
+#endif  // XLA_TSL_PLATFORM_SUBPROCESS_H_

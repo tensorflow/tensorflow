@@ -40,6 +40,9 @@ cc_library(
 cc_library(
     name = "communicator",
     hdrs = ["communicator.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+    ],
 )
 
 cc_library(

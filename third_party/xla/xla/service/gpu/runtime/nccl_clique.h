@@ -28,9 +28,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/nccl_clique.h"
-#include "xla/core/collectives/clique.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -78,12 +77,12 @@ absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
 //===----------------------------------------------------------------------===//
 
 struct NcclCliqueName {
-  static std::string ToString(const NcclCliqueImpl& comms) {
-    return absl::StrFormat("lockable clique %s", comms.clique_key().ToString());
+  static std::string ToString(const GpuClique& clique) {
+    return absl::StrFormat("lockable clique %s", clique.key().ToString());
   }
 };
 
-class NcclClique : public Lockable<NcclCliqueImpl, NcclCliqueName> {
+class NcclClique : public Lockable<GpuClique, NcclCliqueName> {
  public:
   // We keep acquired cliques in a sorted container to guarantee that all
   // participants iterate over cliques in the same order.

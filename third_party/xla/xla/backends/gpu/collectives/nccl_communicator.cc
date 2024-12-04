@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
+#include "xla/util.h"
 #include "tsl/platform/logging.h"
 
 #if TENSORFLOW_USE_ROCM
@@ -41,6 +43,17 @@ NcclCommunicator::NcclCommunicator(ncclComm_t comm) : comm_(comm) {
 NcclCommunicator::~NcclCommunicator() {
   VLOG(1) << "Destroy " << *this;
   XLA_NCCL_LOG_IF_ERROR(ncclCommDestroy(comm_));
+}
+
+absl::Status NcclCommunicator::HealthCheck() const {
+  VLOG(5) << "Get last async error for NCCL communicator: " << ToString();
+
+  ncclResult_t async_err;
+  XLA_NCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm_, &async_err));
+  if (async_err == ncclSuccess) return absl::OkStatus();
+
+  return Internal("%s. Last NCCL error (maybe unrelated): %s",
+                  ncclGetLastError(comm_), ncclGetErrorString(async_err));
 }
 
 std::string NcclCommunicator::ToString() const {

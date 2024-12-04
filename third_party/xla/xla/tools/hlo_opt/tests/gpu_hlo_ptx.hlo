@@ -1,4 +1,4 @@
-// RUN: hlo-opt %s --platform=CUDA --stage=ptx --xla_gpu_target_config_filename=%S/gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck %s
+// RUN: hlo-opt %s --platform=CUDA --stage=ptx --xla_gpu_target_config_filename=%S/../gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck %s
 
 HloModule m
 
