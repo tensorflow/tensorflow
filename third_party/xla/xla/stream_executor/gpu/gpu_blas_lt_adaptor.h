@@ -82,7 +82,11 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
               stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
               beta, c, ldc, numeric_options, context, &allocator);
         default:
-          return absl::FailedPreconditionError("Unknown type");
+          LOG(WARNING) << "Not supported type by blaslt" << dtype
+                       << "fall back to blas";
+          return TBlasSupport::DoBlasGemm(stream, transa, transb, m, n, k,
+                                          dtype, alpha, a, lda, b, ldb, beta, c,
+                                          ldc, numeric_options, context);
       };
     } else {
       return TBlasSupport::DoBlasGemm(stream, transa, transb, m, n, k, dtype,
@@ -198,7 +202,11 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
               stride_b, beta, c, ldc, stride_c, batch_count, numeric_options,
               context);
         default:
-          return absl::FailedPreconditionError("Unknown type");
+          LOG(WARNING) << "Not supported type by blaslt" << dtype
+                       << "fall back to blas";
+          return TBlasSupport::DoBlasGemm(stream, transa, transb, m, n, k,
+                                          dtype, alpha, a, lda, b, ldb, beta, c,
+                                          ldc, numeric_options, context);
       };
     } else {
       return TBlasSupport::DoBlasGemmStridedBatched(
