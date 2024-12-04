@@ -42,6 +42,12 @@ class CliqueKey {
   explicit CliqueKey(std::vector<GlobalDeviceId> devices);
   virtual ~CliqueKey() = default;
 
+  CliqueKey(const CliqueKey& other) = default;
+  CliqueKey& operator=(const CliqueKey& other) = default;
+
+  CliqueKey(CliqueKey&& other) = default;
+  CliqueKey& operator=(CliqueKey&& other) = default;
+
   // Returns the rank of the global device in the clique.
   std::optional<RankId> rank(GlobalDeviceId id) const;
 

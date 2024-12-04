@@ -60,6 +60,12 @@ class GpuCliqueKey : public CliqueKey {
       AsyncStreamKind stream_kind = AsyncStreamKind::kCollective,
       std::vector<std::vector<GlobalDeviceId>> participant_groups = {});
 
+  GpuCliqueKey(const GpuCliqueKey&) = default;
+  GpuCliqueKey& operator=(const GpuCliqueKey&) = default;
+
+  GpuCliqueKey(GpuCliqueKey&&) = default;
+  GpuCliqueKey& operator=(GpuCliqueKey&&) = default;
+
   CollectiveStreamId stream_id() const;
 
   // Returns true if this clique is a subset of `other`: both cliques have the

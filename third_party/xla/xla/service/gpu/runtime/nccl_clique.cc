@@ -112,42 +112,6 @@ static bool TerminateOnNcclError() {
 // NcclClique
 //===----------------------------------------------------------------------===//
 
-NcclCliqueCommunicators::NcclCliqueCommunicators(
-    GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
-    absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
-    : Clique(std::move(communicators)),
-      clique_key_(std::move(clique_key)),
-      clique_id_(std::move(clique_id)) {}
-
-bool NcclCliqueCommunicators::IsLocal() const {
-  return num_communicators() == clique_key_.devices().size();
-}
-
-std::string NcclCliqueCommunicators::DebugString() const {
-  std::string out = absl::StrFormat(
-      "clique_key: %s; fingerprint(id): %d; size: %d; communicators: ",
-      clique_key_.ToString(),
-      clique_id_.has_value() ? clique_id_->fingerprint() : 0,
-      num_communicators());
-  int32_t cnt = 0;
-  ForEachComm([&](RankId rank, Communicator* comm) {
-    if (cnt++) absl::StrAppend(&out, ", ");
-    absl::StrAppendFormat(&out, "[rank=%d, comm=%p]", rank.value(), comm);
-  });
-  return out;
-}
-
-absl::Status NcclCliqueCommunicators::HealthCheck() const {
-  absl::Status health_check = absl::OkStatus();
-  ForEachComm([&health_check](RankId rank, Communicator* comm) {
-    if (auto s = NcclApi::Default()->CommGetAsyncError(comm); !s.ok()) {
-      LOG(ERROR) << "NCCL async error (rank " << rank << "): " << s;
-      if (health_check.ok()) health_check = std::move(s);  // return first error
-    }
-  });
-  return health_check;
-}
-
 std::string NcclClique::DebugString() const {
   return absl::StrFormat("NcclClique: %s", value().DebugString());
 }
