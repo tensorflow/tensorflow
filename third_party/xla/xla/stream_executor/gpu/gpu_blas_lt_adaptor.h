@@ -81,8 +81,8 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
               stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
               beta, c, ldc, numeric_options, context, allocator.get());
         default:
-          LOG(ERROR) << "Not supported type by blaslt" << dtype
-                     << "fall back to blas";
+          LOG(ERROR) << "Not supported type by blaslt "
+                     << blas::DataTypeString(dtype) << " fall back to blas";
           return TBlasSupport::DoBlasGemm(stream, transa, transb, m, n, k,
                                           dtype, alpha, a, lda, b, ldb, beta, c,
                                           ldc, numeric_options, context);
@@ -201,8 +201,8 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
               stride_b, beta, c, ldc, stride_c, batch_count, numeric_options,
               context);
         default:
-          LOG(ERROR) << "Not supported type by blaslt" << dtype
-                     << "fall back to blas";
+          LOG(ERROR) << "Not supported type by blaslt "
+                     << blas::DataTypeString(dtype) << " fall back to blas";
           return TBlasSupport::DoBlasGemm(stream, transa, transb, m, n, k,
                                           dtype, alpha, a, lda, b, ldb, beta, c,
                                           ldc, numeric_options, context);
