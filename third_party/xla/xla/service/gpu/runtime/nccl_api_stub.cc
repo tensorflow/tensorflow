@@ -110,10 +110,6 @@ class NcclApiStub final : public NcclApi {
     return UnimplementedError();
   }
 
-  absl::Status CommGetAsyncError(Communicator*) final {
-    return UnimplementedError();
-  }
-
   absl::Status GroupStart() final { return UnimplementedError(); }
   absl::Status GroupEnd() final { return UnimplementedError(); }
 

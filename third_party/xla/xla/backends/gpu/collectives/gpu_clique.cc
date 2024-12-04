@@ -15,24 +15,52 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "absl/container/btree_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/clique.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "tsl/platform/logging.h"
 
 namespace xla::gpu {
 
 GpuClique::GpuClique(
-    GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
+    GpuCliqueKey key, std::optional<CliqueId> id,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
-    : Clique(std::move(communicators)),
-      clique_key_(clique_key),
-      clique_id_(clique_id) {}
+    : Clique(std::move(communicators)), key_(key), id_(id) {}
+
+std::string GpuClique::DebugString() const {
+  std::string out =
+      absl::StrFormat("key: %s; fingerprint(id): %d; size: %d; communicators: ",
+                      key_.ToString(), id_.has_value() ? id_->fingerprint() : 0,
+                      num_communicators());
+  int32_t cnt = 0;
+  ForEachComm([&](RankId rank, Communicator* comm) {
+    if (cnt++) absl::StrAppend(&out, ", ");
+    absl::StrAppendFormat(&out, "[rank=%d, comm=%p]", rank.value(), comm);
+  });
+  return out;
+}
+
+absl::Status GpuClique::HealthCheck() const {
+  absl::Status health_check = absl::OkStatus();
+  ForEachComm([&health_check](RankId rank, Communicator* comm) {
+    if (auto s = comm->HealthCheck(); !s.ok()) {
+      LOG(ERROR) << "GPU communicator error (rank " << rank << "): " << s;
+      if (health_check.ok()) health_check = std::move(s);  // return first error
+    }
+  });
+  return health_check;
+}
 
 }  // namespace xla::gpu

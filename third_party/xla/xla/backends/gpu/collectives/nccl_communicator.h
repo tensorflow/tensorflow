@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "xla/core/collectives/communicator.h"
 
 #if TENSORFLOW_USE_ROCM
@@ -38,6 +39,8 @@ class NcclCommunicator : public Communicator {
  public:
   explicit NcclCommunicator(ncclComm_t comm);
   ~NcclCommunicator() override;
+
+  absl::Status HealthCheck() const final;
 
   std::string ToString() const final;
 

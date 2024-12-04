@@ -307,8 +307,6 @@ class DefaultNcclApi final : public NcclApi {
 
   absl::StatusOr<int32_t> CommCount(Communicator* comm) final;
 
-  absl::Status CommGetAsyncError(Communicator* comm) final;
-
   absl::Status GroupStart() final;
   absl::Status GroupEnd() final;
 
@@ -498,18 +496,6 @@ absl::StatusOr<int32_t> DefaultNcclApi::CommCount(Communicator* comm) {
   int32_t count;
   XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(Cast(comm), &count));
   return count;
-}
-
-absl::Status DefaultNcclApi::CommGetAsyncError(Communicator* comm) {
-  VLOG(5) << "Get last async error for NCCL communicator: " << comm;
-
-  ncclResult_t async_err;
-  XLA_NCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(Cast(comm), &async_err));
-  if (async_err == ncclSuccess) return absl::OkStatus();
-
-  return absl::InternalError(absl::StrCat(
-      ncclGetErrorString(async_err),
-      ". Last NCCL error (maybe unrelated): ", ncclGetLastError(Cast(comm))));
 }
 
 absl::Status DefaultNcclApi::GroupStart() {
