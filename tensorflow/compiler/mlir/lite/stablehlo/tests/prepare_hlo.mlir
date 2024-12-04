@@ -551,10 +551,10 @@ func.func @conv1d_nsc_osi_nsc(%arg0: tensor<16x32x256xf32>, %arg1: tensor<256x1x
   func.return %0 : tensor<16x32x256xf32>
 }
 
-// CHECK: %[[RESHAPED_LHS:.*]] = "tfl.reshape"(%arg0
-// CHECK: %[[RESHAPED_RHS:.*]] = mhlo.reshape %arg1
+// CHECK: %[[RESHAPED_LHS:.*]] = "tfl.expand_dims"(%arg0
+// CHECK: %[[RESHAPED_RHS:.*]] = "tfl.expand_dims"(%arg1
 // CHECK: %[[CONV_OUT:.*]] = mhlo.convolution(%[[RESHAPED_LHS]], %[[RESHAPED_RHS]]) dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
-// CHECK: "tfl.reshape"(%[[CONV_OUT]]
+// CHECK: "tfl.squeeze"(%[[CONV_OUT]]
 
 // -----
 
@@ -573,11 +573,11 @@ func.func @conv1d_nsc_sio_nsc(%arg0: tensor<16x32x256xf32>, %arg1: tensor<1x256x
   func.return %0 : tensor<16x32x256xf32>
 }
 
-// CHECK: %[[RESHAPED_LHS:.*]] = "tfl.reshape"(%arg0
-// CHECK: %[[RESHAPED_RHS:.*]] = mhlo.reshape %arg1
+// CHECK: %[[RESHAPED_LHS:.*]] = "tfl.expand_dims"(%arg0
+// CHECK: %[[RESHAPED_RHS:.*]] = "tfl.expand_dims"(%arg1
 // CHECK: %[[TPOSED_RHS:.*]] = "mhlo.transpose"(%[[RESHAPED_RHS]]) <{permutation = dense<[3, 0, 1, 2]> : tensor<4xi64>}> : (tensor<1x1x256x256xf32>) -> tensor<256x1x1x256xf32>
 // CHECK: %[[CONV_OUT:.*]] = mhlo.convolution(%[[RESHAPED_LHS]], %[[TPOSED_RHS]]) dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
-// CHECK: "tfl.reshape"(%[[CONV_OUT]]
+// CHECK: "tfl.squeeze"(%[[CONV_OUT]]
 
 // -----
 
@@ -592,12 +592,12 @@ func.func @conv1d_ncs_osi_nsc_padded(%arg0: tensor<16x256x30xf32>, %arg1: tensor
   func.return %0 : tensor<16x32x256xf32>
 }
 
-// CHECK: %[[RESHAPED_LHS:.*]] = "tfl.reshape"(%arg0{{.*}}-> tensor<16x256x30x1xf32>
-// CHECK: %[[RESHAPED_RHS:.*]] = mhlo.reshape %arg1{{.*}}(tensor<256x1x256xf32>) -> tensor<256x1x1x256xf32>
+// CHECK: %[[RESHAPED_LHS:.*]] = "tfl.expand_dims"(%arg0{{.*}}-> tensor<16x256x30x1xf32>
+// CHECK: %[[RESHAPED_RHS:.*]] = "tfl.expand_dims"(%arg1{{.*}}-> tensor<256x1x1x256xf32>
 // CHECK: %[[TPOSED_LHS:.*]] = "mhlo.transpose"(%[[RESHAPED_LHS]]) <{permutation = dense<[0, 2, 3, 1]> : tensor<4xi64>}> : (tensor<16x256x30x1xf32>) -> tensor<16x30x1x256xf32>
-// CHECK: %[[PADDED_LHS:.*]] = "mhlo.pad"(%[[TPOSED_LHS]], %cst_0) <{edge_padding_high = dense<[0, 1, 0, 0]> : tensor<4xi64>, edge_padding_low = dense<[0, 1, 0, 0]> : tensor<4xi64>, interior_padding = dense<0> : tensor<4xi64>}> : (tensor<16x30x1x256xf32>, tensor<f32>) -> tensor<16x32x1x256xf32>
+// CHECK: %[[PADDED_LHS:.*]] = "mhlo.pad"(%[[TPOSED_LHS]], %cst) <{edge_padding_high = dense<[0, 1, 0, 0]> : tensor<4xi64>, edge_padding_low = dense<[0, 1, 0, 0]> : tensor<4xi64>, interior_padding = dense<0> : tensor<4xi64>}> : (tensor<16x30x1x256xf32>, tensor<f32>) -> tensor<16x32x1x256xf32>
 // CHECK: %[[CONV_OUT:.*]] = mhlo.convolution(%[[PADDED_LHS]], %[[RESHAPED_RHS]]) dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
-// CHECK: "tfl.reshape"(%[[CONV_OUT]]{{.*}}-> tensor<16x32x256xf32>
+// CHECK: "tfl.squeeze"(%[[CONV_OUT]]{{.*}}-> tensor<16x32x256xf32>
 
 // -----
 
@@ -612,12 +612,12 @@ func.func @conv1d_ncs_osi_nsc_padded_dynamic(%arg0: tensor<?x256x30xf32>, %arg1:
   func.return %0 : tensor<?x32x256xf32>
 }
 
-// CHECK: %[[RESHAPED_LHS:.*]] = "tfl.reshape"(%arg0{{.*}}-> tensor<?x256x30x1xf32>
-// CHECK: %[[RESHAPED_RHS:.*]] = mhlo.reshape %arg1{{.*}}(tensor<256x1x256xf32>) -> tensor<256x1x1x256xf32>
+// CHECK: %[[RESHAPED_LHS:.*]] = "tfl.expand_dims"(%arg0{{.*}}-> tensor<?x256x30x1xf32>
+// CHECK: %[[RESHAPED_RHS:.*]] = "tfl.expand_dims"(%arg1{{.*}}-> tensor<256x1x1x256xf32>
 // CHECK: %[[TPOSED_LHS:.*]] = "mhlo.transpose"(%[[RESHAPED_LHS]]) <{permutation = dense<[0, 2, 3, 1]> : tensor<4xi64>}> : (tensor<?x256x30x1xf32>) -> tensor<?x30x1x256xf32>
-// CHECK: %[[PADDED_LHS:.*]] = "mhlo.pad"(%[[TPOSED_LHS]], %cst_0) <{edge_padding_high = dense<[0, 1, 0, 0]> : tensor<4xi64>, edge_padding_low = dense<[0, 1, 0, 0]> : tensor<4xi64>, interior_padding = dense<0> : tensor<4xi64>}> : (tensor<?x30x1x256xf32>, tensor<f32>) -> tensor<?x32x1x256xf32>
+// CHECK: %[[PADDED_LHS:.*]] = "mhlo.pad"(%[[TPOSED_LHS]], %cst) <{edge_padding_high = dense<[0, 1, 0, 0]> : tensor<4xi64>, edge_padding_low = dense<[0, 1, 0, 0]> : tensor<4xi64>, interior_padding = dense<0> : tensor<4xi64>}> : (tensor<?x30x1x256xf32>, tensor<f32>) -> tensor<?x32x1x256xf32>
 // CHECK: %[[CONV_OUT:.*]] = mhlo.convolution(%[[PADDED_LHS]], %[[RESHAPED_RHS]]) dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
-// CHECK: "tfl.reshape"(%[[CONV_OUT]]{{.*}}-> tensor<?x32x256xf32>
+// CHECK: "tfl.squeeze"(%[[CONV_OUT]]{{.*}}-> tensor<?x32x256xf32>
 
 // -----
 
