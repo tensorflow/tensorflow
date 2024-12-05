@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_executor.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -26,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -442,18 +444,21 @@ bool IsEccEnabled(CUdevice device, bool* result) {
 }
 
 std::string GetPCIBusID(CUdevice device) {
-  std::string pci_bus_id;
-  static const int kBufferSize = 64;
-  absl::InlinedVector<char, 4> chars(kBufferSize);
-  chars[kBufferSize - 1] = '\0';
-  auto status = cuda::ToStatus(
-      cuDeviceGetPCIBusId(chars.begin(), kBufferSize - 1, device));
+  // PCI bus id is of the format [domain]:[bus]:[device].[function], and is 13
+  // characters long in practice.
+  constexpr int kBufferSize = 64;
+  std::array<char, kBufferSize> raw_pci_bus_id{};
+  absl::Status status = cuda::ToStatus(
+      cuDeviceGetPCIBusId(raw_pci_bus_id.data(), kBufferSize, device));
   if (!status.ok()) {
     LOG(ERROR) << "failed to query PCI bus id for device: " << status;
-    return pci_bus_id;
+    return "";
   }
-  pci_bus_id = std::string(chars.begin(), kBufferSize - 1);
-  return pci_bus_id;
+  if (!absl::c_linear_search(raw_pci_bus_id, '\0')) {
+    LOG(ERROR) << "PCI bus id is not null terminated.";
+    return "";
+  }
+  return std::string(raw_pci_bus_id.data());
 }
 
 // Allocates memory on the GPU device.
