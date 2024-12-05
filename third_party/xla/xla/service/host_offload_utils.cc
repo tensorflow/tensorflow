@@ -204,6 +204,9 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
     HloComputation* while_body_computation = instruction->while_body();
     result.push_back({while_body_computation->root_instruction(),
                       instruction_and_shape_index.shape_index});
+  } else if (instruction->opcode() == HloOpcode::kPad) {
+    result.push_back({instruction->mutable_operand(0),
+                      instruction_and_shape_index.shape_index});
   } else {
     CHECK(instruction->operand_count() == 1) << absl::StreamFormat(
         "Expecting instruction %s to have 1 operand, but it has %d.",
