@@ -118,10 +118,10 @@ bool EqualsFbTensorType(const TensorType& litert_tensor_type,
 // Compare litert op to flatbuffer op along with their input/output tensors
 // types and quantization. Takes a callback to lookup tfl tensors the indices
 // within the tfl op.
-bool EqualsFbOp(const Op& litert_op, const TflOp& tfl_op,
+bool EqualsFbOp(const LiteRtOpT& litert_op, const TflOp& tfl_op,
                 GetTflTensor get_tfl_tensor) {
-  auto litert_inputs = litert_op.Inputs();
-  auto litert_outputs = litert_op.Outputs();
+  const auto& litert_inputs = litert_op.inputs;
+  const auto& litert_outputs = litert_op.outputs;
 
   auto check_tensors = [&](auto& litert_tensors, auto& tfl_tensors) {
     if (litert_tensors.size() != tfl_tensors.size()) {
@@ -131,7 +131,7 @@ bool EqualsFbOp(const Op& litert_op, const TflOp& tfl_op,
 
     for (auto i = 0; i < litert_tensors.size(); ++i) {
       const auto& fb_tensor = get_tfl_tensor(tfl_tensors.at(i)).get();
-      const auto& litert_tensor = *litert_tensors.at(i).Get();
+      const auto& litert_tensor = *litert_tensors.at(i);
 
       if (!EqualsFbTensorType(
               {litert_tensor.type_id, litert_tensor.type_detail},

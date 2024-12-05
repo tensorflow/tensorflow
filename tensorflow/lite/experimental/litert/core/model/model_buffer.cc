@@ -31,7 +31,6 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
@@ -42,12 +41,11 @@ namespace litert {
 namespace internal {
 
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
-    Model&& model, BufferRef<uint8_t> npu_byte_code) {
-  LiteRtModelT& internal_model = *model.Get();
-  LITERT_EXPECT_OK(internal_model.PushMetadata(kByteCodeMetadataKey,
-                                               MakeByteCodePlaceholder()));
+    LiteRtModelT&& model, BufferRef<uint8_t> npu_byte_code) {
+  LITERT_EXPECT_OK(
+      model.PushMetadata(kByteCodeMetadataKey, MakeByteCodePlaceholder()));
 
-  for (auto& subgraph : internal_model.subgraphs) {
+  for (auto& subgraph : model.subgraphs) {
     for (auto& op : subgraph.ops) {
       if (op->op_code != kLiteRtOpCodeTflCustom) {
         continue;
@@ -61,7 +59,7 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     }
   }
 
-  internal_model.custom_op_code = kLiteRtDispatchOpCustomCode;
+  model.custom_op_code = kLiteRtDispatchOpCustomCode;
 
   auto serialized = SerializeModel(std::move(model));
   if (!serialized) {
@@ -94,7 +92,7 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     return npu_file_buf.Error();
   }
 
-  return GetModelBufWithByteCode(std::move(*model), std::move(*npu_file_buf));
+  return GetModelBufWithByteCode(std::move(**model), std::move(*npu_file_buf));
 }
 
 }  // namespace internal

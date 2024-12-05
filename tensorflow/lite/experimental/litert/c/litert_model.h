@@ -20,6 +20,7 @@
 
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 
 #ifdef __cplusplus
@@ -90,22 +91,6 @@ typedef enum {
   kLiteRtElementTypeTfString = kTfLiteString,
   kLiteRtElementTypeTfVariant = kTfLiteVariant,
 } LiteRtElementType;
-
-// Max number of dimensions in any ranked tensor type.
-#define LITERT_TENSOR_MAX_RANK 8
-
-// The shape information for tensor types of fixed rank.
-typedef struct {
-  // The number of dimensions.
-  uint32_t rank;
-
-  // Dimension sizes, array of length `rank`. Dynamic dimensions are anything
-  // less than 0. Everything from [rank, LITERT_MAX_RANK) is undefined.
-  int32_t dimensions[LITERT_TENSOR_MAX_RANK];
-
-  // Strides for a nomimal NWHC layout. NULL if unused.
-  const uint32_t* strides;
-} LiteRtLayout;
 
 // Tensor whose rank is dynamic.
 typedef struct {
@@ -291,6 +276,11 @@ LiteRtStatus LiteRtGetSignatureOutputName(LiteRtSignature signature,
 //
 // LiteRtModel
 //
+
+LiteRtStatus LiteRtLoadModelFromFile(const char* filename, LiteRtModel* model);
+
+LiteRtStatus LiteRtLoadModelFromBuffer(const void* buffer_addr,
+                                       size_t buffer_size, LiteRtModel* model);
 
 // Get the metadata buffer associated with given key if it exists.
 LiteRtStatus LiteRtGetModelMetadata(LiteRtModel model, const char* metadata_key,

@@ -27,9 +27,9 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
-#include "tensorflow/lite/experimental/litert/core/model/model_load.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
 namespace litert::tools {
@@ -37,7 +37,6 @@ namespace {
 
 using ::litert::internal::kByteCodeMetadataKey;
 using ::litert::internal::kLiteRtBuildStampKey;
-using ::litert::internal::LoadModelFromMemory;
 using ::litert::internal::ParseBuildStamp;
 using ::litert::internal::ParseByteCodePlaceholder;
 using ::litert::internal::ParseExecInfo;
@@ -104,7 +103,7 @@ TEST(TestApplyPluginTool, TestNoop) {
   run->outs.push_back(out);
   LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  auto model = LoadModelFromMemory(
+  auto model = Model::LoadFromBuffer(
       BufferRef<uint8_t>(out.view().data(), out.view().size()));
   EXPECT_EQ(model->Get()->subgraphs.size(), 1);
 }
@@ -153,7 +152,7 @@ TEST(TestApplyPluginTool, TestApply) {
   run->outs.push_back(out);
   LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  auto model = LoadModelFromMemory(
+  auto model = Model::LoadFromBuffer(
       BufferRef<uint8_t>(out.str().data(), out.str().size()));
   EXPECT_EQ(model->Get()->subgraphs.size(), 1);
 
@@ -194,7 +193,7 @@ TEST(TestApplyPluginTool, TestApplyWithAppendSerialization) {
 
   BufferRef<uint8_t> serialized(out.str().data(), out.str().size());
 
-  auto model = LoadModelFromMemory(serialized);
+  auto model = Model::LoadFromBuffer(serialized);
   EXPECT_EQ(model->Get()->subgraphs.size(), 1);
 
   {

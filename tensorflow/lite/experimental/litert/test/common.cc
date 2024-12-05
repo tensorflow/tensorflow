@@ -25,7 +25,6 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
-#include "tensorflow/lite/experimental/litert/core/model/model_load.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -47,8 +46,7 @@ std::string GetTestFilePath(absl::string_view filename) {
 }
 
 Model LoadTestFileModel(absl::string_view filename) {
-  auto model = internal::LoadModelFromFile(GetTestFilePath(filename));
-  return std::move(model.Value());
+  return *Model::LoadFromFile(GetTestFilePath(filename));
 }
 
 bool ValidateTopology(const std::vector<Op>& ops) {

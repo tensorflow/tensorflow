@@ -29,6 +29,7 @@
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -356,6 +357,25 @@ class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
 
   static Model CreateFromNonOwnedHandle(LiteRtModel model) {
     return Model(model, /*owned=*/false);
+  }
+
+  static Expected<Model> LoadFromFile(const std::string& filename) {
+    LiteRtModel model;
+    if (auto status = LiteRtLoadModelFromFile(filename.c_str(), &model);
+        status != kLiteRtStatusOk) {
+      return Unexpected(status, "Failed to load model from file");
+    }
+    return CreateFromOwnedHandle(model);
+  }
+
+  static Expected<Model> LoadFromBuffer(BufferRef<uint8_t> buffer) {
+    LiteRtModel model;
+    if (auto status =
+            LiteRtLoadModelFromBuffer(buffer.Data(), buffer.Size(), &model);
+        status != kLiteRtStatusOk) {
+      return Unexpected(status, "Failed to load model from buffer");
+    }
+    return CreateFromOwnedHandle(model);
   }
 
   Expected<absl::Span<const uint8_t>> Metadata(

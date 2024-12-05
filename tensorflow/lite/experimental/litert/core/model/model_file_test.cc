@@ -57,7 +57,7 @@ Model LoadModelThroughRoundTrip(std::string_view path) {
   // Reload model.
   LiteRtModel result = nullptr;
   LITERT_CHECK_STATUS_OK(
-      LiteRtLoadModelFromMemory(buf.Data(), buf.Size(), &result));
+      LiteRtLoadModelFromBuffer(buf.Data(), buf.Size(), &result));
 
   return Model::CreateFromOwnedHandle(result);
 }
@@ -124,8 +124,8 @@ TEST(TestSerializeModel, TestMetadata) {
   auto serialized = SerializeModel(std::move(model));
   EXPECT_TRUE(VerifyFlatbuffer(serialized->Span()));
 
-  auto re_loaded = LoadModelFromMemory(*serialized);
-  auto metadata = re_loaded->Get()->FindMetadata(kMetadataName);
+  auto re_loaded = LoadModelFromBuffer(*serialized);
+  auto metadata = re_loaded->get()->FindMetadata(kMetadataName);
   EXPECT_EQ(metadata->StrView(), kMetadataData);
 }
 
@@ -272,8 +272,8 @@ TEST_P(ModelLoadOpCheckTest, CheckOps) {
   auto model = LoadModelFromFile(model_path);
   ASSERT_TRUE(model);
 
-  const auto subgraph = model->MainSubgraph();
-  const auto ops = subgraph->Ops();
+  const auto& subgraph = model->get()->MainSubgraph();
+  const auto& ops = subgraph.ops;
 
   const auto& fb_subgraph =
       *expected_fb->get()->UnpackedModel().subgraphs.front();
@@ -287,8 +287,8 @@ TEST_P(ModelLoadOpCheckTest, CheckOps) {
   };
 
   for (auto i = 0; i < ops.size(); ++i) {
-    Dump(*ops.at(i).Get());
-    ASSERT_TRUE(EqualsFbOp(ops.at(i), *fb_ops.at(i), get_tfl_tensor));
+    Dump(*ops.at(i));
+    ASSERT_TRUE(EqualsFbOp(*ops.at(i), *fb_ops.at(i), get_tfl_tensor));
   }
 }
 
@@ -311,7 +311,10 @@ TEST_P(ModelSerializeOpCheckTest, CheckOps) {
   auto expected_fb = FlatbufferWrapper::CreateFromTflFile(model_path);
   ASSERT_TRUE(expected_fb);
 
-  auto serialized = SerializeModel(*LoadModelFromFile(model_path));
+  auto model = LoadModelFromFile(model_path);
+  ASSERT_TRUE(model);
+
+  auto serialized = SerializeModel(std::move(**model));
   auto actual_fb = FlatbufferWrapper::CreateFromBuffer(*serialized);
   ASSERT_TRUE(actual_fb);
 

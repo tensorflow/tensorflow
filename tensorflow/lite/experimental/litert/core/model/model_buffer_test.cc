@@ -62,9 +62,9 @@ TEST(GetModelBufWithByteCode, CheckMetadata) {
                               testing::GetTestFilePath(kNpuFile));
   ASSERT_TRUE(model_with_byte_code);
 
-  auto model = LoadModelFromMemory(*model_with_byte_code);
+  auto model = LoadModelFromBuffer(*model_with_byte_code);
 
-  auto byte_code_buffer = model->Get()->FindMetadata(kByteCodeMetadataKey);
+  auto byte_code_buffer = model->get()->FindMetadata(kByteCodeMetadataKey);
   ASSERT_TRUE(byte_code_buffer);
 }
 

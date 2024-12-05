@@ -18,7 +18,7 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/core/model/model.h"
 
 namespace litert::internal {
 
@@ -30,7 +30,7 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
 
 // Same as above but takes in litert model and npu byte_code in memory.
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
-    Model&& model, BufferRef<uint8_t> npu_byte_code);
+    LiteRtModelT&& model, BufferRef<uint8_t> npu_byte_code);
 
 }  // namespace litert::internal
 

@@ -65,7 +65,6 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/core:filesystem",
         "//tensorflow/lite/experimental/litert/core/model:model_buffer",
-        "//tensorflow/lite/experimental/litert/core/model:model_load",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/strings:string_view",

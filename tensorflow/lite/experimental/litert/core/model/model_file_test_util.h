@@ -38,7 +38,7 @@ bool EqualsFbTensorType(const TensorType& litert_tensor_type,
 // Compare litert op to flatbuffer op along with their input/output tensors
 // types and quantization. Takes a callback to lookup tfl tensors the indices
 // within the tfl op.
-bool EqualsFbOp(const Op& litert_op, const TflOp& tfl_op,
+bool EqualsFbOp(const LiteRtOpT& litert_op, const TflOp& tfl_op,
                 GetTflTensor get_tfl_tensor);
 
 }  // namespace litert::internal

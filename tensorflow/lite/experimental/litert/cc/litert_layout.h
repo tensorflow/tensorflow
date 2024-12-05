@@ -22,7 +22,7 @@
 #include <optional>
 
 #include "absl/types/span.h"
-#include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/c/litert_layout.h"
 
 namespace litert {
 

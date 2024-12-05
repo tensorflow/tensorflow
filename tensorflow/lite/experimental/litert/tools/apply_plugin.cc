@@ -37,7 +37,6 @@
 #include "tensorflow/lite/experimental/litert/compiler/plugin/algo.h"
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
-#include "tensorflow/lite/experimental/litert/core/model/model_load.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
@@ -54,7 +53,6 @@ using ::litert::internal::GroupPartitions;
 using ::litert::internal::kByteCodeMetadataKey;
 using ::litert::internal::kLiteRtBuildStampKey;
 using ::litert::internal::kLiteRtDispatchOpCustomCode;
-using ::litert::internal::LoadModelFromFile;
 using ::litert::internal::MakeBuildStamp;
 using ::litert::internal::MakeByteCodePlaceholder;
 using ::litert::internal::MakeExecInfo;
@@ -191,7 +189,7 @@ Expected<Model> LoadModel(Context& ctx) {
   ctx.Dump().Start("Load Model");
   ctx.Dump().Labeled() << absl::StreamFormat("Loading model from: %s\n",
                                              ctx.Run().model.value());
-  auto model_result = LoadModelFromFile(ctx.Run().model->data());
+  auto model_result = Model::LoadFromFile(ctx.Run().model->data());
   if (!model_result.HasValue()) {
     ctx.Dump().Labeled() << "Failed to load model from file.";
     ctx.Dump().Fail();

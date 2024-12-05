@@ -40,6 +40,7 @@ cc_library(
     srcs = ["litert_model.cc"],
     hdrs = ["litert_model.h"],
     deps = [
+        ":litert_buffer_ref",
         ":litert_detail",
         ":litert_element_type",
         ":litert_expected",
@@ -253,7 +254,7 @@ cc_library(
     name = "litert_layout",
     hdrs = ["litert_layout.h"],
     deps = [
-        "//tensorflow/lite/experimental/litert/c:litert_model",
+        "//tensorflow/lite/experimental/litert/c:litert_layout",
         "@com_google_absl//absl/types:span",
     ],
 )

@@ -49,16 +49,31 @@ cc_test(
 )
 
 cc_library(
-    name = "litert_model",
-    srcs = ["litert_model.cc"],
-    hdrs = ["litert_model.h"],
+    name = "litert_layout",
+    hdrs = ["litert_layout.h"],
     deps = [
         ":litert_common",
         ":litert_op_code",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "litert_model",
+    srcs = ["litert_model.cc"],
+    hdrs = ["litert_model.h"],
+    deps = [
+        ":litert_common",
+        ":litert_layout",
+        ":litert_op_code",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
+        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core/model",
+        "//tensorflow/lite/experimental/litert/core/model:model_load",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings:string_view",
     ],
