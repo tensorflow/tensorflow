@@ -75,13 +75,13 @@ class MockQueueRunner : public RunnerInterface {
         std::bind(&MockQueueRunner::CountThread, this, counter, until, start));
   }
 
-  void StartSettingStatus(const Status& status, BlockingCounter* counter,
+  void StartSettingStatus(const absl::Status& status, BlockingCounter* counter,
                           Notification* start) {
     thread_pool_->Schedule(std::bind(&MockQueueRunner::SetStatusThread, this,
                                      status, counter, start));
   }
 
-  Status Join() override {
+  absl::Status Join() override {
     if (join_counter_ != nullptr) {
       (*join_counter_)++;
     }
@@ -89,9 +89,9 @@ class MockQueueRunner : public RunnerInterface {
     return status_;
   }
 
-  Status GetStatus() { return status_; }
+  absl::Status GetStatus() { return status_; }
 
-  void SetStatus(const Status& status) { status_ = status; }
+  void SetStatus(const absl::Status& status) { status_ = status; }
 
   bool IsRunning() const override { return !stopped_; };
 
@@ -106,14 +106,14 @@ class MockQueueRunner : public RunnerInterface {
     }
     coord_->RequestStop().IgnoreError();
   }
-  void SetStatusThread(const Status& status, BlockingCounter* counter,
+  void SetStatusThread(const absl::Status& status, BlockingCounter* counter,
                        Notification* start) {
     start->WaitForNotification();
     SetStatus(status);
     counter->DecrementCount();
   }
   std::unique_ptr<thread::ThreadPool> thread_pool_;
-  Status status_;
+  absl::Status status_;
   Coordinator* coord_;
   int* join_counter_;
   bool stopped_;
@@ -181,18 +181,18 @@ TEST(CoordinatorTest, StatusReporting) {
   BlockingCounter counter(3);
 
   std::unique_ptr<MockQueueRunner> qr1(new MockQueueRunner(&coord));
-  qr1->StartSettingStatus(Status(absl::StatusCode::kCancelled, ""), &counter,
-                          &start);
+  qr1->StartSettingStatus(absl::Status(absl::StatusCode::kCancelled, ""),
+                          &counter, &start);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr1)));
 
   std::unique_ptr<MockQueueRunner> qr2(new MockQueueRunner(&coord));
-  qr2->StartSettingStatus(Status(absl::StatusCode::kInvalidArgument, ""),
+  qr2->StartSettingStatus(absl::Status(absl::StatusCode::kInvalidArgument, ""),
                           &counter, &start);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr2)));
 
   std::unique_ptr<MockQueueRunner> qr3(new MockQueueRunner(&coord));
-  qr3->StartSettingStatus(Status(absl::StatusCode::kOutOfRange, ""), &counter,
-                          &start);
+  qr3->StartSettingStatus(absl::Status(absl::StatusCode::kOutOfRange, ""),
+                          &counter, &start);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr3)));
 
   start.Notify();
