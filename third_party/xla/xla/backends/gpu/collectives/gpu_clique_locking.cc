@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/runtime/nccl_clique.h"
+#include "xla/backends/gpu/collectives/gpu_clique_locking.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -38,20 +38,18 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/core/collectives/clique.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
-#include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/lockable.h"
 #include "xla/service/rendezvous.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
@@ -63,11 +61,11 @@ limitations under the License.
 namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
-// NcclClique Acquire and Initialization Timeouts
+// GpuClique Acquire and Initialization Timeouts
 //===----------------------------------------------------------------------===//
 
 // We rely on rendezvous (all participating threads arriving to a rendezvous
-// barrier at the same time) to guarantee that NCCL communicators used in a way
+// barrier at the same time) to guarantee that GPU communicators used in a way
 // that does not lead to a deadlock. This itself can create new deadlocks if
 // thread pools sized incorrectly. To prevent hard to debug deadlocks with WARN
 // and terminate when detect that rendezvous runs for too long.
@@ -82,30 +80,30 @@ static absl::Duration TerminateTimeout() {
                                   : absl::InfiniteDuration();
 }
 
-static bool TerminateOnNcclError() {
+static bool TerminateOnCollectivesError() {
   return xla::GetDebugOptionsFromFlags().xla_gpu_nccl_terminate_on_error();
 }
 
 //===----------------------------------------------------------------------===//
-// NcclClique
+// ProcessGpuCliques
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Container for initialized and ready to use local (in-process) NCCL cliques.
-struct NcclCliques {
+// Container for initialized and ready to use local (in-process) GPU cliques.
+struct ProcessGpuCliques {
   absl::Mutex mu;
-  absl::node_hash_map<GpuCliqueKey, NcclClique> map ABSL_GUARDED_BY(mu);
+  absl::node_hash_map<GpuCliqueKey, LockableGpuClique> map ABSL_GUARDED_BY(mu);
 };
 }  // namespace
 
-// Returns local (in-process) NcclCliques container.
-static NcclCliques& GetNcclCliques() {
-  static auto* cliques = new NcclCliques;
+// Returns process-local GPU cliques.
+static ProcessGpuCliques& GetProcessGpuCliques() {
+  static auto* cliques = new ProcessGpuCliques;
   return *cliques;
 }
 
 //===----------------------------------------------------------------------===//
-// NcclClique Heart Beat Monitor
+// GpuClique Heart Beat Monitor
 //===----------------------------------------------------------------------===//
 
 // Runs an async error check for a `comm` and aborts it if it is in the
@@ -123,35 +121,36 @@ static absl::Status CheckComm(Communicator* comm) {
 
 // Runs async check on all communicators in a clique.
 static void CheckClique(const GpuCliqueKey& clique_key,
-                        NcclClique& lockable_clique) {
-  if (TerminateOnNcclError()) {
+                        LockableGpuClique& lockable_clique) {
+  if (TerminateOnCollectivesError()) {
     absl::Status status = lockable_clique.HealthCheck();
     if (!status.ok()) {
-      LOG(FATAL) << "Terminating process due to async NCCL error: " << status;
+      LOG(FATAL) << "Terminating process due to async GPU clique error: "
+                 << status;
     }
     return;
   }
-  if (NcclClique::Lock clique = lockable_clique.TryAcquire()) {
-    VLOG(5) << "Checking NCCL clique " << clique_key.ToString()
+  if (LockableGpuClique::Lock clique = lockable_clique.TryAcquire()) {
+    VLOG(5) << "Checking GPU clique " << clique_key.ToString()
             << " for async errors; num_communicators="
             << clique->num_communicators();
     clique->ForEachComm([](RankId rank, Communicator* comm) {
       if (auto status = CheckComm(comm); !status.ok()) LOG(ERROR) << status;
     });
   } else {
-    VLOG(5) << "Skip checking in-use NCCL clique " << clique_key.ToString();
+    VLOG(5) << "Skip checking in-use GPU clique " << clique_key.ToString();
   }
 }
 
 // TODO(ezhulenev): We need a mechanism to destroy whole clique when one of the
 // communicators is aborted to be able to recover from errors.
-static void NcclCliqueHeartBeatMonitorThread() {
-  VLOG(5) << "Starting NCCL clique heart beat monitor";
+static void GpuCliqueHeartBeatMonitorThread() {
+  VLOG(5) << "Starting GPU cliques heart beat monitor";
   while (true) {
     absl::SleepFor(absl::Seconds(30));
-    NcclCliques& cliques = GetNcclCliques();
+    ProcessGpuCliques& cliques = GetProcessGpuCliques();
     absl::MutexLock lock(&cliques.mu);
-    VLOG(5) << "Checking NCCL communicators for async errors"
+    VLOG(5) << "Checking GPU communicators for errors"
             << "; num_cliques=" << cliques.map.size();
     for (auto& [clique_key, lockable_clique] : cliques.map) {
       CheckClique(clique_key, lockable_clique);
@@ -159,20 +158,20 @@ static void NcclCliqueHeartBeatMonitorThread() {
   }
 }
 
-static void StartNcclCliqueHeartBeatMonitor() {
+static void StartGpuCliqueHeartBeatMonitor() {
   static auto* monitor_thread = tsl::Env::Default()->StartThread(
-      tsl::ThreadOptions(), "nccl_clique_heart_beat_monitor",
-      NcclCliqueHeartBeatMonitorThread);
+      tsl::ThreadOptions(), "gpu_clique_heart_beat_monitor",
+      GpuCliqueHeartBeatMonitorThread);
   (void)monitor_thread;  // suppress unused variable warning
 }
 
 //===----------------------------------------------------------------------===//
-// NcclClique Initialization
+// GpuClique Initialization
 //===----------------------------------------------------------------------===//
 
-// NcclClique initialization must be executed together by all participants, and
+// GpuClique initialization must be executed together by all participants, and
 // we rely on rendezvous to guarantee that all ranks are ready to initialize
-// NCCL communicators. In general collective operations are expected to be
+// GPU communicators. In general collective operations are expected to be
 // executed concurrently by all participating ranks, and when some ranks do not
 // join the operation it  leads to deadlocks. We use a combination of rendezvous
 // and locking to guarantee that all collective operations in XLA have a well
@@ -185,35 +184,37 @@ static auto DeviceRanksToString(absl::Span<const NcclApi::DeviceRank> ranks) {
   });
 }
 
-// Joins a NcclClique initialization rendezvous for a `clique_key` and returns
+// Joins a GpuClique initialization rendezvous for a `clique_key` and returns
 // a lock that gives an access to initialized clique (access is shared between
 // all participating ranks that own a shared pointer).
-static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
-    se::StreamExecutor* device, RunId run_id, GpuCliqueKey clique_key,
-    const CliqueIdCallback& clique_id_callback, int32_t num_local_participants,
-    RankId rank, NcclApi::Config& config) {
+static absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>>
+InitializeGpuClique(NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
+                    const GpuCliqueKey& clique_key,
+                    const GpuCollectives::CliqueIdCallback& clique_id_callback,
+                    int32_t num_local_participants, RankId rank,
+                    NcclApi::Config& config) {
   int nranks = clique_key.devices().size();
-  VLOG(3) << "Initialize NCCL clique " << clique_key.ToString() << " rank #"
+  VLOG(3) << "Initialize GPU clique " << clique_key.ToString() << " rank #"
           << rank << "; num_local_participants=" << num_local_participants;
 
-  // Start NCCL clique heart beat monitor when create a first clique.
-  StartNcclCliqueHeartBeatMonitor();
+  // Start GPU clique heart beat monitor when create a first clique.
+  StartGpuCliqueHeartBeatMonitor();
 
   using RendezvousArg = std::pair<NcclApi::DeviceRank, /*synchronized=*/bool>;
 
-  // Initializes a NcclClique for given device ranks and returns a lock that
+  // Initializes a GpuClique for given device ranks and returns a lock that
   // gives access to clique communicators.
   auto initialize = [&](absl::Span<const RendezvousArg* const> args)
-      -> absl::StatusOr<NcclClique::Lock> {
+      -> absl::StatusOr<LockableGpuClique::Lock> {
     TF_ASSIGN_OR_RETURN(auto clique_id, clique_id_callback(clique_key));
 
     // Check that all ranks successfully synchronized device activity before
-    // trying to instantiate NCCL communicators.
+    // trying to instantiate GPU communicators.
     for (const RendezvousArg* arg : args) {
       if (auto& [device_rank, synchronized] = *arg; !synchronized) {
         return Internal(
             "Failed to synchronize device activity on rank %d. Do not attempt "
-            "to initialize NCCL clique.",
+            "to initialize GPU clique.",
             device_rank.rank.value());
       }
     }
@@ -222,19 +223,18 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
     ranks.reserve(args.size());
     for (auto* arg : args) ranks.emplace_back(arg->first);
 
-    // Sort device ranks, mainly to get more readable logs below, NCCL does
-    // not care in what order ranks are initialized.
+    // Sort device ranks, mainly to get more readable logs below.
     absl::c_sort(ranks, [](auto& a, auto& b) { return a.rank < b.rank; });
 
     VLOG(3) << absl::StreamFormat(
-        "Create NCCL communicators for clique %s; ranks=[%s]; "
+        "Create GPU communicators for clique %s; ranks=[%s]; "
         "fingerprint(id)=%d",
         clique_key.ToString(), DeviceRanksToString(ranks),
         clique_id.fingerprint());
 
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<Communicator>> created_comms,
-        NcclApi::Default()->CommInitRanks(nranks, clique_id, ranks, config));
+        nccl_api->CommInitRanks(nranks, clique_id, ranks, config));
 
     absl::btree_map<RankId, std::unique_ptr<Communicator>> comms;
     for (size_t i = 0; i < ranks.size(); ++i) {
@@ -242,12 +242,12 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
     }
 
     VLOG(3) << absl::StreamFormat(
-        "Created NCCL communicators for clique %s; ranks=[%s]; "
+        "Created GPU communicators for clique %s; ranks=[%s]; "
         "fingerprint(id)=%d",
         clique_key.ToString(), DeviceRanksToString(ranks),
         clique_id.fingerprint());
 
-    NcclCliques& cliques = GetNcclCliques();
+    ProcessGpuCliques& cliques = GetProcessGpuCliques();
     absl::MutexLock lock(&cliques.mu);
 
     // Create a new clique with given clique key and communicators.
@@ -286,13 +286,13 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
   // processes are not able to synchronize device activity.
   RendezvousArg rendezvous_arg = std::make_pair(device_rank, synchronized);
 
-  return RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
+  return RendezvousSingle<absl::StatusOr<LockableGpuClique::Lock>>(
       initialization_rendezvous_name, rendezvous_key, rendezvous_arg,
       num_local_participants, initialize, WarnStuckTimeout(),
       TerminateTimeout());
 }
 
-// Computes a unique NCCL communicator split color from a clique key. We use a
+// Computes a unique GPU communicator split color from a clique key. We use a
 // deterministic hash function to guarantee that all participating processes get
 // the same color value for a clique.
 static int32_t GetCommSplitColor(const GpuCliqueKey& clique_key) {
@@ -308,20 +308,22 @@ static int32_t GetCommSplitColor(const GpuCliqueKey& clique_key) {
                   sizeof(int64_t) * global_device_ids.size(), 0)));
 }
 
-// Joins a NcclClique initialization rendezvous for a `clique_key` and returns
+// Joins a GpuClique initialization rendezvous for a `clique_key` and returns
 // a lock that gives an access to clique created by splitting already acquired
 // `parent_clique` clique (access is shared between all participating ranks that
 // own a shared pointer).
-static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
-    se::StreamExecutor* device, RunId run_id, GpuCliqueKey clique_key,
-    std::shared_ptr<NcclClique::Lock> parent_clique,
-    int32_t num_local_participants, RankId rank, NcclApi::Config& config) {
+static absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>>
+InitializeGpuClique(NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
+                    const GpuCliqueKey& clique_key,
+                    std::shared_ptr<LockableGpuClique::Lock> parent_clique,
+                    int32_t num_local_participants, RankId rank,
+                    NcclApi::Config& config) {
   // Find our rank in the parent clique.
   const GpuCliqueKey& parent_clique_key = (*parent_clique)->key();
   RankId parent_rank =
       *parent_clique_key.rank(clique_key.devices()[rank.value()]);
 
-  VLOG(3) << "Initialize NCCL clique " << clique_key.ToString() << " rank #"
+  VLOG(3) << "Initialize GPU clique " << clique_key.ToString() << " rank #"
           << rank << " by splitting rank #" << parent_rank.value()
           << " in parent clique " << parent_clique_key.ToString()
           << "; num_local_participants=" << num_local_participants;
@@ -336,12 +338,12 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
   // and each communicator in the parent clique will become a member of exactly
   // one new clique. Clique splitting happens concurrently for multiple
   // non-overlapping clique and this guarantees forward progress even with
-  // implicit synchronization inside NCCL.
+  // implicit synchronization inside GPU collectives (i.e. NCCL).
 
-  // Initializes a NcclClique for given device ranks and returns a lock that
+  // Initializes a GpuClique for given device ranks and returns a lock that
   // gives access to clique communicators.
   auto split = [&](absl::Span<const RankPair* const> rank_pairs)
-      -> absl::StatusOr<NcclClique::Lock> {
+      -> absl::StatusOr<LockableGpuClique::Lock> {
     // Collect mapping from ranks in parent clique to ranks in a new clique.
     absl::btree_map<RankId, RankId> rank_mapping;
     for (auto* rank_pair : rank_pairs) {
@@ -373,14 +375,13 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
     int32_t color = GetCommSplitColor(clique_key);
 
     VLOG(3) << absl::StreamFormat(
-        "Create NCCL communicators for clique %s; parent=%s; color=%d; "
+        "Create GPU communicators for clique %s; parent=%s; color=%d; "
         "rank_mapping=[%s]",
         clique_key.ToString(), parent_clique_key.ToString(), color,
         absl::StrJoin(rank_mapping, ",", rank_mapping_formatter));
 
-    TF_ASSIGN_OR_RETURN(
-        auto splitted_comms,
-        NcclApi::Default()->CommSplit(parent_comms, color, keys, config));
+    TF_ASSIGN_OR_RETURN(auto splitted_comms,
+                        nccl_api->CommSplit(parent_comms, color, keys, config));
 
     absl::btree_map<RankId, std::unique_ptr<Communicator>> comms;
     for (size_t i = 0; i < splitted_comms.size(); ++i) {
@@ -388,12 +389,12 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
     }
 
     VLOG(3) << absl::StreamFormat(
-        "Created NCCL communicators for clique %s; parent=%s; color=%d; "
+        "Created GPU communicators for clique %s; parent=%s; color=%d; "
         "rank_mapping=[%s]",
         clique_key.ToString(), parent_clique_key.ToString(), color,
         absl::StrJoin(rank_mapping, ",", rank_mapping_formatter));
 
-    NcclCliques& cliques = GetNcclCliques();
+    ProcessGpuCliques& cliques = GetProcessGpuCliques();
     absl::MutexLock lock(&cliques.mu);
 
     // Create a new clique with given clique key and communicators.
@@ -421,24 +422,24 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
       rank.value(), clique_key.ToString(), run_id.ToInt(),
       parent_clique_key.ToString());
 
-  return RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
+  return RendezvousSingle<absl::StatusOr<LockableGpuClique::Lock>>(
       initialization_rendezvous_name, rendezvous_key, rank_pair,
       num_local_participants, split, WarnStuckTimeout(), TerminateTimeout());
 }
 
 //===----------------------------------------------------------------------===//
 
-using AcquiredCliquesMap = NcclClique::AcquiredCliquesMap;
-
-absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
-    se::StreamExecutor* device, RunId run_id, GpuCliqueKey clique_key,
-    const CliqueIdCallback& clique_id_callback, RankId rank,
+absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
+    NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
+    const GpuCliqueKey& clique_key,
+    const GpuCollectives::CliqueIdCallback& clique_id_callback, RankId rank,
     size_t num_local_participants, const AcquiredCliquesMap& acquired_cliques,
     int64_t max_nchannels) {
-  VLOG(2) << "Acquire NCCL clique " << clique_key.ToString() << "; run"
+  VLOG(2) << "Acquire GPU clique " << clique_key.ToString() << "; run"
           << run_id.ToString() << "; rank " << rank
           << "; num_local_participants=" << num_local_participants
-          << "; acquired_cliques=" << acquired_cliques.size();
+          << "; acquired_cliques=" << acquired_cliques.size()
+          << "; max_nchannels=" << max_nchannels;
 
   // Get the clique lock via the rendezvous to guarantee that all clique
   // members participate in XLA run.
@@ -448,15 +449,15 @@ absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
                       rank.value(), clique_key.ToString(), run_id.ToInt());
 
   TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<NcclClique::Lock> clique,
-      RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
+      std::shared_ptr<LockableGpuClique::Lock> clique,
+      RendezvousSingle<absl::StatusOr<LockableGpuClique::Lock>>(
           rendezvous_name, rendezvous_key, num_local_participants,
           [&] {
-            NcclCliques& cliques = GetNcclCliques();
+            ProcessGpuCliques& cliques = GetProcessGpuCliques();
             absl::MutexLock lock(&cliques.mu);
             // Returns empty lock if we do not have a clique for `clique_key`.
             auto it = cliques.map.find(clique_key);
-            return it == cliques.map.end() ? NcclClique::Lock()
+            return it == cliques.map.end() ? LockableGpuClique::Lock()
                                            : it->second.Acquire();
           },
           WarnStuckTimeout(), TerminateTimeout()));
@@ -477,15 +478,17 @@ absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
   if (enable_nccl_comm_splitting) {
     for (auto& [acquired_clique_key, acquired_clique] : acquired_cliques) {
       if (clique_key.IsSubsetOf(acquired_clique_key)) {
-        return InitializeNcclClique(device, run_id, clique_key, acquired_clique,
-                                    num_local_participants, rank, config);
+        return InitializeGpuClique(nccl_api, device, run_id, clique_key,
+                                   acquired_clique, num_local_participants,
+                                   rank, config);
       }
     }
   }
 
   // If we can't split any of the acquired cliques, create a new one.
-  return InitializeNcclClique(device, run_id, clique_key, clique_id_callback,
-                              num_local_participants, rank, config);
+  return InitializeGpuClique(nccl_api, device, run_id, clique_key,
+                             clique_id_callback, num_local_participants, rank,
+                             config);
 }
 
 }  // namespace xla::gpu

@@ -37,7 +37,10 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_clique_locking.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -51,7 +54,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -244,7 +246,7 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
     auto start_micros = tsl::Env::Default()->NowMicros();
 
-    NcclClique::AcquiredCliquesMap cliques_map;
+    AcquiredCliquesMap cliques_map;
 
     for (const CliqueRequest& r : ordered_cliques) {
       std::optional<RankId> rank = r.key.rank(params.global_device_id);
@@ -263,11 +265,12 @@ class ResourceRequests : public Thunk::ResourceRequests {
       int64_t max_channels = r.key.stream_kind() == AsyncStreamKind::kCollective
                                  ? params.collective_max_nchannels
                                  : params.p2p_max_nchannels;
-      TF_ASSIGN_OR_RETURN(std::shared_ptr<NcclClique::Lock> clique,
-                          AcquireNcclClique(params.executor, params.run_id,
-                                            r.key, *clique_id_callback, *rank,
-                                            r.num_local_participants,
-                                            cliques_map, max_channels));
+      TF_ASSIGN_OR_RETURN(
+          std::shared_ptr<LockableGpuClique::Lock> clique,
+          AcquireGpuClique(NcclApi::Default(), params.executor, params.run_id,
+                           r.key, *clique_id_callback, *rank,
+                           r.num_local_participants, cliques_map,
+                           max_channels));
 
       cliques_map[r.key] = std::move(clique);
     }

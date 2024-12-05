@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_clique_locking.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/statusor.h"
@@ -52,8 +52,7 @@ namespace gpu {
 // Thunk::CollectiveCliques
 //===----------------------------------------------------------------------===//
 
-Thunk::CollectiveCliques::CollectiveCliques(
-    NcclClique::AcquiredCliquesMap cliques_map)
+Thunk::CollectiveCliques::CollectiveCliques(AcquiredCliquesMap cliques_map)
     : cliques_map_(std::move(cliques_map)) {}
 
 absl::StatusOr<Communicator*> Thunk::CollectiveCliques::GetComm(

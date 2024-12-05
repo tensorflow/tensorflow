@@ -73,6 +73,47 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "gpu_clique_locking",
+    srcs = ["gpu_clique_locking.cc"],
+    hdrs = ["gpu_clique_locking.h"],
+    deps = [
+        ":gpu_clique",
+        ":gpu_clique_key",
+        ":gpu_collectives",
+        "//xla:debug_options_flags",
+        "//xla:executable_run_options",
+        "//xla:status_macros",
+        "//xla:types",
+        "//xla:util",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/service:global_device_id",
+        "//xla/service:lockable",
+        "//xla/service:rendezvous",
+        "//xla/service/gpu/runtime:nccl_api",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:hash",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "gpu_collectives",
     hdrs = ["gpu_collectives.h"],
     deps = [

@@ -69,12 +69,6 @@ class GpuClique : public Clique {
 // clique communicators.
 class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
  public:
-  // We keep acquired cliques in a sorted container to guarantee that all
-  // participants iterate over cliques in the same order.
-  using AcquiredCliquesMap =
-      absl::btree_map<GpuCliqueKey, std::shared_ptr<LockableGpuClique::Lock>,
-                      std::greater<GpuCliqueKey>>;
-
   LockableGpuClique(
       GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators);
