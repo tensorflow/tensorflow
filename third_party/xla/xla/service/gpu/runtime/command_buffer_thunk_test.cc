@@ -638,12 +638,13 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   BufferAllocation::Slice slice_out(&alloc_out, 0, out_length);
   BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
 
-  auto config =
-      GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0,
-                      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
-                      se::blas::kDefaultComputePrecision, false, false);
+  auto config = GemmConfig::For(
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0, 0.0, 0.0,
+      PrecisionConfig::ALG_UNSET, std::nullopt,
+      se::blas::kDefaultComputePrecision, false, false,
+      executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Prepare commands sequence for constructing command buffer.
@@ -763,12 +764,13 @@ TEST(CommandBufferThunkTest, DynamicSliceFusionCmd) {
   BufferAllocation::Slice slice_out(fake_allocations[2].get(), 0, out_length);
   BufferAllocation::Slice slice_workspace(fake_allocations[3].get(), 0,
                                           1024 * 1024);
-  auto config =
-      GemmConfig::For(ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
-                      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0,
-                      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
-                      se::blas::kDefaultComputePrecision, false, false);
+  auto config = GemmConfig::For(
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0, 0.0, 0.0,
+      PrecisionConfig::ALG_UNSET, std::nullopt,
+      se::blas::kDefaultComputePrecision, false, false,
+      executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Prepare commands sequence for constructing command buffer.
@@ -906,7 +908,8 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
       /*precision_algorithm*/ PrecisionConfig::ALG_UNSET,
       /*algorithm*/ std::nullopt,
       /*compute_precision*/ se::blas::kDefaultComputePrecision,
-      /*grad_x*/ false, /*grad_y*/ false);
+      /*grad_x*/ false, /*grad_y*/ false,
+      executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Prepare commands sequence for constructing command buffer.

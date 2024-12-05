@@ -1265,8 +1265,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     shift_ops(a.fp8_input, a.commutative_ops);
     shift_ops(b.fp8_input, b.commutative_ops);
 
-    TF_ASSIGN_OR_RETURN(GemmConfig gemm_config,
-                        GemmConfig::For(instr, gemm_backend_config));
+    TF_ASSIGN_OR_RETURN(
+        GemmConfig gemm_config,
+        GemmConfig::For(instr, gemm_backend_config, gpu_version_));
 
     DotDimensionNumbers *dim_nums =
         gemm_backend_config.mutable_dot_dimension_numbers();
@@ -2252,8 +2253,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    TF_ASSIGN_OR_RETURN(GemmConfig gemm_config,
-                        GemmConfig::For(&instr, gemm_backend_config));
+    TF_ASSIGN_OR_RETURN(
+        GemmConfig gemm_config,
+        GemmConfig::For(&instr, gemm_backend_config, gpu_version_));
 
     // Check that the size of the non-contracting dimension is not too large.
     return gemm_config.rhs_layout.num_cols <= kMaxDimensionSize;

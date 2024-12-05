@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/xla_data.pb.h"
@@ -83,12 +84,14 @@ struct GemmConfig : public se::gpu::GemmConfig {
   static constexpr int64_t kHopperWorkspace = 32 * 1024 * 1024;  // 32 MiB
   static constexpr int64_t kDefaultWorkspace = 4 * 1024 * 1024;  // 4 MiB
 
-  static absl::StatusOr<GemmConfig> For(const HloInstruction* gemm);
+  static absl::StatusOr<GemmConfig> For(
+      const HloInstruction* gemm, const se::GpuComputeCapability& gpu_version);
 
   // Gets the GemmConfig of the `gemm` instruction with overridden
   // GemmBackendConfig.
-  static absl::StatusOr<GemmConfig> For(const HloInstruction* gemm,
-                                        const GemmBackendConfig& config);
+  static absl::StatusOr<GemmConfig> For(
+      const HloInstruction* gemm, const GemmBackendConfig& config,
+      const se::GpuComputeCapability& gpu_version);
 
   static absl::StatusOr<GemmConfig> For(
       const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
@@ -98,7 +101,7 @@ struct GemmConfig : public se::gpu::GemmConfig {
       double alpha_real, double alpha_imag, double beta,
       PrecisionConfig::Algorithm precision_algorithm,
       std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-      bool grad_y);
+      bool grad_y, const se::GpuComputeCapability& gpu_version);
 
   // As above with additional `c_shape` and `bias_shape_ptr` parameter, both
   // which are only necessarily for F8 gemms.
@@ -111,7 +114,7 @@ struct GemmConfig : public se::gpu::GemmConfig {
       double alpha_imag, double beta,
       PrecisionConfig::Algorithm precision_algorithm,
       std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-      bool grad_y);
+      bool grad_y, const se::GpuComputeCapability& gpu_version);
 
   struct DescriptorsTuple {
     se::gpu::MatrixDescriptor lhs;

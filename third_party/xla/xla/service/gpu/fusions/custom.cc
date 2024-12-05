@@ -487,7 +487,8 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
 
   TF_ASSIGN_OR_RETURN(
       GemmConfig config,
-      GemmConfig::For(static_cast<const HloInstruction*>(&custom_call)));
+      GemmConfig::For(static_cast<const HloInstruction*>(&custom_call),
+                      ir_emitter_context.gpu_compute_capability()));
 
   std::unique_ptr<Thunk> thunk;
   auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(&fusion);
