@@ -697,9 +697,9 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, metadata.status());
 
   bool should_uncompress = op_version_ >= 3 && uncompress_;
+  absl::StatusOr<DataServiceMetadata::Compression> compression =
+      GetValidatedCompression(dataset_id, *metadata);
   if (should_uncompress) {
-    absl::StatusOr<DataServiceMetadata::Compression> compression =
-        GetValidatedCompression(dataset_id, *metadata);
     OP_REQUIRES_OK(ctx, compression.status());
     should_uncompress =
         should_uncompress &&
@@ -709,7 +709,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   if (should_uncompress) {
     absl::StatusOr<bool> disable_compression_at_runtime =
         DisableCompressionAtRuntime(data_transfer_protocol_,
-                                    config->deployment_mode());
+                                    config->deployment_mode(), *compression);
     OP_REQUIRES_OK(ctx, disable_compression_at_runtime.status());
     absl::StatusOr<bool> compression_disabled_at_runtime =
         CompressionDisabledAtRuntime(dataset_id, address, protocol,

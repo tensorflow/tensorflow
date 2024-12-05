@@ -898,8 +898,8 @@ def register_dataset(
     dataset: A `tf.data.Dataset` to register with the tf.data service.
     compression: (Optional.) How to compress the dataset's elements before
       transferring them over the network. "AUTO" leaves the decision of how to
-      compress up to the tf.data service runtime. `None` indicates not to
-      compress.
+      compress up to the tf.data service runtime. "SNAPPY" forces snappy
+      compression. `None` indicates not to compress.
     dataset_id: (Optional.) By default, tf.data service generates a unique
       (string) ID for each registered dataset. If a `dataset_id` is provided, it
       will use the specified ID. If a dataset with a matching ID already exists,
