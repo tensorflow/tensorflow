@@ -81,6 +81,7 @@ limitations under the License.
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/random.h"
@@ -132,13 +133,14 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)),
       enable_debug_info_manager_(params.enable_debug_info_manager) {
-#if TENSORFLOW_USE_ROCM
-  // ROCm uses hsaco hashes to distinguish between modules.
-  // Bad things happen if multiple modules with identical code are loaded.
-  binary_.resize(binary_.size() + 16);
-  *(uint64_t*)(&binary_[binary_.size() - 16]) = tsl::EnvTime::NowNanos();
-  *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
-#endif
+  if (std::holds_alternative<stream_executor::RocmComputeCapability>(
+          gpu_version_)) {
+    // ROCm uses hsaco hashes to distinguish between modules.
+    // Bad things happen if multiple modules with identical code are loaded.
+    binary_.resize(binary_.size() + 16);
+    *(uint64_t*)(&binary_[binary_.size() - 16]) = tsl::EnvTime::NowNanos();
+    *(uint64_t*)(&binary_[binary_.size() - 8]) = tsl::random::New64();
+  }
   if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
                                                buffer_assignment_->ToProto());
