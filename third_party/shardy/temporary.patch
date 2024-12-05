@@ -1,95 +1,15 @@
-diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 3f6bcf8..509398d 100644
---- a/third_party/llvm/generated.patch
-+++ b/third_party/llvm/generated.patch
-@@ -1,75 +1 @@
- Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/llvm/include/llvm/ProfileData/MemProf.h b/llvm/include/llvm/ProfileData/MemProf.h
----- a/llvm/include/llvm/ProfileData/MemProf.h
--+++ b/llvm/include/llvm/ProfileData/MemProf.h
--@@ -1183,10 +1183,6 @@
--     (void)Column;
--     (void)IsInlineFrame;
--   }
---
---  // Request the inline notation for brevity:
---  //   { Function: 123, LineOffset: 11, Column: 10; IsInlineFrame: true }
---  static const bool flow = true;
-- };
-- 
-- template <> struct CustomMappingTraits<memprof::PortableMemInfoBlock> {
--@@ -1211,13 +1207,8 @@
--     Io.setError("Key is not a valid validation event");
--   }
-- 
---  static void output(IO &Io, memprof::PortableMemInfoBlock &MIB) {
---    auto Schema = MIB.getSchema();
---#define MIBEntryDef(NameTag, Name, Type)                                       \
---  if (Schema.test(llvm::to_underlying(memprof::Meta::Name)))                   \
---    Io.mapRequired(#Name, MIB.Name);
---#include "llvm/ProfileData/MIBEntryDef.inc"
---#undef MIBEntryDef
--+  static void output(IO &Io, memprof::PortableMemInfoBlock &VI) {
--+    llvm_unreachable("To be implemented");
--   }
-- };
-- 
--diff -ruN --strip-trailing-cr a/llvm/unittests/ProfileData/MemProfTest.cpp b/llvm/unittests/ProfileData/MemProfTest.cpp
----- a/llvm/unittests/ProfileData/MemProfTest.cpp
--+++ b/llvm/unittests/ProfileData/MemProfTest.cpp
--@@ -807,40 +807,4 @@
--   EXPECT_THAT(Record.CallSiteIds,
--               ElementsAre(hashCallStack(CS3), hashCallStack(CS4)));
-- }
---
---template <typename T> std::string serializeInYAML(T &Val) {
---  std::string Out;
---  llvm::raw_string_ostream OS(Out);
---  llvm::yaml::Output Yout(OS);
---  Yout << Val;
---  return Out;
---}
---
---TEST(MemProf, YAMLWriterFrame) {
---  Frame F(11, 22, 33, true);
---
---  std::string Out = serializeInYAML(F);
---  EXPECT_EQ(Out, R"YAML(---
---{ Function: 11, LineOffset: 22, Column: 33, Inline: true }
---...
---)YAML");
---}
---
---TEST(MemProf, YAMLWriterMIB) {
---  MemInfoBlock MIB;
---  MIB.AllocCount = 111;
---  MIB.TotalSize = 222;
---  MIB.TotalLifetime = 333;
---  MIB.TotalLifetimeAccessDensity = 444;
---  PortableMemInfoBlock PMIB(MIB, llvm::memprof::getHotColdSchema());
---
---  std::string Out = serializeInYAML(PMIB);
---  EXPECT_EQ(Out, R"YAML(---
---AllocCount:      111
---TotalSize:       222
---TotalLifetime:   333
---TotalLifetimeAccessDensity: 444
---...
---)YAML");
---}
-- } // namespace
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 9a9ba5a..33d4c3f 100644
+index 33d4c3f..5ed10f8 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "71ac1eb50955fdcddfb77f2daa9a213839ff1a3e"
--    LLVM_SHA256 = "928cbd775b494595bb95f93ec0660314036ab096b008d3def837f6f8856591fd"
-+    LLVM_COMMIT = "dd7a3d4d798e30dfe53b5bbbbcd9a23c24ea1af9"
-+    LLVM_SHA256 = "aae6aac056b2f1405181f44f2280d1d432a3cfe13f70df3c36905888fdb7ad95"
+-    LLVM_COMMIT = "dd7a3d4d798e30dfe53b5bbbbcd9a23c24ea1af9"
+-    LLVM_SHA256 = "aae6aac056b2f1405181f44f2280d1d432a3cfe13f70df3c36905888fdb7ad95"
++    LLVM_COMMIT = "fdb90cef75cad0f46f06f1316eaf39358773b468"
++    LLVM_SHA256 = "a347836d597abead78323ead6bc5077a43fe6637a05fa65fe5a51234634c02ea"
  
      tf_http_archive(
          name = name,
