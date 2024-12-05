@@ -20,6 +20,8 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -28,6 +30,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
@@ -189,8 +192,9 @@ class IfrtBackend final : public BackendInterface {
   // Convenient methods for object lookups
   //
 
-  absl::StatusOr<std::shared_ptr<xla::ifrt::LoadedExecutable>>
-  GetLoadedExecutable(uint64_t handle);
+  struct LoadedExecutableWithInfo;
+  absl::StatusOr<std::shared_ptr<LoadedExecutableWithInfo>> GetLoadedExecutable(
+      uint64_t handle);
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> GetArray(uint64_t handle);
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> GetArrayLocked(
@@ -213,7 +217,7 @@ class IfrtBackend final : public BackendInterface {
       ABSL_GUARDED_BY(arrays_mutex_);
 
   absl::Mutex executables_mutex_;
-  absl::flat_hash_map<uint64_t, std::shared_ptr<xla::ifrt::LoadedExecutable>>
+  absl::flat_hash_map<uint64_t, std::shared_ptr<LoadedExecutableWithInfo>>
       executables_ ABSL_GUARDED_BY(executables_mutex_);
 
   absl::Mutex host_callback_queues_mutex_;

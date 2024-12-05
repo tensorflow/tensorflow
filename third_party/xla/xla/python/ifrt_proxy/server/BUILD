@@ -136,7 +136,6 @@ cc_library(
         "//xla/python/ifrt_proxy/common:proto_util",
         "//xla/python/ifrt_proxy/common:types",
         "//xla/python/ifrt_proxy/common:types_proto_cc",
-        "//xla/python/ifrt_proxy/common:versions",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base:core_headers",
@@ -157,6 +156,7 @@ cc_library(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status_to_from_proto",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

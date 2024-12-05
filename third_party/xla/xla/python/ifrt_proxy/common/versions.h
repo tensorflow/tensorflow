@@ -37,6 +37,11 @@ enum {
   // where the client generates array handles.
   kClientHandlesOptimization2,
 
+  // kClientHandlesExecutableOptimization introduces a set of performance
+  // optimizations where the client generates array handles for operations
+  // related to LoadedExecutable.
+  kClientHandlesExecutableOptimization,
+
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.
   kSentiel,

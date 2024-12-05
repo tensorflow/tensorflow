@@ -67,3 +67,9 @@
 *   Changes:
     *   Introduces a set of performance optimizations where the client generates array handles.
 
+
+## Version kClientHandlesExecutableOptimization
+
+*   Added date: 2024-11-26
+*   Changes:
+    *   Client generates array handles for execute requests.

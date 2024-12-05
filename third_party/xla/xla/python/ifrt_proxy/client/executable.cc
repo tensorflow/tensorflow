@@ -14,14 +14,16 @@
 
 #include "xla/python/ifrt_proxy/client/executable.h"
 
+#include <algorithm>
 #include <cstdint>
-#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/bind_front.h"
@@ -32,6 +34,7 @@
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -40,6 +43,7 @@
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
@@ -55,6 +59,7 @@
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -63,6 +68,7 @@
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/mem.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -182,6 +188,62 @@ absl::StatusOr<uint64_t> PrepareAndExecuteLoadedHostCallback(
 
 }  // namespace
 
+// OutputSpecCache caches the output specification of the
+// LoadedExecutableExecuteResponse received first from the server; this
+// information should be unchanged across multiple invocations of
+// `LoadedExecutable::Execute`, and so can be used to optimize further
+// executions.
+class LoadedExecutable::OutputSpecCache {
+ public:
+  explicit OutputSpecCache(absl::Nonnull<LoadedExecutable*> parent)
+      : parent_(parent) {}
+
+  // Returns the cached output spec if already cached, and std::nullopt if not.
+  std::optional<absl::Span<const ArraySpec>> Retrieve() {
+    absl::MutexLock l(&mu_);
+    if (!data_.has_value()) {
+      return std::nullopt;
+    }
+    return data_.value();
+  }
+
+  // If data has not already been cached, derives and caches the output spec
+  // from the given `outputs` parameter. If data has already been cached,
+  // returns OK status.
+  absl::Status Cache(const tsl::protobuf::RepeatedPtrField<
+                     LoadedExecutableExecuteResponse_Output>& outputs) {
+    {
+      absl::MutexLock l(&mu_);
+      if (data_.has_value()) {
+        return absl::OkStatus();
+      }
+    }
+    std::vector<ArraySpec> data;
+    const auto lookup_device =
+        absl::bind_front(&Client::LookupDevice, parent_->client());
+    for (const auto& output : outputs) {
+      TF_ASSIGN_OR_RETURN(auto dtype, DType::FromProto(output.dtype()));
+      TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(output.shape()));
+      TF_ASSIGN_OR_RETURN(
+          auto sharding, Sharding::FromProto(lookup_device, output.sharding()));
+      data.push_back(ArraySpec{/*dtype=*/dtype, /*shape=*/std::move(shape),
+                               /*sharding=*/std::move(sharding)});
+    }
+    {
+      absl::MutexLock l(&mu_);
+      if (!data_.has_value()) {
+        data_.emplace(std::move(data));
+      }
+    }
+    return absl::OkStatus();
+  }
+
+ private:
+  absl::Mutex mu_;
+  std::optional<std::vector<ArraySpec>> data_ ABSL_GUARDED_BY(mu_);
+  LoadedExecutable* const parent_;
+};
+
 LoadedExecutable::LoadedExecutable(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     uint64_t handle, std::string name, int num_devices,
@@ -198,7 +260,9 @@ LoadedExecutable::LoadedExecutable(
       num_devices_(num_devices),
       addressable_devices_(std::move(addressable_devices)),
       fingerprint_(std::move(fingerprint)),
-      ready_future_(std::move(ready_future)) {
+      ready_future_(std::move(ready_future)),
+      output_spec_cache_(
+          std::make_unique<LoadedExecutable::OutputSpecCache>(this)) {
   // Start host callback pollers.
   CHECK_EQ(loaded_host_callbacks.size(), loaded_host_callback_handles.size());
   if (!loaded_host_callbacks.empty()) {
@@ -424,46 +488,70 @@ LoadedExecutable::Execute(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<LoadedExecutableExecuteResponse> response,
-      rpc_helper_->LoadedExecutableExecute(std::move(req)).Await());
+  // Starting version 6, the server populates the status future only if it was
+  // explicitly requested via `options.fill_status`.
+  const bool result_needs_exec_status =
+      rpc_helper_->version().protocol_version() < 6 || options.fill_status;
 
-  // NOTE: All future and array handles in `response` must have an owner
-  // locally, or be requested to be destructed remotely, before returning.
+  // The client generates handles if the protocol version is sufficiently newer,
+  // and we've already seen at least one response from an execute (and thus know
+  // the number of handles to generate).
+  const bool client_generated_handles =
+      (rpc_helper_->version().protocol_version() >=
+       protocol_version::kClientHandlesExecutableOptimization) &&
+      output_spec_cache_->Retrieve().has_value();
 
   xla::ifrt::LoadedExecutable::ExecuteResult result;
 
-  // Populate the execution status future. `CheckFuture` deletes the server-side
-  // futures after its completion.
-  //
-  // Starting version 6, the server populates the status future only if it was
-  // explicitly requested via `options.fill_status`.
-  if (rpc_helper_->version().protocol_version() < 6 || options.fill_status) {
-    result.status = rpc_helper_->CheckFuture(response->status_handle());
-  }
-
-  // Create output arrays. The cleanup logic ensures that all handles are
-  // properly cleaned up on early return.
-  absl::Cleanup cleanup = [&]() {
-    int index = result.outputs.size();
-    result.outputs.clear();  // Cleaned up by `~Array()`.
-
-    for (; index < response->outputs_size(); ++index) {
-      Array::Destruct(rpc_helper_.get(),
-                      ArrayHandle{response->outputs(index).array_handle()});
+  if (client_generated_handles) {
+    auto output_specs = *output_spec_cache_->Retrieve();
+    for (const auto& output_spec : output_specs) {
+      uint64_t handle = rpc_helper_->NextHandle();
+      result.outputs.push_back(tsl::MakeRef<Array>(
+          client(), rpc_helper_, output_spec.dtype, output_spec.shape,
+          output_spec.sharding, ArrayHandle{handle}));
+      req->add_result_array_handle(handle);
     }
-  };
-  const auto lookup_device = absl::bind_front(&Client::LookupDevice, client());
-  for (const auto& output : response->outputs()) {
-    TF_ASSIGN_OR_RETURN(DType dtype, DType::FromProto(output.dtype()));
-    TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(output.shape()));
-    TF_ASSIGN_OR_RETURN(auto sharding,
-                        Sharding::FromProto(lookup_device, output.sharding()));
-    result.outputs.push_back(tsl::MakeRef<Array>(
-        client(), rpc_helper_, dtype, std::move(shape), std::move(sharding),
-        ArrayHandle{output.array_handle()}));
+    uint64_t status_handle = rpc_helper_->NextHandle();
+    if (result_needs_exec_status) {
+      req->set_result_status_handle(status_handle);
+    }
+    rpc_helper_->LoadedExecutableExecute(std::move(req));
+    if (result_needs_exec_status) {
+      // Note that `CheckFuture` needs to be sent after
+      // `LoadedExecutableExecute` above, or the server will not recognize the
+      // handle being sent.
+      result.status = rpc_helper_->CheckFuture(status_handle);
+    }
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        std::shared_ptr<LoadedExecutableExecuteResponse> response,
+        rpc_helper_->LoadedExecutableExecute(std::move(req)).Await());
+    auto status = output_spec_cache_->Cache(response->outputs());
+    if (!status.ok()) {
+      // Handles in `response` need to be destructed remotely.
+      for (const auto& output : response->outputs()) {
+        Array::Destruct(rpc_helper_.get(), ArrayHandle{output.array_handle()});
+      }
+      if (result_needs_exec_status) {
+        // `CheckFuture` deletes the server-side future handle.
+        rpc_helper_->CheckFuture(response->status_handle());
+      }
+      return status;
+    }
+    auto output_specs = *output_spec_cache_->Retrieve();
+    for (int i = 0; i < output_specs.size(); ++i) {
+      result.outputs.push_back(tsl::MakeRef<Array>(
+          client(), rpc_helper_, output_specs[i].dtype, output_specs[i].shape,
+          output_specs[i].sharding,
+          ArrayHandle{response->outputs()[i].array_handle()}));
+    }
+    if (result_needs_exec_status) {
+      result.status = rpc_helper_->CheckFuture(response->status_handle());
+    } else {
+      CHECK_EQ(response->status_handle(), 0);
+    }
   }
-  std::move(cleanup).Cancel();
 
   return result;
 }
@@ -472,12 +560,23 @@ Future<> LoadedExecutable::Delete() {
   auto req = std::make_unique<LoadedExecutableDeleteRequest>();
   req->set_loaded_executable_handle(handle_);
 
-  absl::StatusOr<std::shared_ptr<LoadedExecutableDeleteResponse>> response =
-      rpc_helper_->LoadedExecutableDelete(std::move(req)).Await();
-  if (!response.ok()) {
-    return Future<>(response.status());
-  }
-  return rpc_helper_->CheckFuture((*response)->future_handle());
+  auto promise = Future<>::CreatePromise();
+  Future<> result(promise);
+
+  rpc_helper_->LoadedExecutableDelete(std::move(req))
+      .OnReady(
+          [promise = std::move(promise), rpc_helper = rpc_helper_](
+              absl::StatusOr<std::shared_ptr<LoadedExecutableDeleteResponse>>
+                  response) mutable {
+            if (!response.ok()) {
+              promise.Set(response.status());
+              return;
+            }
+            rpc_helper->CheckFuture((*response)->future_handle())
+                .OnReady([promise = std::move(promise)](
+                             absl::Status s) mutable { promise.Set(s); });
+          });
+  return result;
 }
 
 bool LoadedExecutable::IsDeleted() const {

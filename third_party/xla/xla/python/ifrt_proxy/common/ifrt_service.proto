@@ -443,6 +443,10 @@ message LoadedExecutableExecuteRequest {
   repeated fixed64 args_handles = 2;
   xla.ifrt.ExecuteOptionsProto execute_options = 3;
   repeated int32 device_ids = 4;
+
+  // Client-generated handles for the response.
+  repeated fixed64 result_array_handle = 5;
+  fixed64 result_status_handle = 6;
 }
 message LoadedExecutableExecuteResponse {
   fixed64 status_handle = 1;
