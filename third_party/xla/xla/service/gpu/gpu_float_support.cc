@@ -99,7 +99,12 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     // Elementwise ops.
     case HloOpcode::kExp:
     case HloOpcode::kLog:
-      return LowPrecisionType() == BF16;
+      if (LowPrecisionType() == BF16) {
+        auto* cuda_compute_capability =
+            std::get_if<se::CudaComputeCapability>(&compute_capability_);
+        return cuda_compute_capability != nullptr;
+      }
+      return false;
     case HloOpcode::kAdd:
     case HloOpcode::kMultiply:
     case HloOpcode::kSubtract: {
