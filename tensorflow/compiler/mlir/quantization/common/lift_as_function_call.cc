@@ -160,6 +160,15 @@ ValueRange CreateTFXlaCallModuleOp(OpBuilder& builder, const Location location,
   // function name can be changed by those passes.
   call_op->setAttr(TF::kStablehloEntryFunctionAttrName,
                    FlatSymbolRefAttr::get(builder.getStringAttr(func_name)));
+
+  // Set target version to WEEK_4 since this is an offline quantizer.
+  std::string target_version =
+      mlir::vhlo::Version::fromCompatibilityRequirement(
+          vhlo::Version::CompatibilityRequirement::WEEK_4)
+          .toString();
+  call_op->setAttr(TF::kStablehloVersionAttrName,
+                   builder.getStringAttr(target_version));
+
   // Store the custom attribute to restore the function name when loading it
   // back in the post calibration stage. As mentioned above, the above entry
   // function attribute is not reliable.
