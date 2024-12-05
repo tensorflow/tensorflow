@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
@@ -882,6 +883,36 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
     LOG(ERROR) << "Failed to serialize HLO snapshot proto " << filename;
   }
   DumpToFileInDirImpl(filename, pb, canonical_opts);
+}
+
+void DumpHloUnoptimizedSnapshotIfEnabled(
+    const HloUnoptimizedSnapshot& hlo_snapshot, const DebugOptions& opts) {
+  CanonicalDebugOptions canonical_opts(opts);
+  std::string name = hlo_snapshot.hlo_module().name();
+  if (!canonical_opts.should_dump_module(name) ||
+      !canonical_opts.dump_unoptimized_snapshots) {
+    return;
+  }
+
+  if (hlo_snapshot.partitions_size() == 0) {
+    LOG(ERROR) << "Refusing to write unoptimized HLO snapshot proto for module "
+               << name << ": no partitions input found.";
+    return;
+  }
+  int64_t execution_count;
+  {
+    static absl::Mutex mu(absl::kConstInit);
+    static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
+        *new absl::flat_hash_map<int64_t, int64_t>();
+    absl::MutexLock lock(&mu);
+    execution_count =
+        module_id_to_execution_count[hlo_snapshot.hlo_module().id()]++;
+  }
+  std::string filename = FilenameFor(
+      hlo_snapshot.hlo_module().id(), hlo_snapshot.hlo_module().name(), "",
+      absl::StrFormat("execution_%04d.hlo_unoptimized_snapshot",
+                      execution_count));
+  DumpProtobufToFile(hlo_snapshot, opts, filename, nullptr);
 }
 
 void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {

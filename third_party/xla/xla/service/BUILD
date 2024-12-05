@@ -438,6 +438,7 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":hlo_graph_dumper",
+        ":hlo_proto_cc",
         ":hlo_proto_util",
         "//xla:util",
         "//xla:xla_proto_cc",
