@@ -27,8 +27,8 @@ struct GpuRunnerOptions {
       tsl::ServingDeviceSelectorPolicy::kRoundRobin;
 };
 
-Status InitTfrtGpu(const GpuRunnerOptions& options,
-                   tensorflow::tfrt_stub::Runtime& runtime);
+absl::Status InitTfrtGpu(const GpuRunnerOptions& options,
+                         tensorflow::tfrt_stub::Runtime& runtime);
 
 }  // namespace gpu
 }  // namespace tensorflow
