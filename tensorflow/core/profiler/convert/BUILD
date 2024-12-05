@@ -1182,6 +1182,19 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "inference_stats_combiner",
+    srcs = ["inference_stats_combiner.cc"],
+    hdrs = ["inference_stats_combiner.h"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_xla//xla/tsl/lib/gtl:map_util",
+    ],
+)
+
 tf_cc_test(
     name = "inference_stats_grouping_test",
     srcs = ["inference_stats_grouping_test.cc"],
