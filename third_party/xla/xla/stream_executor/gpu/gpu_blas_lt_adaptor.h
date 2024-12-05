@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <type_traits>
 
 #include "xla/stream_executor/blas.h"
@@ -73,13 +74,13 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
       auto allocator = CreateAllocator(TBlasSupport::GetWorkspace());
       switch (dtype) {
         case blas::DataType::kFloat:
-          return DoBlasGemmImpl<float>(
-              stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
-              beta, c, ldc, numeric_options, context, allocator.get());
+          return DoBlasGemmImpl<float>(stream, transa, transb, m, n, k, dtype,
+                                       alpha, a, lda, b, ldb, beta, c, ldc,
+                                       numeric_options, context, allocator);
         case blas::DataType::kBF16:
           return DoBlasGemmImpl<Eigen::bfloat16>(
               stream, transa, transb, m, n, k, dtype, alpha, a, lda, b, ldb,
-              beta, c, ldc, numeric_options, context, allocator.get());
+              beta, c, ldc, numeric_options, context, allocator);
         default:
           LOG(ERROR) << "Not supported type by blaslt "
                      << blas::DataTypeString(dtype) << " fall back to blas";
@@ -217,22 +218,21 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
 
  private:
   template <typename T>
-  absl::Status DoBlasGemmImpl(Stream *stream, blas::Transpose transa,
-                              blas::Transpose transb, uint64_t m, uint64 n,
-                              uint64_t k, blas::DataType dtype,
-                              const void *alpha, const DeviceMemoryBase &a,
-                              int lda, const DeviceMemoryBase &b, int ldb,
-                              const void *beta, DeviceMemoryBase *c, int ldc,
-                              const NumericOptions &numeric_options,
-                              blas::CallContext context,
-                              ScratchAllocator *scratch_allocator) {
+  absl::Status DoBlasGemmImpl(
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64 n, uint64_t k, blas::DataType dtype, const void *alpha,
+      const DeviceMemoryBase &a, int lda, const DeviceMemoryBase &b, int ldb,
+      const void *beta, DeviceMemoryBase *c, int ldc,
+      const NumericOptions &numeric_options, blas::CallContext context,
+      std::optional<WorkspaceScratchAllocator> scratch_allocator) {
     auto &runner = gpu::BlasLtGemmRunner::i(stream);
     auto alpha_v = *static_cast<const T *>(alpha);
     auto beta_v = *static_cast<const T *>(beta);
     auto memory_c = DeviceMemory<T>(*c);
-    return runner.Run(*stream, transa, transb, m, n, k, alpha_v,
-                      DeviceMemory<T>(a), lda, DeviceMemory<T>(b), ldb, beta_v,
-                      &memory_c, ldc, scratch_allocator);
+    return runner.Run(
+        *stream, transa, transb, m, n, k, alpha_v, DeviceMemory<T>(a), lda,
+        DeviceMemory<T>(b), ldb, beta_v, &memory_c, ldc,
+        scratch_allocator.has_value() ? &(scratch_allocator.value()) : nullptr);
   }
 
   template <typename T>
@@ -251,7 +251,8 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
     return runner.RunStridedBatched(
         *stream, transa, transb, m, n, k, alpha_v, DeviceMemory<T>(a), lda,
         stride_a, DeviceMemory<T>(b), ldb, stride_b, beta_v, &memory_c, ldc,
-        stride_c, batch_count, allocator.get());
+        stride_c, batch_count,
+        allocator.has_value() ? &(allocator.value()) : nullptr);
   }
 
   bool CheckStatus(absl::Status status) {
@@ -288,9 +289,10 @@ struct GpuBlasLtAdaptor final : TBlasSupport {
     return result;
   }
 
-  std::unique_ptr<ScratchAllocator> CreateAllocator(DeviceMemoryBase *memory) {
-    return memory ? std::make_unique<WorkspaceScratchAllocator>(*memory)
-                  : nullptr;
+  std::optional<WorkspaceScratchAllocator> CreateAllocator(
+      DeviceMemoryBase *memory) {
+    return memory ? WorkspaceScratchAllocator(*memory)
+                  : std::optional<WorkspaceScratchAllocator>{};
   }
 };
 
