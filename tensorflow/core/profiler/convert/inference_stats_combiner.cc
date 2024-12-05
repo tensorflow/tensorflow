@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/inference_stats_combiner.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/gtl/map_util.h"
@@ -120,7 +121,9 @@ void CombineInferenceStatsResult(int src_host_id, const InferenceStats& src,
   for (const auto& [host_id, inf_stats] : src.inference_stats_per_host()) {
     auto [iter, was_inserted] = dst->mutable_inference_stats_per_host()->insert(
         {src_host_id, inf_stats});
-    LOG_IF(DFATAL, !was_inserted) << "Duplicate host_id: " << iter->first;
+    if (!was_inserted) {
+      LOG(INFO) << "Duplicate host_id: " << iter->first;
+    }
     if (need_update_model_id || need_update_tensor_pattern) {
       // Needs to update the model_id_index in the dst.
       PerHostInferenceStats* dst_inference_stats =

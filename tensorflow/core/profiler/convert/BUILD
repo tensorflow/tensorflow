@@ -658,6 +658,7 @@ cc_library(
     deps = [
         ":hlo_to_tools_data",
         ":multi_xplanes_to_op_stats",
+        ":multi_xspace_to_inference_stats",
         ":op_stats_to_hlo_stats",
         ":op_stats_to_input_pipeline_analysis",
         ":op_stats_to_op_profile",
@@ -676,10 +677,10 @@ cc_library(
         ":xplane_to_tool_names",
         ":xplane_to_trace_container",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/convert/trace_viewer:trace_events",
         "//tensorflow/core/profiler/convert/trace_viewer:trace_events_to_json",
         "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
+        "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:input_pipeline_proto_cc",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_profile_proto_cc",
@@ -1207,8 +1208,30 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
         "@local_xla//xla/tsl/lib/gtl:map_util",
+    ],
+)
+
+cc_library(
+    name = "multi_xspace_to_inference_stats",
+    srcs = ["multi_xspace_to_inference_stats.cc"],
+    hdrs = ["multi_xspace_to_inference_stats.h"],
+    deps = [
+        ":inference_stats",
+        ":inference_stats_combiner",
+        ":inference_stats_grouping",
+        ":preprocess_single_host_xplane",
+        ":repository",
+        "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:event_span",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/profiler/utils:device_utils",
+        "@local_xla//xla/tsl/profiler/utils:group_events",
+        "@local_xla//xla/tsl/profiler/utils:tpu_xplane_utils",
     ],
 )
 
