@@ -200,7 +200,6 @@ xla_test(
         ":create_client",
         ":functional_hlo_runner",
         "//xla:debug_options_flags",
-        "//xla:status_macros",
         "//xla:xla_proto_cc",
         "//xla/hlo/testlib:filecheck",
         "//xla/pjrt:pjrt_client",
