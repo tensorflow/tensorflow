@@ -33,11 +33,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tools/hlo_opt/opt_lib.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
@@ -69,6 +69,7 @@ struct HloOptConfig {
   std::string stage{"hlo"};
   bool list_stages{false};
   std::string passes{""};
+  bool list_passes{false};
 };
 
 }  // namespace
@@ -142,6 +143,17 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
   return out;
 }
 
+std::unique_ptr<HloModule> GetDummyModule() {
+  std::string hlo_text = R"(
+      HloModule m
+        ENTRY main {
+          a = f32[] parameter(0)
+          b = f32[] parameter(1)
+        ROOT res = f32[] multiply(a, b)
+      })";
+  return std::make_unique<HloModule>(hlo_text, HloModuleConfig());
+}
+
 absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
                                              const HloOptConfig& opts) {
   TF_ASSIGN_OR_RETURN(OptProvider * provider,
@@ -150,6 +162,14 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
   if (opts.list_stages) {
     return absl::StrJoin(provider->SupportedStages(), "\n");
   }
+  // Use a dummy module for "list-passes" because pipelines compilation
+  // requires a module.
+  if (opts.list_passes) {
+    auto dummy_module = GetDummyModule();
+    provider->RegisterProviderPasses(*dummy_module);
+    return provider->GetRegisteredPassNames();
+  }
+
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> modules,
                       GetModules(opts, argc, argv));
   // Registration can be done using HloModuleConfig, but some
@@ -221,7 +241,9 @@ int main(int argc, char** argv) {
                 "Splits the input file in pieces based on '// -----' "
                 "substring, and processes each chunk independently"),
       tsl::Flag("passes", &opts.passes,
-                "Comma-separated list of passes to run.")};
+                "Comma-separated list of passes to run."),
+      tsl::Flag("list-passes", &opts.list_passes,
+                "Print all supported passes for a given platform and exit")};
   // Modifies global DebugOptions, populates flags with every flag available
   // from xla.proto.
   xla::AppendDebugOptionsFlags(&flag_list);

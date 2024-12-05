@@ -64,6 +64,9 @@ class OptProvider {
   // Registers all passes and pipelines provided by this provider.
   virtual void RegisterProviderPasses(HloModule& module);
 
+  // Returns a string of all registered pass names.
+  virtual std::string GetRegisteredPassNames();
+
  protected:
   // Map of pass names to pass registration functions. The pass registration
   // function takes a HloPassPipeline and adds the corresponding pass to it.
@@ -83,6 +86,12 @@ class OptProvider {
 
   // Registers all hardware independent passes.
   void RegisterAllHardwareIndependentPasses();
+
+  // Returns a string of all registered pass names. Helper function for
+  // GetRegisteredPassNames, avoids duplicating code for each provider.
+  std::string GetRegisteredPassNamesHelper(
+      const absl::flat_hash_map<
+          std::string, std::function<void(HloPassPipeline&)>>& pass_registry_);
 };
 
 }  // namespace xla

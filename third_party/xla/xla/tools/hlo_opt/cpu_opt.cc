@@ -55,7 +55,11 @@ class CpuOptProvider : public CompiledOptProvider {
 
   std::string GetPlatformName() override { return "cpu"; }
 
-  // Register the CPU provider passes.
+  std::string GetRegisteredPassNames() override {
+    return GetRegisteredPassNamesHelper(pass_registry_);
+  }
+
+  // Register only CPU specific passes here.
   void RegisterProviderPasses(HloModule& module) override {}
 };
 

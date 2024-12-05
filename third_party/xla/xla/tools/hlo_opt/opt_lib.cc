@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tools/hlo_opt/opt_lib.h"
 
+#include <algorithm>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <set>
@@ -163,6 +165,22 @@ std::set<std::string> OptProvider::SupportedStages() { return {"hlo"}; }
 // Hardware Specific passes can be populated by respective hardware provider
 // subclasses using this method.
 void OptProvider::RegisterProviderPasses(HloModule& module) {}
+
+std::string OptProvider::GetRegisteredPassNames() {
+  return GetRegisteredPassNamesHelper(pass_registry_);
+}
+
+std::string OptProvider::GetRegisteredPassNamesHelper(
+    const absl::flat_hash_map<
+        std::string, std::function<void(HloPassPipeline&)>>& pass_registry_) {
+  std::vector<std::string> names;
+  names.reserve(pass_registry_.size());
+  for (const auto& [name, pass_func] : pass_registry_) {
+    names.push_back(name);
+  }
+  std::sort(names.begin(), names.end());
+  return absl::StrJoin(names, ",");
+}
 
 // Register Hardware-independent HLO passes here if you want the hlo-opt tool
 // to be able to apply them.
