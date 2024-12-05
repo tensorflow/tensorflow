@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -323,6 +324,37 @@ TEST_F(TFRecordDatasetOpTest, IteratorOutputDtypes) {
   auto dataset_params = TFRecordDatasetParams1();
   TF_ASSERT_OK(Initialize(dataset_params));
   TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_STRING}));
+}
+
+TEST_F(TFRecordDatasetOpTest, ParseCustomProto) {
+    Features query_features;
+    auto& age = (*query_features.mutable_feature())["age"];
+    for (int i = 0; i < 10; i++) {
+        age.mutable_int64_list()->add_value(i);
+    }
+
+    Features item_features;
+    auto& ad_id = (*item_features.mutable_feature())["ad_id"];
+    for (int i = 10; i < 20; i++) {
+        ad_id.mutable_int64_list()->add_value(i);
+    }
+
+    QueryCollatedExample example;
+    example.mutable_query_features()->CopyFrom(query_features);
+    for (int i = 0; i < 5; i++) {
+        auto* feature = example.mutable_item_featurez()->Add();
+        feature->CopyFrom(item_features);
+    }
+    const tstring example_as_str = example.SerializeAsString();
+    std::deque<tstring> expanded_examples;
+    TF_ASSERT_OK(parse(example_as_str, &expanded_examples));
+    for (const auto& expanded_example : expanded_examples) {
+        tensorflow::Example e;
+        e.ParseFromString(expanded_example);
+        EXPECT_EQ(e.features().feature_size(), 2);
+        EXPECT_TRUE(e.features().feature().contains("age"));
+        EXPECT_TRUE(e.features().feature().contains("ad_id"));
+    }
 }
 
 TEST_F(TFRecordDatasetOpTest, IteratorOutputShapes) {

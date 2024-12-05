@@ -77,6 +77,11 @@ bool is_cloud_tpu_gcs_fs() {
   return false;
 }
 
+struct BufferView {
+  void* buffer;
+  size_t size;
+};
+
 absl::Status parse(const tstring& tensor, std::deque<tstring>* records) {
   std::unique_ptr<ZeroCopyInputStream> raw_input =
       absl::make_unique<ArrayInputStream>(tensor.c_str(), tensor.size());
@@ -85,10 +90,8 @@ absl::Status parse(const tstring& tensor, std::deque<tstring>* records) {
       absl::make_unique<CodedInputStream>(raw_input.get());
   coded_input->PushLimit(tensor.size());
 
-  // TODO(yye): stores bytes as pointers instead of strings to eliminate
-  // addtitional memory copy.
-  string context_protobytes;
-  std::vector<std::string> document_protobytez;
+  BufferView context_protobytes;
+  std::vector<BufferView> document_protobytez;
   while (!coded_input->ExpectAtEnd()) {
     uint32_t tag = 0;
     if (!coded_input->ReadVarint32(&tag)) {
@@ -106,19 +109,28 @@ absl::Status parse(const tstring& tensor, std::deque<tstring>* records) {
                           "Cannot parse length");
     }
     int field_number = WireFormatLite::GetTagFieldNumber(tag);
+    int tmp = 0;
     switch (field_number) {
       case kContextFeatureFieldNumber:
-        if (!coded_input->ReadString(&context_protobytes, len)) {
+        context_protobytes.size = len;
+        if (!coded_input->GetDirectBufferPointer(
+                const_cast<const void**>(&(context_protobytes.buffer)), &tmp)) {
           return absl::Status(absl::StatusCode::kInvalidArgument,
                               "Cannot parse String");
         }
+        coded_input->Skip(len);
         break;
       case kDocumentFeatureFieldNumber:
         document_protobytez.emplace_back();
-        if (!coded_input->ReadString(&document_protobytez.back(), len)) {
+        auto& document_protobytes = document_protobytez.back();
+        document_protobytes.size = len;
+        if (!coded_input->GetDirectBufferPointer(
+                const_cast<const void**>(&(document_protobytes.buffer)),
+                &tmp)) {
           return absl::Status(absl::StatusCode::kInvalidArgument,
                               "Cannot parse String");
         }
+        coded_input->Skip(len);
         break;
     }
   }
@@ -128,9 +140,9 @@ absl::Status parse(const tstring& tensor, std::deque<tstring>* records) {
     const size_t tag_size = WireFormatLite::TagSize(
         kFeatureFieldNumber, WireFormatLite::TYPE_MESSAGE);
     const size_t len_size = CodedOutputStream::VarintSize32(
-        document_bytes.size() + context_protobytes.size());
-    const uint32_t total_size =
-        document_bytes.size() + context_protobytes.size() + tag_size + len_size;
+        document_bytes.size + context_protobytes.size);
+    const size_t total_size =
+        document_bytes.size + context_protobytes.size + tag_size + len_size;
 
     record->resize(total_size);
     std::unique_ptr<ZeroCopyOutputStream> raw_output =
@@ -140,12 +152,11 @@ absl::Status parse(const tstring& tensor, std::deque<tstring>* records) {
     WireFormatLite::WriteTag(kFeatureFieldNumber,
                              WireFormatLite::WIRETYPE_LENGTH_DELIMITED,
                              coded_output.get());
-    coded_output->WriteVarint32(context_protobytes.size() +
-                                document_bytes.size());
-    coded_output->WriteRaw(context_protobytes.data(),
-                           static_cast<int>(context_protobytes.size()));
-    coded_output->WriteRaw(document_bytes.data(),
-                           static_cast<int>(document_bytes.size()));
+    coded_output->WriteVarint32(context_protobytes.size + document_bytes.size);
+    coded_output->WriteRaw(context_protobytes.buffer,
+                           static_cast<int>(context_protobytes.size));
+    coded_output->WriteRaw(document_bytes.buffer,
+                           static_cast<int>(document_bytes.size));
   }
   return absl::OkStatus();
 }

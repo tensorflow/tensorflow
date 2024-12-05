@@ -20,6 +20,8 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+absl::Status parse(const tstring& tensor, std::deque<tstring>* records);
+
 class TFRecordDatasetOp : public DatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType = "TFRecord";
