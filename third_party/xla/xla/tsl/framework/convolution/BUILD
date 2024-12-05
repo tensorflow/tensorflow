@@ -69,8 +69,6 @@ filegroup(
 )
 
 # Test against platforms and architecures that don't support CUDA.
-# TODO(b/153737462): Automatically filter tests to create the appropriate
-# portable test list.
 test_suite(
     name = "portable_kernel_tests",
     tags = [

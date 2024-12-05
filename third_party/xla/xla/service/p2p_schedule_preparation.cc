@@ -62,9 +62,6 @@ bool IsP2POp(const HloInstruction* op) {
 // operations, regardless whether they are on hosts or on devices.
 bool IsCollectiveOp(const HloInstruction* op) {
   HloOpcode opcode = op->opcode();
-  // TODO(b/309639264): We temporarily make this pass to also order custom-calls
-  // with respect to P2P chains, to workaround an NVIDIA bug. Remove the code
-  // for custom-calls once the bug has been fixed.
   if (opcode == HloOpcode::kCustomCall) {
     return true;
   }
