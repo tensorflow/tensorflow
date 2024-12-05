@@ -241,5 +241,64 @@ TEST_F(ExecutionStreamAssignmentTest, UnreachableComputation) {
   }
 }
 
+TEST_F(ExecutionStreamAssignmentTest, ExplicitStreams) {
+  const char* kModuleStr = R"(
+  HloModule m
+  %gemm1 (x: f32[2048,2048], y: f32[2048,2048]) -> f32[2048,2048] {
+    %y = f32[2048,2048]{1,0} parameter(1)
+    %x = f32[2048,2048]{1,0} parameter(0)
+    %custom-call.1 = (f32[2048,2048]{1,0}, s8[33554432]{0}) custom-call(f32[2048,2048]{1,0} %x, f32[2048,2048]{1,0} %y), custom_call_target="__cublas$gemm", backend_config={"gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","damax_output":false,"lhs_stride":"4194304","rhs_stride":"4194304","grad_x":false,"grad_y":false},"force_earliest_schedule":false}
+    ROOT %get-tuple-element = f32[2048,2048]{1,0} get-tuple-element((f32[2048,2048]{1,0}, s8[33554432]{0}) %custom-call.1), index=0
+  }
+
+  %gemm2 (x: f32[2048,2048], y: f32[2048,2048]) -> f32[2048,2048] {
+    %y = f32[2048,2048]{1,0} parameter(1)
+    %x = f32[2048,2048]{1,0} parameter(0)
+    %custom-call.2 = (f32[2048,2048]{1,0}, s8[33554432]{0}) custom-call(f32[2048,2048]{1,0} %x, f32[2048,2048]{1,0} %y), custom_call_target="__cublas$gemm", backend_config={"gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","damax_output":false,"lhs_stride":"4194304","rhs_stride":"4194304","grad_x":false,"grad_y":false},"force_earliest_schedule":false}
+    ROOT %get-tuple-element = f32[2048,2048]{1,0} get-tuple-element((f32[2048,2048]{1,0}, s8[33554432]{0}) %custom-call.2), index=0
+  }
+
+  ENTRY %entry (y: f32[2048,2048], x: f32[2048,2048]) -> f32[2048,2048] {
+    %x = f32[2048,2048]{1,0} parameter(1), metadata={op_name="b" scheduling_name="x"}
+    %y = f32[2048,2048]{1,0} parameter(0), metadata={op_name="a" scheduling_name="y"}
+    %call-start = ((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) call-start(f32[2048,2048]{1,0} %y, f32[2048,2048]{1,0} %x), to_apply=%gemm1, frontend_attributes={_xla_stream_annotation="1"}
+    %call-done = f32[2048,2048]{1,0} call-done(((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) %call-start)
+    %call-start.2 = ((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) call-start(f32[2048,2048]{1,0} %y, f32[2048,2048]{1,0} %call-done), to_apply=%gemm2, frontend_attributes={_xla_stream_annotation="2"}
+    ROOT %call-done-2 = f32[2048,2048]{1,0} call-done(((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) %call-start.2)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  ExecutionStreamAssignment assignment(
+      module.get(),
+      ExecutionStreamAssignmentOptions{/*number_of_execution_streams=*/4});
+  // The outermost computation should run on `ExecutionStreamId(0)`.
+  ExpectExecutionStreamForSyncInstructions(
+      assignment, FindComputation(module.get(), "entry"), ExecutionStreamId(0));
+
+  // Called computations should run on the respective asynchronous
+  // `ExecutionStreamIds`.
+  ExpectExecutionStreamForSyncInstructions(
+      assignment,
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "call-start"))
+          ->async_wrapped_computation(),
+      ExecutionStreamId(1));
+  // Computations within the async-called computation should also be on the
+  // the asynchronous stream.
+  EXPECT_THAT(assignment.GetSyncExecutionStreamId(
+                  FindInstruction(module.get(), "custom-call.1")),
+              IsOkAndHolds(ExecutionStreamId(1)));
+
+  // Same checks as above but now on stream #2.
+  ExpectExecutionStreamForSyncInstructions(
+      assignment,
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "call-start.2"))
+          ->async_wrapped_computation(),
+      ExecutionStreamId(2));
+  EXPECT_THAT(assignment.GetSyncExecutionStreamId(
+                  FindInstruction(module.get(), "custom-call.2")),
+              IsOkAndHolds(ExecutionStreamId(2)));
+}
 }  // namespace
 }  // namespace xla::gpu
