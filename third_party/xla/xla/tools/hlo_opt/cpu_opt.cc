@@ -21,11 +21,78 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/MC/TargetRegistry.h"
+#include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/jit_compiler.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/indexed_array_analysis.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/pass/hlo_pass_fix.h"
+#include "xla/hlo/transforms/expanders/bitcast_dtypes_expander.h"
+#include "xla/hlo/transforms/expanders/cholesky_expander.h"
+#include "xla/hlo/transforms/expanders/comparison_expander.h"
+#include "xla/hlo/transforms/expanders/reduce_decomposer.h"
+#include "xla/hlo/transforms/expanders/rng_bit_generator_expander.h"
+#include "xla/hlo/transforms/operand_upcaster.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/batch_dot_simplification.h"
+#include "xla/hlo/transforms/simplifiers/convolution_group_converter.h"
+#include "xla/hlo/transforms/simplifiers/float_normalization.h"
+#include "xla/hlo/transforms/simplifiers/optimize_input_output_buffer_alias.h"
+#include "xla/hlo/transforms/simplifiers/reduce_window_rewriter.h"
+#include "xla/hlo/transforms/simplifiers/reshape_mover.h"
+#include "xla/hlo/transforms/simplifiers/result_caster.h"
+#include "xla/hlo/transforms/simplifiers/sub_byte_normalization.h"
+#include "xla/hlo/transforms/simplifiers/tree_reduction_rewriter.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/service/all_to_all_decomposer.h"
+#include "xla/service/batchnorm_expander.h"
+#include "xla/service/change_op_data_type.h"
+#include "xla/service/conditional_to_select.h"
+#include "xla/service/copy_insertion.h"
+#include "xla/service/cpu/conv_canonicalization.h"
+#include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
+#include "xla/service/cpu/cpu_instruction_fusion.h"
+#include "xla/service/cpu/cpu_layout_assignment.h"
+#include "xla/service/cpu/dot_op_emitter.h"
+#include "xla/service/cpu/executable.pb.h"
+#include "xla/service/cpu/parallel_task_assignment.h"
+#include "xla/service/dynamic_dimension_inference.h"
+#include "xla/service/dynamic_padder.h"
 #include "xla/service/executable.h"
+#include "xla/service/float_support.h"
+#include "xla/service/gather_expander.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_execution_profile.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_profile_printer_data.pb.h"
+#include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/map_inliner.h"
+#include "xla/service/scatter_expander.h"
+#include "xla/service/select_and_scatter_expander.h"
+#include "xla/service/sharding_propagation.h"
+#include "xla/service/spmd/shardy/shardy_xla_pass.h"
+#include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
+#include "xla/service/topk_rewriter.h"
+#include "xla/service/transpose_folding.h"
+#include "xla/service/triangular_solve_expander.h"
+#include "xla/service/while_loop_invariant_code_motion.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_opt/compiled_opt_lib.h"
+#include "xla/util.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/cpu_info.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -55,8 +122,170 @@ class CpuOptProvider : public CompiledOptProvider {
 
   std::string GetPlatformName() override { return "cpu"; }
 
-  // Register the CPU provider passes.
-  void RegisterProviderPasses(HloModule& module) override {}
+  void RegisterProviderPasses(HloModule& module) override {
+    // initialize all needed to extract configs for pass registration
+    // and pass it to the register function
+    DebugOptions debug_opts = GetDebugOptionsFromFlags();
+    auto executor = GetExecutor();
+
+    RegisterCpuHardwareSpecificPasses(module, *executor);
+  }
+
+ private:
+  void RegisterCpuHardwareSpecificPasses(HloModule& module,
+                                         se::StreamExecutor* executor) {
+    HloModuleConfig module_config = module.config();
+    absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> jit_target_machine =
+        cpu::JitCompiler::InferTargetMachine(
+            CompilerTargetOptions(module_config),
+            CodeGenOptLevel(module_config),
+            cpu::CpuFeatureFromString(
+                module_config.debug_options().xla_cpu_max_isa()));
+    if (!jit_target_machine.ok()) {
+      LOG(ERROR) << "Failed to infer target machine: "
+                 << jit_target_machine.status();
+      return;
+    }
+
+    cpu::TargetMachineFeatures target_machine_features(
+        jit_target_machine->get());
+
+    RegisterPass<ShardingPropagation>(
+        /*is_spmd=*/true,
+        /*propagate_metadata=*/false,
+        module_config.allow_spmd_sharding_propagation_to_output(),
+        module_config.allow_spmd_sharding_propagation_to_parameters(),
+        /*cse_prevention_only=*/false,
+        /*sharding_helper=*/nullptr);
+
+    RegisterPass<spmd::StatefulRngSpmdPartitioner>(
+        module_config.num_partitions(), module_config.replica_count());
+    RegisterPass<SubByteNormalization>(SubByteNormalization::SET_ELEMENT_SIZE);
+    RegisterPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
+    RegisterPass<TopkDecomposer>([&](const HloInstruction* instr) {
+      return instr->opcode() == HloOpcode::kTopK;
+    });
+    // TODO(hanrach): AllReducePromotion fails to register
+    // const std::pair<PrimitiveType, PrimitiveType> ar_promoted_types[] = {
+    //   {BF16, F32}};
+    // RegisterPass<AllReducePromotion>(ar_promoted_types);
+    // FloatNormalization has dependency on copts INTEL_MKL and ENABLE_ONEDNN_V3
+    // CpuFloatSupport onednn_bf16_support(BF16);
+    // RegisterPass<FloatNormalization>(&onednn_bf16_support);
+    FloatSupport bf16_support(BF16);
+    RegisterPass<FloatNormalization>(&bf16_support);
+    auto cost_model = [](HloInstruction* conv) {
+      // We need a cost model for CPUs. Currently, do nothing.
+      return false;
+    };
+    RegisterPass<ConvolutionGroupConverter>(
+        /*should_expand=*/[](HloInstruction* conv) { return true; }, cost_model,
+        /*convert_batch_groups_only=*/true);
+    // Register same pass with different arguments?
+    RegisterPass<BatchNormExpander>(
+        /*rewrite_training_op=*/true,
+        /*rewrite_inference_op=*/true,
+        /*rewrite_grad_op=*/true);
+    RegisterPass<HloPassFix<ReduceWindowRewriter>>(
+        module_config.debug_options().xla_reduce_window_rewrite_base_length());
+    auto dynamic_padder_options = DynamicPadderOptions();
+    dynamic_padder_options.shape_check_mode =
+        DynamicDimensionInference::ShapeCheckMode::kIgnore;
+    RegisterPass<DynamicPadder>(dynamic_padder_options);
+    RegisterPass<SelectAndScatterExpander>();
+    RegisterPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+    RegisterPass<ChangeOpDataType>(
+        F16, F32, HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution>);
+    AlgebraicSimplifierOptions options;
+    options.set_enable_dot_strength_reduction(false);
+    // TODO(b/209827141): XLA:CPU doesn't propagate NaN through min/max, but
+    // other platforms do, so it should be changed.
+    options.set_minmax_propagate_nan(false);
+    options.set_supports_non_canonical_dots(false);
+    options.set_executing_on_cpu(true);
+    RegisterPass<AlgebraicSimplifier>(options);
+    RegisterPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
+    RegisterPass<TransposeFolding>(
+        [&](const HloInstruction& dot,
+            int64_t operand) -> absl::StatusOr<bool> {
+          if (DotImplementationCanHandleTranspose(dot,
+                                                  target_machine_features)) {
+            return TransposeFolding::IsRowColumnTransposeDotOperand(dot,
+                                                                    operand);
+          }
+          return false;
+        },
+        TransposeFolding::NeverFoldTranspose);
+    RegisterPass<cpu::ConvCanonicalization>(&target_machine_features);
+
+    // Fails to register if module does not have entry computation layout
+    if (module.config().has_entry_computation_layout()) {
+      RegisterPass<cpu::CpuLayoutAssignment>(
+          module.mutable_entry_computation_layout(), &target_machine_features,
+          nullptr);
+    }
+
+    AlgebraicSimplifierOptions algsimp_options;
+    options.set_enable_dot_strength_reduction(false);
+    // TODO(b/209827141): XLA:CPU doesn't propagate NaN through min/max, but
+    // other platforms do, so it should be changed.
+    options.set_minmax_propagate_nan(false);
+    options.set_supports_non_canonical_dots(false);
+    options.set_executing_on_cpu(true);
+    RegisterPass<AlgebraicSimplifier>(algsimp_options);
+    RegisterPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
+    const int max_parallelism =
+        module_config.intra_op_parallelism_threads() > 0
+            ? module_config.intra_op_parallelism_threads()
+            : tsl::port::NumSchedulableCPUs();
+    RegisterPass<cpu::ParallelTaskAssigner>(max_parallelism,
+                                            cpu::CpuExecutable::ShapeSizeBytes,
+                                            &target_machine_features);
+    RegisterPass<OptimizeInputOutputBufferAlias>(true);
+    // OneDnnOpsRewriter has dependency on copts INTEL_MKL and ENABLE_ONEDNN_V3
+    // RegisterPass<cpu::OneDnnOpsRewriter>();
+    RegisterPass<AllToAllDecomposer>();
+    RegisterPass<BatchDotSimplification>();
+    RegisterPass<CholeskyExpander>();
+    RegisterPass<ComparisonExpander>();
+    RegisterPass<ConditionalToSelect>();
+    RegisterPass<CopyInsertion>();
+    RegisterPass<cpu::CpuInstructionFusion>();
+    RegisterPass<IndexedArrayAnalysisPrinterPass>();
+    RegisterPass<MapInliner>();
+    RegisterPass<OperandUpcaster>();
+    RegisterPass<ReduceDecomposer>();
+    RegisterPass<ReshapeMover>();
+    RegisterPass<ResultCaster>();
+    RegisterPass<sdy::ShardyXLA>();
+    RegisterPass<TreeReductionRewriter>();
+    RegisterPass<TriangularSolveExpander>();
+    RegisterPass<WhileLoopInvariantCodeMotion>();
+  };
+
+  llvm::CodeGenOptLevel CodeGenOptLevel(const HloModuleConfig& module_config) {
+    VLOG(2) << "backend_optimization_level: "
+            << module_config.debug_options().xla_backend_optimization_level();
+    switch (module_config.debug_options().xla_backend_optimization_level()) {
+      case 1:
+        return llvm::CodeGenOptLevel::Less;
+      case 2:
+        return llvm::CodeGenOptLevel::Default;
+      case 3:
+        return llvm::CodeGenOptLevel::Aggressive;
+      default:
+        return llvm::CodeGenOptLevel::None;
+    }
+  }
+
+  llvm::TargetOptions CompilerTargetOptions(
+      const HloModuleConfig& module_config) {
+    llvm::TargetOptions target_options;
+    // Always allow FMA fusion. This increases precision instead of decreasing
+    // it.
+    target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
+    return target_options;
+  }
 };
 
 }  // namespace
