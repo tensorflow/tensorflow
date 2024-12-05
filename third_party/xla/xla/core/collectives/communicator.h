@@ -17,11 +17,13 @@ limitations under the License.
 #define XLA_CORE_COLLECTIVES_COMMUNICATOR_H_
 
 #include <cstddef>
+#include <memory>
 #include <ostream>
 #include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/device_memory.h"
 
 namespace xla {
 
@@ -29,6 +31,14 @@ namespace xla {
 class Communicator {
  public:
   virtual ~Communicator() = default;
+
+  // An RAII handle for buffers registered with the communicator. Child classes
+  // are responsible for unregistering the buffer when the handle is destroyed.
+  class RegisteredBufferHandle {
+   public:
+    virtual ~RegisteredBufferHandle() = default;
+    virtual absl::Status Unregister() = 0;
+  };
 
   // Abort any uncompleted operations and destroys the underlying communicator
   // object. It is undefined behavior to use the communicator after calling
@@ -42,6 +52,11 @@ class Communicator {
 
   // Returns the number of ranks in the communicator.
   virtual absl::StatusOr<size_t> NumRanks() const = 0;
+
+  // Register `buffer` for efficient collective operations (i.e. on NCCL backend
+  // it registers the buffer for zero-copy collective operations).
+  virtual absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>>
+  RegisterBuffer(stream_executor::DeviceMemoryBase buffer) = 0;
 
   virtual std::string ToString() const = 0;
 };

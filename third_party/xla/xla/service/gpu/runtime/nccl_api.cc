@@ -325,12 +325,6 @@ class DefaultNcclApi final : public NcclCollectives {
                     se::Stream* stream) final;
   absl::Status RecvPtrFromPeer(void* ptr, int32_t peer, Communicator* comm,
                                se::Stream* stream) final;
-
-  absl::StatusOr<NcclRegisteredBufferHandle> RegisterBuffer(
-      Communicator* comm, se::DeviceMemoryBase buffer) final;
-
-  absl::StatusOr<NcclRegisteredBufferHandle> DeregisterBuffer(
-      Communicator* comm, NcclRegisteredBufferHandle handle) final;
 };
 
 NcclApi* NcclApi::Default() {
@@ -339,17 +333,6 @@ NcclApi* NcclApi::Default() {
 }
 
 bool NcclApi::HasNcclSupport() { return true; }
-
-static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
-  if (clique_id.size() != NCCL_UNIQUE_ID_BYTES) {
-    return Internal(
-        "CliqueId size is not equal to NCCL_UNIQUE_ID_BYTES: %d vs %d",
-        clique_id.size(), NCCL_UNIQUE_ID_BYTES);
-  }
-  ncclUniqueId id;
-  absl::c_copy(clique_id.data(), id.internal);
-  return id;
-}
 
 absl::Status DefaultNcclApi::AllReduce(se::DeviceMemoryBase send_buffer,
                                        se::DeviceMemoryBase recv_buffer,
@@ -491,32 +474,4 @@ absl::Status DefaultNcclApi::RecvPtrFromPeer(void* ptr, int32_t peer,
                                   se::gpu::AsGpuStreamValue(stream)));
 }
 
-absl::StatusOr<NcclApi::NcclRegisteredBufferHandle>
-DefaultNcclApi::RegisterBuffer(Communicator* comm,
-                               se::DeviceMemoryBase buffer) {
-  VLOG(3) << absl::StreamFormat(
-      "Register buffer for NCCL communicator; buffer=%p; size=%d; comm=%p",
-      buffer.opaque(), buffer.size(), comm);
-  void* handle = nullptr;
-#if (NCCL_VERSION_CODE >= 21901)
-  XLA_NCCL_RETURN_IF_ERROR(
-      ncclCommRegister(Cast(comm), buffer.opaque(), buffer.size(), &handle));
-#endif  // NCCL_VERSION_CODE >= 21901
-  return reinterpret_cast<NcclRegisteredBufferHandle>(handle);
-}
-
-absl::StatusOr<NcclApi::NcclRegisteredBufferHandle>
-DefaultNcclApi::DeregisterBuffer(Communicator* comm,
-                                 NcclRegisteredBufferHandle handle) {
-  VLOG(3) << absl::StreamFormat(
-      "Deregister buffer for NCCL communicator; handle=%p; comm=%p", handle,
-      comm);
-#if (NCCL_VERSION_CODE >= 21901)
-  return XLA_NCCL_STATUS(
-      ncclCommDeregister(Cast(comm), reinterpret_cast<void*>(handle)));
-#else
-  return absl::UnimplementedError(
-      "ncclCommDeregister is unavailable in this build.");
-#endif  // NCCL_VERSION_CODE >= 21901
-}
 }  // namespace xla::gpu

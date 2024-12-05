@@ -215,6 +215,7 @@ cc_library(
         ":nccl_errors",
         "//xla:util",
         "//xla/core/collectives:communicator",
+        "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",

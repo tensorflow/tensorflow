@@ -127,16 +127,6 @@ class NcclApiStub final : public GpuCollectivesStub {
                                se::Stream* stream) final {
     return UnimplementedError();
   }
-
-  absl::StatusOr<NcclRegisteredBufferHandle> RegisterBuffer(
-      Communicator*, se::DeviceMemoryBase) final {
-    return UnimplementedError();
-  }
-
-  absl::StatusOr<NcclRegisteredBufferHandle> DeregisterBuffer(
-      Communicator*, NcclRegisteredBufferHandle) final {
-    return UnimplementedError();
-  }
 };
 
 NcclApi* NcclApi::Default() {

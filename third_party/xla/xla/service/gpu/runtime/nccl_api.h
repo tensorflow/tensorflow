@@ -171,19 +171,6 @@ class NcclApi : public GpuCollectives {
   virtual absl::Status RecvPtrFromPeer(void* ptr, int32_t peer,
                                        Communicator* comm,
                                        se::Stream* stream) = 0;
-
-  // Register `buffer` with communicator `comm` for zero-copy communication.
-  // Returned handle can be used for future unregistration.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommregister
-  virtual absl::StatusOr<NcclRegisteredBufferHandle> RegisterBuffer(
-      Communicator* comm, se::DeviceMemoryBase buffer) = 0;
-
-  // Deregister buffer represented by `handle` from communicator `comm`.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommderegister
-  virtual absl::StatusOr<NcclRegisteredBufferHandle> DeregisterBuffer(
-      Communicator* comm, NcclRegisteredBufferHandle handle) = 0;
 };
 
 }  // namespace xla::gpu

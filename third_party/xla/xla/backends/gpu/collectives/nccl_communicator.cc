@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
+#include "xla/core/collectives/communicator.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 
@@ -37,6 +40,42 @@ limitations under the License.
 #endif  // TENSORFLOW_USE_ROCM
 
 namespace xla::gpu {
+
+namespace {
+// An RAII handle for user buffers registered with an NCCL communicator.
+class NcclRegisteredBufferHandle : public Communicator::RegisteredBufferHandle {
+ public:
+  NcclRegisteredBufferHandle(ncclComm_t comm, void* handle);
+  ~NcclRegisteredBufferHandle() override;
+
+  absl::Status Unregister() final;
+
+ private:
+  ncclComm_t comm_;
+  void* handle_;
+};
+}  // namespace
+
+NcclRegisteredBufferHandle::NcclRegisteredBufferHandle(ncclComm_t comm,
+                                                       void* handle)
+    : comm_(comm), handle_(handle) {}
+
+NcclRegisteredBufferHandle::~NcclRegisteredBufferHandle() {
+  if (auto status = Unregister(); !status.ok()) {
+    LOG(ERROR) << status.message();
+  }
+}
+
+absl::Status NcclRegisteredBufferHandle::Unregister() {
+  VLOG(3) << absl::StreamFormat(
+      "Deregister buffer for NCCL communicator; handle=%p; comm=%p", handle_,
+      comm_);
+#if (NCCL_VERSION_CODE >= 21901)
+  return XLA_NCCL_STATUS(ncclCommDeregister(comm_, handle_));
+#else
+  return Unimplemented("NCCL version does not support ncclCommDeregister");
+#endif  // NCCL_VERSION_CODE >= 21901
+}
 
 NcclCommunicator::NcclCommunicator(ncclComm_t comm) : comm_(comm) {
   VLOG(1) << "Created " << *this;
@@ -68,6 +107,21 @@ absl::StatusOr<size_t> NcclCommunicator::NumRanks() const {
   int32_t count;
   XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm_, &count));
   return count;
+}
+
+absl::StatusOr<std::unique_ptr<Communicator::RegisteredBufferHandle>>
+NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer) {
+  VLOG(3) << absl::StreamFormat(
+      "Register buffer for NCCL communicator; buffer=%p; size=%d; comm=%p",
+      buffer.opaque(), buffer.size(), comm_);
+#if (NCCL_VERSION_CODE >= 21901)
+  void* handle = nullptr;
+  XLA_NCCL_RETURN_IF_ERROR(
+      ncclCommRegister(comm_, buffer.opaque(), buffer.size(), &handle));
+  return std::make_unique<NcclRegisteredBufferHandle>(comm_, handle);
+#else
+  return Unimplemented("NCCL version does not support ncclCommRegister");
+#endif  // NCCL_VERSION_CODE >= 21901
 }
 
 std::string NcclCommunicator::ToString() const {

@@ -17,11 +17,13 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COMMUNICATOR_H_
 
 #include <cstddef>
+#include <memory>
 #include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/stream_executor/device_memory.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -45,6 +47,9 @@ class NcclCommunicator : public Communicator {
   absl::Status Abort() final;
   absl::Status HealthCheck() const final;
   absl::StatusOr<size_t> NumRanks() const final;
+
+  absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>> RegisterBuffer(
+      stream_executor::DeviceMemoryBase buffer) final;
 
   std::string ToString() const final;
 

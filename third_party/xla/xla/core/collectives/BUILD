@@ -46,6 +46,7 @@ cc_library(
     name = "communicator",
     hdrs = ["communicator.h"],
     deps = [
+        "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],
