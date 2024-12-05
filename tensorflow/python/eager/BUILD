@@ -1057,7 +1057,13 @@ py_strict_library(
     name = "def_function",
     srcs = ["def_function.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = ["//tensorflow:internal"],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/eager/polymorphic_function:eager_function_run",
