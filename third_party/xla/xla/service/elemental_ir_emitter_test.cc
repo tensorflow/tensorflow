@@ -447,8 +447,7 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatsToFloat) {
   auto tname = this->TypeName();
   if (std::is_same<TypeParam, tsl::float8_e4m3>() ||
       std::is_same<TypeParam, tsl::float8_e4m3fn>() ||
-      std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>() ||
-      std::is_same<TypeParam, tsl::float8_e3m4>()) {
+      std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>()) {
     GTEST_SKIP() << "Skipping test for type " << tname;
   }
   const auto hlo_text = absl::StrReplaceAll(R"(
