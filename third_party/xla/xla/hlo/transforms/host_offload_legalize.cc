@@ -416,6 +416,15 @@ Shape RemoveMajormostDimension(const Shape& shape) {
   return ShapeUtil::DeleteDimension(majormost_dim, shape);
 }
 
+Shape AddMajormostDimension(const Shape& shape) {
+  CHECK(shape.has_layout()) << "Shape must have layout.";
+  Shape new_shape = ShapeUtil::PrependMajorDimension(1, shape);
+  for (const Tile& tile : shape.layout().tiles()) {
+    *new_shape.mutable_layout()->add_tiles() = tile;
+  }
+  return new_shape;
+}
+
 absl::Status MoveCopyDown(
     const InstructionAndIndex& copy_to_move_instruction_and_index,
     const CallGraph* call_graph,
@@ -464,7 +473,7 @@ absl::Status MoveCopyDown(
       if (instruction->opcode() == HloOpcode::kBitcast) {
         // For now, we only know how to move a copy over a bitcast which
         // "reshapes" away the majormost dimension (which must be a degenerate
-        // dimension).
+        // dimension), or reshapes to add a degenerate majormost dimension.
         const Shape& before_bitcast_shape = instruction->operand(0)->shape();
         const Shape& after_bitcast_shape = instruction->shape();
         if (!Shape::Equal().IgnoreLayout()(copy_to_move->operand(0)->shape(),
@@ -473,32 +482,58 @@ absl::Status MoveCopyDown(
               "Expecting copy to only change instructions layout. Copy: %s",
               copy_to_move->ToString()));
         }
-        if (after_bitcast_shape.rank() != before_bitcast_shape.rank() - 1) {
+        if (after_bitcast_shape.rank() == before_bitcast_shape.rank() - 1) {
+          if (!(ShapeUtil::IsEffectivelyMostMajorDimension(before_bitcast_shape,
+                                                           0) &&
+                before_bitcast_shape.dimensions(0) == 1)) {
+            return absl::InternalError(absl::StrFormat(
+                "Only handling bitcasts with majormost dimension "
+                "of size 1. This bitcast is \"%s\"",
+                instruction->ToString()));
+          }
+          const Shape new_bitcast_shape =
+              RemoveMajormostDimension(shape_before_copy);
+          VLOG(2) << absl::StreamFormat(
+              " Encountered bitcast \"%s\", updating current shape from %s to "
+              "%s",
+              instruction->name(), shape_before_copy.ToString(true),
+              new_bitcast_shape.ToString(true));
+          shape_before_copy = new_bitcast_shape;
+          const Shape new_copy_shape =
+              RemoveMajormostDimension(shape_after_copy);
+          VLOG(2) << absl::StreamFormat(
+              " Also updating shape after copy from %s to %s",
+              shape_after_copy.ToString(true), new_copy_shape.ToString(true));
+          shape_after_copy = new_copy_shape;
+        } else if (after_bitcast_shape.rank() ==
+                   before_bitcast_shape.rank() + 1) {
+          if (!(ShapeUtil::IsEffectivelyMostMajorDimension(after_bitcast_shape,
+                                                           0) &&
+                after_bitcast_shape.dimensions(0) == 1)) {
+            return absl::InternalError(absl::StrFormat(
+                "Only handling bitcasts with majormost dimension "
+                "of size 1. This bitcast is \"%s\"",
+                instruction->ToString()));
+          }
+          const Shape new_bitcast_shape =
+              AddMajormostDimension(shape_before_copy);
+          LOG(ERROR) << absl::StreamFormat(
+              " Encountered bitcast \"%s\", updating current shape from %s to "
+              "%s",
+              instruction->name(), shape_before_copy.ToString(true),
+              new_bitcast_shape.ToString(true));
+          shape_before_copy = new_bitcast_shape;
+          const Shape new_copy_shape = AddMajormostDimension(shape_after_copy);
+          LOG(ERROR) << absl::StreamFormat(
+              " Also updating shape after copy from %s to %s",
+              shape_after_copy.ToString(true), new_copy_shape.ToString(true));
+          shape_after_copy = new_copy_shape;
+        } else {
           return absl::InternalError(
-              absl::StrFormat("Only handling bitcasts which remove 0'th "
-                              "dimension. This bitcast is \"%s\"",
+              absl::StrFormat("Only handling bitcasts which add or remove a "
+                              "0'th dimension. This bitcast is \"%s\"",
                               instruction->ToString()));
         }
-        if (!(ShapeUtil::IsEffectivelyMostMajorDimension(before_bitcast_shape,
-                                                         0) &&
-              before_bitcast_shape.dimensions(0) == 1)) {
-          return absl::InternalError(
-              absl::StrFormat("Only handling bitcasts with majormost dimension "
-                              "of size 1. This bitcast is \"%s\"",
-                              instruction->ToString()));
-        }
-        const Shape new_bitcast_shape =
-            RemoveMajormostDimension(shape_before_copy);
-        VLOG(2) << absl::StreamFormat(
-            " Encountered bitcast \"%s\", updating current shape from %s to %s",
-            instruction->name(), shape_before_copy.ToString(true),
-            new_bitcast_shape.ToString(true));
-        shape_before_copy = new_bitcast_shape;
-        const Shape new_copy_shape = RemoveMajormostDimension(shape_after_copy);
-        VLOG(2) << absl::StreamFormat(
-            " Also updating shape after copy from %s to %s",
-            shape_after_copy.ToString(true), new_copy_shape.ToString(true));
-        shape_after_copy = new_copy_shape;
       } else if (instruction->opcode() == HloOpcode::kSlice ||
                  instruction->opcode() == HloOpcode::kDynamicSlice) {
         // Since we're moving the copy over a Slice/DynamicSlice, we need to
