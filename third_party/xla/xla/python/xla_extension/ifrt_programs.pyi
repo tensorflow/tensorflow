@@ -33,6 +33,8 @@ def make_colocated_python_program(
 
 def make_plugin_program(data: Union[str, bytes]) -> Program: ...
 
+def make_colocated_python_compile_options() -> CompileOptions: ...
+
 def make_xla_compile_options(
     compile_options: xla_extension.CompileOptions,
     host_callbacks: Sequence[Any]

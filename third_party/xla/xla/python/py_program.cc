@@ -187,6 +187,11 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::Program>> MakePluginProgramFromBytes(
 }
 
 absl::StatusOr<std::unique_ptr<ifrt::CompileOptions>>
+MakeColocatedPythonCompileOptions() {
+  return std::make_unique<ifrt::CustomCallCompileOptions>();
+}
+
+absl::StatusOr<std::unique_ptr<ifrt::CompileOptions>>
 MakePluginCompileOptions() {
   return std::make_unique<ifrt::PluginCompileOptions>();
 }
@@ -271,6 +276,8 @@ void BuildIfrtProgramsSubmodule(nanobind::module_& m) {
       .def("make_xla_compile_options",
            ValueOrThrowWrapper(MakeXlaCompileOptions), nb::arg("options"),
            nb::arg("host_callbacks"))
+      .def("make_colocated_python_compile_options",
+           ValueOrThrowWrapper(MakeColocatedPythonCompileOptions))
       .def("make_plugin_compile_options",
            ValueOrThrowWrapper(MakePluginCompileOptions));
 }
