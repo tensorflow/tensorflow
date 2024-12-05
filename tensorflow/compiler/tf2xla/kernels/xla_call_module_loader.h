@@ -86,12 +86,7 @@ class XlaCallModuleLoader {
   // much easier to detect here.
   absl::Status ValidateStaticShapes();
 
-  // Lowers the StableHLO module to MHLO in place.
-  absl::Status LowerModuleToMhlo();
-
-  // Lowers the MHLO module to XlaComputation and returns it.
-  //
-  // REQUIRES: `LowerModuleToMhlo()` is called beforehand.
+  // Lowers the StableHLO module to XlaComputation and returns it.
   absl::StatusOr<xla::XlaComputation> ToXlaComputation();
 
   // Returns the deserialized stablehlo module.

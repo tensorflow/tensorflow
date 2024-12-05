@@ -48,7 +48,6 @@ using mlir::MemRefType;
 using mlir::RankedTensorType;
 using mlir::ShapedType;
 using mlir::VectorType;
-using mlir::mhlo::TypeExtensionsAttr;
 using xla::PrimitiveType;
 
 namespace xla {
@@ -141,8 +140,12 @@ Shape TypeToShape(mlir::Type type) {
     // element type.
     int64_t rank = t.getRank();
     llvm::SmallVector<int64_t, 4> bounds;
-    if (auto extn =
-            mlir::dyn_cast_or_null<TypeExtensionsAttr>(t.getEncoding())) {
+    if (auto extn = mlir::dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>(
+            t.getEncoding())) {
+      bounds = llvm::to_vector<4>(extn.getBounds());
+    } else if (auto extn =
+                   mlir::dyn_cast_or_null<mlir::stablehlo::TypeExtensionsAttr>(
+                       t.getEncoding())) {
       bounds = llvm::to_vector<4>(extn.getBounds());
     } else {
       bounds.assign(rank, ShapedType::kDynamic);

@@ -60,10 +60,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
+#include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/python/refine_polymorphic_shapes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -114,8 +113,7 @@ constexpr llvm::StringRef kCustomCallShimTarget =
 }  // namespace
 
 bool IsTokenType(mlir::Type type) {
-  return mlir::isa<mlir::stablehlo::TokenType>(type) ||
-         mlir::isa<mlir::mhlo::TokenType>(type);
+  return mlir::isa<mlir::stablehlo::TokenType>(type);
 }
 
 absl::StatusOr<std::unique_ptr<XlaCallModuleLoader>>
@@ -451,7 +449,6 @@ absl::Status XlaCallModuleLoader::LoadModule(
   // we only include allowable dialects.
   context_->loadDialect<mlir::func::FuncDialect>();
   context_->loadDialect<mlir::stablehlo::StablehloDialect>();
-  context_->loadDialect<mlir::mhlo::MhloDialect>();
   context_->loadDialect<mlir::chlo::ChloDialect>();
   context_->loadDialect<mlir::vhlo::VhloDialect>();
 
@@ -471,6 +468,7 @@ absl::Status XlaCallModuleLoader::LoadModule(
   if (!module_) {
     return absl::InvalidArgumentError("Cannot deserialize computation");
   }
+  module_->dump();
   VLOG(3) << "Parsed serialized module (version = " << version
           << ", platforms = [" << absl::StrJoin(platforms, ", ")
           << "], main_has_token_input_output = " << main_has_token_input_output
@@ -557,38 +555,9 @@ absl::Status XlaCallModuleLoader::ValidateStaticShapes() {
   return xla::ValidateStaticShapes(*module_);
 }
 
-absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
-  mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
-
-  mlir::PassManager pm(module_->getContext());
-  applyTensorflowAndCLOptions(pm);
-  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createChloLegalizeToHloPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  // In order to export to XLA, we must sink constants to control flow
-  // regions, since XLA uses functional control flow.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createSinkConstantsToControlFlowPass());
-  if (failed(pm.run(*module_))) {
-    return absl::InternalError(
-        absl::StrCat("MHLO->HLO lowering passes failed: ",
-                     diag_handler.ConsumeStatus().ToString()));
-  }
-
-  if (VLOG_IS_ON(5)) {
-    DumpMlirOpToFile("xla_call_module.after_mhlo_lowering", *module_);
-  }
-
-  return absl::OkStatus();
-}
-
 absl::StatusOr<xla::XlaComputation> XlaCallModuleLoader::ToXlaComputation() {
   xla::HloProto proto;
-  mlir::MlirToHloConversionOptions options;
-  TF_RETURN_IF_ERROR(
-      mlir::ConvertMlirHloToHlo(*module_, &proto, /*use_tuple_args=*/false,
-                                /*return_tuple=false*/ false, options));
+  TF_RETURN_IF_ERROR(xla::ConvertStablehloToHloProto(*module_, &proto));
   return xla::XlaComputation(std::move(*proto.mutable_hlo_module()));
 }
 
