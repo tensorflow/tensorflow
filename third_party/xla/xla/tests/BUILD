@@ -1242,6 +1242,7 @@ xla_test(
         "test_xla_cpu_thunks",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
+        "//xla:error_spec",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -1265,6 +1266,8 @@ xla_test(
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
+        "//xla:array3d",
+        "//xla:literal_util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -1285,6 +1288,8 @@ xla_test(
         "test_xla_cpu_thunks",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
+        "//xla:array3d",
+        "//xla:literal_util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -1305,6 +1310,7 @@ xla_test(
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
+        "//xla:error_spec",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -1322,6 +1328,8 @@ xla_test(
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
+        "//xla:array3d",
+        "//xla:literal_util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -1335,6 +1343,7 @@ xla_test(
     backends = ["gpu"],
     shard_count = 25,
     deps = CONVOLUTION_TEST_DEPS + [
+        "//xla:error_spec",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -1349,6 +1358,8 @@ xla_test(
     shard_count = 25,
     tags = ["cuda-only"],
     deps = CONVOLUTION_TEST_DEPS + [
+        "//xla:array3d",
+        "//xla:literal_util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -1366,6 +1377,7 @@ xla_test(
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
+        "//xla:error_spec",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
