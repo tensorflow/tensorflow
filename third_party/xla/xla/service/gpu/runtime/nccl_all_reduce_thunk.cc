@@ -191,9 +191,10 @@ absl::Status RunReduceScatter(NcclApi* nccl_api, ReductionKind reduction_kind,
         << "Source buffer was not an exact multiple of the number of "
            "participants.";
 
-    TF_RETURN_IF_ERROR(nccl_api->ReduceScatter(
+    TF_RETURN_IF_ERROR(comm->ReduceScatter(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
-        buffer.element_count / num_ranks, reduction_kind, comm, &stream));
+        buffer.element_count / num_ranks, reduction_kind,
+        GpuCollectives::On(stream)));
   }
 
   return nccl_api->GroupEnd();

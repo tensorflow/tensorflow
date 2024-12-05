@@ -83,44 +83,6 @@ ScopedPersistentPlanAllocator::~ScopedPersistentPlanAllocator() = default;
 
 class NcclApiStub final : public GpuCollectivesStub {
  public:
-  absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
-                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                         size_t count, size_t root, Communicator* comm,
-                         se::Stream* stream) final {
-    return UnimplementedError();
-  }
-
-  absl::Status ReduceScatter(se::DeviceMemoryBase, se::DeviceMemoryBase,
-                             PrimitiveType, size_t, ReductionKind,
-                             Communicator*, se::Stream*) final {
-    return UnimplementedError();
-  }
-
-  absl::Status AllGather(se::DeviceMemoryBase, se::DeviceMemoryBase,
-                         PrimitiveType, size_t, Communicator*,
-                         se::Stream*) final {
-    return UnimplementedError();
-  }
-
-  absl::Status Send(se::DeviceMemoryBase, PrimitiveType, size_t, int32_t,
-                    Communicator*, se::Stream*) final {
-    return UnimplementedError();
-  }
-
-  absl::Status SendPtrToPeer(void* ptr, int32_t peer, Communicator* comm,
-                             se::Stream* stream) final {
-    return UnimplementedError();
-  }
-
-  absl::Status Recv(se::DeviceMemoryBase, PrimitiveType, size_t, int32_t,
-                    Communicator*, se::Stream*) final {
-    return UnimplementedError();
-  }
-
-  absl::Status RecvPtrFromPeer(void* ptr, int32_t peer, Communicator* comm,
-                               se::Stream* stream) final {
-    return UnimplementedError();
-  }
 };
 
 NcclApi* NcclApi::Default() {

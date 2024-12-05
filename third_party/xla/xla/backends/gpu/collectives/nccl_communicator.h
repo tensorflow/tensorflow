@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COMMUNICATOR_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -57,6 +58,33 @@ class NcclCommunicator : public Communicator {
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
                          size_t count, ReductionKind reduction_kind,
                          const Executor& executor) final;
+
+  absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
+                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                         size_t count, size_t root,
+                         const Executor& executor) final;
+
+  absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
+                             se::DeviceMemoryBase recv_buffer,
+                             PrimitiveType dtype, size_t count,
+                             ReductionKind reduction_kind,
+                             const Executor& executor) final;
+
+  absl::Status AllGather(se::DeviceMemoryBase send_buffer,
+                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                         size_t count, const Executor& executor) final;
+
+  absl::Status Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
+                    size_t count, int32_t peer, const Executor& executor) final;
+
+  absl::Status SendPtrToPeer(void* ptr, int32_t peer,
+                             const Executor& executor) final;
+
+  absl::Status Recv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                    size_t count, int32_t peer, const Executor& executor) final;
+
+  absl::Status RecvPtrFromPeer(void* ptr, int32_t peer,
+                               const Executor& executor) final;
 
   std::string ToString() const final;
 

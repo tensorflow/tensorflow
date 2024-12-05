@@ -243,11 +243,13 @@ absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
             nccl_api->Slice(buffer.destination_buffer, buffer.element_type,
                             peer * chunk_elements, chunk_elements);
 
-        TF_RETURN_IF_ERROR(nccl_api->Send(send_slice, buffer.element_type,
-                                          chunk_elements, peer, comm, &stream));
+        TF_RETURN_IF_ERROR(comm->Send(send_slice, buffer.element_type,
+                                      chunk_elements, peer,
+                                      GpuCollectives::On(stream)));
 
-        TF_RETURN_IF_ERROR(nccl_api->Recv(recv_slice, buffer.element_type,
-                                          chunk_elements, peer, comm, &stream));
+        TF_RETURN_IF_ERROR(comm->Recv(recv_slice, buffer.element_type,
+                                      chunk_elements, peer,
+                                      GpuCollectives::On(stream)));
       }
     }
   } else {
@@ -257,13 +259,13 @@ absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
     for (size_t i = 0; i < buffers.size(); ++i) {
       DeviceBufferPair& buffer = buffers[i];
 
-      TF_RETURN_IF_ERROR(
-          nccl_api->Send(buffer.source_buffer, buffer.element_type,
-                         buffer.element_count, i, comm, &stream));
+      TF_RETURN_IF_ERROR(comm->Send(buffer.source_buffer, buffer.element_type,
+                                    buffer.element_count, i,
+                                    GpuCollectives::On(stream)));
 
-      TF_RETURN_IF_ERROR(
-          nccl_api->Recv(buffer.destination_buffer, buffer.element_type,
-                         buffer.element_count, i, comm, &stream));
+      TF_RETURN_IF_ERROR(comm->Recv(buffer.destination_buffer,
+                                    buffer.element_type, buffer.element_count,
+                                    i, GpuCollectives::On(stream)));
     }
   }
 
@@ -302,10 +304,10 @@ absl::Status RunMemCpyAllToAll(
                             peer * chunk_elements, chunk_elements);
         send_pointer_map[peer] = (uint64_t)recv_slice.opaque();
 
-        TF_RETURN_IF_ERROR(nccl_api->SendPtrToPeer(&send_pointer_map[peer],
-                                                   peer, comm, &stream));
-        TF_RETURN_IF_ERROR(nccl_api->RecvPtrFromPeer(&receive_pointer_map[peer],
-                                                     peer, comm, &stream));
+        TF_RETURN_IF_ERROR(comm->SendPtrToPeer(&send_pointer_map[peer], peer,
+                                               GpuCollectives::On(stream)));
+        TF_RETURN_IF_ERROR(comm->RecvPtrFromPeer(
+            &receive_pointer_map[peer], peer, GpuCollectives::On(stream)));
       }
       TF_RETURN_IF_ERROR(nccl_api->GroupEnd());
       TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
@@ -329,10 +331,10 @@ absl::Status RunMemCpyAllToAll(
       send_pointer_map[peer] =
           (uint64_t)buffers[peer].destination_buffer.opaque();
 
-      TF_RETURN_IF_ERROR(nccl_api->SendPtrToPeer(&send_pointer_map[peer], peer,
-                                                 comm, &stream));
-      TF_RETURN_IF_ERROR(nccl_api->RecvPtrFromPeer(&receive_pointer_map[peer],
-                                                   peer, comm, &stream));
+      TF_RETURN_IF_ERROR(comm->SendPtrToPeer(&send_pointer_map[peer], peer,
+                                             GpuCollectives::On(stream)));
+      TF_RETURN_IF_ERROR(comm->RecvPtrFromPeer(&receive_pointer_map[peer], peer,
+                                               GpuCollectives::On(stream)));
     }
     TF_RETURN_IF_ERROR(nccl_api->GroupEnd());
     TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());

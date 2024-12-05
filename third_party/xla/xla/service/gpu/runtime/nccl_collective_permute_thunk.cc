@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -257,16 +258,16 @@ absl::Status RunCollectivePermute(
     }
     // Send source buffer to target peer if needed.
     if (target_id) {
-      TF_RETURN_IF_ERROR(nccl_api->Send(src_addr, buffer.element_type,
-                                        buffer.element_count, *target_id, comm,
-                                        &stream));
+      TF_RETURN_IF_ERROR(comm->Send(src_addr, buffer.element_type,
+                                    buffer.element_count, *target_id,
+                                    GpuCollectives::On(stream)));
     }
 
     // Receive data from the source peer to the destination buffer.
     if (source_id) {
-      TF_RETURN_IF_ERROR(nccl_api->Recv(dest_addr, buffer.element_type,
-                                        buffer.element_count, *source_id, comm,
-                                        &stream));
+      TF_RETURN_IF_ERROR(comm->Recv(dest_addr, buffer.element_type,
+                                    buffer.element_count, *source_id,
+                                    GpuCollectives::On(stream)));
     }
     if (is_nccl_group_needed) {
       TF_RETURN_IF_ERROR(nccl_api->GroupEnd());

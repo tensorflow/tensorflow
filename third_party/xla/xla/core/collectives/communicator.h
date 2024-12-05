@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_CORE_COLLECTIVES_COMMUNICATOR_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -75,6 +76,48 @@ class Communicator {
                                  PrimitiveType dtype, size_t count,
                                  ReductionKind reduction_kind,
                                  const Executor& executor) = 0;
+
+  // Copy data in `send_buff` from the root device to the `recv_buff` on
+  // all other devices.
+  virtual absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
+                                 se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count, size_t root,
+                                 const Executor& executor) = 0;
+
+  // Reduce data in `send_buff` from all devices using the `reduction_kind`
+  // operation and leave the reduced result scattered over the devices so that
+  // the `recv_buff` on rank `i` will contain the i-th block of the result.
+  virtual absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
+                                     se::DeviceMemoryBase recv_buffer,
+                                     PrimitiveType dtype, size_t count,
+                                     ReductionKind reduction_kind,
+
+                                     const Executor& executor) = 0;
+
+  // Gather `count` values from all devices into `recv_buffer`, receiving data
+  // from rank `i` at offset `i * sendcount`.
+  virtual absl::Status AllGather(se::DeviceMemoryBase send_buffer,
+                                 se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count,
+                                 const Executor& executor) = 0;
+
+  // Send data from `send_buff` to rank `peer`.
+  virtual absl::Status Send(se::DeviceMemoryBase send_buffer,
+                            PrimitiveType dtype, size_t count, int32_t peer,
+                            const Executor& executor) = 0;
+
+  // Send a pointer `ptr` to rank `peer`.
+  virtual absl::Status SendPtrToPeer(void* ptr, int32_t peer,
+                                     const Executor& executor) = 0;
+
+  // Receive data from rank `peer` into `recv_buff`.
+  virtual absl::Status Recv(se::DeviceMemoryBase recv_buffer,
+                            PrimitiveType dtype, size_t count, int32_t peer,
+                            const Executor& executor) = 0;
+
+  // Receive a pointer from rank `peer` into `ptr`.
+  virtual absl::Status RecvPtrFromPeer(void* ptr, int32_t peer,
+                                       const Executor& executor) = 0;
 
   virtual std::string ToString() const = 0;
 };

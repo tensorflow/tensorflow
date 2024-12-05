@@ -110,57 +110,6 @@ class NcclApi : public GpuCollectives {
     NcclPersistentPlanAllocatorHandle recover_;
     tsl::RCReference<PersistentPlanAllocator> allocator_;
   };
-
-  // Copy data in `send_buff` from the root GPU to the `recv_buff` on
-  // all GPUs.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/colls.html#ncclbroadcast
-  virtual absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
-                                 se::DeviceMemoryBase recv_buffer,
-                                 PrimitiveType dtype, size_t count, size_t root,
-                                 Communicator* comm, se::Stream* stream) = 0;
-  // Reduce data in `send_buff` from all GPUs using the `reduction_kind`
-  // operation and leave the reduced result scattered over the devices so that
-  // the `recv_buff` on rank `i` will contain the i-th block of the result.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/colls.html#ncclreducescatter
-  virtual absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
-                                     se::DeviceMemoryBase recv_buffer,
-                                     PrimitiveType dtype, size_t count,
-                                     ReductionKind reduction_kind,
-                                     Communicator* comm,
-                                     se::Stream* stream) = 0;
-
-  // Gather `count` values from all GPUs into recv_buffer, receiving data from
-  // rank `i` at offset `i * sendcount`.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/colls.html#ncclallgather
-  virtual absl::Status AllGather(se::DeviceMemoryBase send_buffer,
-                                 se::DeviceMemoryBase recv_buffer,
-                                 PrimitiveType dtype, size_t count,
-                                 Communicator* comm, se::Stream* stream) = 0;
-
-  // Send data from `send_buff` to rank `peer`.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/p2p.html#ncclsend
-  virtual absl::Status Send(se::DeviceMemoryBase send_buffer,
-                            PrimitiveType dtype, size_t count, int32_t peer,
-                            Communicator* comm, se::Stream* stream) = 0;
-  // Send a pointer `ptr` to rank `peer`.
-  virtual absl::Status SendPtrToPeer(void* ptr, int32_t peer,
-                                     Communicator* comm,
-                                     se::Stream* stream) = 0;
-
-  // Receive data from rank `peer` into `recv_buff`.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/p2p.html#ncclrecv
-  virtual absl::Status Recv(se::DeviceMemoryBase recv_buffer,
-                            PrimitiveType dtype, size_t count, int32_t peer,
-                            Communicator* comm, se::Stream* stream) = 0;
-  // Receive a pointer from rank `peer` into `ptr`.
-  virtual absl::Status RecvPtrFromPeer(void* ptr, int32_t peer,
-                                       Communicator* comm,
-                                       se::Stream* stream) = 0;
 };
 
 }  // namespace xla::gpu

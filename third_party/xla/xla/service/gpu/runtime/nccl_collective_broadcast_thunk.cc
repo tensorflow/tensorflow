@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -74,11 +75,11 @@ absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
   for (auto buffer : buffers) {
     se::DeviceMemoryBase src_addr = buffer.source_buffer;
     se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
-    TF_RETURN_IF_ERROR(nccl_api->Broadcast(
+    TF_RETURN_IF_ERROR(comm->Broadcast(
         // Always use rank 0 since we always broadcast from the first id in
         // replica_groups
-        src_addr, dest_addr, buffer.element_type, buffer.element_count, 0, comm,
-        &stream));
+        src_addr, dest_addr, buffer.element_type, buffer.element_count, 0,
+        GpuCollectives::On(stream)));
   }
   return nccl_api->GroupEnd();
 }
