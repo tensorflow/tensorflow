@@ -19,6 +19,20 @@ func.func @atomic_rmw(%in: tensor<2x3xf32>, %i: index, %j: index)
 
 // -----
 
+func.func @atomic_rmw(%in: tensor<16xf32>, %i: index) -> (tensor<16xf32>) {
+  %ret = xla.atomic_rmw %in[%i] : tensor<16xf32> {
+    ^bb0(%current : vector<2xf32>):
+      %c42 = arith.constant dense<42.0> : vector<2xf32>
+      %add = arith.addf %current, %c42 : vector<2xf32>
+      xla.yield %add : vector<2xf32>
+  }
+  return %ret : tensor<16xf32>
+}
+// CHECK-LABEL: @atomic_rmw
+// CHECK: xla.atomic_rmw
+
+// -----
+
 func.func private @add(%a: f32, %b: f32) -> f32 {
   %ret = arith.addf %a, %b : f32
   return %ret : f32

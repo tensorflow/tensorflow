@@ -597,7 +597,7 @@ lit_test_suite(
 
 # copybara:uncomment_begin(triton-opt tool doesn't build in OSS)
 # lit_test_suite(
-#     name = "mlir_lit_tests",
+#     name = "xla_triton_mlir_lit_tests",
 #     srcs = glob(["*.mlir"]),
 #     cfg = "//xla:lit.cfg.py",
 #     tools = [

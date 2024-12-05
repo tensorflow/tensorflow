@@ -134,7 +134,6 @@ cc_library(
         ":xla_gpu_dialect_inc_gen",
         ":xla_gpu_ops_inc_gen",
         ":xla_gpu_types_inc_gen",
-        "//xla:status_macros",
         "//xla/codegen/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
         "@com_google_absl//absl/status",

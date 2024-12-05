@@ -84,3 +84,42 @@ func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32, %dim: index) -> (f32
   } {xla.range = [0 : index, 42 : index]}
   func.return %sum : f32
 }
+
+// -----
+
+func.func @atomic_rmw_mismatch_yield(%in: tensor<2x3xf32>, %i: index, %j: index)
+    -> (tensor<2x3xf32>) {
+  // expected-error @+1 {{mismatch in the block argument type and the yielded type}}
+  %ret = xla.atomic_rmw %in[%i, %j] : tensor<2x3xf32> {
+    ^bb0(%current : f32):
+      %c42 = arith.constant 420 : i32
+      xla.yield %c42 : i32
+  }
+  return %ret : tensor<2x3xf32>
+}
+
+// -----
+
+func.func @atomic_rmw_mismatch_block_arg_type(%in: tensor<2x3xf32>, %i: index, %j: index)
+    -> (tensor<2x3xf32>) {
+  // expected-error @+1 {{mismatch in the result element type and the block argument type}}
+  %ret = xla.atomic_rmw %in[%i, %j] : tensor<2x3xf32> {
+    ^bb0(%current : i32):
+      %c42 = arith.constant 420 : i32
+      xla.yield %c42 : i32
+  }
+  return %ret : tensor<2x3xf32>
+}
+
+// -----
+
+func.func @atomic_rmw_mismatch_block_arg_vector_type(%in: tensor<16xf32>, %i: index) -> (tensor<16xf32>) {
+  // expected-error @+1 {{mismatch in the result element type and the block argument vector element type}}
+  %ret = xla.atomic_rmw %in[%i] : tensor<16xf32> {
+    ^bb0(%current : vector<2xi32>):
+      %c42 = arith.constant dense<42> : vector<2xi32>
+      %add = arith.addi %current, %c42 : vector<2xi32>
+      xla.yield %add : vector<2xi32>
+  }
+  return %ret : tensor<16xf32>
+}
