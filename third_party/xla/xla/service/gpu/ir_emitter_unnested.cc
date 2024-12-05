@@ -1168,9 +1168,9 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
 
   auto backend_config = instr->backend_config<GpuBackendConfig>();
   if (!backend_config.ok()) {
-    LOG(WARNING) << "Unable to parse backend config for custom call: "
-                 << backend_config.status().message() << "\n"
-                 << "Fall back to parse the raw backend config str.";
+    VLOG(3) << "Unable to parse backend config for custom call: "
+            << backend_config.status().message() << "\n"
+            << "Fall back to parse the raw backend config str.";
   }
 
   auto ffi_thunk = [&]() -> absl::StatusOr<std::unique_ptr<CustomCallThunk>> {
