@@ -199,6 +199,7 @@ LiteRtStatus ModelUnpacker::Unpack(LiteRtModel model) {
     model->signatures.reserve(1);
     auto signature = std::make_unique<LiteRtSignatureT>();
     signature->key = LITERT_DEFAULT_SIGNATURE_KEY;
+    signature->subgraph_index = 0;
     signature->input_names.reserve(subgraph.inputs.size());
     for (auto& input : subgraph.inputs) {
       signature->input_names.push_back(input->name);
@@ -213,6 +214,7 @@ LiteRtStatus ModelUnpacker::Unpack(LiteRtModel model) {
     for (auto& signature_def : unpacker.Fb().signature_defs) {
       auto signature = std::make_unique<LiteRtSignatureT>();
       signature->key = signature_def->signature_key;
+      signature->subgraph_index = signature_def->subgraph_index;
       signature->input_names.reserve(signature_def->inputs.size());
       for (auto& input : signature_def->inputs) {
         signature->input_names.push_back(input->name);

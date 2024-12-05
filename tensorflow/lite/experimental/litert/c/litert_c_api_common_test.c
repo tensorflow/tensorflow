@@ -20,6 +20,7 @@
 
 // Include all the header files in the litert/c directory.
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"  // NOLINT
+#include "tensorflow/lite/experimental/litert/c/litert_compiled_model.h"  // NOLINT
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"  // NOLINT
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"  // NOLINT
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"  // NOLINT

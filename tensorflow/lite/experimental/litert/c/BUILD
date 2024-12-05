@@ -206,6 +206,41 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "litert_compiled_model",
+    srcs = ["litert_compiled_model.cc"],
+    hdrs = ["litert_compiled_model.h"],
+    deps = [
+        ":litert_common",
+        ":litert_logging",
+        ":litert_model",
+        ":litert_tensor_buffer",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/experimental/litert/runtime:compiled_model",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_test(
+    name = "litert_compiled_model_test",
+    srcs = [
+        "litert_compiled_model_test.cc",
+    ],
+    data = [
+        "//tensorflow/lite/experimental/litert/test:testdata/simple_model.tflite",
+    ],
+    deps = [
+        ":litert_common",
+        ":litert_compiled_model",
+        ":litert_model",
+        ":litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/cc:litert_model",
+        "//tensorflow/lite/experimental/litert/test:common",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 filegroup(
     name = "litert_model_srcs",
     srcs = ["litert_model.cc"],
@@ -226,6 +261,7 @@ cc_test(
     linkopts = ["-ldl"],
     deps = [
         ":litert_common",
+        ":litert_compiled_model",
         ":litert_logging",
         ":litert_model",
         ":litert_op_code",

@@ -251,9 +251,13 @@ LiteRtStatus LiteRtGetSubgraphOps(LiteRtSubgraph subgraph,
 // define any signatures.
 LiteRtStatus LiteRtGetDefaultSignatureKey(const char** signature_key);
 
-// Get the list of signatures defined in the model.
+// Get the signature key string defined in the model.
 LiteRtStatus LiteRtGetSignatureKey(LiteRtSignature signature,
                                    const char** signature_key);
+
+// Get the associated subgraph index for the given signature.
+LiteRtStatus LiteRtGetSignatureSubgraphIndex(LiteRtSignature signature,
+                                             LiteRtParamIndex* subgraph_index);
 
 // Get the number of inputs for the given signature.
 LiteRtStatus LiteRtGetNumSignatureInputs(LiteRtSignature signature,
@@ -307,7 +311,7 @@ LiteRtStatus LiteRtGetNumModelSignatures(LiteRtModel model,
 
 // Get the signature at the given index in the model
 LiteRtStatus LiteRtGetModelSignature(LiteRtModel model,
-                                     LiteRtParamIndex signature_idx,
+                                     LiteRtParamIndex signature_index,
                                      LiteRtSignature* signature);
 
 // Destroy the given model, freeing any memory it owns.

@@ -51,3 +51,13 @@ litert::Expected<LiteRtSignatureT*> LiteRtModelT::FindSignature(
   }
   return Unexpected(kLiteRtStatusErrorNotFound, "Signature not found");
 }
+
+litert::Expected<const LiteRtSubgraphT*> LiteRtModelT::FindSubgraph(
+    absl::string_view signature_key) const {
+  for (auto& signature : signatures) {
+    if (signature->key == signature_key) {
+      return &(subgraphs[signature->subgraph_index]);
+    }
+  }
+  return Unexpected(kLiteRtStatusErrorNotFound, "Signature not found");
+}

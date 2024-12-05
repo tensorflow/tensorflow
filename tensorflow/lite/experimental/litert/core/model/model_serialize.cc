@@ -247,9 +247,12 @@ Expected<OwningBufferRef<uint8_t>> SerializeModel(Model&& model) {
 }  // namespace litert::internal
 
 LiteRtStatus LiteRtSerializeModel(LiteRtModel model, uint8_t** buf,
-                                  size_t* size, size_t* offset) {
+                                  size_t* size, size_t* offset,
+                                  bool destroy_model) {
   auto serialized =
-      SerializeModel(::litert::Model::CreateFromOwnedHandle(model));
+      (destroy_model)
+          ? SerializeModel(::litert::Model::CreateFromOwnedHandle(model))
+          : SerializeModel(::litert::Model::CreateFromNonOwnedHandle(model));
   if (!serialized) {
     return serialized.Error().Status();
   }

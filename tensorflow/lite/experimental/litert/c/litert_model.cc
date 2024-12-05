@@ -117,14 +117,14 @@ LiteRtStatus LiteRtGetNumModelSignatures(LiteRtModel model,
 
 // Get the signature at the given index in the model
 LiteRtStatus LiteRtGetModelSignature(LiteRtModel model,
-                                     LiteRtParamIndex signature_idx,
+                                     LiteRtParamIndex signature_index,
                                      LiteRtSignature* signature) {
   if (!model || !signature) {
     return kLiteRtStatusErrorInvalidArgument;
-  } else if (signature_idx >= model->signatures.size()) {
+  } else if (signature_index >= model->signatures.size()) {
     return kLiteRtStatusErrorIndexOOB;
   }
-  *signature = model->signatures[signature_idx].get();
+  *signature = model->signatures[signature_index].get();
   return kLiteRtStatusOk;
 }
 
@@ -156,6 +156,12 @@ LiteRtStatus LiteRtGetSignatureKey(LiteRtSignature signature,
     return kLiteRtStatusErrorInvalidArgument;
   }
   *signature_key = signature->key.data();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetSignatureSubgraphIndex(LiteRtSignature signature,
+                                             LiteRtParamIndex* subgraph_index) {
+  *subgraph_index = signature->subgraph_index;
   return kLiteRtStatusOk;
 }
 

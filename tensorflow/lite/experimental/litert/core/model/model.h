@@ -167,6 +167,7 @@ struct LiteRtSubgraphT {
 struct LiteRtSignatureT {
   using Ptr = std::unique_ptr<LiteRtSignatureT>;
   absl::string_view key;
+  int subgraph_index;
   std::vector<absl::string_view> input_names;
   std::vector<absl::string_view> output_names;
 };
@@ -205,6 +206,10 @@ struct LiteRtModelT {
 
   // Look up signature by key.
   litert::Expected<LiteRtSignatureT*> FindSignature(
+      absl::string_view signature_key) const;
+
+  // Look up subgraph by key.
+  litert::Expected<const LiteRtSubgraphT*> FindSubgraph(
       absl::string_view signature_key) const;
 
   size_t MainSubgraphIndex() const {
