@@ -419,9 +419,7 @@ cc_library(
         "stats_calculator.h",
     ],
     copts = tf_copts(),
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],

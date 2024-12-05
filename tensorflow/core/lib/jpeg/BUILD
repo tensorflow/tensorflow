@@ -37,6 +37,7 @@ cc_library(
         "//tensorflow:windows": [],
         "//conditions:default": ["-ldl"],
     }),
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
