@@ -1677,19 +1677,11 @@ absl::Status AllReduceCmd::Record(const Thunk::ExecuteParams& execute_params,
       GetNcclComm(nccl_api(), *execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
-  Communicator* comm = comm_handle.comm;
-
-  // Use custom allocator for persistent execution plans.
-  NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
-      comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
-                execute_params.buffer_allocations->device_ordinal(),
-                execute_params.buffer_allocations->memory_allocator(),
-                execute_params.stream));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
         return RunAllReduce(nccl_api(), reduction_kind_, device_buffers,
-                            *stream, comm);
+                            *stream, comm_handle.comm);
       });
 }
 
@@ -1749,18 +1741,11 @@ absl::Status ReduceScatterCmd::Record(
       GetNcclComm(nccl_api(), *execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
-  Communicator* comm = comm_handle.comm;
-  // Use custom allocator for persistent execution plans.
-  NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
-      comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
-                execute_params.buffer_allocations->device_ordinal(),
-                execute_params.buffer_allocations->memory_allocator(),
-                execute_params.stream));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
         return RunReduceScatter(nccl_api(), reduction_kind_, device_buffers,
-                                *stream, comm);
+                                *stream, comm_handle.comm);
       });
 }
 
@@ -1819,18 +1804,11 @@ absl::Status AllToAllCmd::Record(const Thunk::ExecuteParams& execute_params,
       GetNcclComm(nccl_api(), *execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
-  Communicator* comm = comm_handle.comm;
-  // Use custom allocator for persistent execution plans.
-  NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
-      comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
-                execute_params.buffer_allocations->device_ordinal(),
-                execute_params.buffer_allocations->memory_allocator(),
-                execute_params.stream));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
         return RunAllToAll(nccl_api(), has_split_dimension_, device_buffers,
-                           *stream, comm);
+                           *stream, comm_handle.comm);
       });
 }
 
@@ -1887,17 +1865,11 @@ absl::Status AllGatherCmd::Record(const Thunk::ExecuteParams& execute_params,
       GetNcclComm(nccl_api(), *execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
-  Communicator* comm = comm_handle.comm;
-  // Use custom allocator for persistent execution plans.
-  NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
-      comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
-                execute_params.buffer_allocations->device_ordinal(),
-                execute_params.buffer_allocations->memory_allocator(),
-                execute_params.stream));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
-        return RunAllGather(nccl_api(), device_buffers, *stream, comm);
+        return RunAllGather(nccl_api(), device_buffers, *stream,
+                            comm_handle.comm);
       });
 }
 
@@ -1956,17 +1928,10 @@ absl::Status CollectiveBroadcastCmd::Record(
       GetNcclComm(nccl_api(), *execute_params.collective_params,
                   *execute_params.collective_cliques, config().replica_groups,
                   config().group_mode, nccl_stream_id(), GetAsyncStreamKind()));
-  Communicator* comm = comm_handle.comm;
-  // Use custom allocator for persistent execution plans.
-  NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
-      comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
-                execute_params.buffer_allocations->device_ordinal(),
-                execute_params.buffer_allocations->memory_allocator(),
-                execute_params.stream));
 
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
-        return RunCollectiveBroadcast(device_buffers, *stream, comm,
+        return RunCollectiveBroadcast(device_buffers, *stream, comm_handle.comm,
                                       nccl_api());
       });
 }
