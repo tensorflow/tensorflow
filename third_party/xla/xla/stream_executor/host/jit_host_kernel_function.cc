@@ -296,9 +296,6 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
         "failed to create executor process control: %s", ToString(err)));
   }
 
-  // TODO(b/286475799): Concurrent compilation leads to spurious memory
-  // corruptions and segfaults at run time, however nothing shows up in tsan
-  // or asan builds. This is a hack that for some unknown reason helps.
   static auto *lljit_mu = new absl::Mutex();
   std::optional<absl::MutexLock> lljit_lock(lljit_mu);
 

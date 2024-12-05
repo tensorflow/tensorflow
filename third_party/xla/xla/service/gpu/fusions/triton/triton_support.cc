@@ -66,8 +66,6 @@ bool IsTritonSupportedDataType(PrimitiveType type,
 }
 
 // Set of unary elementwise ops that are genuinely supported by Triton.
-// TODO(b/345763510): make sure that this is accurate. At the moment, this is
-// mostly a fork of the same code in legacy_triton::.
 absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
     PrimitiveType element_type) {
   if (element_type == PrimitiveType::PRED) {
@@ -191,8 +189,6 @@ absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
 }
 
 // Set of ternary elementwise ops that are genuinely supported by Triton.
-// TODO(b/345763510): make sure that this is accurate. At the moment, this is
-// mostly a fork of the same code in legacy_triton::.
 absl::flat_hash_set<HloOpcode> TritonSupportedTernaryElementwiseOps(
     PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
   if (element_type == PrimitiveType::U16) {

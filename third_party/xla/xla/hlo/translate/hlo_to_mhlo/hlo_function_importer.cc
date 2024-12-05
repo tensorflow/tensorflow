@@ -434,7 +434,6 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
 absl::Status HloFunctionImporter::ImportAsRegion(
     const HloComputation& computation, mlir::Region* region) {
   auto loc = region->getLoc();
-  // TODO(hinsu): Store computation name as an attribute for round-trip.
   auto* block = new mlir::Block;
   region->push_back(block);
 
@@ -494,7 +493,6 @@ absl::Status HloFunctionImporter::ImportInstructions(
   llvm::SmallVector<Value, 4> arguments(block->args_begin(), block->args_end());
   mlir::OpBuilder builder = mlir::OpBuilder::atBlockEnd(block);
 
-  // TODO(suderman): Add location tracking details.
   mlir::Location loc = builder.getUnknownLoc();
 
   bool is_func = llvm::isa<FuncOp>(block->getParentOp());
@@ -1357,8 +1355,6 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                       rets[0]);
     }
     case HloOpcode::kConcatenate: {
-      // TODO(b/132057942): Support taking an uint64_t instead of an
-      // IntegerAttr for concatenate dimension.
       return func_builder
           ->create<mlir::mhlo::ConcatenateOp>(
               loc, result_type, operands,
@@ -1889,8 +1885,6 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // never for compiling production models.
       //
       // Since this is hardcoded as such in the proto, we must follow suit.
-      // TODO(b/208783683): The one improvement we can make on this is to move
-      // from the a serialized proto representation to a parsable string
       auto exit_metadata = ShardingMetadata::ToShardingMetadata(
           &instruction->operand_side_metadata());
       auto entry_metadata = ShardingMetadata::ToShardingMetadata(
@@ -1970,10 +1964,6 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kTanh, TanhOp);
       NO_ATTRIBUTE_CASE(kTuple, TupleOp);
       NO_ATTRIBUTE_CASE(kXor, XorOp);
-      // TODO(b/129422361) Copy needs special handling because it is not
-      // defined in tensorflow/compiler/xla/client/xla_builder.h. See
-      // operation semantics in
-      // g3doc/platforms/xla/g3doc/internal/hlo_semantics#copy
       NO_ATTRIBUTE_CASE(kCopy, CopyOp);
 
 #undef NO_ATTRIBUTE_CASE

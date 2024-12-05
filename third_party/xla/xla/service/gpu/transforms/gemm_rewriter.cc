@@ -424,9 +424,6 @@ HloInstruction *TransposeMatrix(HloInstruction *instr, int64_t contracting_dim,
 // constant so we can fuse it into this gemm. That would defeat the whole
 // purpose of this fusion, which is to launch fewer kernels.  So if we can,
 // we expand out this constant ourselves.
-//
-// TODO(b/192499646): Even better would be to use cublasLT to fuse the
-// broadcasted bias, if it supports that fusion efficiently.
 HloInstruction *MaybeConstantFoldBias(HloInstruction *bias) {
   // This limit was not chosen carefully.
   constexpr int kMaxMaterializeBiasBytes = 8 * 1024 * 1024;
@@ -1918,8 +1915,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     const HloInstruction *rhs = instr.operand(1);
     if (lhs->shape().element_type() == S8 ||
         rhs->shape().element_type() == S8) {
-      // TODO(b/241446501) The XLA usage of cublasLt does not yet handle
-      // int8 matmuls. Fallback to legacy cublas.
       return absl::string_view(kGemmCallTarget);
     }
 
@@ -2215,7 +2210,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // 1. Batch count must be <2^16.
     constexpr int64_t kMaxBatchCount = 65535;
     // We get the batch dimension size from lhs here, but we could just as well
-    // use rhs; they are guaranteed to be the same (TODO:Verify).
+    // use rhs; they are guaranteed to be the same.
     const auto &batch_dimensions =
         gemm_backend_config.dot_dimension_numbers().lhs_batch_dimensions();
     int batch_count = (batch_dimensions.empty() ? 0 : 1);
