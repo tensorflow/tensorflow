@@ -2314,6 +2314,21 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
           << memory_pressure_tracker.memory_usage();
   sched_state.ready_set.insert(sched_state.ready_set.end(), roots.begin(),
                                roots.end());
+  for (HloGraphNode* root : roots) {
+    int64_t annotation = root->GetAnnotation();
+    if (annotation != -1) {
+      sched_state.ready_num_nodes_with_annotation[annotation]++;
+      VLOG(2) << "Annotation: " << annotation
+              << " ready_num_nodes_with_annotation: "
+              << sched_state.ready_num_nodes_with_annotation[annotation]
+              << " num_root_instructions: "
+              << annotation_tracker_->GetNumRootInstructions(annotation);
+      if (annotation_tracker_->GetNumRootInstructions(annotation) ==
+          sched_state.ready_num_nodes_with_annotation[annotation]) {
+        sched_state.ready_annotations.push_back(annotation);
+      }
+    }
+  }
   // Schedule in order bottom up.
   while (!sched_state.ready_set.empty() || !sched_state.nop_set.empty()) {
     VLOG(10) << "Current ready time: " << sched_state.current_time;
@@ -2329,16 +2344,15 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
       return absl::StrJoin(sched_state.ready_set, "\n", LogFormatter());
     }());
     if (!sched_state.ready_annotations.empty()) {
-      // TODO (sacer): If more than one annotations are ready, decide the order
-      // with a heuristic.
-      for (int64_t annotation : sched_state.ready_annotations) {
-        VLOG(2) << "------- BEGIN ANNOTATION: " << annotation << " -------";
-        sched_state.ongoing_annotation = annotation;
-        TF_RETURN_IF_ERROR(ScheduleAnnotation(annotation, &sched_state));
-        VLOG(2) << "-------  END ANNOTATION: " << annotation << " --------";
-        sched_state.ongoing_annotation = -1;
-      }
-      sched_state.ready_annotations.clear();
+      // TODO (sacer): If more than one annotations are ready, decide which one
+      // to schedule next with a heuristic.
+      int64_t annotation = sched_state.ready_annotations.back();
+      sched_state.ready_annotations.pop_back();
+      VLOG(2) << "------- BEGIN ANNOTATION: " << annotation << " -------";
+      sched_state.ongoing_annotation = annotation;
+      TF_RETURN_IF_ERROR(ScheduleAnnotation(annotation, &sched_state));
+      VLOG(2) << "-------  END ANNOTATION: " << annotation << " --------";
+      sched_state.ongoing_annotation = -1;
       continue;
     }
     TF_RETURN_IF_ERROR(SchedulingStep(&sched_state));
