@@ -1266,7 +1266,7 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     xla_call_module_context_->appendDialectRegistry(registry);
 
     auto l = tensorflow::XlaCallModuleLoader::Create(
-        xla_call_module_context_.get(), op.getVersion(), op.getModule().str(),
+        xla_call_module_context_.get(), op.getVersion(), op.getModule(),
         std::move(disabled_checks), std::move(platforms),
         /*num_invocation_args=*/op.getArgs().size(),
         op.getHasTokenInputOutput());

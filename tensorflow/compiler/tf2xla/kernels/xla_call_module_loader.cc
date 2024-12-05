@@ -120,14 +120,14 @@ bool IsTokenType(mlir::Type type) {
 
 absl::StatusOr<std::unique_ptr<XlaCallModuleLoader>>
 XlaCallModuleLoader::Create(mlir::MLIRContext *context, int version,
-                            std::string module_str,
+                            mlir::StringRef module_str,
                             std::vector<std::string> disabled_checks,
                             std::vector<std::string> platforms,
                             int num_invocation_args,
                             bool main_has_token_input_output) {
   std::unique_ptr<XlaCallModuleLoader> loader(new XlaCallModuleLoader);
   TF_RETURN_IF_ERROR(loader->LoadModule(
-      context, version, std::move(module_str), std::move(disabled_checks),
+      context, version, module_str, std::move(disabled_checks),
       std::move(platforms), num_invocation_args, main_has_token_input_output));
   return loader;
 }
@@ -434,7 +434,7 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
 }
 
 absl::Status XlaCallModuleLoader::LoadModule(
-    mlir::MLIRContext *context, int version, std::string module_str,
+    mlir::MLIRContext *context, int version, mlir::StringRef module_str,
     std::vector<std::string> disabled_checks,
     std::vector<std::string> platforms, int num_invocation_args,
     bool main_has_token_input_output) {
@@ -455,30 +455,6 @@ absl::Status XlaCallModuleLoader::LoadModule(
   context_->loadDialect<mlir::chlo::ChloDialect>();
   context_->loadDialect<mlir::vhlo::VhloDialect>();
 
-  if (version >= kVersionStartSupportDisabledChecks && platforms.empty()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("XlaCallModuleOp with version ", version,
-                     " must have non-empty platforms."));
-  }
-
-  // Parses both IR text and bytecode.
-  if (version >= kVersionStartStableHloCompatibility) {
-    module_ =
-        mlir::stablehlo::deserializePortableArtifact(module_str, context_);
-  } else {
-    module_ = mlir::parseSourceString<mlir::ModuleOp>(module_str, context_);
-  }
-  if (!module_) {
-    return absl::InvalidArgumentError("Cannot deserialize computation");
-  }
-  VLOG(3) << "Parsed serialized module (version = " << version
-          << ", platforms = [" << absl::StrJoin(platforms, ", ")
-          << "], main_has_token_input_output = " << main_has_token_input_output
-          << ", disabled_checks = [" << absl::StrJoin(disabled_checks, ", ")
-          << "], loading_disabled_checks = ["
-          << absl::StrJoin(loading_disabled_checks_, ", ") << "]), module = "
-          << DumpMlirOpToFile("xla_call_module.parsed", *module_);
-
   if (version < kVersionMinimumSupported) {
     return absl::InvalidArgumentError(absl::StrCat(
         "XlaCallModuleOp with version ", version,
@@ -490,6 +466,25 @@ absl::Status XlaCallModuleLoader::LoadModule(
                      " is not supported by this build. Must be <= ",
                      kVersionMaximumSupported));
   }
+  if (version >= kVersionStartSupportDisabledChecks && platforms.empty()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("XlaCallModuleOp with version ", version,
+                     " must have non-empty platforms."));
+  }
+
+  // Parse the StableHLO/VHLO bytecode
+  module_ = mlir::stablehlo::deserializePortableArtifact(module_str, context_);
+  if (!module_) {
+    return absl::InvalidArgumentError("Cannot deserialize computation");
+  }
+  VLOG(3) << "Parsed serialized module (version = " << version
+          << ", platforms = [" << absl::StrJoin(platforms, ", ")
+          << "], main_has_token_input_output = " << main_has_token_input_output
+          << ", disabled_checks = [" << absl::StrJoin(disabled_checks, ", ")
+          << "], loading_disabled_checks = ["
+          << absl::StrJoin(loading_disabled_checks_, ", ") << "]), module = "
+          << DumpMlirOpToFile("xla_call_module.parsed", *module_);
+
   {
     mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
     if (mlir::failed(mlir::verify(*module_))) {
