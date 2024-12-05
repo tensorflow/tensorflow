@@ -49,9 +49,9 @@ namespace xla {
 namespace spmd {
 namespace {
 using hlo_sharding_util::GroupedSharding;
-PartitioningMethod gather_partition_method = PartitioningMethod::kIndexParallel;
+PartitioningMethod gather_partition_method = PartitioningMethod::kExplicitBatch;
 PartitioningMethod scatter_partition_method =
-    PartitioningMethod::kIndexParallel;
+    PartitioningMethod::kExplicitBatch;
 
 // Generates per-group partitioned hlo based on given grouped sharding.
 PartitionedHlo PerGroupPartitionedHlo(
@@ -824,8 +824,7 @@ std::pair<int64_t, int64_t> GatherPartitionMethodCostModel(
     absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor) {
   if (partition_method == GetGatherPartitionMethod(gather_partition_method)) {
     // Always prioritize the user's chosen partitioning, and assume it has zero
-    // cost.
-    // This defaults to IndexParallel.
+    // cost. The default method is kExplicitBatch.
     return {0, 0};
   }
   return EvaluatePartitionCost(gather, partition_method, gather, operand,
