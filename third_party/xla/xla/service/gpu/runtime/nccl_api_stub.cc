@@ -83,12 +83,6 @@ ScopedPersistentPlanAllocator::~ScopedPersistentPlanAllocator() = default;
 
 class NcclApiStub final : public GpuCollectivesStub {
  public:
-  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommSplit(
-      absl::Span<const Communicator* const>, int32_t, absl::Span<const RankId>,
-      std::optional<Config>) final {
-    return UnimplementedError();
-  }
-
   absl::Status AllReduce(se::DeviceMemoryBase, se::DeviceMemoryBase,
                          PrimitiveType, size_t, ReductionKind, Communicator*,
                          se::Stream*) final {

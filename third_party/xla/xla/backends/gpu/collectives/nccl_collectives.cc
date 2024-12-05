@@ -19,11 +19,16 @@ limitations under the License.
 #include <cstdlib>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_communicator.h"
@@ -32,8 +37,10 @@ limitations under the License.
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -50,6 +57,12 @@ limitations under the License.
 #endif  // TENSORFLOW_USE_ROCM
 
 namespace xla::gpu {
+
+static ncclComm_t Cast(const Communicator* comm) {
+  auto* nccl_communicator = tsl::down_cast<const NcclCommunicator*>(comm);
+  CHECK(nccl_communicator != nullptr) << "Unsupported XLA communicator";
+  return nccl_communicator->comm();
+}
 
 absl::StatusOr<CliqueId> NcclCollectives::CreateUniqueCliqueId() const {
   VLOG(3) << "Create NCCL unique clique id";
@@ -77,16 +90,14 @@ NcclCollectives::GetCliqueIdCallback(const CliqueIdCallback* clique_id_callback,
   return local_callback;
 }
 
-static ncclConfig_t AsNcclConfig(const CliqueId& clique_id,
-                                 const GpuCollectives::Config& config) {
+static ncclConfig_t AsNcclConfig(const GpuCollectives::Config& config) {
   ncclConfig_t comm_config = NCCL_CONFIG_INITIALIZER;
 #if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION > 50700
   comm_config.splitShare = config.split_share;
 #endif
   if (config.max_nchannels > 0) {
+    VLOG(1) << "Maximum number of channels is set to: " << comm_config.maxCTAs;
     comm_config.maxCTAs = config.max_nchannels;
-    VLOG(1) << "Maximum number of channels for fingerprint(id)="
-            << clique_id.fingerprint() << " is set to: " << comm_config.maxCTAs;
   }
   return comm_config;
 }
@@ -117,7 +128,7 @@ NcclCollectives::CreateCommunicators(int32_t nranks,
           << "; fingerprint(id)=" << clique_id->fingerprint();
 
   TF_ASSIGN_OR_RETURN(auto* gpu_config, TryCast(&config));
-  ncclConfig_t comm_config = AsNcclConfig(*clique_id, *gpu_config);
+  ncclConfig_t comm_config = AsNcclConfig(*gpu_config);
 
   std::vector<ncclComm_t> comm_handles;
   std::vector<std::unique_ptr<Communicator>> comms;
@@ -145,6 +156,59 @@ NcclCollectives::CreateCommunicators(int32_t nranks,
   }
 
   return comms;
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
+                                    int32_t color,
+                                    absl::Span<const RankId> keys,
+                                    const Collectives::Config& config) {
+  auto rank_formatter = [](std::string* str, RankId rank) {
+    absl::StrAppend(str, rank.value());
+  };
+
+  VLOG(1) << absl::StreamFormat(
+      "Split %d NCCL communicators using color %d and keys: [%s]", comms.size(),
+      color, absl::StrJoin(keys, ",", rank_formatter));
+
+  if (keys.size() != comms.size()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Comms and keys must have the same size, but %d != %d",
+                        comms.size(), keys.size()));
+  }
+
+  TF_ASSIGN_OR_RETURN(auto* gpu_config, TryCast(&config));
+  ncclConfig_t comm_config = AsNcclConfig(*gpu_config);
+
+  // In contrast to grouped initialization communicator splitting initializes
+  // communicators only after a successful call to `GroupEnd`, so we keep a
+  // vector of handles and after successful splitting convert to RAII wrappers.
+  std::vector<ncclComm_t> split_comms_handles;
+  split_comms_handles.resize(comms.size(), nullptr);
+
+#if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
+  TF_RETURN_IF_ERROR(GroupStart());
+  for (size_t i = 0; i < comms.size(); ++i) {
+    VLOG(1) << "Split NCCL communicator " << comms[i] << " with color " << color
+            << " and key " << keys[i];
+    XLA_NCCL_RETURN_IF_ERROR(
+        ncclCommSplit(Cast(comms[i]), color, keys[i].value(),
+                      &split_comms_handles[i], &comm_config));
+  }
+  TF_RETURN_IF_ERROR(GroupEnd());
+
+  std::vector<std::unique_ptr<Communicator>> split_comms;
+  split_comms.reserve(split_comms_handles.size());
+  for (size_t i = 0; i < split_comms_handles.size(); ++i) {
+    split_comms.emplace_back(
+        std::make_unique<NcclCommunicator>(split_comms_handles[i]));
+  }
+  return split_comms;
+#else
+  return absl::UnimplementedError(
+      absl::StrFormat("%s:%d: NCCL operation ncclCommSplit not implemented",
+                      __FILE__, __LINE__));
+#endif  // !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
 }
 
 absl::Status NcclCollectives::GroupStart() {

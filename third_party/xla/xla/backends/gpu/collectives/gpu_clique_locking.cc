@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/lockable.h"
 #include "xla/service/rendezvous.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -191,8 +190,8 @@ static auto DeviceRanksToString(absl::Span<const DeviceRank> ranks) {
 // a lock that gives an access to initialized clique (access is shared between
 // all participating ranks that own a shared pointer).
 static absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>>
-InitializeGpuClique(NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
-                    const GpuCliqueKey& clique_key,
+InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
+                    RunId run_id, const GpuCliqueKey& clique_key,
                     const GpuCollectives::CliqueIdCallback& clique_id_callback,
                     int32_t num_local_participants, RankId rank,
                     const GpuCollectives::Config& config) {
@@ -237,8 +236,8 @@ InitializeGpuClique(NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
 
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<Communicator>> created_comms,
-        nccl_api->CreateCommunicators(nranks, clique_key, clique_id, ranks,
-                                      config));
+        collectives->CreateCommunicators(nranks, clique_key, clique_id, ranks,
+                                         config));
 
     absl::btree_map<RankId, std::unique_ptr<Communicator>> comms;
     for (size_t i = 0; i < ranks.size(); ++i) {
@@ -318,8 +317,8 @@ static int32_t GetCommSplitColor(const GpuCliqueKey& clique_key) {
 // `parent_clique` clique (access is shared between all participating ranks that
 // own a shared pointer).
 static absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>>
-InitializeGpuClique(NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
-                    const GpuCliqueKey& clique_key,
+InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
+                    RunId run_id, const GpuCliqueKey& clique_key,
                     std::shared_ptr<LockableGpuClique::Lock> parent_clique,
                     int32_t num_local_participants, RankId rank,
                     const GpuCollectives::Config& config) {
@@ -385,8 +384,9 @@ InitializeGpuClique(NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
         clique_key.ToString(), parent_clique_key.ToString(), color,
         absl::StrJoin(rank_mapping, ",", rank_mapping_formatter));
 
-    TF_ASSIGN_OR_RETURN(auto splitted_comms,
-                        nccl_api->CommSplit(parent_comms, color, keys, config));
+    TF_ASSIGN_OR_RETURN(
+        auto splitted_comms,
+        collectives->SplitCommunicators(parent_comms, color, keys, config));
 
     absl::btree_map<RankId, std::unique_ptr<Communicator>> comms;
     for (size_t i = 0; i < splitted_comms.size(); ++i) {
@@ -435,7 +435,7 @@ InitializeGpuClique(NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
 //===----------------------------------------------------------------------===//
 
 absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
-    NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
+    GpuCollectives* collectives, se::StreamExecutor* device, RunId run_id,
     const GpuCliqueKey& clique_key,
     const GpuCollectives::CliqueIdCallback& clique_id_callback, RankId rank,
     size_t num_local_participants, const AcquiredCliquesMap& acquired_cliques,
@@ -483,7 +483,7 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
   if (enable_nccl_comm_splitting) {
     for (auto& [acquired_clique_key, acquired_clique] : acquired_cliques) {
       if (clique_key.IsSubsetOf(acquired_clique_key)) {
-        return InitializeGpuClique(nccl_api, device, run_id, clique_key,
+        return InitializeGpuClique(collectives, device, run_id, clique_key,
                                    acquired_clique, num_local_participants,
                                    rank, config);
       }
@@ -491,7 +491,7 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
   }
 
   // If we can't split any of the acquired cliques, create a new one.
-  return InitializeGpuClique(nccl_api, device, run_id, clique_key,
+  return InitializeGpuClique(collectives, device, run_id, clique_key,
                              clique_id_callback, num_local_participants, rank,
                              config);
 }

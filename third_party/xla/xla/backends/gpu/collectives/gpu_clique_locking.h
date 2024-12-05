@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/lockable.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -63,7 +62,7 @@ class AcquiredCliquesMap
 // the rendezvous mechanism to ensure that all participants join clique
 // acquisition, with a rendezvous key derived from the clique key.
 absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
-    NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
+    GpuCollectives* collectives, se::StreamExecutor* device, RunId run_id,
     const GpuCliqueKey& clique_key,
     const GpuCollectives::CliqueIdCallback& clique_id_callback, RankId rank,
     size_t num_local_participants, const AcquiredCliquesMap& acquired_cliques,

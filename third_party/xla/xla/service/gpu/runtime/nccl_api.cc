@@ -293,10 +293,6 @@ ScopedPersistentPlanAllocator::~ScopedPersistentPlanAllocator() {
 // itself. It is available only if NCCL + CUDA are configured at compile time.
 class DefaultNcclApi final : public NcclCollectives {
  public:
-  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommSplit(
-      absl::Span<const Communicator* const> comms, int32_t color,
-      absl::Span<const RankId> keys, std::optional<Config> config) final;
-
   absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
                          size_t count, ReductionKind reduction_kind,
@@ -353,68 +349,6 @@ static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
   ncclUniqueId id;
   absl::c_copy(clique_id.data(), id.internal);
   return id;
-}
-
-absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-DefaultNcclApi::CommSplit(absl::Span<const Communicator* const> comms,
-                          int32_t color, absl::Span<const RankId> keys,
-                          std::optional<Config> config) {
-  auto rank_formatter = [](std::string* str, RankId rank) {
-    absl::StrAppend(str, rank.value());
-  };
-
-  VLOG(1) << absl::StreamFormat(
-      "Split %d NCCL communicators using color %d and keys: [%s]", comms.size(),
-      color, absl::StrJoin(keys, ",", rank_formatter));
-
-#if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
-  if (keys.size() != comms.size()) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Comms and keys must have the same size, but %d != %d",
-                        comms.size(), keys.size()));
-  }
-
-  ncclConfig_t comm_config = NCCL_CONFIG_INITIALIZER;
-  if (config.has_value()) {
-    comm_config.splitShare = config.value().split_share;
-    // If max_nchannels is set, then we don't want to
-    // inherit from parent comm.
-    if (config.value().max_nchannels > 0) {
-      comm_config.maxCTAs = config.value().max_nchannels;
-      VLOG(1) << "CommSplit maximum number of channels "
-              << " is set to: " << comm_config.maxCTAs;
-    }
-  }
-
-  // In contrast to grouped initialization communicator splitting initializes
-  // communicators only after a successful call to `GroupEnd`, so we keep a
-  // vector of handles and after successful splitting convert to RAII wrappers.
-  std::vector<ncclComm_t> split_comms_handles;
-  split_comms_handles.resize(comms.size(), nullptr);
-
-  ncclConfig_t* comm_config_ptr = config.has_value() ? &comm_config : nullptr;
-  TF_RETURN_IF_ERROR(GroupStart());
-  for (size_t i = 0; i < comms.size(); ++i) {
-    VLOG(1) << "Split NCCL communicator " << comms[i] << " with color " << color
-            << " and key " << keys[i];
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(
-        Cast(comms[i]), color, keys[i].value(), &split_comms_handles[i],
-        /*config=*/comm_config_ptr));
-  }
-  TF_RETURN_IF_ERROR(GroupEnd());
-
-  std::vector<std::unique_ptr<Communicator>> split_comms;
-  split_comms.reserve(split_comms_handles.size());
-  for (size_t i = 0; i < split_comms_handles.size(); ++i) {
-    split_comms.emplace_back(
-        std::make_unique<NcclCommunicator>(split_comms_handles[i]));
-  }
-  return split_comms;
-#else
-  return absl::UnimplementedError(
-      absl::StrFormat("%s:%d: NCCL operation ncclCommSplit not implemented",
-                      __FILE__, __LINE__));
-#endif  // !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
 }
 
 absl::Status DefaultNcclApi::AllReduce(se::DeviceMemoryBase send_buffer,

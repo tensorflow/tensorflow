@@ -111,16 +111,6 @@ class NcclApi : public GpuCollectives {
     tsl::RCReference<PersistentPlanAllocator> allocator_;
   };
 
-  // Creates new communicators by splitting `comms`.
-  //
-  // This API doesn't have a corresponding API in NCCL and implemented as
-  // multiple calls to ncclCommSplit within a single group.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommsplit
-  virtual absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommSplit(
-      absl::Span<const Communicator* const> comms, int32_t color,
-      absl::Span<const RankId> keys, std::optional<Config> config) = 0;
-
   // Reduce buffers of length `count` in `send_buff` using `reduction_kind`
   // reduction and leaves identical copies of the result on each `recv_buff`.
   //

@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/util.h"
 
@@ -51,6 +52,12 @@ class GpuCollectivesStub : public NcclApi {
   CreateCommunicators(int32_t, const CliqueKey&, const std::optional<CliqueId>&,
                       absl::Span<const DeviceRank>,
                       const Collectives::Config&) final {
+    return UnimplementedError();
+  }
+
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
+      absl::Span<const Communicator* const>, int32_t, absl::Span<const RankId>,
+      const Collectives::Config&) final {
     return UnimplementedError();
   }
 

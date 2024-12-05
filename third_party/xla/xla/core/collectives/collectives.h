@@ -74,6 +74,11 @@ class Collectives {
                       const std::optional<CliqueId>& clique_id,
                       absl::Span<const DeviceRank> ranks,
                       const Config& config) = 0;
+
+  // Creates communicators by splitting `comms`.
+  virtual absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  SplitCommunicators(absl::Span<const Communicator* const> comms, int32_t color,
+                     absl::Span<const RankId> keys, const Config& config) = 0;
 };
 
 }  // namespace xla

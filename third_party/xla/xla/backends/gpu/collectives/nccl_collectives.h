@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 
 namespace xla::gpu {
@@ -54,6 +55,10 @@ class NcclCollectives : public NcclApi {
                       const std::optional<CliqueId>& clique_id,
                       absl::Span<const DeviceRank> ranks,
                       const Collectives::Config& config) final;
+
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
+      absl::Span<const Communicator* const> comms, int32_t color,
+      absl::Span<const RankId> keys, const Collectives::Config& config) final;
 };
 
 }  // namespace xla::gpu
