@@ -150,6 +150,14 @@ class FunctionalHloRunner {
     // If set, we will remove all infeed and outfeed operations.
     bool remove_infeed_outfeed = true;
 
+    // If set, we will flatten all conditional operations by setting default
+    // branch index to N-1 for indexed conditionals. Default PRED is false for
+    // predicated conditionals if conditional_value is not set.
+    bool flatten_conditional = false;
+
+    // If set, used as default predicate value for predicated conditional ops.
+    bool conditional_value = false;
+
     // Should we flatten all while loops?
     bool flatten_while_loop() const {
       return while_execution_count.has_value();
