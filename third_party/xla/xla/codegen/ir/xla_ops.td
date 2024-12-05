@@ -51,7 +51,11 @@ def XLA_AtomicRMWOp : XLA_Op<"atomic_rmw",
   let regions = (region SizedRegion<1>:$computation);
 
   let skipDefaultBuilders = 1;
-  let builders = [OpBuilder<(ins "mlir::Value":$memref, "mlir::ValueRange":$ivs)>];
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$memref, "mlir::ValueRange":$ivs)>,
+    OpBuilder<(ins "mlir::Value":$memref, "mlir::ValueRange":$ivs,
+                   "mlir::Type":$block_arg_type)>,
+  ];
 
   let extraClassDeclaration = [{
     mlir::Block* getBody() { return &getComputation().front(); }
@@ -64,6 +68,7 @@ def XLA_AtomicRMWOp : XLA_Op<"atomic_rmw",
     }
   }];
   let hasFolder = 1;
+  let hasVerifier = 1;
 
   let assemblyFormat = [{
     $input `[` $indices `]` `:` type($input) $computation attr-dict

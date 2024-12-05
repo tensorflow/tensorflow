@@ -575,15 +575,47 @@ void AtomicRMWOp::getAsmResultNames(
 
 void AtomicRMWOp::build(OpBuilder& builder, OperationState& result,
                         Value tensor, ValueRange ivs) {
+  build(builder, result, tensor, ivs,
+        mlir::cast<mlir::RankedTensorType>(tensor.getType()).getElementType());
+}
+
+void AtomicRMWOp::build(OpBuilder& builder, OperationState& result,
+                        Value tensor, ValueRange ivs, Type block_arg_type) {
   OpBuilder::InsertionGuard g(builder);
   result.addOperands(tensor);
   result.addOperands(ivs);
   result.addTypes(tensor.getType());
 
-  auto tensor_type = llvm::cast<RankedTensorType>(tensor.getType());
   Region* body = result.addRegion();
   builder.createBlock(body);
-  body->addArgument(tensor_type.getElementType(), tensor.getLoc());
+  body->addArgument(block_arg_type, tensor.getLoc());
+}
+
+LogicalResult AtomicRMWOp::verify() {
+  Type body_arg_type = getCurrentValue().getType();
+  auto body_terminator = getBody()->getTerminator();
+  if (body_terminator->getNumOperands() != 1 ||
+      body_terminator->getOperand(0).getType() != body_arg_type) {
+    return emitOpError(
+        "mismatch in the block argument type and the yielded type");
+  }
+  Type result_elem_type =
+      mlir::cast<RankedTensorType>(getResult().getType()).getElementType();
+  if (auto vector_type = mlir::dyn_cast<mlir::VectorType>(body_arg_type)) {
+    if (vector_type.getRank() != 1) {
+      return emitOpError(
+          "expected a rank-1 vector type for the block argument");
+    }
+    if (result_elem_type != vector_type.getElementType()) {
+      return emitOpError(
+          "mismatch in the result element type and the block argument vector "
+          "element type");
+    }
+  } else if (result_elem_type != body_arg_type) {
+    return emitOpError(
+        "mismatch in the result element type and the block argument type");
+  }
+  return success();
 }
 
 mlir::OpFoldResult AtomicRMWOp::fold(FoldAdaptor adaptor) {
