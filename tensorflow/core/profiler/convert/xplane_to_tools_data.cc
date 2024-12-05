@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/hlo_to_tools_data.h"
 #include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
+#include "tensorflow/core/profiler/convert/op_stats_to_hlo_stats.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
@@ -257,6 +258,16 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
   return combined_tf_data_stats.SerializeAsString();
 }
 
+absl::StatusOr<std::string> ConvertMultiXSpacesToHloStats(
+    const SessionSnapshot& session_snapshot) {
+  OpStatsOptions options;
+  options.generate_op_metrics_db = true;
+  OpStats combined_op_stats;
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
+  return ConvertOpStatsToHloStats(combined_op_stats).SerializeAsString();
+}
+
 absl::StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
     const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
@@ -343,6 +354,8 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToToolData(
     return ConvertMultiXSpacesToTfDataBottleneckAnalysis(session_snapshot);
   } else if (tool_name == "op_profile") {
     return ConvertMultiXSpacesToOpProfileViewer(session_snapshot);
+  } else if (tool_name == "hlo_stats") {
+    return ConvertMultiXSpacesToHloStats(session_snapshot);
   } else if (tool_name == "memory_viewer" || tool_name == "graph_viewer") {
     return ConvertHloProtoToToolData(session_snapshot, tool_name, options);
   } else if (tool_name == "dcn_collective_stats") {
