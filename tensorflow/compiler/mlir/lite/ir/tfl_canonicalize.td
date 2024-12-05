@@ -20,6 +20,7 @@ include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
+include "mlir/IR/CommonAttrConstraints.td"
 
 // Returns Squeezed shape of a ranked-tensor.
 // Squeezed, here, means eliminating any 1s' in the
@@ -54,3 +55,14 @@ def ConvertTransposeToDecreaseRank : Pat<
     [(AnyStaticShapeTensor $input),
      (HasRankAtLeast<7> $input),
      (CanSqueezeTensor $input)]>;
+
+// Replace division by a constant with a multiplication by a reciprocal of that
+// constant. Floating point division can be ~10x more expensive than a
+// multiplication.
+def RealDivWithConstDivisor : Pat<
+  (TFL_DivOp:$src $arg0, (Arith_ConstantOp FloatElementsAttr<32>:$value), $activation),
+  (TFL_MulOp:$dest1 $arg0,
+    (TFL_DivOp (Arith_ConstantOp
+      (GetScalarOfType<1> (Arith_ConstantOp $value))),
+      (Arith_ConstantOp $value),  TFL_AF_None),
+    $activation)>;

@@ -373,6 +373,7 @@ func.func @OptimizeTranposeWithRank7orMoreEffectiveRank4(%arg0: tensor<56x8x56x1
   // CHECK: return %2
 }
 
+// CHECK-LABEL: @ConstPadToI32
 func.func @ConstPadToI32(%arg0: tensor<15600xf32>) -> tensor<15602xf32> {
   %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<1x2xi64>} : () -> tensor<1x2xi64>
   %1 = "tfl.pad"(%arg0, %0) : (tensor<15600xf32>, tensor<1x2xi64>) -> tensor<15602xf32>
@@ -380,4 +381,11 @@ func.func @ConstPadToI32(%arg0: tensor<15600xf32>) -> tensor<15602xf32> {
   // CHECK: "tfl.pad"(%arg0, %cst) : (tensor<15600xf32>, tensor<1x2xi32>) -> tensor<15602xf32>
 }
 
+// CHECK-LABEL: @RealDivWithConstDivisor
+func.func @RealDivWithConstDivisor(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = arith.constant dense<5.000000e+00> : tensor<f32>
+  %1 = tfl.div(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  func.return %1 : tensor<2x3xf32>
+  // CHECK: tfl.mul(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+}
 
