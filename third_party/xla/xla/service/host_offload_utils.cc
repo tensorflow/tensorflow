@@ -87,7 +87,7 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
       auto operand_indices = user->OperandIndices(instruction);
       for (const auto i : operand_indices) {
         auto tmp_shape_index = instruction_and_shape_index.shape_index;
-        tmp_shape_index.push_back(i);
+        tmp_shape_index.push_front(i);
         result.push_back({user, std::move(tmp_shape_index)});
       }
     } else if (user->opcode() == HloOpcode::kGetTupleElement) {
