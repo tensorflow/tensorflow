@@ -557,6 +557,36 @@ ENTRY main {
                                    {Tile{{8, 128}}, Tile{{2, 1}}}));
 }
 
+TEST_F(HostOffloadLegalizeTest, MoveCopyOverBitcast_2) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(bf16[1,16384,4,256]{3,2,1,0:T(4,128)(2,1)S(5)})->bf16[1,1,16384,4,256]{4,3,1,2,0:T(8,128)(2,1)}}
+
+ENTRY main {
+  param = bf16[1,16384,4,256]{3,2,1,0:T(4,128)(2,1)} parameter(0)
+  copy = bf16[1,16384,4,256]{2,3,1,0:T(8,128)(2,1)} copy(param)
+  bitcast = bf16[1,1,16384,4,256]{4,3,1,2,0:T(8,128)(2,1)} bitcast(copy)
+  custom-call = bf16[1,1,16384,4,256]{4,3,1,2,0:T(8,128)(2,1)} custom-call(bitcast), custom_call_target="MoveToDevice"
+  ROOT add = bf16[1,1,16384,4,256]{4,3,1,2,0:T(8,128)(2,1)} add(custom-call, custom-call)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
+  EXPECT_EQ(custom_call->shape().layout(),
+            LayoutUtil::MakeLayout({4, 3, 2, 1, 0}, {}, {}, {},
+                                   {Tile{{4, 128}}, Tile{{2, 1}}}));
+  EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(custom_call->users()[0]->shape().layout(),
+            LayoutUtil::MakeLayout({3, 4, 2, 1, 0}, {}, {}, {},
+                                   {Tile{{8, 128}}, Tile{{2, 1}}}));
+}
+
 TEST_F(HostOffloadLegalizeTest, MoveCopyUp) {
   const std::string& hlo_string = R"(
 HloModule jit_f, entry_computation_layout={(bf16[4,4,128,8]{2,0,1,3:T(8,128)(2,1)})->bf16[4,4,128,8]{2,3,1,0:T(8,128)(2,1)S(5)}}
