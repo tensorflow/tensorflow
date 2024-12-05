@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/root_instruction_sinker.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 

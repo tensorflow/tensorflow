@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_DOT_MERGER_H_
 
 #include <cstdint>
+#include <functional>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
