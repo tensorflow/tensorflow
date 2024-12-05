@@ -20,7 +20,10 @@ Should be set via --repo_env=WHEEL_NAME=tensorflow_cpu.
 3) `--version` - tensorflow version.
 4) `--headers` - paths to header file.
 5) `--srcs` - paths to source files
-6) `--xla_aot` - paths to files that should be in xla_aot directory. 
+6) `--dests` - json file with source to destination mappings for files whose original
+location does not match its destination in packaged wheel; if the destination is an
+empty string the source file will be ignored.
+7) `--xla_aot` - paths to files that should be in xla_aot directory. 
 """
 
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
@@ -54,6 +57,12 @@ def _get_full_wheel_name(platform_name, platform_tag):
         python_version = python_version,
         wheel_platform_tag = _get_wheel_platform_name(platform_name, platform_tag),
     )
+
+def _is_dest_file(basename, dest_files_suffixes):
+    for suffix in dest_files_suffixes:
+        if basename.endswith(suffix):
+            return True
+    return False
 
 def _tf_wheel_impl(ctx):
     include_cuda_libs = ctx.attr.include_cuda_libs[BuildSettingInfo].value
@@ -98,7 +107,10 @@ def _tf_wheel_impl(ctx):
     for src in ctx.attr.source_files:
         for f in src.files.to_list():
             srcs.append(f)
-            args.add("--srcs=%s" % (f.path))
+            if _is_dest_file(f.basename, ctx.attr.dest_files_suffixes):
+                args.add("--dests=%s" % (f.path))
+            else:
+                args.add("--srcs=%s" % (f.path))
 
     args.set_param_file_format("flag_per_line")
     args.use_param_file("@%s", use_always = False)
@@ -129,6 +141,7 @@ def _tf_wheel_impl(ctx):
 tf_wheel = rule(
     attrs = {
         "source_files": attr.label_list(allow_files = True),
+        "dest_files_suffixes": attr.string_list(default = ["_wheel_locations.json"]),
         "headers": attr.label_list(allow_files = True),
         "xla_aot_compiled": attr.label_list(allow_files = True),
         "wheel_binary": attr.label(

@@ -18,6 +18,7 @@ load(
     "pywrap_aware_cc_import",
     "pywrap_aware_filegroup",
     "pywrap_aware_genrule",
+    "pywrap_binaries",
     "pywrap_common_library",
     "pywrap_library",
     "pywrap_tensorflow_macro",
@@ -1619,5 +1620,10 @@ cc_library(
 
 pywrap_common_library(
     name = "_pywrap_tensorflow_common",
+    dep = ":_pywrap_tensorflow",
+)
+
+pywrap_binaries(
+    name = "_pywrap_tensorflow_binaries",
     dep = ":_pywrap_tensorflow",
 )
