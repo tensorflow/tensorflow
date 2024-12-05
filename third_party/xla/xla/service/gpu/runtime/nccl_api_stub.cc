@@ -95,9 +95,6 @@ class NcclApiStub final : public GpuCollectivesStub {
     return UnimplementedError();
   }
 
-  absl::Status GroupStart() final { return UnimplementedError(); }
-  absl::Status GroupEnd() final { return UnimplementedError(); }
-
   absl::Status AllReduce(se::DeviceMemoryBase, se::DeviceMemoryBase,
                          PrimitiveType, size_t, ReductionKind, Communicator*,
                          se::Stream*) final {

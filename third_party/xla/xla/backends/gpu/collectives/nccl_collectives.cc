@@ -64,4 +64,14 @@ NcclCollectives::GetCliqueIdCallback(const CliqueIdCallback* clique_id_callback,
   return local_callback;
 }
 
+absl::Status NcclCollectives::GroupStart() {
+  VLOG(5) << "Start NCCL group";
+  return XLA_NCCL_STATUS(ncclGroupStart());
+}
+
+absl::Status NcclCollectives::GroupEnd() {
+  VLOG(5) << "End NCCL group";
+  return XLA_NCCL_STATUS(ncclGroupEnd());
+}
+
 }  // namespace xla::gpu

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
@@ -35,6 +36,9 @@ class NcclCollectives : public NcclApi {
       const CliqueIdCallback* clique_id_callback, bool is_local) final;
 
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final;
+
+  absl::Status GroupStart() final;
+  absl::Status GroupEnd() final;
 };
 
 }  // namespace xla::gpu

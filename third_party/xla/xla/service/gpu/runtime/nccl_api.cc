@@ -301,9 +301,6 @@ class DefaultNcclApi final : public NcclCollectives {
       absl::Span<const Communicator* const> comms, int32_t color,
       absl::Span<const RankId> keys, std::optional<Config> config) final;
 
-  absl::Status GroupStart() final;
-  absl::Status GroupEnd() final;
-
   absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
                          size_t count, ReductionKind reduction_kind,
@@ -467,16 +464,6 @@ DefaultNcclApi::CommSplit(absl::Span<const Communicator* const> comms,
       absl::StrFormat("%s:%d: NCCL operation ncclCommSplit not implemented",
                       __FILE__, __LINE__));
 #endif  // !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
-}
-
-absl::Status DefaultNcclApi::GroupStart() {
-  VLOG(5) << "Start NCCL group";
-  return XLA_NCCL_STATUS(ncclGroupStart());
-}
-
-absl::Status DefaultNcclApi::GroupEnd() {
-  VLOG(5) << "End NCCL group";
-  return XLA_NCCL_STATUS(ncclGroupEnd());
 }
 
 absl::Status DefaultNcclApi::AllReduce(se::DeviceMemoryBase send_buffer,

@@ -38,6 +38,9 @@ class GpuCollectivesStub : public NcclApi {
     return UnimplementedError();
   }
 
+  absl::Status GroupStart() final { return UnimplementedError(); }
+  absl::Status GroupEnd() final { return UnimplementedError(); }
+
  protected:
   static absl::Status UnimplementedError() {
     return Unimplemented("XLA compiled without GPU collectives support");

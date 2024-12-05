@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
@@ -73,6 +74,12 @@ class GpuCollectives : public Collectives {
   static stream_executor::DeviceMemoryBase Slice(
       stream_executor::DeviceMemoryBase buff, PrimitiveType dtype,
       size_t offset, size_t count);
+
+  // Starts a group call.
+  virtual absl::Status GroupStart() = 0;
+
+  // Ends a group call.
+  virtual absl::Status GroupEnd() = 0;
 };
 
 }  // namespace xla::gpu

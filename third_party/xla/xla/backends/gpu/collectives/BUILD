@@ -127,6 +127,7 @@ cc_library(
         "//xla/core/collectives:clique_key",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:casts",
     ],
@@ -175,6 +176,7 @@ cc_library(
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
         "//xla/service/gpu/runtime:nccl_api_header",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:logging",
     ] + if_cuda_is_configured([

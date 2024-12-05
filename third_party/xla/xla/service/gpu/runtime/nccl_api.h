@@ -131,16 +131,6 @@ class NcclApi : public GpuCollectives {
       absl::Span<const Communicator* const> comms, int32_t color,
       absl::Span<const RankId> keys, std::optional<Config> config) = 0;
 
-  // Starts a group call.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/group.html#ncclgroupstart
-  virtual absl::Status GroupStart() = 0;
-
-  // Ends a group call.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/group.html#ncclgroupend
-  virtual absl::Status GroupEnd() = 0;
-
   // Reduce buffers of length `count` in `send_buff` using `reduction_kind`
   // reduction and leaves identical copies of the result on each `recv_buff`.
   //
