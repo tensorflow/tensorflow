@@ -125,6 +125,19 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_collectives_stub",
+    hdrs = ["gpu_collectives_stub.h"],
+    deps = [
+        ":gpu_collectives",
+        "//xla:util",
+        "//xla/core/collectives:clique_id",
+        "//xla/service/gpu/runtime:nccl_api_header",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "nccl_errors",
     hdrs = if_gpu_is_configured(["nccl_errors.h"]),
     visibility = ["//visibility:private"],
