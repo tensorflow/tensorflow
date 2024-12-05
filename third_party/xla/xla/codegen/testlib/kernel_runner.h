@@ -43,6 +43,11 @@ class KernelRunner {
   // and they might read and write into the given buffers. Memory access kind is
   // available in the KernelSpec buffer uses.
   virtual absl::Status Call(absl::Span<const Argument> arguments) = 0;
+
+  // Wrapper that takes in a set of Literals and converts them to Arguments.
+  // Intentionally takes in raw pointers to allow for zero copy of the Literals
+  // held by python.
+  absl::Status Call(absl::Span<Literal*> literals);
 };
 
 // A collection of utility functions for working with KernelRunners.

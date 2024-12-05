@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/codegen/testlib/kernel_runner.h"
 
 #include <cstddef>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
@@ -26,6 +28,19 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 
 namespace xla {
+
+absl::Status KernelRunner::Call(absl::Span<Literal*> literals) {
+  std::vector<KernelRunner::Argument> arguments;
+  arguments.reserve(literals.size());
+  for (Literal* literal : literals) {
+    if (literal == nullptr) {
+      return absl::InvalidArgumentError("Literal is null");
+    }
+
+    arguments.push_back(KernelRunnerUtil::CreateArgument(*literal));
+  }
+  return Call(arguments);
+}
 
 KernelRunner::Argument KernelRunnerUtil::CreateArgument(
     Literal& literal, const ShapeIndex& index) {
