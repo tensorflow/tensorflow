@@ -374,24 +374,13 @@ std::optional<GatherScatterDims> GetGatherParallelBatchDims(
 std::optional<GatherScatterDims> GetScatterParallelBatchDims(
     const HloInstruction& hlo, const CallGraph& call_graph);
 
-// Returns the operand pass-through dimensions for gather operand.
-DimensionVector GetGatherOperandPassthroughOperandDims(
-    const Shape& operand_shape, const HloInstruction& hlo,
-    absl::Span<const int64_t> slice_sizes);
-
-// Returns the operand pass-through dimensions for scatter operand(s).
-DimensionVector GetScatterOperandPassthroughOperandDims(
-    const Shape& operand_shape, const HloSharding& operand_sharding,
+// Returns the operand pass-through dimensions for a gather instruction.
+GatherScatterDims GetGatherOperandPassthroughDims(
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
 
-DimensionVector GetGatherOperandPassthroughOutputDims(
-    const Shape& output_shape, const Shape& operand_shape,
+// Returns the operand pass-through dimensions for a scatter instruction.
+GatherScatterDims GetScatterOperandPassthroughDims(
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
-
-DimensionVector GetScatterOperandPassthroughUpdateDims(
-    const Shape& update_shape, const Shape& operand_shape,
-    const HloSharding& operand_sharding, const HloInstruction& hlo,
-    absl::Span<const int64_t> slice_sizes);
 
 // Returns the dims along which sharding can be propagated between indices and
 // output/update for gather/scatter operations. `excluded_indices_dims` are

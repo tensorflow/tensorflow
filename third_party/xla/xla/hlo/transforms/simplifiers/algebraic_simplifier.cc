@@ -4260,27 +4260,21 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
     return ReplaceInstruction(gather, result);
   }
 
-  const auto gather_operand_passthrough_operand_dims =
-      hlo_sharding_util::GetGatherOperandPassthroughOperandDims(
-          gather->operand(0)->shape(), *gather, gather->gather_slice_sizes());
-  const auto gather_operand_passthrough_output_dims =
-      hlo_sharding_util::GetGatherOperandPassthroughOutputDims(
-          gather->shape(), gather->operand(0)->shape(), *gather,
-          gather->gather_slice_sizes());
+  const hlo_sharding_util::GatherScatterDims operand_passthrough_dims =
+      hlo_sharding_util::GetGatherOperandPassthroughDims(
+          *gather, gather->gather_slice_sizes());
+
   absl::flat_hash_map<int64_t, int64_t>
       gather_operand_passthrough_operand_to_output_dims;
   absl::flat_hash_map<int64_t, int64_t>
       gather_operand_passthrough_output_to_operand_dims;
-  CHECK_EQ(gather_operand_passthrough_operand_dims.size(),
-           gather_operand_passthrough_output_dims.size());
-  for (int64_t i = 0; i != gather_operand_passthrough_operand_dims.size();
-       ++i) {
-    gather_operand_passthrough_operand_to_output_dims
-        [gather_operand_passthrough_operand_dims[i]] =
-            gather_operand_passthrough_output_dims[i];
-    gather_operand_passthrough_output_to_operand_dims
-        [gather_operand_passthrough_output_dims[i]] =
-            gather_operand_passthrough_operand_dims[i];
+  CHECK_EQ(operand_passthrough_dims.operand_dims.size(),
+           operand_passthrough_dims.output_dims.size());
+  for (int64_t i = 0; i != operand_passthrough_dims.operand_dims.size(); ++i) {
+    int64_t operand_dim = operand_passthrough_dims.operand_dims[i];
+    int64_t output_dim = operand_passthrough_dims.output_dims[i];
+    gather_operand_passthrough_operand_to_output_dims[operand_dim] = output_dim;
+    gather_operand_passthrough_output_to_operand_dims[output_dim] = operand_dim;
   }
   // If the gather operand is a pad on the pass-through dimensions, then we can
   // gather the unpadded operand and then pad.
