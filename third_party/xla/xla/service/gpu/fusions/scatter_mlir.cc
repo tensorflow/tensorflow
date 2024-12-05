@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/codegen/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -170,7 +171,7 @@ mlir::Value EmitScatterComputation(
   auto reduced_val = mlir_converter::InlineBlock(
       body_builder, reducer.getBody().front(),
       {atomic_rmw.getCurrentValue(), update_elem})[0];
-  body_builder.create<xla::gpu::YieldOp>(reducer->getLoc(), reduced_val);
+  body_builder.create<xla::YieldOp>(reducer->getLoc(), reduced_val);
   return atomic_rmw->getResult(0);
 }
 

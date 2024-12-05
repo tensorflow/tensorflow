@@ -44,7 +44,7 @@ def ConvertPureCallOpsPass
   }];
   let dependentDialects = [
     "mlir::func::FuncDialect",
-    "xla::gpu::XlaGpuDialect"
+    "xla::XlaDialect"
   ];
   let constructor = "CreateConvertPureCallOpsPass()";
 }
@@ -60,6 +60,7 @@ def FlattenTensorsPass : Pass<"xla-gpu-flatten-tensors", "mlir::ModuleOp"> {
     "mlir::func::FuncDialect",
     "mlir::tensor::TensorDialect",
     "xla::gpu::XlaGpuDialect",
+    "xla::XlaDialect",
   ];
   let constructor = "CreateFlattenTensorsPass()";
 }
@@ -79,6 +80,7 @@ def LowerTensorsPass : Pass<"xla-gpu-lower-tensors", "mlir::ModuleOp"> {
     "mlir::scf::SCFDialect",
     "mlir::tensor::TensorDialect",
     "xla::gpu::XlaGpuDialect",
+    "xla::XlaDialect",
   ];
   let options = [
     Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
@@ -173,7 +175,8 @@ def LowerXlaGpuToScfPass :
 
   let dependentDialects = [
     "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect", "mlir::scf::SCFDialect",
-    "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect", "mlir::vector::VectorDialect",
+    "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect",
+    "xla::XlaDialect", "mlir::vector::VectorDialect",
   ];
 
   let options = [
@@ -194,7 +197,9 @@ def LowerXlaGpuLoopsToScfPass : Pass<
 
   let dependentDialects = [
     "mlir::scf::SCFDialect",
-    "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect",
+    "mlir::tensor::TensorDialect",
+    "xla::gpu::XlaGpuDialect",
+    "xla::XlaDialect",
   ];
 
   let constructor = "CreateLowerXlaGpuLoopsToScfPass()";
@@ -209,7 +214,8 @@ def EraseDeadFunctionsPass : Pass<"xla-erase-dead-functions", "mlir::ModuleOp"> 
 
   let dependentDialects = [
     "mlir::func::FuncDialect",
-    "xla::gpu::XlaGpuDialect"
+    "xla::gpu::XlaGpuDialect",
+    "xla::XlaDialect",
   ];
 
   let constructor = "CreateEraseDeadFunctionsPass()";
@@ -281,7 +287,7 @@ def FuseLoopsPass : Pass<"xla-gpu-fuse-loops", "mlir::func::FuncOp"> {
           xla_gpu.yield %inserted
       }
   }];
-  let dependentDialects = ["xla::gpu::XlaGpuDialect"];
+  let dependentDialects = ["xla::gpu::XlaGpuDialect", "xla::XlaDialect"];
   let constructor = "CreateFuseLoopsPass()";
 }
 
@@ -292,7 +298,7 @@ def PeelLoopsPass : Pass<"xla-gpu-peel-loops", "mlir::func::FuncOp"> {
       as [0, NUM_ITERATIONS - 1) and [NUM_ITERATIONS - 1, NUM_ITERATIONS)
       if it removes a constraint.
   }];
-  let dependentDialects = ["xla::gpu::XlaGpuDialect"];
+  let dependentDialects = ["xla::gpu::XlaGpuDialect", "xla::XlaDialect"];
   let constructor = "CreatePeelLoopsPass()";
 }
 
@@ -308,6 +314,7 @@ def OptimizeLoopsPass :
   let dependentDialects = [
     "mlir::vector::VectorDialect",
     "xla::gpu::XlaGpuDialect",
+    "xla::XlaDialect",
   ];
 
   let constructor = "CreateOptimizeLoopsPass()";

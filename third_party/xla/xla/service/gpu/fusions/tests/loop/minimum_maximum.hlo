@@ -11,7 +11,7 @@ fusion {
 }
 
 // CHECK:       func.func @main
-// CHECK:         xla_gpu.pure_call @fusion_tuple
+// CHECK:         xla.pure_call @fusion_tuple
 // CHECK:       func.func private @fusion_tuple
 // CHECK-DAG:     arith.minimumf
 // CHECK-DAG:     arith.maximumf

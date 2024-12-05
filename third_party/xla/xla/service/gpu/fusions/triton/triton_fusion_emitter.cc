@@ -81,6 +81,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
 #include "xla/autotuning.pb.h"
+#include "xla/codegen/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -1008,8 +1009,8 @@ void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
   mlir_context
       .loadDialect<ttir::TritonDialect, ttir::gpu::TritonGPUDialect,
                    mlir::arith::ArithDialect, mlir::affine::AffineDialect,
-                   mlir::LLVM::LLVMDialect, xla::gpu::XlaGpuDialect,
-                   ttir::xla::XlaTritonDialect>();
+                   mlir::LLVM::LLVMDialect, xla::XlaDialect,
+                   xla::gpu::XlaGpuDialect, ttir::xla::XlaTritonDialect>();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
   mlir::LLVM::registerInlinerInterface(registry);

@@ -1,24 +1,24 @@
-// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
+// RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="gpu_device_info='cuda_compute_capability {major: 6}'" \
 // RUN: | FileCheck %s
 
-// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
+// RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="gpu_device_info='cuda_compute_capability {major: 7}'" \
 // RUN: | FileCheck %s --check-prefix=CHECK-VOLTA
 
-// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
+// RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="gpu_device_info='cuda_compute_capability {major: 8}'" \
 // RUN: | FileCheck %s --check-prefix=CHECK-AMPERE
 
-// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
+// RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="gpu_device_info='cuda_compute_capability {major: 9}'" \
 // RUN: | FileCheck %s --check-prefix=CHECK-HOPPER
 
-// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
+// RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="gpu_device_info='rocm_compute_capability {gcn_arch_name: \"gfx908:sramecc+:xnack\"}'" \
 // RUN: | FileCheck %s --check-prefix=CHECK-GFX908-MI100
 
-// RUN: mlir_fusions_opt %s --allow-unregistered-dialect -split-input-file \
+// RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
 // RUN: -xla-gpu-lower-tensors="gpu_device_info='rocm_compute_capability {gcn_arch_name: \"gfx90a:sramecc+:xnack\"}'" \
 // RUN: | FileCheck %s --check-prefix=CHECK-GFX90A-MI200
 
@@ -232,11 +232,11 @@ func.func @transpose_shared(%in: tensor<1024xf32>,
 // -----
 
 func.func @atomic_rmw_f32(%in: tensor<8xf32>, %i: index) -> (tensor<8xf32>) {
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xf32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf32> {
     ^bb0(%current : f32):
       %c42 = arith.constant 1.0 : f32
       %add = arith.minimumf %current, %c42 : f32
-      xla_gpu.yield %add : f32
+      xla.yield %add : f32
   }
   return %ret : tensor<8xf32>
 }
@@ -251,11 +251,11 @@ func.func @atomic_rmw_f32(%in: tensor<8xf32>, %i: index) -> (tensor<8xf32>) {
 
 func.func @atomic_rmw_f16(%in: tensor<8xf16>, %i: index)
     -> (tensor<8xf16>) {
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xf16> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf16> {
     ^bb0(%current : f16):
       %c1 = arith.constant 1.0 : f16
       %add = arith.addf %current, %c1 : f16
-      xla_gpu.yield %add : f16
+      xla.yield %add : f16
   }
   return %ret : tensor<8xf16>
 }
@@ -282,9 +282,9 @@ func.func @atomic_rmw_f16(%in: tensor<8xf16>, %i: index)
 func.func @atomic_rmw_overwrite(%in: tensor<8xf16>, %i: index)
     -> (tensor<8xf16>) {
   %c1 = arith.constant 1.0 : f16
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xf16> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf16> {
     ^bb0(%current : f16):
-      xla_gpu.yield %c1 : f16
+      xla.yield %c1 : f16
   }
   return %ret : tensor<8xf16>
 }
@@ -353,9 +353,9 @@ func.func @i4_load_store(%arg: tensor<10xi4>, %i: index, %j: index)
 func.func @direct_atomic_rmw_overwrite(%in: tensor<8xi32>,
   %i: index) -> (tensor<8xi32>) {
   %c2 = arith.constant 2 : i32
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xi32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xi32> {
     ^bb0(%current : i32):
-      xla_gpu.yield %c2 : i32
+      xla.yield %c2 : i32
   }
   return %ret : tensor<8xi32>
 }
@@ -369,10 +369,10 @@ func.func @direct_atomic_rmw_overwrite(%in: tensor<8xi32>,
 func.func @direct_atomic_rmw_addi(%in: tensor<8xi32>,
   %i: index) -> (tensor<8xi32>) {
   %c2 = arith.constant 2 : i32
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xi32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xi32> {
     ^bb0(%current : i32):
       %min = arith.addi %current, %c2 : i32
-      xla_gpu.yield %c2 : i32
+      xla.yield %c2 : i32
   }
   return %ret : tensor<8xi32>
 }
@@ -386,10 +386,10 @@ func.func @direct_atomic_rmw_addi(%in: tensor<8xi32>,
 func.func @direct_atomic_rmw_maxsi(%in: tensor<8xi32>,
   %i: index) -> (tensor<8xi32>) {
   %c2 = arith.constant 2 : i32
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xi32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xi32> {
     ^bb0(%current : i32):
       %min = arith.maxsi %current, %c2 : i32
-      xla_gpu.yield %c2 : i32
+      xla.yield %c2 : i32
   }
   return %ret : tensor<8xi32>
 }
@@ -403,10 +403,10 @@ func.func @direct_atomic_rmw_maxsi(%in: tensor<8xi32>,
 func.func @direct_atomic_rmw_maxui(%in: tensor<8xi32>,
   %i: index) -> (tensor<8xi32>) {
   %c2 = arith.constant 2 : i32
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xi32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xi32> {
     ^bb0(%current : i32):
       %min = arith.maxui %current, %c2 : i32
-      xla_gpu.yield %c2 : i32
+      xla.yield %c2 : i32
   }
   return %ret : tensor<8xi32>
 }
@@ -420,10 +420,10 @@ func.func @direct_atomic_rmw_maxui(%in: tensor<8xi32>,
 func.func @direct_atomic_rmw_minsi(%in: tensor<8xi32>,
   %i: index) -> (tensor<8xi32>) {
   %c2 = arith.constant 2 : i32
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xi32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xi32> {
     ^bb0(%current : i32):
       %min = arith.minsi %current, %c2 : i32
-      xla_gpu.yield %c2 : i32
+      xla.yield %c2 : i32
   }
   return %ret : tensor<8xi32>
 }
@@ -437,10 +437,10 @@ func.func @direct_atomic_rmw_minsi(%in: tensor<8xi32>,
 func.func @direct_atomic_rmw_minui(%in: tensor<8xi32>,
   %i: index) -> (tensor<8xi32>) {
   %c2 = arith.constant 2 : i32
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xi32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xi32> {
     ^bb0(%current : i32):
       %min = arith.minui %current, %c2 : i32
-      xla_gpu.yield %c2 : i32
+      xla.yield %c2 : i32
   }
   return %ret : tensor<8xi32>
 }
@@ -454,10 +454,10 @@ func.func @direct_atomic_rmw_minui(%in: tensor<8xi32>,
 func.func @direct_atomic_rmw_fadd_f32(%in: tensor<8xf32>,
   %i: index) -> (tensor<8xf32>) {
   %c2 = arith.constant 2.0 : f32
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xf32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf32> {
     ^bb0(%current : f32):
       %min = arith.addf %current, %c2 : f32
-      xla_gpu.yield %c2 : f32
+      xla.yield %c2 : f32
   }
   return %ret : tensor<8xf32>
 }
@@ -493,10 +493,10 @@ func.func @direct_atomic_rmw_fadd_f32(%in: tensor<8xf32>,
 func.func @direct_atomic_rmw_fadd_f16(%in: tensor<8xf16>,
   %i: index) -> (tensor<8xf16>) {
   %c2 = arith.constant 2.0 : f16
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xf16> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf16> {
     ^bb0(%current : f16):
       %min = arith.addf %current, %c2 : f16
-      xla_gpu.yield %c2 : f16
+      xla.yield %c2 : f16
   }
   return %ret : tensor<8xf16>
 }
@@ -527,10 +527,10 @@ func.func @direct_atomic_rmw_fadd_f16(%in: tensor<8xf16>,
 func.func @direct_atomic_rmw_fadd_bf16(%in: tensor<8xbf16>,
     %i: index) -> (tensor<8xbf16>) {
   %c2 = arith.constant 2.0 : bf16
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xbf16> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xbf16> {
     ^bb0(%current : bf16):
       %min = arith.addf %current, %c2 : bf16
-      xla_gpu.yield %c2 : bf16
+      xla.yield %c2 : bf16
   }
   return %ret : tensor<8xbf16>
 }
@@ -547,10 +547,10 @@ func.func @direct_atomic_rmw_fadd_bf16(%in: tensor<8xbf16>,
 func.func @direct_atomic_rmw_fadd_f64(%in: tensor<8xf64>,
   %i: index) -> (tensor<8xf64>) {
   %c2 = arith.constant 2.0 : f64
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xf64> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf64> {
     ^bb0(%current : f64):
       %min = arith.addf %current, %c2 : f64
-      xla_gpu.yield %c2 : f64
+      xla.yield %c2 : f64
   }
   return %ret : tensor<8xf64>
 }
@@ -580,10 +580,10 @@ func.func @direct_atomic_rmw_fadd_f64(%in: tensor<8xf64>,
 func.func @direct_atomic_rmw_maximumf(%in: tensor<8xf32>,
   %i: index) -> (tensor<8xf32>) {
   %c2 = arith.constant 2.0 : f32
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xf32> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf32> {
     ^bb0(%current : f32):
       %min = arith.maximumf %current, %c2 : f32
-      xla_gpu.yield %c2 : f32
+      xla.yield %c2 : f32
   }
   return %ret : tensor<8xf32>
 }
@@ -616,10 +616,10 @@ func.func @direct_atomic_rmw_maximumf(%in: tensor<8xf32>,
 
 func.func @atomic_rmw_c32(%in: tensor<8xcomplex<f32>>, %i: index)
     -> (tensor<8xcomplex<f32>>) {
-  %ret = xla_gpu.atomic_rmw %in[%i] : tensor<8xcomplex<f32>> {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xcomplex<f32>> {
     ^bb0(%current : complex<f32>):
       %a = complex.add %current, %current : complex<f32>
-      xla_gpu.yield %a : complex<f32>
+      xla.yield %a : complex<f32>
   }
   return %ret : tensor<8xcomplex<f32>>
 }

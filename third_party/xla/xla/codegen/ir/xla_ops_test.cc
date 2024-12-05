@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
+#include "xla/codegen/ir/xla_ops.h"
 
 #include <algorithm>
 #include <string>
@@ -29,11 +29,10 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
-namespace xla::gpu {
+namespace xla {
 namespace {
 
-
-class XLAGPUOpsTest : public HloTestBase {
+class XLAOpsTest : public HloTestBase {
  public:
   mlir::MLIRContext mlir_context_;
 };
@@ -80,7 +79,7 @@ std::string VariableConstraintsToString(const IndexingMap& map) {
   return result;
 }
 
-TEST_F(XLAGPUOpsTest, GetConstraintsForVariables) {
+TEST_F(XLAOpsTest, GetConstraintsForVariables) {
   auto map = *ParseIndexingMap(R"(
     (x, y)[s0, w] -> (x + s0, y + w),
     domain: x in [0, 5],
@@ -102,7 +101,7 @@ w: s0 + w in [0, 3], w mod 4 in [0, 2], y + w in [0, 4]
 )");
 }
 
-TEST_F(XLAGPUOpsTest, GetConstraintsForVariablesEmpty) {
+TEST_F(XLAOpsTest, GetConstraintsForVariablesEmpty) {
   auto map = *ParseIndexingMap(R"(
     (d0, d1)[s0, s1] -> (d0 + s0, d1 + s1),
     domain: d0 in [0, 5],
@@ -120,4 +119,4 @@ s1: no constraints
 }
 
 }  // namespace
-}  // namespace xla::gpu
+}  // namespace xla

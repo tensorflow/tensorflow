@@ -19,47 +19,10 @@ limitations under the License.
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 include "xla/service/gpu/fusions/ir/xla_gpu_dialect.td"
+include "xla/codegen/ir/xla_attrs.td"
 
 class XLAGPU_Attr<string name, list<Trait> traits = []> :
       AttrDef<XlaGpuDialect, name, traits> {
-}
-
-def XLAGPU_AffineMapParameter :
-    AttrOrTypeParameter<"::mlir::AffineMap", ""> {
-}
-
-def XLAGPU_IndexingMapVariableParameter
-  : ArrayRefParameter<"::xla::IndexingMap::Variable",
-                      "IndexingMapVariableArray"> {
-}
-
-def XLAGPU_ConstraintsParameter :
-    ArrayRefParameter<"::std::pair<::mlir::AffineExpr, ::xla::Interval>",
-                      "ContraintsArray"> {
-}
-
-def XLAGPU_IndexingMapAttr : XLAGPU_Attr<"IndexingMap"> {
-  let summary = "An Attribute representing an indexing map.";
-  let mnemonic = "indexing_map";
-  let description = [{This attribute stores an indexing map. See
-    https://openxla.org/xla/indexing for more details.
-  }];
-  let parameters = (ins XLAGPU_AffineMapParameter:$map,
-                        XLAGPU_IndexingMapVariableParameter:$dim_vars,
-                        XLAGPU_IndexingMapVariableParameter:$range_vars,
-                        XLAGPU_ConstraintsParameter:$constraints);
-  let hasCustomAssemblyFormat = 1;
-  let builders =  [
-    AttrBuilder<(ins "const ::xla::IndexingMap&":$indexing_map)>,
-  ];
-  let genVerifyDecl = 1;
-  let extraClassDeclaration = [{
-    // Returns the indexing map constructed from IndexingMapAttr.
-    xla::IndexingMap getIndexingMap() const;
-
-    // Returns the number of indexing map results.
-    int64_t getNumResults() const;
-  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -97,6 +60,5 @@ def XLAGPU_LayoutAttr : XLAGPU_Attr<"Layout"> {
   );
   let hasCustomAssemblyFormat = 1;
 }
-
 
 #endif // XLA_SERVICE_GPU_FUSIONS_MLIR_ATTRS

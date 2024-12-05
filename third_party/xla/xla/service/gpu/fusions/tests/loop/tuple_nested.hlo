@@ -24,7 +24,7 @@ fusion {
 }
 
 // CHECK: @main
-// CHECK:     %[[R0:.*]], %[[R1:.*]], %[[R2:.*]] = xla_gpu.pure_call @fusion_tuple
+// CHECK:     %[[R0:.*]], %[[R1:.*]], %[[R2:.*]] = xla.pure_call @fusion_tuple
 // CHECK-DAG: tensor.insert %[[R0]]
 // CHECK-DAG: tensor.insert %[[R1]]
 // CHECK-DAG: tensor.insert %[[R2]]

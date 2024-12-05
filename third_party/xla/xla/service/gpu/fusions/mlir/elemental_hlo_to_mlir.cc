@@ -61,6 +61,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/codegen/ir/xla_ops.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -74,7 +75,6 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
-#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/shape_util.h"
@@ -1579,7 +1579,7 @@ ValueRange EmitXlaLoopOp(ImplicitLocOpBuilder& b, ValueRange dim_values,
     } else {
       results = create_body(ivs, map_results, iter_args);
     }
-    nested_builder.create<xla::gpu::YieldOp>(loc, results);
+    nested_builder.create<xla::YieldOp>(loc, results);
   };
   return b.create<LoopOp>(indexing_map, dim_values, iter_args_inits, bb)
       .getResults();

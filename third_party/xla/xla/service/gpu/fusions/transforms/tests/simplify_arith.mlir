@@ -1,4 +1,4 @@
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-simplify-arith -cse \
+// RUN: emitters_opt %s -split-input-file -xla-gpu-simplify-arith -cse \
 // RUN:   -canonicalize | FileCheck %s
 
 module {
@@ -248,7 +248,7 @@ func.func @refine_constraints(%tensor: tensor<100xf32>) -> tensor<100xf32> {
   %c42_f32 = arith.constant 42.0 : f32
   %loop = scf.for %i = %c0 to %c3 step %c1
       iter_args(%in_ = %tensor) -> (tensor<100xf32>) {
-    %0 = xla_gpu.apply_indexing #xla_gpu.indexing_map<"(d0) -> (d0 mod 4),"
+    %0 = xla.apply_indexing #xla.indexing_map<"(d0) -> (d0 mod 4),"
       "domain: d0 in [0, 9]">(%i)
     %updated = tensor.insert %c42_f32 into %in_[%0] : tensor<100xf32>
     scf.yield %updated :tensor<100xf32>
@@ -263,10 +263,10 @@ func.func @refine_constraints(%tensor: tensor<100xf32>) -> tensor<100xf32> {
 
 // -----
 
-#map = #xla_gpu.indexing_map<
+#map = #xla.indexing_map<
   "(d0, d1)[s0, s1] -> (((d0 * 4 + d1 * 512 + s1) floordiv 9 + s0 * 32768) mod 2400000),"
   "domain: d0 in [0, 127], d1 in [0, 575], s0 in [0, 73], s1 in [0, 3]">
-#map1 = #xla_gpu.indexing_map<"(d0, d1)[s0] -> ((d0 * 4 + d1 * 512 + s0) mod 9),"
+#map1 = #xla.indexing_map<"(d0, d1)[s0] -> ((d0 * 4 + d1 * 512 + s0) mod 9),"
   "domain: d0 in [0, 127], d1 in [0, 575], s0 in [0, 3]">
 func.func @refine_constraints_for_symbol(%arg0: tensor<2400000x9xf32>,
     %arg1: tensor<2400000x9xf32>) -> tensor<2400000x9xf32> {
@@ -281,8 +281,8 @@ func.func @refine_constraints_for_symbol(%arg0: tensor<2400000x9xf32>,
       -> (tensor<2400000x9xf32>) {
     %2 = scf.for %j = %c0 to %c4 step %c1 iter_args(%arg5 = %arg3)
         -> (tensor<2400000x9xf32>) {
-      %3 = xla_gpu.apply_indexing #map(%th_x, %bl_x)[%i, %j]
-      %4 = xla_gpu.apply_indexing #map1(%th_x, %bl_x)[%j]
+      %3 = xla.apply_indexing #map(%th_x, %bl_x)[%i, %j]
+      %4 = xla.apply_indexing #map1(%th_x, %bl_x)[%j]
       %inserted = tensor.insert %c42_f32 into %arg5[%3, %4]
         : tensor<2400000x9xf32>
       scf.yield %inserted : tensor<2400000x9xf32>
@@ -291,12 +291,12 @@ func.func @refine_constraints_for_symbol(%arg0: tensor<2400000x9xf32>,
   }
   return %0 : tensor<2400000x9xf32>
 }
-// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<"(d0, d1, d2, d3) -> (d2 * 32768 + (d0 * 4 + d1 * 512 + d3) floordiv 9),
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0, d1, d2, d3) -> (d2 * 32768 + (d0 * 4 + d1 * 512 + d3) floordiv 9),
 // CHECK-LABEL: func.func @refine_constraints_for_symbol
 
 // -----
 
-#map = #xla_gpu.indexing_map<
+#map = #xla.indexing_map<
   "(d0, d1, d2, d3, d4, d5)[s0] -> ((d0 * 4 + s0) floordiv 6, (d0 * 4 + s0) mod 6),"
   "domain:"
   "d0 in [0, 29],"
@@ -323,12 +323,12 @@ func.func @dus(%arg0: tensor<20x30xf32>, %arg1: tensor<5x6xf32>, %arg2: i32, %ar
   %3 = arith.index_cast %arg3 : i32 to index
   %4 = arith.minsi %3, %c24 : index
   %5 = arith.maxsi %4, %c0 : index
-  %xla_loop = xla_gpu.loop (%thread_id_x, %thread_id_y, %thread_id_z, %block_id_x, %block_id_y, %block_id_z)[%i] -> (%ra, %rb) in #map iter_args(%iter = %arg4) -> (tensor<20x30xf32>) {
+  %xla_loop = xla.loop (%thread_id_x, %thread_id_y, %thread_id_z, %block_id_x, %block_id_y, %block_id_z)[%i] -> (%ra, %rb) in #map iter_args(%iter = %arg4) -> (tensor<20x30xf32>) {
     %6 = arith.addi %2, %ra : index
     %7 = arith.addi %5, %rb : index
     %extracted = tensor.extract %arg1[%ra, %rb] : tensor<5x6xf32>
     %inserted = tensor.insert %extracted into %iter[%6, %7] : tensor<20x30xf32>
-    xla_gpu.yield %inserted : tensor<20x30xf32>
+    xla.yield %inserted : tensor<20x30xf32>
   }
   return %xla_loop : tensor<20x30xf32>
 }
@@ -342,7 +342,7 @@ func.func @dus(%arg0: tensor<20x30xf32>, %arg1: tensor<5x6xf32>, %arg2: i32, %ar
 // CHECK-SAME: xla.range = [-9223372036854775808 : index, 24 : index]
 // CHECK: arith.maxsi
 // CHECK-SAME: xla.range = [0 : index, 24 : index]
-// CHECK: xla_gpu.loop
+// CHECK: xla.loop
 // CHECK: arith.addi
 // CHECK-SAME: xla.range = [0 : index, 19 : index]
 // CHECK: arith.addi

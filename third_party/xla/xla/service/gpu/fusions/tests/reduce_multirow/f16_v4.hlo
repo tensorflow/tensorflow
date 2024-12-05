@@ -1,4 +1,4 @@
-// RUN: fusion_to_mlir %s | mlir_fusions_opt -xla-gpu-test-optimize \
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize \
 // RUN:   -xla-gpu-test-transform-loops | FileCheck %s
 
 // The reference implementation reduces in f64, so we need a larger tolerance.

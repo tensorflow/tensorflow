@@ -1,4 +1,4 @@
-// RUN: fusion_to_mlir %s | mlir_fusions_opt -xla-gpu-test-optimize |\
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
 // RUN:   FileCheck %s
 // RUN: test_correctness %s
 
@@ -20,7 +20,7 @@ fusion {
 
 // CHECK:      %[[SYNC:.*]] = xla_gpu.sync_threads %[[SHMEM_WITH_VALS]]
 
-// CHECK:      xla_gpu.loop
+// CHECK:      xla.loop
 // CHECK-SAME:     iter_args(%[[OUT_:.*]] = %[[OUT]])
-// CHECK:       %[[ABS:.*]] = xla_gpu.pure_call @fusion__epilogue__
+// CHECK:       %[[ABS:.*]] = xla.pure_call @fusion__epilogue__
 // CHECK:       tensor.insert %[[ABS]] into %[[OUT_]]

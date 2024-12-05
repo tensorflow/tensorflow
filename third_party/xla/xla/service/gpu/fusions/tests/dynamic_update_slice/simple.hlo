@@ -1,4 +1,4 @@
-// RUN: fusion_to_mlir %s | mlir_fusions_opt -xla-gpu-test-optimize |\
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
 // RUN:   FileCheck %s
 // RUN: test_correctness %s --bijection_inputs=updated:1
 
@@ -20,10 +20,10 @@ fusion {
 // CHECK-DAG:   %[[C_0:.*]] = arith.constant 0
 // CHECK:       %[[THREAD_ID:.*]] = gpu.thread_id  x
 
-// CHECK:     xla_gpu.loop
+// CHECK:     xla.loop
 // CHECK-SAME:  -> (%[[RA:.*]], %[[RB:.*]]) in
-// CHECK:       %[[I0:.*]] = xla_gpu.pure_call @fusion_i0
-// CHECK:       %[[I1:.*]] = xla_gpu.pure_call @fusion_i1
+// CHECK:       %[[I0:.*]] = xla.pure_call @fusion_i0
+// CHECK:       %[[I1:.*]] = xla.pure_call @fusion_i1
 // CHECK:       %[[IDX0:.*]] = arith.index_cast %[[I0]]
 // CHECK:       %[[MIN0:.*]] = arith.minsi %[[IDX0]], %[[C_15]]
 // CHECK:       %[[MAX0:.*]] = arith.maxsi %[[MIN0]], %[[C_0]]
@@ -32,6 +32,6 @@ fusion {
 // CHECK:       %[[MIN1:.*]] = arith.minsi %[[IDX1]], %[[C_24]]
 // CHECK:       %[[MAX1:.*]] = arith.maxsi %[[MIN1]], %[[C_0]]
 // CHECK:       %[[ADD1:.*]] = arith.addi %[[RB]], %[[MAX1]]
-// CHECK:       %[[UPDATE:.*]] = xla_gpu.pure_call @fusion_updates
+// CHECK:       %[[UPDATE:.*]] = xla.pure_call @fusion_updates
 // CHECK:       %[[INSERT:.*]] = tensor.insert %[[UPDATE:.*]] into %{{[a-z0-9]+}}[%[[ADD0]], %[[ADD1]]]
-// CHECK:       xla_gpu.yield %[[INSERT]]
+// CHECK:       xla.yield %[[INSERT]]
