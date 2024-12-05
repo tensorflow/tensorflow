@@ -33,43 +33,60 @@ limitations under the License.
 namespace xla::cpu::internal {
 
 // Returns in 'out_data' (assumes to be zero-initialized) image patch in storage
-// order (width, depth), constructed from patches in 'col_data', which is
-// required to be in storage order (out_width, filter_size, in_depth). Based on
-// TF implementation by Yangqing Jia (jiayq).
+// order (width, height, depth), constructed from patches in 'col_data', which
+// is required to be in storage order (in_width * in_height, filter_width,
+// filter_height, in_depth). Based on TF implementation by Yangqing Jia (jiayq).
 // TODO(adambanas): The original implementation implicitly rotates the kernel by
 // 180 degrees, but to be backwards compatible, we cannot do that in XLA. This
 // results in counterintuitive operations on col_data, which is also 15-20%
 // slower. Try alternative approaches (e.g. rotate kernel before matrix
 // multiplication in the calling function).
 template <typename T>
-void Pack1DPatches(const T* col_data, const int depth, const int width,
-                   const int filter_size, const int pad_l, const int pad_r,
-                   const int stride, T* __restrict out_im_data) {
-  int width_col = (width + filter_size - pad_l - pad_r - 2) / stride + 1;
+void Pack2DPatches(const T* col_data, const int depth, const int height,
+                   const int width, const int filter_h, const int filter_w,
+                   const int pad_top, const int pad_bottom, const int pad_left,
+                   const int pad_right, const int stride_h, const int stride_w,
+                   T* __restrict out_im_data) {
+  int w_patches_number =
+      (width + filter_w - pad_left - pad_right - 2) / stride_w + 1;
+  int h_patches_number =
+      (height + filter_h - pad_top - pad_bottom - 2) / stride_h + 1;
 
-  int patch_begin = pad_l - filter_size + 1;
-  col_data += depth * (filter_size - 1);
-  for (int w = 0; w < width_col; ++w) {
-    // This loop body covers 1 output patch, at all depths, accounting for
-    // padding. The next line is always a pointer to the first element of the
-    // new output patch. Notice in case of less-than-full padding, the pointer
-    // can point to an element outside the image, but such elements will be
-    // skipped by the inner if (so no write occurs).
-    T* out_im_patch_data = out_im_data + patch_begin * depth;
+  const int filter_spatial_size = filter_h * filter_w;
 
-    for (int iw = patch_begin; iw < patch_begin + filter_size; ++iw) {
-      // This loop body covers 1 spatial field at all depths
-      if (iw >= 0 && iw < width) {
-        for (int i = 0; i < depth; ++i) {
-          out_im_patch_data[i] += col_data[i];
+  int w_patch_begin = pad_left - filter_w + 1;
+  col_data += depth * (filter_spatial_size - 1);
+  for (int w = 0; w < w_patches_number; ++w) {
+    int h_patch_begin = pad_top - filter_h + 1;
+    for (int h = 0; h < h_patches_number; ++h) {
+      // This loop body covers 1 output patch, at all depths, accounting for
+      // padding. The next line is always a pointer to the first element of the
+      // new output patch. Notice in case of less-than-full padding, the pointer
+      // can point to an element outside the image, but such elements will be
+      // skipped by the inner if (so no write occurs).
+      T* out_im_patch_data =
+          out_im_data + (w_patch_begin * height + h_patch_begin) * depth;
+
+      for (int iw = w_patch_begin; iw < w_patch_begin + filter_w; ++iw) {
+        for (int ih = h_patch_begin; ih < h_patch_begin + filter_h; ++ih) {
+          // This loop body covers 1 spatial point with coordinates (iw, ih)
+          // in the output buffer, at all depths
+          if (iw >= 0 && iw < width && ih >= 0 && ih < height) {
+            for (int i = 0; i < depth; ++i) {
+              out_im_patch_data[i] += col_data[i];
+            }
+          }
+          out_im_patch_data += depth;
+          col_data -= depth;
         }
+        // Jump over remaining number of depth.
+        out_im_patch_data += depth * (height - filter_h);
       }
-      out_im_patch_data += depth;
-      col_data -= depth;
-    }
-    col_data += 2 * depth * filter_size;
 
-    patch_begin += stride;
+      col_data += 2 * depth * filter_spatial_size;
+      h_patch_begin += stride_h;
+    }
+    w_patch_begin += stride_w;
   }
 }
 
@@ -85,11 +102,10 @@ void EigenTransposedConv2D(
     Eigen::Index input_y, Eigen::Index input_channels, Eigen::Index kernel_x,
     Eigen::Index kernel_y, Eigen::Index kernel_channels,
     Eigen::Index kernel_filters, Eigen::Index output_x, Eigen::Index output_y,
-    Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index padding_x_before,
-    Eigen::Index padding_x_after, Eigen::Index padding_y_before,
-    Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,
-    Eigen::Index lhs_y_dilation, std::function<void()> done_callback,
-    bool use_thunk_runtime) {
+    Eigen::Index padding_x_before, Eigen::Index padding_x_after,
+    Eigen::Index padding_y_before, Eigen::Index padding_y_after,
+    Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
+    std::function<void()> done_callback, bool use_thunk_runtime) {
   // TODO(adambanas): Current custom conv algorithm doesn't support both
   // multiple input channels and multiple output channels (i.e. kernel_filters)
   // at the same time.
@@ -142,10 +158,6 @@ void EigenTransposedConv2D(
     CHECK_EQ(use_thread_pool, static_cast<bool>(done_callback));  // Crash OK
   }
 
-  // TODO(adambanas): Support 2D transposed convolutions.
-  CHECK_EQ(input_x, 1);
-  CHECK_EQ(kernel_x, 1);
-
   const int input_offset = input_image_size * kernel_total_size;
   const int output_offset = output_image_size * kernel_filters;
 
@@ -162,9 +174,10 @@ void EigenTransposedConv2D(
 
     // TODO(adambanas): Run this part in parallel.
     for (int image_id = 0; image_id < input_batch; ++image_id) {
-      Pack1DPatches<ScalarType>(col_buffer_data, kernel_filters, output_y,
-                                kernel_y, padding_y_before, padding_y_after,
-                                lhs_y_dilation, local_out_data);
+      Pack2DPatches<ScalarType>(
+          col_buffer_data, kernel_filters, output_y, output_x, kernel_y,
+          kernel_x, padding_y_before, padding_y_after, padding_x_before,
+          padding_x_after, lhs_y_dilation, lhs_x_dilation, local_out_data);
 
       col_buffer_data += input_offset;
       local_out_data += output_offset;
@@ -178,7 +191,7 @@ void EigenTransposedConv2D(
   };
 
   if (done_callback) {
-    // Schedule the work in the thread pool and return..
+    // Schedule the work in the thread pool and return.
     C.device(device, std::move(pack_patches)) = A.contract(B, contract_dims);
   } else {
     // Run synchronously in the current thread.
@@ -188,13 +201,13 @@ void EigenTransposedConv2D(
 }
 
 inline bool CanUseCustomTransposedConv(
-    Eigen::Index input_x, Eigen::Index input_channels, Eigen::Index kernel_x,
-    Eigen::Index kernel_filters, Eigen::Index lhs_x_dilation,
+    Eigen::Index input_channels, Eigen::Index kernel_filters,
+    Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index lhs_x_dilation,
     Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
     Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count) {
   return (lhs_x_dilation > 1 || lhs_y_dilation > 1) && rhs_x_dilation == 1 &&
          rhs_y_dilation == 1 && (input_channels == 1 || kernel_filters == 1) &&
-         feature_group_count == 1 && input_x == 1 && kernel_x == 1;
+         feature_group_count == 1 && x_stride == 1 && y_stride == 1;
 }
 
 // Algorithm that works for all types of 2D convolutions. Even though it works
@@ -348,16 +361,15 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
                  Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
                  Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
                  std::function<void()> done_callback, bool use_thunk_runtime) {
-  if (CanUseCustomTransposedConv(input_x, input_channels, kernel_x,
-                                 kernel_filters, lhs_x_dilation, lhs_y_dilation,
+  if (CanUseCustomTransposedConv(input_channels, kernel_filters, x_stride,
+                                 y_stride, lhs_x_dilation, lhs_y_dilation,
                                  rhs_x_dilation, rhs_y_dilation,
                                  feature_group_count)) {
-    EigenTransposedConv2D(device, out, lhs, rhs, input_batch, input_x, input_y,
-                          input_channels, kernel_x, kernel_y, kernel_channels,
-                          kernel_filters, output_x, output_y, x_stride,
-                          y_stride, padding_x_before, padding_x_after,
-                          padding_y_before, padding_y_after, lhs_x_dilation,
-                          lhs_y_dilation, done_callback, use_thunk_runtime);
+    EigenTransposedConv2D(
+        device, out, lhs, rhs, input_batch, input_x, input_y, input_channels,
+        kernel_x, kernel_y, kernel_channels, kernel_filters, output_x, output_y,
+        padding_x_before, padding_x_after, padding_y_before, padding_y_after,
+        lhs_x_dilation, lhs_y_dilation, done_callback, use_thunk_runtime);
   } else {
     EigenGenericConv2D(
         device, out, lhs, rhs, input_batch, input_x, input_y, input_channels,

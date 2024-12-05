@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/array2d.h"
+#include "xla/array3d.h"
 #include "xla/array4d.h"
 #include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
@@ -28,7 +29,9 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/reference_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
@@ -489,6 +492,40 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_3x2x5_2x2x3_WithLHSDilation) {
                             {8030, 4290, 9570, 5060, 11110, 5830, 12650}},
                            {{1460, 780, 1740, 920, 2020, 1060, 2300},
                             {1606, 858, 1914, 1012, 2222, 1166, 2530}}});
+
+  auto input_literal =
+      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
+          .value();
+  auto filter_literal =
+      client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(filter))
+          .value();
+
+  ComputeAndCompareR3<float>(&builder, expected,
+                             {input_literal.get(), filter_literal.get()},
+                             error_spec_);
+}
+
+// Test LHS dilation (i.e. transposed convolution) and window strides at the
+// same time. That's probably never used in practice, but since the generic
+// algorithm covers it, we test it anyway with a simple case.
+XLA_TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilationAndStrides) {
+  XlaBuilder builder(TestName());
+  {
+    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
+    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
+    auto input = Parameter(&builder, 0, input_shape, "input");
+    auto filter = Parameter(&builder, 1, filter_shape, "filter");
+    // Convolution dimensions are bf0_oi0->bf0.
+    ConvGeneralDilated(
+        input, filter, /*window_strides=*/{2}, /*padding=*/{{0, 0}},
+        /*lhs_dilation=*/{2}, /*rhs_dilation=*/{1},
+        /*dimension_numbers=*/builder.CreateDefaultConvDimensionNumbers(1));
+  }
+
+  Array3D<float> input({{{1, 2, 3, 4, 5}}});
+  Array3D<float> filter({{{10, 11, 12}}});
+
+  Array3D<float> expected({{{34, 56, 78, 100}}});
 
   auto input_literal =
       client_->TransferToServer(LiteralUtil::CreateR3FromArray3D(input))
