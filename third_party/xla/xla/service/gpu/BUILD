@@ -23,7 +23,6 @@ load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
-    "if_oss",
     "internal_visibility",
     "tsl_copts",
     "tsl_gpu_library",
@@ -1895,7 +1894,8 @@ xla_test(
     backends = [
         "gpu_v100",
         "gpu_a100",
-    ] + if_oss(["gpu_b100"]),
+        "gpu_b100",
+    ],
     tags = [
         "cuda-only",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
@@ -2632,7 +2632,8 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-    ] + if_oss(["gpu_b100"]),
+        "gpu_b100",
+    ],
     deps = [
         ":variant_visitor",
         "//xla:error_spec",
@@ -2874,8 +2875,9 @@ xla_test(
         "gpu_v100",
         "gpu_a100",
         "gpu_h100",
+        "gpu_b100",
         "gpu_amd_any",
-    ] + if_oss(["gpu_b100"]),
+    ],
     tags = [
         "no_mac",
     ],
@@ -2956,8 +2958,9 @@ xla_test(
     srcs = ["determinism_test.cc"],
     backends = [
         "gpu_a100",
+        "gpu_b100",
         "gpu_amd_any",
-    ] + if_oss(["gpu_b100"]),
+    ],
     deps = [
         "//xla:literal",
         "//xla:xla_proto_cc",

@@ -3,7 +3,7 @@ load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "if_oss", "internal_visibility", "nvtx_headers")
+load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "internal_visibility", "nvtx_headers")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -350,8 +350,9 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_v100",
+        "gpu_b100",
         "gpu_amd_any",
-    ] + if_oss(["gpu_b100"]),
+    ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":custom_call_thunk",
@@ -458,8 +459,9 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_v100",
+        "gpu_b100",
         "gpu_amd_any",
-    ] + if_oss(["gpu_b100"]),
+    ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":command_buffer_cmd",

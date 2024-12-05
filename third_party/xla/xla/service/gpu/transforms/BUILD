@@ -1472,8 +1472,9 @@ xla_test(
         "gpu_a100",
         "gpu_p100",
         "gpu_v100",
+        "gpu_b100",
         "gpu_amd_any",
-    ] + if_oss(["gpu_b100"]),
+    ],
     deps = if_gpu_is_configured(
         [
             ":dot_operand_converter",
@@ -3240,7 +3241,8 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-    ] + if_oss(["gpu_b100"]),
+        "gpu_b100",
+    ],
     deps = [
         ":triton_fusion_numerics_verifier",
         "//xla:shape_util",
