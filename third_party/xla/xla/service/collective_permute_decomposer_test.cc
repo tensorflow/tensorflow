@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -28,10 +29,12 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 namespace op = xla::testing::opcode_matchers;
 using CollectivePermuteDecomposerTest = HloTestBase;
@@ -255,8 +258,8 @@ TEST_F(CollectivePermuteDecomposerTest, Pipeline1) {
   EXPECT_THAT(send_done->ToString(),
               HasSubstr("_xla_send_recv_pipeline=\"0\""));
 
-  EXPECT_FALSE(recv_done->control_predecessors().empty());
-  EXPECT_EQ(recv_done->control_predecessors()[0], send);
+  EXPECT_THAT(send->control_predecessors(), ElementsAre(recv));
+  EXPECT_THAT(recv_done->control_predecessors(), ElementsAre(send));
 }
 
 TEST_F(CollectivePermuteDecomposerTest, ForwardPipeline2) {
@@ -338,6 +341,10 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipeline2) {
   HloInstruction* send_done1 = FindInstruction(module.get(), "send-done.1");
   EXPECT_THAT(send_done1->ToString(),
               HasSubstr("_xla_send_recv_pipeline=\"1\""));
+
+  EXPECT_THAT(send->control_predecessors(), ElementsAre(recv));
+  EXPECT_THAT(recv1->control_predecessors(), ElementsAre(send));
+  EXPECT_THAT(send1->control_predecessors(), ElementsAre(recv1));
 }
 
 TEST_F(CollectivePermuteDecomposerTest, ForwardPipelineWithMatmul) {
@@ -443,10 +450,12 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipelineWithMatmul) {
   HloInstruction* recv_done_bwd =
       hlo_query::FindInstruction(while_body, "recv-done.1");
 
-  // TODO: b/356201477 - Investigate potential NCCL deadlock in
-  // collective_permute_decomposer
-  EXPECT_EQ(recv_done_fwd->control_predecessors()[0], send_bwd);
-  EXPECT_EQ(recv_done_bwd->control_predecessors()[0], send_fwd);
+  EXPECT_THAT(send_bwd->control_predecessors(), ElementsAre(recv_bwd));
+  EXPECT_THAT(recv_fwd->control_predecessors(), ElementsAre(send_bwd));
+  EXPECT_THAT(send_fwd->control_predecessors(), ElementsAre(recv_fwd));
+
+  EXPECT_THAT(recv_done_fwd->control_predecessors(), ElementsAre(send_bwd));
+  EXPECT_THAT(recv_done_bwd->control_predecessors(), ElementsAre(send_fwd));
 }
 
 TEST_F(CollectivePermuteDecomposerTest, BackwardPipeline2) {
@@ -522,6 +531,10 @@ TEST_F(CollectivePermuteDecomposerTest, BackwardPipeline2) {
   EXPECT_THAT(send1->ToString(),
               HasSubstr("_xla_send_recv_source_target_pairs={{0,3}}"));
   EXPECT_THAT(send1->ToString(), HasSubstr("_xla_send_recv_pipeline=\"0\""));
+
+  EXPECT_THAT(send1->control_predecessors(), ElementsAre(recv1));
+  EXPECT_THAT(recv->control_predecessors(), ElementsAre(send1));
+  EXPECT_THAT(send->control_predecessors(), ElementsAre(recv));
 }
 
 TEST_F(CollectivePermuteDecomposerTest,
@@ -567,6 +580,8 @@ TEST_F(CollectivePermuteDecomposerTest,
   EXPECT_FALSE(recv_done->channel_id().has_value());
 
   EXPECT_THAT(root, op::GetTupleElement(recv_done, 0));
+
+  EXPECT_THAT(send->control_predecessors(), ElementsAre(recv));
 }
 
 }  // namespace
