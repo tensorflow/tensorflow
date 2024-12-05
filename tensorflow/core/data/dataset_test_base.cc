@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_test_base.h"
 
 #include <algorithm>
-#include <complex>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -26,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/framework/fixedpoint/FixedPoint.h"
@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_handle_cache.h"

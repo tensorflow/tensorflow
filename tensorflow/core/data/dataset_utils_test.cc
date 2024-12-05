@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/data/dataset_utils.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/util/determinism_test_util.h"
 #include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/dataset_test_base.h"
@@ -28,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/data/test_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset.pb.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
