@@ -1507,14 +1507,14 @@ HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
 namespace {
 
 // Returns the operand pass-through dimensions for gather/scatter operand(s).
-absl::InlinedVector<int64_t, 1> GetGatherScatterOperandPassthroughOperandDims(
+DimensionVector GetGatherScatterOperandPassthroughOperandDims(
     const Shape& operand_shape,
     absl::Span<const int64_t> collapsed_or_inserted_dims,
     absl::Span<const int64_t> operand_batching_dims,
     absl::Span<const int64_t> index_map,
     absl::Span<const int64_t> offset_or_window_dims,
     absl::Span<const int64_t> slice_size) {
-  absl::InlinedVector<int64_t, 1> passthrough_dims;
+  DimensionVector passthrough_dims;
   int64_t collapsed_or_batching = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
     if (IsCollapsedOrBatchingDim(collapsed_or_inserted_dims,
@@ -1536,8 +1536,7 @@ absl::InlinedVector<int64_t, 1> GetGatherScatterOperandPassthroughOperandDims(
   return passthrough_dims;
 }
 
-absl::InlinedVector<int64_t, 1>
-GetGatherScatterOperandPassthroughOutputOrUpdateDims(
+DimensionVector GetGatherScatterOperandPassthroughOutputOrUpdateDims(
     const int64_t output_or_update_rank, const Shape& operand_shape,
     absl::Span<const int64_t> collapsed_or_inserted_dims,
     absl::Span<const int64_t> operand_batching_dims,
@@ -1547,7 +1546,7 @@ GetGatherScatterOperandPassthroughOutputOrUpdateDims(
   auto operand_passthrough_dims = GetGatherScatterOperandPassthroughOperandDims(
       operand_shape, collapsed_or_inserted_dims, operand_batching_dims,
       index_map, offset_or_window_dims, slice_size);
-  absl::InlinedVector<int64_t, 1> passthrough_dims;
+  DimensionVector passthrough_dims;
   int64_t collapsed_or_batching = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
     if (IsCollapsedOrBatchingDim(collapsed_or_inserted_dims,
@@ -2382,7 +2381,7 @@ std::optional<GatherScatterDims> GetScatterParallelBatchDims(
       call_graph);
 }
 
-absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOperandDims(
+DimensionVector GetGatherOperandPassthroughOperandDims(
     const Shape& operand_shape, const HloInstruction& hlo,
     absl::Span<const int64_t> slice_sizes) {
   const auto& dnums = hlo.gather_dimension_numbers();
@@ -2392,7 +2391,7 @@ absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOperandDims(
       dnums.offset_dims(), slice_sizes);
 }
 
-absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
+DimensionVector GetScatterOperandPassthroughOperandDims(
     const Shape& operand_shape, const HloSharding& operand_sharding,
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes) {
   const auto& dnums = hlo.scatter_dimension_numbers();
@@ -2402,7 +2401,7 @@ absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
       slice_sizes);
 }
 
-absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOutputDims(
+DimensionVector GetGatherOperandPassthroughOutputDims(
     const Shape& output_shape, const Shape& operand_shape,
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes) {
   const auto& dnums = hlo.gather_dimension_numbers();
@@ -2412,7 +2411,7 @@ absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOutputDims(
       dnums.offset_dims(), slice_sizes);
 }
 
-absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughUpdateDims(
+DimensionVector GetScatterOperandPassthroughUpdateDims(
     const Shape& update_shape, const Shape& operand_shape,
     const HloSharding& operand_sharding, const HloInstruction& hlo,
     absl::Span<const int64_t> slice_sizes) {
@@ -2450,7 +2449,7 @@ GatherScatterDims GetGatherScatterIndexPassThroughDims(
     const HloInstruction& hlo, const CallGraph& call_graph) {
   if (const auto* gather = DynCast<HloGatherInstruction>(&hlo)) {
     const GatherDimensionNumbers& dnums = gather->gather_dimension_numbers();
-    absl::InlinedVector<int64_t, 1> excluded_indices_dims{
+    DimensionVector excluded_indices_dims{
         dnums.start_indices_batching_dims().begin(),
         dnums.start_indices_batching_dims().end()};
     if (std::optional<GatherScatterDims> implicit_batch_dims =
@@ -2465,7 +2464,7 @@ GatherScatterDims GetGatherScatterIndexPassThroughDims(
 
   if (const auto* scatter = DynCast<HloScatterInstruction>(&hlo)) {
     const ScatterDimensionNumbers& dnums = scatter->scatter_dimension_numbers();
-    absl::InlinedVector<int64_t, 1> excluded_indices_dims{
+    DimensionVector excluded_indices_dims{
         dnums.scatter_indices_batching_dims().begin(),
         dnums.scatter_indices_batching_dims().end()};
     if (std::optional<GatherScatterDims> implicit_batch_dims =

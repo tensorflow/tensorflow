@@ -174,28 +174,27 @@ void GenerateScatterShardingFromOperands(
     return;
   }
 
-  absl::InlinedVector<int64_t, 1> output_parallel_dims =
-      scatter_parallel_dims->operand_dims;
   // Infer output sharding from scatter operand sharding.
   const Shape& shape = scatter->shape();
   scatter_shardings_insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
-          data_sharding, shape, absl::MakeConstSpan(output_parallel_dims),
-          absl::MakeConstSpan(output_parallel_dims)));
+          data_sharding, shape,
+          absl::MakeConstSpan(scatter_parallel_dims->operand_dims),
+          absl::MakeConstSpan(scatter_parallel_dims->operand_dims)));
 
   // Infer output sharding from scatter indices sharding.
   scatter_shardings_insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
           indices_sharding, shape,
           absl::MakeConstSpan(scatter_parallel_dims->indices_dims),
-          absl::MakeConstSpan(output_parallel_dims)));
+          absl::MakeConstSpan(scatter_parallel_dims->operand_dims)));
 
   // Infer output sharding from scatter update sharding.
   scatter_shardings_insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
           update_sharding, shape,
           absl::MakeConstSpan(scatter_parallel_dims->output_dims),
-          absl::MakeConstSpan(output_parallel_dims)));
+          absl::MakeConstSpan(scatter_parallel_dims->operand_dims)));
 
   for (const HloSharding& scatter_sharding : scatter_shardings) {
     yield_sharding(data_sharding, indices_sharding, update_sharding,

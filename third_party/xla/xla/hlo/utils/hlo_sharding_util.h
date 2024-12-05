@@ -56,9 +56,9 @@ struct FormattingStep {
 };
 
 struct GatherScatterDims {
-  absl::InlinedVector<int64_t, 1> operand_dims;
-  absl::InlinedVector<int64_t, 1> indices_dims;
-  absl::InlinedVector<int64_t, 1> output_dims;
+  DimensionVector operand_dims;
+  DimensionVector indices_dims;
+  DimensionVector output_dims;
 
   void append(const GatherScatterDims& other);
 
@@ -375,20 +375,20 @@ std::optional<GatherScatterDims> GetScatterParallelBatchDims(
     const HloInstruction& hlo, const CallGraph& call_graph);
 
 // Returns the operand pass-through dimensions for gather operand.
-absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOperandDims(
+DimensionVector GetGatherOperandPassthroughOperandDims(
     const Shape& operand_shape, const HloInstruction& hlo,
     absl::Span<const int64_t> slice_sizes);
 
 // Returns the operand pass-through dimensions for scatter operand(s).
-absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
+DimensionVector GetScatterOperandPassthroughOperandDims(
     const Shape& operand_shape, const HloSharding& operand_sharding,
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
 
-absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOutputDims(
+DimensionVector GetGatherOperandPassthroughOutputDims(
     const Shape& output_shape, const Shape& operand_shape,
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
 
-absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughUpdateDims(
+DimensionVector GetScatterOperandPassthroughUpdateDims(
     const Shape& update_shape, const Shape& operand_shape,
     const HloSharding& operand_sharding, const HloInstruction& hlo,
     absl::Span<const int64_t> slice_sizes);
