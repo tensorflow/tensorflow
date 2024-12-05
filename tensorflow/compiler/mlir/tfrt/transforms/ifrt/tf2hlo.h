@@ -66,8 +66,13 @@ absl::Status UpdateCompileMetadata(
 absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
     mlir::ModuleOp module, const xla::ifrt::Client& ifrt_client);
 
-// A class that convert tf module to hlo
-absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg);
+class TfToHloCompiler {
+ public:
+  TfToHloCompiler() = default;
+  virtual ~TfToHloCompiler() = default;
+
+  virtual absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg);
+};
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

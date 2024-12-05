@@ -321,6 +321,7 @@ py_strict_library(
 py_strict_library(
     name = "resource_loader",
     srcs = ["resource_loader.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":tf_logging",
         "//tensorflow/python/util:tf_export",

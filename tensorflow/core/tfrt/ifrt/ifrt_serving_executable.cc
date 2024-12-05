@@ -233,6 +233,7 @@ IfrtServingExecutable::Create(
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     IfrtServingCoreSelector* ifrt_serving_core_selector,
     tsl::protobuf::Message* compilation_environment_proto,
+    TfToHloCompiler* tf_to_hlo_compiler,
     IfrtPersistentCompilationCache* persistent_compilation_cache) {
   TF_ASSIGN_OR_RETURN(
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
@@ -252,7 +253,8 @@ IfrtServingExecutable::Create(
       std::move(original_compile_metadata),
       xla::ifrt::BasicDeviceList::Create(xla::ifrt::BasicDeviceList::Devices(
           assigned_devices.begin(), assigned_devices.end())),
-      compilation_environment_proto, persistent_compilation_cache));
+      compilation_environment_proto, tf_to_hlo_compiler,
+      persistent_compilation_cache));
 
   return executable;
 }
@@ -433,9 +435,10 @@ IfrtServingExecutable::CreateExecutableSynchronously(
         ifrt_client_->GetTopologyForDevices(assigned_device_list_));
   }
 
-  TF_ASSIGN_OR_RETURN(Tf2HloResult tf2hlo_result,
-                      persistent_compilation_cache_->LookupTf2HloResultOrCreate(
-                          tf2hlo_arg, assigned_device_list_));
+  TF_ASSIGN_OR_RETURN(
+      Tf2HloResult tf2hlo_result,
+      persistent_compilation_cache_->LookupTf2HloResultOrCreate(
+          tf2hlo_arg, assigned_device_list_, tf_to_hlo_compiler_));
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_hlo_module,
       xla::ConvertHloToMlirHlo(*module_copy->getContext(),
