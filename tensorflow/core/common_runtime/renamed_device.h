@@ -16,7 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/util/device_name_utils.h"
 

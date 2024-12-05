@@ -15,10 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SCOPED_ALLOCATOR_MGR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_SCOPED_ALLOCATOR_MGR_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/scoped_allocator.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"

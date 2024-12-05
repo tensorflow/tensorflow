@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <errno.h>
 
+#include <cstddef>
+#include <cstdint>
+
 #ifndef _MSC_VER
 #include <strings.h>
 #include <sys/mman.h>  // for munmap

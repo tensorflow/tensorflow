@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_SESSION_FACTORY_H_
 
 #include <string>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"

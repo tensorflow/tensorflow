@@ -15,16 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/quantize_training.h"
 
-#include <algorithm>
-#include <atomic>
-#include <set>
+#include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"

@@ -16,7 +16,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/session_factory.h"
 
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"

@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_QUANTIZE_TRAINING_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_QUANTIZE_TRAINING_H_
 
+#include <cstdint>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {

@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_REPLICATE_PER_REPLICA_NODES_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_REPLICATE_PER_REPLICA_NODES_H_
 
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 

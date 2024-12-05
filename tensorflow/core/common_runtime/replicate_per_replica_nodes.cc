@@ -14,13 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 
-#include <algorithm>
 #include <queue>
+#include <set>
+#include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/optimize_cross_host_control_deps.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {

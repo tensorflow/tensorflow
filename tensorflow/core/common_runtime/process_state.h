@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_STATE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_STATE_H_
 
+#include <array>
+#include <atomic>
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/platform/mutex.h"

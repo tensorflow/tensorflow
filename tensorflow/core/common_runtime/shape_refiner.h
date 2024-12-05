@@ -15,12 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"

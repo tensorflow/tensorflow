@@ -19,6 +19,8 @@ limitations under the License.
 // Simple LRU pool allocators for various flavors of CPU RAM.
 
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <vector>

@@ -15,13 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 
+#include <cstdint>
+#include <limits>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status.h"

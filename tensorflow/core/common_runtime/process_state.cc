@@ -16,10 +16,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_state.h"
 
 #include <atomic>
+#include <cstdint>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/framework/allocator.h"

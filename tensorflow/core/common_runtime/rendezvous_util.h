@@ -15,8 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_RENDEZVOUS_UTIL_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_RENDEZVOUS_UTIL_H_
 
+#include <functional>
 #include <map>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/status.h"
 
