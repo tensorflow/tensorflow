@@ -97,6 +97,7 @@ CreateIfrtServingExecutable(mlir::MLIRContext& context, int64_t program_id) {
       tensorflow::IdentityShapeRepresentationFn(),
       /*ifrt_serving_core_selector=*/nullptr,
       /*compilation_environment_proto=*/nullptr,
+      /*tf_to_hlo_compiler=*/nullptr,
       /*persistent_compilation_cache=*/nullptr);
 }
 
