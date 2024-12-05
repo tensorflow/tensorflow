@@ -35,6 +35,7 @@ cc_library(
     deps = [
         ":clique_id",
         ":communicator",
+        ":rank_id",
         "@com_google_absl//absl/status:statusor",
     ],
 )

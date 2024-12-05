@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/rank_id.h"
 
 namespace xla {
 
@@ -34,6 +35,21 @@ namespace xla {
 class Collectives {
  public:
   virtual ~Collectives() = default;
+
+  // A base class for the device that the collectives are running on, i.e. in
+  // XLA:GPU this is the GPU device (StreamExecutor).
+  class Device {
+   public:
+    virtual ~Device() = default;
+  };
+
+  // A collective device together with its rank in the collective clique.
+  struct DeviceRank {
+    DeviceRank(Device* device, RankId rank) : device(device), rank(rank) {}
+
+    Device* device;
+    RankId rank;
+  };
 
   // Creates a unique CliqueId.
   virtual absl::StatusOr<CliqueId> CreateUniqueCliqueId() const = 0;

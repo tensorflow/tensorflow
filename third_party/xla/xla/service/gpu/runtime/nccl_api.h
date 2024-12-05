@@ -52,14 +52,6 @@ class NcclApi : public GpuCollectives {
  public:
   virtual ~NcclApi() = default;
 
-  // Communicator configuration.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/types.html#ncclconfig
-  struct Config {
-    bool split_share = false;
-    int64_t max_nchannels = 0;
-  };
-
   // Returns a default NcclApi for a current process. Can be a real one based on
   // NCCL or a stub if XLA compiled without NCCL or CUDA support.
   static NcclApi* Default();
@@ -118,23 +110,6 @@ class NcclApi : public GpuCollectives {
     NcclPersistentPlanAllocatorHandle recover_;
     tsl::RCReference<PersistentPlanAllocator> allocator_;
   };
-
-  struct DeviceRank {
-    DeviceRank(se::StreamExecutor* device, RankId rank)
-        : device(device), rank(rank) {}
-
-    se::StreamExecutor* device;
-    RankId rank;
-  };
-
-  // Returns a slice of device memory `buff` containing `count` values of data
-  // type `dtype` starting from `offset`.
-  static se::DeviceMemoryBase Slice(se::DeviceMemoryBase buff,
-                                    PrimitiveType dtype, size_t offset,
-                                    size_t count) {
-    size_t multiplier = ShapeUtil::ByteSizeOfPrimitiveType(dtype);
-    return buff.GetByteSlice(offset * multiplier, count * multiplier);
-  }
 
   // Creates new communicators for given devices.
   //

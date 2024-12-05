@@ -236,12 +236,12 @@ absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
 
       for (int peer = 0; peer < num_ranks; ++peer) {
         se::DeviceMemoryBase send_slice =
-            NcclApi::Slice(buffer.source_buffer, buffer.element_type,
-                           peer * chunk_elements, chunk_elements);
+            nccl_api->Slice(buffer.source_buffer, buffer.element_type,
+                            peer * chunk_elements, chunk_elements);
 
         se::DeviceMemoryBase recv_slice =
-            NcclApi::Slice(buffer.destination_buffer, buffer.element_type,
-                           peer * chunk_elements, chunk_elements);
+            nccl_api->Slice(buffer.destination_buffer, buffer.element_type,
+                            peer * chunk_elements, chunk_elements);
 
         TF_RETURN_IF_ERROR(nccl_api->Send(send_slice, buffer.element_type,
                                           chunk_elements, peer, comm, &stream));
@@ -298,8 +298,8 @@ absl::Status RunMemCpyAllToAll(
       TF_RETURN_IF_ERROR(nccl_api->GroupStart());
       for (int peer = 0; peer < num_ranks; ++peer) {
         se::DeviceMemoryBase recv_slice =
-            NcclApi::Slice(buffer.destination_buffer, buffer.element_type,
-                           peer * chunk_elements, chunk_elements);
+            nccl_api->Slice(buffer.destination_buffer, buffer.element_type,
+                            peer * chunk_elements, chunk_elements);
         send_pointer_map[peer] = (uint64_t)recv_slice.opaque();
 
         TF_RETURN_IF_ERROR(nccl_api->SendPtrToPeer(&send_pointer_map[peer],
@@ -312,8 +312,8 @@ absl::Status RunMemCpyAllToAll(
 
       for (int peer = 0; peer < num_ranks; ++peer) {
         se::DeviceMemoryBase send_slice =
-            NcclApi::Slice(buffer.source_buffer, buffer.element_type,
-                           peer * chunk_elements, chunk_elements);
+            nccl_api->Slice(buffer.source_buffer, buffer.element_type,
+                            peer * chunk_elements, chunk_elements);
         se::DeviceMemoryBase dst_addr =
             se::DeviceMemoryBase((void*)receive_pointer_map[peer]);
         TF_RETURN_IF_ERROR(

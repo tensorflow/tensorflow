@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
@@ -59,6 +60,8 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
+
+using DeviceRank = Collectives::DeviceRank;
 
 //===----------------------------------------------------------------------===//
 // GpuClique Acquire and Initialization Timeouts
@@ -178,7 +181,7 @@ static void StartGpuCliqueHeartBeatMonitor() {
 // defined order and do not deadlock inside underlying collective communication
 // library.
 
-static auto DeviceRanksToString(absl::Span<const NcclApi::DeviceRank> ranks) {
+static auto DeviceRanksToString(absl::Span<const DeviceRank> ranks) {
   return absl::StrJoin(ranks, ",", [](std::string* str, auto& rank) {
     str->append(std::to_string(rank.rank.value()));
   });
@@ -192,7 +195,7 @@ InitializeGpuClique(NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
                     const GpuCliqueKey& clique_key,
                     const GpuCollectives::CliqueIdCallback& clique_id_callback,
                     int32_t num_local_participants, RankId rank,
-                    NcclApi::Config& config) {
+                    const GpuCollectives::Config& config) {
   int nranks = clique_key.devices().size();
   VLOG(3) << "Initialize GPU clique " << clique_key.ToString() << " rank #"
           << rank << "; num_local_participants=" << num_local_participants;
@@ -200,7 +203,7 @@ InitializeGpuClique(NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
   // Start GPU clique heart beat monitor when create a first clique.
   StartGpuCliqueHeartBeatMonitor();
 
-  using RendezvousArg = std::pair<NcclApi::DeviceRank, /*synchronized=*/bool>;
+  using RendezvousArg = std::pair<DeviceRank, /*synchronized=*/bool>;
 
   // Initializes a GpuClique for given device ranks and returns a lock that
   // gives access to clique communicators.
@@ -219,7 +222,7 @@ InitializeGpuClique(NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
       }
     }
 
-    std::vector<NcclApi::DeviceRank> ranks;
+    std::vector<DeviceRank> ranks;
     ranks.reserve(args.size());
     for (auto* arg : args) ranks.emplace_back(arg->first);
 
@@ -274,7 +277,8 @@ InitializeGpuClique(NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
       absl::StrFormat("initialize clique for rank %d; clique=%s; run_id=%d",
                       rank.value(), clique_key.ToString(), run_id.ToInt());
 
-  NcclApi::DeviceRank device_rank = {device, rank};
+  GpuCollectives::Device gpu_device(device);
+  GpuCollectives::DeviceRank device_rank = {&gpu_device, rank};
   bool synchronized = device->SynchronizeAllActivity();
 
   // We choose not to exit early on failed synchronization, because it will lead
@@ -317,7 +321,7 @@ InitializeGpuClique(NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
                     const GpuCliqueKey& clique_key,
                     std::shared_ptr<LockableGpuClique::Lock> parent_clique,
                     int32_t num_local_participants, RankId rank,
-                    NcclApi::Config& config) {
+                    const GpuCollectives::Config& config) {
   // Find our rank in the parent clique.
   const GpuCliqueKey& parent_clique_key = (*parent_clique)->key();
   RankId parent_rank =
@@ -471,7 +475,7 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
 
   // We enable resource sharing between parent and split communicators by
   // default because that's the only reason why we use comm splitting.
-  NcclApi::Config config;
+  GpuCollectives::Config config;
   config.split_share = true;
   config.max_nchannels = max_nchannels;
 

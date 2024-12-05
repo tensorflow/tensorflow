@@ -390,7 +390,8 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const CliqueId& clique_id,
     VLOG(1) << "Initialize NCCL communicator for rank #" << ranks[i].rank
             << " of " << nranks
             << "; fingerprint(id)=" << clique_id.fingerprint();
-    auto activate_context = ranks[i].device->Activate();
+    TF_ASSIGN_OR_RETURN(auto* device, TryCast(ranks[i].device));
+    auto activate_context = device->stream_executor()->Activate();
 
     TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(clique_id));
     XLA_NCCL_RETURN_IF_ERROR(

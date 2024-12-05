@@ -85,6 +85,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
+        "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
@@ -115,12 +116,19 @@ cc_library(
 
 cc_library(
     name = "gpu_collectives",
+    srcs = ["gpu_collectives.cc"],
     hdrs = ["gpu_collectives.h"],
     deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:casts",
     ],
 )
 

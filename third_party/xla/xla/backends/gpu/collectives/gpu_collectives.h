@@ -16,12 +16,17 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_COLLECTIVES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_COLLECTIVES_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 
 #include "absl/status/statusor.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
@@ -32,6 +37,29 @@ class GpuCollectives : public Collectives {
   using CliqueIdCallback =  // NOLINT
       std::function<absl::StatusOr<CliqueId>(const CliqueKey&)>;
 
+  // GPU collectives device is just a wrapper around the StreamExecutor.
+  class Device : public Collectives::Device {
+   public:
+    explicit Device(stream_executor::StreamExecutor* stream_executor);
+    stream_executor::StreamExecutor* stream_executor() const;
+
+   private:
+    stream_executor::StreamExecutor* stream_executor_;
+  };
+
+  // Casts a Collectives::Device to a GPU device and returns an error if it's
+  // not a GPU device.
+  static absl::StatusOr<Device*> TryCast(Collectives::Device* device);
+
+  // GPU communicator configuration.
+  //
+  // For NCCL backend see configuration options documentation at:
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/types.html#ncclconfig
+  struct Config {
+    bool split_share = false;
+    int64_t max_nchannels = 0;
+  };
+
   // Returns true if collectives backend uses global config.
   virtual bool IsGlobalConfig() const = 0;
 
@@ -39,6 +67,12 @@ class GpuCollectives : public Collectives {
   // default callback to get create a clique id if we are running in local mode.
   virtual absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
       const CliqueIdCallback* clique_id_callback, bool is_local) = 0;
+
+  // Returns a slice of device memory `buff` containing `count` values of data
+  // type `dtype` starting from `offset`.
+  static stream_executor::DeviceMemoryBase Slice(
+      stream_executor::DeviceMemoryBase buff, PrimitiveType dtype,
+      size_t offset, size_t count);
 };
 
 }  // namespace xla::gpu
