@@ -97,6 +97,27 @@ diff --ruN a/stablehlo/stablehlo/dialect/Serialization.h b/stablehlo/stablehlo/d
  }  // namespace stablehlo
  }  // namespace mlir
  
+diff --ruN a/stablehlo/stablehlo/tests/print_types_invalid.mlir b/stablehlo/stablehlo/tests/print_types_invalid.mlir
+--- stablehlo/stablehlo/tests/print_types_invalid.mlir
++++ stablehlo/stablehlo/tests/print_types_invalid.mlir
+@@ -113,7 +113,7 @@
+ // -----
+ 
+ func.func @tuple_count_mismatch(%arg0: tensor<1xf64>) -> tensor<1xf64> {
+-  // expected-error @+1 {{custom op 'stablehlo.tuple' 2 operands present, but expected 1}}
++  // expected-error @+1 {{custom op 'stablehlo.tuple' number of operands and types do not match: got 2 operands and 1 types}}
+   %0 = stablehlo.tuple %arg0, %arg0 : tuple<tensor<1xf64>>
+   func.return %0 : tensor<1xf64>
+ }
+@@ -121,7 +121,7 @@
+ // -----
+ 
+ func.func @pairwise_count_mismatch(%arg0: tensor<1xf64>) -> tensor<1xf64> {
+-  // expected-error @+1 {{custom op 'stablehlo.optimization_barrier' 2 operands present, but expected 1}}
++  // expected-error @+1 {{custom op 'stablehlo.optimization_barrier' number of operands and types do not match: got 2 operands and 1 types}}
+   %0 = stablehlo.optimization_barrier %arg0, %arg0 : tensor<1xf64>
+   func.return %0 : tensor<1xf64>
+ }
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_emit_version_api.1_1_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_emit_version_api.1_1_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/vhlo_emit_version_api.1_1_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/vhlo_emit_version_api.1_1_0.mlir
