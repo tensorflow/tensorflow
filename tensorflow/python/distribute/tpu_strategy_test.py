@@ -1100,7 +1100,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
     composite, result = test_fn(test_composite)
 
-    # All replicas return identical reults.
+    # All replicas return identical results.
     for replica in range(strategy.num_replicas_in_sync):
       self.assertIsInstance(composite[replica], TestComposite)
       self.assertAllEqual(composite[replica].values[0], a)
