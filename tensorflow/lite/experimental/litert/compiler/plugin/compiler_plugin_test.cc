@@ -23,6 +23,7 @@
 #include <gtest/gtest.h>
 #include "testing/base/public/unique-test-directory.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
@@ -135,6 +136,22 @@ TEST(CompilerPluginTest, Dump) {
   ASSERT_EQ(dump.view(),
             "SocManufacturer: ExampleSocManufacturer\nSocModels: { "
             "ExampleSocModel }\n");
+}
+
+TEST(ApplyPluginTest, ApplyPlugin) {
+  auto plugins = CompilerPlugin::LoadPlugins({kTestPluginSearchPath});
+  ASSERT_EQ(plugins->size(), 1);
+  auto model = testing::LoadTestFileModel("mul_simple.tflite");
+  ASSERT_TRUE(model);
+
+  auto npu_code = ApplyPlugin(plugins->front(), model);
+  ASSERT_TRUE(npu_code);
+  EXPECT_GT(npu_code->Size(), 0);
+
+  auto ops = model.MainSubgraph()->Ops();
+  ASSERT_EQ(ops.size(), 1);
+  EXPECT_EQ(ops.front().Code(), kLiteRtOpCodeTflCustom);
+  EXPECT_EQ(ops.front().Get()->custom_options.StrView(), "Partition_0");
 }
 
 }  // namespace

@@ -119,6 +119,11 @@ class CompilerPlugin {
   CompiledResult MakeResult() const { return CompiledResult(plugin_api_); }
 };
 
+// Applies the plugin's "partition" and "compile" steps to the given model.
+// Returns the serialized model with npu code appended to the back.
+Expected<OwningBufferRef<uint8_t>> ApplyPlugin(CompilerPlugin& compiler_plugin,
+                                               Model& model);
+
 }  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_COMPILER_PLUGIN_COMPILER_PLUGIN_H_
