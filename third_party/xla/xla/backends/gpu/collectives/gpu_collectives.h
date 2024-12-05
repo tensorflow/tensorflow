@@ -25,7 +25,9 @@ limitations under the License.
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
@@ -47,6 +49,18 @@ class GpuCollectives : public Collectives {
    private:
     stream_executor::StreamExecutor* stream_executor_;
   };
+
+  // GPU collectives executor is just a wrapper around the Stream.
+  class Executor : public Communicator::Executor {
+   public:
+    explicit Executor(stream_executor::Stream* stream);
+    stream_executor::Stream* stream() const;
+
+   private:
+    stream_executor::Stream* stream_;
+  };
+
+  static Executor On(se::Stream& stream) { return Executor(&stream); }
 
   // GPU communicator configuration.
   //

@@ -111,16 +111,6 @@ class NcclApi : public GpuCollectives {
     tsl::RCReference<PersistentPlanAllocator> allocator_;
   };
 
-  // Reduce buffers of length `count` in `send_buff` using `reduction_kind`
-  // reduction and leaves identical copies of the result on each `recv_buff`.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/colls.html#ncclallreduce
-  virtual absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
-                                 se::DeviceMemoryBase recv_buffer,
-                                 PrimitiveType dtype, size_t count,
-                                 ReductionKind reduction_kind,
-                                 Communicator* comm, se::Stream* stream) = 0;
-
   // Copy data in `send_buff` from the root GPU to the `recv_buff` on
   // all GPUs.
   //

@@ -22,11 +22,19 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -40,6 +48,79 @@ limitations under the License.
 #endif  // TENSORFLOW_USE_ROCM
 
 namespace xla::gpu {
+
+//==-----------------------------------------------------------------------===//
+// Conversions between XLA and NCCL data types
+//==-----------------------------------------------------------------------===//
+
+static size_t ToNcclCount(PrimitiveType dtype, size_t count) {
+  return primitive_util::IsComplexType(dtype) ? count * 2 : count;
+}
+
+static absl::StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType dtype,
+                                                     bool is_reduction_op) {
+  switch (dtype) {
+    case S8:
+    case F8E5M2:
+    case F8E4M3FN:
+    case F8E5M2FNUZ:
+    case F8E4M3FNUZ:
+      return ncclInt8;
+    case PRED:
+    case U8:
+      return ncclUint8;
+    case S32:
+      return ncclInt32;
+    case U32:
+      return ncclUint32;
+    case S64:
+      return ncclInt64;
+    case U64:
+      return ncclUint64;
+    case F16:
+      return ncclFloat16;
+    case F32:
+    case C64:
+      return ncclFloat32;
+    case F64:
+    case C128:
+      return ncclFloat64;
+    case S16:
+    case U16:
+      // For reductions we expect 16 bit integer types to be promoted to 32-bit.
+      if (is_reduction_op) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Unsupported data type for reduction operation: %s",
+                            primitive_util::LowercasePrimitiveTypeName(dtype)));
+      }
+      // For collectives that just move data around, we can use ncclFloat16 for
+      // 16-bit integer data types.
+      return ncclFloat16;
+    case BF16:
+      return ncclBfloat16;
+    default:
+      return absl::InvalidArgumentError(
+          absl::StrFormat("Unsupported data type: %s",
+                          primitive_util::LowercasePrimitiveTypeName(dtype)));
+  }
+}
+
+static ncclRedOp_t ToNcclReduction(ReductionKind kind) {
+  switch (kind) {
+    case ReductionKind::SUM:
+      return ncclSum;
+    case ReductionKind::PRODUCT:
+      return ncclProd;
+    case ReductionKind::MIN:
+      return ncclMin;
+    case ReductionKind::MAX:
+      return ncclMax;
+  }
+}
+
+//==-----------------------------------------------------------------------===//
+// NCCL Communicator
+//==-----------------------------------------------------------------------===//
 
 namespace {
 // An RAII handle for user buffers registered with an NCCL communicator.
@@ -124,8 +205,39 @@ NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer) {
 #endif  // NCCL_VERSION_CODE >= 21901
 }
 
+absl::Status NcclCommunicator::AllReduce(
+    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
+    const Communicator::Executor& executor) {
+  TF_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
+
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL AllReduce operation on device #%d; send_buffer=%p; "
+      "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=%p; "
+      "stream=%p",
+      stream->parent()->device_ordinal(), send_buffer.opaque(),
+      recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
+      count, ReductionKindToString(reduction_kind), comm_, stream);
+
+  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+
+  return XLA_NCCL_STATUS(ncclAllReduce(
+      send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
+      nccl_dtype, ToNcclReduction(reduction_kind), comm_,
+      se::gpu::AsGpuStreamValue(stream)));
+}
+
 std::string NcclCommunicator::ToString() const {
   return absl::StrFormat("NccCommunicator(ncclComm_t=%p)", comm_);
+}
+
+absl::StatusOr<se::Stream*> NcclCommunicator::ToStream(
+    const Executor& executor) {
+  if (auto* gpu_executor =
+          tsl::down_cast<const GpuCollectives::Executor*>(&executor)) {
+    return gpu_executor->stream();
+  }
+  return InvalidArgument("Communicator executor is not a GPU executor");
 }
 
 }  // namespace xla::gpu

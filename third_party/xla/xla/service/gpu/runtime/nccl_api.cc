@@ -293,11 +293,6 @@ ScopedPersistentPlanAllocator::~ScopedPersistentPlanAllocator() {
 // itself. It is available only if NCCL + CUDA are configured at compile time.
 class DefaultNcclApi final : public NcclCollectives {
  public:
-  absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
-                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                         size_t count, ReductionKind reduction_kind,
-                         Communicator* comm, se::Stream* stream) final;
-
   absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
                          size_t count, size_t root, Communicator* comm,
@@ -333,27 +328,6 @@ NcclApi* NcclApi::Default() {
 }
 
 bool NcclApi::HasNcclSupport() { return true; }
-
-absl::Status DefaultNcclApi::AllReduce(se::DeviceMemoryBase send_buffer,
-                                       se::DeviceMemoryBase recv_buffer,
-                                       PrimitiveType dtype, size_t count,
-                                       ReductionKind reduction_kind,
-                                       Communicator* comm, se::Stream* stream) {
-  VLOG(3) << absl::StreamFormat(
-      "Launch NCCL AllReduce operation on device #%d; send_buffer=%p; "
-      "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=%p; "
-      "stream=%p",
-      stream->parent()->device_ordinal(), send_buffer.opaque(),
-      recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      count, ReductionKindToString(reduction_kind), comm, stream);
-
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
-
-  return XLA_NCCL_STATUS(ncclAllReduce(
-      send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
-      nccl_dtype, ToNcclReduction(reduction_kind), Cast(comm),
-      se::gpu::AsGpuStreamValue(stream)));
-}
 
 absl::Status DefaultNcclApi::Broadcast(se::DeviceMemoryBase send_buffer,
                                        se::DeviceMemoryBase recv_buffer,

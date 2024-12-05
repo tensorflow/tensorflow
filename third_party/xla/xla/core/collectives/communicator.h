@@ -23,7 +23,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -31,6 +33,14 @@ namespace xla {
 class Communicator {
  public:
   virtual ~Communicator() = default;
+
+  // An executor is an abstraction for the underlying resource where collective
+  // operations are executed. For example on GPU backend it could be a device
+  // stream, and on CPU backend it could be a thread pool.
+  class Executor {
+   public:
+    virtual ~Executor() = default;
+  };
 
   // An RAII handle for buffers registered with the communicator. Child classes
   // are responsible for unregistering the buffer when the handle is destroyed.
@@ -57,6 +67,14 @@ class Communicator {
   // it registers the buffer for zero-copy collective operations).
   virtual absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>>
   RegisterBuffer(stream_executor::DeviceMemoryBase buffer) = 0;
+
+  // Reduce buffers of length `count` in `send_buff` using `reduction_kind`
+  // reduction and leaves identical copies of the result on each `recv_buff`.
+  virtual absl::Status AllReduce(stream_executor::DeviceMemoryBase send_buffer,
+                                 stream_executor::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count,
+                                 ReductionKind reduction_kind,
+                                 const Executor& executor) = 0;
 
   virtual std::string ToString() const = 0;
 };

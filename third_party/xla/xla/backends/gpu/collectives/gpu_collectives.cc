@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/core/collectives/collectives.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
@@ -32,6 +33,13 @@ GpuCollectives::Device::Device(se::StreamExecutor* stream_executor)
 
 se::StreamExecutor* GpuCollectives::Device::stream_executor() const {
   return stream_executor_;
+}
+
+GpuCollectives::Executor::Executor(stream_executor::Stream* stream)
+    : stream_(stream) {}
+
+stream_executor::Stream* GpuCollectives::Executor::stream() const {
+  return stream_;
 }
 
 absl::StatusOr<GpuCollectives::Device*> GpuCollectives::TryCast(

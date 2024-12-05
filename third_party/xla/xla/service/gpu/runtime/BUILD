@@ -831,6 +831,7 @@ cc_library(
         ":thunk",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/core/collectives:communicator",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
