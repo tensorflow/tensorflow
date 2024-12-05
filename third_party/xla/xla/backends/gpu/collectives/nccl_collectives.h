@@ -16,10 +16,19 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
+#include "xla/core/collectives/collectives.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 
 namespace xla::gpu {
@@ -39,6 +48,12 @@ class NcclCollectives : public NcclApi {
 
   absl::Status GroupStart() final;
   absl::Status GroupEnd() final;
+
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  CreateCommunicators(int32_t nranks, const CliqueKey& clique_key,
+                      const std::optional<CliqueId>& clique_id,
+                      absl::Span<const DeviceRank> ranks,
+                      const Collectives::Config& config) final;
 };
 
 }  // namespace xla::gpu

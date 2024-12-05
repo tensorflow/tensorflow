@@ -237,7 +237,8 @@ InitializeGpuClique(NcclApi* nccl_api, se::StreamExecutor* device, RunId run_id,
 
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<Communicator>> created_comms,
-        nccl_api->CommInitRanks(nranks, clique_id, ranks, config));
+        nccl_api->CreateCommunicators(nranks, clique_key, clique_id, ranks,
+                                      config));
 
     absl::btree_map<RankId, std::unique_ptr<Communicator>> comms;
     for (size_t i = 0; i < ranks.size(); ++i) {

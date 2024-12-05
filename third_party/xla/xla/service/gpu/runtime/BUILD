@@ -290,6 +290,7 @@ cc_library(
         "//xla/backends/gpu/collectives:gpu_collectives_stub",
         "//xla/backends/gpu/collectives:nccl_collectives",
         "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/service:collective_ops_utils",

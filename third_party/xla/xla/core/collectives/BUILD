@@ -34,9 +34,11 @@ cc_library(
     hdrs = ["collectives.h"],
     deps = [
         ":clique_id",
+        ":clique_key",
         ":communicator",
         ":rank_id",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

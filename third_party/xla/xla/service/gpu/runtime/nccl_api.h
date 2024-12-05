@@ -111,16 +111,6 @@ class NcclApi : public GpuCollectives {
     tsl::RCReference<PersistentPlanAllocator> allocator_;
   };
 
-  // Creates new communicators for given devices.
-  //
-  // This API doesn't have a corresponding API in NCCL and implemented as
-  // multiple calls to ncclCommInitRank within a single group.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcomminitrank
-  virtual absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-  CommInitRanks(int32_t nranks, const CliqueId& clique_id,
-                absl::Span<const DeviceRank> ranks, const Config& config) = 0;
-
   // Creates new communicators by splitting `comms`.
   //
   // This API doesn't have a corresponding API in NCCL and implemented as

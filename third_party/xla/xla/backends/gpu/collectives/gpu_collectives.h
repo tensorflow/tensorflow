@@ -48,15 +48,11 @@ class GpuCollectives : public Collectives {
     stream_executor::StreamExecutor* stream_executor_;
   };
 
-  // Casts a Collectives::Device to a GPU device and returns an error if it's
-  // not a GPU device.
-  static absl::StatusOr<Device*> TryCast(Collectives::Device* device);
-
   // GPU communicator configuration.
   //
   // For NCCL backend see configuration options documentation at:
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/types.html#ncclconfig
-  struct Config {
+  struct Config : public Collectives::Config {
     bool split_share = false;
     int64_t max_nchannels = 0;
   };
@@ -80,6 +76,13 @@ class GpuCollectives : public Collectives {
 
   // Ends a group call.
   virtual absl::Status GroupEnd() = 0;
+
+  // Tries to cast a Collectives::Device to a GpuCollectives::Device.
+  static absl::StatusOr<Device*> TryCast(Collectives::Device* device);
+
+  // Tries to cast a Collectives::Config to a GpuCollectives::Config.
+  static absl::StatusOr<const Config*> TryCast(
+      const Collectives::Config* config);
 };
 
 }  // namespace xla::gpu

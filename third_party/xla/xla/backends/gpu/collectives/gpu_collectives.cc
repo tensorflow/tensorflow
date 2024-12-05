@@ -42,6 +42,14 @@ absl::StatusOr<GpuCollectives::Device*> GpuCollectives::TryCast(
   return InvalidArgument("Collectvies device is not a GPU device");
 }
 
+absl::StatusOr<const GpuCollectives::Config*> GpuCollectives::TryCast(
+    const Collectives::Config* config) {
+  if (auto* gpu_config = tsl::down_cast<const Config*>(config)) {
+    return gpu_config;
+  }
+  return InvalidArgument("Collectvies config is not a GPU config");
+}
+
 se::DeviceMemoryBase GpuCollectives::Slice(se::DeviceMemoryBase buff,
                                            PrimitiveType dtype, size_t offset,
                                            size_t count) {

@@ -16,8 +16,16 @@ limitations under the License.
 #ifndef XLA_CORE_COLLECTIVES_COLLECTIVES_H_
 #define XLA_CORE_COLLECTIVES_COLLECTIVES_H_
 
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <vector>
+
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 
 namespace xla {
@@ -51,8 +59,21 @@ class Collectives {
     RankId rank;
   };
 
+  // A base class for the communicator configuration.
+  class Config {
+   public:
+    virtual ~Config() = default;
+  };
+
   // Creates a unique CliqueId.
   virtual absl::StatusOr<CliqueId> CreateUniqueCliqueId() const = 0;
+
+  // Creates communicators for given clique key and id.
+  virtual absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  CreateCommunicators(int32_t nranks, const CliqueKey& clique_key,
+                      const std::optional<CliqueId>& clique_id,
+                      absl::Span<const DeviceRank> ranks,
+                      const Config& config) = 0;
 };
 
 }  // namespace xla

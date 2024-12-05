@@ -293,10 +293,6 @@ ScopedPersistentPlanAllocator::~ScopedPersistentPlanAllocator() {
 // itself. It is available only if NCCL + CUDA are configured at compile time.
 class DefaultNcclApi final : public NcclCollectives {
  public:
-  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommInitRanks(
-      int32_t nranks, const CliqueId& clique_id,
-      absl::Span<const DeviceRank> ranks, const Config& config) final;
-
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> CommSplit(
       absl::Span<const Communicator* const> comms, int32_t color,
       absl::Span<const RankId> keys, std::optional<Config> config) final;
@@ -357,51 +353,6 @@ static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
   ncclUniqueId id;
   absl::c_copy(clique_id.data(), id.internal);
   return id;
-}
-
-absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-DefaultNcclApi::CommInitRanks(int32_t nranks, const CliqueId& clique_id,
-                              absl::Span<const DeviceRank> ranks,
-                              const Config& config) {
-  VLOG(1) << "Initialize NCCL communicator for " << ranks.size()
-          << " devices; fingerprint(id)=" << clique_id.fingerprint();
-
-  ncclConfig_t comm_config = NCCL_CONFIG_INITIALIZER;
-#if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION > 50700
-  comm_config.splitShare = config.split_share;
-#endif
-  if (config.max_nchannels > 0) {
-    comm_config.maxCTAs = config.max_nchannels;
-    VLOG(1) << "Maximum number of channels for fingerprint(id)="
-            << clique_id.fingerprint() << " is set to: " << comm_config.maxCTAs;
-  }
-
-  std::vector<ncclComm_t> comm_handles;
-  std::vector<std::unique_ptr<Communicator>> comms;
-
-  comm_handles.resize(ranks.size(), nullptr);
-  comms.reserve(ranks.size());
-
-  TF_RETURN_IF_ERROR(GroupStart());
-  for (size_t i = 0; i < ranks.size(); ++i) {
-    VLOG(1) << "Initialize NCCL communicator for rank #" << ranks[i].rank
-            << " of " << nranks
-            << "; fingerprint(id)=" << clique_id.fingerprint();
-    TF_ASSIGN_OR_RETURN(auto* device, TryCast(ranks[i].device));
-    auto activate_context = device->stream_executor()->Activate();
-
-    TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(clique_id));
-    XLA_NCCL_RETURN_IF_ERROR(
-        ncclCommInitRankConfig(&comm_handles[i], nranks, nccl_unique_id,
-                               ranks[i].rank.value(), &comm_config));
-  }
-  TF_RETURN_IF_ERROR(GroupEnd());
-
-  for (ncclComm_t comm_handle : comm_handles) {
-    comms.emplace_back(std::make_unique<NcclCommunicator>(comm_handle));
-  }
-
-  return comms;
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>

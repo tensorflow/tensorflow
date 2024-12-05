@@ -139,10 +139,14 @@ cc_library(
     deps = [
         ":gpu_collectives",
         "//xla:util",
+        "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:communicator",
         "//xla/service/gpu/runtime:nccl_api_header",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -172,13 +176,19 @@ cc_library(
         ":nccl_communicator",
         ":nccl_errors",
         "//xla:status_macros",
+        "//xla:util",
         "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:communicator",
         "//xla/service/gpu/runtime:nccl_api_header",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([
         "@local_config_nccl//:nccl",
     ]) + if_rocm_is_configured([

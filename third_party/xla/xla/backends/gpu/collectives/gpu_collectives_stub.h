@@ -16,9 +16,18 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_COLLECTIVES_STUB_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_COLLECTIVES_STUB_H_
 
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
+#include "xla/core/collectives/collectives.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/util.h"
 
@@ -35,6 +44,13 @@ class GpuCollectivesStub : public NcclApi {
 
   absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
       const CliqueIdCallback*, bool) final {
+    return UnimplementedError();
+  }
+
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  CreateCommunicators(int32_t, const CliqueKey&, const std::optional<CliqueId>&,
+                      absl::Span<const DeviceRank>,
+                      const Collectives::Config&) final {
     return UnimplementedError();
   }
 
