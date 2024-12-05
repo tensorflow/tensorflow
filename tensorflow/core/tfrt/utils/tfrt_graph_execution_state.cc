@@ -148,6 +148,8 @@ TfrtGraphExecutionState::Create(
       PreprocessGraph(graph_def, options.run_placer_grappler_on_functions));
 
   bool enable_tf2xla_mlir_bridge = GetTf2xlaMlirBridgeState(runtime_config);
+  LOG(INFO) << "DO NOT SUBMIT: enable_tf2xla_mlir_bridge is "
+            << enable_tf2xla_mlir_bridge;
 
   // `CreateGraphExecutionState()` will preprocess the graph (e.g., apply
   // Placer to the top level graph).

@@ -565,9 +565,6 @@ AlgebraicSimplifierOptions LayoutInsensitiveAlgebraicSimplifierOptions(
 
 absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module) {
   HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner");
-  // TODO(b/359982037): Run BatchedGatherScatterNormalizer after partitioning.
-
-  pre_spmd_pipeline.AddPass<BatchedGatherScatterNormalizer>();
   // Run some IR cleanup passes before running the SPMD partitioning
   // passes.
   pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();
@@ -641,6 +638,7 @@ absl::Status RunOptimizationPasses(
   HloPassPipeline pipeline("optimization");
   AddHloVerifier(&pipeline,
                  !debug_options.xla_experimental_ignore_channel_id());
+  pipeline.AddPass<BatchedGatherScatterNormalizer>();
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
     pipeline.AddPass<WindowedEinsumHandler>();
   }

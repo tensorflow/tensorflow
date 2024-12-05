@@ -75,8 +75,8 @@ class SpmdPartitioningTest
       bool unroll_windowed_einsum = false,
       bool bidirectional_windowed_einsum = false,
       int64_t threshold_for_windowed_einsum_mib = -1,
-      PartitioningMethod gather_method = PartitioningMethod::kIndexParallel,
-      PartitioningMethod scatter_method = PartitioningMethod::kIndexParallel,
+      PartitioningMethod gather_method = PartitioningMethod::kExplicitBatch,
+      PartitioningMethod scatter_method = PartitioningMethod::kExplicitBatch,
       std::optional<int64_t> total_bytes_windowed_einsum_threshold =
           std::nullopt) {
     // Some tests (BackpropFilter convs) set this flag false to test two
@@ -4941,8 +4941,8 @@ ENTRY entry {
                            /*unroll_windowed_einsum=*/false,
                            /*bidirectional_windowed_einsum=*/false,
                            /*threshold_for_windowed_einsum_mib=*/5,
-                           PartitioningMethod::kIndexParallel,
-                           PartitioningMethod::kIndexParallel,
+                           PartitioningMethod::kExplicitBatch,
+                           PartitioningMethod::kExplicitBatch,
                            /*total_bytes_windowed_einsum_threshold=*/1 << 30));
   VLOG(1) << module->ToString();
   // Total bytes threshold overrides threshold_for_windowed_einsum_mib,
