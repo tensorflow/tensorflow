@@ -17,13 +17,13 @@ limitations under the License.
 #define XLA_PJRT_GPU_SE_GPU_PJRT_COMPILER_H_
 
 #include <memory>
+#include <optional>
 
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/service/compiler.h"
 #include "xla/stream_executor/platform.h"
 
 namespace xla {
@@ -31,7 +31,7 @@ namespace xla {
 class StreamExecutorGpuCompiler : public PjRtCompiler {
  public:
   // Constructs a compiler for the default "gpu" platform.
-  explicit StreamExecutorGpuCompiler();
+  explicit StreamExecutorGpuCompiler() = default;
 
   // Constructs a compiler for the given platform.
   explicit StreamExecutorGpuCompiler(stream_executor::Platform::Id platform_id);
@@ -48,7 +48,7 @@ class StreamExecutorGpuCompiler : public PjRtCompiler {
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
  private:
-  absl::StatusOr<xla::Compiler*> compiler_;
+  std::optional<stream_executor::Platform::Id> requested_platform_id_;
 };
 }  // namespace xla
 #endif  // XLA_PJRT_GPU_SE_GPU_PJRT_COMPILER_H_

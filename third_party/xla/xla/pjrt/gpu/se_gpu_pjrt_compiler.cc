@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,11 +45,8 @@ limitations under the License.
 #include "xla/service/local_service_utils.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/rocm/rocm_platform_id.h"
-#include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -91,38 +89,42 @@ absl::Status IsValidTopologyAndClientForCompile(
   return absl::OkStatus();
 }
 
-absl::StatusOr<xla::Compiler*> GetCompilerForPlatform(
-    stream_executor::Platform::Id platform_id) {
-  TF_ASSIGN_OR_RETURN(
-      stream_executor::Platform * platform,
-      stream_executor::PlatformManager::PlatformWithId(platform_id));
-  return Compiler::GetForPlatform(platform);
-}
-
-absl::StatusOr<xla::Compiler*> GetCompilerForDefaultGpuPlatform(
-    absl::string_view platform_name) {
+absl::StatusOr<xla::Compiler*> GetCompilerForDefaultGpuPlatform() {
   TF_ASSIGN_OR_RETURN(stream_executor::Platform * platform,
                       PlatformUtil::GetPlatform("gpu"));
   return Compiler::GetForPlatform(platform);
 }
-}  // namespace
 
-StreamExecutorGpuCompiler::StreamExecutorGpuCompiler()
-    : compiler_(GetCompilerForDefaultGpuPlatform("gpu")) {}
+absl::StatusOr<xla::Compiler*> GetCompilerForPlatform(
+    std::optional<stream_executor::Platform::Id> platform_id) {
+  if (!platform_id.has_value()) {
+    return GetCompilerForDefaultGpuPlatform();
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      stream_executor::Platform * platform,
+      stream_executor::PlatformManager::PlatformWithId(platform_id.value()));
+  return Compiler::GetForPlatform(platform);
+}
+
+}  // namespace
 
 StreamExecutorGpuCompiler::StreamExecutorGpuCompiler(
     stream_executor::Platform::Id platform_id)
-    : compiler_(GetCompilerForPlatform(platform_id)) {}
+    : requested_platform_id_(platform_id) {}
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 StreamExecutorGpuCompiler::Compile(CompileOptions options,
                                    const XlaComputation& computation,
                                    const PjRtTopologyDescription& topology,
                                    PjRtClient* client) {
-  // Due to the way compilers are registered in PjRt, we can't fail during
-  // construction of this object. So if we fail to obtain an XLA compiler, then
-  // we surface the error here.
-  TF_ASSIGN_OR_RETURN(xla::Compiler * gpu_compiler, compiler_);
+  // We get the compiler here because doing so in the constructor might fail due
+  // to static initialization order shenanigans. Also we can't fail construction
+  // of this class because it's also statically constructed.
+  // TODO(b/382417973): Use factories instead of static initialization of
+  // singletons.
+  TF_ASSIGN_OR_RETURN(auto gpu_compiler,
+                      GetCompilerForPlatform(requested_platform_id_));
 
   CompileOptions input_options = options;
   if (!options.target_config) {
