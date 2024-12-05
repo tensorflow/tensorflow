@@ -966,7 +966,11 @@ absl::Status RunCollectiveOptimizationPasses(
           .debug_options()
           .xla_gpu_enable_pipelined_collectives() ||
       hlo_module->config().debug_options().xla_gpu_enable_pipelined_p2p()) {
-    AddP2PPipeliner(collectives_pipeline);
+    AddP2PPipeliner(
+        collectives_pipeline,
+        hlo_module->config()
+            .debug_options()
+            .xla_gpu_enable_experimental_pipeline_parallelism_opt());
   }
 
   // Run algebraic simplifier to reshape(broadcast) into a broadcast when

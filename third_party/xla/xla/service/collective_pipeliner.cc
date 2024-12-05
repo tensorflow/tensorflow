@@ -93,7 +93,12 @@ absl::Status UpdateControlDependencies(HloInstruction* original,
     if (it == cloned_map.end()) {
       continue;
     }
-    TF_RETURN_IF_ERROR(it->second->AddControlDependencyTo(new_instr));
+    // Only update add control dependencies between ops outside of the loop or
+    // within the loop body. If the control dependency crosses the loop boundary
+    // it is enforced by the loop structure.
+    if (it->second->parent() == new_instr->parent()) {
+      TF_RETURN_IF_ERROR(it->second->AddControlDependencyTo(new_instr));
+    }
   }
   return absl::OkStatus();
 }
