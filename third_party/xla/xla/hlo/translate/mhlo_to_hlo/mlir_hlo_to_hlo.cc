@@ -483,6 +483,55 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
   return dot_dimension_numbers;
 }
 
+static xla::RaggedDotDimensionNumbers Convert_ragged_dot_dimension_numbers(
+    mlir::mhlo::RaggedDotDimensionNumbersAttr
+        ragged_dot_dimension_numbers_attr) {
+  mlir::mhlo::DotDimensionNumbersAttr dot_dimension_numbers_attr =
+      ragged_dot_dimension_numbers_attr.getDotDimensionNumbers();
+
+  xla::DotDimensionNumbers dot_dimension_numbers;
+  xla::RaggedDotDimensionNumbers ragged_dot_dimension_numbers;
+
+  auto rhs_contracting_dimensions =
+      dot_dimension_numbers_attr.getRhsContractingDimensions();
+  auto lhs_contracting_dimensions =
+      dot_dimension_numbers_attr.getLhsContractingDimensions();
+  auto rhs_batch_dimensions =
+      dot_dimension_numbers_attr.getRhsBatchingDimensions();
+  auto lhs_batch_dimensions =
+      dot_dimension_numbers_attr.getLhsBatchingDimensions();
+
+  for (const auto& val : rhs_contracting_dimensions) {
+    dot_dimension_numbers.add_rhs_contracting_dimensions(val);
+  }
+  for (const auto& val : lhs_contracting_dimensions) {
+    dot_dimension_numbers.add_lhs_contracting_dimensions(val);
+  }
+
+  for (const auto& val : rhs_batch_dimensions) {
+    dot_dimension_numbers.add_rhs_batch_dimensions(val);
+  }
+
+  for (const auto& val : lhs_batch_dimensions) {
+    dot_dimension_numbers.add_lhs_batch_dimensions(val);
+  }
+  *ragged_dot_dimension_numbers.mutable_dot_dimension_numbers() =
+      dot_dimension_numbers;
+
+  auto lhs_ragged_dimensions =
+      ragged_dot_dimension_numbers_attr.getLhsRaggedDimensions();
+  auto rhs_group_dimensions =
+      ragged_dot_dimension_numbers_attr.getRhsGroupDimensions();
+  for (const auto& val : lhs_ragged_dimensions) {
+    ragged_dot_dimension_numbers.add_lhs_ragged_dimensions(val);
+  }
+  for (const auto& val : rhs_group_dimensions) {
+    ragged_dot_dimension_numbers.add_rhs_group_dimensions(val);
+  }
+
+  return ragged_dot_dimension_numbers;
+}
+
 static xla::SparsityDescriptor Convert_sparsity_descriptor(
     mlir::mhlo::SparsityDescriptorAttr sparsity_attr, bool is_lhs) {
   xla::SparsityDescriptor sparsity_descriptor;
@@ -1618,6 +1667,36 @@ LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
   auto xlaOp = xla::DotGeneral(
       lhs, rhs, Convert_dot_dimension_numbers(op.getDotDimensionNumbers()),
       Unwrap(precision_config), preferred_element_type);
+
+  value_map[op] = xlaOp;
+  return mlir::success();
+}
+
+LogicalResult ExportXlaOp(RaggedDotOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs, group_sizes;
+  if (failed(GetXlaOp(op.getLhs(), value_map, &lhs, op)))
+    return mlir::failure();
+  if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op)))
+    return mlir::failure();
+  if (failed(GetXlaOp(op.getGroupSizes(), value_map, &group_sizes, op)))
+    return mlir::failure();
+  xla::PrimitiveType preferred_element_type =
+      xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+
+  // Precision Config
+  auto precision_config = Convert_precision_config(op.getPrecisionConfig());
+  if (precision_config == nullptr) {
+    precision_config = std::make_unique<xla::PrecisionConfig>();
+  }
+  auto xlaOp = xla::RaggedDot(
+      /*lhs=*/lhs,
+      /*rhs=*/rhs,
+      /*group_sizes=*/group_sizes,
+      /*dimension_numbers=*/
+      Convert_ragged_dot_dimension_numbers(op.getRaggedDotDimensionNumbers()),
+      /*precision_config=*/Unwrap(precision_config),
+      /*preferred_element_type=*/preferred_element_type);
 
   value_map[op] = xlaOp;
   return mlir::success();

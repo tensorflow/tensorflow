@@ -97,6 +97,113 @@ diff --ruN a/stablehlo/stablehlo/dialect/Serialization.h b/stablehlo/stablehlo/d
  }  // namespace stablehlo
  }  // namespace mlir
  
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -392,7 +392,7 @@
+ LogicalResult checkDimInBounds(std::optional<Location> loc, int64_t dim,
+                                int64_t upperBound, StringRef dimName,
+                                StringRef upperBoundName,
+-                               bool upperBoundInclusive = false) {
++                               bool upperBoundInclusive) {
+   StringRef rangeEnd = upperBoundInclusive ? "]" : ")";
+   if (dim < 0 || dim >= upperBound + (upperBoundInclusive ? 1 : 0))
+     return emitOptionalError(loc, "Expects ", dimName, " to be in range [0, ",
+@@ -2280,14 +2280,13 @@
+   return success();
+ }
+ 
+-LogicalResult inferDotGeneralOp(
++LogicalResult checkDotGeneralConstraints(
+     std::optional<Location> location, Type lhsType, Type rhsType,
+     ArrayRef<int64_t> lhsBatchingDimensions,
+     ArrayRef<int64_t> rhsBatchingDimensions,
+     ArrayRef<int64_t> lhsContractingDimensions,
+     ArrayRef<int64_t> rhsContractingDimensions,
+-    std::optional<ArrayAttr> precisionConfig,
+-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
++    std::optional<ArrayAttr> precisionConfig) {
+   // dot_general_c11
+   if (failed(verifyPrecisionConfig(location, precisionConfig)))
+     return failure();
+@@ -2366,9 +2365,30 @@
+                                "contracting dimension sizes must "
+                                "match for lhs/rhs");
+   }
++  return success();
++}
++
++LogicalResult inferDotGeneralOp(
++    std::optional<Location> location, Type lhsType, Type rhsType,
++    ArrayRef<int64_t> lhsBatchingDimensions,
++    ArrayRef<int64_t> rhsBatchingDimensions,
++    ArrayRef<int64_t> lhsContractingDimensions,
++    ArrayRef<int64_t> rhsContractingDimensions,
++    std::optional<ArrayAttr> precisionConfig,
++    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
++  if (failed(checkDotGeneralConstraints(
++          location, lhsType, rhsType, lhsBatchingDimensions,
++          rhsBatchingDimensions, lhsContractingDimensions,
++          rhsContractingDimensions, precisionConfig))) {
++    return failure();
++  }
+ 
+   // Infer the output dimensions of the operation.
+   SmallVector<int64_t> dimensions;
++  auto lhsRankedType = cast<RankedTensorType>(lhsType);
++  auto rhsRankedType = cast<RankedTensorType>(rhsType);
++  auto lhsShape = lhsRankedType.getShape();
++  auto rhsShape = rhsRankedType.getShape();
+   for (const int64_t lhsBatchingDim : lhsBatchingDimensions)
+     dimensions.push_back(lhsShape[lhsBatchingDim]);
+   for (int64_t i = 0; i < lhsRankedType.getRank(); i++)
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
+--- stablehlo/stablehlo/dialect/TypeInference.h
++++ stablehlo/stablehlo/dialect/TypeInference.h
+@@ -53,6 +53,18 @@
+ FailureOr<SmallVector<bool>> convertWindowReversalAttribute(
+     std::optional<DenseElementsAttr> optionalAttr, std::optional<Location> loc,
+     StringRef attrName);
++
++LogicalResult checkDimInBounds(std::optional<Location> loc, int64_t dim,
++                               int64_t upperBound, StringRef dimName,
++                               StringRef upperBoundName,
++                               bool upperBoundInclusive = false);
++
++LogicalResult checkDimsDistinct(std::optional<Location> loc,
++                                ArrayRef<int64_t> lhsDims,
++                                ArrayRef<int64_t> rhsDims, llvm::StringRef lhs,
++                                llvm::StringRef rhs);
++
++bool verifyCompatibleDims(int64_t dimSize1, int64_t dimSize2);
+ 
+ // WindowDimension described how the kernel window moves across the base area
+ // in a particular dimension.
+@@ -86,6 +98,9 @@
+                                   bool useGlobalDeviceIds,
+                                   std::optional<size_t> expectedGroupSize);
+ 
++LogicalResult verifyPrecisionConfig(std::optional<Location> loc,
++                                    std::optional<ArrayAttr> maybeArrayAttr);
++
+ LogicalResult verifyConvolutionAttributes(
+     std::optional<Location> location, Type lhsType, Type rhsType,
+     int64_t inputBatchDimension, int64_t inputFeatureDimension,
+@@ -207,6 +222,14 @@
+     RankedTensorType rhsType, std::optional<ArrayAttr> precisionConfig,
+     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes);
+ 
++LogicalResult checkDotGeneralConstraints(
++    std::optional<Location> location, Type lhsType, Type rhsType,
++    ArrayRef<int64_t> lhsBatchingDimensions,
++    ArrayRef<int64_t> rhsBatchingDimensions,
++    ArrayRef<int64_t> lhsContractingDimensions,
++    ArrayRef<int64_t> rhsContractingDimensions,
++    std::optional<ArrayAttr> precisionConfig);
++
+ LogicalResult inferDotGeneralOp(
+     std::optional<Location> location, Type lhsType, Type rhsType,
+     ArrayRef<int64_t> lhsBatchingDimensions,
 diff --ruN a/stablehlo/stablehlo/tests/print_types_invalid.mlir b/stablehlo/stablehlo/tests/print_types_invalid.mlir
 --- stablehlo/stablehlo/tests/print_types_invalid.mlir
 +++ stablehlo/stablehlo/tests/print_types_invalid.mlir

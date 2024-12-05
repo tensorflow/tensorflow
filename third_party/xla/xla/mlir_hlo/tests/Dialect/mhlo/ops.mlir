@@ -7076,3 +7076,243 @@ func.func @composite_c4(%arg0: !mhlo.token) {
   } : (!mhlo.token) -> tensor<f32>
   func.return
 }
+
+// -----
+
+// ragged_dot mode 1: [b,m,k], [g,b,k,n], [g] -> [b,m,n]
+func.func @ragged_dot_non_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3x2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<2x11x7xf32> {
+  %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #mhlo.ragged_dot<
+      dot_dimension_numbers = <
+        lhs_batching_dimensions = [0],
+        rhs_batching_dimensions = [1],
+        lhs_contracting_dimensions = [2],
+        rhs_contracting_dimensions = [2]
+      >,
+      lhs_ragged_dimensions = [1],
+      rhs_group_dimensions = [0]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<2x11x5xf32>, tensor<3x2x5x7xf32>, tensor<3xi64>) -> tensor<2x11x7xf32>
+  func.return %0 : tensor<2x11x7xf32>
+}
+
+// -----
+
+// ragged_dot mode 2: [b,m,k], [b,k,n], [g] -> [g,b,m,n]
+func.func @ragged_dot_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<3x2x11x7xf32> {
+  %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #mhlo.ragged_dot<
+      dot_dimension_numbers = <
+        lhs_batching_dimensions = [0],
+        rhs_batching_dimensions = [0],
+        lhs_contracting_dimensions = [2],
+        rhs_contracting_dimensions = [1]
+      >,
+      lhs_ragged_dimensions = [2],
+      rhs_group_dimensions = []
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<2x11x5xf32>, tensor<2x5x7xf32>, tensor<3xi64>) -> tensor<3x2x11x7xf32>
+  func.return %0 : tensor<3x2x11x7xf32>
+}
+
+// -----
+
+// ragged_dot mode 3: [b,m,k], [b,k,n], [g] -> [b,m,n]
+func.func @ragged_dot_batch(%lhs : tensor<3x11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<3x11x7xf32> {
+  %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #mhlo.ragged_dot<
+      dot_dimension_numbers = <
+        lhs_batching_dimensions = [0],
+        rhs_batching_dimensions = [0],
+        lhs_contracting_dimensions = [2],
+        rhs_contracting_dimensions = [1]
+      >,
+      lhs_ragged_dimensions = [0],
+      rhs_group_dimensions = []
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<3x11x5xf32>, tensor<3x5x7xf32>, tensor<3xi64>) -> tensor<3x11x7xf32>
+  func.return %0 : tensor<3x11x7xf32>
+}
+
+// -----
+
+func.func @ragged_dot_incompatible_contracting_dims(%lhs : tensor<11x5xf32>, %rhs : tensor<3x2x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<11x7xf32> {
+  // @expected-error@+1 {{contracting dimension sizes must match}}
+  %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #mhlo.ragged_dot<
+      dot_dimension_numbers = <
+        lhs_batching_dimensions = [],
+        rhs_batching_dimensions = [],
+        lhs_contracting_dimensions = [1],
+        rhs_contracting_dimensions = [1]
+      >,
+      lhs_ragged_dimensions = [0],
+      rhs_group_dimensions = [0]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<11x5xf32>, tensor<3x2x7xf32>, tensor<3xi64>) -> tensor<11x7xf32>
+  func.return %0 : tensor<11x7xf32>
+}
+
+// -----
+
+func.func @ragged_dot_group_sizes_incorrect_rank(%lhs : tensor<11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<3x2xi64>) -> tensor<11x7xf32> {
+  // @expected-error@+1 {{expected rank of group_sizes of ragged dot to be 1, got 2}}
+  %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #mhlo.ragged_dot<
+      dot_dimension_numbers = <
+        lhs_batching_dimensions = [],
+        rhs_batching_dimensions = [],
+        lhs_contracting_dimensions = [1],
+        rhs_contracting_dimensions = [1]
+      >,
+      lhs_ragged_dimensions = [0],
+      rhs_group_dimensions = [0]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<11x5xf32>, tensor<3x5x7xf32>, tensor<3x2xi64>) -> tensor<11x7xf32>
+  func.return %0 : tensor<11x7xf32>
+}
+
+// -----
+
+func.func @ragged_dot_group_sizes_incorrect_shape(%lhs : tensor<11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<2xi64>) -> tensor<11x7xf32> {
+  // @expected-error@+1 {{group_sizes is expected to have shape=[3], got [2]}}
+  %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #mhlo.ragged_dot<
+      dot_dimension_numbers = <
+        lhs_batching_dimensions = [],
+        rhs_batching_dimensions = [],
+        lhs_contracting_dimensions = [1],
+        rhs_contracting_dimensions = [1]
+      >,
+      lhs_ragged_dimensions = [0],
+      rhs_group_dimensions = [0]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<11x5xf32>, tensor<3x5x7xf32>, tensor<2xi64>) -> tensor<11x7xf32>
+  func.return %0 : tensor<11x7xf32>
+}
+
+// -----
+
+func.func @ragged_dot_incorrect_number_of_lhs_ragged_dimensions(%lhs : tensor<11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<11x7xf32> {
+  // @expected-error@+1 {{There must be exactly one ragged dimension in the lhs}}
+  %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #mhlo.ragged_dot<
+      dot_dimension_numbers = <
+        lhs_batching_dimensions = [],
+        rhs_batching_dimensions = [],
+        lhs_contracting_dimensions = [1],
+        rhs_contracting_dimensions = [1]
+      >,
+      lhs_ragged_dimensions = [0, 1],
+      rhs_group_dimensions = [0]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<11x5xf32>, tensor<3x5x7xf32>, tensor<3xi64>) -> tensor<11x7xf32>
+  func.return %0 : tensor<11x7xf32>
+}
+
+// -----
+
+func.func @ragged_dot_rhs_group_dim_is_batch(%lhs : tensor<3x11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<3x11x7xf32> {
+  // @expected-error@+1 {{has duplicated dimension from rhs_group_dimensions and rhs_batching_dimensions: 0}}
+  %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #mhlo.ragged_dot<
+      dot_dimension_numbers = <
+        lhs_batching_dimensions = [0],
+        rhs_batching_dimensions = [0],
+        lhs_contracting_dimensions = [2],
+        rhs_contracting_dimensions = [1]
+      >,
+      lhs_ragged_dimensions = [1],
+      rhs_group_dimensions = [0]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<3x11x5xf32>, tensor<3x5x7xf32>, tensor<3xi64>) -> tensor<3x11x7xf32>
+  func.return %0 : tensor<3x11x7xf32>
+}
+
+// -----
+
+func.func @ragged_dot_rhs_group_dim_is_contracting(%lhs : tensor<11x3xf32>, %rhs : tensor<3x3x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<11x7xf32> {
+  // @expected-error@+1 {{has duplicated dimension from rhs_group_dimensions and rhs_contracting_dimensions: 1}}
+  %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #mhlo.ragged_dot<
+      dot_dimension_numbers = <
+        lhs_batching_dimensions = [],
+        rhs_batching_dimensions = [],
+        lhs_contracting_dimensions = [1],
+        rhs_contracting_dimensions = [1]
+      >,
+      lhs_ragged_dimensions = [0],
+      rhs_group_dimensions = [1]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<11x3xf32>, tensor<3x3x7xf32>, tensor<3xi64>) -> tensor<11x7xf32>
+  func.return %0 : tensor<11x7xf32>
+}
+
+// -----
+
+func.func @ragged_dot_nonzero_rhs_group_dims_for_ragged_batch(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3x2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<2x11x7xf32> {
+  // @expected-error@+1 {{There must be zero group dimensions in the rhs when the ragged dimension is batch or contracting}}
+  %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #mhlo.ragged_dot<
+      dot_dimension_numbers = <
+        lhs_batching_dimensions = [0],
+        rhs_batching_dimensions = [1],
+        lhs_contracting_dimensions = [2],
+        rhs_contracting_dimensions = [2]
+      >,
+      lhs_ragged_dimensions = [0],
+      rhs_group_dimensions = [0]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<2x11x5xf32>, tensor<3x2x5x7xf32>, tensor<3xi64>) -> tensor<2x11x7xf32>
+  func.return %0 : tensor<2x11x7xf32>
+}
+
+// -----
+
+func.func @ragged_dot_nonzero_rhs_group_dims_for_ragged_contracting(%lhs : tensor<11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<11x7xf32> {
+  // @expected-error@+1 {{There must be zero group dimensions in the rhs when the ragged dimension is batch or contracting}}
+  %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #mhlo.ragged_dot<
+      dot_dimension_numbers = <
+        lhs_batching_dimensions = [],
+        rhs_batching_dimensions = [],
+        lhs_contracting_dimensions = [1],
+        rhs_contracting_dimensions = [1]
+      >,
+      lhs_ragged_dimensions = [1],
+      rhs_group_dimensions = [0]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<11x5xf32>, tensor<3x5x7xf32>, tensor<3xi64>) -> tensor<11x7xf32>
+  func.return %0 : tensor<11x7xf32>
+}
+
+// -----
+
+func.func @ragged_dot_zero_rhs_group_dims_for_ragged_noncontracting(%lhs : tensor<11x5xf32>, %rhs : tensor<5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<11x7xf32> {
+  // @expected-error@+1 {{There must be exactly one group dimension in the rhs when the lhs ragged dimension is non-contracting}}
+  %0 = "mhlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #mhlo.ragged_dot<
+      dot_dimension_numbers = <
+        lhs_batching_dimensions = [],
+        rhs_batching_dimensions = [],
+        lhs_contracting_dimensions = [1],
+        rhs_contracting_dimensions = [0]
+      >,
+      lhs_ragged_dimensions = [0],
+      rhs_group_dimensions = []
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<11x5xf32>, tensor<5x7xf32>, tensor<3xi64>) -> tensor<11x7xf32>
+  func.return %0 : tensor<11x7xf32>
+}
