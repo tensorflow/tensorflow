@@ -177,11 +177,12 @@ FailureOr<OwningOpRef<ModuleOp>> PruneStablehloModule(
 }
 
 // Serializes the stablehlo module into bytecode.
-FailureOr<std::string> SerializeStablehlo(ModuleOp stablehlo_module) {
+FailureOr<std::string> SerializeStablehlo(ModuleOp stablehlo_module,
+                                          StringRef target_version) {
   std::string bytecode;
   llvm::raw_string_ostream os(bytecode);
-  if (mlir::failed(stablehlo::serializePortableArtifact(
-          stablehlo_module, stablehlo::getCurrentVersion(), os))) {
+  if (mlir::failed(stablehlo::serializePortableArtifact(stablehlo_module,
+                                                        target_version, os))) {
     return stablehlo_module.emitError()
            << "failed to serialize the pruned stablehlo module";
   }
@@ -201,13 +202,22 @@ LogicalResult SerializeXlaCallModule(SymbolTableCollection& symbol_table,
     return failure();
   }
 
-  auto bytecode = SerializeStablehlo(**stablehlo_module);
+  // Use the StableHLO version set during deserialization.
+  auto stablehlo_version =
+      op->getAttrOfType<StringAttr>(kStablehloVersionAttrName);
+  std::string target_version = stablehlo_version
+                                   ? stablehlo_version.getValue().str()
+                                   : stablehlo::getCurrentVersion();
+  // TODO(gleasonk): Make this required, need to update quantizer machinery.
+
+  auto bytecode = SerializeStablehlo(**stablehlo_module, target_version);
   if (failed(bytecode)) {
     return failure();
   }
 
   op.setModule(*bytecode);
   op->removeAttr(kStablehloEntryFunctionAttrName);
+  op->removeAttr(kStablehloVersionAttrName);
 
   return success();
 }

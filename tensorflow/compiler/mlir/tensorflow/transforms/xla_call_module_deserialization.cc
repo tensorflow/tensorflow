@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo  // IWYU pragma: keep
+#include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -72,6 +74,20 @@ absl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
   for (auto attr : op.getPlatforms().getAsRange<StringAttr>()) {
     platforms.push_back(attr.getValue().str());
   }
+
+  // Set the deserialized StableHLO version to an attribute of the XlaCallModule
+  // op, this is used if when the module is re-serialized.
+  auto version = stablehlo::getPortableArtifactVersion(op.getModule());
+  if (failed(version)) {
+    return absl::InvalidArgumentError(
+        "Failed to get the deserialized StableHLO version, XlaCallModuleOp "
+        "must have a valid StableHLO module serialized using "
+        "stablehlo::serializePortableArtifact APIs.");
+  }
+  Builder builder(context);
+  op->setAttr(kStablehloVersionAttrName,
+              builder.getStringAttr(version.value().toString()));
+
   TF_ASSIGN_OR_RETURN(
       auto loader,
       tensorflow::XlaCallModuleLoader::Create(
