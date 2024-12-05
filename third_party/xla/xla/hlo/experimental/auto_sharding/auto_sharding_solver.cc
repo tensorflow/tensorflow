@@ -23,12 +23,14 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/container/btree_set.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 
 #ifdef PLATFORM_GOOGLE
@@ -1007,8 +1009,6 @@ std::optional<AutoShardingViolationCode> ShardingStrategyHasViolation(
 // infeasible, the output cost is negative and encodes the violation code.
 AutoShardingSolverOutput SolveTrivial(
     const AutoShardingSolverRequest& request) {
-  absl::Time start_time = absl::Now();
-
   const int num_nodes = request.num_nodes();
   const int num_edges = request.edges_size();
   std::vector<NodeStrategyIdx> node_strategies(num_nodes, -1);
@@ -1027,15 +1027,11 @@ AutoShardingSolverOutput SolveTrivial(
     edge_strategies[e] = strategy;
     cost += request.resharding_costs(e).costs(strategy);
   }
-  auto duration = absl::Now() - start_time;
-
   std::optional<AutoShardingViolationCode> violation_code =
       ShardingStrategyHasViolation(request, node_strategies, edge_strategies);
   if (violation_code.has_value()) {
     cost = -1 * (*violation_code);
   }
-  LOG(INFO) << "Solver took " << absl::ToInt64Milliseconds(duration) << " ms";
-  LOG(INFO) << "Objective value: " << cost;
 
   AutoShardingSolverOutput output;
   output.s_val = node_strategies;
@@ -1043,11 +1039,93 @@ AutoShardingSolverOutput SolveTrivial(
   return output;
 }
 
+AutoShardingSolverOutput SolveRandom(const AutoShardingSolverRequest& request,
+                                     const int num_trials) {
+  std::mt19937_64 rng(0);
+  const int num_nodes = request.num_nodes();
+  const int num_edges = request.edges_size();
+
+  std::vector<NodeStrategyIdx> node_strategies(num_nodes, -1);
+  std::vector<EdgeStrategyIdx> edge_strategies(num_edges, -1);
+  double cost = 0.0;
+
+  std::vector<NodeStrategyIdx> best_node_strategies(num_nodes, -1);
+  std::vector<EdgeStrategyIdx> best_edge_strategies(num_edges, -1);
+  double best_cost = -std::numeric_limits<double>::infinity();
+
+  for (int trial = 0; trial < num_trials; ++trial) {
+    cost = 0.0;
+    for (NodeIdx v = 0; v < num_nodes; ++v) {
+      int num_configurations = request.computation_costs(v).costs_size();
+      std::uniform_int_distribution<> dist(0, num_configurations - 1);
+      NodeStrategyIdx strategy = dist(rng);
+      node_strategies[v] = strategy;
+      cost += request.computation_costs(v).costs(strategy) +
+              request.communication_costs(v).costs(strategy);
+    }
+    for (EdgeIdx e = 0; e < num_edges; ++e) {
+      int u = request.edges(e).first();
+      int v = request.edges(e).second();
+      int64_t num_v_strategies = request.computation_costs(v).costs_size();
+      EdgeStrategyIdx strategy =
+          node_strategies[u] * num_v_strategies + node_strategies[v];
+      edge_strategies[e] = strategy;
+      cost += request.resharding_costs(e).costs(strategy);
+    }
+    std::optional<AutoShardingViolationCode> violation_code =
+        ShardingStrategyHasViolation(request, node_strategies, edge_strategies);
+    if (violation_code.has_value()) {
+      cost = -1 * (*violation_code);
+    }
+
+    bool have_feasible_solution = (best_cost >= 0.0);
+    bool candidate_is_feasible = !violation_code.has_value();
+    if (have_feasible_solution && !candidate_is_feasible) {
+      continue;
+    } else if (have_feasible_solution && candidate_is_feasible) {
+      if (cost < best_cost) {
+        best_node_strategies = node_strategies;
+        best_edge_strategies = edge_strategies;
+        best_cost = cost;
+      }
+    } else if (!have_feasible_solution && candidate_is_feasible) {
+      best_node_strategies = node_strategies;
+      best_edge_strategies = edge_strategies;
+      best_cost = cost;
+    } else {  // Don't have feasible solution and candidate is also infeasible.
+      if (cost > best_cost) {
+        best_node_strategies = node_strategies;
+        best_edge_strategies = edge_strategies;
+        best_cost = cost;  // Track encoded reason for infeasibility.
+      }
+    }
+  }
+
+  AutoShardingSolverOutput output;
+  output.s_val = best_node_strategies;
+  output.cost = best_cost;
+  return output;
+}
+
 }  // namespace
 
 absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
-    const AutoShardingSolverRequest& request) {
-  return SolveTrivial(request);
+    const AutoShardingSolverRequest& request, const std::string& algorithm) {
+  // TODO(fahrbach): Scale request so that results agree with CP-SAT outputs.
+  absl::Time start_time = absl::Now();
+  AutoShardingSolverOutput output;
+  if (algorithm == "trivial") {
+    output = SolveTrivial(request);
+  } else if (algorithm == "random") {
+    output = SolveRandom(request, 100);
+  } else {
+    CHECK(false) << absl::Substitute("Algorithm $0 is not implemented.",
+                                     algorithm);
+  }
+  auto duration = absl::Now() - start_time;
+  LOG(INFO) << "Solver took " << absl::ToInt64Milliseconds(duration) << " ms";
+  LOG(INFO) << "Objective value: " << output.cost;
+  return output;
 }
 
 bool CostComponents::operator==(const CostComponents& other) const {
