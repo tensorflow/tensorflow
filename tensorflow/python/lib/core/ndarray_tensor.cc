@@ -222,7 +222,7 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       } else if (pyarray_type == custom_dtypes.float8_e4m3fnuz) {
         *out_tf_datatype = TF_FLOAT8_E4M3FNUZ;
         break;
-      }else if (pyarray_type == custom_dtypes.int4) {
+      } else if (pyarray_type == custom_dtypes.int4) {
         *out_tf_datatype = TF_INT4;
         break;
       } else if (pyarray_type == custom_dtypes.uint4) {
