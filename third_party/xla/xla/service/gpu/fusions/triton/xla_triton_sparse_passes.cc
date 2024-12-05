@@ -77,7 +77,7 @@ using ::mlir::triton::gpu::getShapePerCTATile;
 using ::mlir::triton::gpu::SharedEncodingAttr;
 using ttn::OperandsAndConstraints;
 
-// TODO: b/350928208 - Declare these functions in the header files of the
+// TODO: b/382250044 - Declare these functions in the header files of the
 // corresponding C++ files and include them here instead of forward-declaring.
 // The functions below are defined in AccelerateMatmul.cpp.
 namespace mlir::triton::gpu {
