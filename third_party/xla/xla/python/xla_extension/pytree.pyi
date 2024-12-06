@@ -13,17 +13,33 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import (Any, Callable, Hashable, Iterable, List, Optional, Sequence,
-                    Tuple, Type, TypeVar)
+from typing import (
+    Any,
+    Callable,
+    Hashable,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    TypeVar,
+)
 
 _T = TypeVar("_T")
 
 version: int
 
 class PyTreeRegistry:
-  def __init__(self, *, enable_none: bool = ..., enable_tuple: bool = ...,
-               enable_namedtuple: bool = ..., enable_list: bool = ...,
-               enable_dict: bool = ...): ...
+  def __init__(
+      self,
+      *,
+      enable_none: bool = ...,
+      enable_tuple: bool = ...,
+      enable_namedtuple: bool = ...,
+      enable_list: bool = ...,
+      enable_dict: bool = ...
+  ): ...
   def flatten(
       self,
       tree: Any,
@@ -42,18 +58,15 @@ class PyTreeRegistry:
       __type: Type[_T],
       to_iterable: Callable[[_T], Tuple[_Children, _AuxData]],
       from_iterable: Callable[[_AuxData, _Children], _T],
-      to_iterable_with_keys: Callable[
-          [_T], Tuple[_KeyLeafPairs, _AuxData]
-      ] = ...,
+      to_iterable_with_keys: (
+          Callable[[_T], Tuple[_KeyLeafPairs, _AuxData]] | None
+      ) = ...,
   ) -> Any: ...
   def register_dataclass_node(
-      self,
-      __type: Type[_T],
-      meta_fields: List[str],
-      data_fields: List[str]) -> Any: ...
+      self, __type: Type[_T], meta_fields: List[str], data_fields: List[str]
+  ) -> Any: ...
 
 def default_registry() -> PyTreeRegistry: ...
-
 def tuple(registry: PyTreeRegistry, arg0: Sequence[PyTreeDef]) -> PyTreeDef: ...
 def all_leaves(registry: PyTreeRegistry, arg0: Iterable[Any]) -> bool: ...
 
@@ -105,10 +118,12 @@ class PyTreeDef:
   def unflatten(self, __leaves: Iterable[Any]) -> Any: ...
   def flatten_up_to(self, __xs: Any) -> List[Any]: ...
   def compose(self, __inner: PyTreeDef) -> PyTreeDef: ...
-  def walk(self,
-           __f_node: Callable[[Any, Any], Any],
-           __f_leaf: Optional[Callable[[_T], Any]],
-           leaves: Iterable[Any]) -> Any: ...
+  def walk(
+      self,
+      __f_node: Callable[[Any, Any], Any],
+      __f_leaf: Optional[Callable[[_T], Any]],
+      leaves: Iterable[Any],
+  ) -> Any: ...
   def from_iterable_tree(self, __xs: Any): ...
   def node_data(self) -> Optional[Tuple[Type, Any]]: ...
   def children(self) -> List[PyTreeDef]: ...
@@ -117,8 +132,7 @@ class PyTreeDef:
       registry: PyTreeRegistry,
       node_data: Optional[Tuple[Type, Any]],
       children: Iterable[PyTreeDef],
-  ) -> PyTreeDef:
-    ...
+  ) -> PyTreeDef: ...
 
   num_leaves: int
   num_nodes: int
@@ -132,8 +146,7 @@ class PyTreeDef:
   @staticmethod
   def deserialize_using_proto(
       registry: PyTreeRegistry, data: bytes
-  ) -> PyTreeDef:
-    ...
+  ) -> PyTreeDef: ...
 
 _Children = TypeVar("_Children", bound=Iterable[Any])
 _KeyLeafPair = TypeVar("_KeyLeafPair", bound=Tuple[Any, Any])
