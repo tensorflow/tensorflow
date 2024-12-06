@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/testing/tflite_driver.h"
 

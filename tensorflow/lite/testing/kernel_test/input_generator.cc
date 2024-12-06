@@ -14,13 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/testing/kernel_test/input_generator.h"
 
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <random>
 #include <string>
-#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
