@@ -1,77 +1,599 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..dfa4b78 100644
+index dfa4b78..2a0c555 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,57 @@
+@@ -1,57 +1,132 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/llvm/lib/ExecutionEngine/Orc/ExecutionUtils.cpp b/llvm/lib/ExecutionEngine/Orc/ExecutionUtils.cpp
-+--- a/llvm/lib/ExecutionEngine/Orc/ExecutionUtils.cpp
-++++ b/llvm/lib/ExecutionEngine/Orc/ExecutionUtils.cpp
-+@@ -573,7 +573,6 @@
-+     // Create __imp_ symbol
-+     jitlink::Symbol &Ptr =
-+         jitlink::x86_64::createAnonymousPointer(*G, Sec, &Target);
-+-    auto name = getImpPrefix() + *KV.first;
-+     Ptr.setName(G->intern((Twine(getImpPrefix()) + *KV.first).str()));
-+     Ptr.setLinkage(jitlink::Linkage::Strong);
-+     Ptr.setScope(jitlink::Scope::Default);
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/bolt/BUILD.bazel b/utils/bazel/llvm-project-overlay/bolt/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/bolt/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/bolt/BUILD.bazel
-+@@ -285,6 +285,7 @@
-+         "//llvm:MCParser",
-+         "//llvm:Object",
-+         "//llvm:ObjectYAML",
-++        "//llvm:OrcShared",
-+         "//llvm:Support",
-+         "//llvm:TargetParser",
-+         "//llvm:config",
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-+@@ -1442,7 +1442,10 @@
-+     hdrs = glob(["src/__support/time/*.h"]),
-+     deps = [
-+         ":__support_common",
-++        ":__support_error_or",
-+         ":hdr_time_macros",
-++        ":types_clockid_t",
-++        ":types_struct_timespec",
-+         ":types_time_t",
-+     ],
-+ )
-+@@ -1486,6 +1489,8 @@
-+         ":__support_common",
-+         ":__support_error_or",
-+         ":__support_osutil_vdso",
-++        ":types_clockid_t",
-++        ":types_struct_timespec",
-+     ],
-+ )
+-diff -ruN --strip-trailing-cr a/llvm/lib/ExecutionEngine/Orc/ExecutionUtils.cpp b/llvm/lib/ExecutionEngine/Orc/ExecutionUtils.cpp
+---- a/llvm/lib/ExecutionEngine/Orc/ExecutionUtils.cpp
+-+++ b/llvm/lib/ExecutionEngine/Orc/ExecutionUtils.cpp
+-@@ -573,7 +573,6 @@
+-     // Create __imp_ symbol
+-     jitlink::Symbol &Ptr =
+-         jitlink::x86_64::createAnonymousPointer(*G, Sec, &Target);
+--    auto name = getImpPrefix() + *KV.first;
+-     Ptr.setName(G->intern((Twine(getImpPrefix()) + *KV.first).str()));
+-     Ptr.setLinkage(jitlink::Linkage::Strong);
+-     Ptr.setScope(jitlink::Scope::Default);
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/bolt/BUILD.bazel b/utils/bazel/llvm-project-overlay/bolt/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/bolt/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/bolt/BUILD.bazel
+-@@ -285,6 +285,7 @@
+-         "//llvm:MCParser",
+-         "//llvm:Object",
+-         "//llvm:ObjectYAML",
+-+        "//llvm:OrcShared",
+-         "//llvm:Support",
+-         "//llvm:TargetParser",
+-         "//llvm:config",
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+-@@ -1442,7 +1442,10 @@
+-     hdrs = glob(["src/__support/time/*.h"]),
+-     deps = [
+-         ":__support_common",
+-+        ":__support_error_or",
+-         ":hdr_time_macros",
+-+        ":types_clockid_t",
+-+        ":types_struct_timespec",
+-         ":types_time_t",
+-     ],
+- )
+-@@ -1486,6 +1489,8 @@
+-         ":__support_common",
+-         ":__support_error_or",
+-         ":__support_osutil_vdso",
+-+        ":types_clockid_t",
+-+        ":types_struct_timespec",
+-     ],
+- )
+- 
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+-@@ -2800,6 +2800,7 @@
+-         ":MC",
+-         ":MCDisassembler",
+-         ":Object",
+-+        ":OrcShared",
+-         ":OrcTargetProcess",
+-         ":Passes",
+-         ":Support",
++diff -ruN --strip-trailing-cr a/libcxx/include/__memory/allocator_traits.h b/libcxx/include/__memory/allocator_traits.h
++--- a/libcxx/include/__memory/allocator_traits.h
+++++ b/libcxx/include/__memory/allocator_traits.h
++@@ -44,10 +44,10 @@
 + 
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-+@@ -2800,6 +2800,7 @@
-+         ":MC",
-+         ":MCDisassembler",
-+         ":Object",
-++        ":OrcShared",
-+         ":OrcTargetProcess",
-+         ":Passes",
-+         ":Support",
++ // __pointer
++ template <class _Tp>
++-using __pointer_member = typename _Tp::pointer;
+++using __pointer_member _LIBCPP_NODEBUG = typename _Tp::pointer;
++ 
++ template <class _Tp, class _Alloc>
++-using __pointer = __detected_or_t<_Tp*, __pointer_member, __libcpp_remove_reference_t<_Alloc> >;
+++using __pointer _LIBCPP_NODEBUG = __detected_or_t<_Tp*, __pointer_member, __libcpp_remove_reference_t<_Alloc> >;
++ 
++ // __const_pointer
++ _LIBCPP_ALLOCATOR_TRAITS_HAS_XXX(__has_const_pointer, const_pointer);
++@@ -58,7 +58,7 @@
++ template <class _Tp, class _Ptr, class _Alloc>
++ struct __const_pointer<_Tp, _Ptr, _Alloc, false> {
++ #ifdef _LIBCPP_CXX03_LANG
++-  using type = typename pointer_traits<_Ptr>::template rebind<const _Tp>::other;
+++  using type _LIBCPP_NODEBUG = typename pointer_traits<_Ptr>::template rebind<const _Tp>::other;
++ #else
++   using type _LIBCPP_NODEBUG = typename pointer_traits<_Ptr>::template rebind<const _Tp>;
++ #endif
++@@ -96,10 +96,10 @@
++ 
++ // __size_type
++ template <class _Tp>
++-using __size_type_member = typename _Tp::size_type;
+++using __size_type_member _LIBCPP_NODEBUG = typename _Tp::size_type;
++ 
++ template <class _Alloc, class _DiffType>
++-using __size_type = __detected_or_t<__make_unsigned_t<_DiffType>, __size_type_member, _Alloc>;
+++using __size_type _LIBCPP_NODEBUG = __detected_or_t<__make_unsigned_t<_DiffType>, __size_type_member, _Alloc>;
++ 
++ // __alloc_traits_difference_type
++ _LIBCPP_ALLOCATOR_TRAITS_HAS_XXX(__has_alloc_traits_difference_type, difference_type);
++@@ -114,33 +114,37 @@
++ 
++ // __propagate_on_container_copy_assignment
++ template <class _Tp>
++-using __propagate_on_container_copy_assignment_member = typename _Tp::propagate_on_container_copy_assignment;
+++using __propagate_on_container_copy_assignment_member _LIBCPP_NODEBUG =
+++    typename _Tp::propagate_on_container_copy_assignment;
++ 
++ template <class _Alloc>
++-using __propagate_on_container_copy_assignment =
+++using __propagate_on_container_copy_assignment _LIBCPP_NODEBUG =
++     __detected_or_t<false_type, __propagate_on_container_copy_assignment_member, _Alloc>;
++ 
++ // __propagate_on_container_move_assignment
++ template <class _Tp>
++-using __propagate_on_container_move_assignment_member = typename _Tp::propagate_on_container_move_assignment;
+++using __propagate_on_container_move_assignment_member _LIBCPP_NODEBUG =
+++    typename _Tp::propagate_on_container_move_assignment;
++ 
++ template <class _Alloc>
++-using __propagate_on_container_move_assignment =
+++using __propagate_on_container_move_assignment _LIBCPP_NODEBUG =
++     __detected_or_t<false_type, __propagate_on_container_move_assignment_member, _Alloc>;
++ 
++ // __propagate_on_container_swap
++ template <class _Tp>
++-using __propagate_on_container_swap_member = typename _Tp::propagate_on_container_swap;
+++using __propagate_on_container_swap_member _LIBCPP_NODEBUG = typename _Tp::propagate_on_container_swap;
++ 
++ template <class _Alloc>
++-using __propagate_on_container_swap = __detected_or_t<false_type, __propagate_on_container_swap_member, _Alloc>;
+++using __propagate_on_container_swap _LIBCPP_NODEBUG =
+++    __detected_or_t<false_type, __propagate_on_container_swap_member, _Alloc>;
++ 
++ // __is_always_equal
++ template <class _Tp>
++-using __is_always_equal_member = typename _Tp::is_always_equal;
+++using __is_always_equal_member _LIBCPP_NODEBUG = typename _Tp::is_always_equal;
++ 
++ template <class _Alloc>
++-using __is_always_equal = __detected_or_t<typename is_empty<_Alloc>::type, __is_always_equal_member, _Alloc>;
+++using __is_always_equal _LIBCPP_NODEBUG =
+++    __detected_or_t<typename is_empty<_Alloc>::type, __is_always_equal_member, _Alloc>;
++ 
++ // __allocator_traits_rebind
++ _LIBCPP_SUPPRESS_DEPRECATED_PUSH
++@@ -165,7 +169,7 @@
++ _LIBCPP_SUPPRESS_DEPRECATED_POP
++ 
++ template <class _Alloc, class _Tp>
++-using __allocator_traits_rebind_t = typename __allocator_traits_rebind<_Alloc, _Tp>::type;
+++using __allocator_traits_rebind_t _LIBCPP_NODEBUG = typename __allocator_traits_rebind<_Alloc, _Tp>::type;
++ 
++ _LIBCPP_SUPPRESS_DEPRECATED_PUSH
++ 
++@@ -355,12 +359,12 @@
++ using __rebind_alloc _LIBCPP_NODEBUG = typename _Traits::template rebind_alloc<_Tp>;
++ #else
++ template <class _Traits, class _Tp>
++-using __rebind_alloc = typename _Traits::template rebind_alloc<_Tp>::other;
+++using __rebind_alloc _LIBCPP_NODEBUG = typename _Traits::template rebind_alloc<_Tp>::other;
++ #endif
++ 
++ template <class _Alloc>
++ struct __check_valid_allocator : true_type {
++-  using _Traits = std::allocator_traits<_Alloc>;
+++  using _Traits _LIBCPP_NODEBUG = std::allocator_traits<_Alloc>;
++   static_assert(is_same<_Alloc, __rebind_alloc<_Traits, typename _Traits::value_type> >::value,
++                 "[allocator.requirements] states that rebinding an allocator to the same type should result in the "
++                 "original allocator");
++diff -ruN --strip-trailing-cr a/libcxx/include/__type_traits/detected_or.h b/libcxx/include/__type_traits/detected_or.h
++--- a/libcxx/include/__type_traits/detected_or.h
+++++ b/libcxx/include/__type_traits/detected_or.h
++@@ -20,16 +20,16 @@
++ 
++ template <class _Default, class _Void, template <class...> class _Op, class... _Args>
++ struct __detector {
++-  using type = _Default;
+++  using type _LIBCPP_NODEBUG = _Default;
++ };
++ 
++ template <class _Default, template <class...> class _Op, class... _Args>
++ struct __detector<_Default, __void_t<_Op<_Args...> >, _Op, _Args...> {
++-  using type = _Op<_Args...>;
+++  using type _LIBCPP_NODEBUG = _Op<_Args...>;
++ };
++ 
++ template <class _Default, template <class...> class _Op, class... _Args>
++-using __detected_or_t = typename __detector<_Default, void, _Op, _Args...>::type;
+++using __detected_or_t _LIBCPP_NODEBUG = typename __detector<_Default, void, _Op, _Args...>::type;
++ 
++ _LIBCPP_END_NAMESPACE_STD
++ 
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 99aaec9..e60a1c8 100644
+index e60a1c8..4251841 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "698d83218565d60580d7c71e0fce89a38134a5c6"
--    LLVM_SHA256 = "29c72ad1c3ea05314b945a9b90f43c52becbfd31783a0167f7bcb42302b01ca2"
-+    LLVM_COMMIT = "2ccf7ed277df28651b94bbee9fccefdf22fb074f"
-+    LLVM_SHA256 = "ca68a54dcd12c0dde32732a90899bf57e0f3f96fc43d8d1124d95a5eae627508"
+-    LLVM_COMMIT = "2ccf7ed277df28651b94bbee9fccefdf22fb074f"
+-    LLVM_SHA256 = "ca68a54dcd12c0dde32732a90899bf57e0f3f96fc43d8d1124d95a5eae627508"
++    LLVM_COMMIT = "9d2351ab9aff3741e3f4e10ab7ebabc77a6079d6"
++    LLVM_SHA256 = "d4de626c90929d9c50622e08f45652c426a6e7096501c63c1af618a8a8482b7c"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index 8b13789..6813d18 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -1 +1,371 @@
++diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
++--- stablehlo/BUILD.bazel
+++++ stablehlo/BUILD.bazel
++@@ -925,6 +925,7 @@
++         ":stablehlo_serialization",
++         ":version",
++         "@llvm-project//llvm:Support",
+++        "@llvm-project//mlir:BytecodeReader",
++         "@llvm-project//mlir:CAPIIR",
++         "@llvm-project//mlir:IR",
++         "@llvm-project//mlir:Support",
++diff --ruN a/stablehlo/stablehlo/dialect/Serialization.cpp b/stablehlo/stablehlo/dialect/Serialization.cpp
++--- stablehlo/stablehlo/dialect/Serialization.cpp
+++++ stablehlo/stablehlo/dialect/Serialization.cpp
++@@ -15,6 +15,9 @@
++ 
++ #include "stablehlo/dialect/Serialization.h"
++ 
+++#include "llvm/Support/Debug.h"
+++#include "llvm/Support/MemoryBuffer.h"
+++#include "mlir/Bytecode/BytecodeReader.h"
++ #include "mlir/Bytecode/BytecodeWriter.h"
++ #include "mlir/IR/BuiltinOps.h"
++ #include "mlir/IR/Diagnostics.h"
++@@ -28,6 +31,8 @@
++ #include "stablehlo/dialect/Version.h"
++ #include "stablehlo/dialect/VhloOps.h"
++ #include "stablehlo/transforms/Passes.h"
+++
+++#define DEBUG_TYPE "compat-passes"
++ 
++ namespace mlir {
++ namespace stablehlo {
++@@ -89,5 +94,36 @@
++   return module;
++ }
++ 
+++FailureOr<vhlo::Version> getPortableArtifactVersion(llvm::StringRef bytecode) {
+++  auto logFailure = [&](llvm::StringRef message) {
+++    LLVM_DEBUG(llvm::dbgs() << "Failed to get portable artifact version: "
+++                            << message << "\n");
+++    return failure();
+++  };
+++  // Must start with MLiRxStableHLO_vX.Y.Z, minimum length of 19.
+++  constexpr size_t minHeaderLength = 19;
+++  if (bytecode.size() < minHeaderLength) return logFailure("min header");
+++
+++  // Truncate to the end of the null-terminated producer string.
+++  size_t pos = bytecode.find('\0');
+++  if (pos == llvm::StringRef::npos) return logFailure("no terminator");
+++  bytecode = bytecode.substr(0, pos);
+++
+++  // Check if the bytecode is valid, starts with MLiR magic number.
+++  if (!isBytecode(
+++          llvm::MemoryBuffer::getMemBuffer(bytecode)->getMemBufferRef()))
+++    return logFailure("not bytecode");
+++
+++  // Skip 4 bytes for the magic number.
+++  std::string stablehloHeader = "StableHLO_v";
+++  size_t stablehloPos = bytecode.find(stablehloHeader);
+++  if (stablehloPos == llvm::StringRef::npos)
+++    return logFailure("not a StableHLO portable artifact");
+++
+++  // Skip the 11 bytes for StableHLO_v to get the StableHLO version to parse.
+++  StringRef version = bytecode.substr(stablehloPos + stablehloHeader.size());
+++  return vhlo::Version::fromString(version);
+++}
+++
++ }  // namespace stablehlo
++ }  // namespace mlir
++diff --ruN a/stablehlo/stablehlo/dialect/Serialization.h b/stablehlo/stablehlo/dialect/Serialization.h
++--- stablehlo/stablehlo/dialect/Serialization.h
+++++ stablehlo/stablehlo/dialect/Serialization.h
++@@ -19,6 +19,7 @@
++ #include "mlir/IR/BuiltinOps.h"
++ #include "mlir/IR/MLIRContext.h"
++ #include "mlir/Support/LogicalResult.h"
+++#include "stablehlo/dialect/Version.h"
++ 
++ namespace mlir {
++ namespace stablehlo {
++@@ -43,6 +44,17 @@
++ OwningOpRef<ModuleOp> deserializePortableArtifact(StringRef sourceStr,
++                                                   MLIRContext* context);
++ 
+++// Get portable artifact version from the producer string after the MLIR
+++// Bytecode magic number `MLïRStableHLO_vX.Y.Z` -> X.Y.Z
+++// Returns failure if input string is not a valid portable artifact produced by
+++// serializePortableArtifact APIs, which would cause the bytecode artifact to
+++// not have the proper producer string.
+++//
+++// This method should be safe, since any changes to the bytecode format would
+++// warrant a bytecode version bump, and MLIR bytecode gives the option to
+++// specify a forward compatible bytecode version to target.
+++FailureOr<vhlo::Version> getPortableArtifactVersion(llvm::StringRef bytecode);
+++
++ }  // namespace stablehlo
++ }  // namespace mlir
++ 
++diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
++--- stablehlo/stablehlo/dialect/TypeInference.cpp
+++++ stablehlo/stablehlo/dialect/TypeInference.cpp
++@@ -392,7 +392,7 @@
++ LogicalResult checkDimInBounds(std::optional<Location> loc, int64_t dim,
++                                int64_t upperBound, StringRef dimName,
++                                StringRef upperBoundName,
++-                               bool upperBoundInclusive = false) {
+++                               bool upperBoundInclusive) {
++   StringRef rangeEnd = upperBoundInclusive ? "]" : ")";
++   if (dim < 0 || dim >= upperBound + (upperBoundInclusive ? 1 : 0))
++     return emitOptionalError(loc, "Expects ", dimName, " to be in range [0, ",
++@@ -2280,14 +2280,13 @@
++   return success();
++ }
++ 
++-LogicalResult inferDotGeneralOp(
+++LogicalResult checkDotGeneralConstraints(
++     std::optional<Location> location, Type lhsType, Type rhsType,
++     ArrayRef<int64_t> lhsBatchingDimensions,
++     ArrayRef<int64_t> rhsBatchingDimensions,
++     ArrayRef<int64_t> lhsContractingDimensions,
++     ArrayRef<int64_t> rhsContractingDimensions,
++-    std::optional<ArrayAttr> precisionConfig,
++-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+++    std::optional<ArrayAttr> precisionConfig) {
++   // dot_general_c11
++   if (failed(verifyPrecisionConfig(location, precisionConfig)))
++     return failure();
++@@ -2366,9 +2365,30 @@
++                                "contracting dimension sizes must "
++                                "match for lhs/rhs");
++   }
+++  return success();
+++}
+++
+++LogicalResult inferDotGeneralOp(
+++    std::optional<Location> location, Type lhsType, Type rhsType,
+++    ArrayRef<int64_t> lhsBatchingDimensions,
+++    ArrayRef<int64_t> rhsBatchingDimensions,
+++    ArrayRef<int64_t> lhsContractingDimensions,
+++    ArrayRef<int64_t> rhsContractingDimensions,
+++    std::optional<ArrayAttr> precisionConfig,
+++    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+++  if (failed(checkDotGeneralConstraints(
+++          location, lhsType, rhsType, lhsBatchingDimensions,
+++          rhsBatchingDimensions, lhsContractingDimensions,
+++          rhsContractingDimensions, precisionConfig))) {
+++    return failure();
+++  }
++ 
++   // Infer the output dimensions of the operation.
++   SmallVector<int64_t> dimensions;
+++  auto lhsRankedType = cast<RankedTensorType>(lhsType);
+++  auto rhsRankedType = cast<RankedTensorType>(rhsType);
+++  auto lhsShape = lhsRankedType.getShape();
+++  auto rhsShape = rhsRankedType.getShape();
++   for (const int64_t lhsBatchingDim : lhsBatchingDimensions)
++     dimensions.push_back(lhsShape[lhsBatchingDim]);
++   for (int64_t i = 0; i < lhsRankedType.getRank(); i++)
++diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
++--- stablehlo/stablehlo/dialect/TypeInference.h
+++++ stablehlo/stablehlo/dialect/TypeInference.h
++@@ -53,6 +53,18 @@
++ FailureOr<SmallVector<bool>> convertWindowReversalAttribute(
++     std::optional<DenseElementsAttr> optionalAttr, std::optional<Location> loc,
++     StringRef attrName);
+++
+++LogicalResult checkDimInBounds(std::optional<Location> loc, int64_t dim,
+++                               int64_t upperBound, StringRef dimName,
+++                               StringRef upperBoundName,
+++                               bool upperBoundInclusive = false);
+++
+++LogicalResult checkDimsDistinct(std::optional<Location> loc,
+++                                ArrayRef<int64_t> lhsDims,
+++                                ArrayRef<int64_t> rhsDims, llvm::StringRef lhs,
+++                                llvm::StringRef rhs);
+++
+++bool verifyCompatibleDims(int64_t dimSize1, int64_t dimSize2);
++ 
++ // WindowDimension described how the kernel window moves across the base area
++ // in a particular dimension.
++@@ -86,6 +98,9 @@
++                                   bool useGlobalDeviceIds,
++                                   std::optional<size_t> expectedGroupSize);
++ 
+++LogicalResult verifyPrecisionConfig(std::optional<Location> loc,
+++                                    std::optional<ArrayAttr> maybeArrayAttr);
+++
++ LogicalResult verifyConvolutionAttributes(
++     std::optional<Location> location, Type lhsType, Type rhsType,
++     int64_t inputBatchDimension, int64_t inputFeatureDimension,
++@@ -207,6 +222,14 @@
++     RankedTensorType rhsType, std::optional<ArrayAttr> precisionConfig,
++     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes);
++ 
+++LogicalResult checkDotGeneralConstraints(
+++    std::optional<Location> location, Type lhsType, Type rhsType,
+++    ArrayRef<int64_t> lhsBatchingDimensions,
+++    ArrayRef<int64_t> rhsBatchingDimensions,
+++    ArrayRef<int64_t> lhsContractingDimensions,
+++    ArrayRef<int64_t> rhsContractingDimensions,
+++    std::optional<ArrayAttr> precisionConfig);
+++
++ LogicalResult inferDotGeneralOp(
++     std::optional<Location> location, Type lhsType, Type rhsType,
++     ArrayRef<int64_t> lhsBatchingDimensions,
++diff --ruN a/stablehlo/stablehlo/tests/print_types_invalid.mlir b/stablehlo/stablehlo/tests/print_types_invalid.mlir
++--- stablehlo/stablehlo/tests/print_types_invalid.mlir
+++++ stablehlo/stablehlo/tests/print_types_invalid.mlir
++@@ -113,7 +113,7 @@
++ // -----
++ 
++ func.func @tuple_count_mismatch(%arg0: tensor<1xf64>) -> tensor<1xf64> {
++-  // expected-error @+1 {{custom op 'stablehlo.tuple' 2 operands present, but expected 1}}
+++  // expected-error @+1 {{custom op 'stablehlo.tuple' number of operands and types do not match: got 2 operands and 1 types}}
++   %0 = stablehlo.tuple %arg0, %arg0 : tuple<tensor<1xf64>>
++   func.return %0 : tensor<1xf64>
++ }
++@@ -121,7 +121,7 @@
++ // -----
++ 
++ func.func @pairwise_count_mismatch(%arg0: tensor<1xf64>) -> tensor<1xf64> {
++-  // expected-error @+1 {{custom op 'stablehlo.optimization_barrier' 2 operands present, but expected 1}}
+++  // expected-error @+1 {{custom op 'stablehlo.optimization_barrier' number of operands and types do not match: got 2 operands and 1 types}}
++   %0 = stablehlo.optimization_barrier %arg0, %arg0 : tensor<1xf64>
++   func.return %0 : tensor<1xf64>
++ }
++diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_parameters.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_parameters.mlir
++--- stablehlo/stablehlo/tests/transforms/stablehlo_refine_parameters.mlir
+++++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_parameters.mlir
++@@ -7,7 +7,7 @@
++ 
++ // RUN: not stablehlo-opt --stablehlo-refine-arguments='types=tensor<f32>,tensor<1xf32>,tensor<?xf32>,tensor<*xf32>,tensor<*xf32>,!stablehlo.token' %s 2>&1 | FileCheck %s --check-prefixes=UNRANKED-ERROR
++ func.func @main(%arg0: tensor<f32>, %arg1: tensor<1xf32>, %arg2: tensor<?xf32>, %arg3: tensor<1x?x?xf32>, %arg4: tensor<*xf32>, %arg5: !stablehlo.token) {
++-  // UNRANKED-ERROR: invalid refinement for argument 3, refinement must be ranked in 'tensor<1x?x?xf32>'->'tensor<*xf32>'
+++  // UNRANKED-ERROR: invalid refinement for argument 3, refinement must be ranked in tensor<1x?x?xf32> -> tensor<*xf32>
++   return
++ }
++ 
++@@ -43,21 +43,28 @@
++ 
++ // -----
++ 
++-// expected-error @+1 {{invalid refinement for argument 5, refinement must be a tensor in 'tensor<f32>'->'!stablehlo.token'}}
+++// expected-error @+1 {{invalid refinement for argument 5, refinement must be a tensor in tensor<f32> -> !stablehlo.token}}
++ func.func @refine_arguments_invalid_type_mismatch(%arg0: tensor<f32>, %arg1: tensor<1xf32>, %arg2: tensor<?xf32>, %arg3: tensor<1x?x?xf32>, %arg4: tensor<*xf32>, %arg5: tensor<f32>) {
++   return
++ }
++ 
++ // -----
++ 
++-// expected-error @+1 {{invalid refinement for argument 1, refinement rank must match operand rank in 'tensor<f32>'->'tensor<1xf32>'}}
+++// expected-error @+1 {{invalid refinement for argument 1, refinement element types must match in tensor<1xi32> -> tensor<1xf32>}}
+++func.func @refine_arguments_invalid_element_type_mismatch(%arg0: tensor<f32>, %arg1: tensor<1xi32>, %arg2: tensor<?xf32>, %arg3: tensor<1x?x?xf32>, %arg4: tensor<*xf32>, %arg5: tensor<f32>) {
+++  return
+++}
+++
+++// -----
+++
+++// expected-error @+1 {{invalid refinement for argument 1, refinement rank must match operand rank in tensor<f32> -> tensor<1xf32>}}
++ func.func @refine_arguments_invalid_refine_rank_mismatch(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xf32>, %arg3: tensor<1x?x?xf32>, %arg4: tensor<*xf32>, %arg5: !stablehlo.token) {
++   return
++ }
++ 
++ // -----
++ 
++-// expected-error @+1 {{invalid refinement for argument 1, refinement dimension sizes must match for static dimensions in 'tensor<2xf32>'->'tensor<1xf32>'}}
+++// expected-error @+1 {{invalid refinement for argument 1, refinement dimension sizes must match for static dimensions in tensor<2xf32> -> tensor<1xf32>}}
++ func.func @refine_arguments_invalid_static_dim_mismatch(%arg0: tensor<f32>, %arg1: tensor<2xf32>, %arg2: tensor<?xf32>, %arg3: tensor<1x?x?xf32>, %arg4: tensor<*xf32>, %arg5: !stablehlo.token) {
++   return
++ }
++diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_emit_version_api.1_1_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_emit_version_api.1_1_0.mlir
++--- stablehlo/stablehlo/tests/vhlo/vhlo_emit_version_api.1_1_0.mlir
+++++ stablehlo/stablehlo/tests/vhlo/vhlo_emit_version_api.1_1_0.mlir
++@@ -0,0 +1,19 @@
+++// RUN: stablehlo-translate --deserialize --print-stablehlo-version %s.bc | FileCheck %s --check-prefix=CHECK-VERSION
+++// RUN: stablehlo-translate --serialize --target=current %s | stablehlo-translate --deserialize --print-stablehlo-version | FileCheck %s --check-prefix=CHECK-VERSION-LATEST
+++// RUN: stablehlo-translate --deserialize --print-stablehlo-version %s | FileCheck %s --check-prefix=CHECK-VERSION-NOT-BYTECODE
+++
+++// This file tests the `getPortableArtifactVersion` Serialization API.
+++// Any breakages to this file likely indicate that the MLIR Bytecode Format
+++// has changed, or that the StableHLO producer string emit by
+++// `serializePortableArtifact` has changed.
+++//
+++// See the `getPortableArtifactVersion` doc comments for more details.
+++
+++// CHECK-VERSION: // Reading portable artifact with StableHLO version: 1.1.0
+++// CHECK-VERSION-NOT-BYTECODE: // Failed parsing StableHLO version from portable artifact
+++// CHECK-VERSION-LATEST: // Reading portable artifact with StableHLO version: {{.*}}
+++
+++func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+++  %0 = stablehlo.add %arg0, %arg0 : tensor<f32>
+++  func.return %0 : tensor<f32>
+++}
++diff --ruN a/stablehlo/stablehlo/tools/StablehloTranslateMain.cpp b/stablehlo/stablehlo/tools/StablehloTranslateMain.cpp
++--- stablehlo/stablehlo/tools/StablehloTranslateMain.cpp
+++++ stablehlo/stablehlo/tools/StablehloTranslateMain.cpp
++@@ -23,6 +23,7 @@
++ #include "llvm/Support/Error.h"
++ #include "llvm/Support/ErrorHandling.h"
++ #include "llvm/Support/LogicalResult.h"
+++#include "llvm/Support/raw_ostream.h"
++ #include "mlir/AsmParser/AsmParser.h"
++ #include "mlir/Dialect/Func/IR/FuncOps.h"
++ #include "mlir/Dialect/Quant/IR/Quant.h"
++@@ -65,6 +66,12 @@
++     "strip-debuginfo", llvm::cl::desc("Strip debug info from all operations"),
++     llvm::cl::init(false));
++ 
+++llvm::cl::opt<bool> printStablehloVersion(
+++    "print-stablehlo-version",
+++    llvm::cl::desc(
+++        "When deserializing a portable artifact, print the StableHLO version"),
+++    llvm::cl::init(false));
+++
++ llvm::cl::opt<std::string> targetOption(
++     "target", llvm::cl::desc("Target version for serialization"),
++     llvm::cl::init(""));
++@@ -306,6 +313,17 @@
++ TranslateToMLIRRegistration deserializeRegistration(
++     "deserialize", "Deserialize a portable artifact into a StableHLO program",
++     [](llvm::StringRef input, mlir::MLIRContext *context) {
+++      if (printStablehloVersion.getValue()) {
+++        auto version = stablehlo::getPortableArtifactVersion(input);
+++        if (failed(version)) {
+++          llvm::outs()
+++              << "// Failed parsing StableHLO version from portable artifact\n";
+++        } else {
+++          llvm::outs()
+++              << "// Reading portable artifact with StableHLO version: "
+++              << *version << "\n";
+++        }
+++      }
++       return stablehlo::deserializePortableArtifact(input, context);
++     },
++     [](DialectRegistry &registry) {
++diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp b/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
++--- stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
+++++ stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
++@@ -34,6 +34,7 @@
++ #include "mlir/IR/Value.h"
++ #include "mlir/IR/ValueRange.h"
++ #include "mlir/Pass/Pass.h"
+++#include "mlir/Support/DebugStringHelper.h"
++ #include "mlir/Support/LLVM.h"
++ #include "mlir/Support/LogicalResult.h"
++ #include "stablehlo/dialect/StablehloOps.h"
++@@ -79,7 +80,8 @@
++                               Type refinedType, StringRef msg) {
++   return func.emitOpError()
++          << "invalid refinement for argument " << idx << ", refinement " << msg
++-         << " in " << argType << "->" << refinedType;
+++         << " in " << mlir::debugString(argType) << " -> "
+++         << mlir::debugString(refinedType);
++ }
++ 
++ // Validates refinement types:
++@@ -111,6 +113,12 @@
++     auto refinedTensorType = dyn_cast<TensorType>(refinedType);
++     if (!tensorType || !refinedTensorType) {
++       return refinementError(func, i, type, refinedType, "must be a tensor");
+++    }
+++
+++    // Check that element types match
+++    if (tensorType.getElementType() != refinedTensorType.getElementType()) {
+++      return refinementError(func, i, type, refinedType,
+++                             "element types must match");
++     }
++ 
++     // Refined rank cannot be unranked if mismatch
+ 
+diff --git a/third_party/stablehlo/workspace.bzl b/third_party/stablehlo/workspace.bzl
+index 8a8a716..39b88ad 100644
+--- a/third_party/stablehlo/workspace.bzl
++++ b/third_party/stablehlo/workspace.bzl
+@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+ 
+ def repo():
+     #
+-    STABLEHLO_COMMIT = "b3d3cacde8994df313297e68713ed74c2ca279ee"
+-    STABLEHLO_SHA256 = "8bb81d7f60f19493b1edfc916adcfe1f9d1deeaf77c9ca7a896e05861505817d"
++    STABLEHLO_COMMIT = "d1db6dfe13488b4735a6f08c324145625447fb6d"
++    STABLEHLO_SHA256 = "c20d305f0c1a9898dec1486ceac40224b6461cb1cc3540891e6425a6627ba40f"
+     #
+ 
+     tf_http_archive(
