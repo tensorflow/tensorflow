@@ -1,15 +1,44 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398d..d38c9bd 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,24 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++@@ -1442,7 +1442,10 @@
++     hdrs = glob(["src/__support/time/*.h"]),
++     deps = [
++         ":__support_common",
+++        ":__support_error_or",
++         ":hdr_time_macros",
+++        ":types_clockid_t",
+++        ":types_struct_timespec",
++         ":types_time_t",
++     ],
++ )
++@@ -1486,6 +1489,8 @@
++         ":__support_common",
++         ":__support_error_or",
++         ":__support_osutil_vdso",
+++        ":types_clockid_t",
+++        ":types_struct_timespec",
++     ],
++ )
++ 
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 5ed10f8..99aaec9 100644
+index 99aaec9..a841c51 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "fdb90cef75cad0f46f06f1316eaf39358773b468"
--    LLVM_SHA256 = "a347836d597abead78323ead6bc5077a43fe6637a05fa65fe5a51234634c02ea"
-+    LLVM_COMMIT = "698d83218565d60580d7c71e0fce89a38134a5c6"
-+    LLVM_SHA256 = "29c72ad1c3ea05314b945a9b90f43c52becbfd31783a0167f7bcb42302b01ca2"
+-    LLVM_COMMIT = "698d83218565d60580d7c71e0fce89a38134a5c6"
+-    LLVM_SHA256 = "29c72ad1c3ea05314b945a9b90f43c52becbfd31783a0167f7bcb42302b01ca2"
++    LLVM_COMMIT = "e6cf5d2863b77895ae7183952514bedd9e8dde16"
++    LLVM_SHA256 = "9450bd9dd2d79313277f1abaed858d2eec031c2140a03369820f6664118d6a16"
  
      tf_http_archive(
          name = name,

@@ -1,1 +1,24 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -1442,7 +1442,10 @@
+     hdrs = glob(["src/__support/time/*.h"]),
+     deps = [
+         ":__support_common",
++        ":__support_error_or",
+         ":hdr_time_macros",
++        ":types_clockid_t",
++        ":types_struct_timespec",
+         ":types_time_t",
+     ],
+ )
+@@ -1486,6 +1489,8 @@
+         ":__support_common",
+         ":__support_error_or",
+         ":__support_osutil_vdso",
++        ":types_clockid_t",
++        ":types_struct_timespec",
+     ],
+ )
+ 
