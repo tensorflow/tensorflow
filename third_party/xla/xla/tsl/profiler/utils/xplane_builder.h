@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -361,6 +362,10 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   // Returns a builder for the line with the given id. Creates a new line if the
   // id was unused, otherwise the builder will add events to an existing line.
   XLineBuilder GetOrCreateLine(int64_t line_id);
+
+  // Returns a builder for the counter line. Creates a new line if the
+  // line was unused.
+  XLineBuilder GetOrCreateCounterLine();
 
   // Returns a new event metadata with an automatically generated metadata_id.
   // WARNING: If calling this function, don't call GetOrCreateEventMetadata.

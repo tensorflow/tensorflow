@@ -15,23 +15,35 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 
+#include <climits>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <list>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_occupancy.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/parse_annotation.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/trace_utils.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
@@ -40,6 +52,9 @@ limitations under the License.
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
+#include "tsl/platform/types.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 namespace profiler {
@@ -48,6 +63,7 @@ namespace {
 
 using tensorflow::profiler::XEventMetadata;
 using tensorflow::profiler::XSpace;
+using tensorflow::profiler::XStatMetadata;
 using tsl::mutex;
 using tsl::mutex_lock;
 using tsl::profiler::Annotation;
@@ -518,9 +534,10 @@ class PerDeviceCollector {
   absl::flat_hash_map<DeviceOccupancyParams, OccupancyStats> occupancy_cache_;
 };
 
-// Using two iterator of the CuptiTracerEvent queue to mark the current and last
-// event in the queue. It will be used in multi-way merge sort by event's
-// end time as the original per-thread queue is already sort by that.
+// Using two iterator of the CuptiTracerEvent queue to mark the current and
+// last event in the queue. It will be used in multi-way merge sort by
+// event's end time as the original per-thread queue is already sort by
+// that.
 class EventInQueue {
   using Iterator = CallbackAnnotationsAndEvents::EventQueue::Iterator;
 
@@ -536,8 +553,8 @@ class EventInQueue {
   }
 
   CuptiTracerEvent& Event() const {
-    // Directly use *curr_ after base Iterator operator*() with const modifier
-    // in seperate CL.
+    // Directly use *curr_ after base Iterator operator*() with const
+    // modifier in seperate CL.
     auto it = curr_;
     return *it;
   }
@@ -554,6 +571,27 @@ class EventInQueue {
 };
 
 }  // namespace
+
+void PmSamples::PopulateCounterLine(XPlaneBuilder* plane) {
+  XLineBuilder line = plane->GetOrCreateCounterLine();
+  std::vector<std::pair<XEventMetadata*, XStatMetadata*>> counter_metadata;
+  counter_metadata.reserve(metrics_.size());
+  for (auto& metric : metrics_) {
+    counter_metadata.emplace_back(plane->GetOrCreateEventMetadata(metric),
+                                  plane->GetOrCreateStatMetadata(metric));
+  }
+  for (auto& sampler_range : sampler_ranges_) {
+    DCHECK_EQ(metrics_.size(), sampler_range.metric_values.size());
+    for (int i = 0; i < sampler_range.metric_values.size(); ++i) {
+      XEventBuilder event = line.AddEvent(
+          tsl::profiler::Timespan(
+              tsl::profiler::NanoToPico(sampler_range.start_timestamp_ns), 0),
+          *counter_metadata[i].first);
+      event.AddStatValue(*counter_metadata[i].second,
+                         sampler_range.metric_values[i]);
+    }
+  }
+}
 
 void CuptiTraceCollector::OnTracerCollectedCallbackData(
     std::vector<CallbackAnnotationsAndEvents> callback_annotations_and_events,
