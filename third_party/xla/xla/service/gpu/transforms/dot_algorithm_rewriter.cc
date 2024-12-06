@@ -271,7 +271,7 @@ absl::StatusOr<bool> DotAlgorithmRewriter::Run(
       continue;
     }
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kDot) {
+      if (HloPredicateIsNotOp<HloOpcode::kDot>(instruction)) {
         continue;
       }
       auto algorithm = instruction->precision_config().algorithm();

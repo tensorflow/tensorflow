@@ -25,7 +25,7 @@ bool GpuScatterExpander::InstructionMatchesPattern(HloInstruction* inst) {
   // TODO(b/129698548): Scattering elements larger than 64 bits is not
   // supported by XLA:GPU.
   // TODO(b/227486631): Variadic scatter is not yet supported by GPU.
-  return inst->opcode() == HloOpcode::kScatter &&
+  return HloPredicateIsOp<HloOpcode::kScatter>(inst) &&
          (inst->shape().IsTuple() ||
           primitive_util::BitWidth(inst->shape().element_type()) > 64);
 }
