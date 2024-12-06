@@ -33,34 +33,34 @@ using ::tensorflow::shape_inference::InferenceContext;
 using ::tensorflow::shape_inference::ShapeAndType;
 using ::tensorflow::shape_inference::ShapeHandle;
 
-Status ScalarOutput(InferenceContext* c) {
+absl::Status ScalarOutput(InferenceContext* c) {
   c->set_output(0, c->Scalar());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TwoScalarInputs(InferenceContext* c) {
+absl::Status TwoScalarInputs(InferenceContext* c) {
   ShapeHandle handle;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TwoScalarInputsScalarOutput(InferenceContext* c) {
+absl::Status TwoScalarInputsScalarOutput(InferenceContext* c) {
   ShapeHandle handle;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
   return ScalarOutput(c);
 }
 
-Status ThreeScalarInputs(InferenceContext* c) {
+absl::Status ThreeScalarInputs(InferenceContext* c) {
   ShapeHandle handle;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &handle));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ThreeScalarInputsScalarOutput(InferenceContext* c) {
+absl::Status ThreeScalarInputsScalarOutput(InferenceContext* c) {
   ShapeHandle handle;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
@@ -68,11 +68,11 @@ Status ThreeScalarInputsScalarOutput(InferenceContext* c) {
   return ScalarOutput(c);
 }
 
-Status ValidateTableType(InferenceContext* c,
-                         const ShapeAndType& key_shape_and_type,
-                         const string& key_dtype_attr,
-                         const ShapeAndType& value_shape_and_type,
-                         const string& value_dtype_attr) {
+absl::Status ValidateTableType(InferenceContext* c,
+                               const ShapeAndType& key_shape_and_type,
+                               const string& key_dtype_attr,
+                               const ShapeAndType& value_shape_and_type,
+                               const string& value_dtype_attr) {
   DataType key_dtype;
   TF_RETURN_IF_ERROR(c->GetAttr(key_dtype_attr, &key_dtype));
   if (key_shape_and_type.dtype != key_dtype) {
@@ -91,10 +91,10 @@ Status ValidateTableType(InferenceContext* c,
         DataTypeString(value_shape_and_type.dtype), " got ",
         DataTypeString(value_dtype));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ExportShapeFunction(InferenceContext* c) {
+absl::Status ExportShapeFunction(InferenceContext* c) {
   ShapeHandle handle;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
   auto* handle_data = c->input_handle_shapes_and_types(0);
@@ -109,10 +109,10 @@ Status ExportShapeFunction(InferenceContext* c) {
   // Different lookup tables have different output shapes.
   c->set_output(0, c->UnknownShape());
   c->set_output(1, c->UnknownShape());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ImportShapeFunction(InferenceContext* c) {
+absl::Status ImportShapeFunction(InferenceContext* c) {
   ShapeHandle handle;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
 
@@ -121,7 +121,7 @@ Status ImportShapeFunction(InferenceContext* c) {
   DimensionHandle unused;
   TF_RETURN_IF_ERROR(
       c->Merge(c->Dim(keys, 0), c->Dim(c->input(2), 0), &unused));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Note that if an op has any Input or Output of type "resource", it
