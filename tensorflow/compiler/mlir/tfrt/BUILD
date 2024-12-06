@@ -113,6 +113,8 @@ cc_library(
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
