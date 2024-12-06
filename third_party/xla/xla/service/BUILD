@@ -329,6 +329,7 @@ cc_library(
     hdrs = ["value_range.h"],
     deps = [
         ":constant_value",
+        ":hlo_value",
         "//xla:comparison_util",
         "//xla:shape_util",
         "//xla/hlo/analysis:hlo_alias_analysis",

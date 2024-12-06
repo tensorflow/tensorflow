@@ -89,7 +89,7 @@ TEST_F(ValueRangeTest, MultiplyValue) {
   EXPECT_TRUE(range.IsLinear());
   EXPECT_EQ(range.min().GetSignedValue(), 0);
   EXPECT_EQ(range.max().GetSignedValue(), 5120);
-  EXPECT_EQ(range.step().GetSignedValue(), 1);
+  EXPECT_EQ(range.step().GetSignedValue(), 1024);
 }
 
 TEST_F(ValueRangeTest, ConstantValuePred) {
@@ -171,7 +171,7 @@ TEST_F(ValueRangeTest, ConstantValueWithConditional) {
   EXPECT_TRUE(mult_range.IsLinear());
   EXPECT_EQ(mult_range.min().GetSignedValue(), 0);
   EXPECT_EQ(mult_range.max().GetSignedValue(), 5120);
-  EXPECT_EQ(mult_range.step().GetSignedValue(), 1);
+  EXPECT_EQ(mult_range.step().GetSignedValue(), 1024);
 }
 
 TEST_F(ValueRangeTest, SelectValueWithCompareInConditional) {

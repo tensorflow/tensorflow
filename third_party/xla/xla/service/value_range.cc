@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/constant_value.h"
+#include "xla/service/hlo_value.h"
 
 namespace xla {
 
@@ -48,6 +49,9 @@ std::optional<int64_t> Range::GetSingleUnsignedValue() const {
 std::string Range::ToString() const {
   if (IsEmpty()) {
     return std::string("Empty");
+  }
+  if (IsSingleValue()) {
+    return min_.ToString();
   }
   return absl::StrCat(
       "min: ", min_.ToString(), " max: ", max_.ToString(),
@@ -92,12 +96,14 @@ Range RecursivelyIdentifyRange(
     auto value_set =
         alias_analysis->dataflow_analysis().GetFlattenedValueSet(instr);
     for (const auto& value : value_set.TakeValues()) {
-      auto it = predefined_ranges.find(value->defining_instruction());
-      if (it != predefined_ranges.end()) {
-        VLOG(5) << "Found range in defining instruction! "
-                << it->second.max().GetSignedValue() << " "
-                << it->second.min().GetSignedValue();
-        return it->second;
+      for (const HloPosition& position : value->positions()) {
+        auto it = predefined_ranges.find(position.instruction);
+        if (it != predefined_ranges.end()) {
+          VLOG(5) << "Found range in defining instruction! "
+                  << it->second.max().GetSignedValue() << " "
+                  << it->second.min().GetSignedValue();
+          return it->second;
+        }
       }
     }
   }
@@ -213,8 +219,7 @@ Range RecursivelyIdentifyRange(
                                               : lhs.min().mul(single_value);
       ConstantValue max = lhs.IsSingleValue() ? rhs.max().mul(single_value)
                                               : lhs.max().mul(single_value);
-      return Range{min, max, FindStepForBinaryOp(lhs, rhs),
-                   lhs.IsLinear() && rhs.IsLinear()};
+      return Range{min, max, single_value, lhs.IsLinear() && rhs.IsLinear()};
     }
     case HloOpcode::kSelect: {
       VLOG(5) << "Handling Select: " << instr->ToString();

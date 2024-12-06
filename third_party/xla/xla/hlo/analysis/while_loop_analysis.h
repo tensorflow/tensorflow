@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/value_range.h"
 
 namespace xla {
 
@@ -58,6 +59,10 @@ std::optional<int64_t> GetLoopInductionVarTupleIdx(
 std::optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction *while_op,
                                                  int64_t indvar_tuple_idx,
                                                  const Literal &indvar_init);
+
+// Same as above, but returns the loop range, i.e., start (inclusive), end
+// (exclusive) and step instead of the trip count.
+std::optional<Range> MatchTrivialLoopRange(const HloInstruction *while_op);
 }  // namespace xla
 
 #endif  // XLA_HLO_ANALYSIS_WHILE_LOOP_ANALYSIS_H_

@@ -34,6 +34,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/constant_value.h"
+#include "xla/service/value_range.h"
 #include "xla/test.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
@@ -44,6 +46,8 @@ namespace {
 class WhileLoopAnalysisTest : public HloHardwareIndependentTestBase {
  protected:
   [[nodiscard]] absl::StatusOr<int64_t> MakeWhileLoopAndGetTripCount(
+      int init, int limit, int step, ComparisonDirection dir);
+  [[nodiscard]] absl::StatusOr<Range> MakeWhileLoopAndGetRange(
       int init, int limit, int step, ComparisonDirection dir);
 };
 
@@ -97,6 +101,53 @@ absl::StatusOr<int64_t> WhileLoopAnalysisTest::MakeWhileLoopAndGetTripCount(
   CHECK(trip_count.has_value());
 
   return *trip_count;
+}
+
+absl::StatusOr<Range> WhileLoopAnalysisTest::MakeWhileLoopAndGetRange(
+    int init, int limit, int step, ComparisonDirection dir) {
+  std::string hlo_string_template = R"(
+  HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], s32[]) parameter(0)
+      val = f32[2] get-tuple-element(p_body), index=0
+      index = s32[] get-tuple-element(p_body), index=1
+      one = s32[] constant({{STEP}})
+      inc = s32[] add(index, one)
+      ROOT root = (f32[2], s32[]) tuple(val, inc)
+    }
+
+    condition {
+      p_cond = (f32[2], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=1
+      const = s32[] constant({{LIMIT}})
+      ROOT result = pred[] compare(gte, const), direction={{COMP_DIR}}
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = s32[] constant({{INIT}})
+      while_init = (f32[2], s32[]) tuple(param.0, param.1)
+      ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
+    }
+  )";
+
+  std::string hlo_string =
+      absl::StrReplaceAll(hlo_string_template,
+                          {{"{{INIT}}", absl::StrCat(init)},
+                           {"{{LIMIT}}", absl::StrCat(limit)},
+                           {"{{STEP}}", absl::StrCat(step)},
+                           {"{{COMP_DIR}}", ComparisonDirectionToString(dir)}});
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+  std::optional<Range> range = MatchTrivialLoopRange(while_op);
+
+  CHECK(range.has_value());
+
+  return *range;
 }
 
 TEST_F(WhileLoopAnalysisTest, SingleIterationUpperBound) {
@@ -241,6 +292,50 @@ int CalculateTripCount(int init, int limit, int step, ComparisonDirection dir) {
                << ComparisonDirectionToString(dir);
   }
   return trip_count;
+}
+
+bool RangeEqualIgnoreBitwidth(const Range& range, int init, int limit,
+                              int step) {
+  auto range_min = [](const Range& r) {
+    return r.min().IsSigned() ? r.min().GetSignedValue()
+                              : r.min().GetUnsignedValue();
+  };
+  auto range_max = [](const Range& r) {
+    return r.min().IsSigned() ? r.max().GetSignedValue()
+                              : r.max().GetUnsignedValue();
+  };
+  return range_min(range) == init && range_max(range) == limit &&
+         range.step().GetSignedValue() == step;
+}
+
+TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialRange) {
+  // LT cases
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 42, 1, ComparisonDirection::kLt).value(), 0,
+      42, 1));
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 42, 2, ComparisonDirection::kLt).value(), 0,
+      42, 2));
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 42, 5, ComparisonDirection::kLt).value(), 0,
+      42, 5));
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 40, 5, ComparisonDirection::kLt).value(), 0,
+      40, 5));
+
+  // LE cases
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 42, 1, ComparisonDirection::kLe).value(), 0,
+      42, 1));
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 42, 2, ComparisonDirection::kLe).value(), 0,
+      42, 2));
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 42, 5, ComparisonDirection::kLe).value(), 0,
+      42, 5));
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 40, 5, ComparisonDirection::kLe).value(), 0,
+      40, 5));
 }
 
 TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialTripCount) {
