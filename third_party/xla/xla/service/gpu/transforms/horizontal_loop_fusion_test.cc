@@ -189,6 +189,23 @@ TEST_F(HorizontalLoopFusionTest, NegativeTestForIncompatibleTypes) {
       HorizontalLoopFusion{device_description_}.Run(module.get()).value());
 }
 
+TEST_F(HorizontalLoopFusionTest, NegativeTestForDifferentMemorySpace) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ HloModule NegativeTestForIncompatibleSpaces
+ ENTRY main {
+   arg0 = f32[1]{0} parameter(0)
+   arg1 = f32[1]{0:S(5)} parameter(1)
+   cp1 = f32[1]{0} copy(arg0)
+   cp2 = f32[1]{0:S(5)} copy(arg1)
+   ROOT tuple_out = (f32[1]{0}, f32[1]{0:S(5)}) tuple(cp1, cp2)
+ }
+)")
+                    .value();
+
+  EXPECT_FALSE(
+      HorizontalLoopFusion{device_description_}.Run(module.get()).value());
+}
+
 TEST_F(HorizontalLoopFusionTest, FusingIntoKLoopAndKInputTogether) {
   auto module = ParseAndReturnVerifiedModule(R"(
  HloModule FusingIntoKLoopAndKInputTogether
