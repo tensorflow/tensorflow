@@ -2711,12 +2711,13 @@ std::optional<Value> convertFloorModOp(PatternRewriter& rewriter, Operation* op,
                                        Value result_value, Value lhs_value,
                                        Value rhs_value) {
   // FloorMod lowering:
-  // (1/rhs * lhs) - floor(1/rhs * lhs)
+  // ((1/rhs * lhs) - floor(1/rhs * lhs)) * rhs
   // a1 = reciprocal(rhs);
   // a2 = mul(lhs, a1);
   // a3 = floor(a2);
   // a4 = sub(a2, a3);
-  // return a4;
+  // a5 = mul(a4, rhs)
+  // return a5;
 
   RankedTensorType output_type =
       dyn_cast<RankedTensorType>(result_value.getType());
@@ -2730,9 +2731,13 @@ std::optional<Value> convertFloorModOp(PatternRewriter& rewriter, Operation* op,
       a1_reciprocal_rhs_op.getResult(), 0);
   auto a3_floor_a2_op = CreateOpAndInfer<tosa::FloorOp>(
       rewriter, op->getLoc(), output_type, a2_mul_lhs_a1_op.getResult());
-  return CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), output_type,
-                                       a2_mul_lhs_a1_op.getResult(),
-                                       a3_floor_a2_op.getResult())
+  auto a4_sub_a2_a3_op = CreateOpAndInfer<tosa::SubOp>(
+      rewriter, op->getLoc(), output_type,
+      a2_mul_lhs_a1_op.getResult(), a3_floor_a2_op.getResult());
+  
+  return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
+                                       a4_sub_a2_a3_op.getResult(),
+                                       rhs_value)
       .getResult();
 }
 
