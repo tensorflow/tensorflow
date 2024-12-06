@@ -39,13 +39,14 @@ class HloRunnerPjRt : public HloRunnerInterface {
   explicit HloRunnerPjRt(
       std::unique_ptr<PjRtClient> pjrt_client,
       DeviceShapeRepresentationFn device_shape_representation_fn,
-      DeviceShapeSizeFn device_shape_size_fn);
+      DeviceShapeSizeFn device_shape_size_fn,
+      bool use_parameter_layout_on_device = false);
 
   ~HloRunnerPjRt() override;
 
   // Transfers data between the host and device.
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> TransferLiteralToDevice(
-      const Literal& literal, int64_t memory_space);
+      const Literal& literal, const Layout& parameter_layout);
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   TransferLiteralsToDevice(const ComputationLayout& entry_layout,
                            absl::Span<const Literal* const> literals);
@@ -114,6 +115,7 @@ class HloRunnerPjRt : public HloRunnerInterface {
   std::unique_ptr<PjRtClient> pjrt_client_;
   DeviceShapeRepresentationFn device_shape_representation_fn_;
   DeviceShapeSizeFn device_shape_size_fn_;
+  bool use_parameter_layout_on_device_ = false;
 
   std::vector<PjRtBuffer*> BufferVecToPointerVec(
       const std::vector<std::unique_ptr<PjRtBuffer>>& buffer);
