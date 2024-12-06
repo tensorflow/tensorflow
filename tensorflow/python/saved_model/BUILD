@@ -1085,6 +1085,8 @@ tf_py_strict_test(
 #     deps = [
 #         "//learning/brain/contrib/hub/public:client",
 #         "//learning/brain/contrib/hub/public:handle",
+#         "//learning/brain/contrib/hub/public/proto:metadata_cc_proto",
+#         "//learning/brain/contrib/hub/public/proto:options_cc_proto",
 #         "//learning/brain/contrib/hub/public/testing:in_process_tfhub_env",
 #         "//learning/brain/contrib/hub/public/testing:testdata_util",
 #         "//learning/metadata/cataline/proto:ml_data_processes_cc_proto",
@@ -1096,6 +1098,7 @@ tf_py_strict_test(
 #         "@local_tsl//tsl/platform:env",
 #         "@local_tsl//tsl/platform:path",
 #         "//third_party/protobuf",
+#         "//third_party/protobuf/io",
 #         "@com_google_absl//absl/log:check",
 #         "@com_google_absl//absl/memory",
 #         "@com_google_absl//absl/status",
