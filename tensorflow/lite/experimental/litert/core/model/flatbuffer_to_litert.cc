@@ -14,6 +14,7 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/flatbuffer_to_litert.h"
 
+#include <cstdint>
 #include <utility>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -129,22 +130,35 @@ Expected<Quantization> MapQuantization(
     const TflQuantization* tfl_quantization) {
   if (!IsQuantized(tfl_quantization)) {
     return std::make_pair(kLiteRtQuantizationNone,
-                          LiteRtQuantizationTypeDetail());
+                          LiteRtQuantizationParameters());
   }
 
-  auto per_tensor_qparams = AsPerTensorQparams(tfl_quantization);
-  if (!per_tensor_qparams) {
-    LITERT_LOG(LITERT_ERROR,
-               "Only per tensor quantization currently supported");
-    return Error(kLiteRtStatusErrorUnsupported);
+  LiteRtQuantizationTypeId quantization_type;
+  LiteRtQuantizationParameters qparams;
+
+  if (IsPerTensorQuantized(tfl_quantization)) {
+    quantization_type = kLiteRtQuantizationPerTensor;
+    auto per_tensor_qparams = AsPerTensorQparams(tfl_quantization);
+    if (!per_tensor_qparams) {
+      LITERT_LOG(LITERT_ERROR, "Quantization parameters not found.");
+      return Error(kLiteRtStatusErrorNotFound);
+    }
+    auto [zero_point, scale] = *per_tensor_qparams;
+    qparams.scale = std::vector<float>(1, scale);
+    qparams.zero_point = std::vector<int64_t>(1, zero_point);
   }
-  auto [zero_point, scale] = *per_tensor_qparams;
+  if (IsPerChannelQuantized(tfl_quantization)) {
+    quantization_type = kLiteRtQuantizationPerChannel;
+    auto per_channel_qparams = AsPerChannelQparams(tfl_quantization);
+    if (!per_channel_qparams) {
+      LITERT_LOG(LITERT_ERROR, "Quantization parameters not found.");
+      return Error(kLiteRtStatusErrorNotFound);
+    }
+    auto [zero_point, scale] = *per_channel_qparams;
+    qparams.scale = scale;
+    qparams.zero_point = zero_point;
+  }
 
-  LiteRtQuantizationTypeDetail detail;
-  detail.per_tensor.scale = scale;
-  detail.per_tensor.zero_point = zero_point;
-
-  return std::make_pair(kLiteRtQuantizationPerTensor, detail);
+  return std::make_pair(quantization_type, qparams);
 }
-
 }  // namespace litert::internal

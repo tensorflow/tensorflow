@@ -139,6 +139,11 @@ typedef struct {
   int64_t zero_point;
 } LiteRtQuantizationPerTensor;
 
+typedef struct {
+  float* scales;
+  int64_t* zero_points;
+} LiteRtQuantizationPerChannel;
+
 // The identifier for quantization scheme type union.
 typedef enum {
   // Tag for tensors without quantization.
@@ -161,6 +166,14 @@ LiteRtStatus LiteRtGetQuantizationTypeId(LiteRtTensor tensor,
 // Get the per-tensor quantization information for a given tensor if it has it.
 LiteRtStatus LiteRtGetPerTensorQuantization(
     LiteRtTensor tensor, LiteRtQuantizationPerTensor* per_tensor_quantization);
+
+// Get the per-channel quantization information for a given tensor if it has it.
+LiteRtStatus LiteRtGetPerChannelQuantization(
+    LiteRtTensor tensor,
+    LiteRtQuantizationPerChannel* per_channel_quantization);
+
+LiteRtStatus LiteRtGetPerChannelQuantizationChannels(
+    LiteRtTensor tensor, LiteRtParamIndex* num_channels);
 
 // EDGES
 
