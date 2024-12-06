@@ -57,9 +57,17 @@ absl::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
 }
 
 absl::Status TfAllocatorAdapter::Deallocate(int device_ordinal,
-                                            DeviceMemoryBase mem) {
-  wrapped_->DeallocateRaw(mem.opaque());
-  return absl::OkStatus();
+                                            DeviceMemoryBase mem,
+                                            Stream *stream) {
+  if (stream != nullptr) {
+    return stream->DoHostCallback(
+        [wrapped = wrapped_, opaque = mem.opaque()]() {
+          wrapped->DeallocateRaw(opaque);
+        });
+  } else {
+    wrapped_->DeallocateRaw(mem.opaque());
+    return absl::OkStatus();
+  }
 }
 
 absl::StatusOr<Stream *> TfAllocatorAdapter::GetStream(int device_ordinal) {

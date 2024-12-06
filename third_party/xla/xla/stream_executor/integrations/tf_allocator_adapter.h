@@ -57,7 +57,12 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
                                               bool retry_on_failure,
                                               int64_t memory_space) override;
 
-  absl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override;
+  absl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override {
+    return Deallocate(device_ordinal, std::move(mem), nullptr);
+  }
+
+  absl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem,
+                          Stream *stream) override;
 
   // The Tensorflow BFC allocator used on GPU allows host-side deallocation
   // before GPU execution takes place. Tensorflow uses the ordering of the main
@@ -136,6 +141,11 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
   }
 
   absl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override {
+    return Deallocate(device_ordinal, std::move(mem), nullptr);
+  }
+
+  absl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem,
+                          Stream *stream) override {
     if (mem.opaque() == nullptr) return absl::OkStatus();
     // Memory space is not passed to deallocate, look up in
     // buffer_memory_spaces_.
@@ -150,7 +160,7 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
         // the memory.
         // See b/325527293 for more details.
         return memory_space_to_per_device_allocators_[0][device_ordinal]
-            ->Deallocate(device_ordinal, mem);
+            ->Deallocate(device_ordinal, mem, stream);
       }
       memory_space = it->second;
       buffer_memory_spaces_.erase(it);
@@ -159,7 +169,7 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
     auto it = memory_space_to_per_device_allocators_.find(memory_space);
     CHECK(it != memory_space_to_per_device_allocators_.end());
     CHECK_LT(device_ordinal, it->second.size());
-    return it->second[device_ordinal]->Deallocate(device_ordinal, mem);
+    return it->second[device_ordinal]->Deallocate(device_ordinal, mem, stream);
   }
 
   // The Tensorflow BFC allocator used on GPU allows host-side deallocation
