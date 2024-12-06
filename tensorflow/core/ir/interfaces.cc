@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/ir/interfaces.h"
 
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
