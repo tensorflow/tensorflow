@@ -21,9 +21,10 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/hlo_module_config.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
@@ -43,13 +44,11 @@ constexpr double kDefaultTolerance = 0.1;
 
 class BufferComparatorTest : public testing::Test {
  protected:
-  BufferComparatorTest()
-#if GOOGLE_CUDA
-      : platform_(se::PlatformManager::PlatformWithName("CUDA").value()),
-#elif TENSORFLOW_USE_ROCM
-      : platform_(se::PlatformManager::PlatformWithName("ROCM").value()),
-#endif
-        stream_exec_(platform_->ExecutorForDevice(0).value()) {
+  BufferComparatorTest() {
+    auto name = absl::AsciiStrToUpper(
+        xla::PlatformUtil::CanonicalPlatformName("gpu").value());
+    platform_ = se::PlatformManager::PlatformWithName(name).value();
+    stream_exec_ = platform_->ExecutorForDevice(0).value();
   }
 
   // Take floats only for convenience. Still uses ElementType internally.

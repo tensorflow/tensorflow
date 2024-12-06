@@ -17,14 +17,9 @@ limitations under the License.
 #define XLA_SERVICE_GPU_BUFFER_COMPARATOR_H_
 
 #include "absl/status/statusor.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/stream_executor.h"
-
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
+#include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
 
