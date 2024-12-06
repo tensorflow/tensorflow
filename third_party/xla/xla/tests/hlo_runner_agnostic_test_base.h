@@ -314,6 +314,17 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr);
 
+  // Override this method to add a default preprocessing step that is applied to
+  // the test module in all Run* methods. The intended usecase for this is to
+  // adapt existing test cases to be compatible with runners that don't support
+  // certain features. Does nothing and returns OK by default.
+  //
+  // This method is called before any additional preprocessing steps performed
+  // by the optional `test_preprocessor` argument.
+  virtual absl::Status PreprocessModuleForTestRunner(HloModule* module) const {
+    return absl::OkStatus();
+  }
+
   HloRunnerInterface& test_runner() const { return *test_runner_; }
   HloRunnerInterface& reference_runner() const { return *reference_runner_; }
 

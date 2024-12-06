@@ -312,6 +312,10 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
       !change.ok()) {
     return ::testing::AssertionFailure() << change.status();
   }
+  if (absl::Status status = PreprocessModuleForTestRunner(module.get());
+      !status.ok()) {
+    return ::testing::AssertionFailure() << status;
+  }
   if (test_preprocessor != nullptr) {
     test_preprocessor(module.get());
   }
@@ -570,6 +574,10 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
            << "Error while parsing HLO text format: "
            << module.status().ToString();
   }
+  if (absl::Status status = PreprocessModuleForTestRunner(module->get());
+      !status.ok()) {
+    return ::testing::AssertionFailure() << status;
+  }
   const std::vector<Literal> fake_arguments =
       MakeFakeArguments(module->get(), use_random_data).value();
   std::vector<Literal*> fake_argument_ptrs;
@@ -764,6 +772,7 @@ HloRunnerAgnosticTestBase::RunAndCompareInternal(
   TF_RETURN_IF_ERROR(verifier().Run(module.get()).status());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> reference_module,
                       MakeReferenceModule(*module, reference_preprocessor));
+  TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
   if (test_preprocessor != nullptr) {
     test_preprocessor(module.get());
   }
