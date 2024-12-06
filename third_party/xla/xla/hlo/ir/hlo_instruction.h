@@ -1779,7 +1779,9 @@ class HloInstruction {
 
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use
-  // of this instruction to avoid introducing cycles into the graph.
+  // of this instruction to avoid introducing cycles into the graph. If
+  // also_keep is provided, the instruction also remains a use of this
+  // instruction.
   //
   // If this instruction is the root of its computation, sets the computation's
   // root to new_producer.
@@ -1789,14 +1791,18 @@ class HloInstruction {
   //
   // If a user is a fusion instruction, this function will remove any duplicated
   // operands of it which could be created due to this replacement.
-  //
-  // trigger is a string used in the error message if the new and the
-  // current instruction don't have a compatible shape.
   absl::Status ReplaceAllUsesWith(HloInstruction* new_producer,
-                                  absl::string_view trigger = "");
+                                  HloInstruction* also_keep = nullptr);
+
+  // Same as ReplaceAllUsesWith, with an additional string that is used in the
+  // error message if the new and the current instruction don't have a
+  // compatible shape.
+  absl::Status ReplaceAllUsesWith(HloInstruction* new_producer,
+                                  absl::string_view trigger);
 
   // Same as ReplaceAllUsesWith, but new_producer can have a different shape.
-  absl::Status ReplaceAllUsesWithDifferentShape(HloInstruction* new_producer);
+  absl::Status ReplaceAllUsesWithDifferentShape(
+      HloInstruction* new_producer, HloInstruction* except = nullptr);
 
   // Same as ReplaceAllUsesWith, but only replace given set of users.
   absl::Status ReplaceUsesWith(absl::Span<HloInstruction* const> users,
@@ -2877,6 +2883,7 @@ class HloInstruction {
     void MaybeRemoveUser(HloInstruction* user);  // Remove user if present
     void RemoveUser(HloInstruction* user);       // REQUIRES: Contains(user)
     int64_t UserId(HloInstruction* user);
+    void swap(Users& other);
     void SortInstructionUsers(
         const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
         const Users& sorted_instruction_users);
