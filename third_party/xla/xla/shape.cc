@@ -82,8 +82,8 @@ Shape::Shape(const ShapeProto& shape_proto) {
   }
 }
 
-void Shape::SetProto(ShapeProto& proto) const {
-  proto.Clear();
+ShapeProto Shape::ToProto() const {
+  ShapeProto proto;
   proto.set_element_type(element_type_);
   proto.mutable_dimensions()->Reserve(dimensions_size());
   for (const int64_t dimension : dimensions()) {
@@ -99,11 +99,6 @@ void Shape::SetProto(ShapeProto& proto) const {
   if (has_layout()) {
     layout().SetProto(*proto.mutable_layout());
   }
-}
-
-ShapeProto Shape::ToProto() const {
-  ShapeProto proto;
-  SetProto(proto);
   return proto;
 }
 
