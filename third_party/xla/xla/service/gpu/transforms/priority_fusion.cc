@@ -21,6 +21,7 @@ limitations under the License.
 #include <iterator>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -747,7 +748,8 @@ class PriorityFusionQueue {
           "the fusion would result in an overly large code duplication");
     }
 
-    return InstructionFusion::ShouldFuseInPlaceOp(producer, consumer);
+    return InstructionFusion::ShouldFuseInPlaceOp(producer, consumer,
+                                                  std::nullopt);
   }
 
   FusionDecision CanFuseCached(HloInstruction* producer,
