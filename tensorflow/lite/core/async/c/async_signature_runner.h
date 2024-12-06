@@ -18,6 +18,8 @@ limitations under the License.
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <cstddef>
+
 #include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/async/interop/c/attribute_map.h"
 #include "tensorflow/lite/core/async/interop/c/types.h"
