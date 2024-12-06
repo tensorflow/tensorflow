@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 

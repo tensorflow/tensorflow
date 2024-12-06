@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_PLUGIN_VARIABLE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_PLUGIN_VARIABLE_H_
 
-#include "tsl/platform/status.h"
+#include "absl/status/status.h"
 
 namespace tensorflow {
 
@@ -26,7 +26,7 @@ class Tensor;
 // of passing between plugin and tensorflow. Similar to `PluginOpKernelContext`,
 // the implementations can accomodate for "Internal build" and "External build",
 // meaning the plugin is built with TensorFlow either together or separately. In
-// repsective build modes, the implementations can either include
+// respective build modes, the implementations can either include
 // tensorflow::VariableInfo and use C++ API directly, or include the C structure
 // `TF_VariableInfo` and use the corresponding C API.
 class PluginVariable {

@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/example_plugin.h"
-#include "tensorflow/core/platform/status.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime

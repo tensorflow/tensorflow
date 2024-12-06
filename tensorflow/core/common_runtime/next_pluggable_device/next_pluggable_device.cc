@@ -19,14 +19,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/flags/flag.h"
+#include "absl/status/status.h"
 #include "tensorflow/compiler/jit/pjrt_device_context.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_allocator.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/util/reffed_status_callback.h"
 
 ABSL_FLAG(bool, next_pluggable_device_use_pjrt_allocator, true,
           "Use PjRtAllocator in next pluggable device.");
