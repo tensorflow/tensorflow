@@ -54,11 +54,11 @@ tf_module {
   }
   member_method {
     name: "log_every_n"
-    argspec: "args=[\'level\', \'msg\', \'n\'], varargs=args, keywords=None, defaults=None"
+    argspec: "args=[\'level\', \'msg\', \'n\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "log_first_n"
-    argspec: "args=[\'level\', \'msg\', \'n\'], varargs=args, keywords=None, defaults=None"
+    argspec: "args=[\'level\', \'msg\', \'n\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "log_if"
