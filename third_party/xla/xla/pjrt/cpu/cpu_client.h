@@ -265,6 +265,8 @@ class TfrtCpuClient final : public PjRtClient {
       std::function<void(HloModuleConfig&)> customize_hlo_module_config);
   ~TfrtCpuClient() override;
 
+  void ShutDown() override;
+
   int process_index() const override { return process_index_; }
 
   int device_count() const override { return devices_.size(); }
