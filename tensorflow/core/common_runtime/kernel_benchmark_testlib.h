@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_KERNEL_BENCHMARK_TESTLIB_H_
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/executor.h"
