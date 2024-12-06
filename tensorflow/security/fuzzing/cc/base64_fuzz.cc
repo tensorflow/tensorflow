@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
-#include <cstdlib>
+#include <cassert>
 #include <string>
 #include <string_view>
 
 #include "fuzztest/fuzztest.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/base64.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
