@@ -200,5 +200,57 @@ TEST_F(LegalizeSchedulingAnnotationsTest, MissingAnnotationInStart) {
   EXPECT_IS_NOT_OK(
       LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
 }
+
+TEST_F(LegalizeSchedulingAnnotationsTest, MoveFusedOpAnnotationToCaller) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+
+  fused_computation.1 {
+    param0 = bf16[1024,6144]{1,0:T(8,128)(2,1)} parameter(0)
+    param1 = bf16[6144,2048]{1,0:T(8,128)(2,1)} parameter(1)
+    ROOT convolution = bf16[1024,2048]{1,0:T(8,128)(2,1)} convolution(param0, param1), dim_labels=bf_io->bf, frontend_attributes={_scheduling_group_id="1"}
+  }
+
+  ENTRY entry {
+    p0 = bf16[1024,6144]{1,0:T(8,128)(2,1)} parameter(0)
+    p1 = bf16[6144,2048]{1,0:T(8,128)(2,1)} parameter(1)
+    ROOT fusion0 = bf16[1024,2048]{1,0:T(8,128)(2,1)} fusion(p0, p1), kind=kOutput, calls=fused_computation.1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  EXPECT_IS_OK(LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
+
+  HloInstruction* fusion = hlo_module->entry_computation()->root_instruction();
+  const auto& attrs = fusion->frontend_attributes().map();
+  EXPECT_TRUE(attrs.contains("_scheduling_group_id"));
+  EXPECT_EQ(attrs.at("_scheduling_group_id"), "1");
+}
+
+TEST_F(LegalizeSchedulingAnnotationsTest, FusedOpsWithDifferentAnnotationIds) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+
+  fused_computation.1 {
+    param0 = bf16[1024,6144]{1,0:T(8,128)(2,1)} parameter(0)
+    param1 = bf16[6144,4096]{1,0:T(8,128)(2,1)} parameter(1)
+    slice = bf16[6144,2048]{1,0:T(8,128)(2,1)} slice(param1), slice={[0:6144], [0:2048]}, frontend_attributes={_scheduling_group_id="1"}
+    ROOT convolution = bf16[1024,2048]{1,0:T(8,128)(2,1)} convolution(param0, slice), dim_labels=bf_io->bf, frontend_attributes={_scheduling_group_id="2"}
+  }
+
+  ENTRY entry {
+    p0 = bf16[1024,6144]{1,0:T(8,128)(2,1)} parameter(0)
+    p1 = bf16[6144,4096]{1,0:T(8,128)(2,1)} parameter(1)
+    ROOT fusion0 = bf16[1024,2048]{1,0:T(8,128)(2,1)} fusion(p0, p1), kind=kOutput, calls=fused_computation.1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  EXPECT_IS_NOT_OK(
+      LegalizeSchedulingAnnotations().Run(hlo_module.get()).status());
+}
+
 }  // namespace
 }  // namespace xla

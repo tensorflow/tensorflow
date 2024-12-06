@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/legalize_scheduling_annotations.h"
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -31,8 +32,27 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
+
+absl::StatusOr<int64_t> ExtractAnnotation(
+    const ::google::protobuf::Map<std::string, std::string>& attrs,
+    absl::string_view instr_name) {
+  int64_t annotation_id;
+  if (!absl::SimpleAtoi(attrs.at("_scheduling_group_id"), &annotation_id)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Instruction has a non-integer scheduling annotation, inst: ",
+        instr_name, ", annotation: ", attrs.at("_scheduling_group_id")));
+  }
+  if (annotation_id < 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Instruction has a negative scheduling annotation, inst: ", instr_name,
+        ", annotation: ", attrs.at("_scheduling_group_id")));
+  }
+  return annotation_id;
+}
 
 absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     HloModule* module,
@@ -51,17 +71,8 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
       }
       VLOG(1) << "Annotated instruction: " << instr->name() << " "
               << attrs.at("_scheduling_group_id");
-      int64_t annotation_id;
-      if (!absl::SimpleAtoi(attrs.at("_scheduling_group_id"), &annotation_id)) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Instruction has a non-integer scheduling annotation, inst: ",
-            instr->name(), ", annotation: ", attrs.at("_scheduling_group_id")));
-      }
-      if (annotation_id < 0) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Instruction has a negative scheduling annotation, inst: ",
-            instr->name(), ", annotation: ", attrs.at("_scheduling_group_id")));
-      }
+      TF_ASSIGN_OR_RETURN(int64_t annotation_id,
+                          ExtractAnnotation(attrs, instr->name()));
       if (annotation_to_computation.contains(annotation_id) &&
           annotation_to_computation[annotation_id] != computation) {
         return absl::UnimplementedError(absl::StrCat(
@@ -76,6 +87,45 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
       annotation_to_instructions[annotation_id].push_back(instr);
       annotation_to_computation[annotation_id] = computation;
     }
+  }
+  // Move the annotation from inside fusion computation to the caller
+  // instruction if the caller doesn't have an annotation. Return an error if
+  // there are some fused instructions with different annotations.
+  for (HloComputation* computation : module->computations(execution_threads)) {
+    if (!computation->IsFusionComputation() ||
+        annotation.contains(computation->FusionInstruction())) {
+      continue;
+    }
+    int64_t seen_annotation = -1;
+    for (HloInstruction* instr : computation->instructions()) {
+      const auto& attrs = instr->frontend_attributes().map();
+      if (!attrs.contains("_scheduling_group_id")) {
+        continue;
+      }
+      TF_ASSIGN_OR_RETURN(int64_t annotation_id,
+                          ExtractAnnotation(attrs, instr->name()));
+      if (seen_annotation == -1) {
+        seen_annotation = annotation_id;
+        continue;
+      }
+      if (seen_annotation != annotation_id) {
+        return absl::InternalError(absl::StrCat(
+            "Found a fusion with multiple annotations in the fused "
+            "computation. fusion: ",
+            computation->FusionInstruction()->name(),
+            ", annotations: ", seen_annotation, " and ", annotation_id));
+      }
+    }
+    // No fused instructions are annotated, nothing to do.
+    if (seen_annotation == -1) {
+      continue;
+    }
+    FrontendAttributes frontend_attributes =
+        computation->FusionInstruction()->frontend_attributes();
+    frontend_attributes.mutable_map()->insert(
+        {"_scheduling_group_id", std::to_string(seen_annotation)});
+    computation->FusionInstruction()->set_frontend_attributes(
+        frontend_attributes);
   }
   if (annotation_to_computation.empty()) {
     return false;
