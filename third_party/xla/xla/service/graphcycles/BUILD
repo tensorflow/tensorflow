@@ -18,7 +18,6 @@ cc_library(
         ":ordered_set",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
@@ -41,6 +40,7 @@ xla_cc_test(
     deps = [
         ":graphcycles",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/random",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
