@@ -6308,7 +6308,7 @@ shape `indices.shape[:-1] + params.shape[indices.shape[-1]:]`.}]>:$output
 
 def TF_GatherV2Op : TF_Op<"GatherV2", [Pure]> {
   let summary = [{
-Gather slices from `params` axis `axis` according to `indices`.
+Gather slices from `params` `axis` according to `indices`.
   }];
 
   let description = [{
@@ -6351,8 +6351,7 @@ See also `tf.batch_gather` and `tf.gather_nd`.
     Arg<TensorOf<[TF_Int16, TF_Int32, TF_Int64]>, [{Index tensor. Must be in range `[0, params.shape[axis])`.}]>:$indices,
     Arg<TF_I32OrI64Tensor, [{The axis in `params` to gather `indices` from. Defaults to the first
 dimension. Supports negative indexes.}]>:$axis,
-
-    DefaultValuedOptionalAttr<I64Attr, "0">:$batch_dims
+    Arg<TF_Tensor, [{The number of batch dimensions. Must be less than or equal to `rank(indices)`.}]>:$batch_dims
   );
 
   let results = (outs
