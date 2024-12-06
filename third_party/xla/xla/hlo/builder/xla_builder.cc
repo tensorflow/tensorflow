@@ -1059,6 +1059,16 @@ XlaOp XlaBuilder::UnaryOp(HloOpcode unop, XlaOp operand) {
   });
 }
 
+XlaOp XlaBuilder::UnaryOp(HloOpcode unop, XlaOp operand,
+                          const ResultAccuracy& result_accuracy) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    TF_ASSIGN_OR_RETURN(
+        Shape shape, ShapeInference::InferUnaryOpShape(unop, *operand_shape));
+    return AddOpWithResultAccuracy(unop, shape, {operand}, result_accuracy);
+  });
+}
+
 namespace {
 
 // Broadcasts an origin XLA op to the rank of target_shape.
@@ -4791,6 +4801,15 @@ absl::StatusOr<XlaOp> XlaBuilder::AddOpWithShape(
   return AddInstruction(std::move(instr), opcode, operands);
 }
 
+absl::StatusOr<XlaOp> XlaBuilder::AddOpWithResultAccuracy(
+    HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands,
+    const ResultAccuracy& result_accuracy) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  *instr.mutable_result_accuracy() = result_accuracy;
+  return AddInstruction(std::move(instr), opcode, operands);
+}
+
 void XlaBuilder::AddCalledComputation(const XlaComputation& computation,
                                       HloInstructionProto* instr) {
   absl::flat_hash_map<int64_t, int64_t> remapped_ids;
@@ -5670,6 +5689,11 @@ XlaOp Atan2(const XlaOp y, const XlaOp x,
 XlaOp Exp(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kExp, operand);
 }
+
+XlaOp Exp(const XlaOp operand, const ResultAccuracy& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kExp, operand, result_accuracy);
+}
+
 XlaOp Expm1(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kExpm1, operand);
 }

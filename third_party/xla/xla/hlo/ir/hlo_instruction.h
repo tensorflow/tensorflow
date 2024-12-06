@@ -1530,8 +1530,6 @@ class HloInstruction {
       absl::string_view execution_thread,
       const absl::flat_hash_set<absl::string_view>& execution_threads_set);
 
-  // Returns true if the opcode is a unary op supports tunable accuracy.
-  static bool IsUnaryOpWithResultAccuracy(HloOpcode opcode);
 
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
@@ -2242,6 +2240,15 @@ class HloInstruction {
   // kCall instructions used as a Composite op.
   bool is_composite() const { return has_rare() && rare()->is_composite; }
 
+  const ResultAccuracy& result_accuracy() const {
+    return rare()->result_accuracy;
+  }
+
+  bool has_result_accuracy() const {
+    return has_rare() && (result_accuracy().has_tolerance() ||
+                          result_accuracy().mode() != ResultAccuracy::DEFAULT);
+  }
+
   void add_single_statistic(Statistic statistic) {
     *mutable_rare()->statistics_viz.add_statistics() = std::move(statistic);
   }
@@ -2315,6 +2322,12 @@ class HloInstruction {
   // Precondition: opcode must be kConvolution or kDot.
   const PrecisionConfig& precision_config() const;
   PrecisionConfig* mutable_precision_config();
+
+  // Sets the result accuracy for this instruction. Supported for unary ops
+  // with multiple implementations.
+  void set_result_accuracy(ResultAccuracy result_accuracy) {
+    mutable_rare()->result_accuracy = std::move(result_accuracy);
+  }
 
   // Sets the debug metadata for this instruction, excluding creation_pass_id,
   // which should never be copied anywhere.
@@ -2835,6 +2848,9 @@ class HloInstruction {
     // Used to render an HLO graph when tracking the propagation desired values
     // through it.
     StatisticsViz statistics_viz;
+
+    // Used to select different implementations for unary functions.
+    ResultAccuracy result_accuracy;
   };
 
   static const Rare* const kEmptyRare;
@@ -3010,6 +3026,8 @@ absl::StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 
+bool IsUnaryOpWithResultAccuracy(HloOpcode opcode);
+bool IsValidResultAccuracy(const ResultAccuracy& result_accuracy);
 // Map classes that guarantee a deterministic iteration order when the key is
 // an HloInstruction* or a const HloInstruction*.
 // To make the iteration order over the map deterministic, the comparator

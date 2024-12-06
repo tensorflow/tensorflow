@@ -1970,6 +1970,21 @@ TEST(XlaBuilderTest, TopKDimensions) {
   EXPECT_EQ(root->shape().tuple_shapes(1).dimensions(1), k);
 }
 
+TEST(XlaBuilderTest, ExpWithResultAccuracy) {
+  XlaBuilder b(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {1, 1});
+  ResultAccuracy result_accuracy;
+  ResultAccuracy::Tolerance tolerance;
+  tolerance.set_ulps(120.0f);
+  *result_accuracy.mutable_tolerance() = tolerance;
+  Exp(Parameter(&b, 0, shape, "p0"), result_accuracy);
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  const HloInstruction* root = GetRoot(*module);
+
+  EXPECT_EQ(root->result_accuracy().tolerance().ulps(), 120.0f);
+  EXPECT_EQ(root->result_accuracy().mode(), ResultAccuracy::DEFAULT);
+}
+
 //============================================================================//
 // Experimental Test
 //============================================================================//
@@ -3519,7 +3534,8 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, XlaBuilderUnboundedUnaryOpTest,
                               {"u32[?]", "u32[?]", &Clz},
                               {"f32[?]", "f32[?]", &Cos},
                               {"f32[?]", "f32[?]", &Erf},
-                              {"f32[?]", "f32[?]", &Exp},
+                              {"f32[?]", "f32[?]",
+                               [](XlaOp x) { return Exp(x); }},
                               {"f32[?]", "f32[?]", &Expm1},
                               {"f32[?]", "f32[?]", &Floor},
                               {"f32[?]", "f32[?]", &Imag},
