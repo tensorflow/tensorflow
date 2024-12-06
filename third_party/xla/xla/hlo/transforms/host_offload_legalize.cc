@@ -517,14 +517,14 @@ absl::Status MoveCopyDown(
           }
           const Shape new_bitcast_shape =
               AddMajormostDimension(shape_before_copy);
-          LOG(ERROR) << absl::StreamFormat(
+          VLOG(2) << absl::StreamFormat(
               " Encountered bitcast \"%s\", updating current shape from %s to "
               "%s",
               instruction->name(), shape_before_copy.ToString(true),
               new_bitcast_shape.ToString(true));
           shape_before_copy = new_bitcast_shape;
           const Shape new_copy_shape = AddMajormostDimension(shape_after_copy);
-          LOG(ERROR) << absl::StreamFormat(
+          VLOG(2) << absl::StreamFormat(
               " Also updating shape after copy from %s to %s",
               shape_after_copy.ToString(true), new_copy_shape.ToString(true));
           shape_after_copy = new_copy_shape;
