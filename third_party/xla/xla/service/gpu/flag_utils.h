@@ -25,12 +25,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Returns compile time optimization effort in range [-1.0, 1.0] where values <
-// 0.0 indicate skipping passes which might optimize the final runtime (thus
-// improving compile time), and values > 0.0 indicate running additional passes
-// which may improve runtime at the cost of compilation time.
-float ExecTimeOptimizationEffort(const HloModuleConfig& config);
-
 // Defines the optimization effort to trigger additional passes which optimize
 // communication compute overlap.
 constexpr float kExtraCollectiveOptimizations = 0.2;
@@ -39,15 +33,14 @@ constexpr float kExtraCollectiveOptimizations = 0.2;
 // the potential expense of compile time.
 template <typename Pass>
 bool IsPassEnabledAtOptimizationEffort(const HloModule& module) {
-  float exec_effort = ExecTimeOptimizationEffort(module.config());
-
   bool is_collective_optimization_pass =
       std::is_same_v<Pass, CollectivePipeliner> ||
       std::is_same_v<Pass, DoubleBufferLoopUnrolling> ||
       std::is_same_v<Pass, LatencyHidingScheduler>;
 
   if (is_collective_optimization_pass) {
-    return exec_effort >= kExtraCollectiveOptimizations;
+    return module.config().exec_time_optimization_effort() >=
+           kExtraCollectiveOptimizations;
   }
 
   return true;

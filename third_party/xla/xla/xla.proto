@@ -42,15 +42,6 @@ message DebugOptions {
   // XLA backend-agnostic options.
   //--------------------------------------------------------------------------//
   // go/keep-sorted start
-
-  // The execution time optimization effort to expend during compilation.
-  // See `exec_time_optimization_effort` for accepted ranges. This flag will
-  // override any changes set in `ExecutionOptions`. Most likely this is just a
-  // temporary measure before https://github.com/jax-ml/jax/issues/24715 is in.
-  //
-  // TODO(b/377871215): Check whether we still need this.
-  float xla_experimental_exec_time_optimization_effort = 346;
-
   // go/keep-sorted end
 
   //--------------------------------------------------------------------------//
@@ -520,7 +511,8 @@ message DebugOptions {
   // xla_gpu_enable_async_reduce_scatter
   // xla_gpu_enable_async_all_to_all
   // xla_gpu_enable_async_collectives
-  reserved 152, 278, 183, 199, 200, 201, 238;
+  // xla_experimental_exec_time_optimization_effort
+  reserved 152, 278, 183, 199, 200, 201, 238, 346;
 
   // Size threshold (in bytes) for the GPU collective combiners.
   int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;

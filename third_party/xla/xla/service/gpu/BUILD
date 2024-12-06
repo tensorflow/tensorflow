@@ -3251,7 +3251,6 @@ xla_cc_test(
 
 cc_library(
     name = "flag_utils",
-    srcs = ["flag_utils.cc"],
     hdrs = ["flag_utils.h"],
     deps = [
         "//xla/hlo/ir:hlo",
