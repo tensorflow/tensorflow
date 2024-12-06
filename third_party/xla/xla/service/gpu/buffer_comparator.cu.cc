@@ -103,11 +103,16 @@ __global__ void xla_fp8_e5m2_comparison(__nv_fp8_storage_t* buffer_a,
 #endif  // GOOGLE_CUDA
 
 #if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
+
 __global__ void xla_fp8_e4m3fnuz_comparison(__hip_fp8_storage_t* buffer_a,
                                             __hip_fp8_storage_t* buffer_b,
                                             float rel_error_threshold,
                                             uint64_t buffer_length,
                                             int* mismatch_count) {
+#if defined(__gfx940__) || defined(__gfx941__) || defined(__gfx942__) 
+// NOTE: according to amd_hip_fp8.h, GFX1200 and GFX1201 support ocp __hip_fp8_e4m3 
+// but not __hip_fp8_e4m3_fnuz
+
   int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx >= buffer_length) return;
   __hip_fp8_e4m3_fnuz elem_a_fp8, elem_b_fp8;
@@ -123,6 +128,10 @@ __global__ void xla_fp8_e4m3fnuz_comparison(__hip_fp8_storage_t* buffer_a,
 
   if (rel_error > rel_error_threshold || isnan(rel_error))
     atomicAdd(mismatch_count, 1);
+#else
+  // on unsupported architectures, this should not / cannot be used!
+  atomicAdd(mismatch_count, 1); 
+#endif
 }
 
 __global__ void xla_fp8_e5m2fnuz_comparison(__hip_fp8_storage_t* buffer_a,
@@ -130,6 +139,7 @@ __global__ void xla_fp8_e5m2fnuz_comparison(__hip_fp8_storage_t* buffer_a,
                                             float rel_error_threshold,
                                             uint64_t buffer_length,
                                             int* mismatch_count) {
+#if defined(__gfx940__) || defined(__gfx941__) || defined(__gfx942__) 
   int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx >= buffer_length) return;
   __hip_fp8_e5m2_fnuz elem_a_fp8, elem_b_fp8;
@@ -145,7 +155,12 @@ __global__ void xla_fp8_e5m2fnuz_comparison(__hip_fp8_storage_t* buffer_a,
 
   if (rel_error > rel_error_threshold || isnan(rel_error))
     atomicAdd(mismatch_count, 1);
+#else
+  // on unsupported architectures, this should not / cannot be used!
+  atomicAdd(mismatch_count, 1); 
+#endif
 }
+
 #endif  // TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
 
 __global__ void xla_fp16_comparison(__half* buffer_a, __half* buffer_b,

@@ -268,6 +268,9 @@ struct BlasLt {
         size_t max_algorithm_count = 128,
         size_t max_workspace_size = 1ll << 32) const = 0;
 
+    // Algorithm needs to be set before calling ExecuteOnStream function
+    virtual absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) const = 0;
+
     virtual ~MatmulPlan() {}
 
    protected:

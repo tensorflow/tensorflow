@@ -720,7 +720,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
   TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
                       gpublas_lt::AsBlasLtEpilogue(epilogue));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(gemm_config),
+      instr, std::move(gemm_config),
       blas_lt_epilogue, algorithm, a, b, c, d, bias, aux, a_scale, b_scale,
       c_scale, d_scale, d_amax, workspace_buffer);
   AddThunkToThunkSequence(std::move(thunk));
@@ -810,7 +810,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
                       gpublas_lt::AsBlasLtEpilogue(epilogue));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(gemm_config),
+      instr, std::move(gemm_config),
       blas_lt_epilogue, algorithm, a, b, c, d, bias, aux, a_scale, b_scale,
       c_scale, d_scale, d_amax, workspace_buffer);
   AddThunkToThunkSequence(std::move(thunk));

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <deque>
 #include <utility>
 
 #include "xla/status_macros.h"
@@ -24,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/matmul_autotune.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace tensorflow {
 
@@ -44,32 +47,12 @@ int64_t GetWorkspaceLimit(int64_t default_value_in_bytes) {
   return default_value_in_bytes;
 }
 
-std::string BlasLtMatmulPlanParams::ToString() const {
-  return "";  // TODO
-}
-
 bool BlasLtMatmulPlanParams::operator==(
     const BlasLtMatmulPlanParams& other) const {
   return internal::AsTuple(*this) == internal::AsTuple(other);
 }
 
 namespace {
-
-// Thread-safe map from matmul parameters to their corresponding plan and
-// algorithms.
-struct BlasLtMatmulPlanMap {
-  absl::Mutex mu;
-
-  template <class... Args>
-  auto emplace(Args&&... args) {
-    absl::MutexLock lock(&mu);
-    return map_.emplace(std::forward<Args>(args)...);
-  }
-
- private:
-  absl::flat_hash_map<BlasLtMatmulPlanParams, PlanAndAlgorithms> map_
-      ABSL_GUARDED_BY(mu);
-};
 
 int MatmulMaxAutotuneAlgorithmCount() {
   int64_t value;
@@ -110,9 +93,19 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
 
 }  // namespace
 
-StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
+/* static */ BlasLtMatmulPlanCache& BlasLtMatmulPlanCache::i(se::Stream *stream) {
+  static absl::Mutex m(absl::kConstInit);
+  // Each GPU gets different cache instance
+  static std::deque< BlasLtMatmulPlanCache > meta(8);
+  absl::MutexLock lock(&m);
+  size_t dev_id = stream->parent()->device_ordinal();
+  if (dev_id >= meta.size()) meta.resize(dev_id + 1);
+  return meta[dev_id];
+}
+
+/* static */ auto BlasLtMatmulPlanCache::GetOrCreate(
     se::Stream* stream, const BlasLtMatmulPlanParams& params,
-    absl::Mutex** ppmu, std::optional<int> max_algorithm_count) {
+    absl::Mutex** ppmu, std::optional<int> max_algorithm_count) -> StatusOr<const Entry *>{
   static const int64_t max_scratch_size =
       GetWorkspaceLimit(1LL << 32);  // 4GB by default
   static const int64_t max_autotune_algorithm_count =
@@ -120,16 +113,16 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
 
   if (!max_algorithm_count) max_algorithm_count = max_autotune_algorithm_count;
 
-  static BlasLtMatmulPlanMap plan_map;
+  auto& self = BlasLtMatmulPlanCache::i(stream);
 
-  auto [ptr, inserted] = plan_map.emplace(params, PlanAndAlgorithms{});
+  absl::MutexLock lock(self.mutex_.get());
+  auto [ptr, inserted] = self.map_.emplace(params, Entry{});
+  auto& entry = ptr->second;
   if (inserted) {
     TF_ASSIGN_OR_RETURN(auto xlatype,
                         se::gpu::AsXlaPrimitiveType(params.dtype));
     TF_ASSIGN_OR_RETURN(auto computation_type,
                         GetBlasComputationType(params.dtype));
-
-    auto scale_type = se::gpu::GetScaleType(params.dtype, computation_type);
 
     // row-major output is now handled automatically by blas-lt API
     constexpr auto kRowMajor = se::gpu::MatrixLayout::Order::kRowMajor;
@@ -173,18 +166,41 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
         .compute_type = computation_type,
     };
 
-    TF_ASSIGN_OR_RETURN(auto plan, se::gpu::BlasLt::GetMatmulPlan(
+    TF_ASSIGN_OR_RETURN(entry.plan, se::gpu::BlasLt::GetMatmulPlan(
                                        stream, cfg, params.epilogue));
 
     TF_ASSIGN_OR_RETURN(
-        auto algorithms,
-        plan->GetAlgorithms(*max_algorithm_count, max_scratch_size));
-
-    ptr->second = {std::move(plan), std::move(algorithms), scale_type};
+        entry.algorithms,
+        entry.plan->GetAlgorithms(*max_algorithm_count, max_scratch_size));
   }
-  *ppmu = &plan_map.mu;
-  return &ptr->second;
+  *ppmu = self.mutex_.get();
+  return &entry;
 }
+
+/*static */ Status BlasLtMatmulPlanCache::ExecuteOnStream(se::Stream* stream, 
+                      const Entry& entry,
+                      const se::DeviceMemoryBase& a,
+                      const se::DeviceMemoryBase& b, 
+                      se::DeviceMemoryBase& c,
+                      size_t algorithm_idx, 
+                      se::ScratchAllocator& scratch_allocator,
+                      const se::DeviceMemoryBase& bias,
+                      se::blas::ProfileResult* profile_result) {
+
+  return entry.plan->ExecuteOnStream(
+        stream, a, b, c, c,
+        bias,                  // bias_buffer
+        se::DeviceMemoryBase{}, // aux_buffer
+        se::DeviceMemoryBase{}, // a_scale_buffer
+        se::DeviceMemoryBase{}, // b_scale_buffer
+        se::DeviceMemoryBase{}, // c_scale_buffer
+        se::DeviceMemoryBase{}, // d_scale_buffer
+        se::DeviceMemoryBase{}, // d_amax_buffer
+        entry.algorithms[algorithm_idx],
+        scratch_allocator, 
+        profile_result);
+}
+
 
 }  // namespace tensorflow
 
