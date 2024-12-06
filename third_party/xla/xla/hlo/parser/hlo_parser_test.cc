@@ -5846,5 +5846,21 @@ ENTRY main {
                   "error: unexpected attribute \"result_accuracy\"");
 }
 
+TEST_F(HloParserTest, EmptyOriginalValueIsPrintedCorrectly) {
+  const std::string hlo_string = R"(HloModule test
+
+ENTRY %test {
+  ROOT op = f32[] parameter(0), origin={}
+}
+
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  ExpectHasSubstr(module->ToString(HloPrintOptions::Fingerprint()),
+                  "origin={}");
+}
+
 }  // namespace
 }  // namespace xla
