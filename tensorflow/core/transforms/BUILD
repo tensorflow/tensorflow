@@ -42,6 +42,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -52,9 +53,12 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/ir/importexport:graphdef_export",
+        "@com_google_absl//absl/container:inlined_vector",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -101,9 +105,13 @@ cc_library(
     hdrs = ["utils/op_cat_helper.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core/framework:op_def_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/ir:Dialect",
-        "@llvm-project//llvm:Support",
+        "//tensorflow/core/ir/types:Dialect",
+        "//tensorflow/core/platform:status",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
     ],
 )
