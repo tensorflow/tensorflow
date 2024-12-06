@@ -54,7 +54,7 @@ void ExpectSummaryMatches(const Summary& actual, const string& expected_str) {
 void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_output,
                          error::Code expected_code) {
   // Initialize node used to fetch OpKernel
-  Status status;
+  absl::Status status;
   NodeDef def;
   def.set_op("ScalarSummary");
 
