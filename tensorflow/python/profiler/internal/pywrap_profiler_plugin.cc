@@ -87,7 +87,7 @@ PYBIND11_MODULE(_pywrap_profiler_plugin, m) {
       "trace", [](const char* service_addr, const char* logdir,
                   const char* worker_list, bool include_dataset_ops,
                   int duration_ms, int num_tracing_attempts, py::dict options) {
-        tensorflow::Status status;
+        absl::Status status;
         ToolOptions tool_options = ToolOptionsFromPythonDict(options);
         {
           py::gil_scoped_release release;
