@@ -287,7 +287,6 @@ CHECK-SAME:                      %[[P0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 CHECK-SAME:                      %[[P2:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 CHECK-DAG:        %[[ZERO:.*]] = arith.constant 0 : i32
-CHECK-DAG:        %[[ZERO_64:.*]] = arith.constant 0 : i64
 CHECK-DAG:        %[[C125:.*]] = arith.constant 125 : i64
 CHECK-DAG:        %[[C127:.*]] = arith.constant 127 : i64
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
@@ -299,8 +298,7 @@ CHECK-DAG:        %[[OFFSET_I64:.*]] = arith.index_castui %[[OFFSET_IDX]] : inde
 CHECK-DAG:        %[[BASE_PTR0_LOAD:.*]] = tt.addptr %[[P0]], %[[OFFSET_I64]] : !tt.ptr<f32>, i64
 CHECK-DAG:        tt.make_tensor_ptr %[[BASE_PTR0_LOAD]], [%[[SUB]], %[[C127]]], {{.*}} [%[[ZERO]], %[[ZERO]]] {order = array<i32: 1, 0>} : <tensor<1x128xf32>>
 CHECK-NEXT:       tt.load {{.*}} : !tt.ptr<tensor<1x128xf32>>
-CHECK-DAG:        %[[BASE_PTR1_LOAD:.*]] = tt.addptr %[[P1]], %[[ZERO_64]] : !tt.ptr<f32>, i64
-CHECK-DAG:        tt.make_tensor_ptr %[[BASE_PTR1_LOAD]], [%[[C127]]], {{.*}} [%[[ZERO]]] {order = array<i32: 0>} : <tensor<128xf32>>
+CHECK-DAG:        tt.make_tensor_ptr %[[P1]], [%[[C127]]], {{.*}} [%[[ZERO]]] {order = array<i32: 0>} : <tensor<128xf32>>
 CHECK-NEXT:       tt.load {{.*}} : !tt.ptr<tensor<128xf32>>
 CHECK:            tt.reduce
 CHECK-NEXT:       ^bb0(%[[ARG3:[^:]*]]: f32, %[[ARG4:[^:]*]]: f32):
@@ -357,7 +355,6 @@ CHECK:        #[[MAP1:.*]] = #xla.indexing_map<"(d0) -> (d0 mod 125), domain: d0
 CHECK:        #[[MAP2:.*]] = #xla.indexing_map<"(d0) -> (d0 * 127), domain: d0 in [0, 1249]">
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P3:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[ZERO:.*]] = arith.constant 0 : i32
-CHECK-DAG:        %[[ZERO_64:.*]] = arith.constant 0 : i64
 CHECK-DAG:        %[[C10:.*]] = arith.constant 10 : i64
 CHECK-DAG:        %[[C125:.*]] = arith.constant 125 : i64
 CHECK-DAG:        %[[C127:.*]] = arith.constant 127 : i64
@@ -374,8 +371,7 @@ CHECK-DAG:        %[[OFFSET_I64:.*]] = arith.index_castui %[[OFFSET_IDX]] : inde
 CHECK-DAG:        %[[BASE_PTR0_LOAD:.*]] = tt.addptr %[[P0]], %[[OFFSET_I64]] : !tt.ptr<f32>, i64
 CHECK-DAG:        tt.make_tensor_ptr %[[BASE_PTR0_LOAD]], [%[[ROW_SUB]], %[[COL_SUB]], %[[C127]]], {{.*}} [%[[ZERO]], %[[ZERO]], %[[ZERO]]] {order = array<i32: 2, 1, 0>} : <tensor<1x1x128xf32>>
 CHECK-NEXT:       tt.load {{.*}} : !tt.ptr<tensor<1x1x128xf32>>
-CHECK-DAG:        %[[BASE_PTR1_LOAD:.*]] = tt.addptr %[[P1]], %[[ZERO_64]] : !tt.ptr<f32>, i64
-CHECK-DAG:        tt.make_tensor_ptr %[[BASE_PTR1_LOAD]], [%[[C127]]], {{.*}} [%[[ZERO]]] {order = array<i32: 0>} : <tensor<128xf32>>
+CHECK-DAG:        tt.make_tensor_ptr %[[P1]], [%[[C127]]], {{.*}} [%[[ZERO]]] {order = array<i32: 0>} : <tensor<128xf32>>
 CHECK-NEXT:       tt.load {{.*}} : !tt.ptr<tensor<128xf32>>
 CHECK-DAG:        %[[PID_I64:.*]] = arith.index_castui %[[PID_INDEX]] : index to i64
 CHECK-DAG:        %[[BASE_PTR2_LOAD:.*]] = tt.addptr %[[P2]], %[[PID_I64]] : !tt.ptr<f32>, i64

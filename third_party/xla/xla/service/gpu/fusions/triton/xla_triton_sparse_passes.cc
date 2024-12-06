@@ -389,7 +389,7 @@ struct SparseRemoveLayoutConversionPass
           /*vec=*/kMetaElementsPerPackedValue, /*perPhase=*/1, /*maxPhase=*/1,
           triton::gpu::getOrder(src_encoding),
           triton::gpu::getCTALayout(src_encoding));
-      auto mem_type = triton::MemDescType::get(
+      auto mem_type = triton::gpu::MemDescType::get(
           dst_type.getShape(), dst_type.getElementType(), shared_layout,
           builder.getAttr<triton::gpu::SharedMemorySpaceAttr>());
       Value alloc =
@@ -410,7 +410,7 @@ class SparseLocalLoadToLLVM
   LogicalResult matchAndRewrite(
       triton::gpu::LocalLoadOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    MemDescType src_ty = op.getSrc().getType();
+    triton::gpu::MemDescType src_ty = op.getSrc().getType();
     if (!isa<triton::gpu::SharedEncodingAttr>(src_ty.getEncoding()))
       return failure();
     RankedTensorType dst_ty = op.getType();
@@ -460,7 +460,7 @@ class SparseLocalLoadToLLVM
 
     // Calculate number of tile repetitions.
     Value tensor = op.getSrc();
-    auto shape = cast<MemDescType>(tensor.getType()).getShape();
+    auto shape = cast<triton::gpu::MemDescType>(tensor.getType()).getShape();
     int rep_m = shape[0] / shape_per_cta_tile[0];
     int rep_k = shape[1] / shape_per_cta_tile[1];
     CHECK_GT(rep_m, 0) << shape[0] << "/" << shape_per_cta_tile[0];
@@ -468,7 +468,7 @@ class SparseLocalLoadToLLVM
 
     // Load sparse metadata from shared memory.
     auto elem_ty = getTypeConverter()->convertType(
-        cast<MemDescType>(tensor.getType()).getElementType());
+        cast<triton::gpu::MemDescType>(tensor.getType()).getElementType());
     auto s_mem_obj = LLVM::getSharedMemoryObjectFromStruct(
         loc, adaptor.getSrc(), elem_ty, rewriter);
     Value stride_m = s_mem_obj.strides[0];
@@ -504,7 +504,6 @@ class SparseLocalLoadToLLVM
     return success();
   }
 };
-
 
 bool IsLocalLoadWithSparseEncoding(Operation *op) {
   auto local_load = mlir::dyn_cast<triton::gpu::LocalLoadOp>(op);
@@ -576,11 +575,12 @@ LogicalResult convertSparseMMA(SparseDotOp op, SparseDotOp::Adaptor adaptor,
   assert(layoutA != nullptr && layoutB != nullptr);
 
   int bitwidth = aTensorTy.getElementType().getIntOrFloatBitWidth();
+  int kWidth = layoutA.getKWidth();
   auto mmaEnc = cast<NvidiaMmaEncodingAttr>(layoutA.getParent());
   auto repA = mmaEnc.getRepForOperand(triton::gpu::getShapePerCTA(aTensorTy),
-                                      bitwidth, layoutA.getOpIdx());
+                                      bitwidth, kWidth, layoutA.getOpIdx());
   auto repB = mmaEnc.getRepForOperand(triton::gpu::getShapePerCTA(bTensorTy),
-                                      bitwidth, layoutB.getOpIdx());
+                                      bitwidth, kWidth, layoutB.getOpIdx());
 
   assert(repA[0] == 1 && repB[0] == 1);  // batch size
   assert(repB[1] == repA[2] * kContractingFactor);
@@ -670,8 +670,9 @@ constexpr int kMmaAlignment = 16;
 // Shared memory descriptor builder for WGMMA.
 Value smemDescriptor(int a, int b, ConversionPatternRewriter &rewriter,
                      Location loc, std::vector<unsigned int> instrShape,
-                     bool trans, int dimWpt, Value warpId, MemDescType tensorTy,
-                     Value baseDesc, int minor) {
+                     bool trans, int dimWpt, Value warpId,
+                     triton::gpu::MemDescType tensorTy, Value baseDesc,
+                     int minor) {
   auto sharedLayout = cast<SharedEncodingAttr>(tensorTy.getEncoding());
   int elemBytes = tensorTy.getElementTypeBitWidth() / 8;
   int elemsPerSwizzlingRow =
@@ -700,8 +701,8 @@ LogicalResult convertSparseWGMMA(SparseDotOp op, SparseDotOp::Adaptor adaptor,
                                  ConversionPatternRewriter &rewriter,
                                  Value thread) {
   // Get number of repetitions across the dimensions.
-  auto aTensorTy = cast<MemDescType>(op.getA().getType());
-  auto bTensorTy = cast<MemDescType>(op.getB().getType());
+  auto aTensorTy = cast<triton::gpu::MemDescType>(op.getA().getType());
+  auto bTensorTy = cast<triton::gpu::MemDescType>(op.getB().getType());
   auto dTensorTy = cast<RankedTensorType>(op.getD().getType());
   auto mmaEnc = cast<NvidiaMmaEncodingAttr>(dTensorTy.getEncoding());
 
@@ -728,7 +729,7 @@ LogicalResult convertSparseWGMMA(SparseDotOp op, SparseDotOp::Adaptor adaptor,
   Value warpN = urem(warpMN, i32_val(wpt[1]));
 
   // Create descriptor.
-  auto getSharedData = [&](Value arg, MemDescType tensorTy) {
+  auto getSharedData = [&](Value arg, triton::gpu::MemDescType tensorTy) {
     auto sharedObj = getSharedMemoryObjectFromStruct(
         loc, arg, typeConverter->convertType(tensorTy.getElementType()),
         rewriter);

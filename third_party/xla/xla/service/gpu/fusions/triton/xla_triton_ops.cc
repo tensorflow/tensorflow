@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "xla/service/gpu/fusions/triton/xla_triton_dialect.cc.inc"
 #include "triton/Dialect/Triton/IR/Dialect.h"
-#include "triton/Dialect/Triton/IR/Types.h"
+#include "triton/Dialect/TritonGPU/IR/Types.h"
 
 #define GET_ATTRDEF_CLASSES
 #include "xla/service/gpu/fusions/triton/xla_triton_attrs.cc.inc"
@@ -46,9 +46,9 @@ using mlir::OpaqueProperties;
 using mlir::RankedTensorType;
 using mlir::RegionRange;
 using mlir::SmallVectorImpl;
-using mlir::TensorOrMemDesc;
 using mlir::Type;
 using mlir::ValueRange;
+using mlir::triton::gpu::TensorOrMemDesc;
 
 namespace mlir::triton::xla {
 
@@ -68,8 +68,29 @@ LogicalResult SparseDotOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  return DotOp::inferReturnTypes(context, location, operands, attributes,
-                                 properties, regions, inferredReturnTypes);
+  // DotOp::inferReturnTypes() no longer handles MemDescType, so we need to
+  // handle it ourselves.
+  // TODO: b/382459490 - Remove the need for our own implementation once we've
+  // cleaned up the sparsity extension.
+
+  // type is the same as the accumulator
+  auto accTy = cast<RankedTensorType>(operands[2].getType());
+  inferredReturnTypes.push_back(accTy);
+
+  // verify encodings
+  auto aEnc = cast<TensorOrMemDesc>(operands[0].getType()).getEncoding();
+  auto bEnc = cast<TensorOrMemDesc>(operands[1].getType()).getEncoding();
+  auto retEnc = accTy.getEncoding();
+  if (aEnc) {
+    assert(bEnc && retEnc);
+    Dialect &dialect = retEnc.getDialect();
+    auto interface = dyn_cast<DialectInferLayoutInterface>(&dialect);
+    if (interface->inferDotOpEncoding(aEnc, 0, retEnc, location).failed())
+      return failure();
+    if (interface->inferDotOpEncoding(bEnc, 1, retEnc, location).failed())
+      return failure();
+  }
+  return success();
 }
 
 LogicalResult SparseDotOp::verify() {

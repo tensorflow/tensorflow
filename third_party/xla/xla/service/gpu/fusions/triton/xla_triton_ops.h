@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/triton/xla_triton_dialect.h.inc"  // IWYU pragma: keep
 #include "triton/Dialect/Triton/IR/Dialect.h"  // IWYU pragma: keep
 #include "triton/Dialect/Triton/IR/Traits.h"
+#include "triton/Dialect/TritonGPU/IR/Dialect.h"  // IWYU pragma: keep
 #include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"  // IWYU pragma: keep
 
 namespace mlir::triton::xla {

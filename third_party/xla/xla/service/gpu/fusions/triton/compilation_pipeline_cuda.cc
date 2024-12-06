@@ -53,8 +53,8 @@ absl::Status CreateTritonPipeline(
   // @triton//:third_party/nvidia/backend/compiler.py
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createRewriteTensorPointerPass());
-  pm.addPass(mt::createCombineOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mt::createCombineOpsPass());
   pm.addPass(mt::createReorderBroadcastPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
@@ -95,6 +95,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::gpu::createTritonGPUPrefetch());
   pm.addPass(
       mt::gpu::createTritonGPUOptimizeDotOperands({ccCuda.IsAtLeastAmpere()}));
+  pm.addPass(mt::gpu::createTritonGPUCoalesceAsyncCopy());
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm.addPass(mt_xla::CreateSparseRemoveLayoutConversionPass());
   pm.addPass(mt::gpu::createTritonGPUReduceDataDuplication());

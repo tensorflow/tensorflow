@@ -14,7 +14,5 @@ those to this list.
 """
 
 temporary_patch_list = [
-    "//third_party/triton:temporary/launcher_fix.patch",
-    "//third_party/triton:temporary/dot_repeat_k_dim_fix.patch",
     # Add new patches just above this line
 ]

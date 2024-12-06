@@ -1,6 +1,6 @@
 // RUN: xla-opt %s --sparse-wgmma-to-llvm | FileCheck %s
 
-module attributes {"triton_gpu.num-warps" = 4 : i32} {
+module attributes {"ttg.num-warps" = 4 : i32} {
   tt.func @wgmma_sp(%descA: i64, %metaA: i32, %descB: i64, %acc: !llvm.struct<(f32, f32, f32, f32, f32, f32, f32, f32)>) {
     // CHECK: @wgmma_sp(%[[LHS:.*]]: i64, %[[META:.*]]: i32, %[[RHS:.*]]: i64,
     // CHECK: llvm.inline_asm has_side_effects asm_dialect = att operand_attrs = []

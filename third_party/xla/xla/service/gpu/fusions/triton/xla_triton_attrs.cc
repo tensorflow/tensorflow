@@ -69,10 +69,6 @@ SmallVector<unsigned> SparseDotMetaEncodingAttr::getThreadOrder() const {
 SmallVector<unsigned> SparseDotMetaEncodingAttr::getSizePerThread() const {
   return gpu::getSizePerThread(getParent());
 }
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getShapePerCTATile(
-    ArrayRef<int64_t> tensorShape) const {
-  return gpu::getShapePerCTATile(getParent(), tensorShape);
-}
 std::optional<LinearLayout> SparseDotMetaEncodingAttr::toLinearLayout(
     ArrayRef<int64_t> shape) const {
   return gpu::toLinearLayout(shape, getParent());
