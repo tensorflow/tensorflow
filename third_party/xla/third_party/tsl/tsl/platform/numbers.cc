@@ -428,7 +428,7 @@ absl::string_view Uint64ToHexString(uint64_t v, char* buf) {
   return absl::string_view(buf, num_byte);
 }
 
-bool HexStringToUint64(const absl::string_view& s, uint64_t* result) {
+bool HexStringToUint64(const absl::string_view s, uint64_t* result) {
   uint64_t v = 0;
   if (s.empty()) {
     return false;
