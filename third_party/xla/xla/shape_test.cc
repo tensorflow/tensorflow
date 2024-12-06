@@ -49,9 +49,11 @@ TEST_F(ShapeTest, ShapeToFromProto) {
   for (const Shape& shape :
        {opaque_, token_, scalar_, matrix_, matrix2_, tuple_, nested_tuple_,
         dynamic_matrix_, unbounded_}) {
-    Shape shape_copy(shape.ToProto());
-    EXPECT_TRUE(ShapeUtil::Equal(shape, shape_copy))
-        << shape << " != " << shape_copy;
+    ShapeProto proto = shape.ToProto();
+    Shape from_proto = Shape::FromProto(proto);
+    Shape proto_copy(proto);
+    EXPECT_TRUE(ShapeUtil::Equal(shape, from_proto));
+    EXPECT_TRUE(ShapeUtil::Equal(shape, proto_copy));
   }
 }
 

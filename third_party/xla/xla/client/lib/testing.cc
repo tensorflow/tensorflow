@@ -112,7 +112,8 @@ std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
 
   std::vector<std::unique_ptr<GlobalData>> results;
   for (const ShapeProto& shape : program_shape.parameters()) {
-    results.push_back(MakeFakeDataOrDie(Shape(shape), client, debug_opts));
+    results.push_back(
+        MakeFakeDataOrDie(Shape::FromProto(shape), client, debug_opts));
   }
   return results;
 }

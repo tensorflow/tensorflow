@@ -106,7 +106,7 @@ RemoteLoadedHostCallback::CreateFromSerialized(
          arg_protos) {
       xla::HostCallbackArgInfo& arg = args.emplace_back();
       arg.channel_id = static_cast<uint16_t>(arg_proto.channel_id());
-      arg.shape = xla::Shape(arg_proto.shape());
+      arg.shape = xla::Shape::FromProto(arg_proto.shape());
     }
     return args;
   };

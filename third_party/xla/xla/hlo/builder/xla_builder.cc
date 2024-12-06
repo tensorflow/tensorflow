@@ -115,7 +115,7 @@ bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
 absl::Status NormalizeAndAssignSharing(HloInstructionProto* instr,
                                        const OpSharding& op_sharding) {
   // Normalize tuple sharding and fail the call if the sharding is invalid.
-  Shape shape(instr->shape());
+  Shape shape = Shape::FromProto(instr->shape());
   TF_ASSIGN_OR_RETURN(HloSharding sharding,
                       HloSharding::FromProto(op_sharding));
   sharding = sharding.NormalizeTupleSharding(shape);
@@ -568,7 +568,7 @@ absl::StatusOr<ProgramShape> XlaBuilder::GetProgramShape(
 
   ProgramShape program_shape;
 
-  *program_shape.mutable_result() = Shape(root_proto->shape());
+  *program_shape.mutable_result() = Shape::FromProto(root_proto->shape());
 
   // Check that the parameter numbers are continuous from 0, and add parameter
   // shapes and names to the program shape.
@@ -585,7 +585,8 @@ absl::StatusOr<ProgramShape> XlaBuilder::GetProgramShape(
       const int64_t index = instr.parameter_number();
       TF_RET_CHECK(index >= 0 && index < param_count)
           << "invalid parameter number: " << index;
-      *program_shape.mutable_parameters(index) = Shape(instr.shape());
+      *program_shape.mutable_parameters(index) =
+          Shape::FromProto(instr.shape());
       *program_shape.mutable_parameter_names(index) = instr.name();
     }
   }
@@ -2990,7 +2991,7 @@ XlaOp XlaBuilder::Map(absl::Span<const XlaOp> operands,
                          operand_shape_ptrs, called_program_shape, dimensions));
     *instr.mutable_shape() = shape.ToProto();
 
-    Shape output_shape(instr.shape());
+    Shape output_shape = Shape::FromProto(instr.shape());
     const int64_t output_rank = output_shape.rank();
     AddCalledComputation(computation, &instr);
     std::vector<XlaOp> new_operands(operands.begin(), operands.end());

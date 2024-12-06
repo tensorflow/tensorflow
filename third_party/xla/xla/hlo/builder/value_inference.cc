@@ -170,9 +170,10 @@ struct HloProtoEvaluator {
     }
 
     if (primitive_type.has_value()) {
-      *inst.mutable_shape() = ShapeUtil::ChangeElementType(
-                                  Shape(inst.shape()), primitive_type.value())
-                                  .ToProto();
+      *inst.mutable_shape() =
+          ShapeUtil::ChangeElementType(Shape::FromProto(inst.shape()),
+                                       primitive_type.value())
+              .ToProto();
     }
     if (opcode.has_value()) {
       *inst.mutable_opcode() = std::string(HloOpcodeString(opcode.value()));
@@ -397,8 +398,8 @@ struct PostorderDFSVisitor {
   // kGetDimensionSize or kSetDimensionSize doesn't need evaluation).
   bool IsInstructionOverLimit(const HloInstructionProto* proto,
                               const InferenceContext& context) {
-    auto subshape = std::make_unique<Shape>(
-        ShapeUtil::GetSubshape(Shape(proto->shape()), context.shape_index));
+    auto subshape = std::make_unique<Shape>(ShapeUtil::GetSubshape(
+        Shape::FromProto(proto->shape()), context.shape_index));
 
     if (subshape->IsArray() &&
         ShapeUtil::ElementsIn(*subshape) > kLargeShapeElementLimit) {
@@ -408,7 +409,8 @@ struct PostorderDFSVisitor {
     for (int64_t operand_id : proto->operand_ids()) {
       const HloInstructionProto* operand =
           handle_to_instruction(operand_id).value();
-      auto operand_shape = std::make_unique<Shape>(operand->shape());
+      std::unique_ptr<Shape> operand_shape =
+          std::make_unique<Shape>(Shape::FromProto(operand->shape()));
 
       if (operand_shape->IsArray() &&
           ShapeUtil::ElementsIn(*operand_shape) > kLargeShapeElementLimit &&
@@ -484,8 +486,8 @@ PostorderDFSVisitor::AnalyzeConstantValueFallback(int64_t handle,
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       handle_to_instruction(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
-  Shape subshape =
-      ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
+  Shape subshape = ShapeUtil::GetSubshape(Shape::FromProto(root->shape()),
+                                          context.shape_index);
   PostorderDFSNode result;
   // By default, the dependencies of current node are its operands.
   for (auto operand_id : root->operand_ids()) {
@@ -653,8 +655,8 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       handle_to_instruction(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
-  Shape subshape =
-      ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
+  Shape subshape = ShapeUtil::GetSubshape(Shape::FromProto(root->shape()),
+                                          context.shape_index);
 
   if (IsInstructionOverLimit(root, context)) {
     return CreateAllDynamicResult(subshape,
@@ -721,7 +723,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
               results.emplace_back(
                   max.Broadcast(operands[i].shape(), {}).value());
             }
-            if (ShapeUtil::GetSubshape(Shape(root->shape()),
+            if (ShapeUtil::GetSubshape(Shape::FromProto(root->shape()),
                                        context.shape_index)
                     .IsTuple()) {
               return LiteralUtil::MakeTupleOwned(std::move(results));
@@ -824,8 +826,8 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       handle_to_instruction(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
-  Shape subshape =
-      ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
+  Shape subshape = ShapeUtil::GetSubshape(Shape::FromProto(root->shape()),
+                                          context.shape_index);
   if (IsInstructionOverLimit(root, context)) {
     return CreateAllDynamicResult(subshape,
                                   PostorderDFSNodeType::kConstantLowerBound);
@@ -915,8 +917,8 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       handle_to_instruction(handle));
   HloOpcode opcode = StringToHloOpcode(root->opcode()).value();
-  Shape subshape =
-      ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index);
+  Shape subshape = ShapeUtil::GetSubshape(Shape::FromProto(root->shape()),
+                                          context.shape_index);
   if (IsInstructionOverLimit(root, context)) {
     return CreateAllDynamicResult(subshape,
                                   PostorderDFSNodeType::kConstantValue);
@@ -932,7 +934,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
             if (operand_proto->shape().is_dynamic_dimension(dimension)) {
               // The value is dynamic, we return garbage data here and mask them
               // out later.
-              return CreateGarbageLiteral(Shape(root->shape()));
+              return CreateGarbageLiteral(Shape::FromProto(root->shape()));
             } else {
               return LiteralUtil::CreateR0<int32_t>(
                   operand_proto->shape().dimensions(dimension));
@@ -980,7 +982,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
               // The value is dynamic. We return a garbage literal here, which
               // will be masked out later.
               return CreateGarbageLiteral(ShapeUtil::GetSubshape(
-                  Shape(root->shape()), context.shape_index));
+                  Shape::FromProto(root->shape()), context.shape_index));
             });
       }
     }
@@ -1023,7 +1025,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
   if (IsInstructionOverLimit(handle_to_instruction(handle).value(), context)) {
     return CreateAllDynamicResult(
         ShapeUtil::GetSubshape(
-            Shape(handle_to_instruction(handle).value()->shape()),
+            Shape::FromProto(handle_to_instruction(handle).value()->shape()),
             context.shape_index),
         type);
   }
@@ -1071,9 +1073,10 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
         if (type == PostorderDFSNodeType::kValueIsDynamic) {
           // If there is a single operand of a sort is dynamic, we
           // conservatively say all results are dynamic.
-          return CreatePredLiteral(!all_operands_values_static,
-                                   ShapeUtil::GetSubshape(Shape(root->shape()),
-                                                          context.shape_index));
+          return CreatePredLiteral(
+              !all_operands_values_static,
+              ShapeUtil::GetSubshape(Shape::FromProto(root->shape()),
+                                     context.shape_index));
         }
         CHECK(type == PostorderDFSNodeType::kBoundIsDynamic);
         // The condition for bounds are more relaxed than values. If we know the
@@ -1093,7 +1096,8 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
           results.emplace_back(
               CreatePredLiteral(!all_values_static, operands[i].shape()));
         }
-        if (!ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index)
+        if (!ShapeUtil::GetSubshape(Shape::FromProto(root->shape()),
+                                    context.shape_index)
                  .IsTuple()) {
           return std::move(results[0]);
         }
@@ -1110,14 +1114,15 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
         return CreatePredLiteral(
             type == PostorderDFSNodeType::kValueIsDynamic &&
                 any_dynamic_operand,
-            ShapeUtil::MakeStaticShape(Shape(root->shape())));
+            ShapeUtil::MakeStaticShape(Shape::FromProto(root->shape())));
       });
     case HloOpcode::kDynamicSlice: {
       return result.AddVisit([root](absl::Span<Literal> operands) {
         // If any of the operand is dynamic, we say output is dynamic.
         bool any_dynamic_operand = absl::c_any_of(
             operands, [](Literal& operand) { return !operand.IsAll(0); });
-        return CreatePredLiteral(any_dynamic_operand, Shape(root->shape()));
+        return CreatePredLiteral(any_dynamic_operand,
+                                 Shape::FromProto(root->shape()));
       });
     }
     case HloOpcode::kAbs:
@@ -1210,7 +1215,8 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       if (call_proto->operand_ids_size() != 1) {
         // Only support single operand forwarding.
         return CreateAllDynamicResult(
-            Shape(handle_to_instruction(handle).value()->shape()), type);
+            Shape::FromProto(handle_to_instruction(handle).value()->shape()),
+            type);
       }
       int64_t call_root =
           handle_to_computation(call_proto->called_computation_ids(0))
@@ -1265,8 +1271,8 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
                                -> absl::StatusOr<Literal> {
         int64_t pred_is_dynamic = operands[1].Get<bool>({});
         auto result = CreatePredLiteral(
-            true,
-            ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index));
+            true, ShapeUtil::GetSubshape(Shape::FromProto(root->shape()),
+                                         context.shape_index));
         if (pred_is_dynamic) {
           VLOG(1) << "predict is dynamic value" << result.ToString();
           // If predicate is dynamic, the result is only static if all
@@ -1323,7 +1329,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     case HloOpcode::kReduce: {
       return result.AddVisit(
           [root, context, this](absl::Span<Literal> operands) {
-            Shape root_shape = Shape(root->shape());
+            Shape root_shape = Shape::FromProto(root->shape());
             Shape scalar_shape = ShapeUtil::MakeScalarShape(xla::PRED);
             std::unique_ptr<HloComputation> reduce_or;
             if (root_shape.IsTuple()) {
@@ -1375,8 +1381,9 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     }
     case HloOpcode::kConstant:
     case HloOpcode::kIota: {
-      return result.AddVisit(
-          [root]() { return CreatePredLiteral(false, Shape(root->shape())); });
+      return result.AddVisit([root]() {
+        return CreatePredLiteral(false, Shape::FromProto(root->shape()));
+      });
     }
     case HloOpcode::kParameter: {
       if (opcode == HloOpcode::kParameter &&
@@ -1388,8 +1395,8 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       }
       return result.AddVisit([root, context]() {
         return CreatePredLiteral(
-            true,
-            ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index));
+            true, ShapeUtil::GetSubshape(Shape::FromProto(root->shape()),
+                                         context.shape_index));
       });
     }
     case HloOpcode::kSelect: {
@@ -1408,7 +1415,8 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
                                                       std::move(operands[1]));
             Literal lhs = std::move(operands[2]);
             Literal rhs = std::move(operands[3]);
-            auto result = CreatePredLiteral(true, Shape(root->shape()));
+            auto result =
+                CreatePredLiteral(true, Shape::FromProto(root->shape()));
             result.MutableEachCell<bool>(
                 [&](absl::Span<const int64_t> indices, bool value) {
                   std::optional<bool> optional_selector =
@@ -1447,7 +1455,8 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
 
                 if (!optional_selector_literal.AllValid()) {
                   // Conservatively assume results are dynamic.
-                  return CreatePredLiteral(true, Shape(root->shape()));
+                  return CreatePredLiteral(true,
+                                           Shape::FromProto(root->shape()));
                 }
                 std::vector<Literal> new_operands;
                 new_operands.emplace_back(std::move(operands[0]));
@@ -1465,7 +1474,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
         return PostorderDFSNode().AddVisit([type,
                                             root]() -> absl::StatusOr<Literal> {
           if (type == PostorderDFSNodeType::kBoundIsDynamic) {
-            return CreatePredLiteral(false, Shape(root->shape()));
+            return CreatePredLiteral(false, Shape::FromProto(root->shape()));
           } else {
             if (root->literal().shape().element_type() == TUPLE) {
               // First literal of SetBound contains bounds, second literal
@@ -1473,7 +1482,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
               return Literal::CreateFromProto(
                   root->literal().tuple_literals(1));
             } else if (type == PostorderDFSNodeType::kValueIsDynamic) {
-              return CreatePredLiteral(true, Shape(root->shape()));
+              return CreatePredLiteral(true, Shape::FromProto(root->shape()));
             } else {
               return Literal::CreateFromProto(root->literal());
             }
@@ -1495,21 +1504,21 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kWhile: {
-      return PostorderDFSNode().AddVisit([root, context]()
-                                             -> absl::StatusOr<Literal> {
-        return CreatePredLiteral(
-            true,
-            ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index));
-      });
+      return PostorderDFSNode().AddVisit(
+          [root, context]() -> absl::StatusOr<Literal> {
+            return CreatePredLiteral(
+                true, ShapeUtil::GetSubshape(Shape::FromProto(root->shape()),
+                                             context.shape_index));
+          });
       break;
     }
     default:
-      return PostorderDFSNode().AddVisit([root, context]()
-                                             -> absl::StatusOr<Literal> {
-        return CreatePredLiteral(
-            true,
-            ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index));
-      });
+      return PostorderDFSNode().AddVisit(
+          [root, context]() -> absl::StatusOr<Literal> {
+            return CreatePredLiteral(
+                true, ShapeUtil::GetSubshape(Shape::FromProto(root->shape()),
+                                             context.shape_index));
+          });
   }
 }
 
@@ -1682,7 +1691,8 @@ absl::StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
   TF_ASSIGN_OR_RETURN(auto* inst, builder_->LookUpInstructionByHandle(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(inst->opcode()));
   std::vector<Literal> operands;
-  auto output_shape = std::make_unique<const Shape>(inst->shape());
+  auto output_shape =
+      std::make_unique<const Shape>(Shape::FromProto(inst->shape()));
   switch (opcode) {
     case HloOpcode::kSlice:
     case HloOpcode::kConcatenate:
@@ -1703,7 +1713,7 @@ absl::StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
       // Only identity kConvert can be optimized away.
       auto operand =
           builder_->LookUpInstructionByHandle(inst->operand_ids(0)).value();
-      if (Shape::Equal()(*output_shape, Shape(operand->shape()))) {
+      if (Shape::Equal()(*output_shape, Shape::FromProto(operand->shape()))) {
         // Forward operand handle as result.
         return SimplifyOp(inst->operand_ids(0));
       } else {

@@ -86,8 +86,8 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
   }
   if (execution_options != nullptr &&
       execution_options->has_shape_with_output_layout()) {
-    const Shape shape_with_output_layout(
-        execution_options->shape_with_output_layout());
+    const Shape shape_with_output_layout =
+        Shape::FromProto(execution_options->shape_with_output_layout());
     TF_RETURN_IF_ERROR(
         ValidateResultShape(shape_with_output_layout, program_shape.result()));
     TF_RETURN_IF_ERROR(

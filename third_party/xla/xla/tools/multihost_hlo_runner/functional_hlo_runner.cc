@@ -396,7 +396,7 @@ FunctionalHloRunner::CreateExecutableBuildOptionsFromExecutionOptions(
   }
   if (execution_options.has_shape_with_output_layout()) {
     build_options.set_result_layout(
-        Shape(execution_options.shape_with_output_layout()));
+        Shape::FromProto(execution_options.shape_with_output_layout()));
   }
   build_options.set_num_replicas(execution_options.num_replicas());
   build_options.set_num_partitions(execution_options.num_partitions());
