@@ -91,6 +91,7 @@ class MatrixSetDiagOp : public OpKernel {
     const TensorShape& input_shape = input.shape();
     const TensorShape& diag_shape = diag.shape();
     const int input_rank = input_shape.dims();
+    const int diag_rank = diag_shape.dims();
 
     // Preliminary validation of sizes.
     OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input_shape),
@@ -101,6 +102,12 @@ class MatrixSetDiagOp : public OpKernel {
                 errors::InvalidArgument(
                     "diagonal must be at least 1-dim, received shape: ",
                     diag_shape.DebugString()));
+    OP_REQUIRES(context, diag_rank == input_rank || diag_rank == input_rank - 1,
+                absl::InvalidArgumentError(
+                    "Rank of diagonal must be one less than rank of input "
+                    "when k is an integer or k[0] == k[1]. "
+                    "Otherwise, it should be of same rank as input ",
+                    ));
 
     // Make sure lower_diag_index and upper_diag_index is valid.
     const Eigen::Index num_rows = input_shape.dim_size(input_rank - 2);
