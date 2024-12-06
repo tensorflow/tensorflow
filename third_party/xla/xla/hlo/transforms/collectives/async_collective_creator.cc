@@ -172,7 +172,9 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
         (op == HloOpcode::kAllToAll &&
          config_.convert_all_to_all(instruction)) ||
         (op == HloOpcode::kReduceScatter &&
-         config_.convert_reduce_scatter(instruction))) {
+         config_.convert_reduce_scatter(instruction)) ||
+        (op == HloOpcode::kRaggedAllToAll &&
+         config_.convert_ragged_all_to_all(instruction))) {
       supported_collectives.push_back(instruction);
     }
   }
@@ -204,6 +206,7 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
       case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kAllToAll:
       case HloOpcode::kReduceScatter:
+      case HloOpcode::kRaggedAllToAll:
         async_pair = CreateAsyncStartDone(
             instruction, config_.get_context_shapes(instruction));
         break;
