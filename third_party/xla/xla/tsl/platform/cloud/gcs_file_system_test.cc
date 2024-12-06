@@ -3680,6 +3680,39 @@ TEST(GcsFileSystemTest, OverrideCacheParameters) {
   EXPECT_EQ(20, fs5.timeouts().metadata);
   EXPECT_EQ(30, fs5.timeouts().read);
   EXPECT_EQ(40, fs5.timeouts().write);
+
+  // Cleanup env variables.
+  unsetenv("GCS_MATCHING_PATHS_CACHE_MAX_AGE");
+  unsetenv("GCS_MATCHING_PATHS_CACHE_MAX_ENTRIES");
+  unsetenv("GCS_METADATA_REQUEST_TIMEOUT_SECS");
+  unsetenv("GCS_READAHEAD_BUFFER_SIZE_BYTES");
+  unsetenv("GCS_READ_CACHE_BLOCK_SIZE_MB");
+  unsetenv("GCS_READ_CACHE_MAX_SIZE_MB");
+  unsetenv("GCS_READ_CACHE_MAX_STALENESS");
+  unsetenv("GCS_READ_REQUEST_TIMEOUT_SECS");
+  unsetenv("GCS_REQUEST_CONNECTION_TIMEOUT_SECS");
+  unsetenv("GCS_REQUEST_IDLE_TIMEOUT_SECS");
+  unsetenv("GCS_STAT_CACHE_MAX_AGE");
+  unsetenv("GCS_STAT_CACHE_MAX_ENTRIES");
+  unsetenv("GCS_WRITE_REQUEST_TIMEOUT_SECS");
+}
+
+TEST(GcsFileSystemTest, DefaultCacheOptions) {
+  GcsFileSystem fs;
+  EXPECT_EQ(fs.block_size(), kDefaultBlockSize);
+  EXPECT_EQ(fs.max_bytes(), kDefaultMaxCacheSize);
+  EXPECT_EQ(fs.max_staleness(), kDefaultMaxStaleness);
+}
+
+TEST(GcsFileSystemTest, ExplicitCacheOptions) {
+  GcsCacheOptions cache_options;
+  cache_options.block_size = 1024;
+  cache_options.max_bytes = 65536;
+  cache_options.max_staleness_secs = 10;
+  GcsFileSystem fs(cache_options);
+  EXPECT_EQ(fs.block_size(), 1024);
+  EXPECT_EQ(fs.max_bytes(), 65536);
+  EXPECT_EQ(fs.max_staleness(), 10);
 }
 
 TEST(GcsFileSystemTest, CreateHttpRequest) {

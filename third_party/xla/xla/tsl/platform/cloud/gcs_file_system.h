@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
 #define XLA_TSL_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
 
+#include <cstddef>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/retrying_file_system.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 
@@ -74,6 +76,19 @@ bool GetEnvVar(const char* varname, bool (*convert)(absl::string_view, T*),
   }
   return convert(env_value, value);
 }
+
+/// GcsCacheOptions allows setting the parameters for the GCS file cache.
+///
+/// This also includes the block size for buffered reads.
+
+struct GcsCacheOptions {
+  // Block size for aligned reads from GCS.
+  size_t block_size = kDefaultBlockSize;
+  // Max size of the LRU cache of blocks read from GCS.
+  size_t max_bytes = kDefaultMaxCacheSize;
+  // Max staleness of cached file contents, in seconds.
+  uint64_t max_staleness_secs = kDefaultMaxStaleness;
+};
 
 /// GcsStatsInterface allows for instrumentation of the GCS file system.
 ///
@@ -127,7 +142,10 @@ class GcsFileSystem : public FileSystem {
   struct TimeoutConfig;
 
   // Main constructor used (via RetryingFileSystem) throughout Tensorflow
-  explicit GcsFileSystem(bool make_default_cache = true);
+  explicit GcsFileSystem(bool make_default_cache = true,
+                         GcsCacheOptions cache_options = {});
+  explicit GcsFileSystem(GcsCacheOptions cache_options)
+      : GcsFileSystem(true, cache_options) {}
   // Used mostly for unit testing or use cases which need to customize the
   // filesystem from defaults
   GcsFileSystem(std::unique_ptr<AuthProvider> auth_provider,
@@ -456,7 +474,7 @@ class GcsFileSystem : public FileSystem {
 /// Google Cloud Storage implementation of a file system with retry on failures.
 class RetryingGcsFileSystem : public RetryingFileSystem<GcsFileSystem> {
  public:
-  RetryingGcsFileSystem();
+  explicit RetryingGcsFileSystem(GcsCacheOptions cache_options = {});
 };
 
 }  // namespace tsl

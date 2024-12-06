@@ -17,8 +17,11 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <memory>
+
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "tsl/platform/retrying_file_system.h"
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -818,12 +821,13 @@ string ZoneToRegion(string* zone) {
 
 }  // namespace
 
-GcsFileSystem::GcsFileSystem(bool make_default_cache) {
+GcsFileSystem::GcsFileSystem(bool make_default_cache,
+                             GcsCacheOptions cache_options) {
   uint64 value;
-  block_size_ = kDefaultBlockSize;
-  size_t max_bytes = kDefaultMaxCacheSize;
+  block_size_ = cache_options.block_size;
+  size_t max_bytes = cache_options.max_bytes;
 
-  uint64 max_staleness = kDefaultMaxStaleness;
+  uint64 max_staleness = cache_options.max_staleness_secs;
 
   http_request_factory_ = std::make_shared<CurlHttpRequest::Factory>();
   compute_engine_metadata_client_ =
@@ -2189,8 +2193,8 @@ absl::Status GcsFileSystem::CreateHttpRequest(
   return absl::OkStatus();
 }
 
-RetryingGcsFileSystem::RetryingGcsFileSystem()
-    : RetryingFileSystem(std::make_unique<GcsFileSystem>(),
+RetryingGcsFileSystem::RetryingGcsFileSystem(GcsCacheOptions cache_options)
+    : RetryingFileSystem(std::make_unique<GcsFileSystem>(cache_options),
                          RetryConfig(GetGcsRetryConfig())) {}
 
 }  // namespace tsl
