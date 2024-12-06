@@ -326,8 +326,8 @@ TEST_F(LoaderTest, ConstNoValue) {
 
   const string export_dir = io::JoinPath(testing::TensorFlowSrcRoot(),
                                          kTestFuzzGeneratedConstWithNoValue);
-  Status st = LoadSavedModel(session_options, run_options, export_dir,
-                             {kSavedModelTagServe}, &bundle);
+  absl::Status st = LoadSavedModel(session_options, run_options, export_dir,
+                                   {kSavedModelTagServe}, &bundle);
   EXPECT_FALSE(st.ok());
   EXPECT_NE(st.message().find("constant tensor but no value has been provided"),
             std::string::npos);
