@@ -16,11 +16,16 @@ limitations under the License.
 #include <memory>
 #include <unordered_set>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
