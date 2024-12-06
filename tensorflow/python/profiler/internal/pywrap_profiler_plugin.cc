@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
-#include "tensorflow/python/lib/core/pybind11_status.h"
-
 namespace py = ::pybind11;
 
 namespace {
