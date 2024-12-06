@@ -125,13 +125,19 @@ def make_gpu_client(
   )
 
 
+def _make_c_api_client(platform: str, options: _NameValueMapping | None = None):
+  assert pjrt_plugin_loaded(platform)
+  if not pjrt_plugin_initialized(platform):
+    initialize_pjrt_plugin(platform)
+  return _xla.get_c_api_client(platform, options or {})
+
+
 def make_tfrt_tpu_c_api_client(options: _NameValueMapping | None = None):
-  assert pjrt_plugin_loaded('tpu')
-  if not pjrt_plugin_initialized('tpu'):
-    initialize_pjrt_plugin('tpu')
-  if options is None:
-    options = {}
-  return _xla.get_c_api_client('tpu', options)
+  return _make_c_api_client('tpu', options)
+
+
+def make_gpu_c_api_client(options: _NameValueMapping | None = None):
+  return _make_c_api_client('gpu', options)
 
 
 DeviceTopology = _xla.DeviceTopology
