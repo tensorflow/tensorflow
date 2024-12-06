@@ -1185,6 +1185,11 @@ TEST(FfiTest, ThreadPool) {
   Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
 
   auto fn = [&](ThreadPool thread_pool) {
+    // Check that we can get the size of the underlying thread pool.
+    if (thread_pool.num_threads() != 2) {
+      return Error::Internal("Wrong number of threads");
+    }
+
     // Use a pair of blocking counters to check that scheduled task was executed
     // on a thread pool (it would deadlock if executed inline).
     absl::BlockingCounter prepare(1);
