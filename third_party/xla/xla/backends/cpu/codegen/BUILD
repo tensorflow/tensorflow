@@ -8,16 +8,24 @@ load(
 )
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
+# Users should not use this package directly and instead use the PJRT APIs.
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = [":self"],
     licenses = ["notice"],
 )
 
 package_group(
-    name = "friends",
-    includes = [
-        "//xla:friends",
+    name = "self",
+    packages = [
+        "//learning/brain/google/xla/...",
+        "//learning/brain/research/pjrt/...",
+        "//platforms/xla/benchmarks/jf/...",
+        "//platforms/xla/tests/...",
+        "//tensorflow/compiler/tf2xla/...",
+        "//tensorflow/contrib/compiler/tests/...",
+        "//xla/...",
+        "//xla/backends/cpu/...",
     ],
 )
 
