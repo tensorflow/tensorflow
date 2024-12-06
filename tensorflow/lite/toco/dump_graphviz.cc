@@ -21,15 +21,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "re2/re2.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/toco_graphviz_dump_options.h"
-#include "tensorflow/lite/toco/toco_port.h"
+#include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
 
