@@ -4,14 +4,17 @@
 # - MSVC 14.39
 # - LLVM/Clang 18.1.4
 # - MSYS2 + curl, git, patch, vim, unzip, zip
-# - Python 3.12.3
-# - Bazelisk 1.19.0
+# - Python 3.12.7
+# - Bazelisk 1.22.1
 # - JDK 21 (Azul Zulu)
 
-FROM mcr.microsoft.com/windows/servercore:ltsc2019
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 SHELL ["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", \
        "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue';$VerbosePreference = 'Continue';"]
+
+# Enable long paths
+RUN New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
 
 # This should only be necessary when running on A GCP VM, on a default
 # network, which has the MTU of 1460,
@@ -55,9 +58,9 @@ RUN (New-Object Net.WebClient).DownloadFile( \
     $env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';C:\tools\LLVM\bin'; \
     [Environment]::SetEnvironmentVariable('PATH', $env:PATH, 'Machine');
 
-# Install MSYS2, and add some extra tools.
+# Install MSYS2.
 RUN (New-Object Net.WebClient).DownloadFile( \
-         'https://repo.msys2.org/distrib/x86_64/msys2-base-x86_64-20240113.tar.xz', \
+         'https://repo.msys2.org/distrib/x86_64/msys2-base-x86_64-20240727.tar.xz', \
          'msys2.tar.xz'); \
     Start-Process -FilePath \"C:\Program Files\7-Zip\7z.exe\" -ArgumentList 'x msys2.tar.xz -oC:\TEMP\msys2.tar' -Wait; \
     Start-Process -FilePath \"C:\Program Files\7-Zip\7z.exe\" -ArgumentList 'x C:\TEMP\msys2.tar -oC:\tools' -Wait; \
@@ -74,9 +77,7 @@ RUN C:\tools\msys64\usr\bin\bash.exe -lc \
   'pacman --noconfirm -Syy curl git patch vim unzip zip'
 
 # Install Python as a general utility/tool.
-ENV PYTHON_VERSION 3.12.3
-
-RUN $url = ('https://www.python.org/ftp/python/{0}/python-{0}-amd64.exe' -f $env:PYTHON_VERSION); \
+RUN $url = ('https://www.python.org/ftp/python/{0}/python-{0}-amd64.exe' -f '3.12.7'); \
 	Write-Host ('Downloading {0} ...' -f $url); \
 	[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; \
 	(New-Object Net.WebClient).DownloadFile($url, 'C:\tmp\pyinstall.exe'); \
@@ -130,7 +131,8 @@ ENV BAZEL_SH "C:\tools\msys64\usr\bin\bash.exe"
 ENV BAZEL_VS "C:\Program Files\Microsoft Visual Studio\2022\BuildTools"
 ENV BAZEL_VC "C:\Program Files\Microsoft Visual Studio\2022\Community\VC"
 
-# Environment variables to work around MSYS issues.
+# Environment variables to prevent auto-conversion of Linux-like paths to Windows paths.
+# This is necessary as some paths end up invalid/mangled.
 ENV MSYS_NO_PATHCONV 1
 ENV MSYS2_ARG_CONV_EXCL *
 
@@ -147,9 +149,27 @@ ENV MSYS2_ARG_CONV_EXCL *
 # Install Bazelisk.
 RUN md C:\tools\bazel
 RUN (New-Object Net.WebClient).DownloadFile( \
-         'https://github.com/bazelbuild/bazelisk/releases/download/v1.19.0/bazelisk-windows-amd64.exe', \
+         'https://github.com/bazelbuild/bazelisk/releases/download/v1.22.1/bazelisk-windows-amd64.exe', \
          'C:\tools\bazel\bazel.exe'); \
     $env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';C:\tools\bazel'; \
     [Environment]::SetEnvironmentVariable('PATH', $env:PATH, 'Machine');
 
-SHELL ["cmd.exe", "/s", "/c"]
+# Install gcloud, and add it to PATH. Disable prompts initially for a non-interactive installation.
+ENV CLOUDSDK_CORE_DISABLE_PROMPTS 1
+RUN (New-Object Net.WebClient).DownloadFile('https://dl.google.com/dl/cloudsdk/channels/rapid/google-cloud-sdk.zip', 'C:\Temp\google-cloud-sdk.zip'); \
+    Expand-Archive -Path 'C:\Temp\google-cloud-sdk.zip' -DestinationPath $env:ProgramFiles -Verbose:$false
+RUN & \"$env:ProgramFiles\\google-cloud-sdk\\install.bat\" --path-update false
+RUN $env:Path += \";$env:ProgramFiles\\google-cloud-sdk\\bin\"; \
+    [Environment]::SetEnvironmentVariable('Path', $env:Path, [EnvironmentVariableTarget]::Machine);
+# Re-enable prompts for interactive use.
+ENV CLOUDSDK_CORE_DISABLE_PROMPTS=
+
+ENV TMP "C:/TMP"
+ENV TEMP "C:/TEMP"
+
+# MSYS attempts to use non-cmd versions, which aren't meant for Windows
+RUN Add-Content -Path C:\tools\msys64\.bashrc -Value 'alias gcloud=gcloud.cmd'
+RUN Add-Content -Path C:\tools\msys64\.bashrc -Value 'alias gsutil=gsutil.cmd'
+RUN Add-Content -Path C:\tools\msys64\.bashrc -Value 'alias bq=bq.cmd'
+
+CMD ["bash", "-i"]
