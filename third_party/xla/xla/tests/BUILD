@@ -2492,6 +2492,7 @@ xla_test(
         ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
+        "//xla:array",
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
