@@ -808,13 +808,9 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
   int minBitWidth =
       std::min({primitive_util::BitWidth(out), primitive_util::BitWidth(in0),
                 primitive_util::BitWidth(in1)});
-  bool isF8Dot = primitive_util::IsF8Type(out) ||
-                 primitive_util::IsF8Type(in0) || primitive_util::IsF8Type(in1);
   for (auto convert : converts) {
     auto in_type = convert->operand(0)->shape().element_type();
     auto out_type = convert->shape().element_type();
-    isF8Dot |=
-        primitive_util::IsF8Type(in_type) || primitive_util::IsF8Type(out_type);
     minBitWidth = std::min({minBitWidth, primitive_util::BitWidth(in_type),
                             primitive_util::BitWidth(out_type)});
   }
@@ -872,11 +868,11 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
     config.block_k =
         std::max(config.block_k, kLdmatrixGranularity / minBitWidth);
 
-    // Additionally, there are further issues happening on FP8 types and
+    // Additionally, there are further issues happening on 8 bit types and
     // predicates that require additional restriction on block_m when num_warps
     // > 8 (see b/378660935). It's unclear if the issue extends beyond these
     // cases, so restrictions here are conservative to these.
-    if ((isF8Dot || minBitWidth == 1) && config.num_warps > 8) {
+    if (minBitWidth <= 8 && config.num_warps > 8) {
       config.block_m = std::max(config.block_m, 32);
     }
 

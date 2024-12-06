@@ -1094,6 +1094,34 @@ ENTRY e {
       }));
 }
 
+// TODO(b/337839570): In addition to FP8 and predicates, also S8 leads to
+// crashes when num_warps > 8 and block_m < 32.
+TEST_F(GemmFusionAutotunerExhaustiveTest, SkipsCrashingConfigsS8Dot) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+ENTRY e {
+  lhs = s8[512,4608]{0,1} parameter(0)
+  rhs = f32[4608,16384]{1,0} parameter(1)
+  ROOT d = f32[512,16384]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)")
+                                                  .value();
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::AMPERE, /*minor=*/0};
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> configs,
+      GetPossibleMatmulAutotuneTritonConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
+
+  for (const auto& config : configs) {
+    if (config.num_warps > 8) {
+      EXPECT_GE(config.block_m, 32);
+    }
+  }
+}
+
 class GemmFusionAutotunerDisableSplitK : public GemmFusionAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
