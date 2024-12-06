@@ -1,1 +1,57 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/lib/ExecutionEngine/Orc/ExecutionUtils.cpp b/llvm/lib/ExecutionEngine/Orc/ExecutionUtils.cpp
+--- a/llvm/lib/ExecutionEngine/Orc/ExecutionUtils.cpp
++++ b/llvm/lib/ExecutionEngine/Orc/ExecutionUtils.cpp
+@@ -573,7 +573,6 @@
+     // Create __imp_ symbol
+     jitlink::Symbol &Ptr =
+         jitlink::x86_64::createAnonymousPointer(*G, Sec, &Target);
+-    auto name = getImpPrefix() + *KV.first;
+     Ptr.setName(G->intern((Twine(getImpPrefix()) + *KV.first).str()));
+     Ptr.setLinkage(jitlink::Linkage::Strong);
+     Ptr.setScope(jitlink::Scope::Default);
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/bolt/BUILD.bazel b/utils/bazel/llvm-project-overlay/bolt/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/bolt/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/bolt/BUILD.bazel
+@@ -285,6 +285,7 @@
+         "//llvm:MCParser",
+         "//llvm:Object",
+         "//llvm:ObjectYAML",
++        "//llvm:OrcShared",
+         "//llvm:Support",
+         "//llvm:TargetParser",
+         "//llvm:config",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -1442,7 +1442,10 @@
+     hdrs = glob(["src/__support/time/*.h"]),
+     deps = [
+         ":__support_common",
++        ":__support_error_or",
+         ":hdr_time_macros",
++        ":types_clockid_t",
++        ":types_struct_timespec",
+         ":types_time_t",
+     ],
+ )
+@@ -1486,6 +1489,8 @@
+         ":__support_common",
+         ":__support_error_or",
+         ":__support_osutil_vdso",
++        ":types_clockid_t",
++        ":types_struct_timespec",
+     ],
+ )
+ 
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -2800,6 +2800,7 @@
+         ":MC",
+         ":MCDisassembler",
+         ":Object",
++        ":OrcShared",
+         ":OrcTargetProcess",
+         ":Passes",
+         ":Support",
