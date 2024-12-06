@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/c/c_api_for_testing.h"
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/core/c/c_api.h"
 
 extern "C" {
 
