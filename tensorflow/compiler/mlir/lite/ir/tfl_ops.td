@@ -1619,6 +1619,8 @@ def TFL_DivOp : TFL_Op<"div", [
   let hasOptions = 1;
 
   let hasFolder = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 def TFL_EluOp: TFL_Op<"elu", [
