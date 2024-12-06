@@ -120,6 +120,7 @@ cc_library(
         "@local_tsl//tsl/platform:hash",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 

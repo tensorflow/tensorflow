@@ -57,6 +57,7 @@ limitations under the License.
 #include "tsl/platform/hash.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
 
@@ -208,6 +209,8 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
   // gives access to clique communicators.
   auto initialize = [&](absl::Span<const RendezvousArg* const> args)
       -> absl::StatusOr<LockableGpuClique::Lock> {
+    tsl::profiler::TraceMe trace("InitializeGpuClique");
+
     TF_ASSIGN_OR_RETURN(auto clique_id, clique_id_callback(clique_key));
 
     // Check that all ranks successfully synchronized device activity before
@@ -348,6 +351,8 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
   // gives access to clique communicators.
   auto split = [&](absl::Span<const RankPair* const> rank_pairs)
       -> absl::StatusOr<LockableGpuClique::Lock> {
+    tsl::profiler::TraceMe trace("SplitGpuClique");
+
     // Collect mapping from ranks in parent clique to ranks in a new clique.
     absl::btree_map<RankId, RankId> rank_mapping;
     for (auto* rank_pair : rank_pairs) {
@@ -446,6 +451,13 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
           << "; acquired_cliques=" << acquired_cliques.size()
           << "; max_nchannels=" << max_nchannels;
 
+  tsl::profiler::TraceMe trace([&] {
+    return tsl::profiler::TraceMeEncode(
+        "AcquireGpuClique", {{"rank", rank.value()},
+                             {"num_local_participants", num_local_participants},
+                             {"clique_key", clique_key.ToString()}});
+  });
+
   // Get the clique lock via the rendezvous to guarantee that all clique
   // members participate in XLA run.
   auto rendezvous_key = std::make_tuple(run_id, clique_key);
@@ -458,12 +470,18 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
       RendezvousSingle<absl::StatusOr<LockableGpuClique::Lock>>(
           rendezvous_name, rendezvous_key, num_local_participants,
           [&] {
+            tsl::profiler::TraceMe trace("LockGpuClique");
             ProcessGpuCliques& cliques = GetProcessGpuCliques();
-            absl::MutexLock lock(&cliques.mu);
-            // Returns empty lock if we do not have a clique for `clique_key`.
-            auto it = cliques.map.find(clique_key);
-            return it == cliques.map.end() ? LockableGpuClique::Lock()
-                                           : it->second.Acquire();
+
+            // Returns nullptr if we do not have a clique for `clique_key`.
+            auto lockable_clique = [&]() -> LockableGpuClique* {
+              absl::MutexLock lock(&cliques.mu);
+              auto it = cliques.map.find(clique_key);
+              return it == cliques.map.end() ? nullptr : &it->second;
+            }();
+
+            return lockable_clique ? lockable_clique->Acquire()
+                                   : LockableGpuClique::Lock();
           },
           WarnStuckTimeout(), TerminateTimeout()));
 
