@@ -36,6 +36,9 @@ namespace xla::gpu {
 // XLA:GPU extension of the Collectives interface with GPU-specific APIs.
 class GpuCollectives : public Collectives {
  public:
+  // Returns the default collectives implementation for GPU backend.
+  static GpuCollectives* Default();
+
   // A callback to get a unique clique id.
   using CliqueIdCallback =  // NOLINT
       std::function<absl::StatusOr<CliqueId>(const CliqueKey&)>;
@@ -70,6 +73,9 @@ class GpuCollectives : public Collectives {
     bool split_share = false;
     int64_t max_nchannels = 0;
   };
+
+  // Returns true if GPU collectives are implemented.
+  virtual bool IsImplemented() const = 0;
 
   // Returns true if collectives backend uses global config.
   virtual bool IsGlobalConfig() const = 0;

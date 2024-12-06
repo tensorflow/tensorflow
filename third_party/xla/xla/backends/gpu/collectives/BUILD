@@ -18,6 +18,16 @@ package_group(
     ],
 )
 
+# Build target that registers all available GPU collectives implementations with the collectives
+# registry at link time.
+cc_library(
+    name = "gpu_collectives_plugin",
+    deps = [
+        ":gpu_collectives_stub",
+        ":nccl_collectives",
+    ],
+)
+
 cc_library(
     name = "gpu_clique",
     srcs = ["gpu_clique.cc"],
@@ -124,6 +134,7 @@ cc_library(
         "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:collectives_registry",
         "//xla/core/collectives:communicator",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
@@ -131,11 +142,13 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
 cc_library(
     name = "gpu_collectives_stub",
+    srcs = ["gpu_collectives_stub.cc"],
     hdrs = ["gpu_collectives_stub.h"],
     deps = [
         ":gpu_collectives",
@@ -143,13 +156,14 @@ cc_library(
         "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:collectives_registry",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
-        "//xla/service/gpu/runtime:nccl_api_header",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
+    alwayslink = True,  # registers collectives implementation
 )
 
 cc_library(
@@ -182,9 +196,9 @@ cc_library(
         "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:collectives_registry",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
-        "//xla/service/gpu/runtime:nccl_api_header",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -201,6 +215,7 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rccl",
     ]),
+    alwayslink = True,  # registers collectives implementation
 )
 
 # TODO(b/380457503): Update visibility to "//visibility:private".

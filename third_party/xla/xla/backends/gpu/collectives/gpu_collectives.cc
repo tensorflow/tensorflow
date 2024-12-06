@@ -19,14 +19,28 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/core/collectives/collectives.h"
+#include "xla/core/collectives/collectives_registry.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/logging.h"
 
 namespace xla::gpu {
+
+GpuCollectives* GpuCollectives::Default() {
+  absl::StatusOr<Collectives*> collectives =
+      CollectivesRegistry::Default("gpu");
+  CHECK_OK(collectives) << "Failed to get GPU collectives";  // Crash OK
+
+  if (auto* gpu_collectives = tsl::down_cast<GpuCollectives*>(*collectives)) {
+    return gpu_collectives;
+  }
+
+  LOG(FATAL) << "Unsupported collectives implementation for GPU";
+}
 
 GpuCollectives::Device::Device(se::StreamExecutor* stream_executor)
     : stream_executor_(stream_executor) {}

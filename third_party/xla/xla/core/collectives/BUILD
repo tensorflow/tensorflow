@@ -43,6 +43,25 @@ cc_library(
 )
 
 cc_library(
+    name = "collectives_registry",
+    srcs = ["collectives_registry.cc"],
+    hdrs = ["collectives_registry.h"],
+    deps = [
+        ":collectives",
+        "//xla:util",
+        "//xla/service:platform_util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "communicator",
     hdrs = ["communicator.h"],
     deps = [

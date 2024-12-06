@@ -267,6 +267,7 @@ xla_test(
     tags = ["cuda-only"],
     deps = [
         ":cuda_collectives",
+        "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/service/gpu/runtime:nccl_api",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",

@@ -3,7 +3,7 @@ load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "internal_visibility", "nvtx_headers")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility", "nvtx_headers")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -194,114 +194,14 @@ xla_test(
 # NCCL integration
 #===-------------------------------------------------------------------------------------------===//
 
-# A lot of build complexity below is because NCCL dependency might not always be available and we
-# have `if_nccl` and `if_gpu_configured` that do not compose. NCCL header included directly in
-# :nccl_api target and all other targets should use this header to launch collective operations.
-# This allows to minimize the spreading of #ifdef all over the XLA code base.
-alias(
+# TODO(ezhulenev): Remove this library after migrating all users to GpuCollectives.
+cc_library(
     name = "nccl_api",
-    actual = if_nccl(":_nccl_api_impl", ":_nccl_api_stub"),
-)
-
-# TODO(ezhulenev): Remove this header once all users of NCCL API are migrated to the new API.
-cc_library(
-    name = "nccl_api_header",
     hdrs = ["nccl_api.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/collectives:gpu_collectives",
-        "//xla/core/collectives:clique_id",
-        "//xla/core/collectives:communicator",
-        "//xla/core/collectives:rank_id",
-        "//xla/service:collective_ops_utils",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:stream",
-        "//xla/tsl/concurrency:ref_count",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-cc_library(
-    name = "_nccl_api_impl",
-    srcs = if_gpu_is_configured(
-        ["nccl_api.cc"],
-        ["nccl_api_stub.cc"],
-    ),
-    hdrs = ["nccl_api.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu/collectives:gpu_clique_key",
-        "//xla/backends/gpu/collectives:gpu_collectives",
-        "//xla/backends/gpu/collectives:gpu_collectives_stub",
-        "//xla/backends/gpu/collectives:nccl_collectives",
-        "//xla/backends/gpu/collectives:nccl_communicator",
-        "//xla/core/collectives:clique_id",
-        "//xla/core/collectives:communicator",
-        "//xla/core/collectives:rank_id",
-        "//xla/service:collective_ops_utils",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/concurrency:ref_count",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:btree",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        "@local_config_nccl//:nccl",
-        "//xla/stream_executor/cuda:cuda_executor",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-        "@local_config_rocm//rocm:rccl",
-        "//xla/stream_executor/rocm:rocm_executor",
-    ]) + if_gpu_is_configured([
-        "//xla/stream_executor/gpu:gpu_stream",
-    ]),
-)
-
-cc_library(
-    name = "_nccl_api_stub",
-    srcs = ["nccl_api_stub.cc"],
-    hdrs = ["nccl_api.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu/collectives:gpu_clique_key",
-        "//xla/backends/gpu/collectives:gpu_collectives",
-        "//xla/backends/gpu/collectives:gpu_collectives_stub",
-        "//xla/backends/gpu/collectives:nccl_collectives",
-        "//xla/core/collectives:clique_id",
-        "//xla/core/collectives:clique_key",
-        "//xla/core/collectives:communicator",
-        "//xla/core/collectives:rank_id",
-        "//xla/service:collective_ops_utils",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:stream",
-        "//xla/tsl/concurrency:ref_count",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
+        "//xla/backends/gpu/collectives:gpu_collectives_plugin",
     ],
 )
 

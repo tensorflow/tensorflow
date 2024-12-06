@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
+#include "xla/core/collectives/collectives_registry.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/status_macros.h"
@@ -222,3 +223,6 @@ absl::Status NcclCollectives::GroupEnd() {
 }
 
 }  // namespace xla::gpu
+
+XLA_COLLECTIVES_REGISTER("gpu", "nccl", 1,
+                         std::make_unique<xla::gpu::NcclCollectives>());

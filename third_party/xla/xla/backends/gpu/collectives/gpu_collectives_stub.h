@@ -24,19 +24,20 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
 
 // A stub for GPU collectives when XLA:GPU compiled without collectives support.
-class GpuCollectivesStub : public NcclApi {
+class GpuCollectivesStub : public GpuCollectives {
  public:
+  bool IsImplemented() const final { return false; }
   bool IsGlobalConfig() const final { return false; }
 
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final {

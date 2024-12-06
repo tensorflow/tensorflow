@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/service/gpu/runtime/nccl_api.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -33,7 +33,8 @@ using ::tsl::testing::IsOk;
 using ::tsl::testing::IsOkAndHolds;
 
 TEST(CudaCollectivesTest, CollectiveMemoryAllocation) {
-  if (!xla::gpu::NcclApi::HasNcclSupport()) {
+  auto* collectives = xla::gpu::GpuCollectives::Default();
+  if (collectives->IsImplemented()) {
     GTEST_SKIP() << "Compiled without NCCL support";
   }
 

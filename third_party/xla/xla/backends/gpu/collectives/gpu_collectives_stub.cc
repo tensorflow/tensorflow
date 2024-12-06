@@ -13,19 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_RUNTIME_NCCL_API_H_
-#define XLA_SERVICE_GPU_RUNTIME_NCCL_API_H_
+#include "xla/backends/gpu/collectives/gpu_collectives_stub.h"
 
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include <memory>
 
-namespace xla::gpu {
+#include "xla/core/collectives/collectives_registry.h"
 
-//===----------------------------------------------------------------------===//
-// NcclApi
-//===----------------------------------------------------------------------===//
-
-using NcclApi = GpuCollectives;
-
-}  // namespace xla::gpu
-
-#endif  // XLA_SERVICE_GPU_RUNTIME_NCCL_API_H_
+XLA_COLLECTIVES_REGISTER("gpu", "stub", 0,
+                         std::make_unique<xla::gpu::GpuCollectivesStub>());
