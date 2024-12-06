@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_VARIABLE_OPS_TESTER_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_QUANTIZED_VARIABLE_OPS_TESTER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <numeric>
