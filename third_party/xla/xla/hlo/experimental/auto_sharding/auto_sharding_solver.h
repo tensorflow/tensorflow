@@ -49,6 +49,8 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
 // Runs a heuristic specified by one of the following values of `algorithm`:
 // - "trivial"
 // - "random"
+// - "greedy-node-cost"
+// - "greedy-node-memory"
 absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
     const AutoShardingSolverRequest& request, const std::string& algorithm);
 
