@@ -23,9 +23,6 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/public/session_options.h"
 
-using tensorflow::GraphDef;
-using tensorflow::NodeDef;
-
 static void BoolDeallocator(void* data, size_t, void* arg) {
   delete[] static_cast<bool*>(data);
 }
