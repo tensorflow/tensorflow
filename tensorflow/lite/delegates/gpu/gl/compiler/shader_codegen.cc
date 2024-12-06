@@ -23,8 +23,14 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/gl/compiler/compiled_node.h"
+#include "tensorflow/lite/delegates/gpu/gl/compiler/object_accessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
+#include "tensorflow/lite/delegates/gpu/gl/compiler/shader_code.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/variable_accessor.h"
+#include "tensorflow/lite/delegates/gpu/gl/compiler_options.h"
+#include "tensorflow/lite/delegates/gpu/gl/node_shader.h"
+#include "tensorflow/lite/delegates/gpu/gl/object.h"
 #include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 #ifdef __ANDROID__
