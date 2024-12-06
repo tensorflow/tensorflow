@@ -152,7 +152,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
     return false;
   }
 
-  if (instr->opcode() == HloOpcode::kBitcast &&
+  if (HloPredicateIsOp<HloOpcode::kBitcast>(instr) &&
       BitcastIsTilingNoop(instr, gpu_version)) {
     return true;
   }
@@ -282,7 +282,7 @@ absl::StatusOr<HloFusionInstruction*> MakeFusionForDiamondChain(
       create_computation(operand);
       new_operands.push_back(old_to_new_mapping[operand]);
     }
-    if (instr->opcode() == HloOpcode::kParameter) {
+    if (HloPredicateIsOp<HloOpcode::kParameter>(instr)) {
       old_to_new_mapping[instr] =
           builder.AddInstruction(HloInstruction::CreateParameter(
               param, instr->shape(), absl::StrCat("parameter_", param)));
@@ -528,8 +528,8 @@ FusionDecision ShouldFuseReduction(const HloInstruction& reduce,
   // convert of a constant.
   const HloInstruction* identity = reduce.operand(1);
   bool should_fuse_identity =
-      identity->opcode() == HloOpcode::kConstant ||
-      (identity->opcode() == HloOpcode::kConvert &&
+      HloPredicateIsOp<HloOpcode::kConstant>(identity) ||
+      (HloPredicateIsOp<HloOpcode::kConvert>(identity) &&
        identity->operand(0)->opcode() == HloOpcode::kConstant &&
        IsTritonSupportedInstruction(*identity, cc));
   if (!should_fuse_identity) {
@@ -585,8 +585,8 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
   // convert of a constant.
   const HloInstruction* identity = reduce->operand(1);
   bool should_fuse_identity =
-      identity->opcode() == HloOpcode::kConstant ||
-      (identity->opcode() == HloOpcode::kConvert &&
+      HloPredicateIsOp<HloOpcode::kConstant>(identity) ||
+      (HloPredicateIsOp<HloOpcode::kConvert>(identity) &&
        identity->operand(0)->opcode() == HloOpcode::kConstant &&
        IsTritonSupportedInstruction(*identity, cc));
   if (!should_fuse_identity) {
@@ -684,7 +684,7 @@ int64_t GetReductionDimensionSizeForDiamond(
     const DiamondChainDescriptor& diamond_chain) {
   HloInstruction* diamond_root = diamond_chain.root;
   HloInstruction* instr = diamond_root->mutable_operand(1);
-  while (instr->opcode() != HloOpcode::kReduce) {
+  while (HloPredicateIsNotOp<HloOpcode::kReduce>(instr)) {
     instr = ChooseOperandForFusionProcessing(instr);
   }
 
