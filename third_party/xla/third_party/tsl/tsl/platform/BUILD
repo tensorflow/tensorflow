@@ -211,10 +211,10 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["mutex.h"],
     deps = [
-        ":macros",
-        ":platform",
         ":thread_annotations",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -1635,7 +1635,6 @@ tsl_cc_test(
     deps = [
         ":env",
         ":env_impl",
-        ":env_time",
         ":mutex",
         ":platform_port",
         ":test",
