@@ -161,6 +161,11 @@ Status ByteSwapTensor(Tensor* t) {
                         t->NumElements());
 }
 
+Status ByteSwapTensorProto(TensorProto* tp) {
+  char* buff = const_cast<char*>((tp->tensor_content().data()));
+  return ByteSwapBuffer(buff, tp->tensor_content().size(), tp->dtype(), -1);
+}
+
 Status ByteSwapTensorContentInNode(NodeDef& node) {
   if (node.op() == "Const") {
     auto node_iterator = node.mutable_attr()->find("value");
