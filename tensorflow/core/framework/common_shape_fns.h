@@ -27,28 +27,28 @@ namespace shape_inference {
 
 // Like GetWindowedOutputSize, but deals with DimensionHandles. Does not support
 // EXPLICIT padding.
-Status GetWindowedOutputSizeFromDims(InferenceContext* c,
-                                     DimensionHandle input_size,
-                                     DimensionOrConstant filter_size,
-                                     int64_t stride, Padding padding_type,
-                                     DimensionHandle* output_size);
+absl::Status GetWindowedOutputSizeFromDims(InferenceContext* c,
+                                           DimensionHandle input_size,
+                                           DimensionOrConstant filter_size,
+                                           int64_t stride, Padding padding_type,
+                                           DimensionHandle* output_size);
 
 // The V2 version computes the same outputs with arbitrary dilation_rate, and
 // supports EXPLICIT padding. For detailed equations, refer to the comments
 // for GetWindowedOutputSize(). The 'padding_before' and 'padding_after'
 // parameters are only used if padding_type == EXPLICIT.
-Status GetWindowedOutputSizeFromDimsV2(
+absl::Status GetWindowedOutputSizeFromDimsV2(
     InferenceContext* c, DimensionHandle input_size,
     DimensionOrConstant filter_size, int64_t dilation_rate, int64_t stride,
     Padding padding_type, int64_t padding_before, int64_t padding_after,
     DimensionHandle* output_size);
 
 // Transfers shape of input(0) to output(0).
-Status UnchangedShape(shape_inference::InferenceContext* c);
+absl::Status UnchangedShape(shape_inference::InferenceContext* c);
 
 // Transfers shape of input(0) to output(0), after asserting its rank is <rank>.
-inline Status UnchangedShapeWithRank(shape_inference::InferenceContext* c,
-                                     int32_t rank) {
+inline absl::Status UnchangedShapeWithRank(shape_inference::InferenceContext* c,
+                                           int32_t rank) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &out));
   c->set_output(0, out);
@@ -56,7 +56,7 @@ inline Status UnchangedShapeWithRank(shape_inference::InferenceContext* c,
 }
 
 // Transfers shape of input(0) to output(0), after asserting its rank >= <rank>.
-inline Status UnchangedShapeWithRankAtLeast(
+inline absl::Status UnchangedShapeWithRankAtLeast(
     shape_inference::InferenceContext* c, int32_t rank) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), rank, &out));
@@ -65,8 +65,8 @@ inline Status UnchangedShapeWithRankAtLeast(
 }
 
 // Transfers shape of input(0) to output(0), after asserting its rank <= <rank>.
-inline Status UnchangedShapeWithRankAtMost(shape_inference::InferenceContext* c,
-                                           int32_t rank) {
+inline absl::Status UnchangedShapeWithRankAtMost(
+    shape_inference::InferenceContext* c, int32_t rank) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), rank, &out));
   c->set_output(0, out);
@@ -74,18 +74,18 @@ inline Status UnchangedShapeWithRankAtMost(shape_inference::InferenceContext* c,
 }
 
 // Shape function for use with ops no outputs.
-inline Status NoOutputs(shape_inference::InferenceContext* c) {
+inline absl::Status NoOutputs(shape_inference::InferenceContext* c) {
   return absl::OkStatus();
 }
 
 // Shape function for ops that output a single scalar value.
-inline Status ScalarShape(shape_inference::InferenceContext* c) {
+inline absl::Status ScalarShape(shape_inference::InferenceContext* c) {
   c->set_output(0, c->Scalar());
   return absl::OkStatus();
 }
 
 // Shape function for binary ops where both inputs and the output match.
-inline Status MergeBothInputsShapeFn(InferenceContext* c) {
+inline absl::Status MergeBothInputsShapeFn(InferenceContext* c) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(1), &out));
   c->set_output(0, out);
@@ -93,149 +93,154 @@ inline Status MergeBothInputsShapeFn(InferenceContext* c) {
 }
 
 // Shape function for dataset iterators.
-Status DatasetIteratorShape(shape_inference::InferenceContext* c);
+absl::Status DatasetIteratorShape(shape_inference::InferenceContext* c);
 
 // Returns a new shape with the specified dims arranged in the specified
 // format. The returned value is owned by this context.
 // Note: if format = "FORMAT_NCHW_VECT_C" then C represents the outer_depth.
-Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
-                           const std::vector<DimensionOrConstant>& spatial,
-                           DimensionOrConstant C, ShapeHandle* out,
-                           shape_inference::InferenceContext* context);
+absl::Status MakeShapeFromFormat(
+    TensorFormat format, DimensionOrConstant N,
+    const std::vector<DimensionOrConstant>& spatial, DimensionOrConstant C,
+    ShapeHandle* out, shape_inference::InferenceContext* context);
 
 // Shape function for MatMul-like operations.
-Status MatMulShape(shape_inference::InferenceContext* c);
+absl::Status MatMulShape(shape_inference::InferenceContext* c);
 
 // Shape function for Batched MatMul-like operations with broadcasting across
 // batch dimensions.
-Status BatchMatMulV2Shape(shape_inference::InferenceContext* c);
+absl::Status BatchMatMulV2Shape(shape_inference::InferenceContext* c);
 
 // Shape function for BatchMatMul-like operations
-Status BatchMatMulShape(shape_inference::InferenceContext* c);
+absl::Status BatchMatMulShape(shape_inference::InferenceContext* c);
 
 // Shape function for Einsum.
-Status EinsumShape(shape_inference::InferenceContext* c);
+absl::Status EinsumShape(shape_inference::InferenceContext* c);
 
 // Shape function for BiasAdd-like operations.
-Status BiasAddShape(shape_inference::InferenceContext* c);
+absl::Status BiasAddShape(shape_inference::InferenceContext* c);
 
 // Shape function for BiasAddGrad-like operations.
-Status BiasAddGradShape(shape_inference::InferenceContext* c);
+absl::Status BiasAddGradShape(shape_inference::InferenceContext* c);
 
 // Shape function for general Convolution operation
-Status ConvShape(shape_inference::InferenceContext* c);
+absl::Status ConvShape(shape_inference::InferenceContext* c);
 
 // Shape function for Conv2D-like operations that support explicit padding.
-Status Conv2DShapeWithExplicitPadding(shape_inference::InferenceContext* c);
+absl::Status Conv2DShapeWithExplicitPadding(
+    shape_inference::InferenceContext* c);
 
 // Shape function for Conv2D-like operations that do not support explicit
 // padding.
-Status Conv2DShape(shape_inference::InferenceContext* c);
+absl::Status Conv2DShape(shape_inference::InferenceContext* c);
 
 // Shape function for Conv3D-like operations.
-Status Conv3DShape(shape_inference::InferenceContext* c);
+absl::Status Conv3DShape(shape_inference::InferenceContext* c);
 
 // Shape function for DepthwiseConv2D-like operations that support explicit
 // padding.
-Status DepthwiseConv2DNativeShapeWithExplicitPadding(
+absl::Status DepthwiseConv2DNativeShapeWithExplicitPadding(
     shape_inference::InferenceContext* c);
 
 // Shape function for DepthwiseConv2D-like operations that do not support
 // explicit padding.
-Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
+absl::Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
 
 // Shape function for Conv2DBackpropInput.
-Status Conv2DBackpropInputShape(shape_inference::InferenceContext* c);
+absl::Status Conv2DBackpropInputShape(shape_inference::InferenceContext* c);
 
 // Shape function for Conv2DBackpropFilterWithBias.
-Status Conv2DBackpropFilterWithBiasShape(shape_inference::InferenceContext* c);
+absl::Status Conv2DBackpropFilterWithBiasShape(
+    shape_inference::InferenceContext* c);
 
 // Shape function for AvgPool-like operations.
-Status AvgPoolShape(shape_inference::InferenceContext* c);
+absl::Status AvgPoolShape(shape_inference::InferenceContext* c);
 
 // Shape function for AvgPoolGrad-like operations.
-Status AvgPoolGradShape(shape_inference::InferenceContext* c);
+absl::Status AvgPoolGradShape(shape_inference::InferenceContext* c);
 
 // Shape function for FusedBatchNorm and FusedBatchNormV2 operations.
-Status FusedBatchNormShape(shape_inference::InferenceContext* c);
+absl::Status FusedBatchNormShape(shape_inference::InferenceContext* c);
 
 // Shape function for FusedBatchNormV3 operations.
-Status FusedBatchNormV3Shape(shape_inference::InferenceContext* c);
+absl::Status FusedBatchNormV3Shape(shape_inference::InferenceContext* c);
 
 // Shape function for _FusedBatchNormEx operations.
-Status FusedBatchNormExShape(shape_inference::InferenceContext* c);
+absl::Status FusedBatchNormExShape(shape_inference::InferenceContext* c);
 
 // Shape function for FusedBatchNormGrad and FusedBatchNormGradV2 operations.
-Status FusedBatchNormGradShape(shape_inference::InferenceContext* c);
+absl::Status FusedBatchNormGradShape(shape_inference::InferenceContext* c);
 
 // Shape function for _FusedBatchNormGradEx operations.
-Status FusedBatchNormGradExShape(shape_inference::InferenceContext* c);
+absl::Status FusedBatchNormGradExShape(shape_inference::InferenceContext* c);
 
 // Shape function for MatrixDiagPartV2 and MatrixDiagPartV3 operations.
-Status MatrixDiagPartV2Shape(shape_inference::InferenceContext* c);
+absl::Status MatrixDiagPartV2Shape(shape_inference::InferenceContext* c);
 
 // Shape function for MatrixDiagV2 and MatrixDiagV3 operations.
-Status MatrixDiagV2Shape(shape_inference::InferenceContext* c);
+absl::Status MatrixDiagV2Shape(shape_inference::InferenceContext* c);
 
 // Shape function for MatrixSetDiagV2 and MatrixSetDiagV3 operations.
-Status MatrixSetDiagV2Shape(shape_inference::InferenceContext* c);
+absl::Status MatrixSetDiagV2Shape(shape_inference::InferenceContext* c);
 
 // Shape function for MaxPool-like operations that support explicit padding.
-Status MaxPoolShapeWithExplicitPadding(shape_inference::InferenceContext* c);
+absl::Status MaxPoolShapeWithExplicitPadding(
+    shape_inference::InferenceContext* c);
 
 // Shape function for MaxPool-like operations that do not support explicit
 // padding.
-Status MaxPoolShape(shape_inference::InferenceContext* c);
+absl::Status MaxPoolShape(shape_inference::InferenceContext* c);
 
 // Shape function for MaxPoolV2-like operations.
-Status MaxPoolV2Shape(shape_inference::InferenceContext* c, int num_inputs);
+absl::Status MaxPoolV2Shape(shape_inference::InferenceContext* c,
+                            int num_inputs);
 
 // Shape function for MaxPoolGrad-like operations.
-Status MaxPoolGradShape(shape_inference::InferenceContext* c);
+absl::Status MaxPoolGradShape(shape_inference::InferenceContext* c);
 
 // Shape function for 3D Pooling operations.
-Status Pool3DShape(shape_inference::InferenceContext* c);
+absl::Status Pool3DShape(shape_inference::InferenceContext* c);
 
 // Shape function for MaxPool3DGrad-like operations.
-Status MaxPool3DGradShape(shape_inference::InferenceContext* c);
+absl::Status MaxPool3DGradShape(shape_inference::InferenceContext* c);
 
 // Shape function for AvgPool3DGrad-like operations.
-Status AvgPool3DGradShape(shape_inference::InferenceContext* c);
+absl::Status AvgPool3DGradShape(shape_inference::InferenceContext* c);
 
 // Shape function for use with ops whose output shapes are unknown.
-Status UnknownShape(shape_inference::InferenceContext* c);
+absl::Status UnknownShape(shape_inference::InferenceContext* c);
 
 // Shape function for reduction operations.
-Status ReductionShape(shape_inference::InferenceContext* c);
+absl::Status ReductionShape(shape_inference::InferenceContext* c);
 
 // Shape function for unsorted segment operations.
-Status SegmentReductionWithNumSegmentsShapeFn(InferenceContext* c);
+absl::Status SegmentReductionWithNumSegmentsShapeFn(InferenceContext* c);
 
 // Shape function for concat operations.
 // <num_inputs_to_concat> is the number of inputs to concatenate and are taken
 // from inputs
 // [1,num_inputs_to_concat] of the op.  Input 0 is the concat_dim input.
-Status ConcatShape(shape_inference::InferenceContext* c,
-                   int num_inputs_to_concat);
+absl::Status ConcatShape(shape_inference::InferenceContext* c,
+                         int num_inputs_to_concat);
 
 // Shape function for concat operations.
-Status ConcatV2Shape(shape_inference::InferenceContext* c);
+absl::Status ConcatV2Shape(shape_inference::InferenceContext* c);
 
-Status QuantizedConcatV2Shape(InferenceContext* c, int num_inputs_to_concat);
+absl::Status QuantizedConcatV2Shape(InferenceContext* c,
+                                    int num_inputs_to_concat);
 
 // Shape function for binary operators that broadcast their inputs
 // and with output to output_index.
 // Note: out cannot be NULL.
-Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
-                                            ShapeHandle shape_x,
-                                            ShapeHandle shape_y,
-                                            bool incompatible_shape_error,
-                                            ShapeHandle* out);
+absl::Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
+                                                  ShapeHandle shape_x,
+                                                  ShapeHandle shape_y,
+                                                  bool incompatible_shape_error,
+                                                  ShapeHandle* out);
 
 // Shape function for binary operators that broadcast their inputs
 // and with output to output_index.
-inline Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c,
-                                             int output_index) {
+inline absl::Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c,
+                                                   int output_index) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
       c, c->input(0), c->input(1), true, &out));
@@ -245,57 +250,61 @@ inline Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c,
 
 // Shape function for binary operators that broadcast their inputs.
 // Tested by ops/math_ops_test.cc.
-inline Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
+inline absl::Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
   return BroadcastBinaryOpOutputShapeFn(c, 0);
 }
 
 // Shape function for random operations.
-Status RandomShape(shape_inference::InferenceContext* c);
+absl::Status RandomShape(shape_inference::InferenceContext* c);
 
 // Shape function for Slice operations.
-Status SliceShape(shape_inference::InferenceContext* c);
+absl::Status SliceShape(shape_inference::InferenceContext* c);
 
 // Validates the 3 component tensors of a sparse tensor have the proper
 // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
-Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
-                            ShapeHandle values_shape, ShapeHandle shape_shape);
+absl::Status ValidateSparseTensor(InferenceContext* c,
+                                  ShapeHandle indices_shape,
+                                  ShapeHandle values_shape,
+                                  ShapeHandle shape_shape);
 
-Status ValidateVariableResourceHandle(
+absl::Status ValidateVariableResourceHandle(
     InferenceContext* c, std::vector<ShapeAndType>* shape_and_type);
 
 // Shape function for GatherNd operations.
-Status GatherNdShape(InferenceContext* c);
+absl::Status GatherNdShape(InferenceContext* c);
 
 // Helper shape function for ScatterNd.../TensorScatter... operations.
-Status ScatterNdShapeHelper(InferenceContext* c, ShapeHandle indices_shape,
-                            ShapeHandle updates_shape, ShapeHandle input_shape);
+absl::Status ScatterNdShapeHelper(InferenceContext* c,
+                                  ShapeHandle indices_shape,
+                                  ShapeHandle updates_shape,
+                                  ShapeHandle input_shape);
 
 // Shape function for ops with an explicit "shape" attribute.
-Status ExplicitShape(InferenceContext* c);
+absl::Status ExplicitShape(InferenceContext* c);
 
 // Shape function for multiple-output ops with an explicit "shapes" attribute.
-Status ExplicitShapes(InferenceContext* c);
+absl::Status ExplicitShapes(InferenceContext* c);
 
 // Shape function for SparseReduceMax and SparseReduceSum.
-Status SparseReduceShapeFn(InferenceContext* c);
+absl::Status SparseReduceShapeFn(InferenceContext* c);
 
 // Shape function for QuantizedConv2D op.
-Status QuantizedConv2DShape(InferenceContext* c);
+absl::Status QuantizedConv2DShape(InferenceContext* c);
 
 // Shape function for _QuantizedConv2D op/fusion.
-Status FusedQuantizedConv2DShape(InferenceContext* c);
+absl::Status FusedQuantizedConv2DShape(InferenceContext* c);
 
 // Shape function for _QuantizedDepthwiseConv2D op/fusion.
-Status FusedQuantizedDepthwiseConv2D(InferenceContext* c);
+absl::Status FusedQuantizedDepthwiseConv2D(InferenceContext* c);
 
 // Shape function for QuantizedAvgPool op
-Status QuantizedAvgPoolShape(InferenceContext* c);
+absl::Status QuantizedAvgPoolShape(InferenceContext* c);
 
 // Shape function for QuantizeV2 op
-Status QuantizeV2Shape(InferenceContext* c);
+absl::Status QuantizeV2Shape(InferenceContext* c);
 
 // Shape function for ReduceScatter ops
-Status ReduceScatterShape(shape_inference::InferenceContext* c);
+absl::Status ReduceScatterShape(shape_inference::InferenceContext* c);
 
 }  // namespace shape_inference
 

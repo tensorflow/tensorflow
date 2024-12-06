@@ -41,7 +41,7 @@ bool HasAttrStyleType(const OpDef::ArgDef& arg) {
          !arg.type_list_attr().empty();
 }
 
-Status AllowedTypeValue(DataType dt, const OpDef::AttrDef& attr) {
+absl::Status AllowedTypeValue(DataType dt, const OpDef::AttrDef& attr) {
   const AttrValue& allowed_values(attr.allowed_values());
   for (auto allowed : allowed_values.list().type()) {
     if (dt == allowed) {
@@ -61,7 +61,7 @@ Status AllowedTypeValue(DataType dt, const OpDef::AttrDef& attr) {
       " is not in the list of allowed values: ", allowed_str);
 }
 
-Status AllowedStringValue(const string& str, const OpDef::AttrDef& attr) {
+absl::Status AllowedStringValue(const string& str, const OpDef::AttrDef& attr) {
   const AttrValue& allowed_values(attr.allowed_values());
   for (const auto& allowed : allowed_values.list().s()) {
     if (str == allowed) {
@@ -83,8 +83,8 @@ Status AllowedStringValue(const string& str, const OpDef::AttrDef& attr) {
 }  // namespace
 
 // Requires: attr has already been validated.
-Status ValidateAttrValue(const AttrValue& attr_value,
-                         const OpDef::AttrDef& attr) {
+absl::Status ValidateAttrValue(const AttrValue& attr_value,
+                               const OpDef::AttrDef& attr) {
   // Is it a valid value?
   TF_RETURN_WITH_CONTEXT_IF_ERROR(AttrValueHasType(attr_value, attr.type()),
                                   " for attr '", attr.name(), "'");
@@ -190,9 +190,9 @@ const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
     }                                                              \
   } while (false)
 
-static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
-                          bool output,
-                          absl::flat_hash_set<StringPiece>* names) {
+static absl::Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
+                                bool output,
+                                absl::flat_hash_set<StringPiece>* names) {
   const string suffix = strings::StrCat(
       output ? " for output '" : " for input '", arg.name(), "'");
   VALIDATE(names->emplace(arg.name()).second, "Duplicate name: ", arg.name());
@@ -266,7 +266,7 @@ bool IsValidOpName(StringPiece sp) {
   }
 }
 
-Status ValidateOpDef(const OpDef& op_def) {
+absl::Status ValidateOpDef(const OpDef& op_def) {
   if (!absl::StartsWith(op_def.name(), "_")) {
     VALIDATE(IsValidOpName(op_def.name()), "Invalid name: ", op_def.name(),
              " (Did you use CamelCase?)");
@@ -348,7 +348,7 @@ Status ValidateOpDef(const OpDef& op_def) {
 
 #undef VALIDATE
 
-Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
+absl::Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
   if (op_def.has_deprecation()) {
     const OpDeprecation& dep = op_def.deprecation();
     if (graph_def_version >= dep.version()) {
@@ -618,7 +618,7 @@ string ComputeArgSignature(
 
 }  // namespace
 
-Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op) {
+absl::Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op) {
 #define VALIDATE(CONDITION, ...)                                            \
   if (!(CONDITION)) {                                                       \
     return errors::InvalidArgument("Incompatible Op change: ", __VA_ARGS__, \
@@ -687,9 +687,9 @@ Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op) {
   return absl::OkStatus();
 }
 
-Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
-                                   const OpDef& penultimate_op,
-                                   const OpDef& new_op) {
+absl::Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
+                                         const OpDef& penultimate_op,
+                                         const OpDef& new_op) {
   AttrMap new_attrs, old_attrs;
   FillAttrMap(old_op, &old_attrs);
   FillAttrMap(new_op, &new_attrs);
@@ -726,7 +726,8 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
   return absl::OkStatus();
 }
 
-Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op) {
+absl::Status OpDefAttrDefaultsUnchanged(const OpDef& old_op,
+                                        const OpDef& new_op) {
   AttrMap new_attrs, old_attrs;
   FillAttrMap(old_op, &old_attrs);
   FillAttrMap(new_op, &new_attrs);

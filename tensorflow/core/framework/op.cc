@@ -32,15 +32,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status DefaultValidator(const OpRegistryInterface& op_registry) {
+absl::Status DefaultValidator(const OpRegistryInterface& op_registry) {
   LOG(WARNING) << "No kernel validator registered with OpRegistry.";
   return absl::OkStatus();
 }
 
 // OpRegistry -----------------------------------------------------------------
 
-Status OpRegistryInterface::LookUpOpDef(const string& op_type_name,
-                                        const OpDef** op_def) const {
+absl::Status OpRegistryInterface::LookUpOpDef(const string& op_type_name,
+                                              const OpDef** op_def) const {
   *op_def = nullptr;
   const OpRegistrationData* op_reg_data = nullptr;
   TF_RETURN_IF_ERROR(LookUp(op_type_name, &op_reg_data));
@@ -62,8 +62,8 @@ void OpRegistry::Register(const OpRegistrationDataFactory& op_data_factory) {
 
 namespace {
 // Helper function that returns Status message for failed LookUp.
-Status OpNotFound(const string& op_type_name) {
-  Status status = errors::NotFound(
+absl::Status OpNotFound(const string& op_type_name) {
+  absl::Status status = errors::NotFound(
       "Op type not registered '", op_type_name, "' in binary running on ",
       port::Hostname(), ". ",
       "Make sure the Op and Kernel are registered in the binary running in "
@@ -76,8 +76,8 @@ Status OpNotFound(const string& op_type_name) {
 }
 }  // namespace
 
-Status OpRegistry::LookUp(const string& op_type_name,
-                          const OpRegistrationData** op_reg_data) const {
+absl::Status OpRegistry::LookUp(const string& op_type_name,
+                                const OpRegistrationData** op_reg_data) const {
   if ((*op_reg_data = LookUp(op_type_name))) return absl::OkStatus();
   return OpNotFound(op_type_name);
 }
@@ -148,7 +148,7 @@ void OpRegistry::GetOpRegistrationData(
   }
 }
 
-Status OpRegistry::SetWatcher(const Watcher& watcher) {
+absl::Status OpRegistry::SetWatcher(const Watcher& watcher) {
   mutex_lock lock(mu_);
   if (watcher_ && watcher) {
     return errors::AlreadyExists(
@@ -190,7 +190,7 @@ void OpRegistry::ClearDeferredRegistrations() {
   deferred_.clear();
 }
 
-Status OpRegistry::ProcessRegistrations() const {
+absl::Status OpRegistry::ProcessRegistrations() const {
   mutex_lock lock(mu_);
   return CallDeferred();
 }
@@ -216,12 +216,12 @@ bool OpRegistry::MustCallDeferred() const {
   return true;
 }
 
-Status OpRegistry::CallDeferred() const {
+absl::Status OpRegistry::CallDeferred() const {
   if (initialized_) return absl::OkStatus();
   initialized_ = true;
   registry_.reserve(registry_.size() + deferred_.size());
   for (const auto& op_data_factory : deferred_) {
-    Status s = RegisterAlreadyLocked(op_data_factory);
+    absl::Status s = RegisterAlreadyLocked(op_data_factory);
     if (!s.ok()) {
       return s;
     }
@@ -230,11 +230,11 @@ Status OpRegistry::CallDeferred() const {
   return absl::OkStatus();
 }
 
-Status OpRegistry::RegisterAlreadyLocked(
+absl::Status OpRegistry::RegisterAlreadyLocked(
     const OpRegistrationDataFactory& op_data_factory) const {
   auto op_reg_data = std::make_unique<OpRegistrationData>();
   const auto* op_reg_data_raw = op_reg_data.get();
-  Status s = op_data_factory(op_reg_data.get());
+  absl::Status s = op_data_factory(op_reg_data.get());
   if (s.ok()) {
     s = ValidateOpDef(op_reg_data->op_def);
   }
@@ -243,7 +243,7 @@ Status OpRegistry::RegisterAlreadyLocked(
            .second) {
     s = errors::AlreadyExists("Op with name ", op_reg_data->op_def.name());
   }
-  Status watcher_status = s;
+  absl::Status watcher_status = s;
   if (watcher_) {
     watcher_status = watcher_(s, op_reg_data_raw->op_def);
   }
@@ -276,8 +276,8 @@ const OpRegistrationData* OpListOpRegistry::LookUp(
   return iter->second.get();
 }
 
-Status OpListOpRegistry::LookUp(const string& op_type_name,
-                                const OpRegistrationData** op_reg_data) const {
+absl::Status OpListOpRegistry::LookUp(
+    const string& op_type_name, const OpRegistrationData** op_reg_data) const {
   if ((*op_reg_data = LookUp(op_type_name))) return absl::OkStatus();
   return OpNotFound(op_type_name);
 }
@@ -286,10 +286,8 @@ namespace register_op {
 
 InitOnStartupMarker OpDefBuilderWrapper::operator()() {
   OpRegistry::Global()->Register(
-      [builder =
-           std::move(builder_)](OpRegistrationData* op_reg_data) -> Status {
-        return builder.Finalize(op_reg_data);
-      });
+      [builder = std::move(builder_)](OpRegistrationData* op_reg_data)
+          -> absl::Status { return builder.Finalize(op_reg_data); });
   return {};
 }
 

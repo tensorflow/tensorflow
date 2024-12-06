@@ -40,8 +40,8 @@ class MockOpRegistry : public OpRegistryInterface {
   // Returns an error status and sets *op_reg_data to nullptr if no OpDef is
   // registered under that name, otherwise returns the registered OpDef.
   // Caller must not delete the returned pointer.
-  Status LookUp(const string& op_type_name,
-                const OpRegistrationData** op_reg_data) const override {
+  absl::Status LookUp(const string& op_type_name,
+                      const OpRegistrationData** op_reg_data) const override {
     if (op_type_name == "Foo") {
       *op_reg_data = &op_reg_;
       return absl::OkStatus();

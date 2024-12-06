@@ -43,8 +43,8 @@ struct Library {
 // and OpList. Ops and kernels are registered as globals when a library is
 // loaded for the first time. Without caching, every subsequent load would not
 // perform initialization again, so the OpList would be empty.
-Status LoadDynamicLibrary(const char* library_filename, void** result,
-                          const void** buf, size_t* len) {
+absl::Status LoadDynamicLibrary(const char* library_filename, void** result,
+                                const void** buf, size_t* len) {
   static mutex mu(LINKER_INITIALIZED);
   static std::unordered_map<string, Library> loaded_libs;
   Env* env = Env::Default();
@@ -55,13 +55,13 @@ Status LoadDynamicLibrary(const char* library_filename, void** result,
     if (loaded_libs.find(library_filename) != loaded_libs.end()) {
       library = loaded_libs[library_filename];
     } else {
-      Status s = OpRegistry::Global()->ProcessRegistrations();
+      absl::Status s = OpRegistry::Global()->ProcessRegistrations();
       if (!s.ok()) {
         return s;
       }
       TF_RETURN_IF_ERROR(OpRegistry::Global()->SetWatcher(
-          [&library, &seen_op_names](const Status& s,
-                                     const OpDef& opdef) -> Status {
+          [&library, &seen_op_names](const absl::Status& s,
+                                     const OpDef& opdef) -> absl::Status {
             if (errors::IsAlreadyExists(s)) {
               if (seen_op_names.find(opdef.name()) == seen_op_names.end()) {
                 // Over writing a registration of an op not in this custom op

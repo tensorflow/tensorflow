@@ -41,7 +41,8 @@ NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
                                const OpRegistryInterface* op_registry,
                                const NodeDebugInfo* debug) {
   node_def_.set_name(string(name));
-  const Status status = op_registry->LookUpOpDef(string(op_name), &op_def_);
+  const absl::Status status =
+      op_registry->LookUpOpDef(string(op_name), &op_def_);
   if (status.ok()) {
     Initialize();
   } else {
@@ -87,7 +88,8 @@ bool NodeDefBuilder::NextArgAvailable() {
 
 NodeDefBuilder& NodeDefBuilder::Input(FakeInputFunctor fake_input) {
   if (NextArgAvailable()) {
-    Status status = fake_input(*op_def_, inputs_specified_, node_def_, this);
+    absl::Status status =
+        fake_input(*op_def_, inputs_specified_, node_def_, this);
     if (!status.ok()) errors_.push_back(std::string(status.message()));
   }
   return *this;
@@ -211,7 +213,7 @@ NodeDefBuilder& NodeDefBuilder::Device(StringPiece device_spec) {
   return *this;
 }
 
-Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
+absl::Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
   const std::vector<string>* errors_ptr = &errors_;
   std::vector<string> errors_storage;
   if (op_def_ != nullptr && inputs_specified_ < op_def_->input_arg_size()) {
