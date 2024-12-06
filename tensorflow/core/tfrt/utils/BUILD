@@ -207,6 +207,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:upgrade_graph",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:mlir_bridge_config_v1_proto_cc",
+        "//tensorflow/compiler/tf2xla:functionalize_control_flow",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:core_cpu_internal",
@@ -228,6 +229,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 

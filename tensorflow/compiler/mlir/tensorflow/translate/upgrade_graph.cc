@@ -16,15 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 
 #include "llvm/ADT/StringSet.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
-#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
-#include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/grappler_item_builder.h"
-#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
@@ -120,25 +111,6 @@ Status GenerateResourceSharedNameIfEmpty(
     }
   }
 
-  return absl::OkStatus();
-}
-
-bool IsCompiledNode(const Node* n) {
-  return n->attrs().Find(tensorflow::kTpuReplicateAttr) ||
-         n->attrs().Find(tensorflow::kCompileDeviceTypeAttr);
-}
-
-Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
-                          bool restrict_functionalization_to_compiled_nodes) {
-  NodeFilter node_filter = restrict_functionalization_to_compiled_nodes
-                               ? IsCompiledNode
-                               : NodeFilter{};
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      FunctionalizeControlFlow(graph, flib_def, node_filter,
-                               /*include_functions=*/true),
-      "Failed to functionalize Control Flow V1 ops. Consider using Control "
-      "Flow V2 ops instead. See https://www.tensorflow.org/api_docs/python/tf/"
-      "compat/v1/enable_control_flow_v2.");
   return absl::OkStatus();
 }
 

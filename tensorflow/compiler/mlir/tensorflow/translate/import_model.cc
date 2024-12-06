@@ -88,6 +88,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
@@ -1124,10 +1125,13 @@ class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
 
     if (import_options.upgrade_legacy) {
       // TODO(jpienaar): Remove need to const_cast.
-      TF_RETURN_IF_ERROR(UpgradeLegacyGraph(
-          graph.get(),
-          const_cast<FunctionLibraryDefinition*>(&graph->flib_def()),
-          /*restrict_functionalization_to_compiled_nodes=*/false));
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          FunctionalizeControlFlow(
+              graph.get(),
+              const_cast<FunctionLibraryDefinition*>(&graph->flib_def()),
+              NodeFilter{},
+              /*include_functions=*/true),
+          tensorflow::kFunctionalizeControlFlowFailureMessage);
     }
 
     return SimpleSavedModelMLIRImportInput(meta_graph_def, debug_info,

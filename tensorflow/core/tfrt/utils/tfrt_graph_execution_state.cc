@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/config.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -287,11 +289,14 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
   // Perform functionalization to convert v1 control flow to v2 control flow. It
   // should be applied to the unoptimized graph, because Grappler may cause
   // unfunctionalizablity.
-  TF_RETURN_IF_ERROR(tensorflow::UpgradeLegacyGraph(
-      result.graph.get(),
-      const_cast<tensorflow::FunctionLibraryDefinition*>(
-          &result.graph->flib_def()),
-      /*restrict_functionalization_to_compiled_nodes=*/false));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      FunctionalizeControlFlow(
+          result.graph.get(),
+          const_cast<tensorflow::FunctionLibraryDefinition*>(
+              &result.graph->flib_def()),
+          NodeFilter{},
+          /*include_functions=*/true),
+      tensorflow::kFunctionalizeControlFlowFailureMessage);
 
   if (VLOG_IS_ON(1)) {
     DumpGraphToFile("after_functionalization", *result.graph);
