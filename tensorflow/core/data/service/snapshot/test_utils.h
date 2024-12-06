@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 

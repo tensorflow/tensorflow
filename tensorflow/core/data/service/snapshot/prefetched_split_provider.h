@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/btree_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/io/compression.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/snapshot/test_utils.h"

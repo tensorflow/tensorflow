@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/snapshot_chunk_provider.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
