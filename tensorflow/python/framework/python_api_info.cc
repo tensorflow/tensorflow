@@ -118,9 +118,9 @@ void GetOpDefNamesAndDefaults(const tensorflow::OpDef& op_def,
 PythonAPIInfo::PythonAPIInfo(const std::string& api_name)
     : api_name_(InternPyString(api_name)) {}
 
-Status PythonAPIInfo::Initialize(const OpDef& op_def,
-                                 const std::vector<string> param_names,
-                                 PyObject* defaults_tuple) {
+absl::Status PythonAPIInfo::Initialize(const OpDef& op_def,
+                                       const std::vector<string> param_names,
+                                       PyObject* defaults_tuple) {
   // Intern the parameter names.
   param_names_.reserve(param_names.size());
   for (const auto& param_name : param_names) {
@@ -170,7 +170,7 @@ Status PythonAPIInfo::Initialize(const OpDef& op_def,
   return absl::OkStatus();
 }
 
-Status PythonAPIInfo::CheckParamNames() const {
+absl::Status PythonAPIInfo::CheckParamNames() const {
   std::vector<bool> param_found(param_names_.size());
   for (const auto& attr : attributes_) {
     if (attr.index != -1) {
@@ -193,7 +193,8 @@ Status PythonAPIInfo::CheckParamNames() const {
   return absl::OkStatus();
 }
 
-Status PythonAPIInfo::InitializeFromRegisteredOp(const std::string& op_name) {
+absl::Status PythonAPIInfo::InitializeFromRegisteredOp(
+    const std::string& op_name) {
   const tensorflow::OpDef* op_def = nullptr;
   TF_RETURN_IF_ERROR(
       tensorflow::OpRegistry::Global()->LookUpOpDef(op_name, &op_def));
@@ -204,7 +205,7 @@ Status PythonAPIInfo::InitializeFromRegisteredOp(const std::string& op_name) {
   return absl::OkStatus();
 }
 
-Status PythonAPIInfo::InitializeFromParamSpecs(
+absl::Status PythonAPIInfo::InitializeFromParamSpecs(
     const std::map<std::string, std::string>& input_specs,
     const std::map<std::string, std::string>& attr_specs,
     const std::vector<string> param_names, PyObject* defaults_tuple) {
@@ -226,7 +227,7 @@ Status PythonAPIInfo::InitializeFromParamSpecs(
   return absl::OkStatus();
 }
 
-Status PythonAPIInfo::InitializeAttribute(
+absl::Status PythonAPIInfo::InitializeAttribute(
     const OpDef::AttrDef& attr_def,
     const std::map<std::string, int>& param_name_to_index) {
   if (attr_def.name() == "name") {
@@ -296,7 +297,7 @@ Status PythonAPIInfo::InitializeAttribute(
   return absl::OkStatus();
 }
 
-Status PythonAPIInfo::InitializeInput(
+absl::Status PythonAPIInfo::InitializeInput(
     const OpDef::ArgDef& arg_def,
     const std::map<std::string, ParamIndex>& param_name_to_index) {
   if (arg_def.name() == "name") {
