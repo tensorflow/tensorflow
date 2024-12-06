@@ -17,15 +17,22 @@ limitations under the License.
 
 #include <cmath>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/stateless_random_ops.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
+#include "tsl/lib/random/simple_philox.h"
 
 using tensorflow::random::SimplePhilox;
 
