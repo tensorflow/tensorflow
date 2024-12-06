@@ -649,5 +649,180 @@ ENTRY main {
   HloComputation* false_comp = FindComputation(module.get(), "false_comp");
   EXPECT_THAT(false_comp->root_instruction(), op::Tuple(op::AfterAll()));
 }
+
+TEST_F(InfeedTokenPropagationTest, WhileNestedAfterInfeed) {
+  constexpr std::string_view hlo = R"(
+HloModule main
+
+body {
+  ROOT arg.0 = s32[] parameter(0)
+  token.0 = after-all()
+  infeed.0 = (s32[], token[]) infeed(token.0)
+}
+
+cond {
+  arg.0 = s32[] parameter(0)
+  ROOT true.0 = pred[] constant(true)
+}
+
+ENTRY main {
+  token.0 = after-all()
+  infeed.0 = (s32[], token[]) infeed(token.0)
+  gte.0 = get-tuple-element(infeed.0), index=0
+  gte.1 = get-tuple-element(infeed.0), index=1
+  infeed.1 = (s32[], token[]) infeed(gte.1)
+  gte.2 = get-tuple-element(infeed.1), index=0
+  add.0 = add(gte.0, gte.2)
+  ROOT while.0 = s32[] while(add.0), body=body, condition=cond
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  InfeedTokenPropagation itp;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  // The second infeed should send its token into the loop.
+  HloInstruction* loop = FindInstruction(module.get(), "while.0");
+  EXPECT_THAT(loop, op::While(op::Tuple(
+                        op::Add(),
+                        op::GetTupleElement(op::Infeed(op::GetTupleElement(
+                                                op::Infeed(op::AfterAll()), 1)),
+                                            1))));
+}
+
+TEST_F(InfeedTokenPropagationTest, WhileNestedBeforeOutfeed) {
+  constexpr std::string_view hlo = R"(
+HloModule main
+
+body {
+  ROOT arg.0 = s32[] parameter(0)
+  token.0 = after-all()
+  outfeed.0 = token[] outfeed(arg.0, token.0), outfeed_shape=s32[]
+}
+
+cond {
+  arg.0 = s32[] parameter(0)
+  ROOT true.0 = pred[] constant(true)
+}
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  ROOT while.0 = s32[] while(arg.0), body=body, condition=cond
+  token.0 = after-all()
+  outfeed.1 = token[] outfeed(while.0, token.0), outfeed_shape=s32[]
+  outfeed.2 = token[] outfeed(while.0, outfeed.1), outfeed_shape=s32[] 
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  InfeedTokenPropagation itp;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  // The first outfeed should get its token from the loop.
+  // The second outfeed should get its token from the first outfeed.
+  HloInstruction* outfeed_2 = FindInstruction(module.get(), "outfeed.2");
+  EXPECT_THAT(outfeed_2,
+              op::Outfeed(op::GetTupleElement(),
+                          op::Outfeed(op::GetTupleElement(),
+                                      op::GetTupleElement(op::While(), 1))));
+}
+
+TEST_F(InfeedTokenPropagationTest, ConditionalNestedAfterInfeed) {
+  constexpr std::string_view hlo = R"(
+HloModule main
+
+true_comp {
+  ROOT arg.0 = (s32[]) parameter(0)
+  token.0 = after-all()
+  infeed.0 = (s32[], token[]) infeed(token.0)
+}
+
+false_comp {
+  ROOT arg.0 = (s32[]) parameter(0)
+  token.0 = after-all()
+  infeed.0 = (s32[], token[]) infeed(token.0)
+}
+
+ENTRY main {
+  token.0 = after-all()
+  infeed.0 = (s32[], token[]) infeed(token.0)
+  gte.0 = get-tuple-element(infeed.0), index=0
+  gte.1 = get-tuple-element(infeed.0), index=1
+  infeed.1 = (s32[], token[]) infeed(gte.1)
+  gte.2 = get-tuple-element(infeed.1), index=0
+  add.0 = add(gte.0, gte.2)
+  tuple.0 = tuple(add.0)
+  pred.0 = pred[] constant(true)
+  ROOT cond.0 = (s32[]) conditional(pred.0, tuple.0, tuple.0), true_computation=true_comp, false_computation=false_comp
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  InfeedTokenPropagation itp;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  // The conditional should get both its tokens from the second infeed.
+  // The second infeed should get its token from the first infeed.
+  HloInstruction* conditional = FindInstruction(module.get(), "cond.0");
+  EXPECT_THAT(conditional,
+              op::Conditional(
+                  op::Constant(),
+                  op::Tuple(op::Add(), op::GetTupleElement(
+                                           op::Infeed(op::GetTupleElement(
+                                               op::Infeed(op::AfterAll()), 1)),
+                                           1)),
+                  op::Tuple(op::Add(), op::GetTupleElement(
+                                           op::Infeed(op::GetTupleElement(
+                                               op::Infeed(op::AfterAll()), 1)),
+                                           1))));
+}
+
+TEST_F(InfeedTokenPropagationTest, ConditionalNestedBeforeOutfeed) {
+  constexpr std::string_view hlo = R"(
+HloModule main
+
+true_comp {
+  ROOT arg.0 = (s32[]) parameter(0)
+  token.0 = after-all()
+  gte.0 = get-tuple-element(arg.0), index=0
+  outfeed.0 = token[] outfeed(gte.0, token.0), outfeed_shape=s32[]
+}
+
+false_comp {
+  ROOT arg.0 = (s32[]) parameter(0)
+  token.0 = after-all()
+  gte.0 = get-tuple-element(arg.0), index=0
+  outfeed.1 = token[] outfeed(gte.0, token.0), outfeed_shape=s32[]
+}
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  tuple.0 = tuple(arg.0)
+  pred.0 = pred[] constant(true)
+  ROOT cond.0 = (s32[]) conditional(pred.0, tuple.0, tuple.0), true_computation=true_comp, false_computation=false_comp
+  gte.0 = get-tuple-element(cond.0), index=0
+  token.0 = after-all()
+  outfeed.2 = token[] outfeed(gte.0, token.0), outfeed_shape=s32[]
+  outfeed.3 = token[] outfeed(gte.0, outfeed.2), outfeed_shape=s32[]
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  InfeedTokenPropagation itp;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, itp.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  // The second outfeed should get its token from the first outfeed.
+  // The first outfeed should get its token from the conditional.
+  // Note, there is a quirk - each branch of the of the conditional will produce
+  // its own token, but the first outfeed can only consume one of those.
+  // I'm not certain if we deterministically will consume last token in the
+  // conditional result.
+  HloInstruction* outfeed_3 = FindInstruction(module.get(), "outfeed.3");
+  EXPECT_THAT(
+      outfeed_3,
+      op::Outfeed(op::GetTupleElement(),
+                  op::Outfeed(op::GetTupleElement(),
+                              op::GetTupleElement(op::Conditional(), 2))));
+}
 }  // namespace
 }  // namespace xla

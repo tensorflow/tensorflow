@@ -2893,6 +2893,39 @@ HloInstructionProto HloInfeedInstruction::ToProto() const {
   return proto;
 }
 
+HloInstruction* HloInfeedInstruction::infeed_token() const {
+  for (HloInstruction* user : users()) {
+    if (user->opcode() == HloOpcode::kGetTupleElement &&
+        user->tuple_index() == 1) {
+      return user;
+    }
+  }
+  return nullptr;
+}
+
+HloInfeedInstruction* HloInfeedInstruction::infeed_chain_begin() const {
+  HloInfeedInstruction* begin = const_cast<HloInfeedInstruction*>(this);
+  while (begin->operand(0)->opcode() == HloOpcode::kGetTupleElement &&
+         begin->operand(0)->operand(0)->opcode() == HloOpcode::kInfeed) {
+    begin = Cast<HloInfeedInstruction>(
+        begin->mutable_operand(0)->mutable_operand(0));
+  }
+  return begin;
+}
+
+HloInfeedInstruction* HloInfeedInstruction::infeed_chain_end() const {
+  HloInfeedInstruction* end = const_cast<HloInfeedInstruction*>(this);
+  while (end->infeed_token() != nullptr &&
+         end->infeed_token()->user_count() == 1) {
+    if (end->infeed_token()->users()[0]->opcode() == HloOpcode::kInfeed) {
+      end = Cast<HloInfeedInstruction>(end->infeed_token()->users()[0]);
+    } else {
+      break;
+    }
+  }
+  return end;
+}
+
 void HloInfeedInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
   if (!options.print_infeed_outfeed_config() || infeed_config_.empty()) {
@@ -2935,6 +2968,23 @@ HloInstructionProto HloOutfeedInstruction::ToProto() const {
   proto.set_outfeed_config(outfeed_config());
   *proto.mutable_outfeed_shape() = outfeed_shape().ToProto();
   return proto;
+}
+
+HloOutfeedInstruction* HloOutfeedInstruction::outfeed_chain_begin() const {
+  HloOutfeedInstruction* begin = const_cast<HloOutfeedInstruction*>(this);
+  while (begin->operand(1)->opcode() == HloOpcode::kOutfeed) {
+    begin = Cast<HloOutfeedInstruction>(begin->mutable_operand(1));
+  }
+  return begin;
+}
+
+HloOutfeedInstruction* HloOutfeedInstruction::outfeed_chain_end() const {
+  HloOutfeedInstruction* end = const_cast<HloOutfeedInstruction*>(this);
+  while (end->user_count() == 1 &&
+         end->users()[0]->opcode() == HloOpcode::kOutfeed) {
+    end = Cast<HloOutfeedInstruction>(end->users()[0]);
+  }
+  return end;
 }
 
 void HloOutfeedInstruction::PrintExtraAttributesImpl(

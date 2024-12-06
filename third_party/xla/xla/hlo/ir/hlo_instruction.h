@@ -2682,6 +2682,18 @@ class HloInstruction {
       std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           aliasing);
 
+  // Delegates to HloInfeedInstruction::infeed_chain_begin().
+  HloInstruction* infeed_chain_begin() const;
+
+  // Delegates to HloInfeedInstruction::infeed_chain_end().
+  HloInstruction* infeed_chain_end() const;
+
+  // Delegates to HloOutfeedInstruction::outfeed_chain_begin().
+  HloInstruction* outfeed_chain_begin() const;
+
+  // Delegates to HloOutfeedInstruction::outfeed_chain_end().
+  HloInstruction* outfeed_chain_end() const;
+
   // Appends operand to the list of operands and adds this instruction as a user
   // of the operand.
   void AppendOperand(HloInstruction* operand);
