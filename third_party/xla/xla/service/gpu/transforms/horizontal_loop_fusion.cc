@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/sub_byte_normalization.h"
 #include "xla/layout_util.h"
-#include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
@@ -737,11 +736,19 @@ absl::StatusOr<bool> HorizontalLoopFusion::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Run horizontal fusion.";
 
-  // Run on the entry computation is actually enough.
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      RunOnComputation(module->entry_computation()));
+  bool any_changed = false;
+  if (only_entry_computation_) {
+    TF_ASSIGN_OR_RETURN(any_changed,
+                        RunOnComputation(module->entry_computation()));
+  } else {
+    for (HloComputation* computation :
+         GetFusibleComputations(*module, execution_threads)) {
+      TF_ASSIGN_OR_RETURN(bool changed, RunOnComputation(computation));
+      any_changed |= changed;
+    }
+  }
 
-  if (changed) {
+  if (any_changed) {
     // Correctly set element_size_in_bits for any sub-byte added slice and
     // concatenate instructions
     TF_ASSIGN_OR_RETURN(
@@ -750,7 +757,7 @@ absl::StatusOr<bool> HorizontalLoopFusion::Run(
             module));
   }
 
-  return changed;
+  return any_changed;
 }
 
 }  // namespace gpu

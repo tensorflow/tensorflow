@@ -126,8 +126,11 @@ namespace gpu {
 class HorizontalLoopFusion : public HloModulePass {
  public:
   explicit HorizontalLoopFusion(const se::DeviceDescription& device_description,
-                                absl::string_view prefix = "")
-      : device_description_(device_description), prefix_(prefix) {}
+                                absl::string_view prefix = "",
+                                bool only_entry_computation = false)
+      : device_description_(device_description),
+        prefix_(prefix),
+        only_entry_computation_(only_entry_computation) {}
 
   absl::string_view name() const override { return "horizontal_loop_fusion"; }
 
@@ -141,6 +144,7 @@ class HorizontalLoopFusion : public HloModulePass {
 
   const se::DeviceDescription& device_description_;
   std::string prefix_;
+  bool only_entry_computation_;
 };
 
 }  // namespace gpu

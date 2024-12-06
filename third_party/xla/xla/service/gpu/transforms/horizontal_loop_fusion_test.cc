@@ -989,23 +989,25 @@ TEST_F(HorizontalLoopFusionTest, DoNotMergeVariadicReductions) {
       HorizontalLoopFusion{device_description_}.Run(module.get()).value());
 }
 
-TEST_F(HorizontalLoopFusionTest, FuseDifferentInstructionCounts) {
+TEST_F(HorizontalLoopFusionTest, DoFusionInsideWhileLoop) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-f {
-  p = s8[] parameter(0)
-  b = s8[1] bitcast(p)
- }
+b {
+  a = (s8[]) parameter(0)
+  b = s8[] get-tuple-element(a), index=0
+  c = s8[] add(b, b)
+  d = s8[] multiply(b, b)
+  e = s8[] subtract(c, d)
+  t = tuple(e)
+}
 
-g {
-  p = s8[] parameter(0)
+c {
+  p = (s8[]) parameter(0)
+  r = pred[] constant(true)
 }
 
 e {
-  p0 = s8[] parameter(0)
-  p1 = s8[] parameter(1)
-  a = s8[1] fusion(p0), kind=kLoop, calls=f
-  b = s8[] fusion(p1), kind=kLoop, calls=g
-  t = tuple(a, b)
+  p = (s8[]) parameter(0)
+  r = (s8[]) while(p), condition=c, body=b
 })"));
 
   EXPECT_TRUE(
@@ -1092,6 +1094,52 @@ e {
 
   EXPECT_TRUE(
       HorizontalLoopFusion{device_description_}.Run(module.get()).value());
+}
+
+TEST_F(HorizontalLoopFusionTest, DontFuseCopiesInsideWhileLoops) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule module_main, entry_computation_layout={(f32[10]{0}, f32[20]{0})->(s32[], f32[10]{0}, f32[20]{0})}
+
+f {
+  param0 = f32[10]{0} parameter(0)
+  reverse = f32[10]{0} reverse(param0), dimensions={0}
+  param1 = f32[20]{0} parameter(1)
+  param2 = s32[] parameter(2)
+  dynamic_slice = f32[10]{0} dynamic-slice(param1, param2), dynamic_slice_sizes={10}
+  ROOT res = f32[10]{0} add(reverse, dynamic_slice)
+}
+
+body {
+  p0 = (s32[], f32[10]{0}, f32[20]{0}) parameter(0)
+  iter = s32[] get-tuple-element(p0), index=0
+  one = s32[] constant(1)
+  next_iter = s32[] add(iter, one)
+  a = f32[10]{0} get-tuple-element(p0), index=1
+  b = f32[20]{0} get-tuple-element(p0), index=2
+  next_a = f32[10]{0} fusion(a, b, iter), kind=kLoop, calls=f
+  copy.0 = f32[10]{0} copy(next_a)
+  next_b = f32[20]{0} reverse(b), dimensions={0}
+  copy.1 = f32[20]{0} copy(next_b)
+  ROOT r = (s32[], f32[10]{0}, f32[20]{0}) tuple(next_iter, copy.0, copy.1)
+}
+
+cond {
+  p = (s32[], f32[10]{0}, f32[20]{0}) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  bound = s32[] constant(10)
+  ROOT res.1 = pred[] compare(i, bound), direction=LT
+}
+
+ENTRY main {
+  zero = s32[] constant(0)
+  p0.1 = f32[10]{0} parameter(0)
+  p1.0 = f32[20]{0} parameter(1)
+  while_init = (s32[], f32[10]{0}, f32[20]{0}) tuple(zero, p0.1, p1.0)
+  ROOT while = (s32[], f32[10]{0}, f32[20]{0}) while(while_init), condition=cond, body=body
+})"));
+  HorizontalLoopFusion loop_fusion(device_description_, /*prefix=*/"",
+                                   /*only_entry_computation=*/true);
+  EXPECT_FALSE(loop_fusion.Run(module.get()).value());
 }
 
 }  // namespace
