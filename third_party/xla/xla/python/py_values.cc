@@ -21,17 +21,24 @@ limitations under the License.
 #include <exception>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/complex.h"  // IWYU pragma: keep
@@ -44,7 +51,6 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/py_array.h"
@@ -67,6 +73,53 @@ namespace xla {
 
 namespace {
 
+absl::StatusOr<std::vector<absl::Cord>> StringDTypeArrayToCords(
+    PyArrayObject* py_array_obj) {
+  if (PyArray_SIZE(py_array_obj) == 0) {
+    return absl::InvalidArgumentError("empty numpy array");
+  }
+
+  NpyIter* iter =
+      NpyIter_New(py_array_obj,
+                  NPY_ITER_READONLY | NPY_ITER_EXTERNAL_LOOP | NPY_ITER_REFS_OK,
+                  NPY_CORDER, NPY_NO_CASTING, nullptr);
+  if (iter == nullptr) {
+    return absl::InternalError("failed to make numpy iterator");
+  }
+  absl::Cleanup cleanup = [iter] { NpyIter_Deallocate(iter); };
+
+  NpyIter_IterNextFunc* iternext = NpyIter_GetIterNext(iter, nullptr);
+  if (iternext == nullptr) {
+    NpyIter_Deallocate(iter);
+    return absl::InternalError("failed to get the next iterator-function");
+  }
+
+  // Pointers to the data, stride and inner_size in the iterator. Updated when
+  // the iterator is advanced.
+  char** dataptr = NpyIter_GetDataPtrArray(iter);
+  npy_intp* strideptr = NpyIter_GetInnerStrideArray(iter);
+  npy_intp* innersizeptr = NpyIter_GetInnerLoopSizePtr(iter);
+
+  std::vector<absl::Cord> cords;
+  cords.reserve(PyArray_SIZE(py_array_obj));
+
+  do {
+    char* data = *dataptr;
+    npy_intp stride = *strideptr;
+    npy_intp count = *innersizeptr;
+
+    while (count--) {
+      auto py_unicode = PyArray_GETITEM(py_array_obj, data);
+      Py_ssize_t len;
+      auto str = PyUnicode_AsUTF8AndSize(py_unicode, &len);
+      cords.push_back(absl::Cord(absl::string_view(str, len)));
+      data += stride;
+    }
+  } while (iternext(iter));
+
+  return cords;
+}
+
 using DevicePutFunc = std::function<absl::StatusOr<DevicePutResultFn>(
     nb::handle, ifrt::Client*, ifrt::Device*, const DevicePutOptions& options,
     ifrt::MemoryKind to_memory_kind)>;
@@ -83,7 +136,7 @@ absl::StatusOr<DevicePutResultFn> HandlePythonScalar(
         "Unable to convert Python scalar to %s. This most likely means the "
         "value (%s) overflows the range of the type.",
         PrimitiveType_Name(primitive_util::NativeToPrimitiveType<T>()),
-        nb::cast<std::string_view>(nb::repr(obj)));
+        nb::cast<absl::string_view>(nb::repr(obj)));
   }
 
   std::variant<T, SquashedT> data;
@@ -130,7 +183,7 @@ absl::StatusOr<DevicePutResultFn> HandlePythonInt(
           "Unable to convert Python scalar to %s. This most likely means the "
           "value (%s) overflows the range of the type.",
           PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int32_t>()),
-          nb::cast<std::string_view>(nb::repr(obj)));
+          nb::cast<absl::string_view>(nb::repr(obj)));
     }
     type = S32;
   } else {
@@ -141,7 +194,7 @@ absl::StatusOr<DevicePutResultFn> HandlePythonInt(
           "Unable to convert Python scalar to %s. This most likely means the "
           "value (%s) overflows the range of the type.",
           PrimitiveType_Name(primitive_util::NativeToPrimitiveType<int64_t>()),
-          nb::cast<std::string_view>(nb::repr(obj)));
+          nb::cast<absl::string_view>(nb::repr(obj)));
     }
     type = S64;
   }
@@ -247,10 +300,53 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyScalar(
   };
 }
 
+absl::StatusOr<DevicePutResultFn> HandleStringNumpyArray(
+    nb::handle h, ifrt::Client* client, ifrt::Device* to_device,
+    const DevicePutOptions& options, ifrt::MemoryKind to_memory_kind) {
+  xla::nb_numpy_ndarray array = nb::cast<xla::nb_numpy_ndarray>(h);
+  auto py_array_obj = reinterpret_cast<PyArrayObject*>(array.ptr());
+  TF_ASSIGN_OR_RETURN(auto cords, StringDTypeArrayToCords(py_array_obj));
+  for (const auto& cord : cords) {
+    LOG(INFO) << "2D cord: " << cord;
+  }
+
+  // Assemble all the parameters of MakeArrayFromHostBuffer
+  void* data = cords.data();
+  ifrt::Shape shape(
+      absl::MakeSpan(static_cast<const int64_t*>(array.shape()), array.ndim()));
+  std::shared_ptr<xla::ifrt::Sharding> sharding =
+      xla::ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind);
+
+  auto on_done_with_host_buffer = [cords = std::move(cords)] {};
+
+  return [client, data = data, shape = std::move(shape),
+          sharding = std::move(sharding),
+          on_done_with_host_buffer =
+              std::move(on_done_with_host_buffer)]() mutable
+             -> absl::StatusOr<DevicePutResult> {
+    TF_ASSIGN_OR_RETURN(
+        auto ifrt_array,
+        client->MakeArrayFromHostBuffer(
+            data, ifrt::DType(ifrt::DType::kString), std::move(shape),
+            /*byte_strides=*/std::nullopt, std::move(sharding),
+            ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
+            std::move(on_done_with_host_buffer)));
+
+    return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
+  };
+}
+
 absl::StatusOr<DevicePutResultFn> HandleNumpyArray(
     nb::handle h, ifrt::Client* client, ifrt::Device* to_device,
     const DevicePutOptions& options, ifrt::MemoryKind to_memory_kind) {
   xla::nb_numpy_ndarray array = nb::cast<xla::nb_numpy_ndarray>(h);
+
+  // String numpy arrays require substantially different processing.
+  if (array.dtype().char_() == 'T') {
+    return HandleStringNumpyArray(h, client, to_device, options,
+                                  to_memory_kind);
+  }
+
   TF_ASSIGN_OR_RETURN(PrimitiveType type, DtypeToPrimitiveType(array.dtype()));
 
   PrimitiveType squashed_type;
@@ -451,7 +547,7 @@ absl::StatusOr<DevicePutResultFn> DevicePut(nb::handle arg,
                   "Not supported: The C++ jax jit execution path, only accepts "
                   "DeviceArray, Numpy arrays scalars of supported types "
                   "(see implementation), or Python scalars. Got type ",
-                  nb::cast<std::string_view>(nb::str(arg.type()))));
+                  nb::cast<absl::string_view>(nb::str(arg.type()))));
   }
   return res->second(arg, client, to_device, options, to_memory_kind);
 }
@@ -641,7 +737,7 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
                      "Buffer/DeviceArray, Numpy "
                      "arrays scalars of supported types "
                      "(see implementation), or Python scalars. Got type ",
-                     nb::cast<std::string_view>(nb::str(arg.type()))));
+                     nb::cast<absl::string_view>(nb::str(arg.type()))));
   }
   return res->second(arg, jax_enable_x64);
 }
