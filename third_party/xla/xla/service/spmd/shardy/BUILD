@@ -116,6 +116,7 @@ xla_cc_binary(
     deps = [
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
+        "//xla/mlir_hlo:stablehlo_extension_passes",
         "//xla/service/spmd/shardy/mhlo_round_trip:export_ops",
         "//xla/service/spmd/shardy/mhlo_round_trip:export_shardings",
         "//xla/service/spmd/shardy/mhlo_round_trip:mhlo_export",

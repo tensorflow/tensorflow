@@ -16,8 +16,10 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/Base.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "stablehlo_ext/IR/base.h"
 #include "stablehlo_ext/IR/stablehlo_ops.h"
 #include "stablehlo_ext/transforms/passes.h"  // NOLINT: Used in passes.h.inc
+#include "stablehlo_ext/transforms/sdy_refine_shapes.h"
 
 namespace mlir {
 namespace stablehlo_ext {
@@ -157,6 +160,7 @@ struct StablehloRefineShapesPass
     patterns.add<RefineDynamicReduceWindowOpPattern>(&getContext());
     patterns.add<RefineDynamicRngBitGeneratorOpPattern>(&getContext());
     patterns.add<RefineDynamicTopKOpPattern>(&getContext());
+    populateSdyShapeRefinementPatterns(&patterns, &getContext());
     if (failed(
             applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
       func.emitError()

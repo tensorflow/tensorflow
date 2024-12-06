@@ -1080,11 +1080,13 @@ cc_library(
     name = "stablehlo_extension_passes",
     srcs = [
         "stablehlo_ext/transforms/chlo_recompose_ops.cpp",
+        "stablehlo_ext/transforms/sdy_refine_shapes.cpp",
         "stablehlo_ext/transforms/stablehlo_canonicalize_dynamism.cpp",
         "stablehlo_ext/transforms/stablehlo_refine_shapes.cpp",
     ],
     hdrs = [
         "stablehlo_ext/transforms/passes.h",
+        "stablehlo_ext/transforms/sdy_refine_shapes.h",
     ],
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
@@ -1100,6 +1102,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:base",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
