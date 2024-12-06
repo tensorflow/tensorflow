@@ -134,11 +134,6 @@ class Shape {
     return dynamic_dimensions_[dimension];
   }
 
-  // Returns true if the given dimension is statically-sized.
-  bool is_static_dimension(int dimension) const {
-    return !dynamic_dimensions_[dimension];
-  }
-
   // Sets whether or not the given dimension is dynamically-sized.
   void set_dynamic_dimension(int dimension, bool is_dynamic) {
     dynamic_dimensions_[dimension] = is_dynamic;
@@ -235,11 +230,6 @@ class Shape {
     for (auto& subshape : tuple_shapes_) {
       subshape.clear_dynamic_dimensions();
     }
-  }
-
-  void Swap(Shape* other) {
-    using std::swap;
-    swap(*this, *other);
   }
 
   void Clear() {
