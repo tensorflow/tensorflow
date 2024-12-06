@@ -27,6 +27,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -3177,10 +3178,20 @@ ENTRY %module {
       if (hlo.opcode() == HloOpcode::kAllGatherStart) {
         result.push_back({AsyncTracker::GetTargetDefinedResourceTypeBegin(),
                           ResourceUsageType::kResourceRelease});
+      } else if (hlo.opcode() == HloOpcode::kAllGatherDone) {
+        result.push_back({AsyncTracker::GetTargetDefinedResourceTypeBegin(),
+                          ResourceUsageType::kResourceOccupy});
       }
       return result;
     }
-
+    int64_t GetNumTargetDefinedResources() const override { return 1; }
+    void SetConcurrentResourceLimits(
+        absl::flat_hash_map<int64_t, int64_t>& max_concurrent_resource)
+        const override {
+      max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllGather)] =
+          1;
+      max_concurrent_resource[GetTargetDefinedResourceTypeBegin()] = 1;
+    }
     absl::InlinedVector<int64_t, 1> GetReleasedNonextendableResourcesFromVector(
         const ResourcesVector& resources) const override {
       absl::InlinedVector<int64_t, 1> non_extendable_resources;
