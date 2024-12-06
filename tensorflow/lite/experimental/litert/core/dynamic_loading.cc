@@ -65,7 +65,6 @@ namespace {
 
 LiteRtStatus FindLiteRtSharedLibsHelper(const std::string& search_path,
                                         std::vector<std::string>& results) {
-  LITERT_LOG(LITERT_INFO, "FindLiteRtSharedLibsHelper %s", search_path.c_str());
   if (!std::filesystem::exists(search_path)) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -74,18 +73,13 @@ LiteRtStatus FindLiteRtSharedLibsHelper(const std::string& search_path,
       absl::StrFormat("%s%s", kLiteRtSharedLibPrefix, "CompilerPlugin");
   for (const auto& entry : std::filesystem::directory_iterator(search_path)) {
     const auto& path = entry.path();
-    LITERT_LOG(LITERT_INFO, "Checking %s", path.c_str());
     if (entry.is_regular_file()) {
       auto stem = path.stem().string();
       auto ext = path.extension().string();
-      LITERT_LOG(LITERT_INFO, "Found file %s, stem=%s, ext=%s", path.c_str(),
-                 stem.c_str(), ext.c_str());
       if (stem.find(compiler_plugin_lib_pattern) == 0 && ext == ".so") {
-        LITERT_LOG(LITERT_INFO, ">>> FOUND MATCH %s", path.c_str());
         results.push_back(path);
       }
     } else if (entry.is_directory()) {
-      LITERT_LOG(LITERT_INFO, "Found directory %s", path.c_str());
       FindLiteRtSharedLibsHelper(path, results);
     }
   }

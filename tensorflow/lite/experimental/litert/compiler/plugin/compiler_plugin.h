@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_COMPILER_PLUGIN_COMPILER_PLUGIN_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_COMPILER_PLUGIN_COMPILER_PLUGIN_H_
 
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -80,21 +81,31 @@ class CompilerPlugin {
   // Selects ops for the plugin to compile.
   Expected<std::vector<LiteRtOp>> PartitionModel(const Model& model);
 
-  // Compile given LiteRtSubgraphs for target "soc_model". Write compiled byte
-  // code to the given stream. For each given subgraph, write opaque data about
-  // the corresponding entry point to the given "call_info_out".
-  LiteRtStatus Compile(absl::string_view soc_model,
+  // Compile given LiteRtSubgraphs. Write compiled byte code to the given
+  // stream. For each given subgraph, write opaque data about the corresponding
+  // entry point to the given "call_info_out". Parameter "soc_model" is optional
+  // and can be set to specify the target SoC; for on-device compilation it
+  // should be left unspecified so as to let the underlying logic pick the
+  // architecture that matches the SoC on the user device.
+  LiteRtStatus Compile(std::optional<absl::string_view> soc_model,
                        const std::vector<LiteRtSubgraph>& partitions,
                        std::ostream& byte_code_out,
                        std::vector<std::string>& call_info_out);
 
-  // Search for shared library files with prefix "libLiteRtPlugin" in the
-  // directories passed through "lib_search_paths". Populates "loaded_plugins"
-  // with resolved plugin apis for each found library that can be succesfully
-  // loaded. Additionally initializes the compiler plugin instances
-  // and stores handle.
+  // Search for shared library files with prefix "libLiteRtCompilerPlugin" in
+  // the directories passed through "lib_search_paths". Populates
+  // "loaded_plugins" with resolved plugin apis for each found library that can
+  // be succesfully loaded. Additionally initializes the compiler plugin
+  // instances and stores handle.
   static Expected<SmallVec<CompilerPlugin>> LoadPlugins(
       absl::Span<const absl::string_view> lib_search_paths);
+
+  // Search for shared library files with prefix "libLiteRtCompilerPlugin" in
+  // the directories passed through "lib_search_paths" and return a compiler
+  // plugin instance for a given manufactured, if one is found.
+  static Expected<CompilerPlugin> LoadPlugin(
+      absl::Span<const absl::string_view> lib_search_paths,
+      absl::string_view soc_manufacturer);
 
   CompilerPlugin(CompilerPlugin&& other);
   CompilerPlugin& operator=(CompilerPlugin&& other);
@@ -120,9 +131,14 @@ class CompilerPlugin {
 };
 
 // Applies the plugin's "partition" and "compile" steps to the given model.
-// Returns the serialized model with npu code appended to the back.
-Expected<OwningBufferRef<uint8_t>> ApplyPlugin(CompilerPlugin& compiler_plugin,
-                                               Model& model);
+// Returns the serialized model with NPU code appended to the back.  Parameter
+// "soc_model" is optional and can be set to specify the target SoC; for
+// on-device compilation it should be left unspecified so as to let the
+// underlying logic pick the architecture that matches the SoC on the user
+// device
+Expected<OwningBufferRef<uint8_t>> ApplyPlugin(
+    CompilerPlugin& compiler_plugin, Model& model,
+    std::optional<absl::string_view> soc_model = std::nullopt);
 
 }  // namespace litert::internal
 

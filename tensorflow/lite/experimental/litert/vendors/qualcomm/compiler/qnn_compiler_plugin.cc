@@ -232,11 +232,16 @@ LiteRtStatus LiteRtCompilerPluginCompile(
     LiteRtCompilerPlugin compiler_plugin, const char* soc_model,
     LiteRtSubgraphArray partitions, LiteRtParamIndex num_partitions,
     LiteRtCompiledResult* compiled_result) {
-  LITERT_LOG(LITERT_INFO, "Starting QNN Compilation for %d subgraphs",
-             num_partitions);
-  auto opt_soc_model = FindSocModel(soc_model);
-  if (opt_soc_model.has_value()) {
-    LITERT_LOG(LITERT_INFO, "For arch: %d", opt_soc_model.value());
+  LITERT_LOG(LITERT_INFO,
+             "Starting QNN Compilation for %d subgraphs, soc_model=%s",
+             num_partitions, soc_model);
+
+  auto opt_soc_model = soc_model ? FindSocModel(soc_model) : std::nullopt;
+  if (opt_soc_model) {
+    LITERT_LOG(LITERT_ERROR, "Compiling QNN architecture: %d", *opt_soc_model);
+  } else if (soc_model) {
+    LITERT_LOG(LITERT_ERROR, "Unexpected SoC model: %s", soc_model);
+    return kLiteRtStatusErrorInvalidArgument;
   }
 
   // Initialize SDK and load qnn shared libraries.

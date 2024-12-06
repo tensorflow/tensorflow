@@ -150,7 +150,7 @@ class Expected {
 
   Expected& operator=(Expected&& other) {
     if (this != &other) {
-      ~Expected();
+      Expected::~Expected();
       has_value_ = other.has_value_;
       if (HasValue()) {
         value_ = std::move(other.Value());

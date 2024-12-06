@@ -216,17 +216,17 @@ std::vector<LiteRtOp> ApplyPartition(Context& ctx, const Model& model,
     Dump(*it, ctx.Dump().Display());
   }
 
-  auto partiion = plugin.PartitionModel(model);
-  if (!partiion.HasValue()) {
+  auto partition = plugin.PartitionModel(model);
+  if (!partition.HasValue()) {
     return {};
   }
-  auto grouped_partitions = GroupPartitions(partiion.Value());
+  auto grouped_partitions = GroupPartitions(partition.Value());
   if (grouped_partitions.empty()) {
     return {};
   }
   ctx.Dump().Labeled() << absl::StreamFormat(
       "Plugin selected %lu ops, yielding %lu partitions\n",
-      partiion.Value().size(), grouped_partitions.size());
+      partition.Value().size(), grouped_partitions.size());
 
   std::vector<LiteRtOp> res;
   for (auto& partition : grouped_partitions) {
@@ -572,7 +572,7 @@ LiteRtStatus Apply(Context& ctx) {
   // replacing use with single custom op..
   auto custom_ops = ApplyPartition(ctx, *model, *plugin);
   LITERT_ENSURE(!custom_ops.empty(), kLiteRtStatusErrorGraphModification,
-                "Failed to partiion graph.");
+                "Failed to partition graph.");
   // All new subgraphs to be compiled are appended to the model's subgraphs.
   std::vector<LiteRtSubgraph> compilation_input;
   for (auto it = model->Get()->subgraphs.begin() + kNumInputSubgraphs;

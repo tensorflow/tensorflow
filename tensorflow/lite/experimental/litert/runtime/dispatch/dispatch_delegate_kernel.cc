@@ -84,6 +84,10 @@ Expected<std::pair<absl::string_view, BufferRef<uint8_t>>> ResolveExecInfo(
       "Initializing invocation context for dispatch op\n\tfunction_name: "
       "%s\n\tbyte_code_offset: %lu \n\tbyte_code_size: %lu",
       function_name.data(), bytecode_offset, bytecode_size);
+  if (bytecode_size == 0) {
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Found zero-size bytecode");
+  }
 
   auto alloc_base = FindAllocBase(options);
   if (!alloc_base) {
@@ -208,7 +212,6 @@ Expected<DispatchDelegateKernel::Ptr> DispatchDelegateKernel::Create(
 
 TfLiteStatus DispatchDelegateKernel::Init(
     TfLiteOpaqueContext* context, const TfLiteOpaqueDelegateParams* params) {
-  LITERT_LOG(LITERT_INFO, "DispatchDelegateKernel::Init");
   if (params->nodes_to_replace->size != 1) {
     LITERT_LOG(LITERT_ERROR,
                "Models with more than one dispatch node are not yet supported");
@@ -271,6 +274,11 @@ TfLiteStatus DispatchDelegateKernel::Init(
   void* external_context;
   TfLiteOpaqueContextGetExternalContext(context, &external_context,
                                         kTfLiteLiteRtBufferContext);
+  if (!external_context) {
+    LITERT_LOG(LITERT_ERROR, "External context not found");
+    return kTfLiteError;
+  }
+
   auto* buffer_context =
       reinterpret_cast<litert::internal::ExternalLiteRtBufferContext*>(
           external_context);
@@ -279,6 +287,10 @@ TfLiteStatus DispatchDelegateKernel::Init(
   size_t num_node_inputs = TfLiteOpaqueNodeNumberOfInputs(node);
   for (size_t i = 0; i < num_node_inputs; ++i) {
     auto* tfl_opaque_tensor = TfLiteOpaqueNodeGetInput(context, node, i);
+    if (!tfl_opaque_tensor) {
+      LITERT_LOG(LITERT_ERROR, "Failed to get TFL node input %d", i);
+      return kTfLiteError;
+    }
     auto tensor_type = ConvertTensorType(tfl_opaque_tensor);
     if (!tensor_type) {
       LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().data());
@@ -297,6 +309,10 @@ TfLiteStatus DispatchDelegateKernel::Init(
   size_t num_node_outputs = TfLiteOpaqueNodeNumberOfOutputs(node);
   for (size_t i = 0; i < num_node_outputs; ++i) {
     auto* tfl_opaque_tensor = TfLiteOpaqueNodeGetOutput(context, node, i);
+    if (!tfl_opaque_tensor) {
+      LITERT_LOG(LITERT_ERROR, "Failed to get TFL node output %d", i);
+      return kTfLiteError;
+    }
     auto tensor_type = ConvertTensorType(tfl_opaque_tensor);
     if (!tensor_type) {
       LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().data());
