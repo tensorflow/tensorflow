@@ -1110,14 +1110,17 @@ AutoShardingSolverOutput SolveRandom(const AutoShardingSolverRequest& request,
 }  // namespace
 
 absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
-    const AutoShardingSolverRequest& request, const std::string& algorithm) {
-  // TODO(fahrbach): Scale request so that results agree with CP-SAT outputs.
+    const AutoShardingSolverRequest& unscaled_request,
+    const std::string& algorithm) {
+  // Scale the coefficients in the request in the same way as the MIP solver.
+  AutoShardingSolverRequest request = ScaleRequest(unscaled_request);
+
   absl::Time start_time = absl::Now();
   AutoShardingSolverOutput output;
   if (algorithm == "trivial") {
     output = SolveTrivial(request);
   } else if (algorithm == "random") {
-    output = SolveRandom(request, 100);
+    output = SolveRandom(request, 10000);
   } else {
     CHECK(false) << absl::Substitute("Algorithm $0 is not implemented.",
                                      algorithm);
