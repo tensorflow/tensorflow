@@ -31,6 +31,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
@@ -39,7 +41,6 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -60,6 +61,73 @@ class TritonEmitterTest : public GpuCodegenTest {
         .gpu_compute_capability();
   }
 };
+
+class AnnotationsTest : public TritonEmitterTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_annotate_with_emitter_loc(true);
+    return debug_options;
+  }
+};
+
+TEST_F(AnnotationsTest, Annotations) {
+  static constexpr std::string_view kHloText = R"(
+    HloModule Annotations
+
+    triton_dot {
+      p0 = f32[8,8] parameter(0)
+      p1 = f32[8,8] parameter(1)
+      ROOT dot = f32[8,8] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0},
+        algorithm=dot_bf16_bf16_f32_x3
+    }
+
+    ENTRY e {
+      p0 = f32[8,8]{1, 0} parameter(0)
+      p1 = f32[8,8]{1, 0} parameter(1)
+      ROOT _ = f32[8,8] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+        backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+          triton_gemm_config:
+          {
+            "block_m":32,
+            "block_n":32,
+            "block_k":32,
+            "split_k":1,
+            "num_stages":1,
+            "num_warps":1,
+            "num_ctas":1
+          }
+        }
+      }
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  auto* comp = module->GetComputationWithName("triton_dot");
+  EXPECT_NE(comp, nullptr);
+  auto fusion_backend_config = comp->FusionInstruction()
+                                   ->backend_config<GpuBackendConfig>()
+                                   ->fusion_backend_config();
+  BlockLevelParameters block_level_parameters =
+      BlockLevelParameters::FromBlockLevelFusionConfig(
+          fusion_backend_config.block_level_fusion_config());
+
+  auto* fusion = Cast<HloFusionInstruction>(comp->FusionInstruction());
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto triton_module,
+      CreateTritonModule("triton_fn", fusion,
+                         TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                         block_level_parameters, context));
+
+  std::string annotated_ir = DumpTritonIR(triton_module.get(), true);
+  TF_ASSERT_OK_AND_ASSIGN(bool annotated_result, RunFileCheck(annotated_ir, R"(
+    CHECK:  [[SOMETHING:.*]] "triton_dot -> [[FILE_LINE:triton_fusion_emitter.*:.*]]"
+  )"));
+  EXPECT_TRUE(annotated_result);
+}
 
 TEST_F(TritonEmitterTest, ReductionOnMinormostAxisIsEmittedCorrectly) {
   constexpr std::string_view kHloText = R"(

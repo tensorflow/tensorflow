@@ -135,6 +135,11 @@ message DebugOptions {
   // Specifies the behavior of per kernel autotuning cache.
   AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
+  // If true, XLA will annotate instructions in the dumps with emitter code
+  // location (source:line) annotations. This helps to identify the source of
+  // the code that emits a particular instruction.
+  bool xla_gpu_annotate_with_emitter_loc = 501;
+
   // Experimentally disables binary libraries in GPU compiler passes.
   bool xla_gpu_experimental_disable_binary_libraries = 329;
 
