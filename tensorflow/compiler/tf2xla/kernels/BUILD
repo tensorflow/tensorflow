@@ -369,6 +369,7 @@ cc_library(
         "@local_xla//xla/service:hlo_proto_cc",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:vhlo_ops",
     ],

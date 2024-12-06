@@ -225,6 +225,50 @@ diff --ruN a/stablehlo/stablehlo/tests/print_types_invalid.mlir b/stablehlo/stab
    %0 = stablehlo.optimization_barrier %arg0, %arg0 : tensor<1xf64>
    func.return %0 : tensor<1xf64>
  }
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_parameters.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_refine_parameters.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_refine_parameters.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_refine_parameters.mlir
+@@ -7,7 +7,7 @@
+ 
+ // RUN: not stablehlo-opt --stablehlo-refine-arguments='types=tensor<f32>,tensor<1xf32>,tensor<?xf32>,tensor<*xf32>,tensor<*xf32>,!stablehlo.token' %s 2>&1 | FileCheck %s --check-prefixes=UNRANKED-ERROR
+ func.func @main(%arg0: tensor<f32>, %arg1: tensor<1xf32>, %arg2: tensor<?xf32>, %arg3: tensor<1x?x?xf32>, %arg4: tensor<*xf32>, %arg5: !stablehlo.token) {
+-  // UNRANKED-ERROR: invalid refinement for argument 3, refinement must be ranked in 'tensor<1x?x?xf32>'->'tensor<*xf32>'
++  // UNRANKED-ERROR: invalid refinement for argument 3, refinement must be ranked in tensor<1x?x?xf32> -> tensor<*xf32>
+   return
+ }
+ 
+@@ -43,21 +43,28 @@
+ 
+ // -----
+ 
+-// expected-error @+1 {{invalid refinement for argument 5, refinement must be a tensor in 'tensor<f32>'->'!stablehlo.token'}}
++// expected-error @+1 {{invalid refinement for argument 5, refinement must be a tensor in tensor<f32> -> !stablehlo.token}}
+ func.func @refine_arguments_invalid_type_mismatch(%arg0: tensor<f32>, %arg1: tensor<1xf32>, %arg2: tensor<?xf32>, %arg3: tensor<1x?x?xf32>, %arg4: tensor<*xf32>, %arg5: tensor<f32>) {
+   return
+ }
+ 
+ // -----
+ 
+-// expected-error @+1 {{invalid refinement for argument 1, refinement rank must match operand rank in 'tensor<f32>'->'tensor<1xf32>'}}
++// expected-error @+1 {{invalid refinement for argument 1, refinement element types must match in tensor<1xi32> -> tensor<1xf32>}}
++func.func @refine_arguments_invalid_element_type_mismatch(%arg0: tensor<f32>, %arg1: tensor<1xi32>, %arg2: tensor<?xf32>, %arg3: tensor<1x?x?xf32>, %arg4: tensor<*xf32>, %arg5: tensor<f32>) {
++  return
++}
++
++// -----
++
++// expected-error @+1 {{invalid refinement for argument 1, refinement rank must match operand rank in tensor<f32> -> tensor<1xf32>}}
+ func.func @refine_arguments_invalid_refine_rank_mismatch(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xf32>, %arg3: tensor<1x?x?xf32>, %arg4: tensor<*xf32>, %arg5: !stablehlo.token) {
+   return
+ }
+ 
+ // -----
+ 
+-// expected-error @+1 {{invalid refinement for argument 1, refinement dimension sizes must match for static dimensions in 'tensor<2xf32>'->'tensor<1xf32>'}}
++// expected-error @+1 {{invalid refinement for argument 1, refinement dimension sizes must match for static dimensions in tensor<2xf32> -> tensor<1xf32>}}
+ func.func @refine_arguments_invalid_static_dim_mismatch(%arg0: tensor<f32>, %arg1: tensor<2xf32>, %arg2: tensor<?xf32>, %arg3: tensor<1x?x?xf32>, %arg4: tensor<*xf32>, %arg5: !stablehlo.token) {
+   return
+ }
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_emit_version_api.1_1_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_emit_version_api.1_1_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/vhlo_emit_version_api.1_1_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/vhlo_emit_version_api.1_1_0.mlir
@@ -290,4 +334,38 @@ diff --ruN a/stablehlo/stablehlo/tools/StablehloTranslateMain.cpp b/stablehlo/st
        return stablehlo::deserializePortableArtifact(input, context);
      },
      [](DialectRegistry &registry) {
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp b/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
+@@ -34,6 +34,7 @@
+ #include "mlir/IR/Value.h"
+ #include "mlir/IR/ValueRange.h"
+ #include "mlir/Pass/Pass.h"
++#include "mlir/Support/DebugStringHelper.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+@@ -79,7 +80,8 @@
+                               Type refinedType, StringRef msg) {
+   return func.emitOpError()
+          << "invalid refinement for argument " << idx << ", refinement " << msg
+-         << " in " << argType << "->" << refinedType;
++         << " in " << mlir::debugString(argType) << " -> "
++         << mlir::debugString(refinedType);
+ }
+ 
+ // Validates refinement types:
+@@ -111,6 +113,12 @@
+     auto refinedTensorType = dyn_cast<TensorType>(refinedType);
+     if (!tensorType || !refinedTensorType) {
+       return refinementError(func, i, type, refinedType, "must be a tensor");
++    }
++
++    // Check that element types match
++    if (tensorType.getElementType() != refinedTensorType.getElementType()) {
++      return refinementError(func, i, type, refinedType,
++                             "element types must match");
+     }
+ 
+     // Refined rank cannot be unranked if mismatch
 
