@@ -30,7 +30,12 @@ tf_cc_test(
         "//tensorflow/core/ir/importexport/tests/roundtrip",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//third_party/protobuf/util:differencer",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )
