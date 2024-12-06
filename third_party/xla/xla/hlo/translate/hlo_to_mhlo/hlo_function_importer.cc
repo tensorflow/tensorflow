@@ -866,45 +866,45 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         return new_operation;
       }
 
-      if (flatten_computation_args_result_) {
-        // Flatten the tuple-typed operands.
-        llvm::SmallVector<Value> flattened_operands = FlattenTupleValues(
-            func_builder, loc, operands, function.getNumArguments());
-        new_operation = func_builder->create<mlir::func::CallOp>(
-            loc, function, flattened_operands);
-        for (auto attr : attributes) {
-          new_operation->setAttr(attr.getName(), attr.getValue());
-        }
-        // Flatten the tuple-typed results.
-        mlir::ValueRange flattened_results_ref(new_operation->getResults());
-        TF_ASSIGN_OR_RETURN(auto result_type,
-                            ConvertShapeToType<RankedTensorType>(
-                                instruction->shape(), *builder_));
-        new_operation = CreateTupleValue(func_builder, loc,
-                                         flattened_results_ref, result_type)
-                            .getDefiningOp();
-      } else {
-        new_operation =
-            func_builder->create<mlir::func::CallOp>(loc, function, operands);
-        for (const auto& attr : attributes) {
-          new_operation->setAttr(attr.getName(), attr.getValue());
-        }
-      }
       // Shardy currently requires roundtripping passes after HW specific passes
       // which introduce kCall with backend_config for host communication. If
       // we get to a point where compiler flow for sharding propagation doesn't
       // require roundtrip this can likely be removed.
-      const std::string& raw_backend_config =
-          instruction->raw_backend_config_string();
-      if (!raw_backend_config.empty()) {
-        llvm::SmallVector<NamedAttribute, 1> frontend_attributes;
-        frontend_attributes.push_back(builder_->getNamedAttr(
-            "backend_config", builder_->getStringAttr(raw_backend_config)));
-        new_operation->setAttr(
-            kFrontendAttributesAttr,
-            builder_->getDictionaryAttr(frontend_attributes));
+      auto annotateCallOp = [&](Operation* call) {
+        const std::string& raw_backend_config =
+            instruction->raw_backend_config_string();
+        if (!raw_backend_config.empty()) {
+          llvm::SmallVector<NamedAttribute, 1> frontend_attributes;
+          frontend_attributes.push_back(builder_->getNamedAttr(
+              "backend_config", builder_->getStringAttr(raw_backend_config)));
+          call->setAttr(kFrontendAttributesAttr,
+                        builder_->getDictionaryAttr(frontend_attributes));
+        }
+        for (auto attr : attributes) {
+          call->setAttr(attr.getName(), attr.getValue());
+        }
+      };
+
+      if (!flatten_computation_args_result_) {
+        auto call =
+            func_builder->create<mlir::func::CallOp>(loc, function, operands);
+        annotateCallOp(call);
+        return call;
       }
-      return new_operation;
+      // Flatten the tuple-typed operands.
+      llvm::SmallVector<Value> flattened_operands = FlattenTupleValues(
+          func_builder, loc, operands, function.getNumArguments());
+      auto call = func_builder->create<mlir::func::CallOp>(loc, function,
+                                                           flattened_operands);
+      annotateCallOp(call);
+      // Flatten the tuple-typed results.
+      mlir::ValueRange flattened_results_ref(call->getResults());
+      TF_ASSIGN_OR_RETURN(auto result_type,
+                          ConvertShapeToType<RankedTensorType>(
+                              instruction->shape(), *builder_));
+      return CreateTupleValue(func_builder, loc, flattened_results_ref,
+                              result_type)
+          .getDefiningOp();
     }
     case HloOpcode::kCollectiveBroadcast: {
       auto collective_broadcast = Cast<HloChannelInstruction>(instruction);

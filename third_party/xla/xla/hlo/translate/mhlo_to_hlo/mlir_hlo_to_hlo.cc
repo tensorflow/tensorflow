@@ -1013,10 +1013,11 @@ bool SimplyReturnedOp(mlir::Operation* op) {
   return false;
 }
 
-void BuildGetTupleElementsForTupleResults(mlir::Operation* op, xla::XlaOp tuple,
-                                          OpLoweringContext ctx,
-                                          unsigned num_implicit_results = 0) {
-  const std::optional<xla::OpSharding>& sharding = ctx.builder->sharding();
+void BuildGetTupleElementsForTupleResults(
+    mlir::Operation* op, xla::XlaOp tuple, xla::XlaBuilder* builder,
+    llvm::DenseMap<mlir::Value, xla::XlaOp>& values,
+    unsigned num_implicit_results = 0) {
+  const std::optional<xla::OpSharding>& sharding = builder->sharding();
   if (sharding.has_value()) {
     bool is_tuple_sharding = sharding->type() == xla::OpSharding::TUPLE;
     assert(!is_tuple_sharding || (op->getNumResults() + num_implicit_results ==
@@ -1025,16 +1026,23 @@ void BuildGetTupleElementsForTupleResults(mlir::Operation* op, xla::XlaOp tuple,
       // If `sharding` is not a tuple sharding, then every `get-tuple-element`
       // gets the same sharding.
       xla::XlaScopedShardingAssignment scoped_sharding(
-          ctx.builder,
+          builder,
           is_tuple_sharding ? sharding->tuple_shardings(index) : sharding);
-      (*ctx.values)[result] = xla::GetTupleElement(tuple, index);
+      values[result] = xla::GetTupleElement(tuple, index);
     }
   } else {
-    xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder, std::nullopt);
+    xla::XlaScopedShardingAssignment scoped_sharding(builder, std::nullopt);
     for (auto [index, result] : llvm::enumerate(op->getResults())) {
-      (*ctx.values)[result] = xla::GetTupleElement(tuple, index);
+      values[result] = xla::GetTupleElement(tuple, index);
     }
   }
+}
+
+void BuildGetTupleElementsForTupleResults(mlir::Operation* op, xla::XlaOp tuple,
+                                          OpLoweringContext ctx,
+                                          unsigned num_implicit_results = 0) {
+  BuildGetTupleElementsForTupleResults(op, tuple, ctx.builder, *ctx.values,
+                                       num_implicit_results);
 }
 
 }  // namespace
@@ -3605,9 +3613,8 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
   // Use GetTupleElement for multiple outputs
   unsigned num_results = call_op.getNumResults();
   if (num_results > 1) {
-    for (unsigned i = 0; i != num_results; ++i) {
-      value_map[call_op.getResult(i)] = xla::GetTupleElement(call_result, i);
-    }
+    BuildGetTupleElementsForTupleResults(call_op, call_result, builder,
+                                         value_map);
   } else if (num_results == 1) {
     value_map[call_op.getResult(0)] = call_result;
   }
