@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/log/log.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
@@ -401,14 +402,19 @@ void AllocateAndParseFlags() {
 
   mlir_flags = new MlirCommonFlags;
   if (!enable_mlir_bridge_is_explicit) {
+    VLOG(0) << "DO NOT SUBMIT enable_mlir_bridge_is_not_explicit";
     mlir_flags->tf_mlir_enable_mlir_bridge =
         ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
   } else if (enable_mlir_bridge) {
+    VLOG(0) << "DO NOT SUBMIT enable_mlir_bridge";
     mlir_flags->tf_mlir_enable_mlir_bridge =
-        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+    // exit(1);
   } else {
+    VLOG(0) << "DO NOT SUBMIT disable_mlir_bridge";
     mlir_flags->tf_mlir_enable_mlir_bridge =
-        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+    // exit(1);
   }
   mlir_flags->tf_mlir_enable_merge_control_flow_pass =
       enable_mlir_merge_control_flow_pass;
