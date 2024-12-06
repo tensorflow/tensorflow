@@ -252,7 +252,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     if (!s.ok()) {
       absl::Status status = FromGrpcStatus(s);
       LOG(ERROR) << "GrpcMaybeUnparseProto returned with non-ok status: "
-                 << status.ToString();
+                 << status;
       done(status);
       return true;
     }
@@ -378,7 +378,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_UNLOCK_FUNCTION(mu_) {
     call_state_ = State::kDone;
     VLOG(2) << "Ending gRPC streaming call on the client side due to "
-            << status.ToString();
+            << status;
     // Swap the exchanges_ into a temporary ExchangeQueue so that we can
     // complete all exchanges without holding mu_ in case user callback
     // reach back into this. This should be impossible now, but safer for
