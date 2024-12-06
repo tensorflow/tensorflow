@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_HLO_BUILDER_VALUE_INFERENCE_H_
 #define XLA_HLO_BUILDER_VALUE_INFERENCE_H_
 
+#include <cstdint>
 #include <optional>
 #include <utility>
 
