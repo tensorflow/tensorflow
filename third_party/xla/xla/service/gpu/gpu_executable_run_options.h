@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/executable_run_options.h"
@@ -54,6 +55,10 @@ class GpuExecutableRunOptions {
       CliqueIdCallback clique_id_callback);
   const CliqueIdCallback& clique_id_callback() const;
 
+  // Collectives API for running collective operations on the GPU devices.
+  GpuExecutableRunOptions& set_collectives(GpuCollectives* collectives);
+  GpuCollectives* collectives() const;
+
   // Whether the run requires an exclusive lock on the GPU.
   bool requires_exclusive_lock_on_gpu() const {
     return requires_exclusive_lock_on_gpu_;
@@ -78,6 +83,7 @@ class GpuExecutableRunOptions {
   bool enable_mock_collectives_ = false;
   std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids_;
   CliqueIdCallback clique_id_callback_;
+  GpuCollectives* collectives_;
 };
 
 }  // namespace xla::gpu

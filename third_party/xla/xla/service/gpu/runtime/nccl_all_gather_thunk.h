@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/stream_executor/stream.h"
 
@@ -38,7 +37,7 @@ struct NcclAllGatherConfig {
 // Thunk that performs a NCCL-based All-Gather among CUDA GPU-based replicas.
 class NcclAllGatherStartThunk : public NcclCollectiveThunk {
  public:
-  NcclAllGatherStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
+  NcclAllGatherStartThunk(ThunkInfo thunk_info,
                           const HloAllGatherInstruction* inst,
                           std::vector<Buffer> buffers,
                           bool p2p_memcpy_enabled = false);
@@ -65,7 +64,7 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
   const std::vector<Buffer> buffers_;
 };
 
-absl::Status RunAllGather(NcclApi* nccl_api,
+absl::Status RunAllGather(GpuCollectives* collectives,
                           std::vector<DeviceBufferPair>& buffers,
                           se::Stream& stream, Communicator* comm);
 

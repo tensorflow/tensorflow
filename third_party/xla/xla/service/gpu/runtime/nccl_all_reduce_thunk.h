@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/stream_executor/stream.h"
 
@@ -41,7 +41,6 @@ struct NcclAllReduceConfig {
 class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
  public:
   NcclAllReduceReduceScatterThunkBase(Kind kind, ThunkInfo thunk_info,
-                                      NcclApi* nccl_api,
                                       NcclAllReduceConfig config,
                                       std::vector<Buffer> buffers,
                                       bool is_sync);
@@ -62,7 +61,7 @@ class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
 
 class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
-  NcclAllReduceStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
+  NcclAllReduceStartThunk(ThunkInfo thunk_info,
                           const HloAllReduceInstruction* inst,
                           std::vector<Buffer> buffers,
                           bool p2p_memcpy_enabled = false);
@@ -87,7 +86,7 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
 // -----------------------------------------------------------------------------
 class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
-  NcclReduceScatterStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
+  NcclReduceScatterStartThunk(ThunkInfo thunk_info,
                               const HloReduceScatterInstruction* inst,
                               std::vector<Buffer> buffers,
                               bool p2p_memcpy_enabled = false);
@@ -109,11 +108,13 @@ class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
 
 // -----------------------------------------------------------------------------
 
-absl::Status RunAllReduce(NcclApi* nccl_api, ReductionKind reduction_kind,
+absl::Status RunAllReduce(GpuCollectives* collectives,
+                          ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
                           se::Stream& stream, Communicator* comm);
 
-absl::Status RunReduceScatter(NcclApi* nccl_api, ReductionKind reduction_kind,
+absl::Status RunReduceScatter(GpuCollectives* collectives,
+                              ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
                               se::Stream& stream, Communicator* comm);
 

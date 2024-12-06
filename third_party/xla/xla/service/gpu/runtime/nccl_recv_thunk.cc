@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/runtime/thunk.h"
@@ -41,11 +40,11 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-NcclRecvThunk::NcclRecvThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
+NcclRecvThunk::NcclRecvThunk(ThunkInfo thunk_info,
                              const HloRecvInstruction* instr,
                              int64_t replica_count, int64_t partition_count,
                              const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kNcclRecv, thunk_info, nccl_api,
+    : NcclCollectiveThunk(Thunk::kNcclRecv, thunk_info,
                           /*is_sync=*/false),
       config_(GetNcclP2PConfigForSendRecv(instr, instr->shape().tuple_shapes(0),
                                           replica_count, partition_count)),
@@ -96,9 +95,10 @@ absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
   VLOG(3) << "Performing Recv from device ordinal: " << device_ordinal
           << ", current_id: " << current_id << ", group mode: "
           << CollectiveOpGroupModeToString(config_.config.group_mode);
-  ;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(nccl_api(), stream.parent(), {buffer},
-                                          comm_handle.comm));
+
+  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(collectives, stream.parent(),
+                                          {buffer}, comm_handle.comm));
 
   const std::optional<int64_t> source_id = source_target.source;
   se::DeviceMemoryBase dest_addr = buffer.destination_buffer;

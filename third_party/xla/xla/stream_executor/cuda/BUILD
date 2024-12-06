@@ -268,7 +268,6 @@ xla_test(
     deps = [
         ":cuda_collectives",
         "//xla/backends/gpu/collectives:gpu_collectives",
-        "//xla/service/gpu/runtime:nccl_api",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",

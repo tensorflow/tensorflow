@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
@@ -52,7 +52,7 @@ absl::StatusOr<CliqueId> NcclIdStore::GetNcclUniqueId(const CliqueKey& key) {
   int primary_node_id = device_to_node_.at(gpu_key->devices()[0]);
   if (node_id_ == primary_node_id) {
     TF_ASSIGN_OR_RETURN(clique_id,
-                        gpu::NcclApi::Default()->CreateUniqueCliqueId());
+                        gpu::GpuCollectives::Default()->CreateUniqueCliqueId());
     TF_RETURN_IF_ERROR(
         kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
   } else {

@@ -4,7 +4,6 @@ load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility", "nvtx_headers")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
@@ -60,7 +59,6 @@ cc_library(
         ":nccl_all_gather_thunk",
         ":nccl_all_reduce_thunk",
         ":nccl_all_to_all_thunk",
-        ":nccl_api",
         ":nccl_collective_broadcast_thunk",
         ":nccl_collective_thunk",
         ":thunk",
@@ -187,21 +185,6 @@ xla_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-#===-------------------------------------------------------------------------------------------===//
-# NCCL integration
-#===-------------------------------------------------------------------------------------------===//
-
-# TODO(ezhulenev): Remove this library after migrating all users to GpuCollectives.
-cc_library(
-    name = "nccl_api",
-    hdrs = ["nccl_api.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla/backends/gpu/collectives:gpu_collectives",
-        "//xla/backends/gpu/collectives:gpu_collectives_plugin",
     ],
 )
 
@@ -706,7 +689,6 @@ cc_library(
     srcs = ["nccl_all_gather_thunk.cc"],
     hdrs = ["nccl_all_gather_thunk.h"],
     deps = [
-        ":nccl_api",
         ":nccl_collective_thunk",
         ":thunk",
         "//xla:shape_util",
@@ -730,7 +712,6 @@ cc_library(
     srcs = ["nccl_all_reduce_thunk.cc"],
     hdrs = ["nccl_all_reduce_thunk.h"],
     deps = [
-        ":nccl_api",
         ":nccl_collective_thunk",
         ":thunk",
         "//xla:status_macros",
@@ -756,7 +737,6 @@ cc_library(
     srcs = ["nccl_all_to_all_thunk.cc"],
     hdrs = ["nccl_all_to_all_thunk.h"],
     deps = [
-        ":nccl_api",
         ":nccl_collective_thunk",
         ":thunk",
         "//xla:shape_util",
@@ -787,7 +767,6 @@ cc_library(
     srcs = ["nccl_collective_broadcast_thunk.cc"],
     hdrs = ["nccl_collective_broadcast_thunk.h"],
     deps = [
-        ":nccl_api",
         ":nccl_collective_thunk",
         ":thunk",
         "//xla:xla_data_proto_cc",
@@ -809,7 +788,6 @@ cc_library(
     srcs = ["nccl_collective_permute_thunk.cc"],
     hdrs = ["nccl_collective_permute_thunk.h"],
     deps = [
-        ":nccl_api",
         ":nccl_collective_thunk",
         ":nccl_p2p_thunk_common",
         ":thunk",
@@ -823,9 +801,13 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:errors",
     ],
 )
@@ -835,7 +817,6 @@ cc_library(
     srcs = ["nccl_collective_thunk.cc"],
     hdrs = ["nccl_collective_thunk.h"],
     deps = [
-        ":nccl_api",
         ":thunk",
         "//xla:debug_options_flags",
         "//xla:shape_util",
@@ -844,6 +825,7 @@ cc_library(
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_clique_locking",
         "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/backends/gpu/collectives:gpu_collectives_plugin",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/hlo/ir:hlo",
@@ -913,7 +895,6 @@ cc_library(
     srcs = ["nccl_recv_thunk.cc"],
     hdrs = ["nccl_recv_thunk.h"],
     deps = [
-        ":nccl_api",
         ":nccl_collective_thunk",
         ":nccl_p2p_thunk_common",
         ":thunk",
@@ -940,7 +921,6 @@ cc_library(
     srcs = ["nccl_send_thunk.cc"],
     hdrs = ["nccl_send_thunk.h"],
     deps = [
-        ":nccl_api",
         ":nccl_collective_thunk",
         ":nccl_p2p_thunk_common",
         ":thunk",
@@ -967,15 +947,17 @@ cc_library(
     srcs = ["nccl_group_thunk.cc"],
     hdrs = ["nccl_group_thunk.h"],
     deps = [
-        ":nccl_api",
         ":nccl_collective_thunk",
         ":thunk",
+        "//xla:util",
         "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:stream",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1083,8 +1065,10 @@ cc_library(
     hdrs = ["thunk.h"],
     deps = [
         "//xla:executable_run_options",
+        "//xla:util",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_clique_locking",
+        "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/ffi:execution_context",

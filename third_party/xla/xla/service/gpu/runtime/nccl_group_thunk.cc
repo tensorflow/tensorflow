@@ -20,10 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -32,7 +34,6 @@ NcclGroupThunk::NcclGroupThunk(const HloInstruction* instruction,
                                Thunk::Kind kind,
                                std::vector<std::unique_ptr<Thunk>> thunks)
     : Thunk(kind, ThunkInfo::WithProfileAnnotation(instruction)) {
-  nccl_api_ = NcclApi::Default();
   for (auto& thunk : thunks) {
     thunks_.emplace_back(std::move(thunk));
   }
@@ -53,11 +54,13 @@ absl::Status NcclGroupThunk::Initialize(const InitializeParams& params) {
 
 absl::Status NcclGroupThunk::ExecuteOnStream(
     const Thunk::ExecuteParams& params) {
-  TF_RETURN_IF_ERROR(nccl_api_->GroupStart());
+  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
+
+  TF_RETURN_IF_ERROR(collectives->GroupStart());
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
   }
-  TF_RETURN_IF_ERROR(nccl_api_->GroupEnd());
+  TF_RETURN_IF_ERROR(collectives->GroupEnd());
   return absl::OkStatus();
 }
 

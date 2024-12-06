@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/runtime/thunk.h"
@@ -78,11 +77,11 @@ bool IsLocalPeerTransfer(
 }  // namespace
 
 NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
-    ThunkInfo thunk_info, NcclApi* nccl_api,
-    const HloCollectivePermuteInstruction* instr, int64_t replica_count,
-    int64_t partition_count, const Buffer& buffer, bool p2p_memcpy_enabled)
+    ThunkInfo thunk_info, const HloCollectivePermuteInstruction* instr,
+    int64_t replica_count, int64_t partition_count, const Buffer& buffer,
+    bool p2p_memcpy_enabled)
     : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
-                          nccl_api, IsSyncCollective(instr)),
+                          IsSyncCollective(instr)),
       config_(GetNcclP2PConfig(instr, replica_count, partition_count)),
       buffer_(buffer),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {}
@@ -190,15 +189,17 @@ absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
   bool use_memcpy = is_local_peer && recv_ptr_map_.IsInitialized(current_id) &&
                     p2p_memcpy_enabled_;
 
+  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   return ::xla::gpu::RunCollectivePermute(
-      nccl_api(), source_target, device_buffers[0], stream, comm_handle.comm,
+      collectives, source_target, device_buffers[0], stream, comm_handle.comm,
       device_string, current_id, use_memcpy, recv_ptr_map_);
 }
 
 absl::Status RunCollectivePermute(
-    NcclApi* nccl_api, NcclP2PConfig::SourceTargetMapEntry source_target,
-    DeviceBufferPair& buffer, se::Stream& stream, Communicator* comm,
-    absl::string_view device_string, int64_t current_id, bool use_memcpy,
+    GpuCollectives* collectives,
+    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
+    se::Stream& stream, Communicator* comm, absl::string_view device_string,
+    int64_t current_id, bool use_memcpy,
     NcclCollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map) {
   // Determine the source and target IDs for this instance. The source ID is the
   // ID which will copy its data to this instance. The destination ID is the ID
@@ -228,7 +229,7 @@ absl::Status RunCollectivePermute(
   VLOG(3) << "Performing collective permute from device ordinal: "
           << device_ordinal << " current_id " << current_id;
   TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(nccl_api, stream.parent(), {buffer}, comm));
+      MaybeRegisterBuffers(collectives, stream.parent(), {buffer}, comm));
 
   const std::optional<int64_t> source_id = source_target.source;
   const std::optional<int64_t> target_id = source_target.target;
@@ -254,7 +255,7 @@ absl::Status RunCollectivePermute(
     // calls.
     const bool is_nccl_group_needed = (target_id && source_id);
     if (is_nccl_group_needed) {
-      TF_RETURN_IF_ERROR(nccl_api->GroupStart());
+      TF_RETURN_IF_ERROR(collectives->GroupStart());
     }
     // Send source buffer to target peer if needed.
     if (target_id) {
@@ -270,7 +271,7 @@ absl::Status RunCollectivePermute(
                                     GpuCollectives::On(stream)));
     }
     if (is_nccl_group_needed) {
-      TF_RETURN_IF_ERROR(nccl_api->GroupEnd());
+      TF_RETURN_IF_ERROR(collectives->GroupEnd());
     }
   }
 

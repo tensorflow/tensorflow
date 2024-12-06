@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
 
@@ -43,6 +44,16 @@ GpuExecutableRunOptions& GpuExecutableRunOptions::set_clique_id_callback(
 
 const CliqueIdCallback& GpuExecutableRunOptions::clique_id_callback() const {
   return clique_id_callback_;
+}
+
+GpuExecutableRunOptions& GpuExecutableRunOptions::set_collectives(
+    GpuCollectives* collectives) {
+  collectives_ = collectives;
+  return *this;
+}
+
+GpuCollectives* GpuExecutableRunOptions::collectives() const {
+  return collectives_;
 }
 
 }  // namespace xla::gpu

@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
 #include "xla/stream_executor/stream.h"
@@ -36,9 +35,9 @@ namespace gpu {
 // Thunk that performs a NCCL-send.
 class NcclSendThunk : public NcclCollectiveThunk {
  public:
-  NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
-                const HloSendInstruction* instr, int64_t replica_count,
-                int64_t partition_count, const Buffer& buffer);
+  NcclSendThunk(ThunkInfo thunk_info, const HloSendInstruction* instr,
+                int64_t replica_count, int64_t partition_count,
+                const Buffer& buffer);
   absl::Status Initialize(const InitializeParams& params) override;
 
  protected:
@@ -56,7 +55,7 @@ class NcclSendThunk : public NcclCollectiveThunk {
   std::shared_ptr<ExecutionCounters> execution_counters_;
 };
 
-absl::Status RunSend(NcclApi* nccl_api,
+absl::Status RunSend(GpuCollectives* collectives,
                      NcclP2PConfig::SourceTargetMapEntry source_target,
                      DeviceBufferPair& buffer, se::Stream& stream,
                      Communicator* comm, absl::string_view device_string,

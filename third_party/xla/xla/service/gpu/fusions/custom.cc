@@ -65,7 +65,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime/gemm_thunk.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -963,8 +962,8 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
         /*destination_memory_space=*/dst_shape.layout().memory_space(),
         /*source_value=*/nullptr,
         /*destination_value=*/nullptr});
-    auto collective_start_thunk = std::make_unique<NcclThunkType>(
-        thunk_info, NcclApi::Default(), instr, buffers);
+    auto collective_start_thunk =
+        std::make_unique<NcclThunkType>(thunk_info, instr, buffers);
     auto collective_done_thunk = std::make_unique<NcclCollectiveDoneThunk>(
         /*kind=*/collective_done_thunk_kind,
         /*thunk_info=*/Thunk::ThunkInfo::WithProfileAnnotation(instr),

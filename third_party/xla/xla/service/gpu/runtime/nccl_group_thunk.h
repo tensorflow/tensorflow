@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/thunk.h"
 
 namespace xla {
@@ -43,7 +42,6 @@ class NcclGroupThunk : public Thunk {
 
  private:
   ThunkSequence thunks_;
-  NcclApi* nccl_api_;
 };
 
 }  // namespace gpu

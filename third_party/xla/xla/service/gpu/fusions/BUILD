@@ -94,7 +94,6 @@ cc_library(
         "//xla/service/gpu/runtime:gemm_thunk",
         "//xla/service/gpu/runtime:kernel_thunk",
         "//xla/service/gpu/runtime:nccl_all_reduce_thunk",
-        "//xla/service/gpu/runtime:nccl_api",
         "//xla/service/gpu/runtime:nccl_collective_thunk",
         "//xla/service/gpu/runtime:thunk",
         "//xla/stream_executor:stream",
