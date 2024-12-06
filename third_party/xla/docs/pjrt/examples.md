@@ -32,7 +32,7 @@ devices:
   + [XLA GPU Plugin](https://github.com/openxla/xla/tree/main/xla/pjrt/gpu/se_gpu_pjrt_client.cc)
   + [Intel XLA Plugin](https://github.com/intel/intel-extension-for-openxla)
 - Light integration plugins (PJRT+MLIR):
-  + StableHLO Reference Interpreter plugin
+  + [StableHLO Reference Interpreter plugin](https://github.com/openxla/xla/tree/main/xla/pjrt/plugins/stablehlo_reference/)
     (MLIR-based, C++ plugin, to be linked after devlabs)
   + [Tenstorrent-XLA plugin](https://github.com/tenstorrent/tt-xla/blob/main/src/common/api_impl.cc)
     (MLIR-based, C plugin)
