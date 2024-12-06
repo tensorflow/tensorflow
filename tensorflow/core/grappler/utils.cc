@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils.h"
 
-#include <iterator>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <memory>
-#include <queue>
+#include <set>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
