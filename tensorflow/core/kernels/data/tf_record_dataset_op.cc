@@ -262,6 +262,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
             if (s.ok()) {
               out_tensors->back().scalar<tstring>()() = buffered_records_[0];
               buffered_records_.pop_front();
+              *end_of_sequence = false;
               return absl::OkStatus();
             }
           } else {
