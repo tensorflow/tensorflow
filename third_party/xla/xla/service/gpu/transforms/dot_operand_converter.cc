@@ -25,7 +25,7 @@ namespace xla::gpu {
 
 bool DotOperandConverter::InstructionMatchesPattern(
     HloInstruction* instruction) {
-  if (instruction->opcode() != HloOpcode::kDot) {
+  if (HloPredicateIsNotOp<HloOpcode::kDot>(instruction)) {
     return false;
   }
   HloInstruction* lhs = instruction->mutable_operand(0);

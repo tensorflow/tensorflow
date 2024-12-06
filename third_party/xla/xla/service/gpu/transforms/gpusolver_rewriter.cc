@@ -139,7 +139,7 @@ absl::StatusOr<HloInstruction*> CreateCholesky(GpuSolverContext* context,
 // Tries to rewrite a single convolution into a call to cudnn.
 absl::StatusOr<bool> RunOnInstruction(GpuSolverContext* context,
                                       HloInstruction* instruction) {
-  if (instruction->opcode() != HloOpcode::kCholesky) {
+  if (HloPredicateIsNotOp<HloOpcode::kCholesky>(instruction)) {
     return false;
   }
 
@@ -164,7 +164,7 @@ absl::StatusOr<bool> GpusolverRewriter::RunOnComputation(
     HloComputation* computation) {
   std::vector<HloInstruction*> cusolver_calls;
   for (auto* hlo : computation->instructions()) {
-    if (hlo->opcode() == HloOpcode::kCholesky) {
+    if (HloPredicateIsOp<HloOpcode::kCholesky>(hlo)) {
       cusolver_calls.push_back(hlo);
     }
   }

@@ -155,7 +155,7 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
             dnn_support, lhs_bmm1, rhs_bmm1, rhs_bmm2, output, bias, activation,
             static_cast<float>(config.fmha_scale()), dropout_rate > 0.0,
             dropout_rate, dnn_mask_type, sliding_window_length));
-    return std::move(graph);
+    return graph;
   } else if (IsFwdCustomCallTofMHAF8(*custom_call)) {
     TF_ASSIGN_OR_RETURN(
         const auto gpu_config,
@@ -198,7 +198,7 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
         se::gpu::GetCudnnFlashAttentionF8OperationGraph(
             dnn_support, lhs_bmm1, rhs_bmm1, rhs_bmm2, output, activation,
             static_cast<float>(config.fmha_scale()), dnn_mask_type));
-    return std::move(graph);
+    return graph;
   } else if (IsBwdCustomCallTofMHA(*custom_call)) {
     TF_ASSIGN_OR_RETURN(
         auto gpu_config,
@@ -313,7 +313,7 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
             d_bmm1_rhs, d_bmm2_rhs, bias, dropout_rate, config.seed(),
             config.fmha_scale(), dropout_rate > 0.0, bias != std::nullopt,
             dnn_mask_type, force_deterministic, sliding_window_length));
-    return std::move(graph);
+    return graph;
   } else {
     TF_ASSIGN_OR_RETURN(
         auto gpu_config,
@@ -382,7 +382,7 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
             dnn_support, bmm1_grad_gemm1_rhs, bmm1_grad_gemm2_rhs,
             bmm2_grad_gemm1_lhs, bmm2_grad_gemm2_rhs, d_output, d_bmm1_lhs,
             d_bmm1_rhs, d_bmm2_rhs, config.fmha_scale(), dnn_mask_type));
-    return std::move(graph);
+    return graph;
   }
 }
 

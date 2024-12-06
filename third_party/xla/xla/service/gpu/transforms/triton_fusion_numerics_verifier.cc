@@ -64,7 +64,7 @@ using ProfilingOutput = AutotunerCompileUtil::ProfilingOutput;
 // Triton fusion. Otherwise, returns nullptr.
 absl::StatusOr<const HloFusionInstruction*> AsTritonFusion(
     const HloInstruction* hlo) {
-  if (hlo->opcode() != HloOpcode::kFusion) {
+  if (HloPredicateIsNotOp<HloOpcode::kFusion>(hlo)) {
     return nullptr;
   }
   const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(hlo);
@@ -146,7 +146,7 @@ absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
     return Internal("No output after a successful verification run.");
   }
 
-  return std::move(profiling_output->output);
+  return profiling_output->output;
 }
 
 absl::Status CompareBuffers(const ScopedShapedBuffer& current,

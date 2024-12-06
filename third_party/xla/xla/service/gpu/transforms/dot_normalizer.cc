@@ -27,7 +27,7 @@ limitations under the License.
 namespace xla::gpu {
 
 bool DotNormalizer::InstructionMatchesPattern(HloInstruction* instruction) {
-  if (instruction->opcode() != HloOpcode::kDot) {
+  if (HloPredicateIsNotOp<HloOpcode::kDot>(instruction)) {
     return false;
   }
   return instruction->dot_dimension_numbers()

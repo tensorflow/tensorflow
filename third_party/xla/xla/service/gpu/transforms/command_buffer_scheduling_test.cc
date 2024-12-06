@@ -600,8 +600,8 @@ TEST_F(CommandBufferSchedulingTest, PrepareCommandBuffer) {
   std::vector<HloInstruction*> instructions;
   HloInstructionSequence seq;
   for (HloInstruction* inst : module->entry_computation()->instructions()) {
-    if (inst->opcode() == HloOpcode::kFusion ||
-        inst->opcode() == HloOpcode::kGetTupleElement) {
+    if (HloPredicateIsOp<HloOpcode::kFusion, HloOpcode::kGetTupleElement>(
+            inst)) {
       seq.push_back(inst);
     }
     instructions.push_back(inst);

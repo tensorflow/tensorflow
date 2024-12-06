@@ -58,7 +58,7 @@ class AllGatherDynamicSliceSimplifierTest : public HloTestBase {
       return changed.status();
     }
     EXPECT_EQ(changed.value(), expect_change);
-    return std::move(module);
+    return module;
   }
 };
 

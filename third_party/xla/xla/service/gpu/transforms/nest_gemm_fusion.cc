@@ -86,7 +86,7 @@ absl::Status FuseInstructionsForConsumer(
       continue;
     }
 
-    if (instruction->opcode() == HloOpcode::kParameter) {
+    if (HloPredicateIsOp<HloOpcode::kParameter>(instruction)) {
       add_parameter(instruction);
       continue;
     }
@@ -328,9 +328,8 @@ absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
 }
 
 size_t GetDotCount(HloComputation* computation) {
-  return absl::c_count_if(computation->instructions(), [](HloInstruction* hlo) {
-    return hlo->opcode() == HloOpcode::kDot;
-  });
+  return absl::c_count_if(computation->instructions(),
+                          HloPredicateIsOp<HloOpcode::kDot>);
 }
 
 // Returns the set of instructions that are reachable from 'instruction' using
@@ -426,7 +425,7 @@ absl::Status HoistBitcastUpwardsToCallers(
   Shape shape = bitcast->shape();
   for (HloInstruction* instruction : producers) {
     *instruction->mutable_shape() = shape;
-    if (instruction->opcode() != HloOpcode::kParameter) {
+    if (HloPredicateIsNotOp<HloOpcode::kParameter>(instruction)) {
       continue;
     }
     // For parameters, we need to bitcast the caller's operand.
@@ -490,7 +489,7 @@ absl::Status TryHoistBitcastsInComputationToCallers(HloInstruction* dot,
                                                     CallGraph* call_graph) {
   auto callers = call_graph->GetComputationCallers(dot->parent());
   for (HloInstruction* instruction : GetProducerSet(dot)) {
-    if (instruction->opcode() != HloOpcode::kBitcast) {
+    if (HloPredicateIsNotOp<HloOpcode::kBitcast>(instruction)) {
       continue;
     }
     VLOG(2) << "Hoisting bitcast upwards " << instruction->ToString();
@@ -500,7 +499,7 @@ absl::Status TryHoistBitcastsInComputationToCallers(HloInstruction* dot,
     }
   }
   for (HloInstruction* instruction : GetConsumerSet(dot)) {
-    if (instruction->opcode() != HloOpcode::kBitcast) {
+    if (HloPredicateIsNotOp<HloOpcode::kBitcast>(instruction)) {
       continue;
     }
     VLOG(2) << "Hoisting bitcast downwards " << instruction->ToString();

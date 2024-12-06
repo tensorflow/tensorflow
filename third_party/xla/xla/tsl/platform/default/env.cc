@@ -148,7 +148,7 @@ class PosixEnv : public Env {
       auto thread_name =
           GetThreadNameRegistry().find(std::this_thread::get_id());
       if (thread_name != GetThreadNameRegistry().end()) {
-        *name = strings::StrCat(thread_name->second, "/", GetCurrentThreadId());
+        *name = absl::StrCat(thread_name->second, "/", GetCurrentThreadId());
         return true;
       }
     }
@@ -281,7 +281,7 @@ void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
   std::vector<std::string> paths;  // Only in case of errors.
   for (const char* d : candidates) {
     if (!d || d[0] == '\0') continue;  // Empty env var
-    paths.emplace_back(d);
+    paths.push_back(d);
     // Make sure we don't surprise anyone who's expecting a '/'
     string dstr = d;
     if (dstr[dstr.size() - 1] != '/') {

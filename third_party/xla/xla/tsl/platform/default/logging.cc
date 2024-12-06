@@ -93,7 +93,7 @@ class TFLogSinks {
 TFLogSinks::TFLogSinks() {
 #ifndef NO_DEFAULT_LOGGER
   static TFDefaultLogSink* default_sink = new TFDefaultLogSink();
-  sinks_.emplace_back(default_sink);
+  sinks_.push_back(default_sink);
 #endif
 }
 
@@ -106,7 +106,7 @@ void TFLogSinks::Add(TFLogSink* sink) {
   assert(sink != nullptr && "The sink must not be a nullptr");
 
   tsl::mutex_lock lock(mutex_);
-  sinks_.emplace_back(sink);
+  sinks_.push_back(sink);
 
   // If this is the only sink log all the queued up messages to this sink
   if (sinks_.size() == 1) {
