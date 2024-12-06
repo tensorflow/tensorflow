@@ -676,7 +676,7 @@ absl::StatusOr<std::vector<DiamondChainDescriptor>> FindAllFusibleDiamonds(
     }
   }
 
-  return std::move(matched_diamonds);
+  return matched_diamonds;
 }
 
 // Returns the size of the reduction dimension of the input diamond.
