@@ -15,8 +15,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
