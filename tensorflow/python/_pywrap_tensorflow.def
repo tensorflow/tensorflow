@@ -1245,3 +1245,5 @@ EXPORTS
   ??0LogMessage@log_internal@lts_20230802@absl@@QEAA@PEBDHUErrorTag@0123@@Z
   ??6LogMessage@log_internal@lts_20230802@absl@@QEAAAEAV0123@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ??1LogMessage@log_internal@lts_20230802@absl@@QEAA@XZ
+  ??1Mutex@lts_20230802@absl@@QEAA@XZ
+  

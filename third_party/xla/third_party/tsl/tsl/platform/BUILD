@@ -210,7 +210,12 @@ cc_library(
     name = "mutex",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["mutex.h"],
-    deps = tf_platform_deps("mutex"),
+    deps = [
+        ":macros",
+        ":platform",
+        ":thread_annotations",
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
 cc_library(

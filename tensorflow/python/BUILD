@@ -10,7 +10,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 # Placeholder: load py_proto_library
-load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
+load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "if_google", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
 load(
     "//tensorflow:tensorflow.default.bzl",
     "get_compatible_with_portable",
@@ -684,7 +684,6 @@ pywrap_tensorflow_macro(
         "@local_config_python//:python_headers",
     ] + if_windows([
         "//:__subpackages__",
-        "@nsync//:__subpackages__",
         "@com_google_absl//:__subpackages__",
         "@com_google_protobuf//:__subpackages__",
         "@double_conversion//:__subpackages__",
@@ -739,7 +738,6 @@ pywrap_tensorflow_macro(
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@nccl_archive//:__subpackages__",
-        "@nsync//:__subpackages__",
         "@nvtx_archive//:__subpackages__",
         "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
@@ -868,9 +866,7 @@ pywrap_tensorflow_macro(
     ]) + if_google([
         "//base",
         "//tensorflow/core/util/tensor_bundle",
-    ]) + if_oss(if_static(
-        [clean_dep("@nsync//:nsync_headers")],
-    )) + if_oss([
+    ]) + if_oss([
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
     ]) + if_oss(if_cuda_is_configured([
@@ -1239,6 +1235,7 @@ tf_python_pybind_extension(
         "//tensorflow:windows": [],
     }),
     enable_stub_generation = True,
+    linkopts = [],
     pytype_srcs = [
         "_pywrap_tfe.pyi",
     ],

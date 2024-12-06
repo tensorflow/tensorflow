@@ -497,21 +497,15 @@ cc_library(
         "@local_xla//xla/tsl/platform/default:logging.h",
     ],
     visibility = ["//visibility:public"],
-    deps =
-        # copybara:uncomment_begin
-        # if_mobile(["@nsync//:nsync_cpp"]) +
-        # copybara:uncomment_end_uncomment_begin
-        # ["@nsync//:nsync_cpp"] +
-        # copybara:comment_end
-        [
-            "@eigen_archive//:eigen3",
-            "//tensorflow/core/platform:dynamic_annotations",
-            "//tensorflow/core/platform:platform_port",
-            "//tensorflow/core/platform:thread_annotations",
-            "//tensorflow/core/platform:mutex",
-            "@local_xla//xla/tsl/framework:fixedpoint_types",
-            "//tensorflow/core/platform:types",
-        ],
+    deps = [
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:types",
+        "@eigen_archive//:eigen3",
+        "@local_xla//xla/tsl/framework:fixedpoint_types",
+    ],
 )
 
 # One target for all user ops.

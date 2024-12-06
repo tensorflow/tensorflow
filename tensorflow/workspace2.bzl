@@ -396,15 +396,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "nsync",
-        patch_file = ["//third_party:nsync.patch"],
-        sha256 = "1d63e967973733d2c97e841e3c05fac4d3fa299f01d14c86f2695594c7a4a2ec",
-        strip_prefix = "nsync-1.29.2",
-        system_build_file = "//third_party/systemlibs:nsync.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/nsync/archive/1.29.2.tar.gz"),
-    )
-
-    tf_http_archive(
         name = "com_google_googletest",
         sha256 = "81964fe578e9bd7c94dfdb09c8e4d6e6759e19967e397dbea48d1c10e45d0df2",
         strip_prefix = "googletest-release-1.12.1",

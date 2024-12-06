@@ -2214,7 +2214,6 @@ def tf_custom_op_library_additional_deps_impl():
     return [
         # copybara:comment_begin
         "@com_google_protobuf//:protobuf",
-        "@nsync//:nsync_cpp",
         # copybara:comment_end
 
         # for //third_party/eigen3
@@ -3399,7 +3398,6 @@ def tf_python_pybind_static_deps(testonly = False):
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
-        "@nsync//:__subpackages__",
         "@nccl_archive//:__subpackages__",
         "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
@@ -3444,7 +3442,8 @@ def tf_python_pybind_extension_opensource(
         testonly = False,
         visibility = None,
         win_def_file = None,
-        additional_exported_symbols = None):
+        additional_exported_symbols = None,
+        linkopts = []):
     """A wrapper macro for pybind_extension_opensource that is used in tensorflow/python/BUILD.
 
     Please do not use it anywhere else as it may behave unexpectedly. b/146445820
@@ -3473,6 +3472,7 @@ def tf_python_pybind_extension_opensource(
         testonly = testonly,
         visibility = visibility,
         win_def_file = win_def_file,
+        linkopts = linkopts,
     )
 
 # Export open source version of tf_python_pybind_extension under base name as well.

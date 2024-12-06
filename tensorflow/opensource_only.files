@@ -367,7 +367,6 @@ tf_staging/third_party/systemlibs/google_cloud_cpp.google.cloud.bigtable.BUILD:
 tf_staging/third_party/systemlibs/grpc.BUILD:
 tf_staging/third_party/systemlibs/jsoncpp.BUILD:
 tf_staging/third_party/systemlibs/lmdb.BUILD:
-tf_staging/third_party/systemlibs/nsync.BUILD:
 tf_staging/third_party/systemlibs/png.BUILD:
 tf_staging/third_party/systemlibs/protobuf.BUILD:
 tf_staging/third_party/systemlibs/protobuf.bzl:

@@ -138,7 +138,6 @@ third_party/systemlibs/google_cloud_cpp.google.cloud.bigtable.BUILD:
 third_party/systemlibs/grpc.BUILD:
 third_party/systemlibs/jsoncpp.BUILD:
 third_party/systemlibs/lmdb.BUILD:
-third_party/systemlibs/nsync.BUILD:
 third_party/systemlibs/png.BUILD:
 third_party/systemlibs/protobuf.BUILD:
 third_party/systemlibs/protobuf.bzl:

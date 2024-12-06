@@ -684,8 +684,6 @@ def tf_additional_lib_hdrs():
         clean_dep("//xla/tsl/platform/default:criticality.h"),
         clean_dep("//xla/tsl/platform/default:integral_types.h"),
         clean_dep("//xla/tsl/platform/default:logging.h"),
-        clean_dep("//xla/tsl/platform/default:mutex.h"),
-        clean_dep("//xla/tsl/platform/default:mutex_data.h"),
         clean_dep("//xla/tsl/platform/default:stacktrace.h"),
         clean_dep("//xla/tsl/platform/default:status.h"),
         clean_dep("//xla/tsl/platform/default:statusor.h"),
@@ -740,10 +738,7 @@ def tf_additional_lib_deps():
         "@com_google_absl//absl/base:base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
-    ] + if_static(
-        [clean_dep("@nsync//:nsync_cpp")],
-        [clean_dep("@nsync//:nsync_headers")],
-    )
+    ]
 
 def tf_additional_core_deps():
     return select({
@@ -868,7 +863,6 @@ def tf_portable_deps_no_runtime():
     return [
         "@eigen_archive//:eigen3",
         "@double_conversion//:double-conversion",
-        "@nsync//:nsync_cpp",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
     ]
