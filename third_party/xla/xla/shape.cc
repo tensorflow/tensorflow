@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "xla/shape.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <ostream>
 #include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -42,44 +42,33 @@ Shape::Shape(Shape&&) = default;
 Shape& Shape::operator=(const Shape&) = default;
 Shape& Shape::operator=(Shape&&) = default;
 
-Shape::Shape(const ShapeProto& shape_proto) {
-  set_element_type(shape_proto.element_type());
-  dimensions_.reserve(shape_proto.dimensions_size());
-  for (const int64_t dimension : shape_proto.dimensions()) {
-    add_dimensions(dimension);
+Shape::Shape(const ShapeProto& shape_proto) { *this = FromProto(shape_proto); }
+
+/* static */
+Shape Shape::FromProto(const ShapeProto& proto) {
+  if (proto.is_dynamic_dimension_size() != 0)
+    CHECK(proto.dimensions_size() == proto.is_dynamic_dimension_size())
+        << "Malformed shape proto: number of is_dynamic_dimension fields does "
+           "not match number of dimension fields";
+
+  if (proto.has_layout())
+    CHECK(primitive_util::IsArrayType(proto.element_type()))
+        << "Malformed shape proto: element_type " << proto.element_type()
+        << " cannot have a layout.";
+
+  Shape shape;
+  shape.set_element_type(proto.element_type());
+  for (const int64_t d : proto.dimensions()) {
+    shape.add_dimensions(d);
   }
-  // A malformed proto may have different is_dynamic_dimension_size and
-  // dimensions_size. Since C++ is evil, and we have no good way of bailing out
-  // in a constructor, conservatively trim the is_dynamic_dimension size.
-  // TODO(b/120111794): Make this a hard error when we have a factory method
-  // instead of a constructor.
-  if (shape_proto.dimensions_size() !=
-      shape_proto.is_dynamic_dimension_size()) {
-    if (shape_proto.is_dynamic_dimension_size() != 0) {
-      LOG(ERROR) << "Malformed shape proto: number of is_dynamic_dimension "
-                    "fields does not match number of dimension fields";
-    } else {
-      LOG(WARNING) << "Malformed shape proto: is_dynamic_dimension is empty";
-    }
+  for (int i = 0; i < proto.is_dynamic_dimension_size(); i++) {
+    shape.set_dynamic_dimension(i, proto.is_dynamic_dimension(i));
   }
-  int64_t num_dynamic_dimension_fields = std::min(
-      shape_proto.dimensions_size(), shape_proto.is_dynamic_dimension_size());
-  for (int i = 0; i < num_dynamic_dimension_fields; i++) {
-    dynamic_dimensions_[i] = shape_proto.is_dynamic_dimension(i);
+  for (const ShapeProto& element_shape : proto.tuple_shapes()) {
+    shape.add_tuple_shape(FromProto(element_shape));
   }
-  tuple_shapes_.reserve(shape_proto.tuple_shapes_size());
-  for (const ShapeProto& element_shape : shape_proto.tuple_shapes()) {
-    tuple_shapes_.emplace_back(element_shape);
-  }
-  if (shape_proto.has_layout()) {
-    if (!IsArray()) {
-      LOG(ERROR) << "Malformed shape proto: element_type "
-                 << PrimitiveType_Name(element_type())
-                 << " should not have a layout.";
-    } else {
-      *mutable_layout() = Layout::CreateFromProto(shape_proto.layout());
-    }
-  }
+  shape.set_layout(Layout::CreateFromProto(proto.layout()));
+  return shape;
 }
 
 void Shape::SetProto(ShapeProto& proto) const {
@@ -190,9 +179,14 @@ const Shape& Shape::tuple_shapes(int index) const {
   return tuple_shapes_[index];
 }
 
+ABSL_DEPRECATED("use add_tuple_shape(Shape&) instead")
 Shape* Shape::add_tuple_shapes() {
   tuple_shapes_.push_back(Shape());
   return &tuple_shapes_.back();
+}
+
+void Shape::add_tuple_shape(const Shape& shape) {
+  tuple_shapes_.push_back(shape);
 }
 
 bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <map>
 #include <string>
+#include <utility>
 
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
@@ -88,7 +89,7 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
   }
 
   *output = input.Clone();
-  output->mutable_shape_do_not_use()->Swap(&shape);
+  std::swap(*output->mutable_shape_do_not_use(), shape);
   return absl::OkStatus();
 }
 
