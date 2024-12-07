@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_HASH_UTILS_H_
 #define TENSORFLOW_CORE_DATA_HASH_UTILS_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 
