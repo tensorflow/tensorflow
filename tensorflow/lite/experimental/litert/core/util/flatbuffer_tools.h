@@ -17,11 +17,14 @@
 
 #include <cstdint>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -45,7 +48,8 @@ using TflModelPtr = std::unique_ptr<TflModel>;
 using TflQuantizationPtr = std::unique_ptr<TflQuantization>;
 using TflOpCodePtr = std::unique_ptr<TflOpCode>;
 
-using TflPerTensorQParams = std::pair<int64_t, float>;
+using TflQuntizationParams =
+    std::pair<std::vector<int64_t>, std::vector<float>>;
 
 // Mirror of all the tensor type related fields in flatbuffer tensor definition.
 struct TflShapeInfo {
@@ -179,8 +183,8 @@ bool IsBlockWiseQuantized(const TflQuantization* tfl_quantization);
 // Does tensor have custom quantization.
 bool IsCustomQuantized(const TflQuantization* tfl_quantization);
 
-// Get the per-tensor q-params if given tensor has them.
-Expected<TflPerTensorQParams> AsPerTensorQparams(
+// Get the tensor q-params if given tensor has them.
+Expected<TflQuntizationParams> GetQuantizationParams(
     const TflQuantization* tfl_quantization);
 
 // Flatbuffer management helpers.

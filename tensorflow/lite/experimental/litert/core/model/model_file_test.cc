@@ -356,8 +356,8 @@ TEST_P(ModelSerializeOpCheckTest, CheckOps) {
     ASSERT_TRUE(neither_quantized || both_per_tensor);
 
     if (both_per_tensor) {
-      const auto expected_per_tensor = AsPerTensorQparams(expected_q_params);
-      const auto actual_per_tensor = AsPerTensorQparams(actual_q_params);
+      const auto expected_per_tensor = GetQuantizationParams(expected_q_params);
+      const auto actual_per_tensor = GetQuantizationParams(actual_q_params);
       EXPECT_EQ(*expected_per_tensor, *actual_per_tensor);
     }
   }

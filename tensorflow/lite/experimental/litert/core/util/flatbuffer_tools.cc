@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
@@ -235,13 +236,19 @@ bool IsCustomQuantized(const TflQuantization* tfl_quantization) {
                                  tflite::QuantizationDetails_CustomQuantization;
 }
 
-Expected<std::pair<int64_t, float>> AsPerTensorQparams(
-    const TflQuantization* tfl_quantization) {
-  if (!IsPerTensorQuantized(tfl_quantization)) {
+Expected<std::pair<std::vector<int64_t>, std::vector<float>>>
+GetQuantizationParams(const TflQuantization* tfl_quantization) {
+  if (!IsQuantized(tfl_quantization)) {
     return Error(kLiteRtStatusErrorInvalidArgument);
   }
-  return std::make_pair(tfl_quantization->zero_point.front(),
-                        tfl_quantization->scale.front());
+  std::pair<std::vector<int64_t>, std::vector<float>> qparams;
+  qparams.first.reserve(tfl_quantization->scale.size());
+  qparams.second.reserve(tfl_quantization->zero_point.size());
+  for (int i = 0; i < tfl_quantization->scale.size(); ++i) {
+    qparams.first.push_back(tfl_quantization->zero_point[i]);
+    qparams.second.push_back(tfl_quantization->scale[i]);
+  }
+  return qparams;
 }
 
 ::tflite::Allocation::Ptr MakeAllocation(BufferRef<uint8_t> buf) {

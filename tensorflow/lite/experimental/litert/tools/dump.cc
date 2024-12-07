@@ -406,8 +406,8 @@ void Dump(Quantization quantization, std::ostream& out) {
       return;
     case kLiteRtQuantizationPerTensor:
       out << absl::StreamFormat(" <q PerTensor [ .z = %ld, .s = %f ]>",
-                                quantization.second.per_tensor.zero_point,
-                                quantization.second.per_tensor.scale);
+                                quantization.second.zero_point[0],
+                                quantization.second.scale[0]);
       return;
     default:
       out << " <q UNKNOWN>";

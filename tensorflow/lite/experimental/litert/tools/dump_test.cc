@@ -90,23 +90,23 @@ TEST(DumpTest, TestDumpOptions) {
 }
 
 TEST(DumpTest, TestDumpPerTensorQuantization) {
-  LiteRtQuantizationTypeDetail per_tensor_detail;
-  per_tensor_detail.per_tensor.scale = 1.0;
-  per_tensor_detail.per_tensor.zero_point = 2;
+  LiteRtQuantizationParameters per_tensor_detail;
+  per_tensor_detail.scale = {1.0};
+  per_tensor_detail.zero_point = {2};
   std::ostringstream q_dump;
   Dump(std::make_pair(kLiteRtQuantizationPerTensor, per_tensor_detail), q_dump);
   EXPECT_EQ(q_dump.view(), " <q PerTensor [ .z = 2, .s = 1.000000 ]>");
 }
 
 TEST(DumpTest, TestDumpNoQuantization) {
-  LiteRtQuantizationTypeDetail none_detail;
+  LiteRtQuantizationParameters none_detail;
   std::ostringstream q_dump;
   Dump(std::make_pair(kLiteRtQuantizationNone, none_detail), q_dump);
   EXPECT_TRUE(q_dump.view().empty());
 }
 
 TEST(DumpTest, TestDumpUnknownQuantization) {
-  LiteRtQuantizationTypeDetail detail;
+  LiteRtQuantizationParameters detail;
   std::ostringstream q_dump;
   Dump(std::make_pair(kLiteRtQuantizationBlockWise, detail), q_dump);
   EXPECT_EQ(q_dump.view(), " <q UNKNOWN>");

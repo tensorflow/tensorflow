@@ -45,12 +45,13 @@ typedef union {
 
 using TensorType = std::pair<LiteRtTensorTypeId, LiteRtTypeDetail>;
 
-typedef union {
-  LiteRtQuantizationPerTensor per_tensor;
-} LiteRtQuantizationTypeDetail;
+struct LiteRtQuantizationParameters {
+  std::vector<float> scale;
+  std::vector<int64_t> zero_point;
+};
 
 using Quantization =
-    std::pair<LiteRtQuantizationTypeId, LiteRtQuantizationTypeDetail>;
+    std::pair<LiteRtQuantizationTypeId, LiteRtQuantizationParameters>;
 
 struct LiteRtTensorT {
   using Ref = std::reference_wrapper<LiteRtTensorT>;
@@ -80,10 +81,18 @@ struct LiteRtTensorT {
   LiteRtQuantizationTypeId q_type_id = kLiteRtQuantizationNone;
 
   // Union quantization type.
-  LiteRtQuantizationTypeDetail q_type_detail;
+  LiteRtQuantizationParameters q_type_detail;
 
   // Authored name of tensor, may be empty.
   std::string name;
+
+  void SetQuantizationParameters(
+      LiteRtQuantizationParameters quantization_params) {
+    q_type_detail = quantization_params;
+  }
+
+  std::vector<int64_t> ZeroPoint() const { return q_type_detail.zero_point; }
+  std::vector<float> Scale() const { return q_type_detail.scale; }
 
  private:
   // TODO Unify mangement of dims and clean this up.

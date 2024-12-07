@@ -179,6 +179,15 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
     return per_tensor_quantization;
   }
 
+  LiteRtQuantizationPerChannel PerChannelQuantization() const {
+    internal::AssertEq([&]() { return QTypeId(); },
+                       kLiteRtQuantizationPerChannel);
+    LiteRtQuantizationPerChannel per_channel_quantization;
+    internal::AssertOk(LiteRtGetPerChannelQuantization, Get(),
+                       &per_channel_quantization);
+    return per_channel_quantization;
+  }
+
   bool HasWeights() const {
     auto weights = Weights();
     return !weights.Bytes().empty();

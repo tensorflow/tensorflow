@@ -29,6 +29,7 @@ cc_library(
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
+        "//tensorflow/lite/experimental/litert/cc:litert_detail",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/core:filesystem",
         "//tensorflow/lite/schema:schema_fbs",

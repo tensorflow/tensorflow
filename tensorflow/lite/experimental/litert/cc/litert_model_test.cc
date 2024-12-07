@@ -270,7 +270,8 @@ TEST(CcTensorTest, QuantizationPerTensor) {
 
   LiteRtTensorT litert_tensor;
   litert_tensor.q_type_id = kLiteRtQuantizationPerTensor;
-  litert_tensor.q_type_detail.per_tensor = {kScale, kZeroPoint};
+  litert_tensor.q_type_detail.scale = {kScale};
+  litert_tensor.q_type_detail.zero_point = {kZeroPoint};
 
   Tensor tensor(&litert_tensor);
   ASSERT_EQ(tensor.QTypeId(), kLiteRtQuantizationPerTensor);

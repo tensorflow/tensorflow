@@ -27,20 +27,18 @@ namespace litert::internal {
 
 namespace {
 
-template <class LiteRtQType>
-bool EqualsFbQuantizationDetail(LiteRtQType litert_quantization,
-                                const TflQuantization* tfl_quantization) {
-  return false;
-}
-
-template <>
-bool EqualsFbQuantizationDetail<LiteRtQuantizationPerTensor>(
-    LiteRtQuantizationPerTensor litert_quantization,
+bool EqualsFbQuantizationDetail(
+    LiteRtQuantizationParameters litert_quantization,
     const TflQuantization* tfl_quantization) {
-  auto tfl_q_params = AsPerTensorQparams(tfl_quantization);
+  auto tfl_q_params = GetQuantizationParams(tfl_quantization);
   if (!tfl_q_params) return false;
-  return litert_quantization.zero_point == tfl_q_params->first &&
-         litert_quantization.scale == tfl_q_params->second;
+  for (auto i = 0; i < litert_quantization.scale.size(); ++i) {
+    if (litert_quantization.zero_point[i] != tfl_q_params->first[i] ||
+        litert_quantization.scale[i] != tfl_q_params->second[i]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 template <class LiteRtTenzorType>
@@ -88,15 +86,11 @@ bool EqualsFbTensorTypeDetail<LiteRtRankedTensorType>(
 
 bool EqualsFbQuantization(const Quantization& litert_quantization,
                           const TflQuantization* tfl_quantization) {
-  switch (litert_quantization.first) {
-    case kLiteRtQuantizationPerTensor:
-      return EqualsFbQuantizationDetail(litert_quantization.second.per_tensor,
-                                        tfl_quantization);
-    case kLiteRtQuantizationNone:
-      return !IsQuantized(tfl_quantization);
-    default:
-      // Not implemented yet.
-      return false;
+  if (litert_quantization.first == kLiteRtQuantizationNone) {
+    return !IsQuantized(tfl_quantization);
+  } else {
+    return EqualsFbQuantizationDetail(litert_quantization.second,
+                                      tfl_quantization);
   }
 }
 

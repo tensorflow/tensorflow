@@ -143,8 +143,8 @@ TEST(FlatbufferToolsTest, PerTensorQuantizedTest) {
   ASSERT_TRUE(IsQuantized(q_parms));
   EXPECT_TRUE(IsPerTensorQuantized(q_parms));
 
-  auto per_tensor = AsPerTensorQparams(q_parms);
-  ASSERT_TRUE(per_tensor);
+  auto q_params = GetQuantizationParams(q_parms);
+  ASSERT_TRUE(q_params);
 }
 
 }  // namespace
