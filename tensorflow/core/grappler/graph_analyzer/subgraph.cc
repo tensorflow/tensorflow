@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/graph_analyzer/subgraph.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <memory>
+#include <utility>
+#include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/grappler/graph_analyzer/hash_tools.h"
