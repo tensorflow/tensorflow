@@ -18,11 +18,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPH_TESTLIB_H_
 #define TENSORFLOW_CORE_GRAPH_TESTLIB_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/platform/types.h"

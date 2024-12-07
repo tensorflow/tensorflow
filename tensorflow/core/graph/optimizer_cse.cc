@@ -38,13 +38,22 @@ limitations under the License.
 
 #include "tensorflow/core/graph/optimizer_cse.h"
 
-#include <iostream>
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <functional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "third_party/protobuf/io/coded_stream.h"
+#include "third_party/protobuf/io/zero_copy_stream.h"
+#include "third_party/protobuf/message_lite.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
