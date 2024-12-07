@@ -86,9 +86,19 @@ SmallVector<NamedAttribute> getExistingFrontendAttributes(
   return dictEntries;
 }
 
-void addFrontendAttribute(SmallVector<NamedAttribute>& existingAttributes,
+void setFrontendAttribute(SmallVector<NamedAttribute>& existingAttributes,
                           StringRef name, Attribute value) {
   mlir::OpBuilder builder(value.getContext());
+  for (auto* it = existingAttributes.begin(); it != existingAttributes.end();
+       ++it) {
+    if (it->getName() == name) {
+      if (it->getValue() == getStringAttribute(value, builder)) {
+        return;
+      }
+      existingAttributes.erase(it);
+      break;
+    }
+  }
   existingAttributes.emplace_back(NamedAttribute(
       builder.getStringAttr(name), getStringAttribute(value, builder)));
 }
@@ -122,7 +132,7 @@ void setFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index,
 void addFrontendAttribute(Operation* op, StringRef name, Attribute value) {
   SmallVector<NamedAttribute> existingAttributes =
       getExistingFrontendAttributes(getFrontendAttrs(op), "");
-  addFrontendAttribute(existingAttributes, name, value);
+  setFrontendAttribute(existingAttributes, name, value);
   setFrontendAttrs(op, existingAttributes);
 }
 
@@ -131,7 +141,7 @@ void addFrontendAttribute(FuncOp funcOp, StringRef name, Attribute value,
   SmallVector<NamedAttribute> existingAttributes =
       getExistingFrontendAttributes(getFuncArgFrontendAttrs(funcOp, argNum),
                                     "");
-  addFrontendAttribute(existingAttributes, name, value);
+  setFrontendAttribute(existingAttributes, name, value);
   setFuncArgFrontendAttrs(funcOp, argNum, existingAttributes);
 }
 
