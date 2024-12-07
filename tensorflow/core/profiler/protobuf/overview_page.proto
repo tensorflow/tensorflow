@@ -221,6 +221,40 @@ message OverviewPageRunEnvironment {
   reserved 6;
 }
 
+// Total and breakdown latency for inference query(s).
+// Breakdown into host/device/communication.
+message OverviewLatencyBreakdown {
+  double total_latency_us = 1;
+
+  double host_latency_us = 2;
+
+  double device_latency_us = 3;
+
+  double communication_latency_us = 4;
+}
+
+// Overview result for the inference query latency stats.
+message OverviewInferenceLatency {
+  // The percentile numbers that the inference query latency distribution
+  // should follow.  E.g., 50.0 means 50%ile.
+  // Default is [50.0, 75.0, 90.0, 99.0, 99.9].
+  repeated double percentile_numbers = 1;
+
+  // Total and breakdown of a certain percentile latency. Each element
+  // corresponds to element with the same index in percentile_numbers.
+  repeated OverviewLatencyBreakdown latency_breakdowns = 2;
+
+  // Max latency in micro seconds.
+  double max_latency_us = 3;
+
+  // Min Latency in micro seconds.
+  double min_latency_us = 4;
+
+  // Inference sessions per second aggregated over all hosts. There can be
+  // multiple queries batched in one session.
+  optional double sessions_per_second = 5;
+}
+
 message OverviewPage {
   // The run environment of the profiled session.
   OverviewPageRunEnvironment run_environment = 6;
@@ -232,5 +266,7 @@ message OverviewPage {
   OverviewPageRecommendation recommendation = 4;
   // Error and warning messages for diagnosing profiling issues.
   Diagnostics diagnostics = 8;
+  // The inference query latency stats.
+  OverviewInferenceLatency inference_latency = 9;
   reserved 1, 5, 7;
 }

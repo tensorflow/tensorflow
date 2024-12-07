@@ -656,6 +656,7 @@ cc_library(
     hdrs = ["xplane_to_tools_data.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":compute_inference_latency",
         ":hlo_to_tools_data",
         ":multi_xplanes_to_op_stats",
         ":multi_xspace_to_inference_stats",
@@ -1266,5 +1267,28 @@ tf_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tests:test_utils",
+    ],
+)
+
+cc_library(
+    name = "compute_inference_latency",
+    srcs = ["compute_inference_latency.cc"],
+    hdrs = ["compute_inference_latency.h"],
+    visibility = ["//perftools/accelerators/xprof/convert:__pkg__"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:overview_page_proto_cc",
+        "@com_google_absl//absl/log",
+        "@local_xla//xla/tsl/profiler/utils:math_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "compute_inference_latency_test",
+    srcs = ["compute_inference_latency_test.cc"],
+    deps = [
+        ":compute_inference_latency",
+        "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
+        "@com_google_googletest//:gtest_main",
     ],
 )
