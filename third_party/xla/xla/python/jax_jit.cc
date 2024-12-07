@@ -194,6 +194,22 @@ bool ArgumentSignature::operator==(const ArgumentSignature& other) const {
       });
 }
 
+int ArgumentSignature::tp_traverse(visitproc visit, void* arg) const {
+  for (const auto& treedef : dynamic_arg_treedefs) {
+    Py_VISIT(nb::find(treedef).ptr());
+  }
+  for (const auto& name : dynamic_arg_names) {
+    Py_VISIT(name.ptr());
+  }
+  for (const auto& static_arg : static_args) {
+    Py_VISIT(static_arg.ptr());
+  }
+  for (const auto& name : static_arg_names) {
+    Py_VISIT(name.ptr());
+  }
+  return 0;
+}
+
 std::string CallSignature::DebugString() const {
   auto py_object_formatter = [](std::string* out, const nb::object& o) {
     out->append(nb::cast<std::string_view>(nb::str(o)));
@@ -267,6 +283,26 @@ bool CallSignature::operator==(const CallSignature& other) const {
       absl::c_equal(
           configs, other.configs,
           [](const nb::object& a, const nb::object& b) { return a.equal(b); });
+}
+
+int CallSignature::tp_traverse(visitproc visit, void* arg) const {
+  for (const auto& sharding : dynamic_arg_shardings) {
+    Py_VISIT(sharding.ptr());
+  }
+  int rval = arg_signature.tp_traverse(visit, arg);
+  if (rval != 0) {
+    return rval;
+  }
+  if (default_device.has_value()) {
+    Py_VISIT(default_device->ptr());
+  }
+  if (global_extra_jit_context.has_value()) {
+    Py_VISIT(global_extra_jit_context->ptr());
+  }
+  if (thread_local_extra_jit_context.has_value()) {
+    Py_VISIT(thread_local_extra_jit_context->ptr());
+  }
+  return 0;
 }
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
