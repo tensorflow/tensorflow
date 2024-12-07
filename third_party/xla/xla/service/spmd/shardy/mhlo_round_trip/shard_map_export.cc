@@ -51,6 +51,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -73,7 +74,7 @@ using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::Value;
 using ::mlir::mhlo::CopyOp;
-using ::mlir::mhlo::CustomCallOp;
+using ::mlir::stablehlo::CustomCallOp;
 
 namespace sdy = ::mlir::sdy;
 using sdy::kShardingAttr;

@@ -10,8 +10,8 @@
 func.func @non_trivial_common_mesh(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4,8]<=[8,4]T(1,0)}"},
                                    %arg1: tensor<8x8xf32> {mhlo.sharding = "{devices=[1,2,16]<=[32] last_tile_dim_replicate}"},
                                    %arg2: tensor<8x16xf32> {mhlo.sharding = "{devices=[4,4,2]<=[2,16]T(1,0) last_tile_dim_replicate}"}) -> tensor<8x16xf32> {
-  %0 = mhlo.add %arg0, %arg1 : tensor<8x8xf32>
-  %1 = "mhlo.dot" (%0, %arg2) : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
+  %1 = "stablehlo.dot" (%0, %arg2) : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
   return %1 : tensor<8x16xf32>
 }
 
@@ -24,10 +24,10 @@ func.func @multiple_shardings(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=
                               %arg1: tensor<8x8xf32> {mhlo.sharding = "{devices=[1,8,4]<=[2,4,4]T(0,2,1) last_tile_dim_replicate}"},
                               %arg2: tensor<8x16xf32> {mhlo.sharding = "{devices=[1,4,8]<=[2,4,4]T(1,0,2) last_tile_dim_replicate}"})
     -> (tensor<8x16xf32> {mhlo.sharding = "{devices=[8,4]<=[32]}"}) {
-  // CHECK-NEXT: mhlo.add
+  // CHECK-NEXT: stablehlo.add
   // CHECK-SAME{LITERAL}: {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"axis_1", "axis_0"}, {}]>]>}
-  %0 = mhlo.add %arg0, %arg1 {mhlo.sharding = "{devices=[8,1,4]<=[2,4,4]T(1,0,2) last_tile_dim_replicate}"} : tensor<8x8xf32>
-  %1 = "mhlo.dot" (%0, %arg2) : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+  %0 = stablehlo.add %arg0, %arg1 {mhlo.sharding = "{devices=[8,1,4]<=[2,4,4]T(1,0,2) last_tile_dim_replicate}"} : tensor<8x8xf32>
+  %1 = "stablehlo.dot" (%0, %arg2) : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
   return %1 : tensor<8x16xf32>
 }
 
@@ -41,7 +41,7 @@ func.func @multiple_shardings(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=
 // CHECK-SAME:  -> tensor<32x16xf32> {
 func.func @single_axis(%arg0: tensor<32x8xf32> {mhlo.sharding = "{devices=[16,1]<=[16]}"},
                        %arg1: tensor<8x16xf32>) -> tensor<32x16xf32> {
-  %0 = "mhlo.dot" (%arg0, %arg1) : (tensor<32x8xf32>, tensor<8x16xf32>) -> tensor<32x16xf32>
+  %0 = "stablehlo.dot" (%arg0, %arg1) : (tensor<32x8xf32>, tensor<8x16xf32>) -> tensor<32x16xf32>
   return %0 : tensor<32x16xf32>
 }
 
@@ -51,16 +51,16 @@ func.func @single_axis(%arg0: tensor<32x8xf32> {mhlo.sharding = "{devices=[16,1]
 
 // CHECK-LABEL: func @multi_result_op
 func.func @multi_result_op(%arg0: tensor<4x64x8xf32>, %arg1: tensor<4x64x8xf32>) -> (tensor<4x8xf32>, tensor<4x8xf32>) {
-  %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK: mhlo.reduce
+  %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK: stablehlo.reduce
 // CHECK-SAME{LITERAL}: {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"axis_1"}]>, <@mesh, [{"axis_1"}, {}]>]>}
-  %1:2 = mhlo.reduce(%arg0 init: %0), (%arg1 init: %0) across dimensions = [1]
+  %1:2 = stablehlo.reduce(%arg0 init: %0), (%arg1 init: %0) across dimensions = [1]
     {mhlo.sharding = "{{devices=[1,4,8]<=[8,4]T(1,0) last_tile_dim_replicate}, {devices=[4,1,8]<=[8,4]T(1,0) last_tile_dim_replicate}}"} :
     (tensor<4x64x8xf32>, tensor<4x64x8xf32>, tensor<f32>, tensor<f32>) -> (tensor<4x8xf32>, tensor<4x8xf32>)
     reducer(%arg2: tensor<f32>, %arg4: tensor<f32>) (%arg3: tensor<f32>, %arg5: tensor<f32>)  {
-      %2 = mhlo.add %arg2, %arg4 : tensor<f32>
-      %3 = mhlo.add %arg3, %arg5 : tensor<f32>
-      mhlo.return %2, %3 : tensor<f32>, tensor<f32>
+      %2 = stablehlo.add %arg2, %arg4 : tensor<f32>
+      %3 = stablehlo.add %arg3, %arg5 : tensor<f32>
+      stablehlo.return %2, %3 : tensor<f32>, tensor<f32>
     }
   return %1#0, %1#1 : tensor<4x8xf32>, tensor<4x8xf32>
 }
@@ -77,8 +77,8 @@ func.func @multi_result_op(%arg0: tensor<4x64x8xf32>, %arg1: tensor<4x64x8xf32>)
 func.func @fully_replicated(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dim_replicate}"},
                             %arg1: tensor<8x8xf32> {mhlo.sharding = "{replicated}"},
                             %arg2: tensor<8x16xf32>) -> tensor<8x16xf32> {
-  %0 = mhlo.add %arg0, %arg1 : tensor<8x8xf32>
-  %1 = "mhlo.dot" (%0, %arg2) : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
+  %1 = "stablehlo.dot" (%0, %arg2) : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
   return %1 : tensor<8x16xf32>
 }
 
@@ -92,7 +92,7 @@ func.func @fully_replicated(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4
 // CHECK-SAME:    -> tensor<6x35xf32> {
 func.func @prime_number(%arg0: tensor<6x35xf32> {mhlo.sharding = "{devices=[6,35]<=[7,10,3]T(2,1,0)}"},
                         %arg1: tensor<6x35xf32> {mhlo.sharding = "{replicated}"}) -> tensor<6x35xf32> {
-  %0 = mhlo.add %arg0, %arg1 : tensor<6x35xf32>
+  %0 = stablehlo.add %arg0, %arg1 : tensor<6x35xf32>
   return %0 : tensor<6x35xf32>
 }
 
@@ -106,7 +106,7 @@ func.func @prime_number(%arg0: tensor<6x35xf32> {mhlo.sharding = "{devices=[6,35
 // CHECK-SAME:    -> tensor<231x550x42x42xf32> {
 func.func @prime_number_2(%arg0: tensor<231x550x42x42xf32> {mhlo.sharding = "{devices=[33,10,1,7]<=[2,3,5,7,11]T(1,4,2,0,3)}"},
                           %arg1: tensor<231x550x42x42xf32> {mhlo.sharding = "{devices=[7,55,6,1]<=[2,3,5,7,11]T(3,2,4,1,0)}"}) -> tensor<231x550x42x42xf32> {
-  %0 = mhlo.add %arg0, %arg1 : tensor<231x550x42x42xf32>
+  %0 = stablehlo.add %arg0, %arg1 : tensor<231x550x42x42xf32>
   return %0 : tensor<231x550x42x42xf32>
 }
 
@@ -120,7 +120,7 @@ func.func @prime_number_2(%arg0: tensor<231x550x42x42xf32> {mhlo.sharding = "{de
 // CHECK-SAME:  -> tensor<8x8xf32> {
 func.func @unknown_sharding(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dim_replicate}"},
                             %arg1: tensor<8x8xf32> {mhlo.sharding = "{unknown}"}) -> tensor<8x8xf32> {
-  %0 = mhlo.add %arg0, %arg1 : tensor<8x8xf32>
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
 
@@ -133,7 +133,7 @@ func.func @unknown_sharding(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4
 // CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh_0, [{}, {}]>}
 func.func @one_maximal_mesh(%arg0: tensor<8x8xf32> {mhlo.sharding = "{maximal device=0}"},
                             %arg1: tensor<8x8xf32>) -> tensor<8x8xf32> {
-  %0 = mhlo.add %arg0, %arg1 : tensor<8x8xf32>
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
 
@@ -147,7 +147,7 @@ func.func @one_maximal_mesh(%arg0: tensor<8x8xf32> {mhlo.sharding = "{maximal de
 // CHECK-SAME:      %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh_0, [{}, {}]>})
 func.func @two_maximal_shardings_should_be_sorted(%arg0: tensor<8x8xf32> {mhlo.sharding = "{maximal device=4}"},
                             %arg1: tensor<8x8xf32> {mhlo.sharding = "{maximal device=0}"}) -> tensor<8x8xf32> {
-  %0 = mhlo.add %arg0, %arg1 : tensor<8x8xf32>
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
 
@@ -159,7 +159,7 @@ func.func @two_maximal_shardings_should_be_sorted(%arg0: tensor<8x8xf32> {mhlo.s
 // CHECK-SAME:      %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh_0, [{}, {}]>})
 func.func @duplicate_maximal_sharding_should_be_deduped(%arg0: tensor<8x8xf32> {mhlo.sharding = "{maximal device=0}"},
                             %arg1: tensor<8x8xf32> {mhlo.sharding = "{maximal device=0}"}) -> tensor<8x8xf32> {
-  %0 = mhlo.add %arg0, %arg1 : tensor<8x8xf32>
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
 
@@ -174,8 +174,8 @@ func.func @duplicate_maximal_sharding_should_be_deduped(%arg0: tensor<8x8xf32> {
 func.func @two_meshes(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dim_replicate}"},
                             %arg1: tensor<8x8xf32> {mhlo.sharding = "{maximal device=0}"},
                             %arg2: tensor<8x16xf32>) -> tensor<8x16xf32> {
-  %0 = mhlo.add %arg0, %arg1 : tensor<8x8xf32>
-  %1 = "mhlo.dot" (%0, %arg2) : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
+  %1 = "stablehlo.dot" (%0, %arg2) : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
   return %1 : tensor<8x16xf32>
 }
 
@@ -189,11 +189,11 @@ func.func @two_meshes(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4,1,8]<
 // CHECK-SAME:  -> tensor<8x8xf32> {
 func.func @maximal_sharding_on_op(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dim_replicate}"},
                             %arg1: tensor<8x8xf32>) -> tensor<8x8xf32> {
-// CHECK-NEXT: %[[ADD:.*]] = mhlo.add %arg0, %arg1
+// CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg1
 // CHECK-SAME{LITERAL}: {sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_4, [{}, {}]>]>}
-// CHECK-NEXT: %[[MULTIPLY:.*]] = mhlo.multiply %[[ADD]], %[[ADD]]
+// CHECK-NEXT: %[[MULTIPLY:.*]] = stablehlo.multiply %[[ADD]], %[[ADD]]
 // CHECK-SAME{LITERAL}: {sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, [{}, {}]>]>}
-  %0 = mhlo.add %arg0, %arg1 {mhlo.sharding = "{maximal device=4}"} : tensor<8x8xf32>
-  %1 = mhlo.multiply %0, %0 {mhlo.sharding = "{maximal device=0}"} : tensor<8x8xf32>
+  %0 = stablehlo.add %arg0, %arg1 {mhlo.sharding = "{maximal device=4}"} : tensor<8x8xf32>
+  %1 = stablehlo.multiply %0, %0 {mhlo.sharding = "{maximal device=0}"} : tensor<8x8xf32>
   return %1 : tensor<8x8xf32>
 }

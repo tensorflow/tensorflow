@@ -49,6 +49,7 @@ cc_library(
     hdrs = ["testing_pipeline.h"],
     deps = [
         ":mhlo_to_hlo_to_mhlo",
+        "//xla/mlir_hlo:mhlo_passes",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "@llvm-project//mlir:Pass",
     ],

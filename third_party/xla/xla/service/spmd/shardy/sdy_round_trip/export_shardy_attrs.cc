@@ -43,7 +43,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
 
@@ -66,7 +66,7 @@ using ::mlir::StringRef;
 using ::mlir::Value;
 using ::mlir::func::FuncOp;
 
-using ::mlir::mhlo::CustomCallOp;
+using ::mlir::stablehlo::CustomCallOp;
 
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::kShardingRuleAttr;
@@ -177,7 +177,7 @@ class SdyRoundTripExportShardyAttrsPass
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
-    registry.insert<mlir::sdy::SdyDialect, mlir::mhlo::MhloDialect>();
+    registry.insert<mlir::sdy::SdyDialect, mlir::stablehlo::StablehloDialect>();
   }
 };
 

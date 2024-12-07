@@ -21,6 +21,9 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
+// The attribute name for attributes in MHLO ops.
+inline constexpr llvm::StringRef kMhloAttributesAttr = "mhlo.attributes";
+
 // The attribute name for xla::HloSharding.
 inline constexpr llvm::StringRef kXlaShardingAttr = "mhlo.sharding";
 
