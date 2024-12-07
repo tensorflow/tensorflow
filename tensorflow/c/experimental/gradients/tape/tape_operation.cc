@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/gradients/tape/tape_operation.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_operation.h"
