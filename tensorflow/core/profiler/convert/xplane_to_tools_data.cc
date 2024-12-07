@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/profiler/convert/xplane_to_trace_events.h"
@@ -332,10 +333,14 @@ absl::StatusOr<std::string> ConvertDcnCollectiveStatsToToolData(
 }
 
 absl::StatusOr<std::string> ConvertMultiXSpacesToInferenceStats(
-    const SessionSnapshot& session_snapshot) {
+    const SessionSnapshot& session_snapshot, const ToolOptions& options) {
   InferenceStats inference_stats;
-  TF_RETURN_IF_ERROR(
-      ConvertMultiXSpaceToInferenceStats(session_snapshot, &inference_stats));
+  std::string request_column =
+      GetParamWithDefault<std::string>(options, "request_column", "");
+  std::string batch_column =
+      GetParamWithDefault<std::string>(options, "batch_column", "");
+  TF_RETURN_IF_ERROR(ConvertMultiXSpaceToInferenceStats(
+      session_snapshot, request_column, batch_column, &inference_stats));
   return inference_stats.SerializeAsString();
 }
 
@@ -375,7 +380,7 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToToolData(
   } else if (tool_name == "_xplane.pb") {  // internal test only.
     return PreprocessXSpace(session_snapshot);
   } else if (tool_name == "inference_profile") {
-    return ConvertMultiXSpacesToInferenceStats(session_snapshot);
+    return ConvertMultiXSpacesToInferenceStats(session_snapshot, options);
   } else {
     return errors::InvalidArgument(
         "Can not find tool: ", tool_name,

@@ -37,6 +37,7 @@ struct SampledPerModelInferenceStats {
 };
 
 // All the sampled inference stats of a profile.
+// TODO: Move to use SampledInferenceStatsProto if feasible.
 using SampledInferenceStats =
     absl::flat_hash_map<int /*model_index*/, SampledPerModelInferenceStats>;
 

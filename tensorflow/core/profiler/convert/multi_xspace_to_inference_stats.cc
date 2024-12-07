@@ -18,12 +18,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/profiler/utils/device_utils.h"
 #include "xla/tsl/profiler/utils/group_events.h"
 #include "xla/tsl/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/core/profiler/convert/inference_stats.h"
 #include "tensorflow/core/profiler/convert/inference_stats_combiner.h"
 #include "tensorflow/core/profiler/convert/inference_stats_grouping.h"
+#include "tensorflow/core/profiler/convert/inference_stats_sampler.h"
 #include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
@@ -33,8 +35,35 @@ limitations under the License.
 
 namespace tensorflow::profiler {
 
+namespace {
+SampledInferenceStatsProto GetSampledInferenceStatsProto(
+    const InferenceStats& inference_stats, absl::string_view request_column,
+    absl::string_view batch_column) {
+  SampledInferenceStatsProto result;
+  SampledInferenceStats sampled_stats =
+      SampleInferenceStats(request_column, batch_column, inference_stats);
+  for (const auto& [model_index, samples] : sampled_stats) {
+    SampledPerModelInferenceStatsProto per_model_stats;
+    for (const auto& [request, percentile] : samples.sampled_requests) {
+      RequestDetail request_detail = *request;
+      request_detail.set_percentile(percentile);
+      *per_model_stats.add_sampled_requests() = request_detail;
+    }
+    for (const auto& [batch, percentile] : samples.sampled_batches) {
+      BatchDetail batch_detail = *batch;
+      batch_detail.set_percentile(percentile);
+      *per_model_stats.add_sampled_batches() = batch_detail;
+    }
+    result.mutable_sampled_inference_stats_per_model()->insert(
+        {model_index, per_model_stats});
+  }
+  return result;
+}
+}  // namespace
+
 absl::Status ConvertMultiXSpaceToInferenceStats(
-    const SessionSnapshot& session_snapshot, InferenceStats* inference_stats) {
+    const SessionSnapshot& session_snapshot, absl::string_view request_column,
+    absl::string_view batch_column, InferenceStats* inference_stats) {
   for (int i = 0; i < session_snapshot.XSpaceSize(); ++i) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                         session_snapshot.GetXSpace(i));
@@ -51,6 +80,9 @@ absl::Status ConvertMultiXSpaceToInferenceStats(
     CombineInferenceStatsResult(i, inference_stats_per_host, inference_stats);
   }
   RegroupInferenceStatsByModel(inference_stats);
+  *inference_stats->mutable_sampled_inference_stats() =
+      GetSampledInferenceStatsProto(*inference_stats, request_column,
+                                    batch_column);
   return absl::OkStatus();
 }
 }  // namespace tensorflow::profiler

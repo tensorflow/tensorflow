@@ -15,11 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_MULTI_XSPACE_TO_INFERENCE_STATS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_MULTI_XSPACE_TO_INFERENCE_STATS_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
 namespace tensorflow::profiler {
 absl::Status ConvertMultiXSpaceToInferenceStats(
-    const SessionSnapshot& session_snapshot, InferenceStats* inference_stats);
+    const SessionSnapshot& session_snapshot, absl::string_view request_column,
+    absl::string_view batch_column, InferenceStats* inference_stats);
 }
 
 #endif  // TENSORFLOW_CORE_PROFILER_CONVERT_MULTI_XSPACE_TO_INFERENCE_STATS_H_

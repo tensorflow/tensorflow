@@ -281,5 +281,18 @@ message InferenceStats {
   // A database of tensor patterns.
   optional TensorPatternDatabase tensor_pattern_db = 6;
 
+  optional SampledInferenceStatsProto sampled_inference_stats = 7;
+
   reserved 1, 2;  // were processing_stats, session_run_times
+}
+
+message SampledPerModelInferenceStatsProto {
+  repeated RequestDetail sampled_requests = 1;
+  repeated BatchDetail sampled_batches = 2;
+}
+
+message SampledInferenceStatsProto {
+  // Map from model index to the Sampled Stats.
+  map<int32 /* host-id */, SampledPerModelInferenceStatsProto>
+      sampled_inference_stats_per_model = 1;
 }
