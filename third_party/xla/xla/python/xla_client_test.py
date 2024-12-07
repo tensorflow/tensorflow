@@ -3223,7 +3223,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           self.assertBetween(lineno, line, line + 2)
 
     def testAccessingLocalsDoesNotCrash(self):
-      # https://github.com/google/jax/issues/16027
+      # https://github.com/jax-ml/jax/issues/16027
       tb = xla_client.Traceback.get_traceback()
       python_tb = tb.as_python_traceback()
       for frame, _ in traceback.walk_tb(python_tb):
