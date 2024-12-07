@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tools/hlo_opt/compiled_opt_lib.h"
+#include "xla/tools/hlo_opt_ext/compiled_opt_lib.h"
 
 #include <memory>
 #include <optional>

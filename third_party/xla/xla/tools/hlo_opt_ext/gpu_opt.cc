@@ -54,7 +54,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tools/hlo_opt/compiled_opt_lib.h"
+#include "xla/tools/hlo_opt_ext/compiled_opt_lib.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/executable.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/tools/hlo_opt/compiled_opt_lib.h"
+#include "xla/tools/hlo_opt_ext/compiled_opt_lib.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

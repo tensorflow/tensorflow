@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TOOLS_HLO_OPT_COMPILED_OPT_LIB_H_
-#define XLA_TOOLS_HLO_OPT_COMPILED_OPT_LIB_H_
+#ifndef XLA_TOOLS_HLO_OPT_EXT_COMPILED_OPT_LIB_H_
+#define XLA_TOOLS_HLO_OPT_EXT_COMPILED_OPT_LIB_H_
 
 #include <memory>
 #include <optional>
@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/tools/hlo_opt/opt_lib.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/tools/hlo_opt/opt_lib.h"
 
 namespace xla {
 
@@ -65,4 +65,4 @@ class CompiledOptProvider : public OptProvider {
 
 }  // namespace xla
 
-#endif  // XLA_TOOLS_HLO_OPT_COMPILED_OPT_LIB_H_
+#endif  // XLA_TOOLS_HLO_OPT_EXT_COMPILED_OPT_LIB_H_

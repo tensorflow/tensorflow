@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TOOLS_HLO_OPT_OPT_LIB_H_
-#define XLA_TOOLS_HLO_OPT_OPT_LIB_H_
+#ifndef XLA_HLO_TOOLS_HLO_OPT_OPT_LIB_H_
+#define XLA_HLO_TOOLS_HLO_OPT_OPT_LIB_H_
 
 #include <functional>
 #include <memory>
@@ -96,4 +96,4 @@ class OptProvider {
 
 }  // namespace xla
 
-#endif  // XLA_TOOLS_HLO_OPT_OPT_LIB_H_
+#endif  // XLA_HLO_TOOLS_HLO_OPT_OPT_LIB_H_

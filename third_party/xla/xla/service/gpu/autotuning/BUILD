@@ -610,9 +610,9 @@ xla_cc_test(
     name = "autotuner_util_test",
     srcs = ["autotuner_util_test.cc"],
     data = [
-        "//xla/tools/hlo_opt:gpu_specs/a100_sxm_40.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/a100_sxm_80.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
+        "//xla/tools/hlo_opt_ext:gpu_specs/a100_sxm_40.txtpb",
+        "//xla/tools/hlo_opt_ext:gpu_specs/a100_sxm_80.txtpb",
+        "//xla/tools/hlo_opt_ext:gpu_specs/mi200.txtpb",
     ],
     tags = [
         "gpu",

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tools/hlo_opt/opt_lib.h"
+#include "xla/hlo/tools/hlo_opt/opt_lib.h"
 
 #include <algorithm>
 #include <functional>
@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/tools/hlo_opt/dummy_passes.h"
 #include "xla/hlo/transforms/collectives/all_gather_broadcast_reorder.h"
 #include "xla/hlo/transforms/collectives/all_reduce_contiguous.h"
 #include "xla/hlo/transforms/collectives/collective_quantizer.h"
@@ -89,7 +90,6 @@ limitations under the License.
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/tools/hlo_opt/transforms_example_passes.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
