@@ -155,6 +155,8 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
       ValueError: in case of invalid `model` argument value or `layer_fn`
       argument value.
   """
+def validate_models(model):
+  """Checks the different model types and raises errors if the model is incorrect""" 
   if not isinstance(model, Model):
     raise ValueError('Expected `model` argument '
                      'to be a `Model` instance, got ', model)
@@ -166,7 +168,8 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
     raise ValueError('Expected `model` argument '
                      'to be a functional `Model` instance, '
                      'but got a subclass model instead.')
-
+    
+def processing_new_inputs(model, input_tensors):
   new_input_layers = {}  # Cache for created layers.
   if input_tensors is not None:
     # Make sure that all input tensors come from a Keras layer.
@@ -185,6 +188,11 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
       else:
         new_input_layers[original_input_layer] = original_input_layer
 
+  return new_input_layers
+
+
+def model_reconstruction(model, new_input_layers, layer_fn):
+  """Reconstructs the model through new input layers"""
   if not callable(layer_fn):
     raise ValueError('Expected `layer_fn` argument to be a callable.')
 
