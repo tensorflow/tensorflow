@@ -103,7 +103,7 @@ TEST(TestApplyPluginTool, TestNoop) {
   run->outs.push_back(out);
   LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  auto model = Model::LoadFromBuffer(
+  auto model = Model::CreateFromBuffer(
       BufferRef<uint8_t>(out.view().data(), out.view().size()));
   EXPECT_EQ(model->Get()->subgraphs.size(), 1);
 }
@@ -152,7 +152,7 @@ TEST(TestApplyPluginTool, TestApply) {
   run->outs.push_back(out);
   LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  auto model = Model::LoadFromBuffer(
+  auto model = Model::CreateFromBuffer(
       BufferRef<uint8_t>(out.str().data(), out.str().size()));
   EXPECT_EQ(model->Get()->subgraphs.size(), 1);
 
@@ -193,7 +193,7 @@ TEST(TestApplyPluginTool, TestApplyWithAppendSerialization) {
 
   BufferRef<uint8_t> serialized(out.str().data(), out.str().size());
 
-  auto model = Model::LoadFromBuffer(serialized);
+  auto model = Model::CreateFromBuffer(serialized);
   EXPECT_EQ(model->Get()->subgraphs.size(), 1);
 
   {

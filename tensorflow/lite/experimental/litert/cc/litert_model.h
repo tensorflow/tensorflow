@@ -353,7 +353,7 @@ class Signature : public internal::NonOwnedHandle<LiteRtSignature> {
 };
 
 // Model. C++ equivalent of LiteRtModel.
-class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
+class Model : public internal::Handle<LiteRtModel, LiteRtDestroyModel> {
  public:
   Model() = default;
 
@@ -365,19 +365,19 @@ class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
     return Model(model, /*owned=*/false);
   }
 
-  static Expected<Model> LoadFromFile(const std::string& filename) {
+  static Expected<Model> CreateFromFile(const std::string& filename) {
     LiteRtModel model;
-    if (auto status = LiteRtLoadModelFromFile(filename.c_str(), &model);
+    if (auto status = LiteRtCreateModelFromFile(filename.c_str(), &model);
         status != kLiteRtStatusOk) {
       return Unexpected(status, "Failed to load model from file");
     }
     return CreateFromOwnedHandle(model);
   }
 
-  static Expected<Model> LoadFromBuffer(BufferRef<uint8_t> buffer) {
+  static Expected<Model> CreateFromBuffer(BufferRef<uint8_t> buffer) {
     LiteRtModel model;
     if (auto status =
-            LiteRtLoadModelFromBuffer(buffer.Data(), buffer.Size(), &model);
+            LiteRtCreateModelFromBuffer(buffer.Data(), buffer.Size(), &model);
         status != kLiteRtStatusOk) {
       return Unexpected(status, "Failed to load model from buffer");
     }
@@ -474,7 +474,7 @@ class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
   // Parameter `owned` indicates if the created TensorBuffer object should take
   // ownership of the provided `tensor_buffer` handle.
   Model(LiteRtModel model, bool owned)
-      : internal::Handle<LiteRtModel, LiteRtModelDestroy>(model, owned) {}
+      : internal::Handle<LiteRtModel, LiteRtDestroyModel>(model, owned) {}
 };
 
 }  // namespace litert

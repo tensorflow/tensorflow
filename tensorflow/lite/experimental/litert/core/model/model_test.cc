@@ -97,7 +97,7 @@ TEST(ModelSignatureTest, Basic) {
       "third_party/tensorflow/lite/experimental/litert/test/testdata/"
       "simple_model.tflite";
   LiteRtModel model;
-  auto status = LiteRtLoadModelFromFile(kTfliteFile.data(), &model);
+  auto status = LiteRtCreateModelFromFile(kTfliteFile.data(), &model);
   ASSERT_EQ(status, kLiteRtStatusOk);
   ASSERT_EQ(model->signatures.size(), 1);
   EXPECT_EQ(model->signatures[0]->key, LITERT_DEFAULT_SIGNATURE_KEY);
@@ -105,7 +105,7 @@ TEST(ModelSignatureTest, Basic) {
               ElementsAreArray({"arg0", "arg1"}));
   EXPECT_THAT(model->signatures[0]->output_names,
               ElementsAreArray({"tfl.add"}));
-  LiteRtModelDestroy(model);
+  LiteRtDestroyModel(model);
 }
 
 TEST(ModelSignatureTest, Lookup) {
@@ -113,7 +113,7 @@ TEST(ModelSignatureTest, Lookup) {
       "third_party/tensorflow/lite/experimental/litert/test/testdata/"
       "simple_model.tflite";
   LiteRtModel model;
-  auto status = LiteRtLoadModelFromFile(kTfliteFile.data(), &model);
+  auto status = LiteRtCreateModelFromFile(kTfliteFile.data(), &model);
   ASSERT_EQ(status, kLiteRtStatusOk);
   ASSERT_EQ(model->signatures.size(), 1);
   auto signature = model->FindSignature(LITERT_DEFAULT_SIGNATURE_KEY);
@@ -121,7 +121,7 @@ TEST(ModelSignatureTest, Lookup) {
   EXPECT_EQ((*signature)->key, LITERT_DEFAULT_SIGNATURE_KEY);
   EXPECT_THAT((*signature)->input_names, ElementsAreArray({"arg0", "arg1"}));
   EXPECT_THAT((*signature)->output_names, ElementsAreArray({"tfl.add"}));
-  LiteRtModelDestroy(model);
+  LiteRtDestroyModel(model);
 }
 
 }  // namespace

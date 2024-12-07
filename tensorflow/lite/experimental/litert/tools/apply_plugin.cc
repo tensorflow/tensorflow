@@ -189,7 +189,7 @@ Expected<Model> LoadModel(Context& ctx) {
   ctx.Dump().Start("Load Model");
   ctx.Dump().Labeled() << absl::StreamFormat("Loading model from: %s\n",
                                              ctx.Run().model.value());
-  auto model_result = Model::LoadFromFile(ctx.Run().model->data());
+  auto model_result = Model::CreateFromFile(ctx.Run().model->data());
   if (!model_result.HasValue()) {
     ctx.Dump().Labeled() << "Failed to load model from file.";
     ctx.Dump().Fail();

@@ -33,7 +33,8 @@ static const char* LiteRtDefaultSignatureKey = LITERT_DEFAULT_SIGNATURE_KEY;
 // Model
 //
 
-LiteRtStatus LiteRtLoadModelFromFile(const char* filename, LiteRtModel* model) {
+LiteRtStatus LiteRtCreateModelFromFile(const char* filename,
+                                       LiteRtModel* model) {
   if (!filename || !model) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -46,8 +47,9 @@ LiteRtStatus LiteRtLoadModelFromFile(const char* filename, LiteRtModel* model) {
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtLoadModelFromBuffer(const void* buffer_addr,
-                                       size_t buffer_size, LiteRtModel* model) {
+LiteRtStatus LiteRtCreateModelFromBuffer(const void* buffer_addr,
+                                         size_t buffer_size,
+                                         LiteRtModel* model) {
   if (!buffer_addr || !buffer_size || !model) {
     return kLiteRtStatusErrorInvalidArgument;
   }
@@ -128,7 +130,7 @@ LiteRtStatus LiteRtGetModelSignature(LiteRtModel model,
   return kLiteRtStatusOk;
 }
 
-void LiteRtModelDestroy(LiteRtModel model) { delete model; }
+void LiteRtDestroyModel(LiteRtModel model) { delete model; }
 
 LiteRtStatus LiteRtPushOp(LiteRtOpList op_list, LiteRtOp op) {
   if (!op_list || !op) {

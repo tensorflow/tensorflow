@@ -37,6 +37,7 @@
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/test_macros.h"
 #include "tensorflow/lite/experimental/litert/test/test_models.h"
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
 
@@ -57,7 +58,7 @@ Model LoadModelThroughRoundTrip(std::string_view path) {
   // Reload model.
   LiteRtModel result = nullptr;
   LITERT_CHECK_STATUS_OK(
-      LiteRtLoadModelFromBuffer(buf.Data(), buf.Size(), &result));
+      LiteRtCreateModelFromBuffer(buf.Data(), buf.Size(), &result));
 
   return Model::CreateFromOwnedHandle(result);
 }
@@ -86,7 +87,7 @@ class TopologyTest : public ::testing::TestWithParam<LiteRtModel> {
 
 TEST(LiteRtModelTest, TestLoadTestDataBadFilepath) {
   LiteRtModel model = nullptr;
-  LITERT_ASSERT_STATUS_HAS_CODE(LiteRtLoadModelFromFile("bad_path", &model),
+  LITERT_ASSERT_STATUS_HAS_CODE(LiteRtCreateModelFromFile("bad_path", &model),
                                 kLiteRtStatusErrorFileIO);
 }
 
@@ -107,7 +108,7 @@ TEST(LiteRtModelTest, TestLoadTestDataBadFileData) {
 
   LiteRtModel model = nullptr;
   LITERT_ASSERT_STATUS_HAS_CODE(
-      LiteRtLoadModelFromFile(test_file_path.c_str(), &model),
+      LiteRtCreateModelFromFile(test_file_path.c_str(), &model),
       kLiteRtStatusErrorInvalidFlatbuffer);
   // NOLINTEND
 }

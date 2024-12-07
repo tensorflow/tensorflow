@@ -124,7 +124,7 @@ static constexpr absl::string_view kTfliteFile =
 
 TEST(CompiledModelTest, Basic) {
   LiteRtModel model;
-  auto status = LiteRtLoadModelFromFile(kTfliteFile.data(), &model);
+  auto status = LiteRtCreateModelFromFile(kTfliteFile.data(), &model);
   ASSERT_EQ(status, kLiteRtStatusOk);
 
   auto res_compiled_model = LiteRtCompiledModelT::Create(model);
@@ -193,7 +193,7 @@ TEST(CompiledModelTest, Basic) {
     LiteRtDestroyTensorBuffer(output_buffer);
   }
 
-  LiteRtModelDestroy(model);
+  LiteRtDestroyModel(model);
 }
 
 }  // namespace

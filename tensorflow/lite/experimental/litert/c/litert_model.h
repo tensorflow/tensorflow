@@ -281,10 +281,12 @@ LiteRtStatus LiteRtGetSignatureOutputName(LiteRtSignature signature,
 // LiteRtModel
 //
 
-LiteRtStatus LiteRtLoadModelFromFile(const char* filename, LiteRtModel* model);
+LiteRtStatus LiteRtCreateModelFromFile(const char* filename,
+                                       LiteRtModel* model);
 
-LiteRtStatus LiteRtLoadModelFromBuffer(const void* buffer_addr,
-                                       size_t buffer_size, LiteRtModel* model);
+LiteRtStatus LiteRtCreateModelFromBuffer(const void* buffer_addr,
+                                         size_t buffer_size,
+                                         LiteRtModel* model);
 
 // Get the metadata buffer associated with given key if it exists.
 LiteRtStatus LiteRtGetModelMetadata(LiteRtModel model, const char* metadata_key,
@@ -315,7 +317,7 @@ LiteRtStatus LiteRtGetModelSignature(LiteRtModel model,
                                      LiteRtSignature* signature);
 
 // Destroy the given model, freeing any memory it owns.
-void LiteRtModelDestroy(LiteRtModel model);
+void LiteRtDestroyModel(LiteRtModel model);
 
 //
 // Utility Types

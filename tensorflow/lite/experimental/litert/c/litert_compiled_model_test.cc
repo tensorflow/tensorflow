@@ -31,7 +31,7 @@ static constexpr absl::string_view kTfliteFile =
 
 TEST(CompiledModelTest, Basic) {
   LiteRtModel model;
-  ASSERT_EQ(LiteRtLoadModelFromFile(kTfliteFile.data(), &model),
+  ASSERT_EQ(LiteRtCreateModelFromFile(kTfliteFile.data(), &model),
             kLiteRtStatusOk);
   LiteRtCompiledModel compiled_model;
   ASSERT_EQ(LiteRtCreateCompiledModel(model, &compiled_model), kLiteRtStatusOk);
@@ -68,7 +68,7 @@ TEST(CompiledModelTest, Basic) {
     output_buffer_requirements.push_back(buffer_requirements);
   }
   LiteRtDestroyCompiledModel(compiled_model);
-  LiteRtModelDestroy(model);
+  LiteRtDestroyModel(model);
 }
 
 }  // namespace

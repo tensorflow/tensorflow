@@ -41,7 +41,7 @@ constexpr const char* kCompilerPluginLibSearchPath = "/data/local/tmp";
 
 TEST(JitCompilation, Qualcomm) {
   auto model_path = litert::testing::GetTestFilePath(kModelFileName);
-  auto model = litert::Model::LoadFromFile(model_path);
+  auto model = litert::Model::CreateFromFile(model_path);
   ASSERT_TRUE(model);
 
 #if !defined(__ANDROID__)
@@ -69,7 +69,7 @@ TEST(JitCompilation, Qualcomm) {
       std::move(*model->Get()), *npu_bytecode);
   EXPECT_TRUE(serialized_model);
 
-  model = litert::Model::LoadFromBuffer(*serialized_model);
+  model = litert::Model::CreateFromBuffer(*serialized_model);
 
   auto flatbuffer_model = tflite::FlatBufferModel::BuildFromBuffer(
       reinterpret_cast<const char*>(serialized_model->Data()),

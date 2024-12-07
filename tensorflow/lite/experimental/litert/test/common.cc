@@ -46,7 +46,7 @@ std::string GetTestFilePath(absl::string_view filename) {
 }
 
 Model LoadTestFileModel(absl::string_view filename) {
-  return *Model::LoadFromFile(GetTestFilePath(filename));
+  return *Model::CreateFromFile(GetTestFilePath(filename));
 }
 
 bool ValidateTopology(const std::vector<Op>& ops) {
