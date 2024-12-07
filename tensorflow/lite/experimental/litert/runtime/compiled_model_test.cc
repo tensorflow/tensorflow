@@ -26,6 +26,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -127,7 +128,7 @@ TEST(CompiledModelTest, Basic) {
   auto status = LiteRtCreateModelFromFile(kTfliteFile.data(), &model);
   ASSERT_EQ(status, kLiteRtStatusOk);
 
-  auto res_compiled_model = LiteRtCompiledModelT::Create(model);
+  auto res_compiled_model = LiteRtCompiledModelT::Create(model, kHwAccelCpu);
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
   auto& compiled_model = **res_compiled_model;
 

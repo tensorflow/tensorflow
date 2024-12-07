@@ -18,6 +18,7 @@
 #include <stddef.h>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
@@ -47,10 +48,9 @@ LITERT_DEFINE_HANDLE(LiteRtCompiledModel);
 // Creates a LiteRtCompiledModel from a LiteRtModel object.
 // The model is loaded into memory and the caller takes ownership of the
 // returned object.
-// WARNING: The created LiteRtCompiledModel only runs with Xnnpack delegate.
-// TODO: b/379317134 - Add support for compilation options.
-LiteRtStatus LiteRtCreateCompiledModel(LiteRtModel model,
-                                       LiteRtCompiledModel* compiled_model);
+LiteRtStatus LiteRtCreateCompiledModel(
+    LiteRtModel model, LiteRtComplicationOptions complication_options,
+    LiteRtCompiledModel* compiled_model);
 
 // Returns the buffer requirements for the given n-th input tensor. The returned
 // LiteRtTensorBufferRequirements is used to create the input tensor

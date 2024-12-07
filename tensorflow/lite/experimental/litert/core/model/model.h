@@ -188,6 +188,10 @@ struct LiteRtModelT {
   // Initial flatbuffer loaded in. "Subgraphs" field has been invalidated.
   std::unique_ptr<tflite::ModelT> flatbuffer_model;
 
+  // The buffer information when the model was loaded from a buffer.
+  const void* model_buffer = nullptr;
+  size_t model_buffer_size = 0;
+
   // Custom code associated with all customs ops emitted during
   // re-serialization.
   std::string custom_op_code;
