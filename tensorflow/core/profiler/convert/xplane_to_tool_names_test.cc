@@ -123,6 +123,7 @@ TEST_P(XPlaneToToolsTest, ToolsList) {
       "tf_data_bottleneck_analysis",
       "op_profile",
       "hlo_stats",
+      "inference_profile",
   };
   expected_tools.insert(expected_tools.end(), test_case.expected_tools.begin(),
                         test_case.expected_tools.end());
