@@ -17,6 +17,7 @@
 #ifndef XLA_PYTHON_IFRT_PROXY_COMMON_ARRAY_UTIL_H_
 #define XLA_PYTHON_IFRT_PROXY_COMMON_ARRAY_UTIL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
