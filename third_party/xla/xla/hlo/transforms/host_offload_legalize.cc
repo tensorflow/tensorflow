@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
