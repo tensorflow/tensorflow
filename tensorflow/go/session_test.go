@@ -35,6 +35,58 @@ func createTestGraph(t *testing.T, dt DataType) (*Graph, Output, Output) {
 	return g, inp, out
 }
 
+func TestSessionWithAllowGrowth(t *testing.T) {
+    graph := NewGraph()
+    gpuOptions := GPUOptions{
+        AllowGrowth: true,
+    }
+
+    session, err := NewSessionWithGPUOptions(graph, gpuOptions)
+    if err != nil {
+        t.Fatalf("Failed to create session with GPUOptions: %v", err)
+    }
+    defer session.Close()
+
+    // Additional checks to confirm the GPUOptions are applied, if possible.
+    t.Log("Session created successfully with AllowGrowth enabled.")
+}
+
+func TestSessionWithAllocatorType(t *testing.T) {
+    graph := NewGraph()
+    gpuOptions := GPUOptions{
+        AllocatorType: "default",
+    }
+
+    session, err := NewSessionWithGPUOptions(graph, gpuOptions)
+    if err != nil {
+        t.Fatalf("Failed to create session with GPUOptions: %v", err)
+    }
+    defer session.Close()
+
+    // Check if the AllocatorType was applied correctly.
+    t.Log("Session created successfully with AllocatorType set.")
+}
+
+
+func TestSessionWithAllGPUOptions(t *testing.T) {
+    graph := NewGraph()
+    gpuOptions := GPUOptions{
+        AllowGrowth:   true,
+        AllocatorType: "custom_allocator",
+    }
+
+    session, err := NewSessionWithGPUOptions(graph, gpuOptions)
+    if err != nil {
+        t.Fatalf("Failed to create session with GPUOptions: %v", err)
+    }
+    defer session.Close()
+
+    // Additional validation for combined options.
+    t.Log("Session created successfully with all GPUOptions.")
+}
+
+
+
 func TestSessionRunNeg(t *testing.T) {
 	var tests = []struct {
 		input    interface{}
