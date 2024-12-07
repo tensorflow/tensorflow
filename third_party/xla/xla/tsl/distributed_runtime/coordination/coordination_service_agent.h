@@ -272,6 +272,37 @@ class CoordinationServiceAgent {
   virtual void CancelBarrierAsync(std::string_view barrier_id,
                                   StatusCallback done) = 0;
 
+  // Returns the set of currently alive tasks. More specifically, given a set of
+  // tasks T, GetAliveTasks(T) returns the subset T of alive tasks.
+  //
+  // # Barrier Semantics
+  //
+  // If multiple tasks call GetAliveTasks concurrently, it's important that they
+  // all agree on which tasks are alive. Otherwise, the tasks' behavior might
+  // diverge. For example, imagine a set of tasks trying to run an AllGather,
+  // but they all disagree on which tasks should be participating in the
+  // AllGather. This is buggy.
+  //
+  // To ensure that every task agrees on which tasks are alive, the
+  // GetAliveTasks RPC has barrier-like semantics. Consider an invocation
+  // GetAliveTasks(T) for a set of tasks T. The invocation acts as a barrier,
+  // waiting for every task in T to call GetAliveTasks(T). Afterwards,
+  // GetAliveTasks returns the same set of alive tasks A to all the tasks in T.
+  // This ensures that every task agrees which tasks are alive.
+  //
+  // One small correction. GetAliveTasks doesn't act as a barrier for *every*
+  // task in T. Some tasks in T might have failed, so we should not wait for
+  // them. Instead, the GetAliveTasks RPC waits only for the returned tasks A.
+  //
+  // # An Example
+  //
+  // Imagine we have four tasks: A, B, C, and D. Further imagine that task D
+  // has failed and that every task calls GetAliveTasks([A, B, C, D]). The
+  // invocation will return tasks [A, B, C]. The GetAliveTasks call acts as a
+  // barrier across tasks A, B, and C. Task D, which failed, is ignored.
+  virtual absl::StatusOr<std::vector<tensorflow::CoordinatedTask>>
+  GetAliveTasks(const std::vector<tensorflow::CoordinatedTask>& tasks) = 0;
+
   // Get unowned Env* that the agent was initialized with.
   virtual absl::StatusOr<tsl::Env*> GetEnv() = 0;
 

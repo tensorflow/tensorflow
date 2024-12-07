@@ -142,6 +142,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   absl::Status CancelBarrier(std::string_view barrier_id) override;
   void CancelBarrierAsync(std::string_view barrier_id,
                           StatusCallback done) override;
+  absl::StatusOr<std::vector<tensorflow::CoordinatedTask>> GetAliveTasks(
+      const std::vector<tensorflow::CoordinatedTask>& tasks) override;
 
   absl::StatusOr<Env*> GetEnv() override;
 
@@ -1062,6 +1064,39 @@ void CoordinationServiceAgentImpl::CancelBarrierAsync(
         done(s);
         VLOG(3) << "CancelBarrierResponse: " << s;
       });
+}
+
+absl::StatusOr<std::vector<tensorflow::CoordinatedTask>>
+CoordinationServiceAgentImpl::GetAliveTasks(
+    const std::vector<CoordinatedTask>& tasks) {
+  // Validate the agent.
+  if (absl::Status s = ValidateRunningAgent(/*allow_disconnected=*/true);
+      !s.ok()) {
+    return s;
+  }
+
+  // Form the request and response.
+  auto request = std::make_shared<GetAliveTasksRequest>();
+  auto response = std::make_shared<GetAliveTasksResponse>();
+  *request->mutable_requesting_task() = task_;
+  *request->mutable_tasks() = {tasks.begin(), tasks.end()};
+
+  // Issue the request and wait for it to finish.
+  absl::Status status;
+  absl::Notification n;
+  auto done = [&status, &n](const absl::Status& s) {
+    status = s;
+    n.Notify();
+  };
+  leader_client_->GetAliveTasksAsync(request.get(), response.get(), done);
+  n.WaitForNotification();
+
+  // Parse the response.
+  if (!status.ok()) {
+    return status;
+  }
+  return std::vector<tensorflow::CoordinatedTask>(
+      response->alive_tasks().begin(), response->alive_tasks().end());
 }
 
 // Returns an error if agent is not running.
