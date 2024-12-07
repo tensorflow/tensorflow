@@ -191,7 +191,7 @@ ENTRY entry {
   EXPECT_EQ(get_tuple_index->tuple_index(), 3);
 }
 
-TEST_F(CollectivePipelinerTest, MinimalCase) {
+TEST_F(CollectivePipelinerTest, MinimalCaseWithoutDefaultLayouts) {
   constexpr absl::string_view hlo_string = R"(
     HloModule module
 
@@ -235,8 +235,10 @@ TEST_F(CollectivePipelinerTest, MinimalCase) {
       ROOT dst_data = bf16[3,8,128] get-tuple-element(while), index=1
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string, config_));
+  HloParserOptions parser_config;
+  parser_config.set_fill_missing_layouts(false);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                           hlo_string, config_, parser_config));
   EXPECT_THAT(RunOptimizer(module.get(), /*last_run=*/true),
               IsOkAndHolds(true));
 
