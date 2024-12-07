@@ -293,6 +293,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
+  std::vector<HloInstruction*> GetFailedAsyncConversions() const;
+
  protected:
   // Given a buffer interval, returns the colocated intervals. Unlike the
   // similar GlobalDecreasingSizeBestFitHeap::GetTransitiveColocations, it
@@ -1025,7 +1027,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // an asynchronous version, while processing the current interval, sorted by
   // their order in the instruction schedule. Being in this list doesn't
   // guarantee that the sync instruction will be converted to async.
-  std::vector<const HloInstruction*> sorted_async_conversion_candidates_;
+  std::vector<HloInstruction*> sorted_async_conversion_candidates_;
   // A cache to keep the peak memory usage at each point in the graph. We use
   // this to see if the proposed allocation in the alternate memory would fit
   // ignoring fragmentation, and if not, we can skip the more expensive lookup
@@ -1075,7 +1077,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   absl::flat_hash_set<const HloValue*> finalized_values_;
   // Set of sync copy instructions that we failed/succeeded in replacing with
   // asynchronous copies.
-  absl::flat_hash_map<const HloInstruction*, AsyncConversionResult>
+  absl::flat_hash_map<HloInstruction*, AsyncConversionResult>
       failed_async_conversions_;
   absl::flat_hash_set<const HloInstruction*> successful_async_conversion_set_;
   std::vector<const HloInstruction*> not_finalized_async_conversions_;

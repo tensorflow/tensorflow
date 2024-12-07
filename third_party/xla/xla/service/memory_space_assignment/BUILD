@@ -294,7 +294,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_value",
         "//xla/service:hlo_value",
-        "//xla/service/heap_simulator",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
