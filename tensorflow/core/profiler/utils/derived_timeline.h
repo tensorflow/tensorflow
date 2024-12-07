@@ -142,6 +142,7 @@ class DerivedXLineBuilder {
   absl::flat_hash_map<int, std::optional<DerivedXEventBuilder>>
       last_event_by_level_;
   std::vector<DerivedXLineBuilder*> dependent_lines_;
+  bool is_gpu_plane_ = false;
 };
 
 struct Symbol {

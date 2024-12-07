@@ -56,7 +56,9 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-using tsl::profiler::FindMutableTensorCorePlanes;
+using ::tsl::profiler::DeviceType;
+using ::tsl::profiler::FindMutableTensorCorePlanes;
+using ::tsl::profiler::GetDeviceType;
 
 inline std::string HloModuleEventName(const GpuEventStats& stats) {
   return stats.program_id ? tsl::profiler::HloModuleNameWithProgramId(
@@ -321,6 +323,7 @@ DerivedXLineBuilder::DerivedXLineBuilder(
       dependent_lines_(std::move(dependent_lines)) {
   line_.SetName(name);
   line_.SetTimestampNs(timestamp_ns);
+  is_gpu_plane_ = GetDeviceType(plane->Name()) == DeviceType::kGpu;
 }
 
 void DerivedXLineBuilder::ExpandOrAddEvent(
@@ -351,8 +354,16 @@ void DerivedXLineBuilder::ExpandOrAddLevelEvent(
     std::optional<int64_t> group_id, std::optional<int64_t> scope_range_id,
     int level) {
   auto& last_event = last_event_by_level_[level];
-  if (last_event &&
-      last_event->ShouldExpand(event_metadata, group_id, scope_range_id)) {
+  // If group_id is not set and we still choose to expand, put an extra check:
+  // Expand only if the gap between the last event and the new event is less
+  // than 2 * duration of the last event.
+  // TODO: b/373944719 - add the extra node_id check for GPU profiles.
+  if (last_event.has_value() &&
+      last_event->ShouldExpand(event_metadata, group_id, scope_range_id) &&
+      (is_gpu_plane_ || group_id.has_value() ||
+       (last_event->GetTimespan().end_ps() +
+        2 * last_event->GetTimespan().duration_ps()) >=
+           event_span.begin_ps())) {
     // Expand the last event to cover the given event.
     last_event->Expand(event_span);
   } else {

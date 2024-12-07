@@ -16,22 +16,26 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/device_utils.h"
 
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
 namespace profiler {
 
-DeviceType GetDeviceType(const tensorflow::profiler::XPlane& plane) {
-  if (plane.name() == kHostThreadsPlaneName) {
+DeviceType GetDeviceType(absl::string_view plane_name) {
+  if (plane_name == kHostThreadsPlaneName) {
     return DeviceType::kCpu;
-  } else if (absl::StartsWith(plane.name(), kTpuPlanePrefix)) {
+  } else if (absl::StartsWith(plane_name, kTpuPlanePrefix)) {
     return DeviceType::kTpu;
-  } else if (absl::StartsWith(plane.name(), kGpuPlanePrefix)) {
+  } else if (absl::StartsWith(plane_name, kGpuPlanePrefix)) {
     return DeviceType::kGpu;
   } else {
     return DeviceType::kUnknown;
   }
+}
+DeviceType GetDeviceType(const tensorflow::profiler::XPlane& plane) {
+  return GetDeviceType(plane.name());
 }
 }  // namespace profiler
 }  // namespace tsl
