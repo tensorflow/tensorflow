@@ -64,8 +64,7 @@ inline constexpr int64_t kMaxBytesInMostMinorDimension = 8;
 bool IsMatrixMultiplication(const HloInstruction& dot);
 bool IsMatrixVectorMultiplication(const HloInstruction& dot);
 
-inline constexpr int64_t WarpSize(
-    const se::DeviceDescription& gpu_device_info) {
+inline int64_t WarpSize(const se::DeviceDescription& gpu_device_info) {
   return gpu_device_info.threads_per_warp();
 }
 
