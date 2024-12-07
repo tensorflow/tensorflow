@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tsl/platform/scanner.h"
 
+#include "absl/strings/string_view.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {

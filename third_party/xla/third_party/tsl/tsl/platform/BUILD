@@ -143,7 +143,26 @@ cc_library(
         "file_system_helper.h",
         "threadpool.h",
     ],
-    deps = tf_windows_aware_platform_deps("env") + if_static([":env_impl"]),
+    deps = tf_windows_aware_platform_deps("env") + if_static([":env_impl"]) + [
+        ":cord",
+        ":env_time",
+        ":errors",
+        ":file_statistics",
+        ":macros",
+        ":mutex",
+        ":platform",
+        ":platform_port",
+        ":protobuf",
+        ":status",
+        ":statusor",
+        ":stringpiece",
+        ":threadpool_interface",
+        ":types",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:optional",
+    ],
 )
 
 cc_library(
@@ -229,6 +248,8 @@ cc_library(
         ":stringpiece",
         ":stringprintf",
         ":types",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@double_conversion//:double-conversion",
     ],
 )
@@ -246,6 +267,7 @@ cc_library(
         ":stringpiece",
         ":types",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
 )
@@ -260,6 +282,7 @@ cc_library(
     deps = [
         ":platform",
         ":types",
+        "@com_google_absl//absl/strings:cord",
     ] + tsl_protobuf_deps(),
 )
 
@@ -336,6 +359,7 @@ cc_library(
         ":status",
         ":statusor",
         ":test",
+        "@com_google_absl//absl/status",
         "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
@@ -957,6 +981,7 @@ cc_library(
         ":stringpiece",
         ":types",
         "@com_google_absl//absl/meta:type_traits",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -1246,6 +1271,8 @@ cc_library(
         ":macros",
         ":str_util",
         ":stringpiece",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -1285,6 +1312,7 @@ tsl_cc_test(
         ":test",
         ":test_benchmark",
         ":test_main",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -1324,6 +1352,7 @@ tsl_cc_test(
         ":test",
         ":test_main",
         ":tstring",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1341,6 +1370,7 @@ cc_library(
         ":stacktrace_handler",
         ":test",
         ":test_benchmark",
+        "//testing/base/public:gunit_for_library_testonly",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
@@ -1361,6 +1391,7 @@ tsl_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@local_xla//xla/tsl/protobuf:status_proto_cc",
     ],
@@ -1392,6 +1423,8 @@ tsl_cc_test(
         ":statusor",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
@@ -1490,6 +1523,7 @@ tsl_cc_test(
         ":test",
         ":test_main",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
 
@@ -1548,6 +1582,7 @@ tsl_cc_test(
         ":refcount",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -1639,6 +1674,7 @@ tsl_cc_test(
         ":platform_port",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -1652,6 +1688,7 @@ tsl_cc_test(
         ":scanner",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -1665,6 +1702,8 @@ tsl_cc_test(
         ":str_util",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -1720,6 +1759,7 @@ tsl_cc_test(
         ":numbers",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -1738,6 +1778,7 @@ cc_library(
         ":logging",
         ":random",
         ":status",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
     ],
 )
@@ -1767,6 +1808,9 @@ tsl_cc_test(
         ":str_util",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
@@ -1783,6 +1827,8 @@ tsl_cc_test(
         ":str_util",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],

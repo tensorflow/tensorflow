@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tsl/platform/stringpiece.h"
 
-#include <unordered_map>
-
 #include "tsl/platform/test.h"
 
 namespace tsl {

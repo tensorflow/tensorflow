@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tsl/platform/intrusive_ptr.h"
 
+#include <utility>
+
 #include "tsl/platform/refcount.h"
 #include "tsl/platform/test.h"
 

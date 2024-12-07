@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tsl/platform/numbers.h"
 
+#include <cfloat>
 #include <cmath>
+#include <limits>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {

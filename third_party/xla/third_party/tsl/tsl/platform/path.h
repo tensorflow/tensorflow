@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_PATH_H_
 #define TENSORFLOW_TSL_PLATFORM_PATH_H_
 
+#include <initializer_list>
 #include <string>
 
+#include "absl/types/span.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/types.h"
 

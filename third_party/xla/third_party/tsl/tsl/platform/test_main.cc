@@ -18,8 +18,7 @@ limitations under the License.
 // the --benchmark_filter flag which specifies which benchmarks to run,
 // we will either run benchmarks or run the gtest tests in the program.
 
-#include <string>
-
+#include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/stacktrace_handler.h"

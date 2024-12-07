@@ -17,6 +17,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/status/status.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
