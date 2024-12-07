@@ -401,6 +401,9 @@ Status MlirV1CompatGraphOptimizationPass::Run(
         /*fallback_enabled*/ true,
         /*result*/ "disabled_by_user");
     return absl::OkStatus();
+  } else {
+    LOG(INFO)
+        << "MLIR V1 optimization pass may be used in compiling SavedModel.";
   }
   // Skip function graphs as MlirOptimizationPassRegistry_ will be used instead.
   // Skip if no underlying pass was registered.
