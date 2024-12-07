@@ -1446,8 +1446,13 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kTanh:
     case HloOpcode::kTan:
       if (result_accuracy.has_value()) {
-        return std::make_unique<HloUnaryInstruction>(shape, opcode, operand,
-                                                     *result_accuracy);
+        std::unique_ptr<HloInstruction> instruction =
+            CreateNary(shape, opcode, {operand});
+        if (!IsValidResultAccuracy(*result_accuracy)) {
+          LOG(FATAL) << "Invalid result accuracy";
+        }
+        instruction->set_result_accuracy(result_accuracy.value());
+        return instruction;
       }
       return CreateNary(shape, opcode, {operand});
     default:
@@ -2488,17 +2493,6 @@ HloInstruction::CreateCompositeCall(const Shape& shape,
     const absl::flat_hash_set<absl::string_view>& execution_threads_set) {
   return execution_threads_set.empty() ||
          execution_threads_set.contains(execution_thread);
-}
-
-/* static */ bool HloInstruction::IsUnaryOpWithResultAccuracy(
-    HloOpcode opcode) {
-  return opcode == HloOpcode::kExp || opcode == HloOpcode::kExpm1 ||
-         opcode == HloOpcode::kLog || opcode == HloOpcode::kLog1p ||
-         opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kSqrt ||
-         opcode == HloOpcode::kCbrt || opcode == HloOpcode::kTanh ||
-         opcode == HloOpcode::kCos || opcode == HloOpcode::kSin ||
-         opcode == HloOpcode::kTan || opcode == HloOpcode::kErf ||
-         opcode == HloOpcode::kLogistic;
 }
 
 void HloInstruction::AddSuffixToInstructionName(
@@ -4179,6 +4173,21 @@ void HloInstruction::PrintExtraAttributes(
                 "statistics=", StatisticsVizToString(statistics_viz()));
     });
   }
+  // ResultAccuracy can only be one of mode or tolerance.
+  // Don't print anything if the result accuracy is set to default.
+  if (result_accuracy().mode() != ResultAccuracy::DEFAULT) {
+    printer.Next([this](Printer* printer) {
+      printer->Append("result_accuracy={mode=");
+      printer->Append(ResultAccuracyToString(result_accuracy().mode()));
+      printer->Append("}");
+    });
+  } else if (result_accuracy().has_tolerance()) {
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "result_accuracy={",
+                ResultAccuracyToleranceToString(result_accuracy().tolerance()),
+                "}");
+    });
+  }
 }
 
 std::vector<std::string> HloInstruction::ExtraAttributesToString(
@@ -5042,6 +5051,24 @@ std::string ResultAccuracyToleranceToString(
 
 std::string ResultAccuracyToString(ResultAccuracy::Mode accuracy_mode) {
   return absl::StrFormat("%v", accuracy_mode);
+}
+
+bool IsValidResultAccuracy(const ResultAccuracy& accuracy) {
+  bool valid_mode = ResultAccuracy::Mode_IsValid(accuracy.mode());
+  bool valid_tolerance =
+      (accuracy.tolerance().rtol() >= 0 && accuracy.tolerance().ulps() >= 0 &&
+       accuracy.tolerance().atol() >= 0);
+  return valid_mode && valid_tolerance;
+}
+
+bool IsUnaryOpWithResultAccuracy(HloOpcode opcode) {
+  return opcode == HloOpcode::kExp || opcode == HloOpcode::kExpm1 ||
+         opcode == HloOpcode::kLog || opcode == HloOpcode::kLog1p ||
+         opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kSqrt ||
+         opcode == HloOpcode::kCbrt || opcode == HloOpcode::kTanh ||
+         opcode == HloOpcode::kCos || opcode == HloOpcode::kSin ||
+         opcode == HloOpcode::kTan || opcode == HloOpcode::kErf ||
+         opcode == HloOpcode::kLogistic;
 }
 
 std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm) {
