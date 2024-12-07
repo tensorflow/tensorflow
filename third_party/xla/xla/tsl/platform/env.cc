@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tsl/platform/env_time.h"
+#include "xla/tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/path.h"

@@ -15,7 +15,7 @@ limitations under the License.
 
 // Unit tests for StatusOr
 
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 #include <memory>
 #include <type_traits>
@@ -731,8 +731,9 @@ TEST(Status, StackTracePropagation) {
   ASSERT_EQ(sources.size(), 3);
 
   for (int i = 0; i < 3; ++i) {
-    ASSERT_EQ(sources[i].file_name(),
-              "third_party/tensorflow/tsl/platform/statusor_test.cc");
+    ASSERT_EQ(
+        sources[i].file_name(),
+        "third_party/tensorflow/compiler/xla/tsl/platform/statusor_test.cc");
   }
 }
 

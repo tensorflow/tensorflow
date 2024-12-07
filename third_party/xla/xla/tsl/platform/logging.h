@@ -13,24 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/threadpool_async_executor.h"
+#ifndef XLA_TSL_PLATFORM_LOGGING_H_
+#define XLA_TSL_PLATFORM_LOGGING_H_
 
-#include "absl/synchronization/notification.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
+#include "tsl/platform/platform.h"
 
-namespace tsl::thread {
-namespace {
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
+    defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
+    defined(__EMSCRIPTEN__) || defined(PLATFORM_CHROMIUMOS)
+#include "xla/tsl/platform/google/logging.h"  // IWYU pragma: export
+#else
+#include "xla/tsl/platform/default/logging.h"  // IWYU pragma: export
+#endif
 
-TEST(ThreadPoolAsyncExecutorTest, ExecuteTasks) {
-  ThreadPool thread_pool(Env::Default(), "test", 4);
-  ThreadPoolAsyncExecutor executor(&thread_pool);
-
-  absl::Notification notification;
-  executor.Execute([&] { notification.Notify(); });
-  notification.WaitForNotification();
-}
-
-}  // namespace
-}  // namespace tsl::thread
+#endif  // XLA_TSL_PLATFORM_LOGGING_H_
