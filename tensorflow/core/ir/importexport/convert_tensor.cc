@@ -478,6 +478,14 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
       ConvertFloat8ElementsAttr<tsl::float8_e4m3fn>(
           dense_attr, output->mutable_float8_val());
       break;
+    case tensorflow::DT_FLOAT8_E5M2FNUZ:
+      ConvertFloat8ElementsAttr<tsl::float8_e5m2fnuz>(
+          dense_attr, output->mutable_float8_val());
+      break;
+    case tensorflow::DT_FLOAT8_E4M3FNUZ:
+      ConvertFloat8ElementsAttr<tsl::float8_e4m3fnuz>(
+          dense_attr, output->mutable_float8_val());
+      break;
     case tensorflow::DT_INT4:
       ConvertIntElementsAttr<int, tsl::int4>(dense_attr,
                                              output->mutable_int_val(),
