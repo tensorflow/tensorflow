@@ -70,7 +70,7 @@ string MangleShape(const TensorShapeProto& shape) {
   return absl::StrCat(kTensorShapePrefix, PrintShortTextProto(shape));
 }
 
-Status DemangleShape(absl::string_view str, TensorShapeProto* proto) {
+absl::Status DemangleShape(absl::string_view str, TensorShapeProto* proto) {
   return ParseTextProto(str, kTensorShapePrefix, proto);
 }
 
@@ -78,7 +78,7 @@ string MangleTensor(const TensorProto& tensor) {
   return absl::StrCat(kTensorPrefix, PrintShortTextProto(tensor));
 }
 
-Status DemangleTensor(absl::string_view str, TensorProto* proto) {
+absl::Status DemangleTensor(absl::string_view str, TensorProto* proto) {
   return ParseTextProto(str, kTensorPrefix, proto);
 }
 
@@ -86,7 +86,7 @@ string MangleDataType(const DataType& dtype) {
   return absl::StrCat(kDataTypePrefix, DataType_Name(dtype));
 }
 
-Status DemangleDataType(absl::string_view str, DataType* proto) {
+absl::Status DemangleDataType(absl::string_view str, DataType* proto) {
   absl::string_view pbtxt;
   TF_RETURN_IF_ERROR(ConsumePrefix(str, kDataTypePrefix, &pbtxt));
   if (!DataType_Parse(string(pbtxt), proto)) {

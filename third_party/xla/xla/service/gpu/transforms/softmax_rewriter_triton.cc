@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/softmax_rewriter_triton.h"
 
-#include <cstdint>
 #include <functional>
 #include <string>
 #include <utility>
@@ -227,36 +226,16 @@ bool IsTriviallyConnectedProducerOf(
   return false;
 }
 
-// Finds the first non-fusible producer of a diamond. This instruction is either
-//   1. the direct producer of the diamond, if that producer is used more than
-//      twice and/or is not otherwise trivially fusible
-//   2. the first parent instruction of the producer of the diamond such that
-//      that instruction is used more than once, and/or is not trivially
-//      fusible.
-HloInstruction* FindFirstNonFusibleDiamondProducer(
-    HloInstruction* diamond_producer,
-    const se::GpuComputeCapability& gpu_version) {
-  if (IsTriviallyFusible(diamond_producer, gpu_version,
-                         /*num_allowed_users=*/2)) {
-    diamond_producer = ChooseOperandForFusionProcessing(diamond_producer);
-    while (IsTriviallyFusible(diamond_producer, gpu_version)) {
-      diamond_producer = ChooseOperandForFusionProcessing(diamond_producer);
-    }
-  }
-
-  return diamond_producer;
-}
-
-// Creates a fusion corresponding to the input diamond chain. The resulting
+// Creates a fusion corresponding to the input diamond. The resulting
 // fusion instruction is added to the module, but is not yet inserted into the
 // graph as a replacement of the original instructions.
 //
 // TODO(b/347956491): this awkward abstraction is needed to work around
 // limitations of HloFusionAdaptor, which underpins the implementation of
 // SymbolicTileAnalysis. We need to come up with a better solution.
-absl::StatusOr<HloFusionInstruction*> MakeFusionForDiamondChain(
-    const DiamondChainDescriptor& diamond_chain) {
-  auto [root, producer] = diamond_chain;
+absl::StatusOr<HloFusionInstruction*> MakeFusionForDiamond(
+    const DiamondDescriptor& diamond) {
+  auto [root, producer] = diamond;
 
   std::string suggested_name = "triton_softmax";
   HloComputation::Builder builder(absl::StrCat(suggested_name, "_computation"));
@@ -299,20 +278,20 @@ absl::StatusOr<HloFusionInstruction*> MakeFusionForDiamondChain(
       root->GetModule()->AddComputationAndUnifyNamesAndIds(builder.Build(),
                                                            /*is_entry=*/false);
 
-  HloInstruction* softmax_fusion =
+  HloInstruction* normalization_fusion =
       root->parent()->AddInstruction(HloInstruction::CreateFusion(
           root->shape(), HloInstruction::FusionKind::kCustom, parameters,
           computation));
 
-  softmax_fusion->GetModule()->SetAndUniquifyInstrName(softmax_fusion,
-                                                       "triton_softmax");
+  normalization_fusion->GetModule()->SetAndUniquifyInstrName(
+      normalization_fusion, "triton_softmax");
   TF_ASSIGN_OR_RETURN(auto gpu_config,
-                      softmax_fusion->backend_config<GpuBackendConfig>());
+                      normalization_fusion->backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
   backend_config.set_kind(std::string(kTritonFusionKind));
-  TF_RETURN_IF_ERROR(softmax_fusion->set_backend_config(gpu_config));
-  return xla::Cast<HloFusionInstruction>(softmax_fusion);
+  TF_RETURN_IF_ERROR(normalization_fusion->set_backend_config(gpu_config));
+  return xla::Cast<HloFusionInstruction>(normalization_fusion);
 }
 
 // Runs an HLO pipeline to convert the `module` to the stage as it would look
@@ -346,8 +325,8 @@ absl::Status RunFusionPipeline(
 // Returns a run time estimate for instructions in the `fusion` if they were
 // fused without SoftmaxRewriterTriton.
 //
-// This can help us understand how effective are ReductionSplitter and
-// PriorityFusion for this fusion.
+// This can help us understand how effective `ReductionSplitter` and
+// `PriorityFusion` are for this fusion.
 //
 // In the bigger module, the instructions in the normalization diamond will be
 // fused with other instructions around it, so it's not an exact estimate, but
@@ -399,12 +378,12 @@ EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
 // returns a `FusionDecision` to indicate that the function should not happen.
 absl::StatusOr<FusionDecision>
 DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
-    HloFusionInstruction* softmax_fusion,
+    HloFusionInstruction* normalization_fusion,
     GpuPerformanceModelWithIndexingAnalysis& indexing_performance_model,
     const se::DeviceDescription& device_info,
     const HloCostAnalysis::ShapeSizeFunction& shape_size,
     bool use_cost_model_to_evaluate_fusions) {
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(softmax_fusion);
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(normalization_fusion);
 
   TF_ASSIGN_OR_RETURN(
       TiledRunTimeDataOrError tiled_runtime_data_or,
@@ -422,7 +401,7 @@ DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
   if (use_cost_model_to_evaluate_fusions) {
     TF_ASSIGN_OR_RETURN(absl::Duration run_time_without_softmax_rewriter,
                         EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
-                            softmax_fusion, device_info, shape_size));
+                            normalization_fusion, device_info, shape_size));
 
     VLOG(2) << "run time estimate if normalization diamond fused together: "
             << tiled_runtime_data.runtime_data.exec_time;
@@ -439,73 +418,73 @@ DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
   }
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
-                      softmax_fusion->backend_config<GpuBackendConfig>());
+                      normalization_fusion->backend_config<GpuBackendConfig>());
   *backend_config.mutable_fusion_backend_config()
        ->mutable_block_level_fusion_config() =
       tiled_runtime_data.block_level_parameters.ToBlockLevelFusionConfig();
-  TF_RETURN_IF_ERROR(softmax_fusion->set_backend_config(backend_config));
+  TF_RETURN_IF_ERROR(normalization_fusion->set_backend_config(backend_config));
   VLOG(2) << "Fusing with backend config: " << backend_config.DebugString();
 
   return FusionDecision::Allow();
 }
 
-absl::StatusOr<bool> MaybeFuseDiamondChainImpl(
-    const DiamondChainDescriptor& diamond_chain,
+absl::StatusOr<bool> MaybeFuseDiamondImpl(
+    const DiamondDescriptor& diamond,
     GpuPerformanceModelWithIndexingAnalysis& indexing_performance_model,
     const se::DeviceDescription& device_info,
     const HloCostAnalysis::ShapeSizeFunction& shape_size,
     bool use_cost_model_to_evaluate_fusions) {
-  TF_ASSIGN_OR_RETURN(HloFusionInstruction * softmax_fusion,
-                      MakeFusionForDiamondChain(diamond_chain));
-  HloInstruction* root = diamond_chain.root;
+  TF_ASSIGN_OR_RETURN(HloFusionInstruction * normalization_fusion,
+                      MakeFusionForDiamond(diamond));
+  HloInstruction* root = diamond.root;
 
-  VLOG(2) << "MaybeFuseDiamondChainImpl: " << softmax_fusion->ToString();
+  VLOG(2) << "MaybeFuseDiamondImpl: " << normalization_fusion->ToString();
 
   TF_ASSIGN_OR_RETURN(
       FusionDecision fusion_decision,
       DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
-          softmax_fusion, indexing_performance_model, device_info, shape_size,
-          use_cost_model_to_evaluate_fusions));
+          normalization_fusion, indexing_performance_model, device_info,
+          shape_size, use_cost_model_to_evaluate_fusions));
 
   if (!fusion_decision.CanFuse()) {
     VLOG(2) << "Not fusing: " << fusion_decision.Explain();
-    softmax_fusion->DetachFromOperandsAndUsers();
-    TF_RETURN_IF_ERROR(
-        softmax_fusion->parent()->RemoveInstruction(softmax_fusion));
+    normalization_fusion->DetachFromOperandsAndUsers();
+    TF_RETURN_IF_ERROR(normalization_fusion->parent()->RemoveInstruction(
+        normalization_fusion));
     return false;
   }
 
   if (root->IsRoot()) {
-    root->parent()->set_root_instruction(softmax_fusion);
+    root->parent()->set_root_instruction(normalization_fusion);
     TF_RETURN_IF_ERROR(
         root->parent()->RemoveInstructionAndUnusedOperands(root));
   } else {
     TF_RETURN_IF_ERROR(
-        root->parent()->ReplaceInstruction(root, softmax_fusion));
+        root->parent()->ReplaceInstruction(root, normalization_fusion));
   }
   return true;
 }
 
-// Returns `true` if the diamond chain passed as a parameter can be tiled
-// correctly using `SymbolicTileAnalysis`.
-absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamondChain(
-    const DiamondChainDescriptor& diamond_chain,
+// Returns `true` if the diamond passed as a parameter can be tiled correctly
+// using `SymbolicTileAnalysis`.
+absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamond(
+    const DiamondDescriptor& diamond,
     const se::DeviceDescription& device_info) {
-  TF_ASSIGN_OR_RETURN(HloFusionInstruction * softmax_fusion,
-                      MakeFusionForDiamondChain(diamond_chain));
+  TF_ASSIGN_OR_RETURN(HloFusionInstruction * normalization_fusion,
+                      MakeFusionForDiamond(diamond));
   mlir::MLIRContext context;
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or_error =
       SymbolicTileAnalysis::AnalyzeComputation(
-          *softmax_fusion->called_computation(), &context,
+          *normalization_fusion->called_computation(), &context,
           TritonEmitterConstraints::GetBuilder(device_info));
 
   bool can_tile = std::holds_alternative<SymbolicTileAnalysis>(
       symbolic_tile_analysis_or_error);
 
-  TF_RETURN_IF_ERROR(diamond_chain.root->GetModule()->RemoveEmbeddedComputation(
-      softmax_fusion->called_computation()));
+  TF_RETURN_IF_ERROR(diamond.root->GetModule()->RemoveEmbeddedComputation(
+      normalization_fusion->called_computation()));
   TF_RETURN_IF_ERROR(
-      diamond_chain.root->parent()->RemoveInstruction(softmax_fusion));
+      diamond.root->parent()->RemoveInstruction(normalization_fusion));
 
   return can_tile;
 }
@@ -633,15 +612,21 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
   return producer;
 }
 
-// Returns a vector containing all the single diamonds in the parameter module.
-// The diamonds are returned in def-before-use order, and grouped by
-// computation.
-absl::StatusOr<std::vector<DiamondChainDescriptor>> FindAllFusibleDiamonds(
+}  // anonymous namespace
+
+DiamondMatchingDecision
+SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
+    HloInstruction* instr) const {
+  return MatchesTritonCompatibleClosedReductionDiamondImpl(
+      instr, device_info_.gpu_compute_capability());
+}
+
+absl::StatusOr<std::vector<DiamondDescriptor>>
+SoftmaxRewriterTriton::FindAllFusibleNormalizationDiamonds(
     HloModule& module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads,
-    const se::DeviceDescription& device_info) {
-  const se::GpuComputeCapability& cc = device_info.gpu_compute_capability();
-  std::vector<DiamondChainDescriptor> matched_diamonds;
+    const absl::flat_hash_set<absl::string_view>& execution_threads) const {
+  const se::GpuComputeCapability& cc = device_info_.gpu_compute_capability();
+  std::vector<DiamondDescriptor> matched_diamonds;
 
   for (HloComputation* comp :
        module.MakeNonfusionComputations(execution_threads)) {
@@ -652,15 +637,15 @@ absl::StatusOr<std::vector<DiamondChainDescriptor>> FindAllFusibleDiamonds(
       auto producer =
           MatchesTritonCompatibleClosedReductionDiamondImpl(instr, cc);
       if (std::holds_alternative<HloInstruction*>(producer)) {
-        DiamondChainDescriptor diamond_chain{
+        DiamondDescriptor diamond{
             /*root=*/instr, /*producer=*/std::get<HloInstruction*>(producer)};
-        // We filter out the diamond chains that cannot be tiled correctly using
+        // We filter out the diamonds that cannot be tiled correctly using
         // `SymbolicTileAnalysis`.
-        TF_ASSIGN_OR_RETURN(bool can_tile_diamond_chain,
-                            CanSymbolicTileAnalysisTileDiamondChain(
-                                diamond_chain, device_info));
-        if (can_tile_diamond_chain) {
-          matched_diamonds.push_back(diamond_chain);
+        TF_ASSIGN_OR_RETURN(
+            bool can_tile_diamond,
+            CanSymbolicTileAnalysisTileDiamond(diamond, device_info_));
+        if (can_tile_diamond) {
+          matched_diamonds.push_back(diamond);
         } else {
           VLOG(2) << "Cannot tile the diamond pattern described by "
                   << "instructions " << instr->ToString() << " and "
@@ -679,154 +664,14 @@ absl::StatusOr<std::vector<DiamondChainDescriptor>> FindAllFusibleDiamonds(
   return matched_diamonds;
 }
 
-// Returns the size of the reduction dimension of the input diamond.
-int64_t GetReductionDimensionSizeForDiamond(
-    const DiamondChainDescriptor& diamond_chain) {
-  HloInstruction* diamond_root = diamond_chain.root;
-  HloInstruction* instr = diamond_root->mutable_operand(1);
-  while (HloPredicateIsNotOp<HloOpcode::kReduce>(instr)) {
-    instr = ChooseOperandForFusionProcessing(instr);
-  }
-
-  int operand_rank = instr->operand(0)->shape().rank();
-  CHECK_EQ(instr->dimensions().size(), 1);
-  CHECK_EQ(instr->dimensions(0), operand_rank - 1);
-  return instr->operand(0)->shape().dimensions(operand_rank - 1);
-}
-
-// Returns a pointer to the last user of `instr` that is trivially fusible.
-HloInstruction* GetLastTriviallyFusibleUser(
-    HloInstruction* instr, const se::GpuComputeCapability& cc) {
-  while (HasOneUse(instr) && !instr->IsRoot() &&
-         IsTriviallyFusible(instr->users().front(), cc)) {
-    instr = instr->users().front();
-  }
-
-  // We do not care about the number of users for the last instruction of the
-  // fusion, so attempt to fuse one more instruction with this relaxed
-  // restriction.
-  if (HasOneUse(instr) && !instr->IsRoot() &&
-      IsTriviallyFusible(
-          instr->users().front(), cc,
-          /*num_allowed_users=*/instr->users().front()->user_count())) {
-    instr = instr->users().front();
-  }
-  return instr;
-}
-
-}  // anonymous namespace
-
-DiamondMatchingDecision
-SoftmaxRewriterTriton::MatchesTritonCompatibleClosedReductionDiamond(
-    HloInstruction* instr) const {
-  return MatchesTritonCompatibleClosedReductionDiamondImpl(
-      instr, device_info_.gpu_compute_capability());
-}
-
-absl::StatusOr<std::vector<DiamondChainDescriptor>>
-SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
-    HloModule& module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) const {
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DiamondChainDescriptor> matched_diamonds,
-      FindAllFusibleDiamonds(module, execution_threads, device_info_));
-
-  if (matched_diamonds.empty()) {
-    return std::vector<DiamondChainDescriptor>();
-  }
-
-  // If we matched several diamonds, it may be possible for some of them to be
-  // fused together. This is the case if the following conditions hold:
-  //   1. The path between the root of diamond n towards the producer of
-  //      diamond n+1 is composed only of trivially fusible operations. In that
-  //      case, the first non-trivially fusible producer of diamond n+1 must be
-  //      exactly the root of diamond n.
-  //   2. The root of diamond n/first non-fusible producer of diamond n+1 must
-  //      have
-  //        a. exactly one user if it is not exactly the producer of diamond
-  //           n+1;
-  //        b/ exactly two users otherwise.
-  //   3. The axis being reduced must have the same length in all the diamonds
-  //      being fused together.
-  //
-  // Crucially, this approach relies on a diamond root never being considered a
-  // trivially fusible operation.
-  std::vector<DiamondChainDescriptor> diamond_chains;
-  diamond_chains.reserve(matched_diamonds.size());
-
-  const se::GpuComputeCapability& cc = device_info_.gpu_compute_capability();
-  HloInstruction* current_fusion_producer =
-      FindFirstNonFusibleDiamondProducer(matched_diamonds.front().producer, cc);
-  int current_reduce_dimension_size =
-      GetReductionDimensionSizeForDiamond(matched_diamonds.front());
-
-  for (int diamond_idx = 1; diamond_idx < matched_diamonds.size();
-       ++diamond_idx) {
-    HloInstruction* diamond_producer = matched_diamonds[diamond_idx].producer;
-    HloInstruction* previous_diamond_root =
-        matched_diamonds[diamond_idx - 1].root;
-
-    HloInstruction* first_non_fusible_diamond_producer =
-        FindFirstNonFusibleDiamondProducer(diamond_producer, cc);
-
-    int diamond_reduce_dimension_size =
-        GetReductionDimensionSizeForDiamond(matched_diamonds[diamond_idx]);
-
-    if (first_non_fusible_diamond_producer == previous_diamond_root &&  // 1
-        ((first_non_fusible_diamond_producer != diamond_producer &&
-          HasOneUse(first_non_fusible_diamond_producer)) ||  // 2.a
-         (first_non_fusible_diamond_producer == diamond_producer &&
-          first_non_fusible_diamond_producer->user_count() == 2)) &&  // 2.b
-        diamond_reduce_dimension_size == current_reduce_dimension_size) {  // 3
-      continue;
-    }
-
-    // The "last trivially fusible user" chain of diamond chain n should never
-    // intersect with the "first non fusible diamond producer" chain of diamond
-    // chain n+1: if these chains intersected, then all the intermediate ops
-    // between the diamond chains could be trivially fused, and both diamond
-    // chains could be fused into a single diamond chain. Note that this only
-    // holds insofar as we do not allow fusing in bitcasts that modify the last
-    // dimension of the input array. It is however possible for the last
-    // trivially fusible user of diamond chain n to be the first non fusible
-    // diamond producer of diamond chain n+1.
-    diamond_chains.push_back(DiamondChainDescriptor{
-        GetLastTriviallyFusibleUser(previous_diamond_root, cc),
-        current_fusion_producer,
-    });
-
-    current_fusion_producer = first_non_fusible_diamond_producer;
-    current_reduce_dimension_size = diamond_reduce_dimension_size;
-  }
-
-  // The last diamond chain is still open; close it.
-  diamond_chains.push_back(DiamondChainDescriptor{
-      GetLastTriviallyFusibleUser(matched_diamonds.back().root, cc),
-      current_fusion_producer});
-
-  // We filter out the diamond chains that cannot be tiled correctly using
-  // `SymbolicTileAnalysis`.
-  std::vector<DiamondChainDescriptor> filtered_diamond_chains;
-  for (const DiamondChainDescriptor& diamond_chain : diamond_chains) {
-    TF_ASSIGN_OR_RETURN(
-        bool can_tile_diamond_chain,
-        CanSymbolicTileAnalysisTileDiamondChain(diamond_chain, device_info_));
-    if (can_tile_diamond_chain) {
-      filtered_diamond_chains.push_back(diamond_chain);
-    }
-  }
-  return filtered_diamond_chains;
-}
-
-absl::StatusOr<bool> SoftmaxRewriterTriton::MaybeFuseDiamondChain(
-    const DiamondChainDescriptor& diamond_chain) {
+absl::StatusOr<bool> SoftmaxRewriterTriton::MaybeFuseNormalizationDiamond(
+    const DiamondDescriptor& diamond) {
   HloFusionAnalysisCache fusion_analysis_cache(device_info_);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
       &device_info_, &fusion_analysis_cache, shape_size_, &mlir_context_);
 
-  return MaybeFuseDiamondChainImpl(diamond_chain, indexing_performance_model,
-                                   device_info_, shape_size_,
-                                   use_cost_model_to_evaluate_fusions_);
+  return MaybeFuseDiamondImpl(diamond, indexing_performance_model, device_info_,
+                              shape_size_, use_cost_model_to_evaluate_fusions_);
 }
 
 absl::StatusOr<bool> SoftmaxRewriterTriton::Run(
@@ -835,16 +680,17 @@ absl::StatusOr<bool> SoftmaxRewriterTriton::Run(
   TF_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(
       device_info_.gpu_compute_capability()));
 
-  TF_ASSIGN_OR_RETURN(std::vector<DiamondChainDescriptor> diamond_chains,
-                      FindAllFusibleDiamondChains(*module, execution_threads));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DiamondDescriptor> diamonds,
+      FindAllFusibleNormalizationDiamonds(*module, execution_threads));
 
   bool changed = false;
-  // The diamond chains must be emitted in reverse order, to make sure that
-  // producer instructions are emitted correctly when the root of
-  // diamond chain n is exactly the producer of diamond chain n+1.
-  for (auto diamond_chain = diamond_chains.rbegin();
-       diamond_chain != diamond_chains.rend(); ++diamond_chain) {
-    TF_ASSIGN_OR_RETURN(bool fused, MaybeFuseDiamondChain(*diamond_chain));
+  // The diamonds must be emitted in reverse order, to make sure that producer
+  // instructions are emitted correctly when the root of diamond n is exactly
+  // the producer of diamond n+1.
+  for (auto diamond = diamonds.rbegin(); diamond != diamonds.rend();
+       ++diamond) {
+    TF_ASSIGN_OR_RETURN(bool fused, MaybeFuseNormalizationDiamond(*diamond));
     changed |= fused;
   }
   return changed;
