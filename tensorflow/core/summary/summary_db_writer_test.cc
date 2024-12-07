@@ -14,16 +14,25 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/summary/summary_db_writer.h"
 
-#include "tensorflow/core/summary/schema.h"
+#include <cstdint>
+#include <limits>
+#include <memory>
+#include <utility>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "xla/tsl/protobuf/histogram.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/summary/schema.h"
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
