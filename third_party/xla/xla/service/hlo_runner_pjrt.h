@@ -24,7 +24,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/xla_data.pb.h"
 
@@ -102,6 +104,10 @@ class HloRunnerPjRt : public HloRunnerInterface {
       DeviceAssignment* device_assignment, ExecutionProfile* profile = nullptr);
 
   absl::string_view Name() const override;
+
+  void UpdateEntryComputationLayout(HloModule* module) {
+    xla::UpdateEntryComputationLayout(module, device_shape_representation_fn_);
+  }
 
   DeviceShapeRepresentationFn device_shape_representation_fn() const override {
     return device_shape_representation_fn_;
