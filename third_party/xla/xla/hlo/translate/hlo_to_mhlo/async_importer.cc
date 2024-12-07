@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <cassert>
 #include <functional>
+#include <optional>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -34,11 +37,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/util.h"
-#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -193,25 +197,58 @@ absl::StatusOr<mlir::Operation*> ImportSend(
     attributes.push_back(ConvertChannelHandle(channel_handle, builder));
   }
 
-  // Return async_start/done for pipelined send.
-  //
-  // old-style send returns a bundle of (arg, sync flag, token) to be passed
-  // along to send-done.
-  // However, the new-style async ops have a shared bundle
-  // format of (args, results, scratchpad), so to rewrite the `send` and
-  // `send-done` ops to use the new-style async API, we need to reorder the
-  // arguments to be in (args, token, sync flag) order.
-  auto result_types = result_type.cast<mlir::TupleType>().getTypes();
-  if (result_types.size() != 3)
-    return InvalidArgument("send should return a 3-tuple");
-  auto async_arg_type = mlir::TupleType::get(
-      builder->getContext(), {result_types[0], result_types[2]});
-  auto async_bundled_tuple =
-      mlir::TupleType::get(builder->getContext(),
-                           {async_arg_type, result_types[2], result_types[1]});
-  return ImportOldStyleAsyncStart<mlir::mhlo::SendOp>(
-      symbol_table, attributes, operands, loc, async_bundled_tuple, builder,
-      "send_", [](auto) { return absl::OkStatus(); });
+  bool isPipelined =
+      instruction->users().front()->opcode() != HloOpcode::kSendDone;
+  if (isPipelined) {
+    // Consider removing this path and erroring, unclear if support is needed.
+
+    // Return async_start/done for pipelined send.
+    //
+    // old-style send returns a bundle of (arg, sync flag, token) to be passed
+    // along to send-done.
+    // However, the new-style async ops have a shared bundle
+    // format of (args, results, scratchpad), so to rewrite the `send` and
+    // `send-done` ops to use the new-style async API, we need to reorder the
+    // arguments to be in (args, token, sync flag) order.
+    auto result_types = result_type.cast<mlir::TupleType>().getTypes();
+    if (result_types.size() != 3)
+      return InvalidArgument("send should return a 3-tuple");
+    auto async_arg_type = mlir::TupleType::get(
+        builder->getContext(), {result_types[0], result_types[2]});
+    auto async_bundled_tuple = mlir::TupleType::get(
+        builder->getContext(),
+        {async_arg_type, result_types[2], result_types[1]});
+    return ImportOldStyleAsyncStart<mlir::mhlo::SendOp>(
+        symbol_table, attributes, operands, loc, async_bundled_tuple, builder,
+        "send_", [](auto) { return absl::OkStatus(); });
+  }
+
+  // Otherwise return send op for non-pipelined send.
+  // Skip empty data in MLIR send(tuple<>, token) --> mhlo.send(token)
+  auto token = operands[1];
+  llvm::ArrayRef<mlir::Value> args = operands;
+  if (args.size() == 2 && IsEmptyTuple(args[0].getType())) {
+    args = args.drop_front(1);
+  }
+  auto send =
+      builder
+          ->create<mlir::mhlo::SendOp>(loc, token.getType(), args, attributes)
+          .getOperation();
+  if (instruction->has_sharding()) {
+    const HloSharding& sharding = instruction->sharding();
+    if (sharding.IsTuple() && sharding.tuple_elements().size() == 3) {
+      // Here we are returning a 1-tuple, but HLO send returns a 3-tuple. Need
+      // to grab a slice of the sharding. All shardings are maximal, so we
+      // just need 1 of them.
+      send->setAttr(
+          kShardingAttr,
+          mlir::StringAttr::get(
+              builder->getContext(),
+              HloSharding::FromProto(sharding.ToProto().tuple_shardings()[0])
+                  ->ToString()));
+    }
+  }
+  return send;
 }
 
 absl::StatusOr<mlir::Operation*> ImportRecv(
@@ -223,6 +260,7 @@ absl::StatusOr<mlir::Operation*> ImportRecv(
   auto recv_op = Cast<HloRecvInstruction>(instruction);
   attributes.push_back(builder->getNamedAttr(
       "is_host_transfer", builder->getBoolAttr(recv_op->is_host_transfer())));
+
   if (recv_op->channel_id().has_value()) {
     ChannelHandle channel_handle;
     channel_handle.set_handle(recv_op->channel_id().value());
@@ -232,27 +270,68 @@ absl::StatusOr<mlir::Operation*> ImportRecv(
     attributes.push_back(ConvertChannelHandle(channel_handle, builder));
   }
 
-  // Old-style `recv` returns a bundle of (result, sync flag, token) to be
-  // passed along to recv-done.
-  // However, the new-style async ops have a shared
-  // bundle format of (args, results, scratchpad), so to rewrite the `recv`
-  // and `recv-done` ops to use the new-style async API, we need to reorder
-  // the arguments to be in (token, (result, token), sync flag) order.
-  // OR (token, token, sync flag) if no result is received.
-  auto result_types = result_type.cast<mlir::TupleType>().getTypes();
+  // Currently only consolidates async recv with result, 0-result recv uses old
+  // style, unclear if this support is needed.
+  auto result_types = llvm::cast<mlir::TupleType>(result_type).getTypes();
   if (result_types.size() != 3)
     return InvalidArgument("recv should return a 3-tuple");
 
-  // Allow recv of no values, only token.
-  // b/TODO: Allow recv of no values, only token.
-  auto async_result_type = mlir::TupleType::get(
-      builder->getContext(), {result_types[0], result_types[2]});
-  auto async_bundled_tuple = mlir::TupleType::get(
-      builder->getContext(),
-      {result_types[2], async_result_type, result_types[1]});
-  return ImportOldStyleAsyncStart<mlir::mhlo::RecvOp>(
-      symbol_table, attributes, operands, loc, async_bundled_tuple, builder,
-      "recv_", [](auto) { return absl::OkStatus(); });
+  bool isPipelined =
+      instruction->users().front()->opcode() != HloOpcode::kRecvDone;
+  if (isPipelined) {
+    // Consider removing this path and erroring, unclear if support is needed.
+
+    // Old-style `recv` returns a bundle of (result, sync flag, token) to be
+    // passed along to recv-done.
+    // However, the new-style async ops have a shared
+    // bundle format of (args, results, scratchpad), so to rewrite the `recv`
+    // and `recv-done` ops to use the new-style async API, we need to reorder
+    // the arguments to be in (token, (result, token), sync flag) order.
+    // OR (token, token, sync flag) if no result is received.
+    llvm::SmallVector<mlir::Type> async_result_types = {result_types[0],
+                                                        result_types[2]};
+    auto async_result_type_tuple = builder->getTupleType(async_result_types);
+    auto async_bundled_tuple = builder->getTupleType(
+        {result_types[2], async_result_type_tuple, result_types[1]});
+    return ImportOldStyleAsyncStart<mlir::mhlo::RecvOp>(
+        symbol_table, attributes, operands, loc, async_bundled_tuple, builder,
+        "recv_", [](auto) { return absl::OkStatus(); });
+  }
+
+  // Return recv op for non-pipelined send, skip empty tuple result type
+  if (!IsEmptyTuple(result_types[0])) {
+    auto recv = builder->create<mlir::mhlo::RecvOp>(
+        loc, llvm::SmallVector<mlir::Type>{result_types[0], result_types[2]},
+        operands, attributes);
+    if (instruction->has_sharding()) {
+      const HloSharding& sharding = instruction->sharding();
+      if (sharding.IsTuple() && sharding.tuple_elements().size() == 3) {
+        // Here we are returning a 2-tuple, but HLO recv returns a 3-tuple. Need
+        // to grab a slice of the sharding. All shardings are maximal, so we
+        // just need to 2 of them.
+        OpSharding sharding_proto = sharding.ToProto();
+        auto* tuple_shardings = sharding_proto.mutable_tuple_shardings();
+        tuple_shardings->DeleteSubrange(1, 1);
+        recv->setAttr(kShardingAttr,
+                      mlir::StringAttr::get(
+                          builder->getContext(),
+                          HloSharding::FromProto(sharding_proto)->ToString()));
+      }
+    }
+    return WrapVariadicResultsInTuple(builder, loc, recv);
+  }
+
+  // Recv with no result, only token.
+  // To keep parity, if op only returns token, wrap in tuple<tuple<>, token>
+  auto recv = builder->create<mlir::mhlo::RecvOp>(
+      loc, llvm::SmallVector<mlir::Type>{result_types[2]}, operands,
+      attributes);
+  auto empty_tuple =
+      builder->create<mlir::mhlo::TupleOp>(loc, llvm::ArrayRef<mlir::Value>{});
+
+  return builder->create<mlir::mhlo::TupleOp>(
+      loc,
+      llvm::ArrayRef<mlir::Value>{empty_tuple.getResult(), recv.getResult(0)});
 }
 
 // Async Collectives
@@ -376,7 +455,14 @@ absl::StatusOr<mlir::Operation*> ImportAsyncOpDone(
     const HloInstruction* instruction, mlir::Location loc,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
-    mlir::Type result_type, mlir::OpBuilder* builder) {
+    mlir::Type result_type, mlir::OpBuilder* builder,
+    std::optional<HloOpcode> consolidate_if_parent) {
+  // Consolidate if the defining op matches `consolidate_if_parent`, ensuring
+  // the async communication op is not pipelined.
+  if (consolidate_if_parent.has_value() &&
+      instruction->operand(0)->opcode() == consolidate_if_parent.value()) {
+    return operands[0].getDefiningOp();
+  }
   return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
                                  builder);
 }
