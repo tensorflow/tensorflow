@@ -61,8 +61,6 @@ class Shape {
 
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
-  // Sets a ShapeProto to the representation of the Shape.
-  void SetProto(ShapeProto& proto) const;
 
   // Prints a human-readable string that represents the given shape, with or
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
@@ -132,11 +130,6 @@ class Shape {
   // Returns true if the given dimension is dynamically-sized.
   bool is_dynamic_dimension(int dimension) const {
     return dynamic_dimensions_[dimension];
-  }
-
-  // Returns true if the given dimension is statically-sized.
-  bool is_static_dimension(int dimension) const {
-    return !dynamic_dimensions_[dimension];
   }
 
   // Sets whether or not the given dimension is dynamically-sized.
@@ -235,11 +228,6 @@ class Shape {
     for (auto& subshape : tuple_shapes_) {
       subshape.clear_dynamic_dimensions();
     }
-  }
-
-  void Swap(Shape* other) {
-    using std::swap;
-    swap(*this, *other);
   }
 
   void Clear() {
