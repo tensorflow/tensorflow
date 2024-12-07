@@ -282,8 +282,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.fused_depthwise_conv2d = "_FusedDepthwiseConv2dNative";
     csinfo_.fused_matmul = "_FusedMatMul";
     csinfo_.fused_pad_conv2d = "FusedPadConv2D";
-    csinfo_.leakyrelu = "LeakyRelu";
-    csinfo_.leakyrelu_grad = "LeakyReluGrad";
     csinfo_.matmul = "MatMul";
     csinfo_.max_pool = "MaxPool";
     csinfo_.max_pool_grad = "MaxPoolGrad";
@@ -359,13 +357,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.quantized_depthwise_conv2d_with_bias_and_relu_and_requantize =
         "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize";
     csinfo_.quantize_v2 = "QuantizeV2";
-    csinfo_.relu = "Relu";
-    csinfo_.relu_grad = "ReluGrad";
-    csinfo_.relu6 = "Relu6";
-    csinfo_.relu6_grad = "Relu6Grad";
     csinfo_.requantize = "Requantize";
-    csinfo_.tanh = "Tanh";
-    csinfo_.tanh_grad = "TanhGrad";
     csinfo_.sparse_matrix_matmul = "SparseMatrixMatMul";
     csinfo_.softmax = "Softmax";
     csinfo_.transpose = "Transpose";
@@ -518,12 +510,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          mkl_op_registry::GetMklOpName(csinfo_.sparse_matrix_matmul),
          CopyAttrsAll, SparseMatrixMatMulRewrite, kRewriteForOpNameChange});
 #endif
-    rinfo_.push_back({csinfo_.leakyrelu,
-                      mkl_op_registry::GetMklOpName(csinfo_.leakyrelu),
-                      CopyAttrsAll, LeakyReluRewrite, GetRewriteCause()});
-    rinfo_.push_back({csinfo_.leakyrelu_grad,
-                      mkl_op_registry::GetMklOpName(csinfo_.leakyrelu_grad),
-                      CopyAttrsAll, LeakyReluRewrite, GetRewriteCause()});
     rinfo_.push_back(
         {csinfo_.max_pool, mkl_op_registry::GetMklOpName(csinfo_.max_pool),
          CopyAttrsAll, NonDepthBatchWisePoolRewrite, GetRewriteCause()});
@@ -661,25 +647,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       mkl_op_registry::GetMklOpName(csinfo_.quantize_v2),
                       CopyAttrsAll, QuantizeOpRewrite,
                       kRewriteForOpNameChange});
-    rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
-    rinfo_.push_back({csinfo_.relu_grad,
-                      mkl_op_registry::GetMklOpName(csinfo_.relu_grad),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
-    rinfo_.push_back({csinfo_.relu6,
-                      mkl_op_registry::GetMklOpName(csinfo_.relu6),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
-    rinfo_.push_back({csinfo_.relu6_grad,
-                      mkl_op_registry::GetMklOpName(csinfo_.relu6_grad),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.requantize,
                       mkl_op_registry::GetMklOpName(csinfo_.requantize),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
-    // Optimized TanhGrad support exists only in DNNL 1.x.
-    rinfo_.push_back({csinfo_.tanh, mkl_op_registry::GetMklOpName(csinfo_.tanh),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
-    rinfo_.push_back({csinfo_.tanh_grad,
-                      mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
                       CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.softmax,
                       mkl_op_registry::GetMklOpName(csinfo_.softmax),
@@ -865,8 +834,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string fused_conv3d;
     string fused_depthwise_conv2d;
     string fused_matmul;
-    string leakyrelu;
-    string leakyrelu_grad;
     string matmul;
     string max_pool;
     string max_pool_grad;
@@ -924,14 +891,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string quantized_depthwise_conv2d_with_bias_and_relu;
     string quantized_depthwise_conv2d_with_bias_and_relu_and_requantize;
     string quantize_v2;
-    string relu;
-    string relu_grad;
-    string relu6;
-    string relu6_grad;
     string requantize;
     string sigmoid;
-    string tanh;
-    string tanh_grad;
     string transpose;
     string sparse_matrix_matmul;
     string softmax;
@@ -1607,30 +1568,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         GetTensorDim(strides, data_format, 'C') == 1) {
       return true;
     }
-
-    return false;
-  }
-
-  // MKL-DNN's LeakyRelu(feature) = feature          (if feature > 0), or
-  //                                feature * alpha  (otherwise),
-  // while TensorFlow's LeakyRelu(feature) = max(feature, feature * alpha).
-  // These two algorithms are not consistent when alpha > 1,
-  // so we only rewrite LeakyRelu to MKL OP when alpha <= 1.
-  static bool LeakyReluRewrite(const Node* n) {
-    DCHECK(n);
-
-    float alpha;
-    bool has_attr = TryGetNodeAttr(n->def(), "alpha", &alpha);
-    DCHECK(has_attr);
-
-    // If the alpha of LeakyRelu is less than 1, rewrite the node.
-    // Otherwise eigen node is used instead.
-    if (alpha <= 1) {
-      return true;
-    }
-    VLOG(1) << "LeakyReluRewrite: The model sets alpha is greater than 1 "
-            << "which case is not optimized by Intel MKL, thus using Eigen op"
-            << "for LeakyRelu ";
 
     return false;
   }
