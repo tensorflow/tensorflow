@@ -1,4 +1,6 @@
-# Run manually to reformat a file:
-# clang-format -i --style=file <file>
 BasedOnStyle: Google
 DerivePointerAlignment: false
+PointerAlignment: Left  # Specify how pointers should be aligned (e.g., Left, Right, or Middle)
+IndentWidth: 4          # Adjust the indentation width if needed
+ColumnLimit: 80         # Set the maximum line width for formatting
+...
