@@ -758,7 +758,7 @@ class LiteralBase {
       if (!proto.ParseFromString(shape_bytes)) {
         return InvalidArgument("Failed to parse shape protobuf");
       }
-      Shape shape(proto);
+      Shape shape = Shape::FromProto(proto);
       TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
       return std::move(shape);
     }

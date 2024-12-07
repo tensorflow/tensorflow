@@ -184,8 +184,8 @@ Status GenArgMethods(const tf2xla::Config& config,
   }
   for (int i = 0; i < config.feed_size(); ++i) {
     std::vector<std::pair<string, string>> rewrites;
-    TF_RETURN_IF_ERROR(
-        AddRewritesForShape(i, xla::Shape(ps.parameters(i)), &rewrites));
+    TF_RETURN_IF_ERROR(AddRewritesForShape(
+        i, xla::Shape::FromProto(ps.parameters(i)), &rewrites));
     const string code = R"(
   void set_arg{{NAME}}_data(const void* data) {
     set_arg_data({{I}}, data);
@@ -242,7 +242,7 @@ Status GenResultMethods(const tf2xla::Config& config,
   for (int i = 0; i < config.fetch_size(); ++i) {
     std::vector<std::pair<string, string>> rewrites;
     TF_RETURN_IF_ERROR(AddRewritesForShape(
-        i, xla::Shape(ps.result().tuple_shapes(i)), &rewrites));
+        i, xla::Shape::FromProto(ps.result().tuple_shapes(i)), &rewrites));
     string code = R"(
   {{TYPE}}* result{{NAME}}_data() {
     return static_cast<{{TYPE}}*>(result_data({{I}}));
@@ -279,8 +279,8 @@ Status GenVariableMethods(const tf2xla::Config& config,
   const int num_args = ps.parameters_size();
   for (int i = config.feed_size(); i < num_args; ++i) {
     std::vector<std::pair<string, string>> rewrites;
-    TF_RETURN_IF_ERROR(
-        AddRewritesForShape(i, xla::Shape(ps.parameters(i)), &rewrites));
+    TF_RETURN_IF_ERROR(AddRewritesForShape(
+        i, xla::Shape::FromProto(ps.parameters(i)), &rewrites));
     const string code = R"(
   void set_var_{{NAME}}_data({{MAYBE_CONST}}{{TYPE}}* data) {
     set_arg_data({{I}}, data);
