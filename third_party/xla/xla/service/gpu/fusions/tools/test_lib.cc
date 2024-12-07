@@ -15,6 +15,8 @@ limitations under the License.
 #include "xla/service/gpu/fusions/tools/test_lib.h"
 
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
