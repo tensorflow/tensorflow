@@ -60,10 +60,10 @@ int64_t WhileLoopPipelineUnroller::ComputeWhileLoopPipelineDepth(
       int64_t input_index = operand->tuple_index();
       if (input_index != output_index) {
         // Don't try to analyze loops with complicated permutation patterns.
-        if (loop_permutations.contains(input_index)) {
-          return 1;
+        // TODO(vsytch): analyze loops with complicated permutation patterns.
+        if (!loop_permutations.contains(input_index)) {
+          loop_permutations.emplace(input_index, output_index);
         }
-        loop_permutations.emplace(input_index, output_index);
       }
     }
   }
