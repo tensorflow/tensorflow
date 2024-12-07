@@ -12,8 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/c_api_macros_internal.h"
 #include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
@@ -26,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
