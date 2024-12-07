@@ -3481,6 +3481,8 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
   if (device_assignment != nullptr) {
     addressable_device_logical_ids.reserve(num_replicas * num_partitions);
     addressable_devices.reserve(num_replicas * num_partitions);
+    absl::flat_hash_set<int> all_process_indices;
+    std::optional<int> this_process_index;
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
         int64_t device_id = (*device_assignment)(replica, partition);
@@ -3488,9 +3490,13 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
 
         TF_ASSIGN_OR_RETURN(PjRtDevice * device,
                             LookupDevice(global_device_id));
+        all_process_indices.insert(device->process_index());
         if (device->process_index() != process_index()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
+        }
+        if (!this_process_index.has_value()) {
+          this_process_index = all_process_indices.size() - 1;
         }
         PjRtLoadedExecutable::LogicalDeviceIds logica_device_ids;
         logica_device_ids.replica = replica;
@@ -3509,6 +3515,9 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
       build_options.set_device_ordinal(
           addressable_devices.front()->local_hardware_id().value());
     }
+
+    build_options.set_process_index(*this_process_index);
+    build_options.set_process_count(all_process_indices.size());
   }
   return extras;
 }
@@ -3525,11 +3534,6 @@ PjRtStreamExecutorClient::CompileInternal(
       !options.executable_build_options.key_value_store()) {
     options.executable_build_options.set_key_value_store(*key_value_store());
   }
-  options.executable_build_options.set_process_index(process_index());
-  TF_RET_CHECK(device_count() % addressable_device_count() == 0)
-      << "Each process is expected to have the same number of devices";
-  options.executable_build_options.set_process_count(
-      device_count() / addressable_device_count());
   auto input_options = options;
 
   TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
