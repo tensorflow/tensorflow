@@ -15,8 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_UTIL_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_UTIL_H_
 
+#include <memory>
 #include <string>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/collective.h"
