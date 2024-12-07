@@ -200,6 +200,7 @@ Useful logging and error messages
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -391,6 +392,7 @@ class MemorySpaceAssignment {
       alternate_memory_assignments_;
   std::vector<std::pair<HloInstruction*, HeapSimulator::Chunk>>
       scoped_memory_assignments_;
+  absl::flat_hash_map<HloPosition, Shape> split_shapes_;
   int64_t alternate_memory_size_ = 0;
 
   // These maps hold vectors of new instructions that need to be scheduled after
