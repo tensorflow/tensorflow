@@ -120,7 +120,8 @@ class HloTestBase : public HloRunnerAgnosticTestBase {
   HloTestBase(se::Platform* test_platform, se::Platform* reference_platform,
               bool verifier_layout_sensitive = false,
               bool allow_mixed_precision_in_hlo_verifier = true,
-              HloPredicate instruction_can_change_layout_func = {});
+              HloPredicate instruction_can_change_layout_func = {},
+              int xla_pjrt_cpu_intra_op_threads = -1);
 
   // DO NOT USE: This is a temporary method to help migrate away from HloRunner.
   // Some test fixures rely on functionality that is not supported by other
@@ -190,7 +191,13 @@ class HloTestBase : public HloRunnerAgnosticTestBase {
     return backend().device_count();
   }
 
-  absl::StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunner();
+  // Returns an HloRunnerInterface that can be used to run HLO modules.
+  // If `xla_pjrt_cpu_intra_op_threads` is set to a positive value, it will be
+  // used to set the number of intra-op threads for the CPU backend. Otherwise,
+  // the default value of -1 means that the number of intra-op threads will be
+  // set to the number of threads available on the host (i.e. maxed out).
+  absl::StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunner(
+      int xla_pjrt_cpu_intra_op_threads = -1);
 
   // Helper functions to get test and reference platforms.
   static se::Platform* GetReferencePlatform();
