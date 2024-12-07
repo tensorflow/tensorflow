@@ -24,11 +24,22 @@ limitations under the License.
 
 namespace tensorflow {
 namespace cc_op {
-/// Result is written to files dot_h and dot_cc.
+
+// Generates and writes C++ operation definitions.
+//
+// Writes the generated operation code to the provided header (`dot_h_fname`) 
+// and source (`dot_cc_fname`) file paths.
+//
+// Parameters:
+// - ops: The list of operation definitions (`OpList`) to process.
+// - api_def_map: A map of API definitions (`ApiDefMap`) for additional context.
+// - dot_h_fname: The file name for the generated header file.
+// - dot_cc_fname: The file name for the generated source file.
 void WriteCCOps(const OpList& ops, const ApiDefMap& api_def_map,
-                const string& dot_h_fname, const string& dot_cc_fname);
+                const std::string& dot_h_fname, const std::string& dot_cc_fname);
 
 }  // namespace cc_op
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
+
