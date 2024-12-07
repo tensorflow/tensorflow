@@ -15,8 +15,10 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TOOLS_TOOL_DISPLAY_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TOOLS_TOOL_DISPLAY_H_
 
+#include <memory>
 #include <ostream>
 #include <string>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/tools/outstream.h"
