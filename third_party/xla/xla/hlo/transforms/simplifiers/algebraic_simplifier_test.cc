@@ -8061,6 +8061,60 @@ ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadWithBitcast {
           m::ConstantScalar(0), m::ConstantScalar(0))));
 }
 
+// Test that dynamic-update-slice with a scalar broadcast does not become a pad
+// if the dynamic-update-slice is for host memory offload. Also disable
+// optimization if there are multiple formatting ops between the custom-call and
+// the dynamic-update-slice.
+TEST_F(AlgebraicSimplifierTest,
+       DynamicUpdateSliceOfBroadcastToPadHostOffloadMultiLevel) {
+  const std::string hlo_string = absl::StrFormat(
+      R"(
+HloModule DynamicUpdateSliceOfBroadcastToPadHostOffloadMultiLevel
+
+ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadMultiLevel {
+  constant_bf16_0 = bf16[] constant(0)
+  broadcast_0 = bf16[56,2,2048,2,128]{4,3,2,1,0} broadcast(constant_bf16_0), dimensions={}
+  param_0 = bf16[2,2048,2,128]{1,2,3,0} parameter(0)
+  custom_call = bf16[2,2048,2,128]{1,2,3,0} custom-call(param_0), custom_call_target="%s"
+  copy = bf16[2,2048,2,128]{3,2,1,0} copy(custom_call)
+  bitcast = bf16[1,2,2048,2,128]{4,3,2,1,0} bitcast(copy)
+  constant_s32_0 = s32[] constant(0)
+  ROOT dynamic_update_slice = bf16[56,2,2048,2,128]{4,3,2,1,0} dynamic-update-slice(broadcast_0, bitcast, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0)
+}
+)",
+      host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite dus->pad\n" << module->ToString();
+  // Look for the following pattern:
+  //              param(0)
+  //                  |
+  // constant(0)  custom-call
+  //      |           |
+  //      |         copy
+  //      |           |
+  // broadcast    bitcast   constant(0)
+  //      |           |     /
+  //      |           |    /
+  //      |           |   /
+  //      |           |  /
+  // dynamic-update-slice
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::DynamicUpdateSlice(
+          m::Broadcast(m::ConstantScalar(0)),
+          m::Bitcast(m::Copy(m::CustomCall(
+              {host_memory_offload_annotations::kMoveToHostCustomCallTarget},
+              m::Parameter(0)))),
+          m::ConstantScalar(0), m::ConstantScalar(0), m::ConstantScalar(0),
+          m::ConstantScalar(0), m::ConstantScalar(0))));
+}
+
 // Test of dynamic-update-slice with dims where update and result have the same
 // size so we can replace indices to 0.
 TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceTrivialIndices) {
