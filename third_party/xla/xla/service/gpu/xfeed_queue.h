@@ -42,7 +42,6 @@ class XfeedQueue {
   void EnqueueDestination(BufferType buffers) {
     absl::MutexLock l(&mu_);
     enqueued_buffers_.push_back(std::move(buffers));
-    enqueue_cv_.Signal();
 
     EnqueueHook();
   }
@@ -57,10 +56,8 @@ class XfeedQueue {
     bool became_empty;
     BufferType current_buffer;
     {
-      absl::MutexLock l(&mu_);
-      while (enqueued_buffers_.empty()) {
-        enqueue_cv_.Wait(&mu_);
-      }
+      absl::MutexLock l(&mu_,
+                        absl::Condition(this, &XfeedQueue::IsBufferEnqueued));
       current_buffer = std::move(enqueued_buffers_.front());
       enqueued_buffers_.pop_front();
       DequeueHook();
@@ -94,8 +91,10 @@ class XfeedQueue {
   std::deque<BufferType> enqueued_buffers_ ABSL_GUARDED_BY(mu_);
 
  private:
-  // Condition variable that is signaled every time a buffer is enqueued.
-  absl::CondVar enqueue_cv_;
+  // Returns true if there is a buffer in the queue.
+  bool IsBufferEnqueued() const ABSL_SHARED_LOCKS_REQUIRED(mu_) {
+    return !enqueued_buffers_.empty();
+  }
 
   // List of callbacks which will be called when 'enqueued_buffers_' becomes
   // empty.
@@ -122,14 +121,9 @@ class BlockingXfeedQueue : public XfeedQueue<BufferType> {
       : max_pending_xfeeds_(max_pending_xfeeds) {}
 
   void BlockUntilEnqueueSlotAvailable() {
-    absl::MutexLock l{&this->mu_};
-    while (pending_buffers_ + this->enqueued_buffers_.size() >=
-           max_pending_xfeeds_) {
-      VLOG(2) << "Capacity "
-              << (pending_buffers_ + this->enqueued_buffers_.size())
-              << " >= max capacity " << max_pending_xfeeds_;
-      dequeue_cv_.Wait(&this->mu_);
-    }
+    absl::MutexLock l{
+        &this->mu_,
+        absl::Condition(this, &BlockingXfeedQueue::IsEnqueueSlotAvailable)};
 
     pending_buffers_++;
   }
@@ -139,15 +133,18 @@ class BlockingXfeedQueue : public XfeedQueue<BufferType> {
     pending_buffers_--;
   }
 
-  void DequeueHook() ABSL_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) override {
-    dequeue_cv_.Signal();
-  }
+  void DequeueHook() ABSL_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) override {}
 
  private:
   const int max_pending_xfeeds_;
 
-  // Condition variable that is signaled every time a buffer is dequeued.
-  absl::CondVar dequeue_cv_;
+  bool IsEnqueueSlotAvailable() const ABSL_SHARED_LOCKS_REQUIRED(this->mu_) {
+    VLOG(2) << "Capacity "
+            << (pending_buffers_ + this->enqueued_buffers_.size())
+            << " >= max capacity " << max_pending_xfeeds_;
+    return pending_buffers_ + this->enqueued_buffers_.size() <
+           max_pending_xfeeds_;
+  }
 
   // Keeps track of the number of buffers reserved but not added to
   // enqueued_buffers_.

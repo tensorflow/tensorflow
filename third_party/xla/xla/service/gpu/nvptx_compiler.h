@@ -173,11 +173,10 @@ class NVPTXCompiler : public GpuCompiler {
   };
 
   struct CompilationCacheValue {
-    bool compilation_done = false;
-    absl::StatusOr<std::vector<uint8_t>> maybe_cubin;
-    // mutex and condition variable to serialize compilation completing.
+    bool compilation_done ABSL_GUARDED_BY(mutex) = false;
+    absl::StatusOr<std::vector<uint8_t>> maybe_cubin ABSL_GUARDED_BY(mutex);
+    // mutex to serialize compilation completing.
     absl::Mutex mutex;
-    absl::CondVar compilation_done_cv;
   };
 
   // Don't even think about switching this to flat_hash_map; iterator stability

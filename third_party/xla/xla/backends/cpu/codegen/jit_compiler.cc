@@ -23,6 +23,7 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -334,15 +335,14 @@ void JitCompiler::TaskDispatcher::dispatch(
 
     absl::MutexLock lock(&mu_);
     --num_dispatched_tasks_;
-    cv_.SignalAll();
   });
 }
 
 void JitCompiler::TaskDispatcher::shutdown() {
-  absl::MutexLock lock(&mu_);
-  while (num_dispatched_tasks_ > 0) {
-    cv_.Wait(&mu_);
-  }
+  auto all_tasks_finished = [this]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
+    return num_dispatched_tasks_ == 0;
+  };
+  absl::MutexLock lock(&mu_, absl::Condition(&all_tasks_finished));
 }
 
 JitCompiler::CompiledFunctionLibrary::CompiledFunctionLibrary(

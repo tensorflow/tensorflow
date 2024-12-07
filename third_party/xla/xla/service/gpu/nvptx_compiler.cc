@@ -875,25 +875,20 @@ NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   // Compile the ptx if it wasn't in the cache before we called this function.
   // Other threads asking for the same compilation key will block on
   // cache_value->mutex_ until compilation is done.
-  absl::MutexLock lock(&cache_value->mutex);
   if (inserted) {
+    absl::MutexLock lock(&cache_value->mutex);
     CHECK(!cache_value->compilation_done);
-    absl::Cleanup mark_compilation_as_done = [cache_value] {
-      // Note that we will set this to true also in the error case, so that we
-      // don't retry this compilation.
-      cache_value->compilation_done = true;
-      cache_value->compilation_done_cv.SignalAll();
-    };
 
     cache_value->maybe_cubin = AssembleOptionsAndCompile(
         ptx, cc, hlo_module_config, options, relocatable);
+    // Note that we will set this to true also in the error case, so that we
+    // don't retry this compilation.
+    cache_value->compilation_done = true;
     return cache_value->maybe_cubin;
   }
 
-  while (!cache_value->compilation_done) {
-    cache_value->compilation_done_cv.Wait(&cache_value->mutex);
-  }
-
+  absl::MutexLock lock(&cache_value->mutex,
+                       absl::Condition(&cache_value->compilation_done));
   return cache_value->maybe_cubin;
 }
 
