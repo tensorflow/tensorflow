@@ -987,7 +987,7 @@ absl::StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
           << ", operand_shape: " << ShapeUtil::HumanString(*operand_shape);
     } else {
       // Non-broadcast dimensions must be static.
-      TF_RET_CHECK(shape.is_static_dimension(i));
+      TF_RET_CHECK(!shape.is_dynamic_dimension(i));
     }
   }
   return AddInstruction(std::move(instr), HloOpcode::kBroadcast, {operand});
@@ -1022,7 +1022,7 @@ absl::StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(
           operand_shape->is_dynamic_dimension(i));
     } else {
       TF_RET_CHECK(operand_shape->dimensions(i) == 1 &&
-                   operand_shape->is_static_dimension(i))
+                   !operand_shape->is_dynamic_dimension(i))
           << "An explicit broadcast sequence requires the broadcasted "
              "dimensions to be trivial; operand shape: "
           << *operand_shape << "; output_shape: " << output_shape;
@@ -1101,7 +1101,7 @@ absl::StatusOr<std::vector<XlaOp>> ExtractDimensionSizesAndPadOnesToLeft(
       pad_count, ConstantR1<int32_t>(/*builder=*/builder, /*values=*/{1}));
   for (size_t i = 0; i < num_dims; i++) {
     op_dims.push_back(
-        op_shape->is_static_dimension(i)
+        !op_shape->is_dynamic_dimension(i)
             ? ConstantR1<int32_t>(
                   /*builder=*/builder,
                   /*values=*/{static_cast<int32_t>(op_shape->dimensions(i))})
@@ -1123,7 +1123,7 @@ absl::StatusOr<XlaOp> BroadcastScalarToOutputShapeWithUnbounded(
   std::vector<XlaOp> output_sizes(output_shape.rank());
   for (size_t i = 0; i < output_shape.rank(); i++) {
     output_sizes[i] =
-        output_shape.is_static_dimension(i)
+        !output_shape.is_dynamic_dimension(i)
             ? ConstantR1<int32_t>(
                   /*builder=*/builder,
                   /*values=*/{static_cast<int32_t>(output_shape.dimensions(i))})
@@ -4405,7 +4405,7 @@ XlaOp XlaBuilder::GetDimensionSize(XlaOp operand, int64_t dimension) {
                                          *operand_shape, dimension));
     // Calling GetDimensionSize on a static dimension returns a constant
     // instruction.
-    if (operand_shape->is_static_dimension(dimension)) {
+    if (!operand_shape->is_dynamic_dimension(dimension)) {
       return ConstantR0<int32_t>(this, operand_shape->dimensions(dimension));
     }
     *instr.mutable_shape() = shape.ToProto();
