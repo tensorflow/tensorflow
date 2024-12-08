@@ -21,7 +21,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/verifier.h"  // from @flatbuffers
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/delegate_options.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/canonicalize_value.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/database_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/devicedb.h"
