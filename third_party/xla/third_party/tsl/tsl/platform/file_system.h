@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tsl/platform/cord.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_statistics.h"

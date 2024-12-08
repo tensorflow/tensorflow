@@ -23,7 +23,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tsl/platform/file_statistics.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
 
 #if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
     defined(PLATFORM_GOOGLE)
