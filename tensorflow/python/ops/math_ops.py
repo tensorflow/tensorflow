@@ -1507,7 +1507,7 @@ def truediv(x, y, name=None):
   >>> y2 = tf.constant([2, 5])
   >>> result2 = tf.math.truediv(x2, y2)
 
-  <tf.Tensor: shape=(2, 2), dtype=float64, numpy= array([[ 5.,  4.],[15.,  8.]])>
+  <tf.Tensor: shape=(2, 2),dtype=float64,numpy= array([[ 5.,  4.],[15.,  8.]])>
 
   # Handling potential division by zero (returns inf)
   >>> x3 = tf.constant(5)
