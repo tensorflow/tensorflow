@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/advisor/tfprof_advisor.h"
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <vector>
