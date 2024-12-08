@@ -409,6 +409,8 @@ cc_library(
         ":nn_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:function_proto_cc",
+        "@com_google_absl//absl/status",
     ] + if_mkl([
         ":mkl_nn_ops_op_lib",
     ]),
@@ -549,5 +551,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:type_inference",
+        "@com_google_googletest//:gtest_main",
     ],
 )
