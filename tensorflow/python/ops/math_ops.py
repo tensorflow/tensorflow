@@ -1493,6 +1493,29 @@ def truediv(x, y, name=None):
   inputs are cast to `float32` for `int8` and `int16` and `float64` for `int32`
   and `int64` (matching the behavior of Numpy).
 
+  Example:
+
+  >>> # Division with integer tensors (returns float)
+  >>> x1 = tf.constant([10, 20, 30])
+  >>> y1 = tf.constant([2, 4, 5])
+  >>> result1 = tf.math.truediv(x1, y1)
+  
+  <tf.Tensor: shape=(3,), dtype=float64, numpy=array([5., 5., 6.])>
+
+  >>> # Division with different shaped tensors (broadcasting)
+  >>> x2 = tf.constant([[10, 20], [30, 40]])
+  >>> y2 = tf.constant([2, 5])
+  >>> result2 = tf.math.truediv(x2, y2)
+
+  <tf.Tensor: shape=(2, 2), dtype=float64, numpy= array([[ 5.,  4.],[15.,  8.]])>
+
+  # Handling potential division by zero (returns inf)
+  >>> x3 = tf.constant(5)
+  >>> y3 = tf.constant(0)
+  >>> result3 = tf.math.truediv(x3, y3)
+
+  <tf.Tensor: shape=(), dtype=float64, numpy=inf>
+
   Args:
     x: `Tensor` numerator of numeric type.
     y: `Tensor` denominator of numeric type.
