@@ -16,13 +16,16 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <vector>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/platform/logging.h"
 
