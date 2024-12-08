@@ -18,8 +18,11 @@ limitations under the License.
 // words.
 #include "tensorflow/core/util/ctc/ctc_beam_search.h"
 
+#include <algorithm>
 #include <cmath>
+#include <vector>
 
+#include "absl/log/log.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
