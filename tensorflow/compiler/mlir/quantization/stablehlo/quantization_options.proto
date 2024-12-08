@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package stablehlo.quantization;
 
-option cc_enable_arenas = true;
-
 // Defines arious options to specify and control the behavior of the
 // StableHLO quantizer.
 // NEXT ID: 2
@@ -56,6 +54,7 @@ message PresetQuantizationMethod {
     // Activation: qi8, Weight: qi8, Bias: qi32
     POST_TRAINING_QUANTIZATION_STATIC_RANGE = 4;
   }
+
   PresetMethod preset_method = 1;
 }
 
