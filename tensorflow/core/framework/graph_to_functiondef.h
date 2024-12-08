@@ -16,10 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_GRAPH_TO_FUNCTIONDEF_H_
 #define TENSORFLOW_CORE_FRAMEWORK_GRAPH_TO_FUNCTIONDEF_H_
 
+#include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
