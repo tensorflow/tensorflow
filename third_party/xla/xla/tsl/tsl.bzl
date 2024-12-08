@@ -243,14 +243,12 @@ def get_win_copts(is_external = False):
         # "-DPLATFORM_WINDOWS",
         # "-DEIGEN_HAS_C99_MATH",
         # "-DTENSORFLOW_USE_EIGEN_THREADPOOL",
-        # "-DEIGEN_AVOID_STL_ARRAY",
         # "-Iexternal/gemmlowp",
         # "-DNOGDI",
         # copybara:uncomment_end_and_comment_begin
         "/DPLATFORM_WINDOWS",
         "/DEIGEN_HAS_C99_MATH",
         "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
-        "/DEIGEN_AVOID_STL_ARRAY",
         "/Iexternal/gemmlowp",
         "/wd4018",  # -Wno-sign-compare
         # Bazel's CROSSTOOL currently pass /EHsc to enable exception by
@@ -308,7 +306,6 @@ def tsl_copts(
 
     return (
         if_not_windows([
-            "-DEIGEN_AVOID_STL_ARRAY",
             "-Iexternal/gemmlowp",
             "-Wno-sign-compare",
             "-ftemplate-depth=900",
