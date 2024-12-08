@@ -352,7 +352,11 @@ llvm::Constant* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
 
 absl::Status IrEmitter::EmitConstantGlobals() {
   for (const BufferAllocation& allocation : assignment_.Allocations()) {
-    if (!allocation.is_constant()) {
+    // Large constants don't get fused with other instructions, so we don't
+    // need to emit them as globals.
+    if (!allocation.is_constant() ||
+        llvm_ir::InstrForConstantBufferAllocation(allocation)
+            .IsLargeConstant()) {
       continue;
     }
 

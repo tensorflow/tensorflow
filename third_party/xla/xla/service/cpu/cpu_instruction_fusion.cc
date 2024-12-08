@@ -81,6 +81,10 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   constexpr int kFusionThresholdBytes = 16 * 1024;
 
+  if (producer->IsConstant() && producer->IsLargeConstant()) {
+    return FusionDecision::Forbid("Don't fuse large constants.");
+  }
+
   if (CanBeOutputFused(producer, consumer)) {
     VLOG(2) << "Fusion OK: Can create output fusion.";
     return FusionDecision::Allow();

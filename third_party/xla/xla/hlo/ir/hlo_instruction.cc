@@ -5493,6 +5493,17 @@ bool HloInstruction::IsConstant() const {
   return DynCast<HloConstantInstruction>(this) != nullptr;
 }
 
+/* static */ constexpr int64_t
+HloInstruction::GetLargeConstantThresholdBytes() {
+  constexpr int64_t kLargeConstantThresholdBytes = 10000;
+  return kLargeConstantThresholdBytes;
+}
+
+bool HloInstruction::IsLargeConstant() const {
+  return Cast<HloConstantInstruction>(this)->literal().size_bytes() >
+         GetLargeConstantThresholdBytes();
+}
+
 void HloInstruction::RelayoutConstant(const Layout& new_layout,
                                       const ShapeIndex& shape_index) {
   Cast<HloConstantInstruction>(this)->RelayoutConstant(new_layout, shape_index);

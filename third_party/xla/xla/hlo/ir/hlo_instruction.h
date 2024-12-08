@@ -2437,6 +2437,12 @@ class HloInstruction {
   // Returns whether the instruction is a constant.
   bool IsConstant() const;
 
+  // Returns the threshold for a constant to be considered a large constant.
+  static constexpr int64_t GetLargeConstantThresholdBytes();
+
+  // Returns if a constant is large enough to be considered a large constant.
+  bool IsLargeConstant() const;
+
   // Delegate to HloConstantInstruction::RelayoutConstant.
   void RelayoutConstant(const Layout& new_layout,
                         const ShapeIndex& shape_index = {});
