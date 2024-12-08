@@ -590,6 +590,7 @@ cc_library(
         ":reader_base_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -605,6 +606,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/util/proto:proto_utils",
+        "//third_party/protobuf:protobuf_lite",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -766,7 +770,10 @@ cc_library(
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/util:managed_stack_trace",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = 1,
 )
@@ -779,6 +786,7 @@ tf_cc_test(
         ":resource_handle",
         ":resource_handle_proto_cc",
         ":tensor_shape_proto_cc",
+        ":types_proto_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -984,6 +992,7 @@ cc_library(
         ":attr_value_util",
         ":op_def_proto_cc",
         ":tensor",
+        ":types_proto_cc",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/core:stringpiece",
@@ -993,8 +1002,13 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:types",
+        "//third_party/protobuf:protobuf_lite",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1027,7 +1041,12 @@ cc_library(
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/util:padding",
+        "//third_party/protobuf:protobuf_lite",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1044,6 +1063,7 @@ cc_library(
         ":op_def_proto_cc",
         ":tensor",
         "//tensorflow/core/lib/core:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -1058,6 +1078,7 @@ cc_library(
         ":op_def_proto_cc",
         ":op_def_util",
         ":tensor",
+        ":types_proto_cc",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/core:stringpiece",
@@ -1067,7 +1088,10 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1111,6 +1135,7 @@ cc_library(
         ":full_type_util",
         ":loose_headers",
         ":op_def_builder",
+        ":op_def_proto_cc",
         ":op_def_util",
         "//tensorflow/core:core_stringpiece",
         "//tensorflow/core/framework/registration",
@@ -1123,6 +1148,9 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1142,6 +1170,7 @@ tf_cc_test(
         "//tensorflow/core/lib/gtl:cleanup",
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1191,6 +1220,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:op_gen_lib",
+        "//third_party/protobuf",
+        "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -1431,6 +1463,17 @@ cc_library(
         "//tensorflow/python/client:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
+    deps = [
+        ":api_def_proto_cc",
+        ":op_def_proto_cc",
+        ":tensor",
+        "//tensorflow/core:core_stringpiece",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/lib/core:refcount",
+        "//tensorflow/core/lib/core:status",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 # For a more maintainable build this target should not exist and the headers
@@ -1446,6 +1489,14 @@ cc_library(
     tags = ["avoid_dep"],
     textual_hdrs = ["op_gen_lib.h"],
     visibility = ["//visibility:private"],
+    deps = [
+        ":api_def_proto_cc",
+        ":op_def_proto_cc",
+        "//tensorflow/core:core_stringpiece",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/lib/core:status",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 # All framework protos are self-contained, i.e. they only import other

@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_LOOKUP_INTERFACE_H_
 #define TENSORFLOW_CORE_FRAMEWORK_LOOKUP_INTERFACE_H_
 
+#include <cstddef>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {

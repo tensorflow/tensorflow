@@ -15,10 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <memory>
+#include <utility>
 #include <variant>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"

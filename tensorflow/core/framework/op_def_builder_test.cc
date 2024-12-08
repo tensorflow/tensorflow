@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_def_builder.h"
 
+#include <algorithm>
+
+#include "absl/status/status.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"

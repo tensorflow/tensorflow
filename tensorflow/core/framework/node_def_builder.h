@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_BUILDER_H_
 #define TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_BUILDER_H_
 
+#include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
