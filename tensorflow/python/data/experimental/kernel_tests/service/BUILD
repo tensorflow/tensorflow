@@ -68,6 +68,20 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
+    name = "data_transfer_test",
+    size = "small",
+    srcs = ["data_transfer_test.py"],
+    deps = [
+        ":test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_strict_test(
     name = "data_service_ops_test",
     size = "medium",
     srcs = ["data_service_ops_test.py"],
