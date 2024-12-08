@@ -39,17 +39,8 @@ class AllocatorFactory {
  public:
   virtual ~AllocatorFactory() {}
 
-  // Returns true if the factory will create a functionally different
-  // SubAllocator for different (legal) values of numa_node.
-  virtual bool NumaEnabled() { return false; }
-
   // Create an Allocator.
   virtual Allocator* CreateAllocator() = 0;
-
-  // Create a SubAllocator. If NumaEnabled() is true, then returned SubAllocator
-  // will allocate memory local to numa_node.  If numa_node == kNUMANoAffinity
-  // then allocated memory is not specific to any NUMA node.
-  virtual SubAllocator* CreateSubAllocator(int numa_node) = 0;
 };
 
 // ProcessState is defined in a package that cannot be a dependency of
@@ -78,13 +69,6 @@ class AllocatorFactoryRegistry {
   // and return an allocator constructed by it.  If multiple factories have
   // been registered with the same priority, picks one by unspecified criteria.
   Allocator* GetAllocator();
-
-  // Returns 'best fit' SubAllocator.  First look for the highest priority
-  // factory that is NUMA-enabled.  If none is registered, fall back to the
-  // highest priority non-NUMA-enabled factory.  If NUMA-enabled, return a
-  // SubAllocator specific to numa_node, otherwise return a NUMA-insensitive
-  // SubAllocator.
-  SubAllocator* GetSubAllocator(int numa_node);
 
   // Returns the singleton value.
   static AllocatorFactoryRegistry* singleton();
