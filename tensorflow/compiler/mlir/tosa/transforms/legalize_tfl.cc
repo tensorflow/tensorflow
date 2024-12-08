@@ -193,6 +193,7 @@ DECL_CONVERT_OP(Const);
 DECL_CONVERT_OP(QConst);
 DECL_CONVERT_OP(Gather);
 DECL_CONVERT_OP(GatherNd);
+DECL_CONVERT_OP(ScatterNd);
 DECL_CONVERT_OP(SparseToDense);
 DECL_CONVERT_OP(OneHot);
 DECL_CONVERT_OP(ArgMax);
@@ -4156,6 +4157,22 @@ LogicalResult ConvertTFLGatherNdOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLScatterNdOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_scatternd_op = cast<TFL::ScatterNdOp>(op);
+
+  const std::optional<Value> result = convertScatterNdOp(
+      rewriter, op, tfl_scatternd_op.getResult(), tfl_scatternd_op.getIndices(),
+      tfl_scatternd_op.getUpdates(), tfl_scatternd_op.getShape());
+
+  if (!result) {
+    return failure();
+  }
+  rewriter.replaceOp(op, {result.value()});
+
+  return success();
+}
+
 LogicalResult ConvertTFLSparseToDenseOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_sparse_to_dense_op = cast<TFL::SparseToDenseOp>(op);
@@ -4702,6 +4719,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLConst);
   DEF_PATTERN_INSERT(TFLQConst);
   DEF_PATTERN_INSERT(TFLGatherNd);
+  DEF_PATTERN_INSERT(TFLScatterNd);
   DEF_PATTERN_INSERT(TFLSparseToDense);
   DEF_PATTERN_INSERT(Constant);
   DEF_PATTERN_INSERT(TFLOneHot);
