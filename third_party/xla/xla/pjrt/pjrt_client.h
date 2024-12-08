@@ -816,6 +816,14 @@ class PjRtClient {
         "implemented.");
   }
 
+  virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    PjRtMemorySpace* memory_space,
+                                    const Layout* layout) {
+    return Unimplemented(
+        "CreateBuffersForAsyncHostToDevice with Layout is not implemented.");
+  }
+
   // Creates a shapeless buffer on the device that can be partitioned into
   // multiple PjRtBuffer. This class is an Arena version of
   // `AsyncHostToDeviceTransferManager`.
