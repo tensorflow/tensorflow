@@ -319,6 +319,24 @@ EOF
     bazel query "deps(//tensorflow/... -//tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test)" > /dev/null
 }
 
+# See b/279852433 (internal).
+# TODO(b/279852433) Remove this test when bug is resolved.
+@test "Verify that it's possible to query local tsl targets without BUILD errors" {
+    bazel query "deps(@local_tsl//...  )" > /dev/null
+}
+
+# See b/279852433 (internal).
+# TODO(b/279852433) Remove this test when bug is resolved.
+@test "Verify that it's possible to query vendored tools targets without BUILD errors" {
+    bazel query "deps(@local_xla//tools/...)" > /dev/null
+}
+
+# See b/279852433 (internal).
+# TODO(b/279852433) Remove this test when bug is resolved.
+@test "Verify that it's possible to query build tools targets without BUILD errors" {
+    bazel query "deps(@local_xla//build_tools/...)"  > /dev/null
+}
+
 teardown_file() {
     bazel shutdown
 }
