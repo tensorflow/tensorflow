@@ -8,6 +8,9 @@ cc_import(
     name = "nvjitlink_shared_library",
     hdrs = [":headers"],
     shared_library = "lib/libnvJitLink.so.%{libnvjitlink_version}",
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/nvjitlink/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/nvjitlink/lib",
+               ],
 )
 %{multiline_comment}
 cc_library(

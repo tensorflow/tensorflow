@@ -9,12 +9,18 @@ cc_import(
     hdrs = [":headers"],
     shared_library = "lib/libcublas.so.%{libcublas_version}",
     deps = [":cublasLt"],
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/cublas/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/cublas/lib",
+               ],
 )
 
 cc_import(
     name = "cublasLt_shared_library",
     hdrs = [":headers"],
     shared_library = "lib/libcublasLt.so.%{libcublaslt_version}",
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/cublas/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/cublas/lib",
+               ],
 )
 %{multiline_comment}
 cc_library(

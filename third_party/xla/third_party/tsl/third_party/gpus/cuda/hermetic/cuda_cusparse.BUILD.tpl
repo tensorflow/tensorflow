@@ -9,6 +9,9 @@ cc_import(
     hdrs = [":headers"],
     shared_library = "lib/libcusparse.so.%{libcusparse_version}",
     deps = ["@cuda_nvjitlink//:nvjitlink"],
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/cusparse/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/cusparse/lib",
+               ],,
 )
 %{multiline_comment}
 cc_library(

@@ -9,6 +9,9 @@ cc_import(
     shared_library = "lib/libnccl.so.%{libnccl_version}",
     hdrs = [":headers"],
     deps = ["@local_config_cuda//cuda:cuda_headers", ":headers"],
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/nccl/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/nccl/lib",
+               ],
 )
 %{multiline_comment}
 cc_library(

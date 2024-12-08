@@ -8,6 +8,9 @@ cc_import(
     name = "cufft_shared_library",
     hdrs = [":headers"],
     shared_library = "lib/libcufft.so.%{libcufft_version}",
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/cufft/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/cufft/lib",
+               ],
 )
 %{multiline_comment}
 cc_library(

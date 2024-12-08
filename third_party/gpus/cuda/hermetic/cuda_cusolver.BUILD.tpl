@@ -14,6 +14,9 @@ cc_import(
         "@cuda_cublas//:cublas",
         "@cuda_cublas//:cublasLt",
     ],
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/cusolver/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/cusolver/lib",
+               ],
 )
 %{multiline_comment}
 cc_library(

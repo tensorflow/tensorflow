@@ -14,6 +14,9 @@ cc_import(
     name = "cuda_stub",
     interface_library = "lib/stubs/libcuda.so",
     system_provided = 1,
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/cuda_runtime/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/cuda_runtime/lib",
+               ],
 )
 
 cc_import(

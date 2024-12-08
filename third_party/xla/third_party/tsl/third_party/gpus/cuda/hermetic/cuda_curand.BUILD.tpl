@@ -8,6 +8,9 @@ cc_import(
     name = "curand_shared_library",
     hdrs = [":headers"],
     shared_library = "lib/libcurand.so.%{libcurand_version}",
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/curand/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/curand/lib",
+               ],
 )
 %{multiline_comment}
 cc_library(

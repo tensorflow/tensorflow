@@ -8,36 +8,54 @@ cc_import(
     name = "cudnn_ops_infer",
     hdrs = [":headers"],
     shared_library = "lib/libcudnn_ops_infer.so.%{libcudnn_ops_infer_version}",
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/cudnn/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/cudnn/lib",
+               ],
 )
 
 cc_import(
     name = "cudnn_cnn_infer",
     hdrs = [":headers"],
     shared_library = "lib/libcudnn_cnn_infer.so.%{libcudnn_cnn_infer_version}",
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/cudnn/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/cudnn/lib",
+               ],
 )
 
 cc_import(
     name = "cudnn_ops_train",
     hdrs = [":headers"],
     shared_library = "lib/libcudnn_ops_train.so.%{libcudnn_ops_train_version}",
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/cudnn/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/cudnn/lib",
+               ],
 )
 
 cc_import(
     name = "cudnn_cnn_train",
     hdrs = [":headers"],
     shared_library = "lib/libcudnn_cnn_train.so.%{libcudnn_cnn_train_version}",
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/cudnn/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/cudnn/lib",
+               ],
 )
 
 cc_import(
     name = "cudnn_adv_infer",
     hdrs = [":headers"],
     shared_library = "lib/libcudnn_adv_infer.so.%{libcudnn_adv_infer_version}",
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/cudnn/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/cudnn/lib",
+               ],
 )
 
 cc_import(
     name = "cudnn_adv_train",
     hdrs = [":headers"],
     shared_library = "lib/libcudnn_adv_train.so.%{libcudnn_adv_train_version}",
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/cudnn/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/cudnn/lib",
+               ],
 )
 
 cc_import(

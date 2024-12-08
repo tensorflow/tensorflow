@@ -8,6 +8,9 @@ cc_import(
     name = "cupti_shared_library",
     hdrs = [":headers"],
     shared_library = "lib/libcupti.so.%{libcupti_version}",
+    linkopts = ["-Wl,-rpath,$ORIGIN/../nvidia/cuda_cupti/lib",
+                "-Wl,-rpath,$ORIGIN/../../nvidia/cuda_cupti/lib",
+               ],
 )
 %{multiline_comment}
 cc_library(
