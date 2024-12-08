@@ -18,15 +18,28 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_join.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/src/Core/util/EmulateArray.h"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/sparse/dim_comparator.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/test_benchmark.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace sparse {
