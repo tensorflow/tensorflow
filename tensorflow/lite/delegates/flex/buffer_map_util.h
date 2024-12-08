@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_FLEX_BUFFER_MAP_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_FLEX_BUFFER_MAP_UTIL_H_
 
+#include <cstddef>
+
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
