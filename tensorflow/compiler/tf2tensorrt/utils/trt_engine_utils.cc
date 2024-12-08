@@ -18,16 +18,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_execution_context.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
 
