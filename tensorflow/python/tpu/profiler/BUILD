@@ -42,6 +42,7 @@ py_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",
+        "//third_party/py/distutils",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
         "@pypi_packaging//:pkg",
