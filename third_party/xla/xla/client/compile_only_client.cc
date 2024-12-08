@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/client/compile_only_client.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
