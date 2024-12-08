@@ -456,7 +456,7 @@ TEST_F(GradientsTest, UnreachableInput) {
   //  / \ / \
   // z   y   x
   std::vector<Output> grad_outputs;
-  Status status =
+  absl::Status status =
       AddSymbolicGradients(scope_test_, {m1}, {z}, {dm1}, &grad_outputs);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   EXPECT_EQ(status.message(),
