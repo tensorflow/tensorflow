@@ -4706,6 +4706,274 @@ absl::Status ReplaceSoftplusTanhAndMulWithMish(
   return absl::OkStatus();
 }
 
+Status GetTensorFromConstantOp(const NodeDef* node_def, Tensor* dst) {
+  const TensorProto* proto = nullptr;
+
+  TF_CHECK_OK(GetNodeAttr(*node_def, "value", &proto));
+  DCHECK(dst != nullptr) << "Input tensor must not be null";
+
+  if (!dst->FromProto(*proto)) {
+    TF_CHECK_OK(errors::InvalidArgument(
+        "Could not construct Tensor from TensorProto in node: ",
+        node_def->name()));
+  }
+  return OkStatus();
+}
+
+// Find pattern with
+// SpaceToBatchND - Conv2D or DepthwiseConv2dNative - BatchToSpaceND
+// as fusion candidate of dilated Conv2D or DepethwiseConv2dNative
+bool FindDilatedConv(RemapperContext* ctx, int node_index,
+                     std::map<string, int>* matched_nodes_map,
+                     std::set<int>* remove_node_indices) {
+  // clang-format off
+  //           Subgraph for fusion
+  //           -------------------
+  //
+  //     *(input)  Const  Const
+  //          \      |      /                           Fused Op
+  //          SpaceToBatchND   *(filter)                --------
+  //                 \            /               *(input)  *(filter)
+  //    (Conv2D | DepthwiseConv2dNative)                \       /
+  //                   \                       (Conv2D | DepthwiseConv2dNative)       
+  //                    \    Const   Const       (with dilation attribute)
+  //                     \     |     / 
+  //                    BatchToSpaceND
+  // clang-format on
+
+  using utils::MatchingDirection;
+  using utils::NodeStatus;
+  // clang-format off
+  utils::OpTypePattern stb_conv_bts_pattern
+  { "BatchToSpaceND", "bts", NodeStatus::kReplace,
+    {
+      { "Conv2D|DepthwiseConv2dNative", "conv", NodeStatus::kRemove,
+        {
+          { "SpaceToBatchND", "stb", NodeStatus::kRemove,
+            {
+              { "*", "input", NodeStatus::kRemain},
+              { "Const", "stb_block_shape", NodeStatus::kRemain},
+              { "Const", "stb_paddings", NodeStatus::kRemain}
+            }
+          },
+          { "*", "filter", NodeStatus::kRemain}
+        }
+      },
+      { "Const", "bts_block_shape", NodeStatus::kRemain},
+      { "Const", "bts_crops", NodeStatus::kRemain}
+    }
+  };
+
+  // clang-format on
+  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+      &(ctx->graph_view));
+
+  matched_nodes_map->clear();
+  remove_node_indices->clear();
+
+  if (!graph_matcher.GetMatchedNodes(stb_conv_bts_pattern,
+                                     ctx->nodes_to_preserve,
+                                     ctx->graph_view.GetNode(node_index),
+                                     matched_nodes_map, remove_node_indices)) {
+    return false;
+  }
+
+  NodeDef* stb_block_shape_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("stb_block_shape"))->node();
+  NodeDef* bts_block_shape_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("bts_block_shape"))->node();
+  NodeDef* stb_paddings_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("stb_paddings"))->node();
+  NodeDef* bts_crops_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("bts_crops"))->node();
+  NodeDef* conv_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("conv"))->node();
+
+  if (!NodeIsOnCpu(conv_node)) return false;
+  string data_format;
+  TF_CHECK_OK(GetNodeAttr(*conv_node, "data_format", &data_format));
+  // TODO(intel-tf): add support for NCHW format
+  if (data_format != "NHWC") return false;
+
+  Tensor stb_block_shape_tensor, bts_block_shape_tensor;
+  TF_CHECK_OK(
+      GetTensorFromConstantOp(stb_block_shape_node, &stb_block_shape_tensor));
+  TF_CHECK_OK(
+      GetTensorFromConstantOp(bts_block_shape_node, &bts_block_shape_tensor));
+
+  // TODO(intel-tf): update when adding support for NCHW format
+  if ((stb_block_shape_tensor.NumElements() != 2) ||
+      (stb_block_shape_tensor.shape() != bts_block_shape_tensor.shape())) {
+    return false;
+  };
+
+  DataType dtype = stb_block_shape_tensor.dtype();
+  if ((dtype != DT_INT32 && dtype != DT_INT64) ||
+      (dtype != bts_block_shape_tensor.dtype())) {
+    return false;
+  }
+  std::vector<int64> stb_block_data =
+      (dtype == DT_INT32)
+          ? GetTensorValues<int32, int64>(stb_block_shape_tensor)
+          : GetTensorValues<int64, int64>(stb_block_shape_tensor);
+  std::vector<int64> bts_block_data =
+      (dtype == DT_INT32)
+          ? GetTensorValues<int32, int64>(bts_block_shape_tensor)
+          : GetTensorValues<int64, int64>(bts_block_shape_tensor);
+
+  // Check block values in SpaceToBatchND and BatchToSpaceND, the upper
+  // bound is used to exclude handling of invalid dilation rate case.
+  for (int i = 0; i < stb_block_data.size(); i++) {
+    if (stb_block_data[i] != bts_block_data[i] || stb_block_data[i] < 1 ||
+        stb_block_data[i] > 1000) {
+      return false;
+    }
+  }
+
+  Tensor paddings_tensor;
+  Tensor crops_tensor;
+  TF_CHECK_OK(GetTensorFromConstantOp(stb_paddings_node, &paddings_tensor));
+  TF_CHECK_OK(GetTensorFromConstantOp(bts_crops_node, &crops_tensor));
+  dtype = paddings_tensor.dtype();
+  if ((dtype != DT_INT32 && dtype != DT_INT64) ||
+      (dtype != crops_tensor.dtype()))
+    return false;
+  if ((paddings_tensor.shape().dims() != 2) ||
+      (paddings_tensor.shape().dim_size(0) != 2) ||
+      (paddings_tensor.shape().dim_size(1) != 2) ||
+      (paddings_tensor.shape() != crops_tensor.shape())) {
+    return false;
+  };
+
+  std::vector<int32> conv_strides;
+  if (!TryGetNodeAttr(*conv_node, "strides", &conv_strides)) return false;
+  if (std::any_of(conv_strides.begin(), conv_strides.end(),
+                  [](int32 stride) { return stride != 1; })) {
+    return false;
+  }
+
+  return true;
+}
+
+template <DataType DTYPE>
+std::vector<int32> ComputePaddings(const Tensor& paddings, const Tensor& crops,
+                                   bool& is_valid) {
+  typedef typename EnumToDataType<DTYPE>::Type T;
+
+  auto paddings_data = paddings.flat<T>();
+  auto crops_data = crops.flat<T>();
+
+  std::vector<int32> real_paddings;
+  for (int i = 0; i < paddings_data.size(); i++) {
+    real_paddings.push_back(static_cast<int32>(paddings_data(i)) -
+                            static_cast<int32>(crops_data(i)));
+    if (real_paddings[i] != 0) {
+      is_valid = false;
+    }
+  }
+  return real_paddings;
+}
+
+Status AddDilatedConvNode(RemapperContext* ctx,
+                          std::map<string, int>* matched_nodes_map,
+                          std::set<int>* remove_node_indices,
+                          std::vector<bool>* invalidated_nodes,
+                          std::vector<bool>* nodes_to_delete) {
+  auto* input_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("input"))->node();
+  auto* bts_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("bts"))->node();
+  auto* conv_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("conv"))->node();
+  auto* filter_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("filter"))->node();
+  auto* bts_crops_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("bts_crops"))->node();
+  auto* bts_block_shape_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("bts_block_shape"))->node();
+  auto* stb_paddings_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("stb_paddings"))->node();
+
+  NodeDef fused_node;
+  fused_node.set_name(bts_node->name());
+  fused_node.set_op(conv_node->op());
+  fused_node.set_device(conv_node->device());
+  fused_node.add_input(input_node->name());
+  fused_node.add_input(filter_node->name());
+
+  if (IsConv2D(*conv_node)) {
+    CopyConv2DAttributes(*conv_node, &fused_node);
+  } else if (IsMKLEnabled() && IsDepthwiseConv2dNative(*conv_node)) {
+    CopyDepthwiseConv2dNativeAttributes(*conv_node, &fused_node);
+  } else {
+    TF_CHECK_OK(errors::InvalidArgument(
+        "Dilated contraction does not support node: ", conv_node->name()));
+  }
+
+  // Get dilation attribute values
+  // TODO(intel-tf): update when adding support for NCHW format
+  int32 dilations[4];
+  dilations[0] = dilations[3] = 1;
+  Tensor block_shape;
+  TF_CHECK_OK(GetTensorFromConstantOp(bts_block_shape_node, &block_shape));
+  DataType dtype = GetDataTypeFromAttr(*bts_block_shape_node, "dtype");
+  if (dtype == DT_INT32) {
+    dilations[1] = block_shape.flat<int32>()(0);
+    dilations[2] = block_shape.flat<int32>()(1);
+  } else if (dtype == DT_INT64) {
+    dilations[1] = static_cast<int32>(block_shape.flat<int64>()(0));
+    dilations[2] = static_cast<int32>(block_shape.flat<int64>()(1));
+  } else {
+    TF_CHECK_OK(errors::InvalidArgument(
+        "Unexpected data type for block shape: ", dtype));
+  }
+
+  auto* attrs = fused_node.mutable_attr();
+  SetAttrValue(gtl::ArraySlice<int32>(dilations, 4), &(*attrs)["dilations"]);
+
+  // Check paddings and crops values to determine if paddings attribute
+  // needs to be set in the dilated conv op
+  Tensor paddings;
+  Tensor crops;
+  TF_CHECK_OK(GetTensorFromConstantOp(stb_paddings_node, &paddings));
+  TF_CHECK_OK(GetTensorFromConstantOp(bts_crops_node, &crops));
+
+  dtype = GetDataTypeFromAttr(*stb_paddings_node, "dtype");
+  DataType dtype2 = GetDataTypeFromAttr(*bts_crops_node, "dtype");
+  if ((dtype != DT_INT32 && dtype != DT_INT64) || dtype != dtype2) {
+    TF_CHECK_OK(errors::InvalidArgument(
+        "Unexpected data type with paddings: ", dtype, ", crops: ", dtype2));
+  }
+
+  std::vector<int32> real_paddings;
+  bool is_valid = true;
+  if (dtype == DT_INT32) {
+    real_paddings = ComputePaddings<DT_INT32>(paddings, crops, is_valid);
+  } else {
+    real_paddings = ComputePaddings<DT_INT64>(paddings, crops, is_valid);
+  }
+
+  // Follow the MLIR implementation with using "SAME" attribute
+  // instead of setting specific padding values.
+  // TODO(intel-tf): check if update is required when adding NCHW format support
+  if (!is_valid) {
+    SetAttrValue("SAME", &(*attrs)["padding"]);
+  }
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_node), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+
+  (*invalidated_nodes)[matched_nodes_map->at("bts")] = true;
+  for (const auto& node_idx : *remove_node_indices) {
+    (*nodes_to_delete)[node_idx] = true;
+  }
+
+  return OkStatus();
+}
+
 // Check if a node is a candidate to one of the patterns that require inferred
 // shapes:
 //   (1) Splitting FusedBatchNorm into primitives.
@@ -4935,6 +5203,10 @@ absl::Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       AddInputShapesAttr(ctx, i);
     }
 
+    // Variables used with pattern matcher for fusion
+    std::map<string, int> matched_nodes_map;
+    std::set<int> remove_node_indices;
+
     if (IsMKLEnabled() && !ctx.xla_cpu_jit_disable_fusion) {
       const auto* node_view = ctx.graph_view.GetNode(i);
       const auto* node_def = node_view->node();
@@ -4986,8 +5258,6 @@ absl::Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
 
-      std::map<string, int> matched_nodes_map;
-      std::set<int> remove_node_indices;
       std::vector<string> input_node_names;
 
       // Remap {Conv2D|DepthwiseConv2D} + BiasAdd + HardSwish subgraph
@@ -5118,11 +5388,22 @@ absl::Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
             &nodes_to_delete, false));
         continue;
       }
+
+      // Remap SpaceToBatchND + Conv2D|DepthwiseConv2dNative + BatchToSpaceND
+      // to dilated Conv2D|DepthwiseConv2dNative
+      matched_nodes_map.clear();
+      remove_node_indices.clear();
+      if (FindDilatedConv(&ctx, i, &matched_nodes_map, &remove_node_indices)) {
+        TF_RETURN_IF_ERROR(
+            AddDilatedConvNode(&ctx, &matched_nodes_map, &remove_node_indices,
+                               &invalidated_nodes, &nodes_to_delete));
+        continue;
+      }
     }
 
     // Remap MatMul + BiasAdd + gelu-subgraph
-    std::map<string, int> matched_nodes_map;
-    std::set<int> remove_node_indices;
+    matched_nodes_map.clear();
+    remove_node_indices.clear();
     bool is_gelu_approximate = false;
     if (FindMatMulBiasAddAndGelu(&ctx, i, cluster, &matched_nodes_map,
                                  &remove_node_indices, &is_gelu_approximate)) {
