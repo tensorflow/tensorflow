@@ -78,7 +78,6 @@ extern bool FLAGS_brain_gpu_record_mem_types;
 namespace tensorflow {
 
 using se::DeviceMemoryBase;
-using se::Stream;
 
 absl::Status PrepareCopy(Device* device, const DeviceContext* ctx,
                          const Tensor& src, const Tensor* dst,
