@@ -16,12 +16,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/lib/core/refcount.h"
-
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
