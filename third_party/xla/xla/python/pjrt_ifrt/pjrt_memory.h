@@ -42,7 +42,6 @@ class PjRtMemory final
  public:
   PjRtMemory(PjRtClient* client, xla::PjRtMemorySpace* pjrt_memory);
 
-  PjRtClient* client() const { return client_; }
   xla::PjRtMemorySpace* pjrt_memory() override { return pjrt_memory_; }
 
   MemoryId Id() const override;
@@ -54,7 +53,6 @@ class PjRtMemory final
   static char ID;  // NOLINT
 
  private:
-  PjRtClient* client_;
   xla::PjRtMemorySpace* pjrt_memory_;
   MemoryKind kind_;
   std::vector<Device*> devices_;
