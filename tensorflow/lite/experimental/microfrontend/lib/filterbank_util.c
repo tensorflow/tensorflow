@@ -28,7 +28,7 @@ void FilterbankFillConfigWithDefaults(struct FilterbankConfig* config) {
   config->output_scale_shift = 7;
 }
 
-static float FreqToMel(float freq) { return 1127.0 * log1p(freq / 700.0); }
+static float FreqToMel(float freq) { return 1127.0f * log1pf(freq / 700.0f); }
 
 static void CalculateCenterFrequencies(const int num_channels,
                                        const float lower_frequency_limit,
@@ -49,8 +49,8 @@ static void CalculateCenterFrequencies(const int num_channels,
 
 static void QuantizeFilterbankWeights(const float float_weight, int16_t* weight,
                                       int16_t* unweight) {
-  *weight = floor(float_weight * (1 << kFilterbankBits) + 0.5);
-  *unweight = floor((1.0 - float_weight) * (1 << kFilterbankBits) + 0.5);
+  *weight = floorf(float_weight * (1 << kFilterbankBits) + 0.5f);
+  *unweight = floorf((1.0f - float_weight) * (1 << kFilterbankBits) + 0.5f);
 }
 
 int FilterbankPopulateState(const struct FilterbankConfig* config,
@@ -95,8 +95,8 @@ int FilterbankPopulateState(const struct FilterbankConfig* config,
                              config->upper_band_limit, center_mel_freqs);
 
   // Always exclude DC.
-  const float hz_per_sbin = 0.5 * sample_rate / ((float)spectrum_size - 1);
-  state->start_index = 1.5 + config->lower_band_limit / hz_per_sbin;
+  const float hz_per_sbin = 0.5f * sample_rate / ((float)spectrum_size - 1);
+  state->start_index = 1.5f + config->lower_band_limit / hz_per_sbin;
   state->end_index = 0;  // Initialized to zero here, but actually set below.
 
   // For each channel, we need to figure out what frequencies belong to it, and
