@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_COLOCATE_PREDECESSOR_TREES_PASS_H_
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/platform/status.h"
 
 // TODO(b/344910755): Use the marker in Fill op to find the identity op. This
 // makes the heuristic more straightforward.
