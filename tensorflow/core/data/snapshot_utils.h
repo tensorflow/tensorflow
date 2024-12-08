@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SNAPSHOT_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SNAPSHOT_UTILS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -25,6 +26,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
