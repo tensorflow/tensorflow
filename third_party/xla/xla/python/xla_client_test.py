@@ -3651,6 +3651,37 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
 
   tests.append(ExecuteShardedOverloadTest)
 
+  class ProfilerTest(ComputationTest):
+
+    def testReadFdoProfile(self):
+      if self.backend.platform != "gpu":
+        self.skipTest("Test requires gpu platform.")
+
+      c = self._NewComputation()
+      lhs = np.array([[2.0, 3.0], [4.0, 5.0]], dtype=np.float32)
+      rhs = np.array([[10.0], [20.0]], dtype=np.float32)
+      ops.Dot(ops.Constant(c, lhs), ops.Constant(c, rhs))
+      compiled_c = self.backend.compile(
+          xla_computation_to_mlir_module(c.build())
+      )
+
+      sess = xla_client.profiler.ProfilerSession()
+      results = compiled_c.execute_sharded_on_local_devices([])
+      self.assertLen(results, 1)
+      self.assertIsInstance(results[0], list)
+      self.assertLen(results[0], 1)
+      results[0][0].block_until_ready()
+      xspace = sess.stop()
+
+      profile = xla_client.profiler.get_fdo_profile(xspace)
+      instruction_costs = xla_client.profiler.parse_profiled_instructions_proto(
+          profile
+      )
+      self.assertLen(instruction_costs, 1)
+      self.assertGreater(instruction_costs[0].cost_us, 0.0)
+
+  tests.append(ProfilerTest)
+
   return tests
 
 
