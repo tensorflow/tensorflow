@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
