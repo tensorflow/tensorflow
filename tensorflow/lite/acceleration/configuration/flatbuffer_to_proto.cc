@@ -59,6 +59,8 @@ proto::Delegate ConvertDelegate(Delegate delegate) {
       return proto::Delegate::ARMNN;
     case Delegate_MTK_NEURON:
       return proto::Delegate::MTK_NEURON;
+    case Delegate_INTEL_OPENVINO:
+      return proto::Delegate::INTEL_OPENVINO;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
@@ -476,6 +478,16 @@ proto::MtkNeuronSettings ConvertMtkNeuronSettings(
   return proto_settings;
 }
 
+proto::IntelOpenVINOSettings ConvertIntelOpenVINOSettings(
+    const IntelOpenVINOSettings& settings) {
+  proto::IntelOpenVINOSettings proto_settings;
+
+  proto_settings.set_allow_fp16_precision_for_fp32(
+      settings.allow_fp16_precision_for_fp32());
+
+  return proto_settings;
+}
+
 proto::TFLiteSettings ConvertTfliteSettings(const TFLiteSettings& settings) {
   proto::TFLiteSettings proto_settings;
   proto_settings.set_delegate(ConvertDelegate(settings.delegate()));
@@ -546,6 +558,11 @@ proto::TFLiteSettings ConvertTfliteSettings(const TFLiteSettings& settings) {
   if (settings.mtk_neuron_settings() != nullptr) {
     *proto_settings.mutable_mtk_neuron_settings() =
         ConvertMtkNeuronSettings(*settings.mtk_neuron_settings());
+  }
+
+  if (settings.intel_openvino_settings() != nullptr) {
+    *proto_settings.mutable_intel_openvino_settings() =
+        ConvertIntelOpenVINOSettings(*settings.intel_openvino_settings());
   }
 
   return proto_settings;
