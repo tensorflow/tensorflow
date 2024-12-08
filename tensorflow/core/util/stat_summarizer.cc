@@ -27,10 +27,12 @@ limitations under the License.
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/stat_summarizer_options.h"
+#include "tensorflow/core/util/stats_calculator.h"
 
 namespace tensorflow {
 
