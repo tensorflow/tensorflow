@@ -20,6 +20,8 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
