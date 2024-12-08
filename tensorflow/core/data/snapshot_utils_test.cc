@@ -19,14 +19,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/service/test_util.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace data {
