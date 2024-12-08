@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/clusters/utils.h"
 
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {

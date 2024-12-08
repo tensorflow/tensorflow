@@ -17,15 +17,24 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/check.h"
 #include "tensorflow/cc/framework/scope.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/state_ops.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/platform/status.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace grappler {
