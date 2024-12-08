@@ -67,8 +67,6 @@ class Range {
   bool IsStepKnown() const { return step_.has_value(); }
   // If this range represents a single value return that signed value.
   std::optional<int64_t> GetSingleSignedValue() const;
-  // If this range represents a single value return that unsigned value.
-  std::optional<int64_t> GetSingleUnsignedValue() const;
 
   std::string ToString() const;
 
