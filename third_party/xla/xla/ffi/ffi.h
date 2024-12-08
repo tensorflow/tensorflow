@@ -151,8 +151,6 @@ class Buffer {
     DCHECK(buf_ != nullptr) << "XLA_FFI_Buffer must be non-null";
   }
 
-  PrimitiveType element_type() const { return dtype; }
-
   Dimensions dimensions() const {
     return Dimensions(buf_->dims,
                       rank == internal::kDynamicRank ? buf_->rank : rank);
