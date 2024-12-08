@@ -298,6 +298,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":tf_xplane_visitor",
+        ":timespan",
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_utils",
@@ -348,7 +349,7 @@ tsl_cc_test(
         ":xplane_visitor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:env_impl",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
         "@local_tsl//tsl/platform:types",

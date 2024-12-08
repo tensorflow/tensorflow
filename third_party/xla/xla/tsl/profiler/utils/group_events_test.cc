@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -713,6 +715,39 @@ TEST(GroupTPUEventsTest, TpuProgramCallbackTest) {
     line.ForEachEvent([&](const XEventVisitor& event) {
       // All events should be grouped and have `group_id` set.
       EXPECT_TRUE(event.GetStat(StatType::kGroupId).has_value());
+    });
+  });
+}
+
+TEST(GroupTPUEventsTest, ModuleRootEventTest) {
+  tensorflow::profiler::XSpace space;
+  tensorflow::profiler::XPlane* device_plane = space.add_planes();
+  XPlaneBuilder device_plane_builder(device_plane);
+  device_plane_builder.ReserveLines(1);
+  auto step_line = device_plane_builder.GetOrCreateLine(0);
+  step_line.SetName("Steps");
+  CreateXEvent(&device_plane_builder, &step_line, "1", 100, 200,
+               {{StatType::kStepNum, int64_t{1}}});
+  auto module_line = device_plane_builder.GetOrCreateLine(1);
+  module_line.SetName("XLA Modules");
+  CreateXEvent(&device_plane_builder, &module_line, "module", 105, 199,
+               {{StatType::kRunId, int64_t{123}},
+                {StatType::kQueueId, int64_t{0}},
+                {StatType::kDeviceOrdinal, int64_t{1}},
+                {StatType::kIsRoot, int64_t{1}},
+                {StatType::kGroupId, int64_t{1}}});
+  auto hlo_line = device_plane_builder.GetOrCreateLine(2);
+  hlo_line.SetName("XLA Ops");
+  CreateXEvent(&device_plane_builder, &hlo_line, "matmul", 110, 190, {});
+  EventForest event_forest;
+  GroupTpuEventsOSS(&space, {device_plane}, &event_forest);
+  EXPECT_EQ(event_forest.GetGroupMetadataMap().size(), 1);
+  XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(&space.planes(0));
+  device_plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      SCOPED_TRACE(absl::StrCat(line.Name(), " ", event.Name()));
+      // All events should be grouped and have `group_id` set.
+      EXPECT_EQ(event.GetStat(StatType::kGroupId)->IntValue(), 1);
     });
   });
 }

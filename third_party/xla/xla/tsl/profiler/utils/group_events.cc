@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
@@ -167,12 +168,18 @@ bool IsImplicitRootEvent(const XEventVisitor& event) {
       new absl::flat_hash_set<int64_t>{
           HostEventType::kFunctionRun, HostEventType::kSessionRun,
           HostEventType::kRunGraph, HostEventType::kExecutorStateProcess};
-  return event.Type().has_value() &&
-         kImplicitRootEvents->contains(*event.Type());
+  return event.GetStat(StatType::kImplicitRoot).has_value() ||
+         (event.Type().has_value() &&
+          kImplicitRootEvents->contains(*event.Type()));
 }
 
 void ProcessRootEvent(int64_t group_id, EventNode* root_event,
                       GroupMetadataMap* group_metadata_map) {
+  // If the root event already has a group id, use it.
+  if (std::optional<XStatVisitor> group_id_stat =
+          root_event->GetEventVisitor().GetStat(StatType::kGroupId)) {
+    group_id = group_id_stat->IntValue();
+  }
   root_event->PropagateGroupId(group_id, group_metadata_map);
   std::string group_name = root_event->GetGroupName();
   if (!IsImplicitRootEvent(root_event->GetEventVisitor())) {

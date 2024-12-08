@@ -343,7 +343,8 @@ enum StatType {
   kDeviceOffsetPs,
   kDeviceDurationPs,
   kScopeRangeId,
-  kLastStatType = kScopeRangeId,
+  kImplicitRoot,
+  kLastStatType = kImplicitRoot,
 };
 
 enum MegaScaleStatType : uint8_t {
