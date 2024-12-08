@@ -1268,3 +1268,26 @@ tf_cc_test(
         "@local_xla//xla/tests:test_utils",
     ],
 )
+
+cc_library(
+    name = "compute_inference_latency",
+    srcs = ["compute_inference_latency.cc"],
+    hdrs = ["compute_inference_latency.h"],
+    visibility = ["//perftools/accelerators/xprof/convert:__pkg__"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:overview_page_proto_cc",
+        "@com_google_absl//absl/log",
+        "@local_xla//xla/tsl/profiler/utils:math_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "compute_inference_latency_test",
+    srcs = ["compute_inference_latency_test.cc"],
+    deps = [
+        ":compute_inference_latency",
+        "//tensorflow/core/profiler/protobuf:inference_stats_proto_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
