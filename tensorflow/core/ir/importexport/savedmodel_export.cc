@@ -17,10 +17,14 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/status/status.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace mlir {
 namespace tfg {
