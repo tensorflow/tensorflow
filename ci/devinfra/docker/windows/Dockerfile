@@ -8,7 +8,7 @@
 # - Bazelisk 1.19.0
 # - JDK 21 (Azul Zulu)
 
-FROM mcr.microsoft.com/windows/servercore:ltsc2019
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 SHELL ["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", \
        "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue';$VerbosePreference = 'Continue';"]
