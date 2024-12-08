@@ -50,6 +50,7 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "third_party/py/numpy/_core/include/numpy/ndarrayobject.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/exceptions.h"
@@ -91,6 +92,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "third_party/tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -1564,7 +1566,73 @@ absl::StatusOr<nb::object> PyHostValue::AsNumPyArray(
   } else {
     TF_RETURN_IF_ERROR(ready_.Await());
   }
+
+  TF_RETURN_IF_ERROR(ConvertStringArrayContentsToNumpyArray(ifrt_array));
   return value_;
+}
+
+absl::Status PyHostValue::ConvertStringArrayContentsToNumpyArray(
+    ifrt::Array* ifrt_array) {
+  if (string_array_contents_ == nullptr) {
+    return absl::OkStatus();
+  }
+  TF_ASSIGN_OR_RETURN(nb_dtype dtype, IfrtDtypeToNbDtype(ifrt_array->dtype()));
+  value_ = nb_numpy_ndarray(dtype, ifrt_array->shape().dims(),
+                            /*strides=*/std::nullopt);
+
+  auto dst_py_array_obj = reinterpret_cast<::PyArrayObject*>(value_.ptr());
+  auto iter = tensorflow::make_safe(
+      PyArray_IterNew(reinterpret_cast<PyObject*>(dst_py_array_obj)));
+  for (auto& cord : *string_array_contents_) {
+    absl::string_view input_str_view = cord.Flatten();
+    auto py_string = tensorflow::make_safe(PyBytes_FromStringAndSize(
+        input_str_view.data(), input_str_view.size()));
+    if (py_string == nullptr) {
+      return absl::InternalError("PyBytes_FromStringAndSize failed");
+    }
+    if (PyArray_SETITEM(dst_py_array_obj,
+                        static_cast<char*>(PyArray_ITER_DATA(iter.get())),
+                        py_string.get()) != 0) {
+      return absl::InternalError("PyArray_SETITEM failed");
+    }
+    PyArray_ITER_NEXT(iter.get());
+  }
+
+  value_.attr("flags").attr("writeable") = nb::bool_(false);
+
+  string_array_contents_.reset();
+
+  return absl::OkStatus();
+}
+
+absl::Status PyHostValue::CopyStringArrayToHostAsync(
+    std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array) {
+  auto transfer_guard_formatter = [ifrt_array] {
+    return absl::StrCat(
+        "shape=(", absl::StrJoin(ifrt_array->shape().dims(), ","),
+        "), dtype=", ifrt_array->dtype().DebugString(), ", device=",
+        ifrt_array->sharding().devices()->devices().front()->DebugString());
+  };
+  TF_RETURN_IF_ERROR(
+      jax::ApplyTransferGuardToDeviceToHost(transfer_guard_formatter));
+
+  TF_ASSIGN_OR_RETURN(nb_dtype dtype, IfrtDtypeToNbDtype(ifrt_array->dtype()));
+  auto shape = ifrt_array->shape();
+
+  // Allocate a vector of cords to hold the contents of the array until
+  // they are until they are ultimately converted to a numpy array as part
+  // of the `AsNumPyArray` call.
+  string_array_contents_ =
+      std::make_shared<std::vector<absl::Cord>>(shape.num_elements());
+  ready_ = ifrt_array->CopyToHostBuffer(string_array_contents_->data(),
+                                        /*byte_strides=*/std::nullopt,
+                                        ifrt::ArrayCopySemantics::kAlwaysCopy);
+
+  ready_.OnReady(
+      [string_array_contents = string_array_contents_](absl::Status) {
+      });  // Keeps the cords alive until the copy is done.
+
+  return absl::OkStatus();
 }
 
 absl::Status PyHostValue::CopyToHostAsync(
@@ -1573,6 +1641,12 @@ absl::Status PyHostValue::CopyToHostAsync(
     // The array value has been populated, so CopyToHostAsync has been called.
     return absl::OkStatus();
   }
+
+  // Copying in Arrays of type kString requires some special handling
+  if (ifrt_array->dtype().kind() == ifrt::DType::kString) {
+    return CopyStringArrayToHostAsync(dynamic_shape_holder, ifrt_array);
+  }
+
   auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array);
   if (arr != nullptr && !arr->pjrt_buffers().front()->IsTuple() &&
       IsZeroCopyableCpuBuffer(arr->pjrt_buffers().front().get())) {
