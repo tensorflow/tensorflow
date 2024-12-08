@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <errno.h>
 
+#include "tensorflow/core/framework/allocator.h"
+
 #ifndef _MSC_VER
 #include <strings.h>
 #include <sys/mman.h>  // for munmap
@@ -25,7 +27,6 @@ limitations under the License.
 #include <map>
 #include <utility>
 
-#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"

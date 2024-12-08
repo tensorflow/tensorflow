@@ -14,7 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/session_state.h"
+
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/tensor_id.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
