@@ -580,10 +580,10 @@ class SerializationContext {
     }
     switch (params_.external_state_policy) {
       case ExternalStatePolicy::POLICY_WARN:
-        LOG(WARNING) << s.ToString();
+        LOG(WARNING) << s;
         return absl::OkStatus();
       case ExternalStatePolicy::POLICY_IGNORE:
-        VLOG(2) << "Ignoring error status: " << s.ToString();
+        VLOG(2) << "Ignoring error status: " << s;
         return absl::OkStatus();
       case ExternalStatePolicy::POLICY_FAIL:
         return s;
