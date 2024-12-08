@@ -15,15 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/immutable_executor_state.h"
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/common_runtime/graph_view.h"
+#include "tensorflow/core/common_runtime/pending_counts.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
