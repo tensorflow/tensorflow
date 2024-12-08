@@ -1157,12 +1157,13 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
   // that actually need to run asynchronously with a GPU specific backend
   // config.
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_gather = HloPredicateTrue;
   config.convert_all_reduce = HloPredicateTrue;
+  config.convert_all_to_all = HloPredicateTrue;
   config.convert_collective_broadcast = HloPredicateTrue;
   config.convert_collective_permute = HloPredicateTrue;
-  config.convert_all_gather = HloPredicateTrue;
+  config.convert_ragged_all_to_all = HloPredicateTrue;
   config.convert_reduce_scatter = HloPredicateTrue;
-  config.convert_all_to_all = HloPredicateTrue;
   pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
 
   absl::flat_hash_set<DebugOptions::CollectiveOpType> disabled_async_ops;
@@ -1190,6 +1191,8 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
             return !disabled_async_ops.contains(DebugOptions::REDUCESCATTER);
           case HloOpcode::kAllToAll:
             return !disabled_async_ops.contains(DebugOptions::ALLTOALL);
+          case HloOpcode::kRaggedAllToAll:
+            return !disabled_async_ops.contains(DebugOptions::RAGGEDALLTOALL);
           default:
             return false;
         }
