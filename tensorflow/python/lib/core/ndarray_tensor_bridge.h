@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
+#include <cstddef>
 #include <functional>
 
 #include "tensorflow/c/c_api.h"
