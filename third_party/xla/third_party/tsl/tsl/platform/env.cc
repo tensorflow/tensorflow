@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <sys/stat.h>
 
-#include <deque>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -619,15 +619,24 @@ absl::Status WriteTextProto(Env* env, const string& fname,
 }
 
 absl::Status ReadTextProto(Env* env, const string& fname,
-                           protobuf::Message* proto) {
+                           protobuf::Message* proto,
+                           std::optional<proto2::TextFormat::Parser> parser) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
 
-  if (!protobuf::TextFormat::Parse(stream.get(), proto)) {
-    TF_RETURN_IF_ERROR(stream->status());
-    return errors::DataLoss("Can't parse ", fname, " as text proto");
+  if (parser.has_value()) {
+    if (!parser->Parse(stream.get(), proto)) {
+      TF_RETURN_IF_ERROR(stream->status());
+      return errors::DataLoss("Can't parse ", fname, " as text proto");
+    }
+  } else {
+    if (!protobuf::TextFormat::Parse(stream.get(), proto)) {
+      TF_RETURN_IF_ERROR(stream->status());
+      return errors::DataLoss("Can't parse ", fname, " as text proto");
+    }
   }
+
   return absl::OkStatus();
 }
 
