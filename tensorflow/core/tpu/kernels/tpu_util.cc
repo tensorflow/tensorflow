@@ -19,10 +19,27 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "tensorflow/core/platform/random.h"
+#include "third_party/grpc/include/grpcpp/security/server_credentials.h"
+#include "third_party/grpc/include/grpcpp/server_builder.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "xla/client/compile_only_client.h"
+#include "xla/shape.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tpu {
