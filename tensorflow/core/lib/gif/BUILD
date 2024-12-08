@@ -34,8 +34,8 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/platform:gif",
         "@com_google_absl//absl/strings",
+        "@gif",
     ],
 )
 
@@ -58,12 +58,21 @@ cc_library(
     features = ["-layering_check"],
     linkopts = if_android(["-ldl"]),
     deps = [
+        "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:gif",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@gif",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:tstring",
+        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -78,6 +87,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/lib/png:png_io",
-        "@com_google_absl//absl/base",
+        "@png",
     ],
 )
