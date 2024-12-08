@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_GRAPH_ANALYZER_SUBGRAPH_H_
 #define TENSORFLOW_CORE_GRAPPLER_GRAPH_ANALYZER_SUBGRAPH_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <initializer_list>
+#include <memory>
 #include <set>
 #include <unordered_set>
+#include <utility>
 
 #include "tensorflow/core/grappler/graph_analyzer/gen_node.h"
 #include "tensorflow/core/grappler/graph_analyzer/map_tools.h"
