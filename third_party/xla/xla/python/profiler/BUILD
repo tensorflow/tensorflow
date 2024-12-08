@@ -39,6 +39,7 @@ tsl_pybind_extension(
     deps = [
         ":profile_data_lib",
         "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@nanobind",
     ],
 )
