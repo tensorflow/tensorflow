@@ -81,6 +81,20 @@ class RemoteMgr {
 
   void DeleteExecutorForStream(uint64 stream_id);
 
+  using RemoteTensorHandleMap =
+      gtl::FlatMap<RemoteTensorHandleInternal, tensorflow::TensorHandle*,
+                   RemoteTensorHandleInternalHash,
+                   RemoteTensorHandleInternalEquals>;
+
+  // Returns a map of remote tensor handles. This can be used to determine if a
+  // particular remote tensor handle has been created.
+  RemoteTensorHandleMap GetRemoteTensorHandleMap();
+
+  // Returns a set of deleted remote tensor handles. This can be used to
+  // determine if a particular remote handle was created but later deleted.
+  std::set<RemoteTensorHandleInternal, RemoteTensorHandleInternalEquals>
+  GetDeletedRemoteTensorHandles();
+
  protected:
   mutex next_id_mutex_;
   uint64 next_op_id_ TF_GUARDED_BY(next_id_mutex_) = 1;
@@ -104,10 +118,6 @@ class RemoteMgr {
 
   bool is_master_;
 
-  using RemoteTensorHandleMap =
-      gtl::FlatMap<RemoteTensorHandleInternal, tensorflow::TensorHandle*,
-                   RemoteTensorHandleInternalHash,
-                   RemoteTensorHandleInternalEquals>;
   using MirroredResourceShapeMap = gtl::FlatMap<
       RemoteTensorHandleInternal, std::vector<DtypeAndPartialTensorShape>,
       RemoteTensorHandleInternalHash, RemoteTensorHandleInternalEquals>;
@@ -118,6 +128,11 @@ class RemoteMgr {
   // globally unique. This map owns references on the handles it contains.
   RemoteTensorHandleMap remote_tensor_handle_map_
       TF_GUARDED_BY(remote_tensor_handle_mu_);
+
+  // A vector of deleted remote tensor handles. This will be used to catch
+  // use-before-create and use-after-delete uses.
+  std::set<RemoteTensorHandleInternal, RemoteTensorHandleInternalEquals>
+      deleted_remote_tensor_handles_ TF_GUARDED_BY(remote_tensor_handle_mu_);
 
   mutex mirrored_resource_shape_mu_;
   // This map maintains the data types and shapes of resource variables required
