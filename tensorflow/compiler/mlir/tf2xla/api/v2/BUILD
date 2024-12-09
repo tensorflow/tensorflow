@@ -316,6 +316,30 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "graph_to_tf_executor_util",
+    srcs = ["graph_to_tf_executor_util.cc"],
+    hdrs = ["graph_to_tf_executor_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/common_runtime:function_body",
+        "//tensorflow/core/platform:enable_tf2_utils",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "graph_to_tf_executor",
     srcs = [
         "graph_to_tf_executor.cc",
@@ -325,6 +349,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":graph_to_tf_executor_util",
         "//tensorflow/compiler/jit:shape_inference_helpers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/tensorflow",

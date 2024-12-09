@@ -2687,7 +2687,18 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToTfExecutor(
     const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
     mlir::MLIRContext* context,
-    std::unordered_map<std::string, std::string>* tf_name_to_mlir_name) {
+    std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
+    const ConfigProto& config_proto,
+    tensorflow::TF2XLABridgeVersion bridge_version) {
+  if (bridge_version != tensorflow::TF2XLABridgeVersion::kNotBridgeUseCase) {
+    bool unsupported_graph = GraphHasFeaturesUnsupportedByMlirBridge(
+        graph, &flib_def, config_proto,
+        tensorflow::TF2XLABridgeVersion::kNominal,
+        /*record_stats*/ true,
+        /*single_core_inference_mode=*/false);
+    LOG(INFO) << "unsupported_graph: " << unsupported_graph;
+  }
+
   // TODO(jpienaar): Remove need to const_cast.
   if (specs.upgrade_legacy) {
     NodeFilter node_filter = specs.restrict_functionalization_to_compiled_nodes
