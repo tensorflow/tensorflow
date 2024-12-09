@@ -16,9 +16,12 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/collective_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
