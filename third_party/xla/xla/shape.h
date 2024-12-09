@@ -237,11 +237,6 @@ class Shape {
     }
   }
 
-  void Swap(Shape* other) {
-    using std::swap;
-    swap(*this, *other);
-  }
-
   void Clear() {
     element_type_ = PRIMITIVE_TYPE_INVALID;
     clear_dimensions();
