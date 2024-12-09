@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string_view>
+#include <variant>
 
+#include <gtest/gtest.h>
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 
