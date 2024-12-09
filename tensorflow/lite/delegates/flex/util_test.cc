@@ -15,8 +15,14 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/util.h"
 
 #include <cstdarg>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <iterator>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
