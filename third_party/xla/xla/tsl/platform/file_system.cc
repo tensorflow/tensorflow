@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/file_system.h"
+#include "xla/tsl/platform/file_system.h"
 
 #include <sys/stat.h>
 
@@ -33,7 +33,7 @@ limitations under the License.
 #endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
         // defined(PLATFORM_GOOGLE)
 
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/scanner.h"

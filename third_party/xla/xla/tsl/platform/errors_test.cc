@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 #include "absl/status/status.h"
 #include "tsl/platform/test.h"
@@ -99,8 +99,9 @@ TEST(Status, StackTracePropagation) {
   ASSERT_EQ(sources.size(), 3);
 
   for (int i = 0; i < 3; ++i) {
-    ASSERT_EQ(sources[i].file_name(),
-              "third_party/tensorflow/tsl/platform/errors_test.cc");
+    ASSERT_EQ(
+        sources[i].file_name(),
+        "third_party/tensorflow/compiler/xla/tsl/platform/errors_test.cc");
   }
 }
 

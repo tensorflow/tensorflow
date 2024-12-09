@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_FILE_STATISTICS_H_
-#define TENSORFLOW_TSL_PLATFORM_FILE_STATISTICS_H_
+#ifndef XLA_TSL_PLATFORM_THREADPOOL_INTERFACE_H_
+#define XLA_TSL_PLATFORM_THREADPOOL_INTERFACE_H_
 
-#include "xla/tsl/platform/file_statistics.h"
+#include "unsupported/Eigen/CXX11/ThreadPool"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/types.h"
 
-#endif  // TENSORFLOW_TSL_PLATFORM_FILE_STATISTICS_H_
+namespace tsl {
+namespace thread {
+
+class ThreadPoolInterface : public Eigen::ThreadPoolInterface {};
+
+}  // namespace thread
+}  // namespace tsl
+
+#endif  // XLA_TSL_PLATFORM_THREADPOOL_INTERFACE_H_
