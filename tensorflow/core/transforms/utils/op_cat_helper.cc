@@ -86,7 +86,7 @@ bool OpCatHelper::IsAggregate(TFOp op) {
     return !attr || !mlir::isa<StringType>(attr.getValue());
   }
   const tensorflow::OpDef *op_def = nullptr;
-  tensorflow::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(
+  absl::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(
       op->getName().stripDialect().data(), &op_def);
   return status.ok() && op_def->is_aggregate();
 }
@@ -97,7 +97,7 @@ bool OpCatHelper::IsCommutative(TFOp op) {
     return !attr || !mlir::isa<StringType>(attr.getValue());
   }
   const tensorflow::OpDef *op_def = nullptr;
-  tensorflow::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(
+  absl::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(
       op->getName().stripDialect().data(), &op_def);
   return status.ok() && op_def->is_commutative();
 }
