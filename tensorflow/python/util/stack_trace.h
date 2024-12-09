@@ -19,6 +19,7 @@ limitations under the License.
 #include <Python.h>
 #include <frameobject.h>
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>

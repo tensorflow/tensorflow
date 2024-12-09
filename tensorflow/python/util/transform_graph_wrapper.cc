@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
