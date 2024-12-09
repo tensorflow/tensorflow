@@ -99,14 +99,7 @@ class CoordinationServiceInterface {
       return nullptr;
     }
     auto service = factories_iter->second(env, config, std::move(cache));
-    if (service != nullptr) {
-      *GetCoordinationServiceInstancePtr() = service.get();
-    }
     return service;
-  }
-
-  static CoordinationServiceInterface* GetCoordinationServiceInstance() {
-    return *GetCoordinationServiceInstancePtr();
   }
 
   // This function is invoked after each task's local devices are appended in a
@@ -277,11 +270,6 @@ class CoordinationServiceInterface {
     static auto* coordination_service_factories =
         new std::unordered_map<std::string, CoordinationServiceFactory>();
     return coordination_service_factories;
-  }
-
-  static CoordinationServiceInterface** GetCoordinationServiceInstancePtr() {
-    static CoordinationServiceInterface* instance = nullptr;
-    return &instance;
   }
 };
 
