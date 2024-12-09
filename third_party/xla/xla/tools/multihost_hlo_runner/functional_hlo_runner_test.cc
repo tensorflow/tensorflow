@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/status_macros.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/subprocess.h"
@@ -287,16 +288,17 @@ TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
 }
 
 absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
-  tsl::setenv("CUDA_VISIBLE_DEVICES", std::to_string(node_id).data(),
-              /*overwrite=*/true);
   GpuClientOptions gpu_options;
   gpu_options.node_id = node_id;
   gpu_options.num_nodes = kNumNodes;
+  gpu_options.allowed_devices = {node_id};
   TF_ASSIGN_OR_RETURN(
       PjRtEnvironment env,
       xla::GetPjRtEnvironmentForGpu("127.0.0.1:12345", gpu_options,
                                     /*init_timeout=*/absl::Seconds(120)));
-  CHECK(env.kv_store != nullptr);
+  TF_RET_CHECK(env.kv_store != nullptr);
+  TF_RET_CHECK(env.client->device_count() == kNumNodes);
+  TF_RET_CHECK(env.client->addressable_device_count() == 1);
   // Make HLO module IDs of multiple_gemm_fusions.hlo differ: the autotuner
   // should not rely on them.
   if (node_id == 0) {
@@ -310,9 +312,10 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
       *env.client, GetDebugOptionsFromFlags(),
       FunctionalHloRunner::PreprocessingOptions{},
-      FunctionalHloRunner::RawCompileOptions{},
+      FunctionalHloRunner::RawCompileOptions{.num_replicas = kNumNodes},
       GetHloPath(absl::StrFormat("multiple_gemm_fusions_%d.hlo", node_id + 1)),
-      InputFormat::kText));
+      InputFormat::kText, node_id, kNumNodes, /*kv_store=*/nullptr,
+      /*use_gpu_count_workaround=*/false));
   if (node_id == 0) {
     TF_ASSIGN_OR_RETURN(
         std::string results0,
