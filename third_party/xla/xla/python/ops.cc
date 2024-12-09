@@ -371,7 +371,8 @@ void BuildOpsSubmodule(nb::module_& m) {
   ops.def("Clamp", &Clamp, nb::arg("min"), nb::arg("operand"), nb::arg("max"));
   ops.def("Collapse", &Collapse, nb::arg("operand"), nb::arg("dimensions"));
   ops.def("CollectivePermute", &CollectivePermute, nb::arg("operand"),
-          nb::arg("source_target_pairs"), nb::arg("channel_id") = std::nullopt);
+          nb::arg("source_target_pairs"), nb::arg("channel_id") = std::nullopt,
+          nb::arg("inplace") = false);
   ops.def("ConcatInDim", &ConcatInDim, nb::arg("builder"), nb::arg("operands"),
           nb::arg("dimension"));
   ops.def("Conditional",
@@ -549,6 +550,9 @@ void BuildOpsSubmodule(nb::module_& m) {
   ops.def("Map", &Map, nb::arg("builder"), nb::arg("operands"),
           nb::arg("computation"), nb::arg("dimensions"),
           nb::arg("static_operands") = nb::list());
+  ops.def("MultiCollectivePermute", &MultiCollectivePermute,
+          nb::arg("operands"), nb::arg("source_target_pairs"),
+          nb::arg("channel_id") = std::nullopt, nb::arg("inplace") = false);
   ops.def("NextAfter", &NextAfter, nb::arg("from"), nb::arg("to"));
   ops.def("OutfeedWithToken", &OutfeedWithToken, nb::arg("operand"),
           nb::arg("token"), nb::arg("shape_with_layout"),
@@ -794,6 +798,6 @@ void BuildOpsSubmodule(nb::module_& m) {
   UNARY_OP(Conj);
   UNARY_OP(OptimizationBarrier);
 #undef UNARY_OP
-}
+}  // NOLINT(readability/fn_size)
 
 }  // namespace xla

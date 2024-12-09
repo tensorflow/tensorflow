@@ -179,6 +179,26 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleCollectivePermute) {
   EXPECT_EQ(GetAsyncName(cp), "start");
 }
 
+TEST_F(ConvertAsyncCollectivesToSyncTest, CombinedCollectivePermute) {
+  const absl::string_view hlo_string = R"(
+  HloModule test, is_scheduled=true
+
+  ENTRY test_computation {
+    p0 = u32[2] parameter(0)
+    p1 = u32[2] parameter(1)
+    start = ((u32[2], u32[2]), (u32[2], u32[2])) collective-permute-start(p0, p1), source_target_pairs={{0,1}, {1,0}}
+    ROOT done = (u32[2], u32[2]) collective-permute-done(start)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  const HloInstruction *root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, m::CollectivePermute(m::Parameter(0), m::Parameter(1)));
+  const auto *cp = Cast<HloCollectivePermuteInstruction>(root);
+  EXPECT_THAT(cp, m::SourceTargetPairs({{0, 1}, {1, 0}}));
+  EXPECT_EQ(GetAsyncName(cp), "start");
+}
+
 TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleReduceScatter) {
   const absl::string_view hlo_string = R"(
   HloModule test, is_scheduled=true
