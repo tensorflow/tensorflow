@@ -18,8 +18,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
-#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace nnapi {
