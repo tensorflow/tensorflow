@@ -66,6 +66,10 @@ CUDA_REDIST_JSON_DICT = {
         "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.2.json",
         "8056da1f5acca8e613da1349d9b8782b774ad0254e3eddcc95734ded4d33f2df",
     ],
+    "12.6.3": [
+        "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.3.json",
+        "9c598598457a6463eb92889080c16b2b9dc04150e501b8bfc1536d403ba70aaf",
+    ],
 }
 
 CUDNN_REDIST_JSON_DICT = {
@@ -108,6 +112,14 @@ CUDNN_REDIST_JSON_DICT = {
     "9.5.0": [
         "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.5.0.json",
         "3939f0533fdd0d3aa7edd1ac358d43da18e438e5d8f39c3c15bb72519bad7fb5",
+    ],
+    "9.5.1": [
+        "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.5.1.json",
+        "a5484eef575bbb1fd4f96136cf12244ebc194b661f5ae9ed3b8aaa07e06434b1",
+    ],
+    "9.6.0": [
+        "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.6.0.json",
+        "6dd9a931d981fe5afc7e7ed0c422a4035b1411db4e28a39cf2429e62e3efcd3e",
     ],
 }
 
