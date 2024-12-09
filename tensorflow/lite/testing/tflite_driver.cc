@@ -174,8 +174,6 @@ void TfLiteDriver::AllocateTensors() {
 
 void TfLiteDriver::LoadModel(const std::string& bin_file_path,
                              const std::string& signature) {
-  std::cout << " [ Jae ] LoadModel: " << bin_file_path << std::endl;
-  std::cout << " [ Jae ] LoadModel: " << signature << std::endl;
   if (!IsValid()) return;
 
   model_ = FlatBufferModel::BuildFromFile(GetFullPath(bin_file_path).c_str());
