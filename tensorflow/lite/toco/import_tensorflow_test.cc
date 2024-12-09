@@ -47,7 +47,7 @@ using tensorflow::Status;
 using ::testing::ElementsAre;
 
 namespace internal {
-using ConverterType = tensorflow::Status (*)(
+using ConverterType = absl::Status (*)(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     const ModelFlags& model_flags, Model* model);
 using ConverterMapType = std::unordered_map<std::string, ConverterType>;
