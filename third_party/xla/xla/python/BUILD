@@ -1403,7 +1403,6 @@ cc_library(
 
 cc_library(
     name = "nb_helpers",
-    srcs = ["nb_helpers.cc"],
     hdrs = ["nb_helpers.h"],
     compatible_with = [],
     copts = ["-fexceptions"],

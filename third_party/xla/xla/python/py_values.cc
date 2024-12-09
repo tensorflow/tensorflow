@@ -505,7 +505,7 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
             [&dtypes](nb::handle h,
                       bool jax_enable_x64) -> absl::StatusOr<PyArgSignature> {
           // Only Python native types has a True weak_type.
-          bool weak_type = !xla::nb_isinstance(h, dtypes.np_float64);
+          bool weak_type = !nb::isinstance(h, dtypes.np_float64);
           if (jax_enable_x64) {
             return PyArgSignature(PrimitiveType::F64, {}, weak_type);
           } else {
@@ -518,7 +518,7 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
           // Note that this branch is also taken  for np.complex128:
           // isinstance(np.complex128(3), complex) returns True
           // isinstance(np.complex64(3), complex) returns False
-          bool weak_type = !xla::nb_isinstance(h, dtypes.np_complex128);
+          bool weak_type = !nb::isinstance(h, dtypes.np_complex128);
           if (jax_enable_x64) {
             return PyArgSignature(PrimitiveType::C128, {}, weak_type);
           } else {
