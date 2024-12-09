@@ -69,7 +69,7 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_output,
 
   std::unique_ptr<OpKernel> kernel =
       CreateOpKernel(DeviceType(DEVICE_CPU), nullptr, nullptr, def, 1, &status);
-  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(status.ok()) << status;
   OpKernelContext::Params params;
   DummyDevice dummy_device(nullptr);
   params.device = &dummy_device;

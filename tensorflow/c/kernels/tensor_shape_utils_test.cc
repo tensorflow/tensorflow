@@ -39,7 +39,7 @@ void TestShapeMatch(TensorShape shape) {
   Status status;
   TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, &status);
   TF_TensorWrapper tensor_wrapper = TF_TensorWrapper(tf_tensor);
-  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(status.ok()) << status;
   ASSERT_EQ(tensor.shape().DebugString(), ShapeDebugString(tf_tensor));
 }
 
