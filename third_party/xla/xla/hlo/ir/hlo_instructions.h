@@ -1813,6 +1813,14 @@ class HloInfeedInstruction : public HloInstruction {
     return hlo->opcode() == HloOpcode::kInfeed;
   }
 
+  // Returns the token produced by the infeed instruction.
+  HloInstruction* infeed_token() const;
+
+  // Returns the first ordered infeed in the parent computation.
+  HloInfeedInstruction* infeed_chain_begin() const;
+  // Returns the last ordered infeed in the parent computation.
+  HloInfeedInstruction* infeed_chain_end() const;
+
  private:
   void PrintExtraAttributesImpl(AttributePrinter& printer,
                                 const HloPrintOptions& options) const override;
@@ -1850,6 +1858,11 @@ class HloOutfeedInstruction : public HloInstruction {
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kOutfeed;
   }
+
+  // Returns the first ordered outfeed in the parent computation.
+  HloOutfeedInstruction* outfeed_chain_begin() const;
+  // Returns the last ordered outfeed in the parent computation.
+  HloOutfeedInstruction* outfeed_chain_end() const;
 
  private:
   void PrintExtraAttributesImpl(AttributePrinter& printer,

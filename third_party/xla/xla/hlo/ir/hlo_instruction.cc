@@ -5875,6 +5875,22 @@ void HloInstruction::set_output_to_operand_aliasing(
       std::move(aliasing));
 }
 
+HloInstruction* HloInstruction::infeed_chain_begin() const {
+  return Cast<HloInfeedInstruction>(this)->infeed_chain_begin();
+}
+
+HloInstruction* HloInstruction::infeed_chain_end() const {
+  return Cast<HloInfeedInstruction>(this)->infeed_chain_end();
+}
+
+HloInstruction* HloInstruction::outfeed_chain_begin() const {
+  return Cast<HloOutfeedInstruction>(this)->outfeed_chain_begin();
+}
+
+HloInstruction* HloInstruction::outfeed_chain_end() const {
+  return Cast<HloOutfeedInstruction>(this)->outfeed_chain_end();
+}
+
 std::shared_ptr<OriginalValue> HloInstruction::original_value() const {
   return original_value_;
 }
