@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_allocator.h"
 
+#include <cstddef>
+
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 
 namespace tensorflow {
