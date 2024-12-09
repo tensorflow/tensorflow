@@ -32,6 +32,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/cumsum.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/gather.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/group_normalization.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/group_norm_mean.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/group_norm_var.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/lstm.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/one_hot.h"
@@ -100,6 +103,29 @@ absl::Status SelectGather(const GatherAttributes& attr,
   GPUOperation operation = CreateGather(gpu_info, op_def, attr);
   *ptr = std::make_unique<GPUOperation>(std::move(operation));
   return absl::OkStatus();
+}
+
+absl::Status SelectGroupNormalization(const GroupNormalizationAttributes& attr,
+                                      const OperationDef& op_def,
+                                      const GpuInfo& gpu_info,
+                                      std::unique_ptr<GPUOperation>* ptr) {
+  GPUOperation operation = CreateGroupNormalization(gpu_info, op_def, attr);
+  *ptr = std::make_unique<GPUOperation>(std::move(operation));
+  return absl::OkStatus();
+}
+
+std::unique_ptr<GPUOperation> SelectGroupNormMean(const BHWC& shape,
+                                 const OperationDef& op_def,
+                                 const GpuInfo& gpu_info) {
+  return std::make_unique<GroupNormMean>(CreateGroupNormMean(shape, gpu_info, op_def));
+}
+
+std::unique_ptr<GPUOperation> SelectGroupNormVar(const GroupNormVarAttributes& attr,
+                                 const BHWC& shape,
+                                 const OperationDef& op_def,
+                                 const GpuInfo& gpu_info) {
+  return std::make_unique<GroupNormVar>(
+            CreateGroupNormVar(attr, shape, gpu_info, op_def));
 }
 
 std::unique_ptr<GPUOperation> SelectResampler(const OperationDef& op_def,
