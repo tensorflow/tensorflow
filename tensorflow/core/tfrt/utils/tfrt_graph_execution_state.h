@@ -81,7 +81,7 @@ class TfrtGraphExecutionState {
       tensorflow::GraphImportConfig& graph_import_config);
 
   // Extends the current graph by `graph`.
-  Status Extend(const GraphDef& graph);
+  absl::Status Extend(const GraphDef& graph);
 
   // Return the preprocessed full graph. Note that it does not contain the
   // function library in the original graph.
@@ -127,14 +127,14 @@ class TfrtGraphExecutionState {
 // pruning (e.g., prunes the input edges to the feed nodes) than
 // `ComputeTransitiveFanin()` so that the graph can be functionalized properly
 // later.
-Status PruneGraphDef(GraphDef& graph_def,
-                     const CallableOptions& callable_options);
+absl::Status PruneGraphDef(GraphDef& graph_def,
+                           const CallableOptions& callable_options);
 
 // Eliminates ref variables in V1 control flow, which is required for
 // functionalization. Current strategy is to insert an identity node between
 // each ref node and its ref input and in-place update the ref node to its
 // non-ref counterpart.
-Status EliminateRefVariablesFromV1ControlFlow(GraphDef& graph_def);
+absl::Status EliminateRefVariablesFromV1ControlFlow(GraphDef& graph_def);
 
 // Removes the "_input_shapes" attribute of functions in the graph.
 void RemoveInputShapesInFunctions(tensorflow::GraphDef& graph_def);
