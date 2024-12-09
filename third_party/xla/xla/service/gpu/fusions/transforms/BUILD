@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -112,5 +113,7 @@ cc_library(
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
         "@local_tsl//tsl/platform:protobuf",
-    ],
+    ] + if_rocm_is_configured([
+        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
+    ]),
 )
