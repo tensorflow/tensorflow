@@ -56,8 +56,8 @@ using ::tfrt::AsyncValue;
 using ::tfrt::HostContext;
 using ::tfrt::RCReference;
 
-Status GetTfrtExecutionContext(OpKernelContext* c,
-                               const tfrt::ExecutionContext** exec_ctx) {
+absl::Status GetTfrtExecutionContext(OpKernelContext* c,
+                                     const tfrt::ExecutionContext** exec_ctx) {
   // ExecutionContext's address is passed in as an I64 input. exec_ctx is only
   // valid during the period of one bef execution. It should not be stored and
   // accessed after bef execution completes.
@@ -109,11 +109,12 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
     return batch_function->name();
   }
 
-  static Status Create(OpKernelContext* c,
-                       const serving::BatchResourceOptions& options,
-                       tsl::RCReference<const tfrt::Function> bef_func,
-                       bool enable_large_batch_splitting, bool disable_padding,
-                       std::unique_ptr<FallbackBatchResource>* resource) {
+  static absl::Status Create(OpKernelContext* c,
+                             const serving::BatchResourceOptions& options,
+                             tsl::RCReference<const tfrt::Function> bef_func,
+                             bool enable_large_batch_splitting,
+                             bool disable_padding,
+                             std::unique_ptr<FallbackBatchResource>* resource) {
     const tfrt::ExecutionContext* exec_ctx = nullptr;
     TF_RETURN_IF_ERROR(GetTfrtExecutionContext(c, &exec_ctx));
 
@@ -147,7 +148,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
     return absl::OkStatus();
   }
 
-  static Status Create(
+  static absl::Status Create(
       OpKernelContext* c,
       AdaptiveBatcherT::Options adaptive_shared_batch_scheduler_options,
       int32_t max_batch_size, int32_t batch_timeout_micros,
@@ -232,7 +233,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
   void ProcessFuncBatchImpl(
       const BatchTask& last_task, absl::Span<const Tensor> inputs,
       std::vector<Tensor>* combined_outputs,
-      std::function<void(const Status&)> done) const override;
+      std::function<void(const absl::Status&)> done) const override;
 
   HostContext* const host_ctx_;
   tfrt::ResourceContext* const resource_context_;
@@ -246,7 +247,7 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TFTensorToFallbackTensor(
   return tfrt::MakeAvailableAsyncValueRef<tfrt_stub::FallbackTensor>(tf_tensor);
 }
 
-Status SetUpKernelFallbackCompatRequestContextForBatch(
+absl::Status SetUpKernelFallbackCompatRequestContextForBatch(
     tfrt::RequestContextBuilder* builder,
     tfrt_stub::OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array,
@@ -305,7 +306,7 @@ absl::StatusOr<RCReference<tfrt::RequestContext>> SetUpRequestContext(
 void FallbackBatchResource::ProcessFuncBatchImpl(
     const BatchTask& last_task, absl::Span<const Tensor> inputs,
     std::vector<Tensor>* combined_outputs,
-    std::function<void(const Status&)> done) const {
+    std::function<void(const absl::Status&)> done) const {
   std::vector<tsl::RCReference<AsyncValue>> arguments;
   arguments.reserve(inputs.size() + 1);
   // The first argument is a Chain.
@@ -365,7 +366,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
         result->get<tfrt_stub::FallbackTensor>().tensor();
   }
   // Aggregate errors.
-  Status final_status;
+  absl::Status final_status;
   if (!errors.empty()) {
     if (errors.size() > 1) {
       auto last = std::unique(errors.begin(), errors.end());

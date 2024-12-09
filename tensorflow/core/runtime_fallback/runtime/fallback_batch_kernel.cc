@@ -149,7 +149,8 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
   OP_REQUIRES_OK(c, ValidateAllowedBatchSizes());
 }
 
-Status BatchFunctionFallbackKernelBase::ValidateAllowedBatchSizes() const {
+absl::Status BatchFunctionFallbackKernelBase::ValidateAllowedBatchSizes()
+    const {
   if (allowed_batch_sizes_.empty()) {
     return absl::OkStatus();
   }

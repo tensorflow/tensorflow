@@ -135,7 +135,7 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
     TensorHandle* handle, HostContext* host) {
   OwnedTensorHandle th(handle);
   int rank;
-  tensorflow::Status status = th->NumDims(&rank);
+  absl::Status status = th->NumDims(&rank);
   if (!status.ok())
     return tfrt::MakeErrorAsyncValueRef(tfrt::StrCat(
         "error getting rank from TF tensor handle: ", status.message()));
@@ -244,7 +244,7 @@ OwnedTFTensor MoveDHTToTFTensor(DenseHostTensor&& dht, HostContext* host) {
   return tf_tensor;
 }
 
-static tensorflow::Status DecodeDenseAttrToTensorInterface(
+static absl::Status DecodeDenseAttrToTensorInterface(
     const DenseAttr& dense_attr, HostContext* host,
     tensorflow::TensorInterface* result) {
   Expected<DenseHostTensor> dht =
@@ -268,11 +268,11 @@ static tensorflow::Status DecodeDenseAttrToTensorInterface(
 // Note we currently do not support the following attribute value types:
 // TFE_OpSetAttrFunction
 // TFE_OpSetAttrFunctionName
-static tensorflow::Status PrepareAttributes(EagerOperation* eager_op,
-                                            const OpAttrsRef& attrs,
-                                            HostContext* host,
-                                            EagerContext* eager_ctx) {
-  tensorflow::Status status;
+static absl::Status PrepareAttributes(EagerOperation* eager_op,
+                                      const OpAttrsRef& attrs,
+                                      HostContext* host,
+                                      EagerContext* eager_ctx) {
+  absl::Status status;
   attrs.IterateEntries([eager_op, eager_ctx, status_ptr = &status, host,
                         &attrs](const OpAttrsRawEntry& entry) {
     // TFE does not expect a device attribute.
@@ -450,13 +450,12 @@ static tensorflow::Status PrepareAttributes(EagerOperation* eager_op,
   return status;
 }
 
-Status CallEagerExecute(const tfrt::ExecutionContext& exec_ctx,
-                        EagerContext* eager_ctx, const char* op_name,
-                        const char* device_name,
-                        llvm::ArrayRef<TensorHandle*> input_tensor_handles,
-                        const OpAttrsRef& attrs,
-                        llvm::MutableArrayRef<tensorflow::AbstractTensorHandle*>
-                            result_tensor_handles) {
+absl::Status CallEagerExecute(
+    const tfrt::ExecutionContext& exec_ctx, EagerContext* eager_ctx,
+    const char* op_name, const char* device_name,
+    llvm::ArrayRef<TensorHandle*> input_tensor_handles, const OpAttrsRef& attrs,
+    llvm::MutableArrayRef<tensorflow::AbstractTensorHandle*>
+        result_tensor_handles) {
   assert(eager_ctx != nullptr && "EagerContext is NULL");
 
   // Create TF EagerOperation.
@@ -492,7 +491,7 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
     const char* op_name, const char* device_name,
     llvm::ArrayRef<Tensor*> arguments, const OpAttrsRef& attrs,
     llvm::MutableArrayRef<RCReference<AsyncValue>> results) {
-  auto emit_error = [&exec_ctx, results](const tensorflow::Status& status) {
+  auto emit_error = [&exec_ctx, results](const absl::Status& status) {
     // Set the correct TFRT error code according to the error propagated from
     // runtime fallback execution.
     auto error = EmitErrorAsync(exec_ctx, status);
@@ -511,7 +510,7 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
   int num_retvals = results.size();
   llvm::SmallVector<tensorflow::AbstractTensorHandle*, 4> result_tensor_handles(
       num_retvals);
-  Status status;
+  absl::Status status;
   if (!ShouldAddHostContextAttr(op_name)) {
     status =
         CallEagerExecute(exec_ctx, eager_ctx, op_name, device_name,
@@ -682,7 +681,7 @@ static void RuntimeFallbackKernel(
   int num_retvals = output_tensors.size();
   llvm::SmallVector<tensorflow::AbstractTensorHandle*, 4> retvals(num_retvals);
 
-  tensorflow::Status status = eager_op->Execute(
+  absl::Status status = eager_op->Execute(
       absl::MakeSpan(retvals.data(), num_retvals), &num_retvals);
   TFD_REPORT_AND_RETURN_IF_ERROR(handler, status);
 
@@ -935,7 +934,8 @@ static void RuntimeFallbackExecuteOp(
 
   // Get device.
   Device* device = nullptr;
-  Status s = eager_ctx->local_device_mgr()->LookupDevice(device_name, &device);
+  absl::Status s =
+      eager_ctx->local_device_mgr()->LookupDevice(device_name, &device);
   if (!s.ok()) {
     // The device name can be invalid in certain cases. Use default CPU device.
     VLOG(1) << s.message() << " using default CPU device.";
@@ -985,7 +985,7 @@ static void RuntimeFallbackExecuteOp(
     auto& runtime_fallback_tensor =
         tfrt_tensor_results[i]->get<RuntimeFallbackTensor>();
     const tensorflow::Tensor* tf_tensor = nullptr;
-    tensorflow::Status s =
+    absl::Status s =
         runtime_fallback_tensor.GetTensorHandle()->Tensor(&tf_tensor);
     DCHECK(s.ok()) << s;
     results[i] =
@@ -1039,7 +1039,7 @@ static OwnedTensorHandle ConvertTFRTTensorToTFTensorHandle(
 
 static llvm::Expected<tfrt::Value> ConvertTFTensorHandleToTFRTTensor(
     OwnedTensorHandle tensor_handle, HostContext* host) {
-  tensorflow::Status status;
+  absl::Status status;
   // Resolve ensures Tensor is on host CPU.
   OwnedAbstractTensorInterface tensor_interface{
       tensor_handle->Resolve(&status)};

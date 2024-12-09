@@ -42,7 +42,7 @@ tfrt::Expected<tfrt::DenseHostTensor>
 ConvertRuntimeFallbackTensorToDenseHostTensor(
     const RuntimeFallbackTensor &tensor, const tfrt::CpuDevice &src,
     const tfrt::CpuDevice &dst, const tfrt::ExecutionContext &exec_ctx) {
-  tensorflow::Status status;
+  absl::Status status;
   // Resolve ensures Tensor is on host CPU.
   OwnedAbstractTensorInterface tensor_interface{
       tensor.GetTensorHandle()->Resolve(&status)};
@@ -68,7 +68,7 @@ ConvertRuntimeFallbackTensorToStringHostTensor(
     const RuntimeFallbackTensor &tensor, const tfrt::Device &src,
     const tfrt::CpuDevice &dst, const tfrt::ExecutionContext &exec_ctx) {
   auto *host_ctx = exec_ctx.host();
-  tensorflow::Status status;
+  absl::Status status;
   // Resolve ensures Tensor is on host CPU.
   OwnedAbstractTensorInterface tensor_interface{
       tensor.GetTensorHandle()->Resolve(&status)};
@@ -151,7 +151,8 @@ TransferRuntimeFallbackToAnotherDevice(const RuntimeFallbackTensor &tensor,
 
   auto *th = tensor.GetTensorHandle();
   Device *tf_device;
-  Status s = eager_context->FindDeviceFromName(dst.name().data(), &tf_device);
+  absl::Status s =
+      eager_context->FindDeviceFromName(dst.name().data(), &tf_device);
   if (!s.ok()) return tfrt::MakeStringError(s.message());
 
   auto *host = exec_ctx.host();
