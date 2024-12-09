@@ -45,7 +45,7 @@ absl::StatusOr<bool> TriangularSolveRewriter::Run(
        module->MakeNonfusionComputations(execution_threads)) {
     std::vector<HloInstruction*> to_rewrite;
     for (HloInstruction* instr : comp->instructions()) {
-      if (instr->opcode() == HloOpcode::kTriangularSolve) {
+      if (HloPredicateIsOp<HloOpcode::kTriangularSolve>(instr)) {
         to_rewrite.push_back(instr);
       }
     }
