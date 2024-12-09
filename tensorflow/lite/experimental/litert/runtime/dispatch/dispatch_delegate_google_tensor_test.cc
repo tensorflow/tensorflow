@@ -26,9 +26,13 @@
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_compiled_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/core/model/model_buffer.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
@@ -210,6 +214,66 @@ TEST(DispatchDelegate, GoogleTensorHwBuffer) {
   auto output_span = absl::MakeSpan(output_buffer_data, kTestOutputSize);
   auto read_success = output_buffer.Read<float>(output_span);
   ASSERT_TRUE(read_success);
+  for (auto i = 0; i < kTestOutputSize; ++i) {
+    ABSL_LOG(INFO) << "Result: " << output_span.at(i) << "\t"
+                   << kTestOutputTensor[i];
+  }
+  EXPECT_THAT(output_span, Pointwise(FloatNear(1e-5), kTestOutputTensor));
+}
+
+TEST(DispatchDelegate, CompiledModel) {
+  auto model_with_byte_code =
+      internal::GetModelBufWithByteCode(testing::GetTestFilePath(kTfliteFile),
+                                        testing::GetTestFilePath(kNpuFile));
+  ASSERT_TRUE(model_with_byte_code);
+  auto model = Model::CreateFromBuffer(*model_with_byte_code);
+  ASSERT_TRUE(model);
+
+#if !defined(__ANDROID__)
+  GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
+                  "GoogleTensor eTPU";
+#endif
+
+  auto res_compiled_model = CompiledModel::Create(*model, kHwAccelNpu);
+  ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
+  auto& compiled_model = *res_compiled_model;
+
+  auto signatures = model->GetSignatures();
+  ASSERT_TRUE(signatures);
+  EXPECT_EQ(signatures->size(), 1);
+  auto& signature = signatures->at(0);
+  auto signature_key = signature.Key();
+  EXPECT_EQ(signature_key, Model::DefaultSignatureKey());
+  size_t signature_index = 0;
+
+  auto input_buffers_res = compiled_model.CreateInputBuffers(signature_index);
+  EXPECT_TRUE(input_buffers_res);
+  auto& input_buffers = *input_buffers_res;
+
+  auto output_buffers_res = compiled_model.CreateOutputBuffers(signature_index);
+  EXPECT_TRUE(output_buffers_res);
+  auto& output_buffers = *output_buffers_res;
+
+  // Fill model inputs.
+  auto input_names = signature.InputNames();
+  EXPECT_EQ(input_names.size(), 2);
+  EXPECT_EQ(input_names.at(0), "arg0");
+  EXPECT_EQ(input_names.at(1), "arg1");
+  ASSERT_TRUE(input_buffers[0].Write<float>(
+      absl::MakeConstSpan(kTestInput0Tensor, kTestInput0Size)));
+  ASSERT_TRUE(input_buffers[1].Write<float>(
+      absl::MakeConstSpan(kTestInput1Tensor, kTestInput1Size)));
+
+  // Execute model.
+  compiled_model.Run(signature_index, input_buffers, output_buffers);
+
+  // Check model output.
+  auto output_names = signature.OutputNames();
+  EXPECT_EQ(output_names.size(), 1);
+  EXPECT_EQ(output_names.at(0), "tfl.custom");
+  float output_buffer_data[kTestOutputSize];
+  auto output_span = absl::MakeSpan(output_buffer_data, kTestOutputSize);
+  ASSERT_TRUE(output_buffers[0].Read(output_span));
   for (auto i = 0; i < kTestOutputSize; ++i) {
     ABSL_LOG(INFO) << "Result: " << output_span.at(i) << "\t"
                    << kTestOutputTensor[i];

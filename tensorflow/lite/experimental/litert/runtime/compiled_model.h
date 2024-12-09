@@ -25,6 +25,7 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
@@ -46,9 +47,8 @@ class LiteRtCompiledModelT {
   // Creates a LiteRtCompiledModelT from a LiteRtModel object.
   // The model is loaded into memory and the caller takes ownership of the
   // returned object.
-  // WARNING: The created CompiledModel only runs with Xnnpack delegate for now.
-  // TODO: b/379317134 - Add support for compilation options.
-  static litert::Expected<Ptr> Create(LiteRtModel model);
+  static litert::Expected<Ptr> Create(
+      LiteRtModel model, LiteRtComplicationOptions complication_options);
 
   // Returns the buffer requirements for the n-th input tensor. The returned
   // LiteRtTensorBufferRequirements is used to create the input tensor

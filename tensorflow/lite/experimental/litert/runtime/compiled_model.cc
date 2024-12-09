@@ -26,6 +26,8 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
@@ -74,29 +76,55 @@ Expected<void> LiteRtCompiledModelT::Initialize() {
 }
 
 Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
-    LiteRtModel model) {
+    LiteRtModel model, LiteRtComplicationOptions complication_options) {
   auto runtime = std::make_unique<LiteRtCompiledModelT>();
 
-  // TODO b/379317134 - Once LiteRtModel provide tflite::Model object, switch to
-  // use it to initialize Interpreter instead of serializing LiteRtModel.
-  auto [data, size, offset] = runtime->model_buf_.GetWeak();
-  if (LiteRtSerializeModel(model, &data, &size, &offset,
-                           /*destroy_model=*/false) != kLiteRtStatusOk) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+  const char* model_buffer = nullptr;
+  size_t model_buffer_size = 0;
+  // The following code gets the original FB pointer from LiteRtModel.
+  // TODO b/383120429 - Use a better way of getting the FB pointer.
+  if (model->model_buffer) {
+    // Use the saved the original FB pointer when the LiteRtModel was created
+    // from a buffer.
+    model_buffer = reinterpret_cast<const char*>(model->model_buffer);
+    model_buffer_size = model->model_buffer_size;
+  } else {
+    // TODO b/383120429 - Once LiteRtModel provide tflite::Model object, switch
+    // to use it to initialize Interpreter instead of serializing LiteRtModel.
+    auto [data, size, offset] = runtime->model_buf_.GetWeak();
+    if (LiteRtSerializeModel(model, &data, &size, &offset,
+                             /*destroy_model=*/false) != kLiteRtStatusOk) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+    }
+    runtime->alloc_ = std::make_unique<tflite::MemoryAllocation>(
+        runtime->model_buf_.Data(), runtime->model_buf_.Size(),
+        tflite::DefaultErrorReporter());
+    model_buffer = reinterpret_cast<const char*>(runtime->alloc_->base());
+    model_buffer_size = runtime->alloc_->bytes();
   }
-  runtime->alloc_ = std::make_unique<tflite::MemoryAllocation>(
-      runtime->model_buf_.Data(), runtime->model_buf_.Size(),
-      tflite::DefaultErrorReporter());
-
-  runtime->fb_model_ = tflite::FlatBufferModel::BuildFromBuffer(
-      reinterpret_cast<const char*>(runtime->alloc_->base()),
-      runtime->alloc_->bytes());
+  runtime->fb_model_ =
+      tflite::FlatBufferModel::BuildFromBuffer(model_buffer, model_buffer_size);
   if (runtime->fb_model_ == nullptr) {
     return Unexpected(kLiteRtStatusErrorFileIO);
   }
 
   if (auto res = runtime->Initialize(); !res.HasValue()) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure);
+  }
+
+  // TODO: b/379317134 - Support other delegates with compilation options.
+  if (complication_options & kHwAccelNpu) {
+    auto dispatch_delegate_options = litert::CreateDispatchDelegateOptionsPtr();
+    LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
+                                             model_buffer);
+    auto dispatch_delegate =
+        litert::CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
+    if (auto status =
+            runtime->interp_->ModifyGraphWithDelegate(dispatch_delegate.get());
+        status != kTfLiteOk) {
+      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                        "Failed to modify graph with delegate");
+    }
   }
 
   return runtime;

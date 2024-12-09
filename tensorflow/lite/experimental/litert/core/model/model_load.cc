@@ -254,8 +254,14 @@ Expected<std::unique_ptr<LiteRtModelT>> LoadModelFromBuffer(
   if (!flatbuffer) {
     return flatbuffer.Error();
   }
-  return LoadModelFromFlatbuffer(
+  auto litert_model = LoadModelFromFlatbuffer(
       std::make_unique<TflModel>(std::move((*flatbuffer)->UnpackedModel())));
+  if (litert_model) {
+    // Save the original FB pointer to use it later on CompiledModel.
+    (*litert_model)->model_buffer = buffer.Data();
+    (*litert_model)->model_buffer_size = buffer.Size();
+  }
+  return litert_model;
 }
 
 Expected<std::unique_ptr<LiteRtModelT>> LoadModelFromFile(

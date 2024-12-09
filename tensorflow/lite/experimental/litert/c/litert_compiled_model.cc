@@ -17,15 +17,18 @@
 #include <stddef.h>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/runtime/compiled_model.h"
 
-LiteRtStatus LiteRtCreateCompiledModel(LiteRtModel model,
-                                       LiteRtCompiledModel* compiled_model) {
-  auto created_compiled_model = LiteRtCompiledModelT::Create(model);
+LiteRtStatus LiteRtCreateCompiledModel(
+    LiteRtModel model, LiteRtComplicationOptions complication_options,
+    LiteRtCompiledModel* compiled_model) {
+  auto created_compiled_model =
+      LiteRtCompiledModelT::Create(model, complication_options);
   if (!created_compiled_model) {
     LITERT_LOG(LITERT_ERROR, "%s",
                created_compiled_model.Error().Message().data());

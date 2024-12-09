@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 
@@ -34,7 +35,8 @@ TEST(CompiledModelTest, Basic) {
   ASSERT_EQ(LiteRtCreateModelFromFile(kTfliteFile.data(), &model),
             kLiteRtStatusOk);
   LiteRtCompiledModel compiled_model;
-  ASSERT_EQ(LiteRtCreateCompiledModel(model, &compiled_model), kLiteRtStatusOk);
+  ASSERT_EQ(LiteRtCreateCompiledModel(model, kHwAccelCpu, &compiled_model),
+            kLiteRtStatusOk);
 
   LiteRtSubgraph subgraph;
   ASSERT_EQ(LiteRtGetModelSubgraph(model, 0, &subgraph), kLiteRtStatusOk);
