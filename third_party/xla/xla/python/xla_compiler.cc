@@ -1547,6 +1547,10 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .value("HIGH", PrecisionConfig::HIGH)
       .value("HIGHEST", PrecisionConfig::HIGHEST);
 
+  nb::enum_<ResultAccuracy::Mode>(m, "ResultAccuracy_Mode")
+      .value("DEFAULT", ResultAccuracy::DEFAULT)
+      .value("HIGHEST", ResultAccuracy::HIGHEST);
+
   nb::enum_<FftType>(m, "FftType")
       .value("FFT", FftType::FFT)
       .value("IFFT", FftType::IFFT)
