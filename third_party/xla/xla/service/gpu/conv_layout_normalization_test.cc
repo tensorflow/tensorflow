@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <variant>
+
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "tsl/platform/test.h"
@@ -30,6 +33,13 @@ class ConvolutionLayoutNormalizationTest : public HloTestBase {
         .default_stream_executor()
         ->GetDeviceDescription()
         .cuda_compute_capability();
+  }
+  bool IsRocm() {
+    return std::holds_alternative<se::RocmComputeCapability>(
+        backend()
+            .default_stream_executor()
+            ->GetDeviceDescription()
+            .gpu_compute_capability());
   }
 };
 
@@ -71,8 +81,10 @@ ENTRY %TestComputation {
   )");
 }
 
-// TODO(rocm): No Conv3D
-TEST_F(ConvolutionLayoutNormalizationTest, DISABLED_ON_GPU_ROCM(FusedConv3D)) {
+TEST_F(ConvolutionLayoutNormalizationTest, FusedConv3D) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Conv3D is not supported on ROCm.";
+  }
   const char* hlo = R"(
 HloModule TestModule
 
