@@ -115,6 +115,7 @@ xla_cc_binary(
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
