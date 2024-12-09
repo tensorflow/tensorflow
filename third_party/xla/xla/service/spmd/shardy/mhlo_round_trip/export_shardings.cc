@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -44,7 +45,9 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -62,6 +65,7 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 
@@ -85,6 +89,8 @@ using ::mlir::StringRef;
 using ::mlir::success;
 using ::mlir::SymbolTable;
 using ::mlir::func::FuncOp;
+
+using ::mlir::stablehlo::CustomCallOp;
 
 using ::mlir::sdy::AxisRefAttr;
 using ::mlir::sdy::DimensionShardingAttr;
@@ -190,6 +196,39 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
   return success();
 }
 
+// The rest of the XLA pipeline expects host callback custom calls to either be
+// a tuple with a get_tuple_element or no results (which we changed due to
+// shardy shardings expecting at least one result, and needing to attach a
+// maximal sharding to the callbacks).
+CustomCallOp rewriteHostCallback(CustomCallOp op) {
+  StringRef targetName = op.getCallTargetName();
+  if (targetName != kPythonCpuCallbackCustomCallTargetName &&
+      targetName != kPythonGpuCallbackCustomCallTargetName) {
+    return op;
+  }
+  mlir::IRRewriter rewriter(op);
+  if (!op->use_empty() && op.getNumResults() == 1 &&
+      !isa<mlir::TupleType>(op->getResultTypes().front())) {
+    CustomCallOp tupleCustomCall = cloneOpWithNewResultTypes(
+        op, mlir::TupleType::get(op->getContext(), {op->getResultTypes()}),
+        rewriter);
+    auto getTupleElement = rewriter.create<mlir::stablehlo::GetTupleElementOp>(
+        op.getLoc(), op->getResultTypes().front(), tupleCustomCall.getResult(0),
+        rewriter.getI32IntegerAttr(0));
+    getTupleElement->setAttr(kXlaShardingAttr, op->getAttr(kXlaShardingAttr));
+    rewriter.replaceOp(op, getTupleElement);
+    return tupleCustomCall;
+  }
+  if (!op->use_empty()) {
+    return op;
+  }
+  CustomCallOp newCustomCall =
+      cloneOpWithNewResultTypes(op, mlir::TypeRange(), rewriter);
+  newCustomCall.setResultLayoutsAttr(rewriter.getArrayAttr({}));
+  rewriter.eraseOp(op);
+  return newCustomCall;
+}
+
 class ExportMhloShardingsPass
     : public PassWrapper<ExportMhloShardingsPass, OperationPass<ModuleOp>> {
  public:
@@ -197,6 +236,7 @@ class ExportMhloShardingsPass
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
+
     mlir::SymbolTableCollection symbolTableCollection;
     SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(moduleOp);
 
@@ -208,10 +248,11 @@ class ExportMhloShardingsPass
       }
     }
 
-    // StableHLO doesn't have an equivalent of `erf` and `topk` ops.
-    // If they have a sharding annotation, we need to move it into
-    // `mhlo.attributes`, which StableHLO->MHLO conversion would lift back up.
-    moduleOp.walk([&](mlir::stablehlo::CustomCallOp customCall) {
+    moduleOp.walk([&](CustomCallOp customCall) {
+      customCall = rewriteHostCallback(customCall);
+      // StableHLO doesn't have an equivalent of `erf` and `topk` ops.
+      // If they have a sharding annotation, we need to move it into
+      // `mhlo.attributes`, which StableHLO->MHLO conversion would lift back up.
       StringRef callTargetName = customCall.getCallTargetName();
       if (callTargetName != "mhlo.erf" && callTargetName != "mhlo.topk") {
         return;

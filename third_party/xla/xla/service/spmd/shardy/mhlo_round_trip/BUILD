@@ -30,6 +30,7 @@ cc_library(
         "//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

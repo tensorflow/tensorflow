@@ -127,12 +127,30 @@ cc_library(
 )
 
 cc_library(
+    name = "import_callback_custom_calls",
+    srcs = ["import_callback_custom_calls.cc"],
+    hdrs = ["import_callback_custom_calls.h"],
+    deps = [
+        "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
     name = "pipelines",
     srcs = ["pipelines.cc"],
     hdrs = ["pipelines.h"],
     deps = [
         ":export_ops",
         ":export_shardy_attrs",
+        ":import_callback_custom_calls",
         ":import_shardy_attrs",
         ":remove_size_one_axes",
         ":shard_map_export",
@@ -143,6 +161,5 @@ cc_library(
         "//xla/service/spmd/shardy/round_trip_common:pipeline_passes",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
     ],
 )

@@ -28,7 +28,10 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeRange.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
 namespace xla {
 namespace sdy {
@@ -100,6 +103,12 @@ std::optional<AttrTy> tryGetFrontendAttr(mlir::Operation* op,
   }
   return std::nullopt;
 }
+
+// Builds a new `stablehlo.custom_call` with the same operands and attributes
+// as `op` but with new `resultTypes`.
+mlir::stablehlo::CustomCallOp cloneOpWithNewResultTypes(
+    mlir::stablehlo::CustomCallOp op, mlir::TypeRange resultTypes,
+    mlir::IRRewriter& rewriter);
 
 }  // namespace sdy
 }  // namespace xla
