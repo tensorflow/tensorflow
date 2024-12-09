@@ -2010,7 +2010,7 @@ bool DynamicSliceFusionCmd::force_update() {
     if (!slice.offsets.has_value()) return true;
     return absl::c_all_of(slice.offsets.value(),
                           [](DynamicSliceThunk::Offset offset) {
-                            return std::holds_alternative<uint64_t>(offset);
+                            return std::holds_alternative<int64_t>(offset);
                           });
   });
 }
@@ -2106,7 +2106,7 @@ absl::Status DynamicSliceFusionCmd::Record(
     for (auto [offset_idx, values] : llvm::enumerate(llvm::zip(
              *slice.offsets, src_shape.dimensions(), dst_shape.dimensions()))) {
       auto [offset, src_dim, dst_dim] = values;
-      if (uint64_t* const_offset = std::get_if<uint64_t>(&offset)) {
+      if (int64_t* const_offset = std::get_if<int64_t>(&offset)) {
         // Forward slice offsets that are known constant values
         VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
                 << "]: constant offset = " << *const_offset;
