@@ -116,6 +116,11 @@ struct ZeroProvider {
 };
 
 template <PrimitiveType kType>
+struct MinusOneProvider {
+  NativeT<kType> operator()() const { return static_cast<NativeT<kType>>(-1); }
+};
+
+template <PrimitiveType kType>
 struct OneProvider {
   NativeT<kType> operator()() const { return static_cast<NativeT<kType>>(1); }
 };
@@ -482,6 +487,10 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 
 /* static */ Literal LiteralUtil::One(PrimitiveType primitive_type) {
   return CreateScalar<OneProvider>(primitive_type);
+}
+
+/* static */ Literal LiteralUtil::MinusOne(PrimitiveType primitive_type) {
+  return CreateScalar<MinusOneProvider>(primitive_type);
 }
 
 /* static */ Literal LiteralUtil::MinValue(PrimitiveType primitive_type) {
