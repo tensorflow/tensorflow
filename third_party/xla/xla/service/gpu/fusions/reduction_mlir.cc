@@ -193,7 +193,8 @@ PerThreadOutputs MlirReductionFusion::EmitterState::EmitPerThreadElements(
     iter_arg_inits.append(init);
   }
 
-  auto body_builder = [&](ValueRange symbol_values, ValueRange map_results,
+  auto body_builder = [&](ImplicitLocOpBuilder& nested_b,
+                          ValueRange symbol_values, ValueRange map_results,
                           ValueRange iter_args) -> SmallVector<Value> {
     llvm::SmallVector<Value> results = iter_args;
     for (auto* reduction : reductions) {
@@ -202,14 +203,14 @@ PerThreadOutputs MlirReductionFusion::EmitterState::EmitPerThreadElements(
       SmallVector<Value> reduce_args = iter_args.slice(start, arity);
       auto indices = mlir_converter::ApplyIndexing(
           GetBitcastMap(owner.input_shape_, reduction->operand(0)->shape(),
-                        builder.getContext()),
-          map_results, {}, builder);
+                        nested_b.getContext()),
+          map_results, {}, nested_b);
       reduce_args.append(ProvideParameterRange(computation, reduction, 0, arity,
                                                indices, call_target,
-                                               entry_function, builder));
+                                               entry_function, nested_b));
       const auto& reducer = GetReducer(reduction);
       absl::c_copy(
-          builder.create<PureCallOp>(reducer, reduce_args).getResults(),
+          nested_b.create<PureCallOp>(reducer, reduce_args).getResults(),
           results.begin() + start);
     }
     struct SideOutput {

@@ -1534,14 +1534,14 @@ ValueRange EmitLoopNestImpl(
 
 }  // namespace
 
-ValueRange EmitXlaLoopOp(ImplicitLocOpBuilder& b, ValueRange dim_values,
-                         ValueRange iter_args_inits,
-                         const IndexingMap& indexing_map,
-                         mlir::function_ref<SmallVector<Value>(
-                             ValueRange /*ivs*/, ValueRange /*map_results*/,
-                             ValueRange /*iter_args*/)>
-                             create_body,
-                         bool vectorize) {
+ValueRange EmitXlaLoopOp(
+    ImplicitLocOpBuilder& b, ValueRange dim_values, ValueRange iter_args_inits,
+    const IndexingMap& indexing_map,
+    mlir::function_ref<SmallVector<Value>(
+        ImplicitLocOpBuilder& nested_b, ValueRange /*ivs*/,
+        ValueRange /*map_results*/, ValueRange /*iter_args*/)>
+        create_body,
+    bool vectorize) {
   SmallVector<Value, 4> vector_inits;
   if (vectorize) {
     CHECK_EQ(indexing_map.GetSymbolBounds().back().lower, 0);
@@ -1557,6 +1557,7 @@ ValueRange EmitXlaLoopOp(ImplicitLocOpBuilder& b, ValueRange dim_values,
   }
   auto bb = [&](OpBuilder& nested_builder, Location loc, ValueRange ivs,
                 ValueRange map_results, ValueRange iter_args) {
+    ImplicitLocOpBuilder nested_b(loc, nested_builder);
     SmallVector<Value, 4> results;
     if (vectorize) {
       SmallVector<Value, 4> vector_args;
@@ -1564,11 +1565,10 @@ ValueRange EmitXlaLoopOp(ImplicitLocOpBuilder& b, ValueRange dim_values,
       // Extract the vector elements.
       for (auto& init : vector_args) {
         if (mlir::isa<mlir::VectorType>(init.getType())) {
-          init = nested_builder.create<mlir::vector::ExtractOp>(loc, init,
-                                                                ivs.back());
+          init = nested_b.create<mlir::vector::ExtractOp>(init, ivs.back());
         }
       }
-      results = create_body(ivs, map_results, vector_args);
+      results = create_body(nested_b, ivs, map_results, vector_args);
       // Insert the results.
       for (auto [index, init] : llvm::enumerate(iter_args)) {
         if (mlir::isa<mlir::VectorType>(init.getType())) {
@@ -1577,9 +1577,9 @@ ValueRange EmitXlaLoopOp(ImplicitLocOpBuilder& b, ValueRange dim_values,
         }
       }
     } else {
-      results = create_body(ivs, map_results, iter_args);
+      results = create_body(nested_b, ivs, map_results, iter_args);
     }
-    nested_builder.create<xla::YieldOp>(loc, results);
+    nested_b.create<xla::YieldOp>(results);
   };
   return b.create<LoopOp>(indexing_map, dim_values, iter_args_inits, bb)
       .getResults();
