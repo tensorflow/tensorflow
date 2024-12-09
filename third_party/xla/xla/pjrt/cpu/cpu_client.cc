@@ -292,6 +292,14 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
                                     machine_attributes);
 }
 
+TfrtCpuTopologyDescription TfrtCpuTopologyDescription::Create(
+    PjRtPlatformId platform_id, absl::string_view platform_name,
+    absl::string_view platform_version,
+    std::shared_ptr<const CpuTopology> cpu_topology) {
+  return TfrtCpuTopologyDescription(platform_id, platform_name,
+                                    platform_version, cpu_topology);
+}
+
 absl::StatusOr<Layout> TfrtCpuTopologyDescription::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) const {
   Shape shape = ShapeUtil::MakeShape(element_type, dims);
@@ -300,7 +308,7 @@ absl::StatusOr<Layout> TfrtCpuTopologyDescription::GetDefaultLayout(
 
 absl::StatusOr<std::string> TfrtCpuTopologyDescription::Serialize() const {
   std::string result;
-  if (!tsl::SerializeToStringDeterministic(cpu_topology_.ToProto(), &result)) {
+  if (!tsl::SerializeToStringDeterministic(cpu_topology_->ToProto(), &result)) {
     return absl::InternalError("Failed to serialize cpu_topology");
   }
   return result;
@@ -309,8 +317,8 @@ absl::StatusOr<std::string> TfrtCpuTopologyDescription::Serialize() const {
 std::vector<std::unique_ptr<const PjRtDeviceDescription>>
 TfrtCpuTopologyDescription::DeviceDescriptions() const {
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices;
-  devices.reserve(cpu_topology_.number_of_devices());
-  for (const CpuTopology::CpuDevice& device : cpu_topology_.devices()) {
+  devices.reserve(cpu_topology_->number_of_devices());
+  for (const CpuTopology::CpuDevice& device : cpu_topology_->devices()) {
     devices.push_back(std::make_unique<TfrtCpuDeviceDescription>(
         device.process_id, device.local_device_id));
   }
