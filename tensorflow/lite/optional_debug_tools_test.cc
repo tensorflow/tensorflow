@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/optional_debug_tools.h"
 
 #include <algorithm>
+#include <memory>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/interpreter.h"
