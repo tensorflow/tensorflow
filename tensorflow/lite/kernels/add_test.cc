@@ -991,6 +991,62 @@ TEST(QuantizedAddOpModel, QuantizedTestsNoActivationInt16) {
   }
 }
 
+template <TensorType tensor_type, typename integer_dtype>
+void QuantizedTestsMultiplierGreaterOrEqualToOne(float inputMinVal,
+                                                 float inputMaxVal,
+                                                 float outputMinVal,
+                                                 float outputMaxVal) {
+  float kQuantizedTolerance =
+      GetTolerance<integer_dtype>(outputMinVal, outputMaxVal);
+  std::vector<std::vector<float>> inputs1 = {{-0.94, -0.94, -0.94, 0, 0, 0.94}};
+  std::vector<std::vector<float>> inputs2 = {{-0.94, 0, 0.94, 0, 0.94, 0.94}};
+  std::vector<std::vector<float>> results = {
+      {outputMinVal, outputMinVal, 0, 0, outputMaxVal, outputMaxVal}};
+  for (size_t i = 0; i < inputs1.size(); ++i) {
+    QuantizedAddOpModel m({tensor_type, {1, 2, 3, 1}, inputMinVal, inputMaxVal},
+                          {tensor_type, {1, 2, 3, 1}, inputMinVal, inputMaxVal},
+                          {tensor_type, {}, outputMinVal, outputMaxVal},
+                          ActivationFunctionType_NONE);
+    m.QuantizeAndPopulate<integer_dtype>(m.input1(), inputs1[i]);
+    m.QuantizeAndPopulate<integer_dtype>(m.input2(), inputs2[i]);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(
+        m.GetDequantizedOutput<integer_dtype>(),
+        ElementsAreArray(ArrayFloatNear(results[i], kQuantizedTolerance)))
+        << "With test number " << i;
+  }
+}
+
+TEST(QuantizedAddOpModel, QuantizedTestsMultiplierGreaterThanOneUInt8) {
+  QuantizedTestsMultiplierGreaterOrEqualToOne<TensorType_UINT8, uint8_t>(
+      -1, 1, -1.0e-06, 1.0e-06);
+}
+
+TEST(QuantizedAddOpModel, QuantizedTestsMultiplierGreaterThanOneInt8) {
+  QuantizedTestsMultiplierGreaterOrEqualToOne<TensorType_INT8, int8_t>(
+      -1, 1, -1.0e-06, 1.0e-06);
+}
+
+TEST(QuantizedAddOpModel, QuantizedTestsMultiplierGreaterThanOneInt16) {
+  QuantizedTestsMultiplierGreaterOrEqualToOne<TensorType_INT16, int16_t>(
+      -1, 1, -1.0e-06, 1.0e-06);
+}
+
+TEST(QuantizedAddOpModel, QuantizedTestsMultiplierEqualToOneUInt8) {
+  QuantizedTestsMultiplierGreaterOrEqualToOne<TensorType_UINT8, uint8_t>(
+      -1, 1, -1.0 / 524288, 1.0 / 524288);
+}
+
+TEST(QuantizedAddOpModel, QuantizedTestsMultiplierEqualToOneInt8) {
+  QuantizedTestsMultiplierGreaterOrEqualToOne<TensorType_INT8, int8_t>(
+      -1, 1, -1.0 / 524288, 1.0 / 524288);
+}
+
+TEST(QuantizedAddOpModel, QuantizedTestsMultiplierEqualToOneInt16) {
+  QuantizedTestsMultiplierGreaterOrEqualToOne<TensorType_INT16, int16_t>(
+      -0.98, 0.98, -1.96 / 32768, 1.96 / 32768);
+}
+
 template <enum TensorType tensor_type, typename integer_dtype>
 void QuantizedTestsActivationRELU_N1_TO_1() {
   float kQuantizedTolerance = GetTolerance<integer_dtype>(-1.0, 1.0);
