@@ -34,12 +34,16 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/hlo/analysis/indexed_array_analysis.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/collectives/all_gather_broadcast_reorder.h"
 #include "xla/hlo/transforms/collectives/all_reduce_contiguous.h"
 #include "xla/hlo/transforms/collectives/collective_quantizer.h"
 #include "xla/hlo/transforms/convert_memory_placement_to_internal_annotations.h"
+#include "xla/hlo/transforms/expanders/cholesky_expander.h"
+#include "xla/hlo/transforms/expanders/comparison_expander.h"
 #include "xla/hlo/transforms/expanders/convolution_4d_expander.h"
 #include "xla/hlo/transforms/expanders/convolution_pred_expander.h"
 #include "xla/hlo/transforms/expanders/dot_decomposer.h"
@@ -49,44 +53,62 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/optimization_barrier_expander.h"
 #include "xla/hlo/transforms/expanders/qr_expander.h"
 #include "xla/hlo/transforms/expanders/real_imag_expander.h"
+#include "xla/hlo/transforms/expanders/reduce_decomposer.h"
 #include "xla/hlo/transforms/expanders/reshape_decomposer.h"
 #include "xla/hlo/transforms/expanders/rng_expander.h"
 #include "xla/hlo/transforms/expanders/stable_sort_expander.h"
 #include "xla/hlo/transforms/expanders/stochastic_convert_decomposer.h"
+#include "xla/hlo/transforms/operand_upcaster.h"
 #include "xla/hlo/transforms/simplifiers/all_reduce_folder.h"
+#include "xla/hlo/transforms/simplifiers/batch_dot_simplification.h"
 #include "xla/hlo/transforms/simplifiers/broadcast_canonicalizer.h"
 #include "xla/hlo/transforms/simplifiers/conditional_canonicalizer.h"
 #include "xla/hlo/transforms/simplifiers/convert_mover.h"
+#include "xla/hlo/transforms/simplifiers/convolution_group_converter.h"
 #include "xla/hlo/transforms/simplifiers/dynamic_dimension_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
+#include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/transforms/simplifiers/gather_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/optimize_input_output_buffer_alias.h"
+#include "xla/hlo/transforms/simplifiers/reshape_mover.h"
+#include "xla/hlo/transforms/simplifiers/result_caster.h"
 #include "xla/hlo/transforms/simplifiers/simplify_fp_conversions.h"
 #include "xla/hlo/transforms/simplifiers/slice_sinker.h"
 #include "xla/hlo/transforms/simplifiers/sort_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/sub_byte_normalization.h"
+#include "xla/hlo/transforms/simplifiers/tree_reduction_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 #include "xla/service/all_reduce_simplifier.h"
+#include "xla/service/all_to_all_decomposer.h"
 #include "xla/service/batched_gather_scatter_normalizer.h"
 #include "xla/service/bitcast_dtypes_expander.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/conditional_simplifier.h"
+#include "xla/service/conditional_to_select.h"
+#include "xla/service/copy_insertion.h"
+#include "xla/service/float_support.h"
 #include "xla/service/gather_expander.h"
 #include "xla/service/gpu/transforms/all_gather_dynamic_slice_simplifier.h"
 #include "xla/service/gpu/transforms/all_reduce_splitter.h"
 #include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
 #include "xla/service/gpu/transforms/scatter_expander.h"
 #include "xla/service/gpu/transforms/scatter_slice_simplifier.h"
+#include "xla/service/map_inliner.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/reduce_scatter_reassociate.h"
 #include "xla/service/scatter_determinism_expander.h"
 #include "xla/service/scatter_simplifier.h"
 #include "xla/service/select_and_scatter_expander.h"
 #include "xla/service/sharding_remover.h"
+#include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/topk_rewriter.h"
+#include "xla/service/triangular_solve_expander.h"
 #include "xla/service/while_loop_constant_sinking.h"
+#include "xla/service/while_loop_invariant_code_motion.h"
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/tools/hlo_opt/transforms_example_passes.h"
@@ -196,18 +218,24 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<AllReduceFolder>();
   RegisterPass<AllReduceSimplifier>();
   RegisterPass<AllReduceSplitter>();
+  RegisterPass<AllToAllDecomposer>();
+  RegisterPass<BatchDotSimplification>();
   RegisterPass<BatchedGatherScatterNormalizer>();
   RegisterPass<BitcastDtypesExpander>();
   RegisterPass<BroadcastCanonicalizer>();
   RegisterPass<CallInliner>();
+  RegisterPass<CholeskyExpander>();
   RegisterPass<CollectivePermuteValidIterationAnnotator>();
   RegisterPass<CollectiveQuantizer>();
+  RegisterPass<ComparisonExpander>();
   RegisterPass<ConditionalCanonicalizer>();
   RegisterPass<ConditionalSimplifier>();
+  RegisterPass<ConditionalToSelect>();
   RegisterPass<ConvertMemoryPlacementToInternalAnnotations>();
   RegisterPass<ConvertMover>();
   RegisterPass<Convolution4DExpander>();
   RegisterPass<ConvolutionPredExpander>();
+  RegisterPass<CopyInsertion>();
   RegisterPass<DotDecomposer>();
   RegisterPass<DynamicDimensionSimplifier>();
   RegisterPass<DynamicIndexSplitter>();
@@ -218,12 +246,19 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<GpuScatterExpander>();
   RegisterPass<HloConstantFolding>();
   RegisterPass<HloDCE>();
+  RegisterPass<IndexedArrayAnalysisPrinterPass>();
   RegisterPass<LogisticExpander>();
+  RegisterPass<MapInliner>();
+  RegisterPass<OperandUpcaster>();
   RegisterPass<OptimizationBarrierExpander>();
+  RegisterPass<OptimizeInputOutputBufferAlias>(true);
   RegisterPass<QrExpander>();
   RegisterPass<RealImagExpander>();
+  RegisterPass<ReduceDecomposer>();
   RegisterPass<ReduceScatterReassociate>();
   RegisterPass<ReshapeDecomposer>();
+  RegisterPass<ReshapeMover>();
+  RegisterPass<ResultCaster>();
   RegisterPass<RngExpander>();
   RegisterPass<ScatterDeterminismExpander>();
   RegisterPass<ScatterSimplifier>();
@@ -235,13 +270,27 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<SortSimplifier>();
   RegisterPass<StableSortExpander>();
   RegisterPass<StochasticConvertDecomposer>();
+  RegisterPass<SubByteNormalization>(SubByteNormalization::SET_ELEMENT_SIZE);
   RegisterPass<TopkDecomposer>();
+  RegisterPass<TreeReductionRewriter>();
+  RegisterPass<TriangularSolveExpander>();
   RegisterPass<TupleSimplifier>();
   RegisterPass<WhileLoopConstantSinking>();
+  RegisterPass<WhileLoopInvariantCodeMotion>();
   RegisterPass<WhileLoopSimplifier>();
   RegisterPass<WhileLoopTripCountAnnotator>();
   RegisterPass<ZeroSizedHloElimination>();
+  RegisterPass<sdy::ShardyXLA>();
   // go/keep-sorted end
+  FloatSupport bf16_support(BF16);
+  RegisterPass<FloatNormalization>(&bf16_support);
+  auto cost_model = [](HloInstruction* conv) {
+    // We need a cost model for CPUs. Currently, do nothing.
+    return false;
+  };
+  RegisterPass<ConvolutionGroupConverter>(
+      /*should_expand=*/[](HloInstruction* conv) { return true; }, cost_model,
+      /*convert_batch_groups_only=*/true);
 }
 
 }  // namespace xla
