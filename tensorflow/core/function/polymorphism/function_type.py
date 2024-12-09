@@ -359,38 +359,34 @@ class FunctionType(core.FunctionType):
     return inspect.BoundArguments(self, arguments)
 
   @property
-  def _sorted_parameters(self) -> List[trace.TraceType]:
-    if not hasattr(self, "_cached_sorted_parameters"):
-      # Sort keyword-only parameters by name.
-      sorted_parameters = []
-      kwonly_parameters = []
-      for p in self.parameters.values():
-        if p.kind is Parameter.KEYWORD_ONLY:
-          kwonly_parameters.append(p)
-        else:
-          sorted_parameters.append(p)
-      sorted_parameters = sorted_parameters + sorted(
-          kwonly_parameters, key=lambda p: p.name
-      )
-      self._cached_sorted_parameters = sorted_parameters
-    return self._cached_sorted_parameters
-
-  @property
   def flat_inputs(self) -> List[trace.TraceType]:
     """Flat tensor inputs accepted by this FunctionType."""
     if not hasattr(self, "_cached_flat_inputs"):
       cached_flat_inputs = []
-      for p in self._sorted_parameters:
+      for p in self.parameters.values():
         cached_flat_inputs.extend(p.type_constraint.flatten())
       self._cached_flat_inputs = cached_flat_inputs
+
     return self._cached_flat_inputs
 
   def unpack_inputs(
       self, bound_parameters: inspect.BoundArguments
   ) -> List[core.Tensor]:
     """Unpacks python arguments to flat tensor inputs accepted by this type."""
+    # Sort keyword-only parameters by name.
+    sorted_parameters = []
+    kwonly_parameters = []
+    for p in self.parameters.values():
+      if p.kind is Parameter.KEYWORD_ONLY:
+        kwonly_parameters.append(p)
+      else:
+        sorted_parameters.append(p)
+    sorted_parameters = sorted_parameters + sorted(
+        kwonly_parameters, key=lambda p: p.name
+    )
+
     flat = []
-    for p in self._sorted_parameters:
+    for p in sorted_parameters:
       flat.extend(
           p.type_constraint.to_tensors(bound_parameters.arguments[p.name])
       )
