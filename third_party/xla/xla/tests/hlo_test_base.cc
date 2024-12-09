@@ -80,7 +80,7 @@ constexpr absl::string_view kInterpreter = "interpreter";
 // Returns either an HloRunner or HloRunnerPjRt implementation depending on
 // whether there exists a registered PjRtClientFactory.
 absl::StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunnerForTest(
-    se::Platform* test_platform) {
+    se::Platform* test_platform, int xla_pjrt_cpu_intra_op_threads = -1) {
   if (ShouldUsePjRt()) {
     PjRtClientTestFactoryRegistry& pjrt_registry =
         GetGlobalPjRtClientTestFactory();
@@ -97,7 +97,8 @@ absl::StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunnerForTest(
                                            device_shape_size_fn);
   }
 
-  return std::make_unique<HloRunner>(test_platform);
+  const int max_allowed_parallelism = xla_pjrt_cpu_intra_op_threads;
+  return std::make_unique<HloRunner>(test_platform, max_allowed_parallelism);
 }
 
 absl::StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunnerForReference(
@@ -119,9 +120,12 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
                          se::Platform* reference_platform,
                          bool verifier_layout_sensitive,
                          bool allow_mixed_precision_in_hlo_verifier,
-                         HloPredicate instruction_can_change_layout_func)
+                         HloPredicate instruction_can_change_layout_func,
+                         int xla_pjrt_cpu_intra_op_threads)
     : HloRunnerAgnosticTestBase(
-          /*test_runner=*/GetHloRunnerForTest(test_platform).value(),
+          /*test_runner=*/GetHloRunnerForTest(test_platform,
+                                              xla_pjrt_cpu_intra_op_threads)
+              .value(),
           /*reference_runner=*/
           GetHloRunnerForReference(reference_platform).value(),
           verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier),
@@ -139,10 +143,10 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
   return result.value();
 }
 
-absl::StatusOr<std::unique_ptr<HloRunnerInterface>>
-HloTestBase::GetHloRunner() {
+absl::StatusOr<std::unique_ptr<HloRunnerInterface>> HloTestBase::GetHloRunner(
+    int xla_pjrt_cpu_intra_op_threads) {
   absl::StatusOr<std::unique_ptr<HloRunnerInterface>> status_or_runner =
-      GetHloRunnerForTest(test_platform_);
+      GetHloRunnerForTest(test_platform_, xla_pjrt_cpu_intra_op_threads);
   // Test for successful creation of PjRt based Hlo Runner.
   TF_CHECK_OK(status_or_runner.status());
   return *std::move(status_or_runner);
