@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_BATCH_UTIL_H_
 #define TENSORFLOW_CORE_UTIL_BATCH_UTIL_H_
 
+#include <cstdint>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 
