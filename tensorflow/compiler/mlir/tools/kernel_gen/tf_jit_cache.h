@@ -34,7 +34,7 @@ namespace tf_framework {
 class JITCache : public tensorflow::ResourceBase {
  public:
   static constexpr const char* kDefaultResourceName = "mlir-jit-cache";
-  static tensorflow::Status Create(JITCache** dst);
+  static absl::Status Create(JITCache** dst);
 
   std::string DebugString() const override;
   ExecutionEngine* LookupOrCompile(
