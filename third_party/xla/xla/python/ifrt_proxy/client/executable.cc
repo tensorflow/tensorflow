@@ -72,6 +72,7 @@
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace ifrt {
@@ -272,6 +273,9 @@ LoadedExecutable::LoadedExecutable(
     }
   }
 
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+
+      "IfrtProxyEntrypointLoadedExecutableCreate");
   // Asynchronously fetch shardings. Since users of `LoadedExecutable` typically
   // require sharding information to invoke the executable, it is beneficial to
   // eagerly schedule this fetch since, in some implementations, it may take a
@@ -362,6 +366,9 @@ LoadedExecutable::LoadedExecutable(
 }
 
 LoadedExecutable::~LoadedExecutable() {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointLoadedExecutableDestruct");
+
   auto req = std::make_unique<LoadedExecutableDestructRequest>();
   req->set_loaded_executable_handle(handle_);
 
@@ -406,6 +413,8 @@ absl::StatusOr<CompiledMemoryStats> LoadedExecutable::GetCompiledMemoryStats()
 
 std::optional<std::vector<OpSharding>> LoadedExecutable::GetParameterShardings()
     const {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointLoadedExecutableGetParameterShardings");
   auto info = metadata_future_.Await();
   if (!info.ok()) {
     return std::nullopt;
@@ -415,6 +424,8 @@ std::optional<std::vector<OpSharding>> LoadedExecutable::GetParameterShardings()
 
 std::optional<std::vector<OpSharding>> LoadedExecutable::GetOutputShardings()
     const {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointLoadedExecutableGetOutputShardings");
   auto info = metadata_future_.Await();
   if (!info.ok()) {
     return std::nullopt;
@@ -424,6 +435,8 @@ std::optional<std::vector<OpSharding>> LoadedExecutable::GetOutputShardings()
 
 absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
 LoadedExecutable::GetParameterLayouts() const {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointLoadedExecutableGetParameterLayouts");
   TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
   TF_RETURN_IF_ERROR(info->parameter_layouts.status());
 
@@ -437,6 +450,8 @@ LoadedExecutable::GetParameterLayouts() const {
 
 absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
 LoadedExecutable::GetOutputLayouts() const {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointLoadedExecutableGetOutputLayouts");
   TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
   TF_RETURN_IF_ERROR(info->output_layouts.status());
 
@@ -450,6 +465,8 @@ LoadedExecutable::GetOutputLayouts() const {
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 LoadedExecutable::GetOutputMemoryKinds() const {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointLoadedExecutableGetOutputMemoryKinds");
   TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
   return info->output_memory_kinds;
 }
@@ -471,6 +488,8 @@ LoadedExecutable::Execute(
     absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
     const ExecuteOptions& options,
     std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices) {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointLoadedExecutableExecute");
   auto req = std::make_unique<LoadedExecutableExecuteRequest>();
   req->set_loaded_executable_handle(handle_);
   for (const auto& arg : args) {
@@ -557,6 +576,8 @@ LoadedExecutable::Execute(
 }
 
 Future<> LoadedExecutable::Delete() {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointLoadedExecutableDelete");
   auto req = std::make_unique<LoadedExecutableDeleteRequest>();
   req->set_loaded_executable_handle(handle_);
 
@@ -580,6 +601,8 @@ Future<> LoadedExecutable::Delete() {
 }
 
 bool LoadedExecutable::IsDeleted() const {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointLoadedExecutableIsDeleted");
   auto req = std::make_unique<LoadedExecutableIsDeletedRequest>();
   req->set_loaded_executable_handle(handle_);
 

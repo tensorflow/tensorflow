@@ -57,6 +57,7 @@
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace ifrt {
@@ -66,6 +67,7 @@ char Client::ID = 0;
 
 absl::StatusOr<std::unique_ptr<Client>> Client::Create(
     std::shared_ptr<RpcHelper> rpc_helper, InitResponse init_response) {
+  tsl::profiler::TraceMe traceme("IfrtProxyEntrypointClientCreate");
   absl::flat_hash_set<int> addressable_device_ids(
       init_response.addressable_device_ids().begin(),
       init_response.addressable_device_ids().end());
@@ -254,6 +256,10 @@ Client::CopyArrays(
     absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
     std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices,
     std::optional<MemoryKind> memory_kind, ArrayCopySemantics semantics) {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_arrays = arrays.size()]() {
+    return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointCopyArrays",
+                                        {{"n_arrays", n_arrays}});
+  });
   if (arrays.empty()) {
     return std::vector<tsl::RCReference<xla::ifrt::Array>>();
   }
@@ -334,6 +340,10 @@ Client::RemapArrays(const RemapPlan& plan,
 
 xla::ifrt::Future<> Client::GetReadyFuture(
     absl::Span<const tsl::RCReference<xla::ifrt::Value>> values) {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_values = values.size()]() {
+    return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointGetReadyFuture",
+                                        {{"n_values", n_values}});
+  });
   absl::InlinedVector<Future<>, 1> futures;
 
   auto req = std::make_unique<CheckValueReadyRequest>();
@@ -364,6 +374,8 @@ absl::Span<xla::ifrt::Device* const> Client::GetAllDevices() const {
 
 absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointGetDefaultDeviceAssignment");
   auto req = std::make_unique<GetDefaultDeviceAssignmentRequest>();
   req->set_num_replicas(num_replicas);
   req->set_num_partitions(num_partitions);
