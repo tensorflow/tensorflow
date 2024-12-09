@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -117,7 +118,7 @@ class BFCAllocator : public Allocator {
 
   void* AllocateRawInternal(size_t alignment, size_t num_bytes,
                             bool dump_log_on_failure,
-                            uint64 freed_before_count);
+                            std::function<uint64()>* freed_by_func);
 
   void* AllocateRawInternalWithRetry(
       size_t alignment, size_t num_bytes,

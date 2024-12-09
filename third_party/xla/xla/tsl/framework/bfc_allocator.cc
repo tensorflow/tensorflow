@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -252,27 +253,18 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
     size_t unused_alignment, size_t num_bytes,
     const AllocationAttributes& allocation_attr) {
   // Fast path: Try once to allocate without getting the retry_helper_ involved
-  uint64 freed_by_count = 0;
-  if (allocation_attr.freed_by_func != nullptr) {
-    freed_by_count = (*allocation_attr.freed_by_func)();
-  }
-  void* r =
-      AllocateRawInternal(unused_alignment, num_bytes, false, freed_by_count);
-  if (r != nullptr) {
-    return r;
-  } else {
-    static const int64_t kMaxMillisToWait = 10000;  // 10 seconds
-    r = retry_helper_.AllocateRaw(
-        [this, &allocation_attr](size_t a, size_t nb, bool v) {
-          uint64 freed_by_count = 0;
-          if (allocation_attr.freed_by_func != nullptr) {
-            freed_by_count = (*allocation_attr.freed_by_func)();
-          }
-          return AllocateRawInternal(a, nb, v, freed_by_count);
-        },
-        kMaxMillisToWait, unused_alignment, num_bytes);
+  if (void* r = AllocateRawInternal(unused_alignment, num_bytes, false,
+                                    allocation_attr.freed_by_func);
+      r != nullptr) {
     return r;
   }
+
+  static const int64_t kMaxMillisToWait = 10000;  // 10 seconds
+  return retry_helper_.AllocateRaw(
+      [this, &allocation_attr](size_t a, size_t nb, bool v) {
+        return AllocateRawInternal(a, nb, v, allocation_attr.freed_by_func);
+      },
+      kMaxMillisToWait, unused_alignment, num_bytes);
 }
 
 void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
@@ -297,12 +289,9 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
            log_counter.load(std::memory_order_relaxed) < kMaxFailureLogs) ||
           VLOG_IS_ON(2);
 
-      uint64 freed_by_count = 0;
-      if (allocation_attr.freed_by_func != nullptr) {
-        freed_by_count = (*allocation_attr.freed_by_func)();
-      }
-      void* res = AllocateRawInternal(unused_alignment, num_bytes,
-                                      dump_log_on_failure, freed_by_count);
+      void* res =
+          AllocateRawInternal(unused_alignment, num_bytes, dump_log_on_failure,
+                              allocation_attr.freed_by_func);
       if (res == nullptr) {
         int32 counter_value = log_counter.load(std::memory_order_relaxed);
         if (counter_value < kMaxFailureLogs) {
@@ -310,7 +299,7 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
           LOG(WARNING)
               << "Allocator (" << Name() << ") ran out of memory trying "
               << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
-              << " with freed_by_count=" << freed_by_count << "."
+              << "."
               << (!allocation_attr.retry_on_failure
                       ? " The caller indicates that this is not a failure, but"
                         " this may mean that there could be performance gains "
@@ -430,14 +419,19 @@ void BFCAllocator::DeallocateRegions(
   }
 }
 
-void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
-                                        size_t num_bytes,
-                                        bool dump_log_on_failure,
-                                        uint64 freed_before) {
+void* BFCAllocator::AllocateRawInternal(
+    size_t unused_alignment, size_t num_bytes, bool dump_log_on_failure,
+    std::function<uint64()>* freed_by_func) {
   if (num_bytes == 0) {
     VLOG(2) << "tried to allocate 0 bytes";
     return nullptr;
   }
+
+  uint64 freed_before = 0;
+  if (freed_by_func != nullptr) {
+    freed_before = (*freed_by_func)();
+  }
+
   // First, always allocate memory of at least kMinAllocationSize
   // bytes, and always allocate multiples of kMinAllocationSize bytes
   // so all memory addresses are nicely byte aligned.
