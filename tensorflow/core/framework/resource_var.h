@@ -20,7 +20,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tsl/platform/thread_annotations.h"
 
 // Forward declarations to avoid introducing a dependency on headers in
 // "tensorflow/core/graph/...".
