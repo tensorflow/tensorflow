@@ -533,6 +533,7 @@ PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
 PjRtLayout = _xla.PjRtLayout
 AutotuneCacheMode = _xla.AutotuneCacheMode
+ResultAccuracyMode = _xla.ResultAccuracy_Mode
 
 
 def LoadedExecutable_execute(self, arguments, device=None):
@@ -853,6 +854,18 @@ class PrecisionConfig:
 
   def __init__(self):
     self.operand_precision = []
+
+
+class ResultAccuracy:
+  """Python representation of a xla.ResultAccuracy protobuf."""
+
+  __slots__ = ('mode', 'atol', 'rtol', 'ulps')
+
+  def __init__(self):
+    self.mode = _xla.ResultAccuracy_Mode.DEFAULT
+    self.atol = 0.0
+    self.rtol = 0.0
+    self.ulps = 0
 
 
 class GatherDimensionNumbers:

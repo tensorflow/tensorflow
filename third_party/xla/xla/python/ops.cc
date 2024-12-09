@@ -280,6 +280,31 @@ struct type_caster<xla::PrecisionConfig> {
   }
 };
 
+template <>
+struct type_caster<xla::ResultAccuracy> {
+ public:
+  NB_TYPE_CASTER_FROM_PYTHON_ONLY(xla::ResultAccuracy,
+                                  const_name("xla::ResultAccuracy"));
+  // PyObject -> C++ conversion.
+  bool from_python(handle handle, uint8_t, cleanup_list*) {
+    try {
+      if (handle.is_none()) {
+        return true;
+      }
+      xla::ResultAccuracy::Mode mode =
+          cast<xla::ResultAccuracy::Mode>(getattr(handle, "mode"));
+      value.set_mode(mode);
+      xla::ResultAccuracy::Tolerance* tolerance = value.mutable_tolerance();
+      tolerance->set_atol(cast<float>(getattr(handle, "atol")));  // NOLINT
+      tolerance->set_rtol(cast<float>(getattr(handle, "rtol")));
+      tolerance->set_ulps(cast<int>(getattr(handle, "ulps")));
+      return true;
+    } catch (...) {
+      return false;
+    }
+  }
+};
+
 }  // namespace detail
 }  // namespace nanobind
 
@@ -716,6 +741,9 @@ void BuildOpsSubmodule(nb::module_& m) {
   ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta, nb::arg("a"),
           nb::arg("b"), nb::arg("x"));
   ops.def("Zeta", &Zeta, nb::arg("x"), nb::arg("q"));
+  ops.def("Exp", static_cast<XlaOp (*)(XlaOp, const ResultAccuracy&)>(&Exp),
+          nb::arg("operand"), nb::arg("result_accuracy"));
+  ops.def("Exp", static_cast<XlaOp (*)(XlaOp)>(&Exp), nb::arg("operand"));
 
 #define BINARY_OP(op)                                                  \
   ops.def(                                                             \
@@ -754,7 +782,6 @@ void BuildOpsSubmodule(nb::module_& m) {
   UNARY_OP(PopulationCount);
   UNARY_OP(Clz);
   UNARY_OP(Abs);
-  UNARY_OP(Exp);
   UNARY_OP(Expm1);
   UNARY_OP(Floor);
   UNARY_OP(Ceil);
