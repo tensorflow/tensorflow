@@ -46,7 +46,7 @@ string V(const Tensor& tensor) {
 
 Rendezvous::ParsedKey MakeKey(const string& s) {
   Rendezvous::ParsedKey key;
-  CHECK(Rendezvous::ParseKey(s, &key).ok());
+  CHECK_OK(Rendezvous::ParseKey(s, &key));
   return key;
 }
 
