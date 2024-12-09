@@ -61,8 +61,7 @@ IfrtPersistentCompilationCache::LookupLoadedExecutableOrCreate(
 
 absl::StatusOr<Tf2HloResult>
 IfrtPersistentCompilationCache::LookupTf2HloResultOrCreate(
-    Tf2HloArg tf2hlo_arg, tsl::RCReference<xla::ifrt::DeviceList> device_list,
-    TfToHloCompiler* tf_to_hlo_compiler) {
+    Tf2HloArg tf2hlo_arg, TfToHloCompiler* tf_to_hlo_compiler) {
   // No tf2xla persistent cache is implemented, compile directly.
   return tf_to_hlo_compiler->CompileTfToHlo(tf2hlo_arg);
 }

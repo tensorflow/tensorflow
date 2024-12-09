@@ -55,7 +55,9 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
+using ::testing::Eq;
 using ::testing::HasSubstr;
+using ::testing::Ne;
 using ::testing::status::IsOkAndHolds;
 using tsl::testing::StatusIs;
 
@@ -544,7 +546,11 @@ TEST_F(Tf2HloTest, SameArgProduceSameKeyFingerprint) {
       .topology = std::make_shared<xla::ifrt::PjRtTopology>(cpu_topology_ptr),
   };
 
-  EXPECT_THAT(arg0.Key(), IsOkAndHolds(arg1.Key().value()));
+  TfToHloCompiler tf_to_hlo_compiler;
+  TF_ASSERT_OK_AND_ASSIGN(std::string key0, tf_to_hlo_compiler.Key(arg0));
+  TF_ASSERT_OK_AND_ASSIGN(std::string key1, tf_to_hlo_compiler.Key(arg1));
+
+  EXPECT_THAT(key0, Eq(key1));
 }
 
 TEST_F(Tf2HloTest, DifferentCompileMetadataProduceDifferentKeyFingerprint) {
@@ -600,9 +606,11 @@ TEST_F(Tf2HloTest, DifferentCompileMetadataProduceDifferentKeyFingerprint) {
       .topology = std::make_shared<xla::ifrt::PjRtTopology>(cpu_topology_ptr),
   };
 
-  ASSERT_OK_AND_ASSIGN(std::string key0, arg0.Key());
-  ASSERT_OK_AND_ASSIGN(std::string key1, arg1.Key());
-  EXPECT_NE(key0, key1);
+  TfToHloCompiler tf_to_hlo_compiler;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string key0, tf_to_hlo_compiler.Key(arg0));
+  TF_ASSERT_OK_AND_ASSIGN(std::string key1, tf_to_hlo_compiler.Key(arg1));
+  EXPECT_THAT(key0, Ne(key1));
 }
 
 }  // namespace

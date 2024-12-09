@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_TF2HLO_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_TF2HLO_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -49,7 +50,7 @@ struct Tf2HloArg {
   std::shared_ptr<xla::ifrt::Topology> topology;
   absl::string_view platform_name;
 
-  absl::StatusOr<std::string> Key();
+  absl::StatusOr<uint64_t> Fingerprint() const;
 };
 
 struct Tf2HloResult {
@@ -70,6 +71,10 @@ class TfToHloCompiler {
  public:
   TfToHloCompiler() = default;
   virtual ~TfToHloCompiler() = default;
+
+  // Returns a cache key that can be used to identify the result of
+  // CompileTfToHlo.
+  virtual absl::StatusOr<std::string> Key(const Tf2HloArg& arg);
 
   virtual absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg);
 };

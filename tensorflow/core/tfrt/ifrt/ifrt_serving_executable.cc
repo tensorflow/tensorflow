@@ -435,10 +435,9 @@ IfrtServingExecutable::CreateExecutableSynchronously(
         ifrt_client_->GetTopologyForDevices(assigned_device_list_));
   }
 
-  TF_ASSIGN_OR_RETURN(
-      Tf2HloResult tf2hlo_result,
-      persistent_compilation_cache_->LookupTf2HloResultOrCreate(
-          tf2hlo_arg, assigned_device_list_, tf_to_hlo_compiler_));
+  TF_ASSIGN_OR_RETURN(Tf2HloResult tf2hlo_result,
+                      persistent_compilation_cache_->LookupTf2HloResultOrCreate(
+                          tf2hlo_arg, tf_to_hlo_compiler_));
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_hlo_module,
       xla::ConvertHloToMlirHlo(*module_copy->getContext(),
