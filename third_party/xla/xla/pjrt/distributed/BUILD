@@ -51,6 +51,7 @@ xla_cc_test(
         ":topology_util",
         "//xla:test_helpers",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:env",

@@ -44,6 +44,10 @@ absl::StatusOr<std::string> InMemoryKeyValueStore::Get(std::string_view key,
 absl::Status InMemoryKeyValueStore::Set(std::string_view key,
                                         std::string_view value) {
   absl::MutexLock lock(&mu_);
+  if (kv_store_.contains(key)) {
+    return absl::AlreadyExistsError(
+        absl::StrCat("Key already exists in the kv store: ", key));
+  }
   kv_store_[key] = value;
   return absl::OkStatus();
 }

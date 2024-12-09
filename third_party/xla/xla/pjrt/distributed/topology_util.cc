@@ -35,7 +35,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
@@ -179,8 +178,32 @@ absl::Status ExchangeTopologies(std::string_view platform, int node_id,
     return absl::OkStatus();
   }
   CHECK(kv_store != nullptr);
-  TF_RETURN_IF_ERROR(kv_store->Set(GetLocalTopologyKey(platform, node_id),
-                                   local_topology.SerializeAsString()));
+  const std::string local_topology_key = GetLocalTopologyKey(platform, node_id);
+  const std::string serialized_local_topology =
+      local_topology.SerializeAsString();
+  absl::Status set_local_topology_status =
+      kv_store->Set(local_topology_key, local_topology.SerializeAsString());
+  if (!set_local_topology_status.ok()) {
+    // Note: some nodes may restart and initiate the topology exchange again,
+    // thus hitting an `AlreadyExists` error.
+    // Allow such nodes to reconnect gracefully, unless their local topology
+    // changed unexpectedly.
+    if (absl::IsAlreadyExists(set_local_topology_status)) {
+      TF_ASSIGN_OR_RETURN(
+          std::string kv_local_topology_str,
+          kv_store->Get(local_topology_key, get_local_topology_timeout));
+      if (serialized_local_topology != kv_local_topology_str) {
+        return absl::InternalError(absl::StrCat(
+            "Local topology for node ", node_id,
+            " is already present in the key-value store and "
+            "differs from the one we are trying to set: ",
+            serialized_local_topology, " vs. ", kv_local_topology_str));
+      }
+    } else {
+      // Return unexpected error status.
+      return set_local_topology_status;
+    }
+  }
 
   // The lead node gets all local topologies, builds the global topology and
   // puts it to the key-value store.
