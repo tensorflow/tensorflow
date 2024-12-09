@@ -34,8 +34,8 @@ class NoOpErrorCollector : public protobuf::io::ErrorCollector {
 };
 }  // namespace
 
-Status ConsumePrefix(absl::string_view str, absl::string_view prefix,
-                     absl::string_view* output) {
+absl::Status ConsumePrefix(absl::string_view str, absl::string_view prefix,
+                           absl::string_view* output) {
   if (absl::StartsWith(str, prefix)) {
     *output = str.substr(prefix.size());
     return absl::OkStatus();
@@ -43,9 +43,9 @@ Status ConsumePrefix(absl::string_view str, absl::string_view prefix,
   return errors::NotFound("No prefix \"", prefix, "\" in \"", str, "\"");
 }
 
-Status ParseTextProto(absl::string_view text_proto,
-                      absl::string_view prefix_to_strip,
-                      protobuf::Message* parsed_proto) {
+absl::Status ParseTextProto(absl::string_view text_proto,
+                            absl::string_view prefix_to_strip,
+                            protobuf::Message* parsed_proto) {
   protobuf::TextFormat::Parser parser;
   // Don't produce errors when attempting to parse text format as it would fail
   // when the input is actually a binary file.
