@@ -47,6 +47,7 @@ class Array2D : public Array<T> {
   // Creates an array from the given nested initializer list. The outer
   // initializer list is the first dimension; the inner is the second dimension.
   // For example, {{1, 2, 3}, {4, 5, 6}} results in an array with n1=2 and n2=3.
+  // test comment
   Array2D(std::initializer_list<std::initializer_list<T>> values)
       : Array<T>(values) {}
 
