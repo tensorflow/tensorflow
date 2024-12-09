@@ -80,9 +80,9 @@ class SymbolicGradientBuilder {
   bool IsPrimitiveOpWithNoGrad(const string& opname);
 
   // Call the gradient function for `op`, storing the result in `grad_outputs`.
-  Status CallGradFunction(const Operation& op,
-                          const std::vector<Output>& grad_inputs,
-                          std::vector<Output>* grad_outputs);
+  absl::Status CallGradFunction(const Operation& op,
+                                const std::vector<Output>& grad_inputs,
+                                std::vector<Output>* grad_outputs);
 
   // Returns a list mapping whether each node in the graph is reachable
   // from outputs_. Keyed by node id.
