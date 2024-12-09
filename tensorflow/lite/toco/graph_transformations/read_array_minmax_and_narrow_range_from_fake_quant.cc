@@ -52,7 +52,7 @@ bool ApplyAttrsToArray(GraphTransformation* transformation, Model* model,
 
 }  // end namespace
 
-::tensorflow::Status ReadArrayMinmaxAndNarrowRangeFromFakeQuant::Run(
+absl::Status ReadArrayMinmaxAndNarrowRangeFromFakeQuant::Run(
     Model* model, std::size_t op_index, bool* modified) {
   *modified = false;
   const auto fakequant_it = model->operators.begin() + op_index;

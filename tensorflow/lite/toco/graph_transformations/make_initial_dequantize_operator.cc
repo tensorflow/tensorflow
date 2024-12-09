@@ -99,9 +99,9 @@ bool AddDequantizeOperatorToInput(const std::string& input_name,
   return true;
 }
 
-::tensorflow::Status MakeInitialDequantizeOperator::Run(Model* model,
-                                                        std::size_t op_index,
-                                                        bool* modified) {
+absl::Status MakeInitialDequantizeOperator::Run(Model* model,
+                                                std::size_t op_index,
+                                                bool* modified) {
   *modified = false;
   // This is effectively a transformation applied to edges.  We iterate over the
   // specified node (op) and proceed for input edges.

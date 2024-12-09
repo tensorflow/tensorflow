@@ -279,9 +279,8 @@ bool RecursivelyForwardPropagateDataType(GraphTransformation* transformation,
 // nice logging and integration with the graphviz video dumping mode.
 // In general you should not copy this style of transformation and stick to
 // local-only changes as seen in the other transformations.
-::tensorflow::Status PropagateFakeQuantNumBits::Run(Model* model,
-                                                    std::size_t op_index,
-                                                    bool* modified) {
+absl::Status PropagateFakeQuantNumBits::Run(Model* model, std::size_t op_index,
+                                            bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();

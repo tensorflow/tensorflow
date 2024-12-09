@@ -500,8 +500,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
 
 }  // namespace
 
-::tensorflow::Status Quantize::Run(Model* model, std::size_t op_index,
-                                   bool* modified) {
+absl::Status Quantize::Run(Model* model, std::size_t op_index, bool* modified) {
   *modified = false;
   // Our general "quantization" graph transformation consists in replacing
   //   QuantizedInputArrays[] ->

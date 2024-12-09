@@ -27,9 +27,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status IdentifyL2Normalization::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status IdentifyL2Normalization::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   const auto div_it = model->operators.begin() + op_index;
   const auto* div_or_mul_op = div_it->get();

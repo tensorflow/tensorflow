@@ -58,9 +58,8 @@ void ReplaceOpInputsWith(Model* model, const std::string& lookfor,
 
 }  // namespace
 
-::tensorflow::Status RemoveSuccessiveTranspose::Run(Model* model,
-                                                    std::size_t op_index,
-                                                    bool* modified) {
+absl::Status RemoveSuccessiveTranspose::Run(Model* model, std::size_t op_index,
+                                            bool* modified) {
   *modified = false;
   auto op = model->operators.begin() + op_index;
   if (op->get()->type != OperatorType::kTranspose) {

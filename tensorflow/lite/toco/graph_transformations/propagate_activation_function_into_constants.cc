@@ -27,8 +27,9 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status PropagateActivationFunctionIntoConstants::Run(
-    Model* model, std::size_t op_index, bool* modified) {
+absl::Status PropagateActivationFunctionIntoConstants::Run(Model* model,
+                                                           std::size_t op_index,
+                                                           bool* modified) {
   *modified = false;
   const auto ac_it = model->operators.begin() + op_index;
   const auto* ac_op = ac_it->get();
