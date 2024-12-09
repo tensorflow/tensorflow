@@ -16,6 +16,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <list>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/logging.h"
