@@ -85,7 +85,7 @@ static StringPiece ConsumeNextPart(StringPiece* s, char delim) {
 }
 
 /* static */
-Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
+absl::Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
   if (key.data() == out->buf_.data()) {
     // Caller used our buf_ string directly, so we don't need to copy.  (The
     // SendOp and RecvOp implementations do this, for example).
@@ -116,15 +116,15 @@ Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
 
 RendezvousInterface::~RendezvousInterface() {}
 
-Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
-                                 Tensor* val, bool* is_dead,
-                                 int64_t timeout_ms) {
-  Status ret;
+absl::Status RendezvousInterface::Recv(const ParsedKey& key,
+                                       const Args& recv_args, Tensor* val,
+                                       bool* is_dead, int64_t timeout_ms) {
+  absl::Status ret;
   Notification n;
   RecvAsync(key, recv_args,
-            [&ret, &n, val, is_dead](const Status& s, const Args& send_args,
-                                     const Args& recv_args, const Tensor& v,
-                                     const bool dead) {
+            [&ret, &n, val, is_dead](
+                const absl::Status& s, const Args& send_args,
+                const Args& recv_args, const Tensor& v, const bool dead) {
               ret = s;
               *val = v;
               *is_dead = dead;
@@ -134,8 +134,8 @@ Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
     int64_t timeout_us = timeout_ms * 1000;
     bool notified = WaitForNotificationWithTimeout(&n, timeout_us);
     if (!notified) {
-      return Status(absl::StatusCode::kDeadlineExceeded,
-                    "Timed out waiting for notification");
+      return absl::Status(absl::StatusCode::kDeadlineExceeded,
+                          "Timed out waiting for notification");
     }
   } else {
     n.WaitForNotification();
@@ -143,8 +143,8 @@ Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
   return ret;
 }
 
-Status RendezvousInterface::Recv(const ParsedKey& key, const Args& args,
-                                 Tensor* val, bool* is_dead) {
+absl::Status RendezvousInterface::Recv(const ParsedKey& key, const Args& args,
+                                       Tensor* val, bool* is_dead) {
   const int64_t no_timeout = 0;
   return Recv(key, args, val, is_dead, no_timeout);
 }
@@ -154,8 +154,8 @@ class LocalRendezvousWrapper : public Rendezvous {
  public:
   LocalRendezvousWrapper(int num_shards) : impl_(this, num_shards) {}
 
-  Status Send(const ParsedKey& key, const Args& send_args, const Tensor& val,
-              const bool is_dead) override {
+  absl::Status Send(const ParsedKey& key, const Args& send_args,
+                    const Tensor& val, const bool is_dead) override {
     return impl_.Send(key, send_args, val, is_dead);
   }
 
@@ -164,7 +164,9 @@ class LocalRendezvousWrapper : public Rendezvous {
     impl_.RecvAsync(key, recv_args, std::move(done));
   }
 
-  void StartAbort(const Status& status) override { impl_.StartAbort(status); }
+  void StartAbort(const absl::Status& status) override {
+    impl_.StartAbort(status);
+  }
 
  private:
   LocalRendezvous impl_;

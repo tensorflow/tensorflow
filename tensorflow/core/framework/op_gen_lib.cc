@@ -362,7 +362,7 @@ void MergeAttr(ApiDef::Attr* base_attr, const ApiDef::Attr& new_attr) {
 }
 
 // Updates base_api_def based on overrides in new_api_def.
-Status MergeApiDefs(ApiDef* base_api_def, const ApiDef& new_api_def) {
+absl::Status MergeApiDefs(ApiDef* base_api_def, const ApiDef& new_api_def) {
   // Merge visibility
   if (new_api_def.visibility() != ApiDef::DEFAULT_VISIBILITY) {
     base_api_def->set_visibility(new_api_def.visibility());
@@ -480,18 +480,19 @@ ApiDefMap::ApiDefMap(const OpList& op_list) {
 
 ApiDefMap::~ApiDefMap() {}
 
-Status ApiDefMap::LoadFileList(Env* env, const std::vector<string>& filenames) {
+absl::Status ApiDefMap::LoadFileList(Env* env,
+                                     const std::vector<string>& filenames) {
   for (const auto& filename : filenames) {
     TF_RETURN_IF_ERROR(LoadFile(env, filename));
   }
   return absl::OkStatus();
 }
 
-Status ApiDefMap::LoadFile(Env* env, const string& filename) {
+absl::Status ApiDefMap::LoadFile(Env* env, const string& filename) {
   if (filename.empty()) return absl::OkStatus();
   string contents;
   TF_RETURN_IF_ERROR(ReadFileToString(env, filename, &contents));
-  Status status = LoadApiDef(contents);
+  absl::Status status = LoadApiDef(contents);
   if (!status.ok()) {
     // Return failed status annotated with filename to aid in debugging.
     return errors::CreateWithUpdatedMessage(
@@ -501,7 +502,7 @@ Status ApiDefMap::LoadFile(Env* env, const string& filename) {
   return absl::OkStatus();
 }
 
-Status ApiDefMap::LoadApiDef(const string& api_def_file_contents) {
+absl::Status ApiDefMap::LoadApiDef(const string& api_def_file_contents) {
   const string contents = PBTxtFromMultiline(api_def_file_contents);
   ApiDefs api_defs;
   TF_RETURN_IF_ERROR(

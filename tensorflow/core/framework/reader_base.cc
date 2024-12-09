@@ -40,12 +40,12 @@ int64_t ReaderBase::NumWorkUnitsCompleted() {
   return work_finished_;
 }
 
-Status ReaderBase::Reset() {
+absl::Status ReaderBase::Reset() {
   mutex_lock lock(mu_);
   return ResetLocked();
 }
 
-Status ReaderBase::ResetLocked() {
+absl::Status ReaderBase::ResetLocked() {
   work_started_ = 0;
   work_finished_ = 0;
   num_records_produced_ = 0;
@@ -53,25 +53,25 @@ Status ReaderBase::ResetLocked() {
   return absl::OkStatus();
 }
 
-Status ReaderBase::SerializeState(tstring* state) {
+absl::Status ReaderBase::SerializeState(tstring* state) {
   mutex_lock lock(mu_);
   return SerializeStateLocked(state);
 }
 
-Status ReaderBase::SerializeStateLocked(tstring* state) {
+absl::Status ReaderBase::SerializeStateLocked(tstring* state) {
   return errors::Unimplemented("Reader SerializeState");
 }
 
-Status ReaderBase::RestoreState(const tstring& state) {
+absl::Status ReaderBase::RestoreState(const tstring& state) {
   mutex_lock lock(mu_);
-  Status status = RestoreStateLocked(state);
+  absl::Status status = RestoreStateLocked(state);
   if (!status.ok()) {
     ResetLocked().IgnoreError();
   }
   return status;
 }
 
-Status ReaderBase::RestoreStateLocked(const tstring& state) {
+absl::Status ReaderBase::RestoreStateLocked(const tstring& state) {
   return errors::Unimplemented("Reader RestoreState");
 }
 
@@ -93,7 +93,7 @@ int64_t ReaderBase::ReadUpTo(const int64_t num_records, QueueInterface* queue,
       if (!context->status().ok()) {
         return records_produced_this_call;
       }
-      Status status = OnWorkStartedLocked();
+      absl::Status status = OnWorkStartedLocked();
       if (status.ok()) {
         work_started_++;
       } else {
@@ -103,7 +103,7 @@ int64_t ReaderBase::ReadUpTo(const int64_t num_records, QueueInterface* queue,
     }
     bool at_end = false;
 
-    Status status =
+    absl::Status status =
         ReadUpToLocked(remaining, keys, values, &num_records_produced, &at_end);
     // This call so far.
     records_produced_this_call += num_records_produced;
@@ -133,14 +133,14 @@ int64_t ReaderBase::ReadUpTo(const int64_t num_records, QueueInterface* queue,
 }
 
 // Default implementation just reads one record at a time.
-Status ReaderBase::ReadUpToLocked(int64_t num_records,
-                                  std::vector<tstring>* keys,
-                                  std::vector<tstring>* values,
-                                  int64_t* num_read, bool* at_end) {
+absl::Status ReaderBase::ReadUpToLocked(int64_t num_records,
+                                        std::vector<tstring>* keys,
+                                        std::vector<tstring>* values,
+                                        int64_t* num_read, bool* at_end) {
   bool produced = false;
   tstring key;
   tstring value;
-  Status status = ReadLocked(&key, &value, &produced, at_end);
+  absl::Status status = ReadLocked(&key, &value, &produced, at_end);
   if (produced) {
     keys->push_back(std::move(key));
     values->push_back(std::move(value));
@@ -160,7 +160,7 @@ void ReaderBase::Read(QueueInterface* queue, tstring* key, tstring* value,
       if (!context->status().ok()) {
         return;
       }
-      Status status = OnWorkStartedLocked();
+      absl::Status status = OnWorkStartedLocked();
       if (status.ok()) {
         work_started_++;
       } else {
@@ -171,7 +171,7 @@ void ReaderBase::Read(QueueInterface* queue, tstring* key, tstring* value,
 
     bool produced = false;
     bool at_end = false;
-    Status status = ReadLocked(key, value, &produced, &at_end);
+    absl::Status status = ReadLocked(key, value, &produced, &at_end);
 
     if (!at_end && status.ok() && !produced) {
       status = errors::Internal(
@@ -236,7 +236,7 @@ tstring ReaderBase::KeyName(const tstring& key) const {
   return strings::StrCat(current_work(), ":", key);
 }
 
-Status ReaderBase::RestoreBaseState(const ReaderBaseState& state) {
+absl::Status ReaderBase::RestoreBaseState(const ReaderBaseState& state) {
   work_started_ = state.work_started();
   work_finished_ = state.work_finished();
   num_records_produced_ = state.num_records_produced();
