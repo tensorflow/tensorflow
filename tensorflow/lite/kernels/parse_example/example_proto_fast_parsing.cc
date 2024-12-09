@@ -17,6 +17,15 @@ limitations under the License.
 #include <algorithm>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/types/span.h"
+#include "third_party/protobuf/io/coded_stream.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
+
 namespace tensorflow {
 namespace example {
 
