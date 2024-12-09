@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_
 #define XLA_SERVICE_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_
 
-#include <string_view>
-
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -40,7 +38,7 @@ using StrToStrMapping =
 // not be run on the HLO module before running the benchmark. Therefore,
 // parallel backend will not be executed.
 absl::Status RunHloBenchmark(benchmark::State& state,
-                             std::string_view hlo_module,
+                             absl::string_view hlo_module,
                              absl::Span<const Literal* const> args,
                              StrToStrMapping replacements = {},
                              bool disable_parallel_task_assigner = false);
@@ -50,7 +48,7 @@ absl::Status RunHloBenchmark(benchmark::State& state,
 // Takes the same options as RunHloBenchmark, except no arguments since the
 // HLO is only compiled, not run.
 absl::Status CompileHloBenchmark(benchmark::State& state,
-                                 std::string_view hlo_module,
+                                 absl::string_view hlo_module,
                                  StrToStrMapping replacements = {},
                                  bool disable_parallel_task_assigner = false);
 
