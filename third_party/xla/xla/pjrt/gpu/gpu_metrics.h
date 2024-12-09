@@ -26,10 +26,6 @@ namespace gpu_metrics {
 inline constexpr absl::string_view freeGpuSystemMemoryMetricName =
     "/pjrt/gpu/free_gpu_system_memory";
 
-void RecordFreeGpuSystemMemory(int device_ordinal, int64_t free_memory);
-
-int64_t GetFreeGpuSystemMemory(int gpu_id);
-
 }  // namespace gpu_metrics
 }  // namespace xla
 
