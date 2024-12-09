@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/monitoring/counter.h"
 #include "tsl/platform/stacktrace.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace cpu {
@@ -33,6 +34,9 @@ auto* cpu_compiler_stacktrace_count = tsl::monitoring::Counter<1>::New(
     "The number of times a compiler stacktrace was called.", "stacktrace");
 
 void RecordCpuCompilerStacktrace() {
+  tsl::profiler::TraceMe trace([&] {
+    return tsl::profiler::TraceMeEncode("RecordCpuCompilerStacktrace", {});
+  });
   std::string tsl_stacktrace = tsl::CurrentStackTrace();
 
   // tsl::CurrentStackTrace() adds a prefix and postfix lines, so remove them.
