@@ -1944,7 +1944,7 @@ static LogicalResult inferConvReturnTypeComponents(
       // Skip if input or filter size is dynamic.
       if (input_ty.isDynamicDim(dim) || filter_ty.isDynamicDim(i)) continue;
       // Calculate the expected_output_size.
-      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
+      absl::Status status = tensorflow::GetWindowedOutputSizeVerbose(
           input_ty.getDimSize(dim), filter_ty.getDimSize(i),
           get_int(dilations[dim]), stride, padding, &expected_output_size,
           &pad_low, &pad_high);
