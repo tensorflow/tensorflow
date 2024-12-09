@@ -139,7 +139,7 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
 }
 
 // Returns the group formation mode of instr, assuming that instr is, or is
-// dervied from, an HloAllGatherInstruction, HloAllReduceInstructionBase,
+// derived from, an HloAllGatherInstruction, HloAllReduceInstructionBase,
 // HloAllToAllInstruction, HloCollectiveBroadcastInstruction or
 // HloCollectivePermuteInstruction.
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(

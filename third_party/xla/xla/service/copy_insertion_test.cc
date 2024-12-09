@@ -1302,7 +1302,7 @@ TEST_F(WhileCopyInsertionTest, InitPointsToInterfering) {
 // by another while instruction.
 //
 // Verifies that the resulting point-to set is distinct in the resulting Tuple
-// (non-identical Copys). In other words, verifies that copy sharing does not
+// (non-identical Copies). In other words, verifies that copy sharing does not
 // insert identical copies to the resulting tuple.
 TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinctUsedByTwoWhileLoops) {
   // Loop body that outputs tuple comprises two elements dependent on the init

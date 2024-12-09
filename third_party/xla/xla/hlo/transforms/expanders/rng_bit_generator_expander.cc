@@ -79,7 +79,7 @@ RngBitGeneratorExpander::GetGeneratorComputation(const Shape& data_shape,
       output.state = GetPhiloxOutputStateOp(output.state, state_shape);
       break;
     default:
-      return Unimplemented("Unsupported random algorthm: %s",
+      return Unimplemented("Unsupported random algorithm: %s",
                            RandomAlgorithm_Name(algorithm));
   }
 
