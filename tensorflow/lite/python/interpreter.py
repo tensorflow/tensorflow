@@ -42,7 +42,8 @@ else:
 # pylint: enable=g-import-not-at-top
 
 _INTERPRETER_DELETION_WARNING = """\
-    Warning: Please use the LiteRT interpreter from the ai_edge_litert package.
+    Warning: tf.lite.Interpreter is deprecated and is scheduled for deletion in
+    TF 2.20. Please use the LiteRT interpreter from the ai_edge_litert package.
     See the [migration guide](https://ai.google.dev/edge/litert/migration)
     for details.
     """
