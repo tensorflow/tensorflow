@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
@@ -504,7 +505,10 @@ absl::Status MemorySpaceAssignment::Process(
         CHECK(
             !sliced_copy_allocation.cross_program_prefetch_index().has_value());
       }
-
+      if (allocation->mutable_split_shape().has_value()) {
+        split_shapes_[allocation->defining_position()] =
+            allocation->mutable_split_shape().value();
+      }
       alternate_memory_assignments_.emplace_back(
           allocation->defining_position(), allocation->chunk());
       alternate_memory_size_ =
@@ -589,6 +593,10 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers() {
   for (const auto& defining_position_and_chunk :
        preset_assignments_->chunks()) {
     const HloPosition& defining_position = defining_position_and_chunk.first;
+    std::optional<Shape> split_shape;
+    if (split_shapes_.contains(defining_position)) {
+      split_shape = split_shapes_[defining_position];
+    }
     for (auto& buffer : alias_analysis->ComputeBuffersAt(
              defining_position.instruction, defining_position.index)) {
       for (auto& value : buffer->values()) {
@@ -600,6 +608,46 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers() {
                                   << position.ToString();
           shape->mutable_layout()->set_memory_space(
               options_.alternate_memory_space);
+          if (split_shape.has_value()) {
+            if (shape->layout().split_configs_size() == 0) {
+              if (position.instruction->opcode() == HloOpcode::kBitcast) {
+                auto status_or_split_dim = options_.bitcast_split_fn(
+                    position.instruction,
+                    split_shape->layout().split_configs(0).dimension());
+                CHECK_OK(status_or_split_dim);
+                SplitConfig split_config(
+                    *status_or_split_dim,
+                    {split_shape->layout().split_configs(0).split_indices(0)});
+                shape->mutable_layout()->add_split_configs(split_config);
+              } else {
+                CHECK(Shape::Equal()
+                          .IgnoreSplitConfigInLayout()
+                          .IgnoreMemorySpaceInLayout()(*split_shape, *shape))
+                    << "Expected split shape to match original shape: split "
+                       "shape: "
+                    << split_shape->ToString(/*print_layout=*/true)
+                    << " != original shape: "
+                    << shape->ToString(/*print_layout=*/true);
+                VLOG(4) << "Applying split config: "
+                        << split_shape->layout().split_configs(0).ToString()
+                        << " to shape: "
+                        << shape->ToString(/*print_layout=*/true);
+                shape->mutable_layout()->add_split_configs(
+                    split_shape->layout().split_configs(0));
+              }
+            } else {
+              CHECK_EQ(split_shape->layout().split_configs(0).dimension(),
+                       shape->layout().split_configs(0).dimension())
+                  << "Split dimension didn't match existing shape's split "
+                     "dimension.";
+              CHECK_EQ(
+                  split_shape.value().layout().split_configs(0).split_indices(
+                      0),
+                  shape->layout().split_configs(0).split_indices(0))
+                  << "Split indices didn't match existing shape's split "
+                     "indices.";
+            }
+          }
         }
       }
     }
