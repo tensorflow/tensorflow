@@ -198,6 +198,15 @@ class DeviceMemoryAllocator {
   // TODO(cheshire): Add deprecation notice.
   virtual absl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) = 0;
 
+  virtual absl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem,
+                                  Stream *stream) {
+    if (stream == nullptr) {
+      return Deallocate(device_ordinal, std::move(mem));
+    }
+    return absl::UnimplementedError(
+        "Deallocate with stream is not implemented.");
+  }
+
   // Return the platform that the allocator allocates memory on.
   const Platform *platform() const { return platform_; }
 
