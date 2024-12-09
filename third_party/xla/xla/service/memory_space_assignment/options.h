@@ -66,6 +66,9 @@ using IsAsyncSliceImplementedFunction =
 
 // The different options to be passed to the Run() API.
 struct Options {
+  // The backend-specific integer value that describes the default memory.
+  int64_t default_memory_space = 0;
+
   // Backend-specific integer value that describes the alternate memory.
   int64_t alternate_memory_space = 0;
 

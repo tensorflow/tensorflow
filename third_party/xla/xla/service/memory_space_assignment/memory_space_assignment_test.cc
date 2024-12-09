@@ -10225,7 +10225,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
       AssignMemorySpace(module.get(), options);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
-  EXPECT_EQ(cross_program_prefetches.size(), 0);
+  EXPECT_GT(cross_program_prefetches.size(), 0);
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
@@ -10272,7 +10272,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
       AssignMemorySpace(module.get(), options);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
-  EXPECT_EQ(cross_program_prefetches.size(), 0);
+  EXPECT_GT(cross_program_prefetches.size(), 0);
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramRootDupMayAlias) {
