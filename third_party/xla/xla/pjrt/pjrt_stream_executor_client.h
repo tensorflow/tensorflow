@@ -261,6 +261,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
   ~PjRtStreamExecutorClient() override = default;
 
+  void ShutDown() override {}
+
   int process_index() const override { return process_index_; }
 
   int device_count() const override { return devices_.size(); }
