@@ -1687,6 +1687,10 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module,
     [[maybe_unused]] se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
+  TraceMe trace([&] {
+    return TraceMeEncode("CpuCompiler::RunBackend", {{"name", module->name()}});
+  });
+
   VLOG(1) << "Compiling: " << module->name();
   RecordCpuCompilerStacktrace();
   XLA_SCOPED_LOGGING_TIMER(
