@@ -3190,6 +3190,85 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDynamicSlice) {
                                                 false, true, error));
 }
 
+TEST_F(DynamicSliceFusionTest,
+       OffsetsThatCanBeEvaluatedSuccessfullyAreCorrectlyEmbeddedIntoThunks) {
+  const char* hlo_opt = R"(
+    HloModule test, replica_count=2
+    add {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      ROOT add = s32[] add(a,b)
+    }
+    dynamic-slice-fusion {
+      src = s32[32,32] parameter(0)
+      dest = s32[32,32] parameter(1)
+      offset1 = s32[] parameter(2)
+      offset2 = s32[] parameter(3)
+      rs = s32[16,32] reduce-scatter(src), dimensions={0}, replica_groups={{0,1}}, to_apply=add
+      ROOT dus = s32[32,32] dynamic-update-slice(dest, rs, offset1, offset2)
+    }
+    ENTRY main {
+      src = s32[32,32] parameter(0)
+      dest = s32[32,32] parameter(1)
+      c0 = s32[] constant(0)
+      c5 = s32[] constant(5)
+      add = s32[] add(c5, c5)
+      ROOT fusion = s32[32,32] fusion(src, dest, add, c0), kind=kCustom, calls=dynamic-slice-fusion,
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
+    }
+  )";
+
+  const char* hlo_ref = R"(
+    HloModule test, replica_count=2
+    add {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      ROOT add = s32[] add(a,b)
+    }
+    ENTRY main {
+      src = s32[32,32] parameter(0)
+      dest = s32[32,32] parameter(1)
+      c0 = s32[] constant(0)
+      c5 = s32[] constant(5)
+      add = s32[] add(c5, c5)
+      rs.1 = ((s32[32,32]), s32[16,32]) reduce-scatter-start(src), dimensions={0}, replica_groups={{0,1}}, to_apply=add
+      rs = s32[16,32] reduce-scatter-done(rs.1)
+      ROOT dus = s32[32,32] dynamic-update-slice(dest, rs, add, c0)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_ref,
+                          ParseAndReturnVerifiedModule(hlo_ref));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_opt,
+                          ParseAndReturnVerifiedModule(hlo_opt));
+
+  // Check that the offset value in the thunk is an evaluated constant even if
+  // no simplification passes are executed.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,
+                          CreateExecutable(/*module=*/module_opt->Clone(),
+                                           /*run_hlo_passes=*/false));
+  GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec.get());
+  ASSERT_NE(gpu_exec, nullptr);
+  const SequentialThunk& thunk = gpu_exec->GetThunk();
+  auto dynamic_slice_thunk =
+      absl::c_find_if(thunk.thunks(), [](const std::unique_ptr<Thunk>& thunk) {
+        return thunk->kind() == Thunk::kDynamicSlice;
+      });
+  ASSERT_NE(dynamic_slice_thunk, thunk.thunks().end());
+  std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets =
+      dynamic_cast<DynamicSliceThunk*>(dynamic_slice_thunk->get())
+          ->get_offsets();
+  ASSERT_EQ(offsets.size(), 2);
+  ASSERT_TRUE(offsets[1].has_value());
+  ASSERT_EQ(offsets[1].value()[0], DynamicSliceThunk::Offset(10l));
+  ASSERT_EQ(offsets[1].value()[1], DynamicSliceThunk::Offset(0l));
+
+  ErrorSpec error{1e-3, 1e-3};
+  EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
+      /*module_0=*/std::move(module_ref), /*module_1=*/std::move(module_opt),
+      /*run_hlo_passes=*/false, /*use_threads=*/true, error));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

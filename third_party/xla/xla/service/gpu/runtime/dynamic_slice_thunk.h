@@ -48,7 +48,7 @@ class DynamicSliceThunk : public Thunk {
   // Dynamic slice offset can be either: (1) a statically known constant value
   // or (2) a truly dynamic offset that is computed on device and have to be
   // transferred to host.
-  using Offset = std::variant<uint64_t, BufferAllocation::Slice>;
+  using Offset = std::variant<int64_t, BufferAllocation::Slice>;
 
   DynamicSliceThunk(
       ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,

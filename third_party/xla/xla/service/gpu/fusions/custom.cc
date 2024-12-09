@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
@@ -69,13 +71,11 @@ limitations under the License.
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
-#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -85,8 +85,6 @@ namespace {
 
 constexpr unsigned kGEMMOutputBufferIndex = 0;
 constexpr unsigned kGEMMWorkspaceBufferIndex = 1;
-
-namespace m = ::xla::match;
 
 absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
@@ -200,25 +198,24 @@ absl::Status CollectSliceInfo(
     const auto* param = Cast<HloParameterInstruction>(idx_op);
     const auto* offset_value = fusion_instr.operand(param->parameter_number());
 
-    if (auto* cst = DynCast<HloConstantInstruction>(offset_value)) {
+    VLOG(2) << "Offset value:" << offset_value->ToString();
+
+    // Try to evaluate the offset value, maybe it is simple arithmetic.
+    absl::StatusOr<Literal> offset_literal = HloEvaluator().Evaluate(
+        /*instruction=*/offset_value,
+        /*precomputed_analyses=*/{},
+        /*recursively_evaluate_nonconstant_operands=*/true);
+
+    if (offset_literal.ok()) {
       // Loop offset is defined by a constant scalar value.
-      if (ShapeUtil::IsScalarWithElementType(cst->shape(),
-                                             PrimitiveType::S32)) {
-        arg_offsets.emplace_back() =
-            static_cast<uint64_t>(cst->literal().data<int32_t>()[0]);
-      } else if (ShapeUtil::IsScalarWithElementType(cst->shape(),
-                                                    PrimitiveType::S64)) {
-        arg_offsets.emplace_back() =
-            static_cast<uint64_t>(cst->literal().data<int64_t>()[0]);
-      } else if (ShapeUtil::IsScalarWithElementType(cst->shape(),
-                                                    PrimitiveType::U32)) {
-        arg_offsets.emplace_back() = cst->literal().data<uint32_t>()[0];
-      } else if (ShapeUtil::IsScalarWithElementType(cst->shape(),
-                                                    PrimitiveType::U64)) {
-        arg_offsets.emplace_back() = cst->literal().data<uint64_t>()[0];
+      std::optional<int64_t> offset_value =
+          LiteralUtil::LiteralAsScalarInt64(offset_literal.value());
+      if (offset_value.has_value()) {
+        arg_offsets.emplace_back() = *offset_value;
       } else {
-        return absl::InternalError(absl::StrCat(
-            "Unsupported constant offset shape: ", cst->shape().ToString()));
+        return absl::InternalError(
+            absl::StrCat("Unsupported constant offset shape: ",
+                         offset_literal->shape().ToString()));
       }
 
     } else {
