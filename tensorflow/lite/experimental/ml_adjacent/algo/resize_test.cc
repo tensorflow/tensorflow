@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ml_adjacent/algo/resize.h"
 
 #include <cstring>
-#include <numeric>
 #include <vector>
 
 #include <gtest/gtest.h>
