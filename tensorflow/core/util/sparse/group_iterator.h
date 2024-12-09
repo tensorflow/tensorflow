@@ -16,7 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_SPARSE_GROUP_ITERATOR_H_
 #define TENSORFLOW_CORE_UTIL_SPARSE_GROUP_ITERATOR_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <vector>
+
+#include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
