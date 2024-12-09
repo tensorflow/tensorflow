@@ -3099,7 +3099,7 @@ std::optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
     return std::nullopt;
   }
 
-  return convertReduceOpCommon<tosa::ReduceProdOp>(
+  return convertReduceOpCommon<tosa::ReduceProductOp>(
       rewriter, op, output_type, input_value, axes_elems,
       output_type.getElementType(), false, 1.0f, 0, 1.0f, 0);
 }

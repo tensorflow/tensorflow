@@ -760,7 +760,7 @@ func.func @test_reduce_mean_out_of_bounds(%arg0: tensor<13x21x3xf32>) -> tensor<
 // -----
 
 // CHECK-LABEL: test_reduce_product
-// CHECK-DAG: %[[VAR0:.*]] = tosa.reduce_prod %arg0 {axis = 0 : i32}
+// CHECK-DAG: %[[VAR0:.*]] = tosa.reduce_product %arg0 {axis = 0 : i32}
 // CHECK-DAG: %[[VAR10:.*]] = tosa.const_shape {value = dense<[21, 3]> : tensor<2xindex>}
 // CHECK: %[[VAR1:.*]] = tosa.reshape %[[VAR0]], %[[VAR10]]
 func.func @test_reduce_product(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xf32> {
