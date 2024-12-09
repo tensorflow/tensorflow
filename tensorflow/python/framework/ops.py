@@ -318,7 +318,11 @@ class _EagerTensorBase(
     return cast(np.ndarray, self._numpy()).__index__()
 
   def __bool__(self) -> bool:
-    return bool(self._numpy())
+    x = self._numpy()
+    if isinstance(x, np.ndarray):
+      return bool(x.size > 0 and x)
+    else:
+      return bool(x)
 
   __nonzero__ = __bool__
 
