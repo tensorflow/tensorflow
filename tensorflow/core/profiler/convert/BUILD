@@ -656,6 +656,7 @@ cc_library(
     hdrs = ["xplane_to_tools_data.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":compute_inference_latency",
         ":hlo_to_tools_data",
         ":multi_xplanes_to_op_stats",
         ":multi_xspace_to_inference_stats",

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/profiler/convert/compute_inference_latency.h"
 #include "tensorflow/core/profiler/convert/hlo_to_tools_data.h"
 #include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/multi_xspace_to_inference_stats.h"
@@ -157,8 +158,13 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToOverviewPage(
   OpStats combined_op_stats;
   TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
       session_snapshot, options, &combined_op_stats));
-  // TODO(profiler): xspace should tell whether this is sampling mode.
-  return ConvertOpStatsToOverviewPage(combined_op_stats).SerializeAsString();
+  OverviewPage overview_page = ConvertOpStatsToOverviewPage(combined_op_stats);
+  InferenceStats inference_stats;
+  TF_RETURN_IF_ERROR(ConvertMultiXSpaceToInferenceStats(session_snapshot, "",
+                                                        "", &inference_stats));
+  *overview_page.mutable_inference_latency() =
+      ComputeInferenceLatencyResult(inference_stats);
+  return overview_page.SerializeAsString();
 }
 
 absl::StatusOr<std::string> ConvertMultiXSpacesToInputPipeline(
