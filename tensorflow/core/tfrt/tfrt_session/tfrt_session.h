@@ -66,8 +66,9 @@ class TfrtSessionFactory : public tensorflow::SessionFactory {
 
   bool AcceptsOptions(const SessionOptions& options) override;
 
-  Status NewSession(const SessionOptions& options,
-                    Session** out_session) override TF_LOCKS_EXCLUDED(mutex_);
+  absl::Status NewSession(const SessionOptions& options,
+                          Session** out_session) override
+      TF_LOCKS_EXCLUDED(mutex_);
 
   // This should only be used for the sake initializing resources for
   // Python executables. It should only be called before main.
@@ -82,10 +83,10 @@ class TfrtSessionFactory : public tensorflow::SessionFactory {
 
  private:
   class ThreadPoolManager;
-  friend Status InitializeTfrtSession(const TfrtSessionOptions& options);
-  friend Status UpdateTfrtSessionOptionsLocked(
+  friend absl::Status InitializeTfrtSession(const TfrtSessionOptions& options);
+  friend absl::Status UpdateTfrtSessionOptionsLocked(
       const TfrtSessionOptions& options);
-  Status InitializeLocked(const TfrtSessionOptions& options)
+  absl::Status InitializeLocked(const TfrtSessionOptions& options)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   bool IsInitialized() const TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     return runtime_ != nullptr;
@@ -110,11 +111,11 @@ class TfrtSessionFactory : public tensorflow::SessionFactory {
 // Configures the TfrtSessionFactory according to `options`. Should not be
 // called within functions that are passed into
 // `TfrtSessionFactory::RegisterInitializer`, because it acquires `mutex_`.
-Status InitializeTfrtSession(const TfrtSessionOptions& options);
+absl::Status InitializeTfrtSession(const TfrtSessionOptions& options);
 
 // Version of `InitializeTfrtSession` that can be used within functions passed
 // into `TfrtSessionFactory::RegisterInitializer`.
-Status UpdateTfrtSessionOptionsLocked(const TfrtSessionOptions& options);
+absl::Status UpdateTfrtSessionOptionsLocked(const TfrtSessionOptions& options);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TFRT_TFRT_SESSION_TFRT_SESSION_H_
