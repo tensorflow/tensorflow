@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LLVM.h"
 
 // Error utilities for MLIR when interacting with code using absl::Status
 // returns.
