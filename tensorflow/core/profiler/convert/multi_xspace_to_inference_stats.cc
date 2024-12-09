@@ -21,21 +21,29 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/profiler/utils/device_utils.h"
 #include "xla/tsl/profiler/utils/group_events.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/tpu_xplane_utils.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/convert/inference_stats.h"
 #include "tensorflow/core/profiler/convert/inference_stats_combiner.h"
 #include "tensorflow/core/profiler/convert/inference_stats_grouping.h"
 #include "tensorflow/core/profiler/convert/inference_stats_sampler.h"
 #include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
 #include "tensorflow/core/profiler/convert/repository.h"
+#include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 #include "tensorflow/core/profiler/protobuf/inference_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow::profiler {
 
 namespace {
+using tsl::profiler::FindMutablePlanesWithPrefix;
+using tsl::profiler::FindMutablePlaneWithName;
+
 SampledInferenceStatsProto GetSampledInferenceStatsProto(
     const InferenceStats& inference_stats, absl::string_view request_column,
     absl::string_view batch_column) {
@@ -59,6 +67,36 @@ SampledInferenceStatsProto GetSampledInferenceStatsProto(
   }
   return result;
 }
+
+StepEvents GetNonOverlappedStepEvents(XSpace* xspace) {
+  StepEvents non_overlapped_step_events;
+
+  std::vector<XPlane*> device_traces =
+      FindMutablePlanesWithPrefix(xspace, kGpuPlanePrefix);
+  if (device_traces.empty()) return non_overlapped_step_events;
+
+  StepEvents device_step_events;
+  StepEvents host_step_events;
+  for (XPlane* device_trace : device_traces) {
+    StepEvents events = ConvertDeviceTraceXPlaneToStepEvents(*device_trace);
+    UnionCombineStepEvents(events, &device_step_events);
+  }
+
+  XPlaneVisitor host_plane = tsl::profiler::CreateTfXPlaneVisitor(
+      FindMutablePlaneWithName(xspace, kHostThreadsPlaneName));
+
+  host_plane.ForEachLine([&](const XLineVisitor& line) {
+    StepEvents events =
+        ConvertHostThreadsXLineToStepEvents(line, &device_step_events);
+    UnionCombineStepEvents(events, &host_step_events);
+  });
+  StepEvents overlapped_step_events;
+  UnionCombineStepEvents(device_step_events, &overlapped_step_events);
+  UnionCombineStepEvents(host_step_events, &overlapped_step_events);
+  non_overlapped_step_events =
+      ToNonOverlappedStepEvents(overlapped_step_events);
+  return non_overlapped_step_events;
+}
 }  // namespace
 
 absl::Status ConvertMultiXSpaceToInferenceStats(
@@ -68,12 +106,13 @@ absl::Status ConvertMultiXSpaceToInferenceStats(
     TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                         session_snapshot.GetXSpace(i));
     tsl::profiler::GroupMetadataMap metadata_map;
-    StepEvents non_overlapped_step_events;
     InferenceStats inference_stats_per_host;
     std::vector<XPlane*> device_traces =
         tsl::profiler::FindMutableTensorCorePlanes(xspace.get());
     PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
                                /*derived_timeline=*/false, &metadata_map);
+    StepEvents non_overlapped_step_events =
+        GetNonOverlappedStepEvents(xspace.get());
     GenerateInferenceStats(
         device_traces, non_overlapped_step_events, metadata_map, *xspace,
         tsl::profiler::DeviceType::kTpu, i, &inference_stats_per_host);
