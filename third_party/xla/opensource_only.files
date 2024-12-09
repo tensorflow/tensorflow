@@ -1,4 +1,5 @@
 compiler/xla/backends/cpu/nanort/package_groups.bzl:
+compiler/xla/backends/cpu/package_groups.bzl:
 compiler/xla/internal/package_groups.bzl:
 compiler/xla/mlir_hlo/WORKSPACE:
 compiler/xla/package_groups.bzl:

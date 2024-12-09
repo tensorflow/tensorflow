@@ -1,6 +1,9 @@
+load("//xla/backends/cpu:package_groups.bzl", "xla_cpu_backend_access")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+
+xla_cpu_backend_access()
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
