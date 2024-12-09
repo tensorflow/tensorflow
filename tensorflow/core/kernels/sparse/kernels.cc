@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse/kernels.h"
 
+#include <cstdint>
 #include <numeric>
 
+#include "absl/status/status.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
