@@ -47,26 +47,26 @@ TEST(KernelRunnerTest, Add) {
         %struct.XLA_CPU_KernelArg = type { ptr, i64 }
         ; c = a + b (per thread)
         define ptr @LlvmAddI32(ptr noundef %call_frame_ptr) {
-          %args_ptr = getelementptr inbounds %struct.XLA_CPU_KernelCallFrame,
+          %args_gep = getelementptr inbounds %struct.XLA_CPU_KernelCallFrame,
                           ptr %call_frame_ptr, i32 0, i32 3
-          %args_addr = load ptr, ptr %args_ptr, align 8
-          %arg1_ptr = getelementptr inbounds %struct.XLA_CPU_KernelArg, ptr %args_addr, i64 1
-          %arg2_ptr = getelementptr inbounds %struct.XLA_CPU_KernelArg, ptr %args_addr, i64 2
-          %arg0_addr = load ptr, ptr %args_addr, align 8
-          %arg1_addr = load ptr, ptr %arg1_ptr, align 8
-          %arg2_addr = load ptr, ptr %arg2_ptr, align 8
-          %thread_ptr = getelementptr inbounds %struct.XLA_CPU_KernelCallFrame, ptr %call_frame_ptr, i32 0, i32 1
-          %thread_addr = load ptr, ptr %thread_ptr, align 8
-          %thread_idx = load i64, ptr %thread_addr, align 8
-          %a_ptr = getelementptr inbounds i32, ptr %arg0_addr, i64 %thread_idx
+          %args_ptr = load ptr, ptr %args_gep, align 8
+          %arg1_gep = getelementptr inbounds %struct.XLA_CPU_KernelArg, ptr %args_ptr, i64 1
+          %arg2_gep = getelementptr inbounds %struct.XLA_CPU_KernelArg, ptr %args_ptr, i64 2
+          %arg0_ptr = load ptr, ptr %args_ptr, align 8
+          %arg1_ptr = load ptr, ptr %arg1_gep, align 8
+          %arg2_ptr = load ptr, ptr %arg2_gep, align 8
+          %thread_gep = getelementptr inbounds %struct.XLA_CPU_KernelCallFrame, ptr %call_frame_ptr, i32 0, i32 1
+          %thread_ptr = load ptr, ptr %thread_gep, align 8
+          %thread_idx = load i64, ptr %thread_ptr, align 8
+          %a_ptr = getelementptr inbounds i32, ptr %arg0_ptr, i64 %thread_idx
           %a = load i32, ptr %a_ptr, align 4
-          %b_ptr = getelementptr inbounds i32, ptr %arg1_addr, i64 %thread_idx
+          %b_ptr = getelementptr inbounds i32, ptr %arg1_ptr, i64 %thread_idx
           %b = load i32, ptr %b_ptr, align 4
           %c = add nsw i32 %a, %b
-          %result_ptr = getelementptr inbounds i32, ptr %arg2_addr, i64 %thread_idx
+          %result_ptr = getelementptr inbounds i32, ptr %arg2_ptr, i64 %thread_idx
           store i32 %c, ptr %result_ptr, align 4
           ret ptr null
-    }
+        }
   )";
 
   constexpr int64_t kNumElements = 8;
