@@ -1513,6 +1513,7 @@ GatherScatterDims GetGatherScatterOperandPassthroughDims(
     absl::Span<const int64_t> offset_or_window_dims,
     absl::Span<const int64_t> slice_size) {
   GatherScatterDims result;
+  CHECK(absl::c_is_sorted(offset_or_window_dims));
 
   int64_t collapsed_or_batching = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
@@ -1522,12 +1523,6 @@ GatherScatterDims GetGatherScatterOperandPassthroughDims(
       continue;
     }
     if (slice_size[i] != operand_shape.dimensions(i)) {
-      continue;
-    }
-    if (i - collapsed_or_batching > 0 &&
-        offset_or_window_dims[i - collapsed_or_batching] <
-            offset_or_window_dims[i - collapsed_or_batching - 1]) {
-      // Output offsets are transposed, we do not support this case.
       continue;
     }
     result.operand_dims.push_back(i);
