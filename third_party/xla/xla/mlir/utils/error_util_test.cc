@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "xla/mlir/utils/error_util.h"
 
-#include <string>
-
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "llvm/ADT/Twine.h"
