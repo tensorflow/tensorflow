@@ -16,10 +16,7 @@ limitations under the License.
 // This file provides optional optimization patterns for mhlo, canonocalizing
 // operations to equivalent but potentially more efficient operations.
 
-#include <cstddef>
 #include <cstdint>
-#include <iterator>
-#include <numeric>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mhlo/IR/hlo_ops.h"
