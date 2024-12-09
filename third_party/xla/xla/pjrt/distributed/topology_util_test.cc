@@ -19,11 +19,11 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/test_helpers.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
@@ -32,6 +32,7 @@ limitations under the License.
 
 namespace xla {
 namespace {
+using tsl::testing::StatusIs;
 
 TEST(TopologyTest, BuildGlobalTopology) {
   std::vector<LocalTopologyProto> locals(2);
@@ -84,6 +85,94 @@ TEST(TopologyTest, ExchangeTopology) {
     EXPECT_EQ(global.nodes_size(), 2);
     EXPECT_EQ(global.nodes()[0].devices_size(), 2);
     EXPECT_EQ(global.nodes()[1].devices_size(), 2);
+  }
+}
+
+TEST(TopologyTest, ExchangeTopology_Twice_Succeeds) {
+  int num_nodes = 2;
+  std::vector<LocalTopologyProto> locals(num_nodes);
+  DeviceProto* d0 = locals[0].add_devices();
+  d0->set_local_device_ordinal(0);
+  DeviceProto* d1 = locals[0].add_devices();
+  d1->set_local_device_ordinal(0);
+  DeviceProto* d2 = locals[1].add_devices();
+  d2->set_local_device_ordinal(0);
+  DeviceProto* d3 = locals[1].add_devices();
+  d3->set_local_device_ordinal(1);
+
+  InMemoryKeyValueStore kv_store;
+  std::vector<GlobalTopologyProto> globals(num_nodes);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "TestPool",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; i++) {
+      thread_pool.Schedule([&, i] {
+        TF_ASSERT_OK(ExchangeTopologies(
+            /*platform=*/"cuda", /*node_id=*/i, num_nodes,
+            /*get_local_topology_timeout=*/
+            absl::Seconds(10), /*get_global_topology_timeout=*/
+            absl::Seconds(10), &kv_store, locals[i], &globals[i],
+            /*assign_global_device_ids=*/true));
+        // Simulate node 1 restarting and exchanging topologies again.
+        if (i == 1) {
+          TF_ASSERT_OK(ExchangeTopologies(
+              /*platform=*/"cuda", /*node_id=*/i, num_nodes,
+              /*get_local_topology_timeout=*/
+              absl::Seconds(10), /*get_global_topology_timeout=*/
+              absl::Seconds(10), &kv_store, locals[i], &globals[i],
+              /*assign_global_device_ids=*/true));
+        }
+      });
+    }
+  }
+  for (const GlobalTopologyProto& global : globals) {
+    EXPECT_EQ(global.nodes_size(), 2);
+    EXPECT_EQ(global.nodes()[0].devices_size(), 2);
+    EXPECT_EQ(global.nodes()[1].devices_size(), 2);
+  }
+}
+
+TEST(TopologyTest, ExchangeTopology_TwiceWithDifferentLocalTopology_Fails) {
+  int num_nodes = 2;
+  std::vector<LocalTopologyProto> locals(num_nodes);
+  DeviceProto* d0 = locals[0].add_devices();
+  d0->set_local_device_ordinal(0);
+  DeviceProto* d1 = locals[0].add_devices();
+  d1->set_local_device_ordinal(0);
+  DeviceProto* d2 = locals[1].add_devices();
+  d2->set_local_device_ordinal(0);
+  DeviceProto* d3 = locals[1].add_devices();
+  d3->set_local_device_ordinal(1);
+
+  InMemoryKeyValueStore kv_store;
+  std::vector<GlobalTopologyProto> globals(num_nodes);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "TestPool",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; i++) {
+      thread_pool.Schedule([&, i] {
+        TF_ASSERT_OK(ExchangeTopologies(
+            /*platform=*/"cuda", /*node_id=*/i, num_nodes,
+            /*get_local_topology_timeout=*/
+            absl::Seconds(10), /*get_global_topology_timeout=*/
+            absl::Seconds(10), &kv_store, locals[i], &globals[i],
+            /*assign_global_device_ids=*/true));
+        // Simulate node 1 restarting with different devices.
+        if (i == 1) {
+          DeviceProto* d4 = locals[1].add_devices();
+          d4->set_local_device_ordinal(2);
+          // This should fail because the local topology is unexpectedly
+          // different.
+          EXPECT_THAT(ExchangeTopologies(
+                          /*platform=*/"cuda", /*node_id=*/i, num_nodes,
+                          /*get_local_topology_timeout=*/
+                          absl::Seconds(10), /*get_global_topology_timeout=*/
+                          absl::Seconds(10), &kv_store, locals[i], &globals[i],
+                          /*assign_global_device_ids=*/true),
+                      StatusIs(absl::StatusCode::kInternal));
+        }
+      });
+    }
   }
 }
 
