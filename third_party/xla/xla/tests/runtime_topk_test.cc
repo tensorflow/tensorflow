@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_test_base.h"
@@ -31,7 +31,7 @@ namespace {
 class TopkTest : public HloTestBase {};
 
 XLA_TEST_F(TopkTest, CustomCallTarget) {
-  std::string_view hlo_text_module = R"(
+  absl::string_view hlo_text_module = R"(
   HloModule topk
 
   ENTRY TopK {

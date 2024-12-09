@@ -36,7 +36,7 @@ namespace xla::cpu {
 
 class CpuAotCompilationTest : public HloTestBase {
  protected:
-  void ExportAndLoad(std::string_view hlo_string) {
+  void ExportAndLoad(absl::string_view hlo_string) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo_string));
 
