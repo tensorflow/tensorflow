@@ -115,6 +115,9 @@ TEST_F(CuptiErrorManagerTest, GpuTraceActivityEnableTest) {
   // Enforces the order of execution below.
   Sequence s1;
   // CuptiBase::EnableProfiling()
+  EXPECT_CALL(*mock_, SetThreadIdType(_))
+      .InSequence(s1)
+      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::SetThreadIdType));
   EXPECT_CALL(*mock_, Subscribe(_, _, _))
       .InSequence(s1)
       .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::Subscribe));
@@ -168,6 +171,9 @@ TEST_F(CuptiErrorManagerTest, GpuTraceAutoEnableTest) {
   EXPECT_FALSE(CuptiDisabled());
   // Enforces the order of execution below.
   Sequence s1;
+  EXPECT_CALL(*mock_, SetThreadIdType(_))
+      .InSequence(s1)
+      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::SetThreadIdType));
   EXPECT_CALL(*mock_, Subscribe(_, _, _))
       .InSequence(s1)
       .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::Subscribe));
