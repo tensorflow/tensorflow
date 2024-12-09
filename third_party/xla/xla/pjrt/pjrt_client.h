@@ -1244,9 +1244,13 @@ class PjRtBuffer {
       } else {
         literal_dims = dimensions();
       }
-      device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
-      // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
-      *device_shape.mutable_layout() = GetXlaLayoutUnsafe(layout());
+      if (element_type() == TOKEN) {
+        device_shape = ShapeUtil::MakeTokenShape();
+      } else {
+        device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
+        // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
+        *device_shape.mutable_layout() = GetXlaLayoutUnsafe(layout());
+      }
     } else {
       // TODO(skyewm): does anything need to create tuple literals? The PJRT C
       // API doesn't support tuples or {logical_}on_device_shape(), so we prefer
