@@ -39,7 +39,7 @@ constexpr float kExtraCollectiveOptimizations = 0.2;
 // the potential expense of compile time.
 template <typename Pass>
 bool IsPassEnabledAtOptimizationEffort(const HloModule& module) {
-  float exec_effort = ExecTimeOptimizationEffort(module.config());
+  float exec_effort = module.config().exec_time_optimization_effort();
 
   bool is_collective_optimization_pass =
       std::is_same_v<Pass, CollectivePipeliner> ||

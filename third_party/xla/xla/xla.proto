@@ -42,16 +42,9 @@ message DebugOptions {
   // XLA backend-agnostic options.
   //--------------------------------------------------------------------------//
   // go/keep-sorted start
-
-  // The execution time optimization effort to expend during compilation.
-  // See `exec_time_optimization_effort` for accepted ranges. This flag will
-  // override any changes set in `ExecutionOptions`. Most likely this is just a
-  // temporary measure before https://github.com/jax-ml/jax/issues/24715 is in.
-  //
-  // TODO(b/377871215): Check whether we still need this.
-  float xla_experimental_exec_time_optimization_effort = 346;
-
   // go/keep-sorted end
+
+  reserved 346;  // xla_experimental_exec_time_optimization_effort
 
   //--------------------------------------------------------------------------//
   // XLA:CPU options.
