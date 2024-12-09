@@ -432,7 +432,11 @@ cc_library(
         "@local_tsl//tsl/platform:human_readable_json",
         "@local_tsl//tsl/platform:statusor",
         "@triton//:TritonDialects",
-    ],
+    ] + if_cuda_is_configured([
+        "//xla/stream_executor/cuda:cuda_solver_context",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor/rocm:rocm_solver_context",
+    ]),
 )
 
 cc_library(
@@ -1047,39 +1051,6 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-    ]),
-)
-
-cc_library(
-    name = "cusolver_context",
-    srcs = if_gpu_is_configured(["cusolver_context.cc"]),
-    hdrs = if_gpu_is_configured(["cusolver_context.h"]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
-    deps = [
-        "//xla:comparison_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/stream_executor:blas",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/gpu:gpu_stream",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-        "//xla/tsl/cuda:cusolver",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-        "//xla/stream_executor/rocm:rocblas_wrapper",
-        "//xla/stream_executor/rocm:rocsolver_wrapper",
-        "//xla/stream_executor/rocm:hipsolver_wrapper",
     ]),
 )
 
@@ -1850,6 +1821,7 @@ cc_library(
         "//xla/stream_executor/cuda:compilation_provider",
         "//xla/stream_executor/cuda:cuda_diagnostics",
         "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/cuda:cuda_solver_context",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
@@ -2006,6 +1978,7 @@ cc_library(
     tags = [
         "gpu",
         "manual",
+        "rocm-only",
     ],
     deps = [
         ":amdgpu_compiler_impl",
@@ -2026,6 +1999,7 @@ cc_library(
     tags = [
         "gpu",
         "manual",
+        "rocm-only",
     ],
     deps = [
         ":cublas_padding_requirements",
@@ -2066,6 +2040,7 @@ cc_library(
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/rocm:rocm_platform_id",
+        "//xla/stream_executor/rocm:rocm_solver_context",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

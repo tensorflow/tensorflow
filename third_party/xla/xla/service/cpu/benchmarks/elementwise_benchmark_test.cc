@@ -15,10 +15,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <random>
-#include <string_view>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -33,7 +33,7 @@ namespace xla::cpu {
 static void BM_AddF32(benchmark::State& state) {
   int64_t d0 = state.range(0);
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule add_f32_$d0
 
     ENTRY e {
@@ -56,7 +56,7 @@ static void BM_AddF32(benchmark::State& state) {
 static void BM_AddBF16(benchmark::State& state) {
   int64_t d0 = state.range(0);
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule add_bf16_$d0
 
     ENTRY e {
@@ -79,7 +79,7 @@ static void BM_AddBF16(benchmark::State& state) {
 static void BM_ConvertF32ToBF16(benchmark::State& state) {
   int64_t d0 = state.range(0);
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule convert_f32_to_bf16_$d0
 
     ENTRY e {

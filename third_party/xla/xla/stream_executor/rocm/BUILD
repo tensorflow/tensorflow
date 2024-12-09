@@ -407,6 +407,39 @@ cc_library(
 )
 
 cc_library(
+    name = "rocm_solver_context",
+    srcs = ["rocm_solver_context.cc"],
+    hdrs = ["rocm_solver_context.h"],
+    local_defines = [
+        "TENSORFLOW_USE_ROCM=1",
+    ],
+    tags = [
+        "gpu",
+        "manual",
+        "rocm-only",
+    ],
+    deps = [
+        ":hipblas_lt_header",
+        ":hipsolver_wrapper",
+        ":rocblas_wrapper",
+        ":rocsolver_wrapper",
+        "//xla:comparison_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:blas",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:gpu_solver_context",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
     name = "hipfft_plugin",
     srcs = ["rocm_fft.cc"],
     hdrs = ["rocm_fft.h"],

@@ -2020,7 +2020,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/service/gpu:cusolver_context",
+        "//xla/stream_executor:gpu_solver_context",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory_allocator",
@@ -2028,6 +2028,7 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
+        "@com_google_absl//absl/functional:any_invocable",
     ]),
 )
 

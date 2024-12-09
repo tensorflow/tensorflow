@@ -95,6 +95,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_solver_context.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -192,7 +193,8 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   MatmulBfloat16Support matmul_bf16_support(cuda_compute_capability);
   pipeline.AddPass<FloatNormalization>(&matmul_bf16_support);
 
-  pipeline.AddPass<GpusolverRewriter>();
+  pipeline.AddPass<GpusolverRewriter>(
+      stream_executor::CudaSolverContext::Create);
   if (!hlo_module->config()
            .debug_options()
            .xla_gpu_experimental_disable_binary_libraries()) {
