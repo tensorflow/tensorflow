@@ -126,6 +126,19 @@ absl::Status CheckNestedComputationThreadNameEqual(
   }
   return absl::OkStatus();
 }
+
+absl::Status CheckUnaryOpWithResultAccuracy(HloInstruction* unary) {
+  HloOpcode opcode = unary->opcode();
+  if (unary->has_result_accuracy()) {
+    if (IsUnaryOpWithResultAccuracy(unary->opcode())) {
+      return absl::OkStatus();
+    } else {
+      return Internal("Unary op with result accuracy is not supported for %s",
+                      HloOpcodeString(opcode));
+    }
+  }
+  return absl::OkStatus();
+}
 }  // namespace
 
 /*static*/ absl::Status ShapeVerifier::CheckParameterCount(
@@ -2695,6 +2708,7 @@ absl::Status CheckElementwiseInstruction(HloInstruction* instruction) {
           ShapeUtil::HumanString(operand_shape));
     }
   }
+
   if (auto* comparison = DynCast<HloCompareInstruction>(instruction)) {
     const Shape& operand_shape = comparison->operand(1)->shape();
     PrimitiveType operand_element_type = operand_shape.element_type();
@@ -2840,6 +2854,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   absl::Status HandleElementwiseUnary(HloInstruction* instruction) override {
+    TF_RETURN_IF_ERROR(CheckUnaryOpWithResultAccuracy(instruction));
     return CheckElementwiseInstruction(instruction);
   }
 

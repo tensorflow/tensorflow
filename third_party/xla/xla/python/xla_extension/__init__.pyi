@@ -374,6 +374,18 @@ class PrecisionConfig_Precision(enum.IntEnum):
   HIGH: int
   HIGHEST: int
 
+
+class ResultAccuracy_Mode(enum.IntEnum):
+  DEFAULT: int
+  HIGHEST: int
+  TOLERANCE: int
+
+class ResultAccuracy:
+  mode: ResultAccuracy_Mode
+  atol: float
+  rtol: float
+  ulps: int
+
 class OpSharding_Type(enum.IntEnum):
   REPLICATED: int
   MAXIMAL: int

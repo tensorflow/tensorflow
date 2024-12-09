@@ -266,6 +266,30 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_pjrt_test_base",
+    testonly = True,
+    srcs = ["hlo_pjrt_test_base.cc"],
+    hdrs = ["hlo_pjrt_test_base.h"],
+    deps = [
+        ":hlo_runner_agnostic_test_base",
+        ":pjrt_client_registry",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/pjrt:pjrt_client",
+        "//xla/service:hlo_runner",
+        "//xla/service:hlo_runner_interface",
+        "//xla/service:hlo_runner_pjrt",
+        "//xla/service:interpreter_plugin",  # reference backend
+        "//xla/service:platform_util",
+        "//xla/stream_executor:platform",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
 xla_cc_binary(
     name = "local_client_aot_test_helper",
     srcs = ["local_client_aot_test_helper.cc"],
@@ -1081,21 +1105,24 @@ xla_test(
     srcs = ["gather_operation_test.cc"],
     shard_count = 20,
     tags = [
-        "test_hlo_pjrt_runner",
+        "test_migrated_to_hlo_runner_pjrt",
         "test_xla_cpu_thunks",
     ],
     deps = [
         ":client_library_test_base",
-        ":hlo_test_base",
+        ":hlo_pjrt_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array",
         "//xla:execution_options_util",
+        "//xla:literal",
         "//xla:literal_util",
-        "//xla:status_macros",
         "//xla:test",
         "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/ir:hlo",
         "//xla/service",
+        "//xla/service:hlo_module_config",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
