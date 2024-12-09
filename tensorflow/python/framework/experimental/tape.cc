@@ -14,13 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include <pybind11/stl.h>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
 #include "tensorflow/c/experimental/gradients/tape/tape_context.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
+#include "tsl/platform/errors.h"
 
 namespace py = pybind11;
 
