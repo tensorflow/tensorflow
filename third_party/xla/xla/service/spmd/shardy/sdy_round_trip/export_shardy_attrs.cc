@@ -79,7 +79,7 @@ using ::mlir::sdy::TensorShardingPerValueAttr;
 // the `op`.
 void saveOpShardingPerValueAttr(
     Operation* op, TensorShardingPerValueAttr shardingPerValueAttr) {
-  addFrontendAttribute(op, kShardingRoundTripAttr, shardingPerValueAttr);
+  setFrontendAttribute(op, kShardingRoundTripAttr, shardingPerValueAttr);
 }
 
 // Converts the shardings from `kShardingAttr` into
@@ -88,7 +88,7 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
     if (auto oldSharding = funcOp.getArgAttrOfType<TensorShardingAttr>(
             argNum, kShardingAttr)) {
-      addFrontendAttribute(funcOp, kShardingRoundTripAttr, oldSharding, argNum);
+      setFrontendAttribute(funcOp, kShardingRoundTripAttr, oldSharding, argNum);
     }
   }
 
@@ -126,7 +126,7 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
     }
     if (auto oldShardingRule =
             op->getAttrOfType<OpShardingRuleAttr>(kShardingRuleAttr)) {
-      addFrontendAttribute(op, kShardingRuleRoundTripAttr, oldShardingRule);
+      setFrontendAttribute(op, kShardingRuleRoundTripAttr, oldShardingRule);
       op->removeAttr(kShardingRuleAttr);
     }
   });
@@ -159,7 +159,7 @@ class SdyRoundTripExportShardyAttrsPass
       mhloMeshes.emplace_back(meshOp.getSymNameAttr(), meshOp.getMeshAttr());
     }
     if (!mhloMeshes.empty()) {
-      addFrontendAttribute(moduleOp, kMeshesRoundTripAttr,
+      setFrontendAttribute(moduleOp, kMeshesRoundTripAttr,
                            DictionaryAttr::get(context, mhloMeshes));
     }
   }
