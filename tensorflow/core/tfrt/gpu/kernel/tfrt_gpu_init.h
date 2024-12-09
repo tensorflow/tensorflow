@@ -23,6 +23,7 @@ namespace gpu {
 
 struct GpuRunnerOptions {
   int num_gpu_streams = 1;
+  int num_gpu_devices = 1;
   tsl::ServingDeviceSelectorPolicy serving_selector_policy =
       tsl::ServingDeviceSelectorPolicy::kRoundRobin;
 };
