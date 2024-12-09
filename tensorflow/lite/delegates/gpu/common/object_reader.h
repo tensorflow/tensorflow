@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_OBJECT_READER_H_
 
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "fp16.h"  // from @FP16
