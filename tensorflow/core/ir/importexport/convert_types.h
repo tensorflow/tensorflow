@@ -26,25 +26,24 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 // Converts the TensorFlow DataType 'dtype' into an MLIR (scalar) type.
-tensorflow::Status ConvertDataType(tensorflow::DataType dtype, Builder& builder,
-                                   Type* type);
+absl::Status ConvertDataType(tensorflow::DataType dtype, Builder& builder,
+                             Type* type);
 
 // Converts a scalar MLIR type to a TensorFlow Datatype.
-tensorflow::Status ConvertScalarTypeToDataType(Type type,
-                                               tensorflow::DataType* dtype);
+absl::Status ConvertScalarTypeToDataType(Type type,
+                                         tensorflow::DataType* dtype);
 
 // Converts an MLIR type to TensorFlow DataType. If 'type' is a scalar type, it
 // is converted directly. If it is a shaped type, the element type is converted.
-tensorflow::Status ConvertToDataType(Type type, tensorflow::DataType* dtype);
+absl::Status ConvertToDataType(Type type, tensorflow::DataType* dtype);
 
 // Converts an TensorFlow shape to the one used in MLIR.
 void ConvertToMlirShape(const tensorflow::TensorShape& input_shape,
                         SmallVectorImpl<int64_t>* shape);
 
 // Converts an TensorFlow shape proto to the one used in MLIR.
-tensorflow::Status ConvertToMlirShape(
-    const tensorflow::TensorShapeProto& input_shape,
-    SmallVectorImpl<int64_t>* shape);
+absl::Status ConvertToMlirShape(const tensorflow::TensorShapeProto& input_shape,
+                                SmallVectorImpl<int64_t>* shape);
 
 // Given a tensor shape and dtype, get the corresponding MLIR tensor type.
 absl::StatusOr<Type> ConvertToMlirTensorType(
