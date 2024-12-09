@@ -93,6 +93,9 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#ifdef GOOGLE_CUDA
+#include "xla/stream_executor/cuda/cuda_solver_context.h"
+#endif  // GOOGLE_CUDA
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
@@ -112,6 +115,9 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
+#ifdef TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/rocm/rocm_solver_context.h"
+#endif  // TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/runtime/cholesky_thunk.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd_emitter.h"
@@ -1044,9 +1050,16 @@ absl::Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   }
 
+#if GOOGLE_CUDA
+  auto solver_creator = stream_executor::CudaSolverContext::Create;
+#else
+  auto solver_creator = stream_executor::RocmSolverContext::Create;
+#endif
+
   thunks.push_back(std::make_unique<CholeskyThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), options, a_buffer,
-      workspace_buffer, info_buffer, shape.element_type(), batch_size, n));
+      workspace_buffer, info_buffer, shape.element_type(), batch_size, n,
+      solver_creator));
 
   // Elide the sequential thunk if there's no copy.
   if (thunks.size() == 1) {

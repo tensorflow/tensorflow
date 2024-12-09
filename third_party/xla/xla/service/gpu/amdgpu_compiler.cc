@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/rocm/rocm_solver_context.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -113,7 +114,8 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
       std::get<se::RocmComputeCapability>(gpu_version));
   pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
 
-  pipeline.AddPass<GpusolverRewriter>();
+  pipeline.AddPass<GpusolverRewriter>(
+      stream_executor::RocmSolverContext::Create);
   pipeline.AddPass<ConvRewriter>(gpu_version);
   pipeline.AddPass<ConvPaddingLegalization>();
   auto rcc = std::get<se::RocmComputeCapability>(gpu_version);

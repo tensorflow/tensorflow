@@ -30,11 +30,11 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/cusolver_context.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/gpu_solver_context.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -54,10 +54,9 @@ void SetFortranLayout(Shape* shape) {
             shape->mutable_layout()->mutable_minor_to_major()->at(1));
 }
 
-absl::StatusOr<HloInstruction*> CreateCholesky(GpuSolverContext* context,
-                                               HloInstruction* operand,
-                                               const CholeskyOptions& options,
-                                               const OpMetadata& metadata) {
+absl::StatusOr<HloInstruction*> CreateCholesky(
+    stream_executor::GpuSolverContext* context, HloInstruction* operand,
+    const CholeskyOptions& options, const OpMetadata& metadata) {
   HloComputation* computation = operand->parent();
 
   Shape a_shape = operand->shape();
@@ -137,8 +136,8 @@ absl::StatusOr<HloInstruction*> CreateCholesky(GpuSolverContext* context,
 }
 
 // Tries to rewrite a single convolution into a call to cudnn.
-absl::StatusOr<bool> RunOnInstruction(GpuSolverContext* context,
-                                      HloInstruction* instruction) {
+absl::StatusOr<bool> RunOnInstruction(
+    stream_executor::GpuSolverContext* context, HloInstruction* instruction) {
   if (HloPredicateIsNotOp<HloOpcode::kCholesky>(instruction)) {
     return false;
   }
@@ -173,17 +172,22 @@ absl::StatusOr<bool> GpusolverRewriter::RunOnComputation(
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(GpuSolverContext context, GpuSolverContext::Create());
+  TF_ASSIGN_OR_RETURN(auto context, solver_context_creator_());
 
   bool changed = false;
   for (HloInstruction* instruction : cusolver_calls) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(&context, instruction));
+    TF_ASSIGN_OR_RETURN(bool result,
+                        RunOnInstruction(context.get(), instruction));
     changed |= result;
   }
   return changed;
 }
 
-GpusolverRewriter::GpusolverRewriter() = default;
+GpusolverRewriter::GpusolverRewriter(
+    absl::AnyInvocable<
+        absl::StatusOr<std::unique_ptr<stream_executor::GpuSolverContext>>()>
+        solver_context_creator)
+    : solver_context_creator_(std::move(solver_context_creator)) {}
 
 absl::StatusOr<bool> GpusolverRewriter::Run(
     HloModule* module,

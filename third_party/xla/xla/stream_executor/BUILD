@@ -181,6 +181,19 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_solver_context",
+    hdrs = ["gpu_solver_context.h"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:blas",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "stream_finder",
     srcs = ["stream_finder.cc"],
     hdrs = ["stream_finder.h"],
