@@ -1866,14 +1866,14 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
       }
     }
     edge.Target().SetReadyTime(ready_time);
+    int64_t annotation = edge.Target().GetAnnotation();
     // We are adding the no-op instructions to a separate set so that we can
     // immediately schedule them when they are ready.
-    if (IsNopInstruction(edge.Target().GetInstr())) {
+    if (IsNopInstruction(edge.Target().GetInstr()) && annotation == -1) {
       sched_state->nop_set.push_back(&edge.Target());
       continue;
     }
     sched_state->ready_set.push_back(&edge.Target());
-    int64_t annotation = edge.Target().GetAnnotation();
     if (annotation != -1) {
       sched_state->ready_num_nodes_with_annotation[annotation]++;
       VLOG(2) << "Annotation: " << annotation
