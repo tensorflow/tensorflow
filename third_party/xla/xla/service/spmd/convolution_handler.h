@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_CONVOLUTION_HANDLER_H_
 #define XLA_SERVICE_SPMD_CONVOLUTION_HANDLER_H_
 
+#include <cstdint>
+
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
