@@ -53,7 +53,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/xla_data.pb.h"
@@ -73,7 +73,7 @@ using ::mlir::StringRef;
 using ::mlir::Value;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
-using ::mlir::mhlo::CustomCallOp;
+using ::mlir::stablehlo::CustomCallOp;
 
 namespace sdy = ::mlir::sdy;
 using sdy::AxisRefAttr;

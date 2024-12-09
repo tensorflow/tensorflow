@@ -33,17 +33,16 @@ namespace tfg {
 
 // Convert the list of MLIR Attributes `attrs` to the `tensorflow::AttrValueMap`
 // `values`.
-tensorflow::Status ConvertAttributes(ArrayRef<NamedAttribute> attrs,
-                                     ArrayRef<StringRef> attrs_to_ignore,
-                                     bool remove_ref_type,
-                                     tensorflow::AttrValueMap* values);
+absl::Status ConvertAttributes(ArrayRef<NamedAttribute> attrs,
+                               ArrayRef<StringRef> attrs_to_ignore,
+                               bool remove_ref_type,
+                               tensorflow::AttrValueMap* values);
 
 // Convert the MLIR attribute `attr` and return a `tensorflow::AttrValue`.
 absl::StatusOr<tensorflow::AttrValue> ConvertAttribute(Attribute attr);
 
-tensorflow::Status SetShapeAttribute(absl::string_view name,
-                                     ShapedType shaped_type,
-                                     tensorflow::AttrValueMap* values);
+absl::Status SetShapeAttribute(absl::string_view name, ShapedType shaped_type,
+                               tensorflow::AttrValueMap* values);
 
 // Converts an MLIR shaped type to a TensorFlow shape attribute.
 ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type);
@@ -78,8 +77,8 @@ absl::StatusOr<ArrayAttr> ConvertHandleData(
 
 // Convert an array of handle data into the `handle_data` field of the provided
 // ArgDef. Each entry of the array is expected to be a TensorType.
-tensorflow::Status ConvertHandleData(ArrayAttr handle_data_arr,
-                                     tensorflow::OpDef::ArgDef* arg);
+absl::Status ConvertHandleData(ArrayAttr handle_data_arr,
+                               tensorflow::OpDef::ArgDef* arg);
 
 }  // namespace tfg
 }  // namespace mlir
