@@ -17,12 +17,15 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/device.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
