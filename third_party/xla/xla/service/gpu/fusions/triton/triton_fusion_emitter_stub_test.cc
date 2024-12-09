@@ -45,7 +45,7 @@ TEST(TritonStub, CallStubApi) {
   EXPECT_FALSE(TritonWrapper({}, nullptr, {}, {}, {}, nullptr, context).ok());
   EXPECT_FALSE(CreateTritonModule({}, nullptr, {}, {}, context).ok());
   EXPECT_FALSE(
-      CompileTritonToLLVM({}, {}, {}, {}, {}, {}, nullptr, context, {}).ok());
+      CompileTritonToLLVM({}, {}, {}, {}, {}, nullptr, context, {}).ok());
 
   mlir::OpPassManager pm;
   ::mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
