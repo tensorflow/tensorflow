@@ -67,9 +67,8 @@ inline void Gather(const Array& input_array, const Array& coords_array,
 // Resolves a constant Gather operation.
 // This simply performs the gather and produces the output array with the
 // appropriate values.
-::tensorflow::Status ResolveConstantGather::Run(Model* model,
-                                                std::size_t op_index,
-                                                bool* modified) {
+absl::Status ResolveConstantGather::Run(Model* model, std::size_t op_index,
+                                        bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
