@@ -13,12 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Callable
-
 from typing import overload
 
 class CalibrationWrapper:
-    def __init__(self, arg0: object, arg1: list[str], arg2: list[Callable[[int],None]]) -> None: ...
+    def __init__(self, arg0: object, arg1: list[str], arg2: list[Callable[[int], None]]) -> None: ...
     def Calibrate(self) -> object: ...
     @overload
     def FeedTensor(self, arg0: object, arg1: str) -> object: ...

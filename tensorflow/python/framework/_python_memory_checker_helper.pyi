@@ -13,6 +13,4 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Callable
-
 def mark_stack_trace_and_call(arg0: Callable) -> None: ...
