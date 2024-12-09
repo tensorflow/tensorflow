@@ -15,9 +15,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "mlir-c/IR.h"
 #include "mlir/Bindings/Python/PybindAdaptors.h"  // IWYU pragma: keep; Needed to allow MlirModule -> ModuleOp.
 #include "mlir/CAPI/IR.h"
@@ -41,8 +41,8 @@ namespace ifrt {
 namespace {
 
 absl::StatusOr<py::bytes> SerializedVersionedProgram(
-    MlirModule module, std::string_view ifrt_ir_version,
-    std::string_view atom_program_version, bool version_in_place) {
+    MlirModule module, absl::string_view ifrt_ir_version,
+    absl::string_view atom_program_version, bool version_in_place) {
   auto program = std::make_unique<IfrtIRProgram>(unwrap(module));
   TF_ASSIGN_OR_RETURN(
       auto serialized,
@@ -55,8 +55,8 @@ absl::StatusOr<py::bytes> SerializedVersionedProgram(
 }
 
 absl::StatusOr<py::bytes> SerializedVersionedProgram(
-    std::string_view module_str, std::string_view ifrt_ir_version,
-    std::string_view atom_program_version, bool version_in_place) {
+    absl::string_view module_str, absl::string_view ifrt_ir_version,
+    absl::string_view atom_program_version, bool version_in_place) {
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(auto module,
                       support::ParseMlirModuleString(module_str, context));
@@ -72,7 +72,7 @@ absl::StatusOr<py::bytes> SerializedVersionedProgram(
 }
 
 absl::StatusOr<mlir::ModuleOp> DeserializeVersionedProgram(
-    mlir::MLIRContext* context, std::string_view serialized_program) {
+    mlir::MLIRContext* context, absl::string_view serialized_program) {
   xla::ifrt::Serialized serialized;
   serialized.set_type_name(std::string(IfrtIRProgram::type_name()));
   serialized.set_data(std::string(serialized_program));
@@ -85,7 +85,7 @@ absl::StatusOr<mlir::ModuleOp> DeserializeVersionedProgram(
 }
 
 absl::StatusOr<py::bytes> DeserializeVersionedProgram(
-    std::string_view serialized_program) {
+    absl::string_view serialized_program) {
   mlir::MLIRContext context;
   support::RegisterMlirDialects(context);
   TF_ASSIGN_OR_RETURN(
@@ -121,8 +121,8 @@ PYBIND11_MODULE(ir_py, m) {
   // modules.
   m.def(
       "serialize_versioned_program",
-      [](MlirModule module, std::string_view ifrt_ir_version,
-         std::string_view atom_program_version,
+      [](MlirModule module, absl::string_view ifrt_ir_version,
+         absl::string_view atom_program_version,
          bool version_in_place) -> py::bytes {
         return xla::ValueOrThrow(SerializedVersionedProgram(
             module, ifrt_ir_version, atom_program_version, version_in_place));
@@ -131,8 +131,8 @@ PYBIND11_MODULE(ir_py, m) {
       py::arg("atom_program_version"), py::arg("version_in_place"));
   m.def(
       "serialize_versioned_program_str",
-      [](std::string_view module_str, std::string_view ifrt_ir_version,
-         std::string_view atom_program_version,
+      [](absl::string_view module_str, absl::string_view ifrt_ir_version,
+         absl::string_view atom_program_version,
          bool version_in_place) -> py::bytes {
         return xla::ValueOrThrow(
             SerializedVersionedProgram(module_str, ifrt_ir_version,
@@ -145,14 +145,14 @@ PYBIND11_MODULE(ir_py, m) {
   m.def(
       "deserialize_versioned_program",
       [](MlirContext context,
-         std::string_view serialized_program) -> MlirModule {
+         absl::string_view serialized_program) -> MlirModule {
         return wrap(xla::ValueOrThrow(
             DeserializeVersionedProgram(unwrap(context), serialized_program)));
       },
       py::arg("context"), py::arg("serialized_program"));
   m.def(
       "deserialize_versioned_program_str",
-      [](std::string_view serialized_program) -> py::bytes {
+      [](absl::string_view serialized_program) -> py::bytes {
         return xla::ValueOrThrow(
             DeserializeVersionedProgram(serialized_program));
       },
