@@ -40,3 +40,23 @@ func.func @refine_dynamic_top_k(%arg0: tensor<16xf32>) -> (tensor<?xf32>, tensor
   %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<?xf32>, tensor<?xi32>)
   return %1#0, %1#1 : tensor<?xf32>, tensor<?xi32>
 }
+
+// -----
+
+// CHECK-LABEL: module @refine_call
+module @refine_call {
+  func.func @main(%arg1: tensor<4xf32>) -> tensor<?xf32> {
+    %0 = stablehlo.bitcast_convert %arg1 : (tensor<4xf32>) -> tensor<?xf32>
+    %1 = stablehlo.constant dense<4> : tensor<i32>
+    // CHECK: refine_call_callee{{.*}}-> tensor<4xf32>
+    %2 = call @refine_call_callee(%1, %0) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
+    return %2 : tensor<?xf32>
+  }
+  // CHECK: refine_call_callee(%arg0: tensor<4xf32>) -> tensor<4xf32>
+  func.func @refine_call_callee(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+    // CHECK: stablehlo.constant dense<4>
+    %0 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
+    %1 = stablehlo.dynamic_iota %0, dim = 0 : (tensor<1xi32>) -> tensor<?xf32>
+    return %1 : tensor<?xf32>
+  }
+}
