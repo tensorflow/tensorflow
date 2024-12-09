@@ -27,9 +27,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ResolveTensorFlowConcat::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status ResolveTensorFlowConcat::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   auto concat_it = model->operators.begin() + op_index;
   const auto* tf_concat_op = concat_it->get();
