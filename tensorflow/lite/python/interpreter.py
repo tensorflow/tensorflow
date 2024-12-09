@@ -425,11 +425,11 @@ class Interpreter:
         in C++.
       experimental_preserve_all_tensors: If true, then intermediate tensors used
         during computation are preserved for inspection, and if the passed op
-        resolver type is AUTO or BUILTIN, the type will be changed to
-        BUILTIN_WITHOUT_DEFAULT_DELEGATES so that no Tensorflow Lite default
-        delegates are applied. If false, getting intermediate tensors could
-        result in undefined values or None, especially when the graph is
-        successfully modified by the Tensorflow Lite default delegate.
+        resolver type is AUTO or BUILTIN, the type will be changed to BUILTIN so
+        that Tensorflow Lite default delegates are applied. If false, getting
+        intermediate tensors could result in undefined values or None,
+        especially when the graph is successfully modified by the Tensorflow
+        Lite default delegate.
       experimental_disable_delegate_clustering: If true, don't perform delegate
         clustering during delegate graph partitioning phase. Disabling delegate
         clustering will make the execution order of ops respect the
@@ -457,7 +457,13 @@ class Interpreter:
     if experimental_preserve_all_tensors and (
         experimental_op_resolver_type == OpResolverType.AUTO or
         experimental_op_resolver_type == OpResolverType.BUILTIN):
-      actual_resolver_type = OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES
+      warnings.warn(
+          'Warning: Enabling `experimental_preserve_all_tensors` with the'
+          ' BUILTIN or AUTO op resolver is intended for debugging purposes'
+          ' only. Be aware that this can significantly increase memory usage by'
+          ' storing all intermediate tensors. If you encounter memory problems'
+          ' or are not actively debugging, consider disabling this option.'
+      )
     op_resolver_id = _get_op_resolver_id(actual_resolver_type)
     if op_resolver_id is None:
       raise ValueError('Unrecognized passed in op resolver type: {}'.format(
