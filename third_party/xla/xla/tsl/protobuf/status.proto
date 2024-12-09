@@ -4,7 +4,6 @@ package tensorflow;
 
 import "xla/tsl/protobuf/error_codes.proto";
 
-option cc_enable_arenas = true;
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 option go_package = "github.com/google/tsl/tsl/go/protobuf/for_core_protos_go_proto";
