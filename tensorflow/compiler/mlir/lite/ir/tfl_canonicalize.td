@@ -54,3 +54,23 @@ def ConvertTransposeToDecreaseRank : Pat<
     [(AnyStaticShapeTensor $input),
      (HasRankAtLeast<7> $input),
      (CanSqueezeTensor $input)]>;
+
+
+// Replace division by a constant with a multiplication by a reciprocal of that
+// constant. Floating point division are more expensive and prune to have worse
+// precision than multiplication.
+def DivWithConstDivisor : Pat<
+  (TFL_DivOp
+    $arg0,
+    (Arith_ConstantOp FloatElementsAttr<32>:$value),
+    TFL_AF_None
+  ),
+  (TFL_MulOp
+    $arg0,
+    (TFL_DivOp
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+      (Arith_ConstantOp $value),
+      TFL_AF_None
+    ),
+    TFL_AF_None
+  )>;
