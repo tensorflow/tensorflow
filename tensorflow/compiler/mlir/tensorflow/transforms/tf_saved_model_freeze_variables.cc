@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <tuple>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_value_typed_analyzer.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -217,6 +219,11 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
     builder.setInsertionPointAfterValue(var_handle_op);
     auto elements_attr = GetTensorValueAsElementsAttr(
         var_handle_op, resource_tensor, mgr, builder);
+    if (!elements_attr) {
+      module->emitError(absl::StrCat("Missing value for resource tensor : ",
+                                     resource_tensor.DebugString()));
+      return failure();
+    }
     if (failed(ReplaceVarWithConstant(var_handle_op.getResource().getUses(),
                                       elements_attr, &arguments_to_erase))) {
       return failure();
