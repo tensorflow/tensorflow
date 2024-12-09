@@ -355,6 +355,7 @@ cc_library(
     ] + c_api_opaque_internal_visibility_allowlist(),
     deps = [
         ":c_api_types",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api:op_resolver",
@@ -392,6 +393,7 @@ cc_library(
     ],
     deps = [
         ":c_api_types",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api:op_resolver",
