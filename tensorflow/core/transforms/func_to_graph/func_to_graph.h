@@ -25,7 +25,7 @@ namespace tfg {
 // Lowers a lifted graph func back to the graph. The uses of function arguments
 // will be replaced with the associated value according to
 // `tfg.lifted_value_attr` attribute.
-tensorflow::Status FuncToGraph(GraphFuncOp func);
+absl::Status FuncToGraph(GraphFuncOp func);
 
 }  // namespace tfg
 }  // namespace mlir
