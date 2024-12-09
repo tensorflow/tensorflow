@@ -603,7 +603,7 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
     TF_RETURN_IF_ERROR(DoBlasInternalImpl(
         wrap::rocblas_gemm_ex, stream,
         /* pointer_mode_host = */ true,
-        /* error_on_failure = */ false, ROCMBlasTranspose(transa),
+        /* err_on_failure = */ false, ROCMBlasTranspose(transa),
         ROCMBlasTranspose(transb), (rocblas_int)m, (rocblas_int)n,
         (rocblas_int)k, alpha, a.opaque(), roc_type_a, lda, b.opaque(),
         roc_type_a, ldb, beta, c->opaque(), roc_type_c, ldc, c->opaque(),
@@ -665,7 +665,7 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
     TF_RETURN_IF_ERROR(DoBlasInternalImpl(
         wrap::rocblas_gemm_strided_batched_ex, stream,
         /* pointer_mode_host = */ true,
-        /* error_on_failure = */ false, ROCMBlasTranspose(transa),
+        /* err_on_failure = */ false, ROCMBlasTranspose(transa),
         ROCMBlasTranspose(transb), (rocblas_int)m, (rocblas_int)n,
         (rocblas_int)k, alpha, a.opaque(), roc_type_a, lda, stride_a,
         b.opaque(), roc_type_a, ldb, stride_b, beta, c->opaque(), roc_type_c,
