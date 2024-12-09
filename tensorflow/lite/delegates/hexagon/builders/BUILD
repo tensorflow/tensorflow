@@ -92,6 +92,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
         "@farmhash_archive//:farmhash",
+        "@hexagon_nn//:hexagon_nn_header",
         "@hexagon_nn//:hexagon_nn_ops",
     ],
 )
