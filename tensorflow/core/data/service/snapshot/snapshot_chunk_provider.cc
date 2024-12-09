@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
