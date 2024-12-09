@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
