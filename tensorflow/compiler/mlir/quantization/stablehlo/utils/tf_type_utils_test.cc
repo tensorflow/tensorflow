@@ -182,6 +182,7 @@ TEST(IsTFQintTypeTest, ValidTFQintTypeSucceeds) {
 
   EXPECT_FALSE(IsTFQintType(TF::Int8RefType::get(context.get())));
   EXPECT_FALSE(IsTFQintType(TF::Float8E5M2RefType::get(context.get())));
+  EXPECT_FALSE(IsTFQintType(TF::Float8E5M2FNUZRefType::get(context.get())));
 }
 
 TEST(GetIntTypeFromTFQintTest, ChecksIntTypesFromTFQint) {

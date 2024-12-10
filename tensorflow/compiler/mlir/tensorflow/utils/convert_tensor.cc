@@ -149,6 +149,8 @@ absl::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     case DT_HALF:
     case DT_FLOAT8_E5M2:
     case DT_FLOAT8_E4M3FN:
+    case DT_FLOAT8_E5M2FNUZ:
+    case DT_FLOAT8_E4M3FNUZ:
       return ConvertTensorOfCustomFloatType(input_tensor, type);
     case DT_STRING:
       return ConvertStringTensor(input_tensor, type);
@@ -464,6 +466,14 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
       break;
     case DT_FLOAT8_E4M3FN:
       ConvertFloat8ElementsAttr<tsl::float8_e4m3fn>(
+          dense_attr, output->mutable_float8_val());
+      break;
+    case DT_FLOAT8_E5M2FNUZ:
+      ConvertFloat8ElementsAttr<tsl::float8_e5m2fnuz>(
+          dense_attr, output->mutable_float8_val());
+      break;
+    case DT_FLOAT8_E4M3FNUZ:
+      ConvertFloat8ElementsAttr<tsl::float8_e4m3fnuz>(
           dense_attr, output->mutable_float8_val());
       break;
     case tensorflow::DT_INT4:
