@@ -1158,12 +1158,11 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
   });
   std::vector<AutotuneResult> results;
   std::optional<ScopedShapedBuffer> reference_buffer;
-  for (const ExecutableCandidate& candidate : candidates) {
-    TF_ASSIGN_OR_RETURN(
-        auto result,
-        MeasurePerformance(compile_util, fusion, candidate, reference_buffer));
-    VLOG(2) << "Ran " << results.size() + 1 << " configs of "
-            << candidates.size() << ".";
+  for (int i = 0; i < candidates.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(auto result,
+                        MeasurePerformance(compile_util, fusion, candidates[i],
+                                           reference_buffer));
+    VLOG(2) << "Ran " << i + 1 << " configs of " << candidates.size() << ".";
     if (result.has_value()) {
       results.push_back(std::move(*result));
     }
