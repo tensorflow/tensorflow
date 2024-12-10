@@ -358,7 +358,7 @@ bool FindDusSliceForCachedActivation(HloInstruction* inst,
                                      HloInstruction** slice_indices,
                                      bool is_first_slice) {
   // We are only interested in DUS in the loop body.
-  if (inst->opcode() != HloOpcode::kDynamicUpdateSlice) {
+  if (HloPredicateIsNotOp<HloOpcode::kDynamicUpdateSlice>(inst)) {
     return false;
   }
   // Check that the first operand of DUS is a:
@@ -425,7 +425,7 @@ absl::Status ProcessWindowedEinsumLoopForActivationCaching(
   // collective-permute
   HloInstruction* first_cp_output;
   for (HloInstruction* gte_user : input_gte->users()) {
-    if (gte_user->opcode() == HloOpcode::kCollectivePermute) {
+    if (HloPredicateIsOp<HloOpcode::kCollectivePermute>(gte_user)) {
       first_cp_output = gte_user;
       break;
     }
@@ -690,7 +690,7 @@ absl::Status PostProcessUnrolledLoop(HloInstruction* loop, int64_t stream_id) {
           SetForceDelayForInstruction(matched_cp, /*force_delay=*/true));
     }
 
-    if (inst->opcode() == HloOpcode::kDot) {
+    if (HloPredicateIsOp<HloOpcode::kDot>(inst)) {
       // Dispatch the dot to additional compute stream.
       TF_RETURN_IF_ERROR(UpdateDotAndConsumerConfig(inst, stream_id));
       ++stream_id;
@@ -746,7 +746,7 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
         allowed_intermediate_ops.insert(allowed_intermediate_ops.end(),
                                         std::begin(curr->operands()),
                                         std::end(curr->operands()));
-      } else if (curr->opcode() == HloOpcode::kAllToAll &&
+      } else if (HloPredicateIsOp<HloOpcode::kAllToAll>(curr) &&
                  curr->user_count() == 1) {
         matched_a2a = DynCast<HloAllToAllInstruction>(curr);
         allowed_intermediate_ops.pop_back();
@@ -767,7 +767,7 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
     int64_t split_dimension = *matched_a2a->split_dimension();
     for (int64_t i = allowed_intermediate_ops.size() - 1; i >= 0; i--) {
       HloInstruction* current_op = allowed_intermediate_ops[i];
-      if (current_op->opcode() == HloOpcode::kReshape) {
+      if (HloPredicateIsOp<HloOpcode::kReshape>(current_op)) {
         std::vector<std::pair<int64_t, int64_t>> unmodified_dims =
             ShapeUtil::DimensionsUnmodifiedByReshape(
                 current_op->operand(0)->shape(), current_op->shape());
@@ -786,7 +786,7 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
         }
         // Assign the new split dim.
         split_dimension = it->second;
-      } else if (current_op->opcode() == HloOpcode::kTranspose) {
+      } else if (HloPredicateIsOp<HloOpcode::kTranspose>(current_op)) {
         const auto& transpose_dims = current_op->dimensions();
         for (int64_t j = 0; j < transpose_dims.size(); j++) {
           if ((int64_t)transpose_dims[j] == split_dimension) {
@@ -1120,7 +1120,8 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
         allowed_intermediate_ops.insert(allowed_intermediate_ops.end(),
                                         std::begin(curr->operands()),
                                         std::end(curr->operands()));
-      } else if (curr->opcode() == HloOpcode::kDot && curr->user_count() == 1) {
+      } else if (HloPredicateIsOp<HloOpcode::kDot>(curr) &&
+                 curr->user_count() == 1) {
         matched_dot = curr;
         allowed_intermediate_ops.pop_back();
         break;
@@ -1136,7 +1137,7 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
     int64_t split_dimension = *a2a->split_dimension();
     for (int64_t i = 0; i < allowed_intermediate_ops.size(); i++) {
       HloInstruction* current_op = allowed_intermediate_ops[i];
-      if (current_op->opcode() == HloOpcode::kReshape) {
+      if (HloPredicateIsOp<HloOpcode::kReshape>(current_op)) {
         std::vector<std::pair<int64_t, int64_t>> unmodified_dims =
             ShapeUtil::DimensionsUnmodifiedByReshape(
                 current_op->operand(0)->shape(), current_op->shape());
@@ -1155,7 +1156,7 @@ class WindowedEinsumVisitor : public DfsHloRewriteVisitor {
         }
         // Assign the new split dim.
         split_dimension = it->first;
-      } else if (current_op->opcode() == HloOpcode::kTranspose) {
+      } else if (HloPredicateIsOp<HloOpcode::kTranspose>(current_op)) {
         const auto& transpose_dims = current_op->dimensions();
         split_dimension = transpose_dims[split_dimension];
       }
