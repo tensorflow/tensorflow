@@ -93,7 +93,8 @@ absl::Status IrEmitter::HandleGetTupleElement(
           // TODO(b/26344050): tighten the alignment here
           // based on the real element type.
           /*alignment=*/1, GetBasePointer(*operand),
-          llvm_ir::ShapeToIrType(operand->shape(), module_), &b_));
+          llvm_ir::ShapeToIrType(operand->shape(), module_->getContext()),
+          &b_));
   return absl::OkStatus();
 }
 

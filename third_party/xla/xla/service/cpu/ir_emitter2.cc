@@ -707,7 +707,8 @@ llvm_ir::IrArray IrEmitter2::EmitKernelArgument(llvm::IRBuilderBase& b,
   // buffer pointers, not to loading actual buffers.
   AttachInvariantLoadMetadataForLoad(data);
 
-  return llvm_ir::IrArray(data, llvm_ir::ShapeToIrType(shape, module_), shape);
+  return llvm_ir::IrArray(data, llvm_ir::ShapeToIrType(shape, b.getContext()),
+                          shape);
 }
 
 absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
