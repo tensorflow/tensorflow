@@ -13,18 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/stream_pool.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/stream_executor/platform.h"
 #include "tsl/platform/statusor.h"
 #define EIGEN_USE_THREADS
-
-#include "xla/service/backend.h"
 
 #include <memory>
 #include <optional>
@@ -35,6 +36,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/host/host_platform_id.h"
@@ -165,7 +167,12 @@ Backend::Backend(se::Platform* platform, Compiler* compiler,
     const int num_threads = intra_op_parallelism_threads > 0
                                 ? intra_op_parallelism_threads
                                 : tsl::port::MaxParallelism();
-    intra_op_thread_pool_ = std::make_unique<IntraOpThreadPool>(num_threads);
+    const int num_threads_pjrt =
+        GetDebugOptionsFromFlags().xla_pjrt_cpu_intra_op_threads();
+    const int max_allowed_parallelism = std::min(num_threads, num_threads_pjrt);
+
+    intra_op_thread_pool_ =
+        std::make_unique<IntraOpThreadPool>(max_allowed_parallelism);
   }
 }
 
