@@ -13,6 +13,7 @@ package_group(
     name = "friends",
     packages = [
         "//learning/deepmind/partir/...",
+        "//learning/deepmind/partir/compiler/mpmd/export/...",
         "//third_party/openxla/shardy/tools/...",
         "//xla/service/spmd/shardy/...",
     ],

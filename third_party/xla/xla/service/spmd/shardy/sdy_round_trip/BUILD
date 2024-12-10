@@ -9,6 +9,7 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//learning/deepmind/partir/compiler/mpmd/...",
         "//learning/deepmind/partir/compiler/shardonnay/...",
         "//third_party/openxla/shardy/tools/...",
         "//xla/...",
