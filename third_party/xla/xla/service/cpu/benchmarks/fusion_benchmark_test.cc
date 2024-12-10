@@ -16,11 +16,11 @@ limitations under the License.
 #include <cstdint>
 #include <random>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -35,7 +35,7 @@ namespace xla::cpu {
 static void BM_FusionF32(benchmark::State& state) {
   int64_t d0 = state.range(0);
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule fusion_f32_$d0
 
     ENTRY e {
@@ -68,7 +68,7 @@ static void BM_FusionF32(benchmark::State& state) {
 static void BM_FusionF32_2(benchmark::State& state) {
   int64_t d0 = state.range(0);
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule fusion_f32_2_$d0
 
     ENTRY e {
@@ -144,7 +144,7 @@ static void BM_FusionF32_2(benchmark::State& state) {
 static void BM_BcastFusionF32(benchmark::State& state) {
   int64_t d0 = state.range(0);
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule fusion_f32_$d0
 
     ENTRY e {
@@ -169,7 +169,7 @@ static void BM_BcastFusionF32(benchmark::State& state) {
 static void BM_DynamicUpdateSliceFusionF32(benchmark::State& state) {
   int64_t d0 = state.range(0);
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule dynamic_update_slice_fusion_f32_$d0
 
     ENTRY e {
@@ -198,7 +198,7 @@ static void BM_ChainOfAddF32(benchmark::State& state) {
 
   // In this benchmark we create a chain of additions starting from `p2` and
   // ending with `p$size`. The chain is fused into a single fusion node.
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule chain_of_add_f32_$size
 
     ENTRY e {

@@ -17,11 +17,11 @@ limitations under the License.
 #include <random>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
@@ -95,7 +95,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_bm$$many_int_attributes",
                          "Host", kManyIntAttributes);
 
 static void BM_CustomCall_16IntAttributes(benchmark::State& state) {
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule module
 
     ENTRY custom_call {
@@ -154,7 +154,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_bm$$many_float_buffers",
 static void BM_CustomCall_16FloatBuffers(benchmark::State& state) {
   int64_t d = 128;
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
     HloModule module
 
     ENTRY custom_call {
