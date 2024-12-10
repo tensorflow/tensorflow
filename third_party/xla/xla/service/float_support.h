@@ -22,9 +22,10 @@ limitations under the License.
 
 namespace xla {
 
-// This class has methods to query if a certain low-precision floating-point
-// type, such as bfloat16, is supported in certain instructions on a given
-// backend.
+// This class has methods to query if a certain low-precision types, such as
+// bfloat16, is supported in certain instructions on a given backend.
+// TODO(reedwm): Rename this to NumberSupport, as it supports int4 in additional
+// to float types
 class FloatSupport {
  public:
   explicit FloatSupport(PrimitiveType low_precision_type,

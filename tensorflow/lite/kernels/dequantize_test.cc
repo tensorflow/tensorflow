@@ -125,7 +125,7 @@ TEST(DequantizeOpTest, Float16) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {-535.54f, -100.0f, -1.0f, 0.f, 1.0f, 100.32f},
-                                 /*max_abs_error=*/0.1f)));
+                                 /*max_abs_err=*/0.1f)));
 }
 
 TEST(DequantizeOpTest, Int16) {

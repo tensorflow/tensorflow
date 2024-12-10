@@ -19,10 +19,13 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/LogicalResult.h"
@@ -57,14 +60,16 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/fusions/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace gpu {
 namespace {
 
-#define GEN_PASS_DECL_LOWERTENSORSPASS
 #define GEN_PASS_DEF_LOWERTENSORSPASS
 #include "xla/service/gpu/fusions/transforms/passes.h.inc"
 
@@ -84,6 +89,11 @@ using mlir::ValueRange;
 namespace arith = ::mlir::arith;
 namespace scf = ::mlir::scf;
 namespace ml = ::mlir::LLVM;
+
+bool IsAMD(const se::DeviceDescription& device_description) {
+  return std::holds_alternative<se::RocmComputeCapability>(
+      device_description.gpu_compute_capability());
+}
 
 Value GetDestinationBuffer(Value dest) {
   while (dest.getDefiningOp()) {
@@ -189,10 +199,10 @@ std::tuple<Value, Value> GetI4IndexAndNibble(Value linear_index,
 }
 
 mlir::LLVM::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
-                            Value linear_index, mlir::ImplicitLocOpBuilder& b,
-                            Type element_type = nullptr) {
-  if (!element_type) {
-    element_type = tensor.getType().getElementType();
+                            Value linear_index, mlir::ImplicitLocOpBuilder& b) {
+  Type element_type = tensor.getType().getElementType();
+  if (element_type == b.getI4Type()) {
+    element_type = b.getI8Type();
   }
   auto ptr = mlir::LLVM::LLVMPointerType::get(b.getContext());
   auto tensor_ptr =
@@ -221,12 +231,11 @@ struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
     Type element_type = op.getTensor().getType().getElementType();
     Value is_low_nibble = nullptr;
     if (element_type == rewriter.getI4Type()) {
-      element_type = rewriter.getI8Type();
       std::tie(linear_index, is_low_nibble) =
           GetI4IndexAndNibble(linear_index, b);
     }
 
-    auto gep = CreateGep(op.getTensor(), linear_index, b, element_type);
+    auto gep = CreateGep(op.getTensor(), linear_index, b);
     auto load =
         rewriter
             .create<mlir::LLVM::LoadOp>(gep.getLoc(), gep.getElemType(), gep)
@@ -281,14 +290,12 @@ struct RewriteTransferRead
     if (vector_type.getElementType().isInteger(1)) {
       vector_type = vector_type.cloneWith(std::nullopt, b.getI8Type());
     }
-    mlir::Type gep_element_type = vector_type.getElementType();
     if (op.getVectorType().getElementType().isInteger(4)) {
       linear_index = b.create<arith::ShRUIOp>(
           linear_index,
           b.create<arith::ConstantIntOp>(1, linear_index.getType()));
-      gep_element_type = b.getI8Type();
     }
-    auto gep = CreateGep(source, linear_index, b, gep_element_type);
+    auto gep = CreateGep(source, linear_index, b);
 
     mlir::LLVMTypeConverter converter(b.getContext());
     auto llvm_vector_type = converter.convertType(vector_type);
@@ -325,45 +332,67 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
     auto linear_index = GetLinearIndex(op.getIndices(), b);
-    auto element_type = tensor_dest.getType().getElementType();
-    Value is_low_nibble = nullptr;
-
-    if (element_type == rewriter.getI4Type()) {
-      element_type = rewriter.getI8Type();
-      std::tie(linear_index, is_low_nibble) =
-          GetI4IndexAndNibble(linear_index, b);
-    }
-
-    auto gep = CreateGep(tensor_dest, linear_index, b, element_type);
     auto scalar_value = op.getScalar();
 
-    if (is_low_nibble) {
-      Value current_value =
-          b.create<mlir::LLVM::LoadOp>(gep.getElemType(), gep);
-      auto ty = current_value.getType();
+    // For i4 we store 2 values into one byte. This needs special handling here.
+    if (tensor_dest.getType().getElementType() == rewriter.getI4Type()) {
+      // We need to use directly op.getDest() as input, otherwise the following
+      // rewrite might remove the only user of it.
+      tensor_dest = op.getDest();
+      Value is_low_nibble;
+      std::tie(linear_index, is_low_nibble) =
+          GetI4IndexAndNibble(linear_index, b);
+
+      // Technically we should half the number of elements when going to i8
+      // element type, but it doesn't really matter because we only actually use
+      // the element type. Indexing is done by linear index, and GEP ops don't
+      // care about the number of elements. The tensor types will disappear
+      // completely after the LowerTensors pass.
+      Type ty = b.getI8Type();
+      Type tensor_ty = tensor_dest.getType().clone(ty);
+      auto tensor_dest_i8 =
+          b.create<mlir::UnrealizedConversionCastOp>(tensor_ty, tensor_dest)
+              .getResult(0);
       scalar_value = b.create<mlir::arith::ExtUIOp>(ty, scalar_value);
-      Value low_updated = b.create<mlir::arith::OrIOp>(
-          b.create<mlir::arith::AndIOp>(
-              current_value, b.create<mlir::arith::ConstantIntOp>(0xf0, ty)),
-          scalar_value);
-      Value high_updated = b.create<mlir::arith::OrIOp>(
-          b.create<mlir::arith::AndIOp>(
-              current_value, b.create<mlir::arith::ConstantIntOp>(0x0f, ty)),
-          b.create<mlir::arith::ShLIOp>(
-              scalar_value, b.create<mlir::arith::ConstantIntOp>(4, ty)));
-      scalar_value = b.create<mlir::arith::SelectOp>(is_low_nibble, low_updated,
-                                                     high_updated);
+
+      // We need AtomicRMWOp because it can happen that different threads try to
+      // access the same memory location.
+      auto atomic_rmw = b.create<AtomicRMWOp>(tensor_dest_i8, linear_index);
+      mlir::ImplicitLocOpBuilder body_builder(atomic_rmw.getLoc(),
+                                              atomic_rmw.getBodyBuilder());
+      Value current_value = atomic_rmw.getCurrentValue();
+      Value low_updated = body_builder.create<mlir::arith::OrIOp>(
+          body_builder.create<mlir::arith::AndIOp>(
+              current_value,
+              body_builder.create<mlir::arith::ConstantIntOp>(0xf0, ty)),
+          body_builder.create<mlir::arith::AndIOp>(
+              scalar_value,
+              body_builder.create<mlir::arith::ConstantIntOp>(0x0f, ty)));
+      Value high_updated = body_builder.create<mlir::arith::OrIOp>(
+          body_builder.create<mlir::arith::AndIOp>(
+              current_value,
+              body_builder.create<mlir::arith::ConstantIntOp>(0x0f, ty)),
+          body_builder.create<mlir::arith::ShLIOp>(
+              scalar_value,
+              body_builder.create<mlir::arith::ConstantIntOp>(4, ty)));
+      Value new_value = body_builder.create<mlir::arith::SelectOp>(
+          is_low_nibble, low_updated, high_updated);
+      body_builder.create<mlir::scf::YieldOp>(new_value);
+      Value casted_result = b.create<mlir::UnrealizedConversionCastOp>(
+                                 tensor_dest.getType(), atomic_rmw.getResult())
+                                .getResult(0);
+      op.replaceAllUsesWith(casted_result);
+    } else {
+      auto gep = CreateGep(tensor_dest, linear_index, b);
+      mlir::LLVMTypeConverter converter(getContext());
+      auto llvm_type = converter.convertType(scalar_value.getType());
+      scalar_value =
+          b.create<mlir::UnrealizedConversionCastOp>(llvm_type, scalar_value)
+              .getResult(0);
+      b.create<mlir::LLVM::StoreOp>(scalar_value, gep);
+      op.replaceAllUsesWith(op.getDest());
     }
 
-    mlir::LLVMTypeConverter converter(getContext());
-    auto llvm_type = converter.convertType(scalar_value.getType());
-    scalar_value = rewriter
-                       .create<mlir::UnrealizedConversionCastOp>(
-                           gep.getLoc(), llvm_type, scalar_value)
-                       .getResult(0);
-    rewriter.create<mlir::LLVM::StoreOp>(gep.getLoc(), scalar_value, gep);
-
-    op.replaceAllUsesWith(op.getDest());
     op.erase();
     return success();
   }
@@ -382,7 +411,6 @@ struct RewriteTransferWrite
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
     auto linear_index = GetLinearIndex(op.getIndices(), b);
-    auto element_type = tensor_dest.getType().getElementType();
 
     mlir::Value vector_value = op.getVector();
     if (op.getVectorType().getElementType().isInteger(1)) {
@@ -394,12 +422,11 @@ struct RewriteTransferWrite
       linear_index = b.create<arith::ShRUIOp>(
           linear_index,
           b.create<arith::ConstantIntOp>(1, linear_index.getType()));
-      element_type = rewriter.getI8Type();
       // LLVM and XLA pack i4s in opposite order, so we have to reshuffle the
       // elements.
       vector_value = PermutePairsInVector(vector_value, b);
     }
-    auto gep = CreateGep(tensor_dest, linear_index, b, element_type);
+    auto gep = CreateGep(tensor_dest, linear_index, b);
 
     mlir::LLVMTypeConverter converter(getContext());
     auto llvm_type = converter.convertType(vector_value.getType());
@@ -453,11 +480,28 @@ mlir::LLVM::GlobalOp CreateGlobalOp(mlir::Attribute value,
   }
 
   Type element_type = shaped_ty.getElementType();
+  int64_t num_elements = shaped_ty.getNumElements();
   // Needed to support complex element type.
   mlir::LLVMTypeConverter converter(b.getContext());
   auto llvm_element_type = converter.convertType(element_type);
-  auto array_ty = mlir::LLVM::LLVMArrayType::get(llvm_element_type,
-                                                 shaped_ty.getNumElements());
+  if (mlir::isa<mlir::IntegerType>(element_type)) {
+    int bit_width = mlir::cast<mlir::IntegerType>(element_type).getWidth();
+    if (bit_width == 4) {
+      num_elements = CeilOfRatio<int64_t>(num_elements, 2);
+      llvm_element_type = b.getI8Type();
+      auto unpacked_data =
+          mlir::cast<mlir::DenseElementsAttr>(value).getRawData();
+      std::vector<char> packed_data(num_elements);
+      absl::Span<char> packed_data_span =
+          absl::MakeSpan(packed_data.data(), packed_data.size());
+      PackIntN(4, unpacked_data, packed_data_span);
+      value = mlir::DenseElementsAttr::getFromRawBuffer(
+          mlir::RankedTensorType::get({num_elements}, llvm_element_type),
+          packed_data);
+    }
+  }
+  auto array_ty =
+      mlir::LLVM::LLVMArrayType::get(llvm_element_type, num_elements);
   std::string name;
   int index = 0;
   do {
@@ -606,11 +650,10 @@ Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type ty) {
 
 class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
  public:
-  RewriteAtomicRMW(mlir::MLIRContext* context, bool is_amd,
-                   const std::string& gpu_arch)
+  RewriteAtomicRMW(mlir::MLIRContext* context,
+                   const se::DeviceDescription* device_description)
       : mlir::OpRewritePattern<AtomicRMWOp>(context),
-        is_amd_(is_amd),
-        gpu_arch_(gpu_arch) {}
+        device_description_(device_description) {}
 
   LogicalResult matchAndRewrite(
       AtomicRMWOp op, mlir::PatternRewriter& rewriter) const override {
@@ -702,7 +745,8 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     ml::AtomicBinOp atomic_bin_op = modifier_parameters->second;
 
     Location loc = op.getLoc();
-    llvm::StringRef sync_scope = is_amd_ ? "agent" : "";
+    bool is_amd = IsAMD(*device_description_);
+    llvm::StringRef sync_scope = is_amd ? "agent" : "";
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
     Value addr = CreateGep(op.getInput(), op.getIndices(), b);
 
@@ -712,7 +756,7 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
             loc, modifier_arg, addr,
             /*alignment=*/element_type.getIntOrFloatBitWidth() / 8,
             /*volatile*/ false, /*isNonTemporal=*/false,
-            ml::AtomicOrdering::unordered);
+            /*isInvariantGroup=*/false, ml::AtomicOrdering::unordered);
         return success();
       }
       case ml::AtomicBinOp::add:
@@ -727,10 +771,14 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
       }
       case ml::AtomicBinOp::fadd: {
         // TODO(b/336367154): Introduce an atomic_rmw op with the binOp attr.
-        return is_amd_ ? emitAMDAtomicFAdd(loc, modifier_arg, addr, sync_scope,
-                                           gpu_arch_, rewriter)
-                       : emitNVidiaAtomicFAdd(loc, modifier_arg, addr,
-                                              sync_scope, gpu_arch_, rewriter);
+        return is_amd ? emitAMDAtomicFAdd(
+                            loc, modifier_arg, addr, sync_scope,
+                            device_description_->rocm_compute_capability(),
+                            rewriter)
+                      : emitNVidiaAtomicFAdd(
+                            loc, modifier_arg, addr, sync_scope,
+                            device_description_->cuda_compute_capability(),
+                            rewriter);
       }
       case ml::AtomicBinOp::fmax: {
         return rewriteAtomicFMaxAsIntAtomics(loc, modifier_arg, addr,
@@ -742,11 +790,10 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     return success();
   }
 
-  LogicalResult emitNVidiaAtomicFAdd(Location loc, Value modifier_arg,
-                                     Value addr, llvm::StringRef sync_scope,
-                                     llvm::StringRef cuda_arch,
-                                     OpBuilder& b) const {
-    se::CudaComputeCapability cuda_compute_capability(cuda_arch.str());
+  LogicalResult emitNVidiaAtomicFAdd(
+      Location loc, Value modifier_arg, Value addr, llvm::StringRef sync_scope,
+      const se::CudaComputeCapability& cuda_compute_capability,
+      OpBuilder& b) const {
     Type element_type = modifier_arg.getType();
     // "atom.add.f64 requires sm_60 or higher."
     // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-atom
@@ -768,11 +815,10 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     return success();
   }
 
-  LogicalResult emitAMDAtomicFAdd(Location loc, Value modifier_arg, Value addr,
-                                  llvm::StringRef sync_scope,
-                                  llvm::StringRef gcn_arch,
-                                  OpBuilder& b) const {
-    se::RocmComputeCapability rocm_compute_capability(gcn_arch.str());
+  LogicalResult emitAMDAtomicFAdd(
+      Location loc, Value modifier_arg, Value addr, llvm::StringRef sync_scope,
+      const se::RocmComputeCapability& rocm_compute_capability,
+      OpBuilder& b) const {
     Type element_type = modifier_arg.getType();
     bool is_supported_f16_atomic =
         element_type.isF16() &&
@@ -1001,8 +1047,7 @@ class RewriteAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
         });
   }
 
-  bool is_amd_;
-  std::string gpu_arch_;
+  const se::DeviceDescription* device_description_;
 };
 
 class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
@@ -1010,10 +1055,20 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
   explicit LowerTensorsPass(const LowerTensorsPassOptions& options)
       : LowerTensorsPassBase(options) {}
 
+  explicit LowerTensorsPass(const se::DeviceDescription& device_description)
+      : device_description_(device_description) {}
+
   void runOnOperation() override {
+    if (!gpu_device_info_.empty()) {
+      se::GpuDeviceInfoProto device_info;
+      CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
+                                                       &device_info));
+      device_description_ = se::DeviceDescription(device_info);
+    }
     MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet tensor_patterns(mlir_context);
-    tensor_patterns.add<RewriteAtomicRMW>(mlir_context, is_amd_gpu_, gpu_arch_);
+
+    tensor_patterns.add<RewriteAtomicRMW>(mlir_context, &device_description_);
     tensor_patterns
         .add<RewriteAllocateShared, RewriteNonScalarConstants,
              RewriteSyncThreads, RewriteTensorExtract, RewriteTransferRead,
@@ -1040,6 +1095,10 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       while (auto gep = addr.getDefiningOp<mlir::LLVM::GEPOp>()) {
         addr = gep.getBase();
       }
+      while (auto cast =
+                 addr.getDefiningOp<mlir::UnrealizedConversionCastOp>()) {
+        addr = cast.getOperand(0);
+      }
       if (addr.getDefiningOp<mlir::LLVM::AddrSpaceCastOp>() ||
           addr.getDefiningOp<mlir::LLVM::AddressOfOp>() ||
           addr.getDefiningOp<mlir::LLVM::AllocaOp>()) {
@@ -1060,16 +1119,21 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       signalPassFailure();
     });
   }
+  se::DeviceDescription device_description_;
 };
 
 }  // namespace
 
 std::unique_ptr<::mlir::Pass> CreateLowerTensorsPass(
-    bool is_amd_gpu, const std::string& gpu_arch) {
+    const std::string& gpu_device_info) {
   LowerTensorsPassOptions options;
-  options.is_amd_gpu_ = is_amd_gpu;
-  options.gpu_arch_ = gpu_arch;
+  options.gpu_device_info_ = gpu_device_info;
   return std::make_unique<LowerTensorsPass>(options);
+}
+
+std::unique_ptr<::mlir::Pass> CreateLowerTensorsPass(
+    const se::DeviceDescription& device_description) {
+  return std::make_unique<LowerTensorsPass>(device_description);
 }
 
 }  // namespace gpu

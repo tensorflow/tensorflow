@@ -104,14 +104,12 @@ pytype_strict_contrib_test(
 tf_proto_library(
     name = "calibration_statistics_proto",
     srcs = ["calibration_statistics.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "calibration_statistics_py_pb2",
-#     api_version = 2,
 #     deps = [
 #         ":calibration_statistics_proto",
 #     ],

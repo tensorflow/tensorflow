@@ -38,15 +38,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
-#include "xla/service/float_normalization.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
@@ -69,14 +70,20 @@ bool SupportsBF16(const stream_executor::GpuComputeCapability& cc) {
   CHECK(false);
 }
 
-absl::Status CreateTritonIrAndFileCheck(
-    HloTestBase* test, absl::string_view hlo_text,
-    const BlockLevelParameters& block_level_parameters,
-    absl::string_view triton_fusion_name, absl::string_view filecheck_pattern) {
+absl::Status CreateTritonIrAndFileCheck(HloTestBase* test,
+                                        absl::string_view hlo_text,
+                                        absl::string_view triton_fusion_name,
+                                        absl::string_view filecheck_pattern) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
                       test->ParseAndReturnVerifiedModule(hlo_text));
   auto* comp = verified_module->GetComputationWithName(triton_fusion_name);
   TF_RET_CHECK(comp != nullptr);
+  auto fusion_backend_config = comp->FusionInstruction()
+                                   ->backend_config<GpuBackendConfig>()
+                                   ->fusion_backend_config();
+  BlockLevelParameters block_level_parameters =
+      BlockLevelParameters::FromBlockLevelFusionConfig(
+          fusion_backend_config.block_level_fusion_config());
   return CreateTritonIrAndFileCheck(*comp, block_level_parameters,
                                     filecheck_pattern);
 }
@@ -106,9 +113,12 @@ absl::Status CreateTritonIrAndFileCheck(
 absl::Status CreateTritonIrAndFileCheckForDot(
     HloTestBase* test, absl::string_view hlo_text,
     absl::string_view triton_fusion_name, absl::string_view filecheck_pattern) {
-  return CreateTritonIrAndFileCheck(test, hlo_text,
-                                    /*block_level_parameters=*/{},
-                                    triton_fusion_name, filecheck_pattern);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
+                      test->ParseAndReturnVerifiedModule(hlo_text));
+  auto* comp = verified_module->GetComputationWithName(triton_fusion_name);
+  TF_RET_CHECK(comp != nullptr);
+  return CreateTritonIrAndFileCheck(*comp, /*block_level_parameters=*/{},
+                                    filecheck_pattern);
 }
 
 absl::Status CreateTritonIrAndFileCheckForDot(
@@ -134,27 +144,39 @@ std::string PrimitiveTypeAndHloOpcodeToString(PrimitiveType data_type,
       absl::StrReplaceAll(HloOpcodeString(opcode), {{"-", "_"}}));
 }
 
+std::string ComputeCapabilityToString(
+    const stream_executor::GpuComputeCapability& cc) {
+  if (auto cuda_cc = std::get_if<se::CudaComputeCapability>(&cc)) {
+    return absl::StrReplaceAll(cuda_cc->ToString(), {{".", ""}});
+  } else {
+    CHECK(std::holds_alternative<se::RocmComputeCapability>(cc));
+    return "rocm";
+  }
+}
+
 }  // namespace
 
-std::string TritonSupportTestParamsToString(
+std::string TritonSupportTestTypeAndDeviceToString(
+    const ::testing::TestParamInfo<
+        std::tuple<PrimitiveType, se::GpuComputeCapability>>& data) {
+  auto [data_type, cc] = data.param;
+  return absl::StrCat(primitive_util::LowercasePrimitiveTypeName(data_type),
+                      "_", ComputeCapabilityToString(cc));
+}
+
+std::string TritonSupportTestTypeAndOpcodeToString(
     const ::testing::TestParamInfo<std::tuple<PrimitiveType, HloOpcode>>&
         data) {
   auto [data_type, opcode] = data.param;
   return PrimitiveTypeAndHloOpcodeToString(data_type, opcode);
 }
 
-std::string TritonSupportTestTypeOpcodeAndDeviceToString(
+std::string TritonSupportTestTypeAndOpcodeAndDeviceToString(
     const ::testing::TestParamInfo<
         std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>>& data) {
   auto [data_type, opcode, cc] = data.param;
-  std::string cc_str;
-  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
-    cc_str = std::get<se::CudaComputeCapability>(cc).ToString();
-  } else {
-    cc_str = "rocm";
-  }
   return absl::StrCat(PrimitiveTypeAndHloOpcodeToString(data_type, opcode), "_",
-                      absl::StrReplaceAll(cc_str, {{".", ""}}));
+                      ComputeCapabilityToString(cc));
 }
 
 std::string TritonSupportTestTwoTypesAndDeviceToString(
@@ -162,16 +184,15 @@ std::string TritonSupportTestTwoTypesAndDeviceToString(
         std::tuple<PrimitiveType, PrimitiveType, se::GpuComputeCapability>>&
         data) {
   auto [data_type_1, data_type_2, cc] = data.param;
-  std::string cc_str;
-  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
-    cc_str = std::get<se::CudaComputeCapability>(cc).ToString();
-  } else {
-    cc_str = "rocm";
-  }
   return absl::StrCat(primitive_util::LowercasePrimitiveTypeName(data_type_1),
                       "_",
                       primitive_util::LowercasePrimitiveTypeName(data_type_2),
-                      "_", absl::StrReplaceAll(cc_str, {{".", ""}}));
+                      "_", ComputeCapabilityToString(cc));
+}
+
+std::string TritonSupportTestTypeToString(
+    const ::testing::TestParamInfo<PrimitiveType>& data) {
+  return primitive_util::LowercasePrimitiveTypeName(data.param);
 }
 
 namespace {
@@ -215,7 +236,7 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module) {
 
 }  // namespace
 
-DebugOptions TritonSupportTestBase::GetDebugOptionsForTest() {
+DebugOptions TritonSupportTestBase::GetDebugOptionsForTest() const {
   auto options = HloTestBase::GetDebugOptionsForTest();
   // It's necessary to set this manually, because it's disabled in optimized
   // builds and there are some ASAN builds that run on TAP with -c opt.

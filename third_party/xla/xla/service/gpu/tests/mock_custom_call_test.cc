@@ -35,7 +35,7 @@ TEST_F(UnknownCustomCallFails, UnknownCustomCallFails) {
 }
 
 class MockedCustomCall : public GpuCodegenTest {
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions opts;
     opts.set_xla_gpu_mock_custom_calls(true);
     return opts;

@@ -51,6 +51,8 @@ NVCC_PATH = '%{nvcc_path}'
 PREFIX_DIR = os.path.dirname(HOST_COMPILER_PATH)
 USE_CLANG_COMPILER = '%{use_clang_compiler}'
 NVCC_VERSION = '%{cuda_version}'
+TMPDIR= '%{tmpdir}'
+
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
@@ -292,6 +294,8 @@ def InvokeNvcc(argv, log=False):
 
 
 def main():
+  if TMPDIR and not USE_CLANG_COMPILER:
+    os.environ['TMPDIR'] = TMPDIR
   parser = ArgumentParser()
   parser.add_argument('-x', nargs=1)
   parser.add_argument('--cuda_log', action='store_true')

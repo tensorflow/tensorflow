@@ -49,8 +49,8 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
 // Extracts function name and attributes from `call_def`
 // `call_def` can be a native function call (where the op type is the function
 // name) or a call through PartitionedCall/StatefulPartitionedCall.
-Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
-                                    NameAttrList* function);
+absl::Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
+                                          NameAttrList* function);
 
 // A few hand-crafted optimization on the instantiated function body
 // (a Graph*).
@@ -91,9 +91,9 @@ bool RemoveListArrayConverter(Graph* g);
 // flr->Instantiate(name, attrs, handle).
 // `call_def` can be a native function call (where the op type is the function
 // name) or a call through PartitionedCall/StatefulPartitionedCall.
-Status InstantiateFunctionCall(const NodeDef& call_def,
-                               FunctionLibraryRuntime* flr,
-                               FunctionLibraryRuntime::Handle* handle);
+absl::Status InstantiateFunctionCall(const NodeDef& call_def,
+                                     FunctionLibraryRuntime* flr,
+                                     FunctionLibraryRuntime::Handle* handle);
 
 // Returns true iff `n` represents a function call. `n` can be a native
 // function call (n.type_string() is the function name),

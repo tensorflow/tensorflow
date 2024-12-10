@@ -623,8 +623,8 @@ absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return CopyLayoutInternal(src, dst);
 }
 
-/* static */ bool LayoutUtil::LayoutsInShapesEqual(const Shape& lhs,
-                                                   const Shape& rhs) {
+/* static */ bool LayoutUtil::LayoutsInShapesEqual(
+    const Shape& lhs, const Shape& rhs, std::optional<Layout::Equal> equal) {
   if (lhs.IsTuple()) {
     if (!rhs.IsTuple() || ShapeUtil::TupleElementCount(lhs) !=
                               ShapeUtil::TupleElementCount(rhs)) {
@@ -647,6 +647,11 @@ absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
     if (!lhs.has_layout() || !rhs.has_layout()) {
       return false;
     }
+
+    if (equal.has_value()) {
+      return equal.value()(lhs.layout(), rhs.layout());
+    }
+
     return LayoutUtil::Equal(lhs.layout(), rhs.layout());
   }
   // Layouts of non-array and non-tuple shapes is ignored.
@@ -823,28 +828,6 @@ bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type, bool dim_unique,
     max_elements_in *= MaxSplitSize(shape, dim);
   }
   return max_elements_in;
-}
-
-/*static*/ Shape LayoutUtil::GetPhysicalShapeFromLogicalShape(
-    const Shape& logical_shape) {
-  Shape physical_shape = logical_shape;
-  if (!logical_shape.has_layout()) {
-    return physical_shape;
-  }
-  // Use physical dimensions with descending layout.
-  // [128,64]{0,1} -> [64,128]{1,0}
-  for (int i = 0; i < logical_shape.rank(); ++i) {
-    physical_shape.mutable_dimensions()[i] =
-        logical_shape
-            .dimensions()[LayoutUtil::Major(logical_shape.layout(), i)];
-    VLOG(1) << "physical_shape[" << i << "]: " << logical_shape.dimensions()[i];
-  }
-  // Update to descending layout but keep the tiling information
-  for (int i = 0; i < logical_shape.rank(); ++i) {
-    physical_shape.mutable_layout()->set_minor_to_major(
-        i, logical_shape.rank() - i - 1);
-  }
-  return physical_shape;
 }
 
 }  // namespace xla

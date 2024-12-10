@@ -19,6 +19,7 @@ limitations under the License.
 #include <string_view>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "tsl/platform/test_benchmark.h"
@@ -43,6 +44,15 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                              absl::Span<const Literal* const> args,
                              StrToStrMapping replacements = {},
                              bool disable_parallel_task_assigner = false);
+
+// Benchmarks the given HLO's compilation time.
+//
+// Takes the same options as RunHloBenchmark, except no arguments since the
+// HLO is only compiled, not run.
+absl::Status CompileHloBenchmark(benchmark::State& state,
+                                 std::string_view hlo_module,
+                                 StrToStrMapping replacements = {},
+                                 bool disable_parallel_task_assigner = false);
 
 }  // namespace xla::cpu
 

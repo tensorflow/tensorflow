@@ -43,7 +43,7 @@ class AutotuneBufferSizes : public TFDataOptimizerBase {
 
   bool UsesFunctionLibrary() const override { return false; }
 
-  Status Init(
+  absl::Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     if (!config) return absl::OkStatus();
 
@@ -60,9 +60,10 @@ class AutotuneBufferSizes : public TFDataOptimizerBase {
     return absl::OkStatus();
   }
 
-  Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
-                                 GraphDef* output,
-                                 OptimizationStats* stats) override;
+  absl::Status OptimizeAndCollectStats(Cluster* cluster,
+                                       const GrapplerItem& item,
+                                       GraphDef* output,
+                                       OptimizationStats* stats) override;
 
  private:
   bool autotune_ = true;

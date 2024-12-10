@@ -44,7 +44,7 @@ using GemmOperation = cutlass::gemm::device::GemmUniversal<
     cutlass::arch::OpMultiplyAdd>;
 
 XLA_GPU_DEFINE_CUTLASS_GEMM_TRAITS(Bf16xS8ToF32<Arch::kDefault>, GemmOperation);
-template struct Adaptor<Bf16xS8ToF32<Arch::kDefault>>;
-template struct DeviceKernel<Bf16xS8ToF32<Arch::kDefault>>;
+template class Adaptor<Bf16xS8ToF32<Arch::kDefault>>;
+template class DeviceKernel<Bf16xS8ToF32<Arch::kDefault>>;
 
 }  // namespace xla::gpu::kernel::gemm_universal

@@ -108,6 +108,7 @@ class DfsHloVisitorBase {
     return HandleElementwiseBinary(hlo);
   }
   virtual absl::Status HandleDot(HloInstructionPtr hlo) = 0;
+  virtual absl::Status HandleRaggedDot(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandlePower(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -135,6 +136,7 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleConvolution(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleOptimizationBarrier(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandlePartitionId(HloInstructionPtr hlo) = 0;
+  virtual absl::Status HandleRaggedAllToAll(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleReduceScatter(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleReplicaId(HloInstructionPtr hlo) = 0;
   /* go/keep-sorted end */

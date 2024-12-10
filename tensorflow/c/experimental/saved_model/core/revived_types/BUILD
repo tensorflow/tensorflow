@@ -203,6 +203,7 @@ cc_library(
         "//tensorflow/c/experimental/saved_model/core:function_metadata",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )

@@ -1,0 +1,17 @@
+// RUN: fusion_to_mlir %s | emitters_opt -cse -xla-gpu-simplify-arith -canonicalize | FileCheck %s --dump-input=always
+
+add {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %p0, f32[] %p1)
+}
+fusion {
+  %p0 = s8[10240,72,32] parameter(0)
+  %cvt = f32[10240,72,32] convert(%p0)
+  %c0 = f32[] constant(0)
+  ROOT %reduce = f32[10240,32] reduce(%cvt, %c0), dimensions={1}, to_apply=%add
+}
+
+// CHECK: vector<4xf32>
+// CHECK: allocate_shared : tensor<16x33xf32>
+// CHECK: shuffle_reduce(%{{.*}}) to 8 combiner=@add_add

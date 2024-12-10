@@ -1,9 +1,9 @@
 # Description:
 #   XLA’s HLO Intermediate Representation implementation.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -30,11 +30,9 @@ cc_library(
         "hlo_instructions.cc",
         "hlo_module.cc",
         "hlo_module_metadata.cc",
-        "hlo_op_metadata.cc",
         "hlo_opcode.cc",
         "hlo_original_value.cc",
         "hlo_schedule.cc",
-        "hlo_sharding.cc",
         "hlo_sharding_metadata.cc",
     ],
     hdrs = [
@@ -60,6 +58,8 @@ cc_library(
     ],
     deps = [
         ":backend_config",
+        ":hlo_op_metadata",
+        ":hlo_sharding",
         ":ptrvec",
         ":tile_assignment",
         "//xla:array",
@@ -68,6 +68,7 @@ cc_library(
         "//xla:literal_util",
         "//xla:printer",
         "//xla:protobuf_util",
+        "//xla:shape_layout",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:sort_json",
@@ -77,14 +78,17 @@ cc_library(
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/hlo/parser:hlo_lexer",
         "//xla/service:compilation_environments",
         "//xla/service:computation_layout",
         "//xla/service:computation_placer_hdr",
-        "//xla/service:hlo_lexer",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:mapped_ptr_container_sorter",
+        "//xla/service:metrics_proto_cc",
         "//xla/service:name_uniquer",
+        "//xla/tsl/lib/gtl:iterator_range",
+        "//xla/tsl/lib/gtl:map_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:btree",
@@ -92,6 +96,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
@@ -102,8 +107,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/gtl:iterator_range",
-        "@local_tsl//tsl/lib/gtl:map_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
@@ -111,6 +114,62 @@ cc_library(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "hlo_sharding",
+    srcs = ["hlo_sharding.cc"],
+    hdrs = ["hlo_sharding.h"],
+    deps = [
+        ":hlo_op_metadata",
+        ":tile_assignment",
+        "//xla:array",
+        "//xla:printer",
+        "//xla:shape_tree",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "hlo_op_metadata",
+    srcs = ["hlo_op_metadata.cc"],
+    hdrs = ["hlo_op_metadata.h"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_module_test",
+    srcs = ["hlo_module_test.cc"],
+    deps = [
+        ":hlo",
+        "//xla:shape_util",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -150,9 +209,13 @@ cc_library(
     hdrs = ["hlo_module_group.h"],
     deps = [
         ":hlo",
+        "//xla:status_macros",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -162,32 +225,24 @@ cc_library(
     hdrs = ["hlo_instruction_utils.h"],
     deps = [
         ":hlo",
+        "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )
 
 cc_library(
     name = "hlo_reachability",
-    srcs = ["hlo_reachability.cc"],
     hdrs = ["hlo_reachability.h"],
-    deps = [
-        ":hlo",
-        "//xla:types",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/types:span",
-    ],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_reachability instead.",
+    deps = ["//xla/hlo/analysis:hlo_reachability"],
 )
 
 cc_library(
     name = "hlo_dfs_reachability",
-    srcs = ["hlo_dfs_reachability.cc"],
     hdrs = ["hlo_dfs_reachability.h"],
-    deps = [
-        ":hlo",
-        "@com_google_absl//absl/algorithm:container",
-        "@llvm-project//llvm:Support",
-    ],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_dfs_reachability instead.",
+    deps = ["//xla/hlo/analysis:hlo_dfs_reachability"],
 )
 
 cc_library(
@@ -223,7 +278,9 @@ cc_library(
         "//xla:util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -236,7 +293,6 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/service:hlo_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
 )

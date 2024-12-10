@@ -92,7 +92,7 @@ class EventMgr {
     std::function<void()> func;
   };
 
-  typedef gtl::InlinedVector<InUse, 4> ToFreeVector;
+  typedef absl::InlinedVector<InUse, 4UL> ToFreeVector;
 
   EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options);
 

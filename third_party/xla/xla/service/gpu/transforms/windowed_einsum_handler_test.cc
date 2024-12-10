@@ -25,10 +25,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
@@ -115,7 +115,7 @@ ENTRY test_main {
   HloComputation* ag_loop_body = ag_loop->while_body();
   int64_t dot_count = 0;
   for (HloInstruction* inst : ag_loop_body->MakeInstructionPostOrder()) {
-    if (inst->opcode() == HloOpcode::kDot) {
+    if (HloPredicateIsOp<HloOpcode::kDot>(inst)) {
       dot_count++;
       EXPECT_GT(inst->backend_config<GpuBackendConfig>()->operation_queue_id(),
                 0);
@@ -198,7 +198,7 @@ ENTRY main.9_spmd {
   HloComputation* rs_loop_body = rs_loop->while_body();
   int64_t dot_count = 0;
   for (HloInstruction* inst : rs_loop_body->MakeInstructionPostOrder()) {
-    if (inst->opcode() == HloOpcode::kDot) {
+    if (HloPredicateIsOp<HloOpcode::kDot>(inst)) {
       dot_count++;
       EXPECT_GT(inst->backend_config<GpuBackendConfig>()->operation_queue_id(),
                 0);
@@ -282,7 +282,7 @@ ENTRY main.12_spmd {
   HloComputation* while_body = while_loop->while_body();
   int64_t dot_count = 0;
   for (HloInstruction* ins : while_body->MakeInstructionPostOrder()) {
-    if (ins->opcode() == HloOpcode::kDot) {
+    if (HloPredicateIsOp<HloOpcode::kDot>(ins)) {
       dot_count++;
       EXPECT_GT(ins->backend_config<GpuBackendConfig>()->operation_queue_id(),
                 0);
@@ -634,127 +634,142 @@ CHECK: ROOT {{.*}} = bf16[1,4,1,1,2048,8192]{5,4,3,2,1,0} reshape(bf16[1,4,1,204
 
 TEST_F(WindowedEinsumHandlerTest, AllGatherF8) {
   constexpr absl::string_view kHloString = R"(
-HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[], f32[])->f32[2,2048,24576]{2,1,0}}, num_partitions=4
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[1536,24576]{1,0}, f32[], f32[])->f32[2,2048,24576]{2,1,0}}, num_partitions=4
 
 windowed_dot_general_body_ag {
-  param.1 = (f32[2,512,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[]) parameter(0)
-  get-tuple-element.lhs = f32[2,512,24576]{2,1,0} get-tuple-element(param.1), index=0
-  collective-permute.send_first_lhs_shard = f32[2,512,24576]{2,1,0} collective-permute(get-tuple-element.lhs), channel_id=4, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
-  collective-permute.send_second_lhs_shard = f32[2,512,24576]{2,1,0} collective-permute(collective-permute.send_first_lhs_shard), channel_id=5, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
-  get-tuple-element.rhs = f32[24576,24576]{1,0} get-tuple-element(param.1), index=1
-  get-tuple-element.3 = f32[2,2048,24576]{2,1,0} get-tuple-element(param.1), index=2
-  dot.first_shard_dot = f32[2,512,24576]{2,1,0} dot(get-tuple-element.lhs, get-tuple-element.rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-  constant.12 = s32[] constant(0)
-  constant.13 = s32[4]{0} constant({0, 512, 1024, 1536})
-  get-tuple-element.5 = u32[] get-tuple-element(param.1), index=4
-  partition-id = u32[] partition-id()
-  add = u32[] add(get-tuple-element.5, partition-id)
-  constant.11 = u32[] constant(4)
-  remainder = u32[] remainder(add, constant.11)
-  dynamic-slice = s32[1]{0} dynamic-slice(constant.13, remainder), dynamic_slice_sizes={1}
-  reshape = s32[] reshape(dynamic-slice)
-  dynamic-update-slice.update_first_shard_result = f32[2,2048,24576]{2,1,0} dynamic-update-slice(get-tuple-element.3, dot.first_shard_dot, constant.12, reshape, constant.12)
-  dot.second_shard_dot = f32[2,512,24576]{2,1,0} dot(collective-permute.send_first_lhs_shard, get-tuple-element.rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-  constant.15 = u32[] constant(1)
-  add.1 = u32[] add(get-tuple-element.5, constant.15)
-  add.2 = u32[] add(add.1, partition-id)
-  remainder.1 = u32[] remainder(add.2, constant.11)
-  dynamic-slice.1 = s32[1]{0} dynamic-slice(constant.13, remainder.1), dynamic_slice_sizes={1}
-  reshape.1 = s32[] reshape(dynamic-slice.1)
-  dynamic-update-slice.update_second_shard_result = f32[2,2048,24576]{2,1,0} dynamic-update-slice(dynamic-update-slice.update_first_shard_result, dot.second_shard_dot, constant.12, reshape.1, constant.12)
-  get-tuple-element.4 = f32[2,2048,24576]{2,1,0} get-tuple-element(param.1), index=3
-  add.3 = u32[] add(add.1, constant.15)
-  ROOT tuple = (f32[2,512,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[]) tuple(collective-permute.send_second_lhs_shard, get-tuple-element.rhs, dynamic-update-slice.update_second_shard_result, get-tuple-element.4, add.3)
+  input = (f32[2,512,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[]) parameter(0)
+  lhs = f32[2,512,24576]{2,1,0} get-tuple-element(input), index=0
+  permuted_lhs0 = f32[2,512,24576]{2,1,0} collective-permute(lhs), channel_id=4, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  permuted_lhs1 = f32[2,512,24576]{2,1,0} collective-permute(permuted_lhs0), channel_id=5, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  rhs = f32[24576,24576]{1,0} get-tuple-element(input), index=1
+  partial_dot_output = f32[2,2048,24576]{2,1,0} get-tuple-element(input), index=2
+  dot0 = f32[2,512,24576]{2,1,0} dot(lhs, rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  c0 = s32[] constant(0)
+  dot_update_slice_offsets = s32[4]{0} constant({0, 512, 1024, 1536})
+  loop_counter = u32[] get-tuple-element(input), index=4
+  partition_id = u32[] partition-id()
+  loop_counter_plus_partition_id = u32[] add(loop_counter, partition_id)
+  c4 = u32[] constant(4)
+  dot_update_slice_offsets_index0 = u32[] remainder(loop_counter_plus_partition_id, c4)
+  dot_update_slice_offset0 = s32[1]{0} dynamic-slice(dot_update_slice_offsets, dot_update_slice_offsets_index0), dynamic_slice_sizes={1}
+  dot_update_slice_offset_scalar0 = s32[] reshape(dot_update_slice_offset0)
+  updated_dot_output0 = f32[2,2048,24576]{2,1,0} dynamic-update-slice(partial_dot_output, dot0, c0, dot_update_slice_offset_scalar0, c0)
+  dot1 = f32[2,512,24576]{2,1,0} dot(permuted_lhs0, rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  c1 = u32[] constant(1)
+  loop_counter_plus_one = u32[] add(loop_counter, c1)
+  loop_counter_plus_partiion_id_plus_one = u32[] add(loop_counter_plus_one, partition_id)
+  dot_update_slice_offsets_index1 = u32[] remainder(loop_counter_plus_partiion_id_plus_one, c4)
+  dot_update_slice_offset1 = s32[1]{0} dynamic-slice(dot_update_slice_offsets, dot_update_slice_offsets_index1), dynamic_slice_sizes={1}
+  dot_update_slice_offset1_scalar = s32[] reshape(dot_update_slice_offset1)
+  updated_dot_output1 = f32[2,2048,24576]{2,1,0} dynamic-update-slice(updated_dot_output0, dot1, c0, dot_update_slice_offset1_scalar, c0)
+  pass_through = f32[2,2048,24576]{2,1,0} get-tuple-element(input), index=3
+  next_loop_counter = u32[] add(loop_counter_plus_one, c1)
+  ROOT tuple = (f32[2,512,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[]) tuple(permuted_lhs1, rhs, updated_dot_output1, pass_through, next_loop_counter)
 } // windowed_dot_general_body_ag
 
 windowed_dot_general_cond_ag {
-  param = (f32[2,512,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[]) parameter(0)
-  get-tuple-element = u32[] get-tuple-element(param), index=4
-  constant.10 = u32[] constant(4)
-  ROOT compare = pred[] compare(get-tuple-element, constant.10), direction=LT
+  input = (f32[2,512,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[]) parameter(0)
+  loop_counter = u32[] get-tuple-element(input), index=4
+  loop_limit = u32[] constant(4)
+  ROOT compare = pred[] compare(loop_counter, loop_limit), direction=LT
 }
 
-ENTRY test_main {
-  param.4 = f8e4m3fn[2,512,24576]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
-  reshape.8 = f8e4m3fn[2,512,24576]{2,1,0} reshape(param.4)
-  param.5 = f8e4m3fn[24576,24576]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
-  constant.18 = f32[] constant(0)
-  broadcast = f32[2,2048,24576]{2,1,0} broadcast(constant.18), dimensions={}
-  constant.20 = u32[] constant(0)
+ENTRY main {
+  lhs = f8e4m3fn[2,512,24576]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  rhs = f8e4m3fn[1536,24576]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  c0_f32 = f32[] constant(0)
+  c0_f32_bcast = f32[2,2048,24576]{2,1,0} broadcast(c0_f32), dimensions={}
+  c0_u32 = u32[] constant(0)
   scale_lhs = f32[] parameter(2)
   scale_lhs_bcast = f32[2,512,24576]{2,1,0} broadcast(scale_lhs), dimensions={}
-  lhs_bf32 = f32[2,512,24576]{2,1,0} convert(reshape.8)  
-  lhs_scaled = f32[2,512,24576]{2,1,0} multiply(lhs_bf32, scale_lhs_bcast)
+  lhs_f32 = f32[2,512,24576]{2,1,0} convert(lhs)
+  lhs_scaled = f32[2,512,24576]{2,1,0} multiply(lhs_f32, scale_lhs_bcast)
   scale_rhs = f32[] parameter(3)
-  scale_rhs_bcast = f32[24576,24576]{1,0} broadcast(scale_rhs), dimensions={}
-  rhs_bf32 = f32[24576,24576]{1,0} convert(param.5)  
-  rhs_scaled = f32[24576,24576]{1,0} multiply(rhs_bf32, scale_rhs_bcast)
-  tuple.2 = (f32[2,512,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[]) tuple(lhs_scaled, rhs_scaled, broadcast, broadcast, constant.20)
-  while = (f32[2,512,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[]) while(tuple.2), condition=windowed_dot_general_cond_ag, body=windowed_dot_general_body_ag
+  scale_rhs_bcast = f32[1536,24576]{1,0} broadcast(scale_rhs), dimensions={}
+  rhs_f32 = f32[1536,24576]{1,0} convert(rhs)
+  rhs_scaled = f32[1536,24576]{1,0} multiply(rhs_f32, scale_rhs_bcast)
+  rhs_bcast = f32[16,1536,24576]{2,1,0} broadcast(rhs_scaled), dimensions={1,2}
+  rhs_reshaped = f32[24576,24576]{1,0} reshape(rhs_bcast)
+  while_input = (f32[2,512,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[]) tuple(lhs_scaled, rhs_reshaped, c0_f32_bcast, c0_f32_bcast, c0_u32)
+  while = (f32[2,512,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[]) while(while_input), condition=windowed_dot_general_cond_ag, body=windowed_dot_general_body_ag
   ROOT get-tuple-element.13 = f32[2,2048,24576]{2,1,0} get-tuple-element(while), index=2
 }
 )";
 
   RunAndFilecheckHloRewrite(kHloString, WindowedEinsumHandler(),
                             R"(
-; CHECK-LABEL: unrolled_windowed_dot_general_body_ag
-; CHECK-NEXT:    [[P0:%[^ ]+]] = (f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) parameter(0)
-; CHECK-NEXT:    [[GTE0:%[^ ]+]] = f8e4m3fn[2,512,24576]{2,1,0} get-tuple-element([[P0]]), index=0
-; CHECK-NEXT:    [[CP0:%[^ ]+]] = f8e4m3fn[2,512,24576]{2,1,0} collective-permute([[GTE0]]), channel_id=6
-; CHECK-NEXT:    [[CP1:%[^ ]+]] = f8e4m3fn[2,512,24576]{2,1,0} collective-permute([[CP0]]), channel_id=7
-; CHECK-NEXT:    [[GTE1:%[^ ]+]] = f8e4m3fn[24576,24576]{1,0} get-tuple-element([[P0]]), index=1
-; CHECK-NEXT:    [[GTE2:%[^ ]+]] = f32[2,2048,24576]{2,1,0} get-tuple-element([[P0]]), index=2
-; CHECK-NEXT:    [[CONVERT0:%[^ ]+]] = f32[2,512,24576]{2,1,0} convert([[GTE0]])
-; CHECK-NEXT:    [[GTE3:%[^ ]+]] = f32[] get-tuple-element([[P0]]), index=5
-; CHECK-NEXT:    [[BCAST0:%[^ ]+]] = f32[2,512,24576]{2,1,0} broadcast([[GTE3]]), dimensions={}
-; CHECK-NEXT:    [[MUL0:%[^ ]+]] = f32[2,512,24576]{2,1,0} multiply([[CONVERT0]], [[BCAST0]])
-; CHECK-NEXT:    [[CONVERT1:%[^ ]+]] = f32[24576,24576]{1,0} convert([[GTE1]])
-; CHECK-NEXT:    [[GTE4:%[^ ]+]] = f32[] get-tuple-element([[P0]]), index=6
-; CHECK-NEXT:    [[BCAST1:%[^ ]+]] = f32[24576,24576]{1,0} broadcast([[GTE4]]), dimensions={}
-; CHECK-NEXT:    [[MUL1:%[^ ]+]] = f32[24576,24576]{1,0} multiply([[CONVERT1]], [[BCAST1]])
-; CHECK-NEXT:    [[DOT0:%[^ ]+]] = f32[2,512,24576]{2,1,0} dot([[MUL0]], [[MUL1]]),
+; CHECK-LABEL: %unrolled_windowed_dot_general_body_ag
+; CHECK-NEXT:    [[INPUT:%[^ ]+]] = (f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) parameter(0)
+; CHECK-NEXT:    [[LHS:%[^ ]+]] = f8e4m3fn[2,512,24576]{2,1,0} get-tuple-element([[INPUT]]), index=0
+; CHECK-NEXT:    [[PERMUTED_LHS0:%[^ ]+]] = f8e4m3fn[2,512,24576]{2,1,0} collective-permute([[LHS]]), channel_id=6
+; CHECK-NEXT:    [[PERMUTED_LHS1:%[^ ]+]] = f8e4m3fn[2,512,24576]{2,1,0} collective-permute([[PERMUTED_LHS0]]), channel_id=7
+; CHECK-NEXT:    [[RHS:%[^ ]+]] = f8e4m3fn[24576,24576]{1,0} get-tuple-element([[INPUT]]), index=1
+; CHECK-NEXT:    [[PARTIAL_DOT_OUTPUT:%[^ ]+]] = f32[2,2048,24576]{2,1,0} get-tuple-element([[INPUT]]), index=2
+; CHECK-NEXT:    [[LHS_F32:%[^ ]+]] = f32[2,512,24576]{2,1,0} convert([[LHS]])
+; CHECK-NEXT:    [[SCALE_LHS:%[^ ]+]] = f32[] get-tuple-element([[INPUT]]), index=5
+; CHECK-NEXT:    [[SCALE_LHS_BCAST:%[^ ]+]] = f32[2,512,24576]{2,1,0} broadcast([[SCALE_LHS]]), dimensions={}
+; CHECK-NEXT:    [[LHS_SCALED:%[^ ]+]] = f32[2,512,24576]{2,1,0} multiply([[LHS_F32]], [[SCALE_LHS_BCAST]])
+; CHECK-NEXT:    [[RHS_F32:%[^ ]+]] = f32[24576,24576]{1,0} convert([[RHS]])
+; CHECK-NEXT:    [[SCALE_RHS:%[^ ]+]] = f32[] get-tuple-element([[INPUT]]), index=6
+; CHECK-NEXT:    [[SCALE_RHS_BCAST:%[^ ]+]] = f32[24576,24576]{1,0} broadcast([[SCALE_RHS]]), dimensions={}
+; CHECK-NEXT:    [[RHS_SCALED:%[^ ]+]] = f32[24576,24576]{1,0} multiply([[RHS_F32]], [[SCALE_RHS_BCAST]])
+; CHECK-NEXT:    [[DOT0:%[^ ]+]] = f32[2,512,24576]{2,1,0} dot([[LHS_SCALED]], [[RHS_SCALED]]),
 ; CHECK-DAG:       lhs_contracting_dims={2},
 ; CHECK-DAG:       rhs_contracting_dims={0},
 ; CHECK-DAG:       backend_config={
 ; CHECK-DAG:         "operation_queue_id":"[[OPQUEUEID:[0-9]+]]",
 ; CHECK-DAG:         "wait_on_operation_queues":[],
 ; CHECK-DAG:         "force_earliest_schedule":false}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = s32[] constant(0)
-; CHECK-NEXT:    [[C4:%[^ ]+]] = u32[] constant(0)
+; CHECK-NEXT:    [[C0_S32:%[^ ]+]] = s32[] constant(0)
+; CHECK-NEXT:    [[C0_U32:%[^ ]+]] = u32[] constant(0)
 ; CHECK-NEXT:    [[C5:%[^ ]+]] = u32[] constant(0)
-; CHECK-NEXT:    [[PID:%[^ ]+]] = u32[] partition-id()
-; CHECK-NEXT:    [[ADD0:%[^ ]+]] = u32[] add([[C5]], [[PID]])
-; CHECK-NEXT:    [[C2:%[^ ]+]] = u32[] constant(3)
-; CHECK-NEXT:    [[AND0:%[^ ]+]] = u32[] and([[ADD0]], [[C2]])
-; CHECK-NEXT:    [[CLAMP0:%[^ ]+]] = u32[] clamp([[C4]], [[AND0]], [[C2]])
+; CHECK-NEXT:    [[PARTITION_ID:%[^ ]+]] = u32[] partition-id()
+; CHECK-NEXT:    [[ADD0:%[^ ]+]] = u32[] add([[C5]], [[PARTITION_ID]])
+; CHECK-NEXT:    [[C3:%[^ ]+]] = u32[] constant(3)
+; CHECK-NEXT:    [[AND0:%[^ ]+]] = u32[] and([[ADD0]], [[C3]])
+; CHECK-NEXT:    [[CLAMP0:%[^ ]+]] = u32[] clamp([[C0_U32]], [[AND0]], [[C3]])
 ; CHECK-NEXT:    [[CONVERT3:%[^ ]+]] = s32[] convert([[CLAMP0]])
-; CHECK-NEXT:    [[C6:%[^ ]+]] = s32[] constant(512)
-; CHECK-NEXT:    [[MUL3:%[^ ]+]] = s32[] multiply([[CONVERT3]], [[C6]])
+; CHECK-NEXT:    [[C512:%[^ ]+]] = s32[] constant(512)
+; CHECK-NEXT:    [[MUL3:%[^ ]+]] = s32[] multiply([[CONVERT3]], [[C512]])
 ; CHECK-NEXT:    [[RESHAPE0:%[^ ]+]] = s32[] reshape([[MUL3]])
-; CHECK-NEXT:    [[DUPDATESLICE0:%[^ ]+]] = f32[2,2048,24576]{2,1,0} dynamic-update-slice([[GTE2]], [[DOT0]], [[C0]], [[RESHAPE0]], [[C0]]),
+; CHECK-NEXT:    [[UPDATED_DOT_OUTPUT0:%[^ ]+]] = f32[2,2048,24576]{2,1,0} dynamic-update-slice([[PARTIAL_DOT_OUTPUT]], [[DOT0]], [[C0_S32]], [[RESHAPE0]], [[C0_S32]]),
 ; CHECK-DAG:       backend_config={
 ; CHECK-DAG:         "operation_queue_id":"0",
 ; CHECK-DAG:         "wait_on_operation_queues":["[[OPQUEUEID]]"],
 ; CHECK-DAG:         "force_earliest_schedule":false}
-; CHECK-NEXT:    [[CONVERT2:%[^ ]+]] = f32[2,512,24576]{2,1,0} convert([[CP0]])
-; CHECK-NEXT:    [[MUL2:%[^ ]+]] = f32[2,512,24576]{2,1,0} multiply([[CONVERT2]], [[BCAST0]])
-; CHECK-NEXT:    [[DOT1:%[^ ]+]] = f32[2,512,24576]{2,1,0} dot([[MUL2]], [[MUL1]]),
+; CHECK-NEXT:    [[PERMUTED_LHS0_F32:%[^ ]+]] = f32[2,512,24576]{2,1,0} convert([[PERMUTED_LHS0]])
+; CHECK-NEXT:    [[PERMUTED_LHS_SCALED:%[^ ]+]] = f32[2,512,24576]{2,1,0} multiply([[PERMUTED_LHS0_F32]], [[SCALE_LHS_BCAST]])
+; CHECK-NEXT:    [[DOT1:%[^ ]+]] = f32[2,512,24576]{2,1,0} dot([[PERMUTED_LHS_SCALED]], [[RHS_SCALED]]),
 ; CHECK-DAG:       lhs_contracting_dims={2},
 ; CHECK-DAG:       rhs_contracting_dims={0}
-; CHECK-NEXT:    [[GTE7:%[^ ]+]] = u32[] get-tuple-element([[P0]]), index=4
-; CHECK-NEXT:    [[C3:%[^ ]+]] = u32[] constant(1)
-; CHECK-NEXT:    [[ADD1:%[^ ]+]] = u32[] add([[GTE7]], [[C3]])
-; CHECK-NEXT:    [[ADD2:%[^ ]+]] = u32[] add([[ADD1]], [[PID]])
-; CHECK-NEXT:    [[AND1:%[^ ]+]] = u32[] and([[ADD2]], [[C2]])
-; CHECK-NEXT:    [[CLAMP1:%[^ ]+]] = u32[] clamp([[C4]], [[AND1]], [[C2]])
+; CHECK-NEXT:    [[LOOP_COUNTER:%[^ ]+]] = u32[] get-tuple-element([[INPUT]]), index=4
+; CHECK-NEXT:    [[C1:%[^ ]+]] = u32[] constant(1)
+; CHECK-NEXT:    [[LOOP_COUNTER_PLUS_ONE:%[^ ]+]] = u32[] add([[LOOP_COUNTER]], [[C1]])
+; CHECK-NEXT:    [[LOOP_COUNTER_PLUS_ONE_PLUS_PARTITION_ID:%[^ ]+]] = u32[] add([[LOOP_COUNTER_PLUS_ONE]], [[PARTITION_ID]])
+; CHECK-NEXT:    [[AND1:%[^ ]+]] = u32[] and([[LOOP_COUNTER_PLUS_ONE_PLUS_PARTITION_ID]], [[C3]])
+; CHECK-NEXT:    [[CLAMP1:%[^ ]+]] = u32[] clamp([[C0_U32]], [[AND1]], [[C3]])
 ; CHECK-NEXT:    [[CONVERT4:%[^ ]+]] = s32[] convert([[CLAMP1]])
-; CHECK-NEXT:    [[MUL4:%[^ ]+]] = s32[] multiply([[CONVERT4]], [[C6]])
+; CHECK-NEXT:    [[MUL4:%[^ ]+]] = s32[] multiply([[CONVERT4]], [[C512]])
 ; CHECK-NEXT:    [[RESHAPE1:%[^ ]+]] = s32[] reshape([[MUL4]])
-; CHECK-NEXT:    [[DUPDATESLICE1:%[^ ]+]] = f32[2,2048,24576]{2,1,0} dynamic-update-slice([[DUPDATESLICE0]], [[DOT1]], [[C0]], [[RESHAPE1]], [[C0]])
-; CHECK-NEXT:    [[GTE6:%[^ ]+]] = f32[2,2048,24576]{2,1,0} get-tuple-element([[P0]]), index=3
-; CHECK-NEXT:    [[C7:%[^ ]+]] = u32[] constant(2)
-; CHECK-NEXT:    [[ADD3:%[^ ]+]] = u32[] add([[GTE7]], [[C7]])
-; CHECK-NEXT:    [[TUPLE0:%[^ ]+]] = (f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) tuple([[CP1]], [[GTE1]], [[DUPDATESLICE1]], [[GTE6]], [[ADD3]], /*index=5*/[[GTE3]], [[GTE4]])
+; CHECK-NEXT:    [[UPDATED_DOT_OUTPUT1:%[^ ]+]] = f32[2,2048,24576]{2,1,0} dynamic-update-slice([[UPDATED_DOT_OUTPUT0]], [[DOT1]], [[C0_S32]], [[RESHAPE1]], [[C0_S32]])
+; CHECK-NEXT:    [[PASS_THROUGH:%[^ ]+]] = f32[2,2048,24576]{2,1,0} get-tuple-element([[INPUT]]), index=3
+; CHECK-NEXT:    [[C2:%[^ ]+]] = u32[] constant(2)
+; CHECK-NEXT:    [[NEXT_LOOP_COUNTER:%[^ ]+]] = u32[] add([[LOOP_COUNTER]], [[C2]])
+; CHECK-NEXT:    [[TUPLE:%[^ ]+]] = (f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) tuple([[PERMUTED_LHS1]], [[RHS]], [[UPDATED_DOT_OUTPUT1]], [[PASS_THROUGH]], [[NEXT_LOOP_COUNTER]], /*index=5*/[[SCALE_LHS]], [[SCALE_RHS]])
+; CHECK-LABEL: ENTRY %main
+; CHECK:         [[LHS:%[^ ]+]] = f8e4m3fn[2,512,24576]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+; CHECK-NEXT:    [[RHS:%[^ ]+]] = f8e4m3fn[1536,24576]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+; CHECK-NEXT:    [[RHS_BCAST:%[^ ]+]] = f8e4m3fn[16,1536,24576]{2,1,0} broadcast([[RHS]]), dimensions={1,2}
+; CHECK-NEXT:    [[RHS_RESHAPED:%[^ ]+]] = f8e4m3fn[24576,24576]{1,0} reshape([[RHS_BCAST]])
+; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
+; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[2,2048,24576]{2,1,0} broadcast([[C0]]), dimensions={}
+; CHECK-NEXT:    [[C0_U32:%[^ ]+]] = u32[] constant(0)
+; CHECK-NEXT:    [[SCALE_LHS:%[^ ]+]] = f32[] parameter(2)
+; CHECK-NEXT:    [[SCALE_RHS:%[^ ]+]] = f32[] parameter(3)
+; CHECK-NEXT:    [[WHILE_INPUT:%[^ ]+]] = (f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) tuple([[LHS]], [[RHS_RESHAPED]], [[C0_BCAST]], [[C0_BCAST]], [[C0_U32]], /*index=5*/[[SCALE_LHS]], [[SCALE_RHS]])
+; CHECK:         [[WHILE:%[^ ]+]] = (f8e4m3fn[2,512,24576]{2,1,0}, f8e4m3fn[24576,24576]{1,0}, f32[2,2048,24576]{2,1,0}, f32[2,2048,24576]{2,1,0}, u32[], /*index=5*/f32[], f32[]) while([[WHILE_INPUT]]),
+; CHECK-DAG:       condition=%unrolled_windowed_dot_general_cond_ag,
+; CHECK-DAG:       body=%unrolled_windowed_dot_general_body_ag
 )");
 }
 
@@ -1064,7 +1079,7 @@ ENTRY main {
 TEST_F(WindowedEinsumHandlerTest,
        AgLoopsMultipleConsumersAreChainedWithShardedContratingDim) {
   constexpr absl::string_view kHloString = R"(
-HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,2048,512]{2,1,0}, bf16[4096,6288]{1,0}, bf16[16,2048,6288]{2,1,0})->bf16[4096,6288]{1,0}}, num_partitions=8
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,2048,512]{2,1,0}, bf16[4096,6288]{1,0}, bf16[16,2048,6288]{2,1,0})->(bf16[16,2048,6288]{2,1,0}, bf16[4096,6288]{1,0})}, num_partitions=8
 
 windowed_dot_general_body_ag {
   param.195 = (bf16[16,2048,512]{2,1,0}, bf16[4096,6288]{1,0}, bf16[16,2048,6288]{2,1,0}, bf16[16,2048,6288]{2,1,0}, u32[]) parameter(0)
@@ -1114,10 +1129,11 @@ ENTRY main.12_spmd {
   constant.24 = u32[] constant(0)
   tuple.2 = (bf16[16,2048,512]{2,1,0}, bf16[4096,6288]{1,0}, bf16[16,2048,6288]{2,1,0}, bf16[16,2048,6288]{2,1,0}, u32[]) tuple(param.4, param.5, broadcast, broadcast, constant.24)
   while = (bf16[16,2048,512]{2,1,0}, bf16[4096,6288]{1,0}, bf16[16,2048,6288]{2,1,0}, bf16[16,2048,6288]{2,1,0}, u32[]) while(tuple.2), condition=windowed_dot_general_cond_ag, body=windowed_dot_general_body_ag
-  get-tuple-element.13 = bf16[16,2048,6288]{2,1,0} get-tuple-element(while), index=2
+  get-tuple-element.result = bf16[16,2048,6288]{2,1,0} get-tuple-element(while), index=2
   all-gather = bf16[16,2048,4096]{2,1,0} all-gather(param.4), channel_id=1, replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={2}, use_global_device_ids=true
   param.6 = bf16[16,2048,6288]{2,1,0} parameter(2)
-  ROOT dot.7 = bf16[4096,6288]{1,0} dot(all-gather, param.6), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+  dot.7 = bf16[4096,6288]{1,0} dot(all-gather, param.6), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}
+  ROOT tuple.output = (bf16[16,2048,6288]{2,1,0}, bf16[4096,6288]{1,0}) tuple(get-tuple-element.result, dot.7)
 }
 )";
 
@@ -1137,6 +1153,12 @@ ENTRY main.12_spmd {
   EXPECT_EQ(inst->operand(0)->opcode(), HloOpcode::kGetTupleElement);
   EXPECT_EQ(inst->operand(0)->tuple_index(), 5);
   EXPECT_EQ(inst->operand(0)->operand(0), ag_loop);
+
+  EXPECT_EQ(ag_loop->operand(0)->shape().tuple_shapes_size(), 7);
+  // The root instruction's first operand should now be a reduction.
+  EXPECT_EQ(
+      module->entry_computation()->root_instruction()->operand(0)->opcode(),
+      HloOpcode::kReduce);
 }
 
 }  // namespace

@@ -16,30 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SHARDING_FORMAT_PICKER_H_
 #define XLA_SERVICE_SHARDING_FORMAT_PICKER_H_
 
-#include "xla/service/hlo_pass_interface.h"
-
-namespace xla {
-
-// Test-only pass to transform the HloSharding format of all the instructions in
-// a module to the selected format.
-class ShardingFormatPicker : public HloModulePass {
- public:
-  enum class ShardingType {
-    kV1,            // Converts all HloSharding to V1 format.
-    kBestEffortV2,  // Best effort to convert all HloSharding to V2 format.
-  };
-  explicit ShardingFormatPicker(ShardingType sharding_type)
-      : sharding_type_(sharding_type) {}
-  absl::string_view name() const override { return "sharding-format-picker"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  const ShardingType sharding_type_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/sharding_format_picker.h"
 
 #endif  // XLA_SERVICE_SHARDING_FORMAT_PICKER_H_

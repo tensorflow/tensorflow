@@ -46,8 +46,10 @@ limitations under the License.
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/config.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -150,8 +152,8 @@ absl::StatusOr<ShardArgResult> ShardArg(
         if (result.ifrt_array == nullptr) {
           return xla::InvalidArgument("Array has been deleted.");
         }
-        if (result.ifrt_array->sharding().devices().devices() != devices) {
-          xla::ifrt::DeviceList::Devices ifrt_devices;
+        if (result.ifrt_array->sharding().devices()->devices() != devices) {
+          xla::ifrt::BasicDeviceList::Devices ifrt_devices;
           ifrt_devices.reserve(devices.size());
           ifrt_devices.insert(ifrt_devices.end(), devices.begin(),
                               devices.end());
@@ -161,7 +163,7 @@ absl::StatusOr<ShardArgResult> ShardArg(
               auto copied_ifrt_arrays,
               ifrt_client->CopyArrays(
                   absl::MakeSpan(&result.ifrt_array, 1),
-                  xla::ifrt::DeviceList(std::move(ifrt_devices)),
+                  xla::ifrt::BasicDeviceList::Create(std::move(ifrt_devices)),
                   xla::ifrt::MemoryKind(),
                   xla::ifrt::ArrayCopySemantics::kReuseInput));
           result.ifrt_array = std::move(copied_ifrt_arrays.front());
@@ -185,7 +187,7 @@ absl::StatusOr<ShardArgResult> ShardArg(
 
     std::vector<tsl::RCReference<xla::ifrt::Array>> per_device_arrays;
     per_device_arrays.reserve(n_devices);
-    xla::ifrt::DeviceList::Devices devices;
+    xla::ifrt::BasicDeviceList::Devices devices;
     devices.reserve(n_devices);
     // TODO(hyeontaek): The created array will never be disassembled. We should
     // omit collecting shapes and make the OpaqueSharding non-disassemblable?
@@ -224,7 +226,8 @@ absl::StatusOr<ShardArgResult> ShardArg(
     }
     for (auto& device_put : device_puts) {
       per_device_arrays.push_back(std::move(device_put.ifrt_array));
-      devices.push_back(per_device_arrays.back()->sharding().devices().front());
+      devices.push_back(
+          per_device_arrays.back()->sharding().devices()->devices().front());
       shapes.push_back(per_device_arrays.back()->shape());
       if (device_put.owning_pybuffer) {
         owning_pylist.append(device_put.owning_pybuffer);
@@ -237,7 +240,8 @@ absl::StatusOr<ShardArgResult> ShardArg(
     xla::ifrt::Shape shape = per_device_arrays.front()->shape();
     // pmap does not support memory_kind for now.
     auto ifrt_sharding = xla::ifrt::ConcreteSharding::Create(
-        xla::ifrt::DeviceList(std::move(devices)), xla::ifrt::MemoryKind(),
+        xla::ifrt::BasicDeviceList::Create(std::move(devices)),
+        xla::ifrt::MemoryKind(),
         /*shape=*/shape,
         /*shard_shapes=*/std::move(shapes));
     TF_ASSIGN_OR_RETURN(result.ifrt_array,
@@ -296,7 +300,7 @@ class PmapFunction {
   PmapFunction(nb::callable fun, nb::callable cache_miss,
                std::vector<int> static_argnums,
                nb::callable python_shard_arg_fallback,
-               std::shared_ptr<xla::PyTreeRegistry> pytree_registry)
+               xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry)
       : fun_(std::move(fun)),
         cache_miss_(std::move(cache_miss)),
         static_argnums_(std::move(static_argnums)),
@@ -332,7 +336,7 @@ class PmapFunction {
   const nb::callable& fun() const { return fun_; }
   const nb::callable& cache_miss() const { return cache_miss_; }
   const std::string& function_name() const { return function_name_; }
-  const std::shared_ptr<xla::PyTreeRegistry>& pytree_registry() const {
+  const xla::nb_class_ptr<xla::PyTreeRegistry>& pytree_registry() const {
     return pytree_registry_;
   }
   const nb::callable& python_shard_arg_fallback() const {
@@ -395,6 +399,7 @@ class PmapFunction {
     }
     signature.thread_local_extra_jit_context = tls.extra_jit_context;
     signature.global_extra_jit_context = global_state.extra_jit_context;
+    signature.configs = JitConfigs();
     return absl::Status();
   }
 
@@ -427,7 +432,7 @@ class PmapFunction {
   // We need to know the static arguments to remove them from the arguments
   // passed to the underlying PyLoadedExecutable. In sorted order.
   std::vector<int> static_argnums_;
-  std::shared_ptr<xla::PyTreeRegistry> pytree_registry_;
+  xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry_;
   // We need a `unique_ptr` here to ensure value pointer stability.
   absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>
       executables_;
@@ -858,7 +863,7 @@ static PyGetSetDef JaxPmapFunction_tp_getset[] = {
 nb::object MakePmapFunction(
     nb::callable fun, nb::callable cache_miss, std::vector<int> static_argnums,
     nb::callable python_shard_arg_fallback,
-    std::shared_ptr<xla::PyTreeRegistry> pytree_registry) {
+    xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry) {
   nb::object obj = nb::steal<nb::object>(JaxPmapFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(JaxPmapFunction_Type), nullptr, nullptr));
   JaxPmapFunctionObject* buf =
@@ -1084,8 +1089,8 @@ void BuildPmapSubmodule(nb::module_& m) {
             nb::cast<std::vector<int>>(pickle["static_argnums"]);
         nb::callable python_shard_arg_fallback =
             nb::cast<nb::callable>(pickle["python_shard_arg_fallback"]);
-        std::shared_ptr<xla::PyTreeRegistry> pytree_registry =
-            nb::cast<std::shared_ptr<xla::PyTreeRegistry>>(
+        xla::nb_class_ptr<xla::PyTreeRegistry> pytree_registry =
+            nb::cast<xla::nb_class_ptr<xla::PyTreeRegistry>>(
                 nb::handle(pickle["pytree_registry"].ptr()));
         new (&(reinterpret_cast<JaxPmapFunctionObject*>(self.ptr())->fun))
             PmapFunction(std::move(fun), std::move(cache_miss),
@@ -1121,8 +1126,8 @@ void BuildPmapSubmodule(nb::module_& m) {
       [](nb::callable fun, nb::callable cache_miss,
          std::vector<int> static_argnums, nb::callable shard_arg_fallback,
          nb::object pytree_registry) -> nb::object {
-        std::shared_ptr<xla::PyTreeRegistry> registry =
-            nb::cast<std::shared_ptr<xla::PyTreeRegistry>>(
+        xla::nb_class_ptr<xla::PyTreeRegistry> registry =
+            nb::cast<xla::nb_class_ptr<xla::PyTreeRegistry>>(
                 nb::handle(pytree_registry.ptr()));
         return MakePmapFunction(
             std::move(fun), std::move(cache_miss), std::move(static_argnums),

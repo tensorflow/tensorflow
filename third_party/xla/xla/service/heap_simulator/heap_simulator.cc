@@ -44,6 +44,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -51,9 +53,8 @@ limitations under the License.
 #include "xla/map_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
-#include "xla/service/hlo_alias_analysis.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_buffer.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/time_utils.h"
@@ -1026,6 +1027,18 @@ std::vector<int64_t> BufferIntervalTree::MemoryUsedInInterval(
     }
   }
   return memory_used_in_interval;
+}
+
+int64_t BufferIntervalTree::HeapSizeInInterval(const int64_t start,
+                                               const int64_t end) const {
+  CHECK_LE(start, end);
+  std::vector<const BufferIntervalTreeNode*> nodes =
+      NodesOverlappingInTime(start, end);
+  int64_t max_memory_used = 0;
+  for (const BufferIntervalTreeNode* node : nodes) {
+    max_memory_used = std::max(max_memory_used, node->chunk.chunk_end());
+  }
+  return max_memory_used;
 }
 
 template <typename BufferType>

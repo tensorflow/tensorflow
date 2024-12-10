@@ -54,6 +54,13 @@ tf_proto {
       type_name: ".tensorflow.GPUOptions"
     }
     field {
+      name: "pluggable_device_options"
+      number: 18
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.GPUOptions"
+    }
+    field {
       name: "allow_soft_placement"
       number: 7
       label: LABEL_OPTIONAL

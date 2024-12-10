@@ -45,7 +45,7 @@ class GuardedPhiloxRandom {
   // Initialize the generator from attributes "seed" and "seed2".
   // If both seeds are unspecified, use random seeds.
   // Must be called exactly once.
-  Status Init(OpKernelConstruction* context);
+  absl::Status Init(OpKernelConstruction* context);
 
   // Initialize with given seeds.
   void Init(int64_t seed, int64_t seed2);

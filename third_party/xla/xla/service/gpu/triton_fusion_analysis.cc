@@ -16,12 +16,12 @@ limitations under the License.
 #include "xla/service/gpu/triton_fusion_analysis.h"
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <queue>
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -31,17 +31,16 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
-#include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -110,22 +109,6 @@ namespace triton_fusion {
   return context;
 }
 
-namespace {
-
-// Tells how many new parameters does a fusion gain by fusing the operation as
-// an input.
-int64_t NumAddedParameters(const HloInstruction& hlo) {
-  // Non-scalar constant is equivalent to a parameter: one input, one output.
-  if (hlo.opcode() == HloOpcode::kConstant &&
-      !ShapeUtil::IsScalar(hlo.shape())) {
-    return 0;
-  }
-  // All other instructions add all own inputs and remove own single output.
-  return hlo.operand_count() - 1;
-}
-
-}  // namespace
-
 bool FusionContext::CombineDimOrdersAndReqs(const DimOrdersAndReqs& update) {
   // First check that all updates to insert are compatible to avoid
   // incomplete merges.
@@ -147,6 +130,8 @@ bool FusionContext::CombineDimOrdersAndReqs(const DimOrdersAndReqs& update) {
   return true;
 }
 
+// Returns the list of parameters that are inputs to the given instruction.
+// Also updates the dimension orders and iteration specs for the parameters.
 absl::Status FusionContext::PropagateDimensionOrdersToParameters(
     const HloInstruction& origin, ConstHloInstructionSet& parameters,
     ConstHloInstructionMap<TensorIterationSpec>& iter_specs) {
@@ -177,7 +162,8 @@ absl::Status FusionContext::PropagateDimensionOrdersToParameters(
 
     if (!std::holds_alternative<DimOrdersAndReqs>(result)) {
       return FailedPrecondition(
-          "Can not propagate dim orders and requirements.");
+          "Can not propagate dim orders and requirements: %s",
+          std::get<FusionDecision>(result).Explain());
     }
 
     if (!CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result))) {
@@ -213,39 +199,36 @@ absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
   return analysis;
 }
 
-absl::Status TritonFusionAnalysis::ExecuteForProducerConsumer(
-    const HloInstruction& producer, const HloInstruction& consumer,
-    int split_k) {
-  // TODO(shyshkov): Use HloFusionAdaptor to avoid the need to materialize the
-  // hlo fusion.
-  std::unique_ptr<HloModule> new_module =
-      ExtractProducerConsumerIntoNewModule(producer, consumer);
+absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
+    const HloDotInstruction& dot, int split_k) {
+  TritonFusionAnalysis analysis;
+  TF_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(dot, split_k));
+  return analysis;
+}
 
-  auto* new_producer =
-      new_module->entry_computation()->GetInstructionWithName(producer.name());
-  auto* new_consumer =
-      new_module->entry_computation()->GetInstructionWithName(consumer.name());
+bool TritonFusionAnalysis::IsBatchDimMinorForInt4Parameter(
+    const HloInstruction& dot, Scope scope) const {
+  CHECK(scope == Scope::LHS || scope == Scope::RHS);
+  const auto& dims = dot.dot_dimension_numbers();
+  const auto& batch_dims = (scope == Scope::LHS) ? dims.lhs_batch_dimensions()
+                                                 : dims.rhs_batch_dimensions();
 
-  std::unique_ptr<HloInstruction> fusion_instruction_holder;
-  HloInstruction* fusion_instruction;
-  if (new_consumer->opcode() == HloOpcode::kFusion) {
-    fusion_instruction = new_consumer;
-  } else {
-    fusion_instruction_holder = HloInstruction::CreateFusion(
-        new_consumer->shape(), new_producer->fusion_kind(), new_consumer);
-    fusion_instruction = fusion_instruction_holder.get();
+  if (batch_dims.empty()) return true;
+
+  int32_t batch_dim = batch_dims.Get(0);
+  CHECK_EQ(batch_dims.size(), 1);
+  const auto& params = parameters_.at(scope);
+  for (const auto& param : params) {
+    if (param->shape().element_type() != S4) continue;
+
+    const auto* strides = IterSpec(scope, param, batch_dim);
+    if (strides == nullptr) continue;
+    // The hacky way to check if the batch dimension is minor.
+    // It also covers the case when the batch dimension is second to last but
+    // the minor dimension is equal to 1.
+    if (strides->front().stride == 1) return false;
   }
-
-  // Try to merge the producer into candidate fusion.
-  if (new_producer->opcode() == HloOpcode::kFusion) {
-    fusion_instruction->MergeFusionInstruction(new_producer);
-  } else {
-    fusion_instruction->FuseInstruction(new_producer);
-  }
-
-  auto* fused_computation =
-      fusion_instruction->fused_instructions_computation();
-  return Execute(*fused_computation, split_k).status();
+  return true;
 }
 
 absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
@@ -283,7 +266,11 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
     DimOrdersAndReqsOrError result = GetPropagatedDimOrdersAndRequirements(
         *output, context.dim_orders().at(input),
         TransformDirection::kInputToOutput, context.dot_properties());
-    TF_RET_CHECK(std::holds_alternative<DimOrdersAndReqs>(result));
+    if (std::holds_alternative<FusionDecision>(result)) {
+      auto decision = std::get<FusionDecision>(result);
+      return FailedPrecondition("Failed to propagate tiling with error: %s",
+                                decision.Explain());
+    }
     TF_RET_CHECK(
         context.CombineDimOrdersAndReqs(std::get<DimOrdersAndReqs>(result)));
   }

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -25,7 +26,9 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/program.h"
@@ -34,6 +37,8 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/service/computation_placer.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -41,6 +46,42 @@ namespace xla {
 namespace ifrt {
 
 char PjRtCompiler::ID = 0;
+
+// Translates IFRT device IDs to PjRt global device IDs in place. When an error
+// occurs, `options` may have invalid device IDs.
+absl::Status TranslateDeviceIds(PjRtClient* client,
+                                xla::CompileOptions& options) {
+  if (options.executable_build_options.device_ordinal() != -1) {
+    TF_ASSIGN_OR_RETURN(
+        auto pjrt_global_device_id,
+        client->GetPjRtGlobalDeviceId(
+            DeviceId(options.executable_build_options.device_ordinal())));
+    options.executable_build_options.set_device_ordinal(
+        pjrt_global_device_id.value());
+  }
+  if (options.executable_build_options.has_device_assignment()) {
+    absl::Status result;
+    xla::DeviceAssignment device_assignment =
+        options.executable_build_options.device_assignment();
+    device_assignment.Each(
+        [&](int64_t replica, int64_t computation, int64_t* device_id) {
+          if (!result.ok()) {
+            return;
+          }
+          auto pjrt_global_device_id =
+              client->GetPjRtGlobalDeviceId(DeviceId(*device_id));
+          if (pjrt_global_device_id.ok()) {
+            *device_id = pjrt_global_device_id->value();
+          } else {
+            result.Update(pjrt_global_device_id.status());
+          }
+        });
+    TF_RETURN_IF_ERROR(result);
+    options.executable_build_options.set_device_assignment(
+        std::move(device_assignment));
+  }
+  return absl::OkStatus();
+}
 
 absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
     std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
@@ -51,6 +92,8 @@ absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
   }
   TF_ASSIGN_OR_RETURN(auto xla_compile_options,
                       GetXlaCompileOptions(std::move(options)));
+  TF_RETURN_IF_ERROR(
+      TranslateDeviceIds(client_, xla_compile_options->compile_options));
   return PjRtLoadedExecutable::Create(
       client_, xla_program->mlir_module,
       std::move(xla_compile_options->compile_options),
@@ -67,6 +110,8 @@ absl::StatusOr<std::unique_ptr<Executable>> PjRtCompiler::Compile(
   }
   TF_ASSIGN_OR_RETURN(auto xla_compile_options,
                       GetXlaCompileOptions(std::move(options)));
+  TF_RETURN_IF_ERROR(
+      TranslateDeviceIds(client_, xla_compile_options->compile_options));
   const auto* pjrt_topology = llvm::dyn_cast<PjRtTopology>(&topology);
   if (pjrt_topology == nullptr) {
     return absl::InvalidArgumentError("PjRtCompiler requires a PjRtTopology");
@@ -86,6 +131,10 @@ PjRtCompiler::DeserializeLoadedExecutable(
   DCHECK(this);
   TF_ASSIGN_OR_RETURN(auto xla_deserialize_options,
                       GetXlaDeserializeExecutableOptions(std::move(options)));
+  if (xla_deserialize_options->compile_options.has_value()) {
+    TF_RETURN_IF_ERROR(
+        TranslateDeviceIds(client_, *xla_deserialize_options->compile_options));
+  }
   TF_ASSIGN_OR_RETURN(
       auto pjrt_loaded_executable,
       client_->pjrt_client()->DeserializeExecutable(

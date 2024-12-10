@@ -79,7 +79,7 @@ class DynamicInputShapesTest(trt_test.TfTrtIntegrationTestBase):
   def setUp(self):
     super().setUp()
     # Disable layout optimizer, since it will convert BiasAdd with NHWC
-    # format to NCHW format under four dimentional input.
+    # format to NCHW format under four dimensional input.
     self.DisableNonTrtOptimizers()
 
   def ExpectedEnginesToBuild(self, run_params):

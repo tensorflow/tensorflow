@@ -2150,7 +2150,7 @@ def MHLO_DynamicBroadcastInDimOp : MHLO_ShapedInterfaceOp<
     %result = "mhlo.dynamic_broadcast_in_dim"(%operand, %output_dimensions) {
       broadcast_dimensions = array<i64: 2, 1>,
       known_expanding_dimensions = array<i64: 0>,
-      known_non_expanding_dimensions = array<i64: 1>
+      known_nonexpanding_dimensions = array<i64: 1>
     } : (tensor<1x3xi64>, tensor<3xi64>) -> tensor<2x3x2xi64>
     ```
   }];
@@ -2650,6 +2650,41 @@ def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", [Pure]> {
   let results = (outs MHLO_Tensor);
   // DotGeneral op required custom exporter to pass the preferred element type
   // to Xla builder.
+  let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
+}
+
+def MHLO_RaggedDotOp: MHLO_Op<"ragged_dot", [Pure]> {
+  let summary = "Ragged matrix multiplication over a single ragged dimension";
+  let description = [{
+    This operation takes three tensor args---lhs, rhs, and group_sizes---and
+    a "ragged_dot_dimension_numbers" attribute. Like dot_general, the lhs and
+    rhs are allowed arbitrary batch and contracting dimensions. Additionally,
+    the lhs is required to have one ragged dimension, and the rhs may have at
+    most one group dimension. The op has three modes, depending on the kind of
+    the lhs ragged dimension.
+
+    In mode 1, the shape-signature is `[b,m,k], [g,b,k,n], [g] -> [b,m,n]`.
+    Here the ragged dimension is an lhs non-contracting dimension (`m`). The
+    dimensions `b` and `k` represent batch and contracting dimensions
+    respectively. The rhs is required to have a group dimension (`g`).
+
+    In mode 2, the shape-signature is `[b,m,k], [b,k,n], [g] -> [g,b,m,n]`.
+    Here the ragged dimension is an lhs/rhs contracting dimension (`k`).
+
+    In mode 3, the shape-signature is `[b,m,k], [b,k,n], [g] -> [b,m,n]`. Here
+    the ragged dimension is an lhs/rhs batch dimension (`b`).
+  }];
+
+  let arguments = (ins
+    MHLO_Tensor:$lhs,
+    MHLO_Tensor:$rhs,
+    MHLO_Tensor:$group_sizes,
+    MHLO_RaggedDotDimensionNumbers:$ragged_dot_dimension_numbers,
+    OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config
+  );
+
+  let results = (outs HLO_Tensor:$result);
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }

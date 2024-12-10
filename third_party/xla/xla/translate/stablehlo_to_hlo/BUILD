@@ -1,5 +1,5 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -12,35 +12,9 @@ package(
 
 cc_library(
     name = "translate",
-    srcs = ["translate.cc"],
     hdrs = ["translate.h"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/translate/stablehlo_to_hlo:translate instead.",
     deps = [
-        "//xla/mlir_hlo:mhlo_passes",
-        "//xla/translate/mhlo_to_hlo:translate",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@stablehlo//:register",
+        "//xla/hlo/translate/stablehlo_to_hlo:translate",
     ],
-)
-
-cc_library(
-    name = "translate_registration",
-    testonly = True,
-    srcs = ["translate_registration.cc"],
-    deps = [
-        ":translate",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:TranslateLib",
-        "@stablehlo//:register",
-    ],
-    alwayslink = 1,
 )

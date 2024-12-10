@@ -5,8 +5,8 @@ load("//xla/tests:build_defs.bzl", "xla_test")
 def register_extension_info(**_kwargs):
     pass
 
-def manual_partition_xla_test(name, srcs, partitions, tags, **kwargs):
-    """Manually partition the xla_test across multiple test binaries.
+def exhaustive_xla_test(name, srcs, partitions, tags, **kwargs):
+    """Special exhasutive wrapper for xla_test macro.
 
     Allows splitting what is conceptually one test across multiple test binaries to get binary-level
     parallelism when exeucting. The tests can then share the majority of source code and be
@@ -51,6 +51,10 @@ def manual_partition_xla_test(name, srcs, partitions, tags, **kwargs):
     )
 
 register_extension_info(
-    extension = manual_partition_xla_test,
-    label_regex_for_dep = "{extension_name}_.*",
+    extension = exhaustive_xla_test,
+    # Needs to be kept up-to-date on all partition names defined in the invocations.
+    #
+    # For some reason, manually specifying the expansion targets like (cpu|cpu_.*|...) is required
+    # for build tools.
+    label_regex_for_dep = "{extension_name}_(f16_and_smaller|f32_and_smaller|f32|f64)_(cpu|cpu_.*|gpu|gpu_.*)",
 )

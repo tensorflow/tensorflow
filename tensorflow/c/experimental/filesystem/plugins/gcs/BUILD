@@ -35,7 +35,9 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "@com_github_googlecloudplatform_google_cloud_cpp//:storage_client",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:variant",
     ],
 )
@@ -66,6 +68,7 @@ cc_library(
         "//tensorflow/c:tf_status",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -81,6 +84,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform/cloud:now_seconds_env",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -100,6 +104,7 @@ tf_cc_test(
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform:test",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

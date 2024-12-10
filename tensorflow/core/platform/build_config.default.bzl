@@ -23,7 +23,6 @@ def tf_dtensor_tpu_dependencies():
 
 def tf_additional_binary_deps():
     return [
-        "@nsync//:nsync_cpp",
         # TODO(allenl): Split these out into their own shared objects. They are
         # here because they are shared between contrib/ op shared objects and
         # core.
@@ -45,7 +44,7 @@ def tf_protos_all():
             Label("//tensorflow/core:protos_all_cc_impl"),
             "@local_xla//xla:autotune_results_proto_cc_impl",
             "@local_xla//xla:autotuning_proto_cc_impl",
-            "@local_tsl//tsl/protobuf:protos_all_cc_impl",
+            "@local_xla//xla/tsl/protobuf:protos_all_cc_impl",
         ],
         otherwise = [Label("//tensorflow/core:protos_all_cc")],
     )

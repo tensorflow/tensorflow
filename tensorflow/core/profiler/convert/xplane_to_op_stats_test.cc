@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tsl/profiler/utils/group_events.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tsl/platform/status.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/group_events.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -86,12 +86,16 @@ TEST(ConvertXPlaneToOpStats, GpuPerfEnv) {
   TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
                                                    options, &op_stats));
   const PerfEnv& perf_env = op_stats.perf_env();
-  EXPECT_NEAR(141, perf_env.peak_tera_flops_per_second(), kMaxError);
+  // Change to lower flops number that we do not use sum of the tensor core peak
+  // flops and the cuda core peak flops together as peak flops. Only use the
+  // tensor core peak flops as all those white papers are using.
+  EXPECT_NEAR(125.34, perf_env.peak_tera_flops_per_second(), kMaxError);
   EXPECT_NEAR(
       900,
       perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_HBM_RW),
       kMaxError);
-  EXPECT_NEAR(156.67, perf_env.ridge_point(), kMaxError);
+  // Ridge point changed accordingly from above peak flops change.
+  EXPECT_NEAR(139.26, perf_env.ridge_point(), kMaxError);
 }
 
 TEST(ConvertXPlaneToOpStats, GpuRunEnvironment) {
@@ -351,6 +355,12 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   constexpr int kComputeCapMinor = 0;
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
   constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 900.0;
+  constexpr double kDevCapPeakSramRdBwGigabytesPerSecond = 101.0;
+  constexpr double kDevCapPeakSramWrBwGigabytesPerSecond = 102.0;
+  constexpr double kDevCapPeakCmemRdBwGigabytesPerSecond = 101.0;
+  constexpr double kDevCapPeakCmemWrBwGigabytesPerSecond = 102.0;
+  constexpr double kDevCapPeakVmemRdBwGigabytesPerSecond = 201.0;
+  constexpr double kDevCapPeakVmemWrBwGigabytesPerSecond = 202.0;
 
   XPlaneBuilder device_plane(GetOrCreateTpuXPlane(
       space.get(), /*device_ordinal=*/0, "TPU V4",
@@ -371,6 +381,24 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   device_plane.AddStatValue(
       *device_plane.GetOrCreateStatMetadata("compute_cap_minor"),
       kComputeCapMinor);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                "peak_sram_rd_bw_gigabytes_per_second"),
+                            kDevCapPeakSramRdBwGigabytesPerSecond);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                "peak_sram_wr_bw_gigabytes_per_second"),
+                            kDevCapPeakSramWrBwGigabytesPerSecond);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                "peak_cmem_rd_bw_gigabytes_per_second"),
+                            kDevCapPeakCmemRdBwGigabytesPerSecond);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                "peak_cmem_wr_bw_gigabytes_per_second"),
+                            kDevCapPeakCmemWrBwGigabytesPerSecond);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                "peak_vmem_rd_bw_gigabytes_per_second"),
+                            kDevCapPeakVmemRdBwGigabytesPerSecond);
+  device_plane.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                                "peak_vmem_wr_bw_gigabytes_per_second"),
+                            kDevCapPeakVmemWrBwGigabytesPerSecond);
 
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
@@ -383,10 +411,35 @@ TEST(ConvertXPlaneToOpStats, TpuPerfEnv) {
   TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
                                                    options, &op_stats));
   const PerfEnv& perf_env = op_stats.perf_env();
-  EXPECT_NEAR(141, perf_env.peak_tera_flops_per_second(), kMaxError);
+  EXPECT_NEAR(kDevCapPeakTeraflopsPerSecond,
+              perf_env.peak_tera_flops_per_second(), kMaxError);
   EXPECT_NEAR(
-      900,
+      kDevCapPeakHbmBwGigabytesPerSecond,
       perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_HBM_RW),
+      kMaxError);
+  EXPECT_NEAR(
+      kDevCapPeakSramRdBwGigabytesPerSecond,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_SRAM_RD),
+      kMaxError);
+  EXPECT_NEAR(
+      kDevCapPeakSramWrBwGigabytesPerSecond,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_SRAM_WR),
+      kMaxError);
+  EXPECT_NEAR(
+      kDevCapPeakCmemRdBwGigabytesPerSecond,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_CMEM_RD),
+      kMaxError);
+  EXPECT_NEAR(
+      kDevCapPeakCmemWrBwGigabytesPerSecond,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_CMEM_WR),
+      kMaxError);
+  EXPECT_NEAR(
+      kDevCapPeakVmemRdBwGigabytesPerSecond,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_VMEM_RD),
+      kMaxError);
+  EXPECT_NEAR(
+      kDevCapPeakVmemWrBwGigabytesPerSecond,
+      perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_VMEM_WR),
       kMaxError);
   EXPECT_NEAR(156.67, perf_env.ridge_point(), kMaxError);
 }

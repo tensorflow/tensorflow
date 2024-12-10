@@ -21,7 +21,6 @@
 
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
-#include "xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -97,8 +96,6 @@ using trsm_Z = cublasStatus_t(cublasContext*, cublasSideMode_t,
 
 namespace tensorflow {
 namespace {
-
-using se::cuda::ScopedActivateExecutorContext;
 
 inline bool CopyHostToDevice(OpKernelContext* context, void* dst,
                              const void* src, uint64 bytes) {
@@ -228,7 +225,8 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
           std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
               info_checker_callback,
           std::vector<HostLapackInfo> host_lapack_infos) {
-        ScopedActivateExecutorContext scoped_activation{stream->parent()};
+        std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
+            stream->parent()->Activate();
         Status status;
         for (const auto& host_lapack_info : host_lapack_infos) {
           for (int i = 0; i < host_lapack_info.size() && status.ok(); ++i) {

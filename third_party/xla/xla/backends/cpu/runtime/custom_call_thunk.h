@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_state.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/shape.h"
@@ -59,7 +60,8 @@ class CustomCallThunk final : public Thunk {
   CustomCallThunk(Info info, absl::string_view target_name,
                   OpBuffers op_buffers, CustomCallApiVersion api_version,
                   absl::string_view backend_config,
-                  std::optional<ffi::CallFrame> call_frame);
+                  std::optional<ffi::CallFrame> call_frame,
+                  std::unique_ptr<ffi::ExecutionState> execution_state);
 
   // Handles typed-FFI custom calls (API v4).
   tsl::AsyncValueRef<ExecuteEvent> CallTypedFFI(const ExecuteParams& params);
@@ -76,6 +78,9 @@ class CustomCallThunk final : public Thunk {
   CustomCallApiVersion api_version_;
   std::string backend_config_;
   std::optional<ffi::CallFrame> call_frame_;
+
+  // Execution state bound to the FFI handler. Optional.
+  std::unique_ptr<ffi::ExecutionState> execution_state_;
 };
 
 }  // namespace xla::cpu

@@ -104,7 +104,7 @@ class TemporaryVariableOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    Status s;
+    absl::Status s;
     ResourceMgr* rm = context->resource_manager();
     OP_REQUIRES(context, rm, errors::Internal("No per-step resource manager."));
     auto unique_name = TemporaryVariableName(var_name_, context->frame_iter());

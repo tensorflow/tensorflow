@@ -135,13 +135,18 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
 
 // Combines the src PerfEnv into the dst PerfEnv.
 void CombinePerfEnv(const PerfEnv& src, PerfEnv* dst) {
-  dst->set_peak_tera_flops_per_second(src.peak_tera_flops_per_second());
+  if (src.peak_tera_flops_per_second() > 0) {
+    dst->set_peak_tera_flops_per_second(src.peak_tera_flops_per_second());
+  }
+
   if (src.peak_bws_giga_bytes_per_second_size() > 0 &&
       dst->peak_bws_giga_bytes_per_second_size() == 0) {
     *dst->mutable_peak_bws_giga_bytes_per_second() =
         src.peak_bws_giga_bytes_per_second();
   }
-  dst->set_ridge_point(src.ridge_point());
+  if (src.ridge_point() > 0) {
+    dst->set_ridge_point(src.ridge_point());
+  }
 }
 
 // Combines the src Diagnostics into the dst Diagnostics.

@@ -296,7 +296,7 @@ class ArrayCreationTest(test.TestCase):
                                                    [True, False]):
       self.match(
           np_array_ops.array(a, dtype=dtype, ndmin=ndmin, copy=copy),
-          np.array(a, dtype=dtype, ndmin=ndmin, copy=copy))
+          np.array(a, dtype=dtype, ndmin=ndmin))
 
     zeros_list = np_array_ops.zeros(5)
 

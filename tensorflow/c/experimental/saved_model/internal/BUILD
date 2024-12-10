@@ -370,7 +370,9 @@ tf_cc_test(
         "//tensorflow/c/experimental/saved_model/public:signature_def_param_list",
         "//tensorflow/c/experimental/saved_model/public:tensor_spec",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
     ],
 )

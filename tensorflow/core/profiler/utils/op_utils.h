@@ -17,11 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_OP_UTILS_H_
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -82,7 +82,8 @@ class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
 
   void EnterOpMetadata(uint64 program_id, absl::string_view program_name,
                        absl::string_view category, absl::string_view provenance,
-                       absl::string_view deduplicated_name, bool is_eager);
+                       absl::string_view deduplicated_name, bool is_eager,
+                       absl::string_view long_name = "");
 };
 
 }  // namespace profiler

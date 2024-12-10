@@ -31,8 +31,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/client/xla_computation.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -40,12 +40,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/pjrt/c/pjrt_c_api_custom_partitioner_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/custom_call_sharding_helper.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/util.h"
 
@@ -67,6 +67,7 @@ absl::StatusOr<HloInstruction*> InlineHloComputation(
     return it->second;
   };
 
+  absl::flat_hash_map<int64_t, int64_t> channel_ids;
   for (auto* inst : computation->MakeInstructionPostOrder()) {
     if (inst->opcode() == HloOpcode::kParameter) {
       replacements.emplace(inst, operands[inst->parameter_number()]);
@@ -80,9 +81,13 @@ absl::StatusOr<HloInstruction*> InlineHloComputation(
       auto* new_inst = builder->AddInstruction(
           inst->CloneWithNewOperands(inst->shape(), new_operands, &context));
       HloChannelInstruction* channel_instr =
-          DynCast<HloChannelInstruction>(new_inst);
+          DynCast<HloChannelInstruction>(inst);
       if (channel_instr && channel_instr->channel_id().has_value()) {
-        new_inst->set_channel_id(new_channel());
+        auto insert = channel_ids.emplace(*channel_instr->channel_id(), 0);
+        if (insert.second) {
+          insert.first->second = new_channel();
+        }
+        new_inst->set_channel_id(insert.first->second);
       }
       replacements.emplace(inst, new_inst);
     }

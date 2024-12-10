@@ -26,9 +26,9 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Changes the op type of a specified op.
-Status RenameOp(const GraphDef& input_graph_def,
-                const TransformFuncContext& context,
-                GraphDef* output_graph_def) {
+absl::Status RenameOp(const GraphDef& input_graph_def,
+                      const TransformFuncContext& context,
+                      GraphDef* output_graph_def) {
   if (!context.params.count("old_op_name") ||
       (context.params.at("old_op_name").size() != 1) ||
       !context.params.count("new_op_name") ||
@@ -49,7 +49,7 @@ Status RenameOp(const GraphDef& input_graph_def,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("rename_op", RenameOp);

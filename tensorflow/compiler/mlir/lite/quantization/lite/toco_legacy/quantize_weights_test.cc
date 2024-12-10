@@ -25,11 +25,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/core/absl_error_model_builder.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/test_util.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "xla/tsl/util/command_line_flags.h"
-#include "tensorflow/lite/core/model_builder.h"  // TODO: b/321735756 - replace with mlir model_builder
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
 
@@ -42,39 +42,38 @@ namespace lite {
 namespace toco_legacy {
 namespace {
 
+using mlir::TFL::FlatBufferModelAbslError;
 using tflite::BuiltinOperator_CONV_2D;
 using tflite::BuiltinOperator_CUSTOM;
 using tflite::BuiltinOperator_DEQUANTIZE;
-using tflite::FlatBufferModel;  // to remove when mlir version is ready, from
-                                // model.h
 using tflite::GetModel;
 using tflite::Model;
 using tflite::TensorType_FLOAT16;
 using tflite::TensorType_FLOAT32;
 using tflite::TensorType_INT8;
 
-std::unique_ptr<FlatBufferModel> ReadTestModel() {
+std::unique_ptr<FlatBufferModelAbslError> ReadTestModel() {
   auto model_path = tsl::io::JoinPath(
       *g_test_model_dir, ::mlir::lite::internal::kConvModelWith0Plus10Weights);
-  return FlatBufferModel::BuildFromFile(model_path.c_str());
+  return FlatBufferModelAbslError::BuildFromFile(model_path.c_str());
 }
 
-std::unique_ptr<FlatBufferModel> ReadSharedWeightsTestModel() {
+std::unique_ptr<FlatBufferModelAbslError> ReadSharedWeightsTestModel() {
   auto model_path = tsl::io::JoinPath(
       *g_test_model_dir, ::mlir::lite::internal::kModelWithSharedWeights);
-  return FlatBufferModel::BuildFromFile(model_path.c_str());
+  return FlatBufferModelAbslError::BuildFromFile(model_path.c_str());
 }
 
-std::unique_ptr<FlatBufferModel> ReadGatherTestModel() {
+std::unique_ptr<FlatBufferModelAbslError> ReadGatherTestModel() {
   auto model_path = tsl::io::JoinPath(
       *g_test_model_dir, ::mlir::lite::internal::kQuantizedWithGather);
-  return FlatBufferModel::BuildFromFile(model_path.c_str());
+  return FlatBufferModelAbslError::BuildFromFile(model_path.c_str());
 }
 
-std::unique_ptr<FlatBufferModel> ReadCustomOpTestModel() {
+std::unique_ptr<FlatBufferModelAbslError> ReadCustomOpTestModel() {
   auto model_path = tsl::io::JoinPath(
       *g_test_model_dir, ::mlir::lite::internal::kModelWithCustomOp);
-  return FlatBufferModel::BuildFromFile(model_path.c_str());
+  return FlatBufferModelAbslError::BuildFromFile(model_path.c_str());
 }
 
 template <typename T>
@@ -106,7 +105,7 @@ class QuantizeWeightsTest : public testing::Test {
     model_ = input_model_->GetModel();
   }
 
-  std::unique_ptr<FlatBufferModel> input_model_;
+  std::unique_ptr<FlatBufferModelAbslError> input_model_;
   const Model* model_;
 
   bool IsModelInputOrOutput(const Model* model, uint32_t tensor_idx) {

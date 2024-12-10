@@ -15,13 +15,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_CHECKPOINT_LOADER_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_CHECKPOINT_LOADER_H_
 
+#include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
@@ -36,15 +41,25 @@ namespace ifrt_serving {
 // Implement the `CheckpointLoaderInterface` by using RestoreV2.
 class CheckpointLoader {
  public:
+  struct PrepareRestoreArgs {
+    mlir::MLIRContext* context;
+    tensorflow::MetaGraphDef meta_graph_def;
+    tfrt_stub::FallbackState* fallback_state;
+    std::string saved_model_dir;
+    bool run_placer_grappler_on_functions;
+  };
+
   explicit CheckpointLoader(
       IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
-      tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue)
+      tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue,
+      bool use_async_restore = true)
       : ifrt_restore_tensor_registry_(ifrt_restore_tensor_registry),
-        checkpoint_loader_work_queue_(checkpoint_loader_work_queue) {}
+        checkpoint_loader_work_queue_(checkpoint_loader_work_queue),
+        use_async_restore_(use_async_restore) {}
   virtual ~CheckpointLoader() = default;
 
   // Called before `Load` to do some preparation work.
-  virtual absl::Status PrepareRestore(mlir::OwningOpRef<mlir::ModuleOp> module);
+  virtual absl::Status PrepareRestore(const PrepareRestoreArgs& args);
 
   // Load the checkpoint. This API is designed to be compatible with the
   // `tf_mlrt.ifrt_restore_variable` kernel.
@@ -53,12 +68,13 @@ class CheckpointLoader {
       const std::vector<tensorflow::tfrt_stub::FallbackTensor>& var_handles,
       const tensorflow::tfrt_stub::FallbackTensor& tensor_names,
       const tensorflow::tfrt_stub::FallbackTensor& shape_and_slices,
-      const mlrt::bc::Vector<tensorflow::DataType>& restored_dtypes,
-      const mlrt::bc::Vector<bool>& truncate_in_cast,
-      tf_mlrt::Context& context);
+      absl::Span<const tensorflow::DataType> restored_dtypes,
+      const std::vector<bool>& truncate_in_cast, tf_mlrt::Context& context);
 
+ protected:
   IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry_;
   tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue_;
+  bool use_async_restore_ = true;
 };
 
 }  // namespace ifrt_serving

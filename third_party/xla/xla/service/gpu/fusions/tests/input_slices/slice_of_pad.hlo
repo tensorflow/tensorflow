@@ -1,0 +1,11 @@
+// RUN: test_correctness %s
+
+fusion {
+  %p0 = f32[6] parameter(0)
+  %c0 = f32[] constant(0)
+  %pad0 = f32[12] pad(%p0, %c0), padding=0_1_1
+  %slice0 = f32[11] slice(%pad0), slice={[1:12]}
+  %pad1 = f32[12] pad(%p0, %c0), padding=1_0_1
+  %slice1 = f32[11] slice(%pad1), slice={[1:12]}
+  ROOT %tuple.9 = (f32[11], f32[11]) tuple(%slice0, %slice1)
+}

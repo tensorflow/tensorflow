@@ -285,8 +285,8 @@ void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
 }
 
 // Helpers for loading a TensorFlow plugin (a .so file).
-Status LoadDynamicLibrary(const char* library_filename, void** result,
-                          const void** buf, size_t* len);
+absl::Status LoadDynamicLibrary(const char* library_filename, void** result,
+                                const void** buf, size_t* len);
 
 // TODO(josh11b,mrry): Change Session to be able to use a Graph*
 // directly, instead of requiring us to serialize to a GraphDef and

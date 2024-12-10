@@ -26,7 +26,7 @@ namespace tensorflow {
 namespace tpu {
 
 // Computes the shape of the output tensors from an embedding configuration.
-Status ComputeOutputTensorShapes(
+absl::Status ComputeOutputTensorShapes(
     const tensorflow::tpu::TPUEmbeddingConfiguration& config,
     std::vector<tensorflow::TensorShapeProto>* shapes);
 

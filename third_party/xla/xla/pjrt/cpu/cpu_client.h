@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -37,8 +38,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "mlir/IR/BuiltinOps.h"
-#include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/service/buffer_assignment.h"
@@ -60,6 +62,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
@@ -255,10 +258,11 @@ class TfrtCpuDevice final : public PjRtDevice {
 
 class TfrtCpuClient final : public PjRtClient {
  public:
-  TfrtCpuClient(int process_index,
-                std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-                std::shared_ptr<cpu::CollectivesInterface> collectives,
-                size_t num_threads, bool asynchronous);
+  TfrtCpuClient(
+      int process_index, std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
+      std::shared_ptr<cpu::CollectivesInterface> collectives,
+      size_t num_threads, bool asynchronous,
+      std::function<void(HloModuleConfig&)> customize_hlo_module_config);
   ~TfrtCpuClient() override;
 
   int process_index() const override { return process_index_; }
@@ -289,9 +293,7 @@ class TfrtCpuClient final : public PjRtClient {
 
   absl::string_view platform_name() const override { return CpuName(); }
 
-  absl::string_view platform_version() const override { return "<unknown>"; }
-
-  PjRtRuntimeType runtime_type() const override { return kTfrt; }
+  absl::string_view platform_version() const override { return CpuName(); }
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -313,6 +315,11 @@ class TfrtCpuClient final : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       absl::Status error, const Shape& shape, PjRtDevice* device) override;
@@ -383,9 +390,6 @@ class TfrtCpuClient final : public PjRtClient {
   }
   absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
     return Unimplemented("CreateDeviceToHostChannelHandle not implemented.");
-  }
-  absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    return Unimplemented("CreateHostToDeviceChannelHandle not implemented.");
   }
 
   absl::Status Defragment() override {
@@ -481,6 +485,9 @@ class TfrtCpuClient final : public PjRtClient {
   // Used to control whether asynchronous computation dispatch is available for
   // this client. Only applies to non-parallel computations.
   bool asynchronous_;
+
+  // A callback to customize the HloModuleConfig for each compiled module.
+  std::function<void(HloModuleConfig&)> customize_hlo_module_config_;
 
   // Used to prevent too much parallelism: we will not enqueue next non-parallel
   // computation until last one is done within each user thread.
@@ -692,36 +699,17 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   bool cheap_computation_;
 };
 
-struct CpuClientOptions {
-  // Used to control whether asynchronous computation dispatch is available for
-  // this client. Only applies to non-parallel computations, because collectives
-  // may exist when there are multiple cpu devices and we need to do async
-  // dispatch in that case. If it is set to be `false`, we will always run
-  // computations inline.
-  bool asynchronous = true;
-
-  // Number of CPU devices. If not provided, the value of
-  // --xla_force_host_platform_device_count is used.
-  std::optional<int> cpu_device_count = std::nullopt;
-
-  int max_inflight_computations_per_device = 32;
-
-  // My process ID.
-  int process_id = 0;
-
-  // Distributed collectives implementation. Optional. If not provided, an
-  // in-process collectives implementation will be used.
-  std::shared_ptr<cpu::CollectivesInterface> collectives;
-};
-absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
-    const CpuClientOptions& options);
+absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
+    "Use public XLA:CPU GetXlaPjrtCpuClient instead")
+    GetTfrtCpuClient(CpuClientOptions options);
 
 // Deprecated. Use the overload that takes 'options' instead.
-inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
-    bool asynchronous) {
+inline absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
+    "Use public XLA:CPU GetXlaPjrtCpuClient instead")
+    GetTfrtCpuClient(bool asynchronous) {
   CpuClientOptions options;
   options.asynchronous = asynchronous;
-  return GetTfrtCpuClient(options);
+  return GetTfrtCpuClient(std::move(options));
 }
 
 // Deprecated. Use the overload that takes 'options' instead.
@@ -733,7 +721,7 @@ inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
   options.cpu_device_count = cpu_device_count;
   options.max_inflight_computations_per_device =
       max_inflight_computations_per_device;
-  return GetTfrtCpuClient(options);
+  return GetTfrtCpuClient(std::move(options));
 }
 
 }  // namespace xla

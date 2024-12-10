@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/slow_operation_alarm.h"
 
+#include <atomic>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <list>
@@ -24,10 +26,15 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/numeric/bits.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tsl/platform/env.h"
 
@@ -62,7 +69,8 @@ void SlowOperationAlarm::AlarmLoop() {
           alarm->fired_.store(true);
           // We fire alarms with LOG(ERROR) because otherwise it might not show
           // up without --logtostderr.
-          LOG(ERROR) << alarm->msg();
+          alarm->msg_ = alarm->msg_fn_();
+          LOG(ERROR) << alarm->msg_;
         }
       }
       it = next;
@@ -126,17 +134,16 @@ SlowOperationAlarm::SlowOperationAlarm(
 SlowOperationAlarm::~SlowOperationAlarm() {
   UnscheduleAlarm(this);
 
-  absl::Time now = absl::Now();
-  if (deadline() <= now) {
-    absl::Duration duration = now - start_;
+  if (fired()) {
+    absl::Duration duration = absl::Now() - start_;
     if (context_.empty()) {
       LOG(ERROR) << "The operation took " << absl::FormatDuration(duration)
                  << "\n"
-                 << msg_fn_();
+                 << msg_;
     } else {
       LOG(ERROR) << "[" << context_ << "] The operation took "
                  << absl::FormatDuration(duration) << "\n"
-                 << msg_fn_();
+                 << msg_;
     }
   }
 }

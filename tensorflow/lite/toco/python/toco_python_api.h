@@ -17,11 +17,6 @@ limitations under the License.
 
 #include <Python.h>
 
-#include <string>
-#include <vector>
-
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
-
 namespace toco {
 
 // Convert a model represented in `input_contents`. `model_flags_proto`
@@ -30,45 +25,10 @@ namespace toco {
 // representing the contents of the converted model. When extended_return
 // flag is set to true returns a dictionary that contains string representation
 // of the converted model and some statistics like arithmetic ops count.
-// `debug_info_str` contains the `GraphDebugInfo` proto. When
-// `enable_mlir_converter` is True, use MLIR-based conversion instead of
-// TOCO conversion.
 PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
                       PyObject* toco_flags_proto_txt_raw,
                       PyObject* input_contents_txt_raw,
-                      bool extended_return = false,
-                      PyObject* debug_info_txt_raw = nullptr,
-                      bool enable_mlir_converter = false,
-                      const tensorflow::quantization::PyFunctionLibrary*
-                          quantization_py_function_library = nullptr);
-
-// Quantize the model with calibration data. Throw errors if `fully_quantize`
-// is specified by the calibration data are not sufficient to quantize the
-// model.
-PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
-                            bool fully_quantize, int inference_type,
-                            int input_data_type, int output_data_type,
-                            bool enable_numeric_verify = false,
-                            bool enable_whole_model_verify = false,
-                            PyObject* op_denylist = nullptr,
-                            PyObject* node_denylist = nullptr,
-                            bool enable_variable_quantization = false,
-                            bool disable_per_channel_for_dense_layers = false,
-                            PyObject* debug_options_proto_txt_raw = nullptr);
-
-// Sparsifies model to encode sparse tensors with proper format. Throws error if
-// sparsification fails.
-PyObject* MlirSparsifyModel(PyObject* data);
-
-// Registers the given custom opdefs to TensorFlow global op registry.
-PyObject* RegisterCustomOpdefs(PyObject* list);
-
-// Returns the collected TFLite conversion errors.
-std::vector<std::string> RetrieveCollectedErrors();
-
-// Returns MLIR string dump of the given Flatbuffer model.
-std::string FlatBufferFileToMlir(const std::string& model,
-                                 bool input_is_filepath);
+                      bool extended_return = false);
 
 // All the exported functions should be listed in
 // tensorflow/tools/def_file_filter/symbols_pybind.txt for the Windows build.

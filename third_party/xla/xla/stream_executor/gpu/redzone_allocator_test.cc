@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -60,11 +59,10 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   Platform* platform =
       PlatformManager::PlatformWithName(GpuPlatformName()).value();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
-  GpuAsmOpts opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
-  RedzoneAllocator allocator(stream.get(), &se_allocator, opts,
+  RedzoneAllocator allocator(stream.get(), &se_allocator,
                              /*memory_limit=*/(1LL << 32),
                              /*redzone_size=*/kRedzoneSize,
                              /*redzone_pattern=*/kRedzonePattern);
@@ -133,10 +131,9 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
   Platform* platform =
       PlatformManager::PlatformWithName(GpuPlatformName()).value();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
-  GpuAsmOpts opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
-  RedzoneAllocator allocator(stream.get(), &se_allocator, opts,
+  RedzoneAllocator allocator(stream.get(), &se_allocator,
                              /*memory_limit=*/(1LL << 32),
                              /*redzone_size=*/kRedzoneSize,
                              /*redzone_pattern=*/-1);

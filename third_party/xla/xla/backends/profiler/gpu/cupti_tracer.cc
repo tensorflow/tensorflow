@@ -30,12 +30,12 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/nvtx_utils.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
+#include "xla/tsl/profiler/utils/per_thread.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/logging.h"
-#include "tsl/profiler/backends/cpu/annotation_stack.h"
-#include "tsl/profiler/utils/per_thread.h"
 
 namespace xla {
 namespace profiler {
@@ -824,6 +824,19 @@ class GuardedCallbackAnnotationsAndEvents {
     annotations_and_events_.event_queue().Push(std::move(event));
   }
 
+  void AddScopeRangeIdSequence(absl::Span<const int64_t> sequence) {
+    if (sequence.size() > 1) {
+      const int64_t *head = sequence.data();
+      const int64_t *curr = &sequence.back();
+
+      tsl::mutex_lock lock(mu_);
+      ScopeRangeIdTree &tree = annotations_and_events_.scope_range_id_tree();
+      for (; curr > head && !tree.contains(*curr); --curr) {
+        tree.emplace(*curr, *(curr - 1));
+      }
+    }
+  }
+
  private:
   tsl::mutex mu_;
   CallbackAnnotationsAndEvents annotations_and_events_ TF_GUARDED_BY(mu_);
@@ -850,10 +863,13 @@ absl::Status AddDriverApiCallbackEvent(
     return absl::OkStatus();
   }
   tracer->IncCallbackEventCount();
+  absl::Span<const int64_t> range_ids = AnnotationStack::GetScopeRangeIds();
+  guarded_annotations_and_events.AddScopeRangeIdSequence(range_ids);
   CuptiTracerEvent event{};
   event.correlation_id = cbdata->correlationId;
   event.annotation = annotation;
   event.nvtx_range = nvtx_range;
+  event.scope_range_id = range_ids.empty() ? 0 : range_ids.back();
   SetCallbackEventUponApiExit(event, cupti_interface, device_id, cbid, cbdata,
                               start_tsc, end_tsc);
   guarded_annotations_and_events.Push(*tracer, std::move(event));
@@ -1413,8 +1429,11 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
       collector_->GetOptions().max_activity_api_events;
   if (max_activity_event_count > 0 &&
       num_activity_events_in_cached_buffer_ >= max_activity_event_count) {
-    LOG(WARNING) << "Already too many activity events, drop the buffer of "
-                 << size << "bytes of event to reuse.";
+    LOG_EVERY_N(WARNING, 10000)
+        << "Already too many activity events, drop the buffer of " << size
+        << "bytes of event to reuse. This warning is logged once per 10000 "
+           "occurrences, the current count is "
+        << COUNTER << ".";
     num_activity_events_in_dropped_buffer_ += event_count_in_buffer;
     // buffer will be return to the pool
     return absl::OkStatus();

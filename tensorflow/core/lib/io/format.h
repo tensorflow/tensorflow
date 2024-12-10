@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_FORMAT_H_
 #define TENSORFLOW_CORE_LIB_IO_FORMAT_H_
 
+#include "xla/tsl/lib/io/format.h"
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tsl/lib/io/format.h"
 
 namespace tensorflow {
 namespace table {

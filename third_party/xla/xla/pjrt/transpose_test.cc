@@ -33,11 +33,11 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test_benchmark.h"
 #include "tsl/platform/threadpool.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 

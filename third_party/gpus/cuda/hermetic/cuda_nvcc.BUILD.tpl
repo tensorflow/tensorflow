@@ -2,6 +2,7 @@ licenses(["restricted"])  # NVIDIA proprietary license
 
 exports_files([
     "bin/nvcc",
+    "version.txt",
 ])
 
 filegroup(

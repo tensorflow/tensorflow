@@ -26,13 +26,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/file_system_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/file_system_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -179,6 +180,18 @@ absl::Status ReadBinaryProto(const SessionSnapshot& session_snapshot,
                              const StoredDataType data_type,
                              const std::string& host, T* proto) {
   return session_snapshot.ReadBinaryProto(data_type, host, proto);
+}
+
+// Process HloModuleMap from all XSpaces in a session.
+inline absl::StatusOr<HloModuleMap> ProcessHloModuleMap(
+    const SessionSnapshot& session_snapshot) {
+  HloModuleMap hlo_module_map;
+  for (int i = 0; i < session_snapshot.XSpaceSize(); i++) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                        session_snapshot.GetXSpace(i));
+    ProcessHloModuleMapFromXSpace(hlo_module_map, xspace.get());
+  }
+  return hlo_module_map;
 }
 
 }  // namespace profiler

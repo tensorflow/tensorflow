@@ -17,14 +17,9 @@ limitations under the License.
 #define XLA_SERVICE_GPU_BUFFER_COMPARATOR_H_
 
 #include "absl/status/statusor.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/stream_executor.h"
-
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
+#include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
 
@@ -58,18 +53,7 @@ class BufferComparator {
 namespace buffer_comparator {
 
 // Returns a pointer to CUDA C++ device function implementing comparison.
-void* fp8_e4m3fn_comparison();
-void* fp8_e5m2_comparison();
-#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
-void* fp8_e4m3fnuz_comparison();
-void* fp8_e5m2fnuz_comparison();
-#endif  // TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
-void* fp16_comparison();
-void* bf16_comparison();
-void* fp32_comparison();
-void* fp64_comparison();
-void* int8_comparison();
-void* int32_comparison();
+void* comparison_fn(xla::PrimitiveType type);
 
 }  // namespace buffer_comparator
 }  // namespace xla::gpu

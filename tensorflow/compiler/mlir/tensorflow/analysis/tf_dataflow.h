@@ -81,8 +81,8 @@ class TensorflowDataflowAnalysis
   }
 
   void setToEntryState(StateT *lattice) override {
-    this->propagateIfChanged(lattice,
-                             lattice->join(L::EntryState(lattice->getPoint())));
+    this->propagateIfChanged(
+        lattice, lattice->join(L::EntryState(lattice->getAnchor())));
   }
 };
 

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "xla/service/cpu/cpu_compiler.h"

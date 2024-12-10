@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -86,7 +87,7 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
       auto operand_indices = user->OperandIndices(instruction);
       for (const auto i : operand_indices) {
         auto tmp_shape_index = instruction_and_shape_index.shape_index;
-        tmp_shape_index.push_back(i);
+        tmp_shape_index.push_front(i);
         result.push_back({user, std::move(tmp_shape_index)});
       }
     } else if (user->opcode() == HloOpcode::kGetTupleElement) {
@@ -203,6 +204,9 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
     HloComputation* while_body_computation = instruction->while_body();
     result.push_back({while_body_computation->root_instruction(),
                       instruction_and_shape_index.shape_index});
+  } else if (instruction->opcode() == HloOpcode::kPad) {
+    result.push_back({instruction->mutable_operand(0),
+                      instruction_and_shape_index.shape_index});
   } else {
     CHECK(instruction->operand_count() == 1) << absl::StreamFormat(
         "Expecting instruction %s to have 1 operand, but it has %d.",
@@ -242,6 +246,34 @@ std::string InstructionAndShapeIndex::ToString() const {
 bool IsHostAsyncStart(const HloInstruction* instruction) {
   return instruction->opcode() == HloOpcode::kAsyncStart &&
          instruction->async_execution_thread() == HloInstruction::kHostThread;
+}
+
+bool IsSynchronousCopyFromOrToHost(const HloInstruction* instruction) {
+  if (instruction->opcode() != HloOpcode::kCopy) {
+    return false;
+  }
+  if (!instruction->shape().has_layout() ||
+      !instruction->operand(0)->shape().has_layout()) {
+    // Host offloading copies do not exist without layouts.
+    return false;
+  }
+  const int64_t copy_memory_space =
+      instruction->shape().layout().memory_space();
+  const int64_t operand_memory_space =
+      instruction->operand(0)->shape().layout().memory_space();
+  return (copy_memory_space == Layout::kHostMemorySpace &&
+          operand_memory_space != Layout::kHostMemorySpace) ||
+         (copy_memory_space != Layout::kHostMemorySpace &&
+          operand_memory_space == Layout::kHostMemorySpace);
+}
+
+bool ComputeTypeIsHost(const HloInstruction* hlo_instruction) {
+  const auto& frontend_attributes_map =
+      hlo_instruction->frontend_attributes().map();
+  return (frontend_attributes_map.find(kXlaComputeTypeAttr) !=
+              frontend_attributes_map.end() &&
+          frontend_attributes_map.find(kXlaComputeTypeAttr)->second ==
+              kXlaComputeTypeHost);
 }
 
 }  // namespace host_offload_utils

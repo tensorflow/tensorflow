@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime_conv3d.h"
 
-#include <optional>
+#include <cstdint>
+
+#include "absl/base/attributes.h"
 
 #define EIGEN_USE_THREADS
 
-#include "absl/base/dynamic_annotations.h"
 #include "xla/backends/cpu/runtime/convolution_thunk_internal.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
@@ -46,7 +47,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv3DF32(
       y_stride, z_stride, padding_x_before, padding_x_after, padding_y_before,
       padding_y_after, padding_z_before, padding_z_after, lhs_x_dilation,
       lhs_y_dilation, lhs_z_dilation, rhs_x_dilation, rhs_y_dilation,
-      rhs_z_dilation, feature_group_count, std::nullopt);
+      rhs_z_dilation, feature_group_count, nullptr);
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv3DF16(
@@ -71,5 +72,5 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv3DF16(
       y_stride, z_stride, padding_x_before, padding_x_after, padding_y_before,
       padding_y_after, padding_z_before, padding_z_after, lhs_x_dilation,
       lhs_y_dilation, lhs_z_dilation, rhs_x_dilation, rhs_y_dilation,
-      rhs_z_dilation, feature_group_count, std::nullopt);
+      rhs_z_dilation, feature_group_count, nullptr);
 }

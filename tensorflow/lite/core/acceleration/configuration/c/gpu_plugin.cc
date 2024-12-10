@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/acceleration/configuration/gpu_plugin.h"
+#include "tensorflow/lite/core/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/core/c/common.h"
 
 #if TFLITE_SUPPORTS_GPU_DELEGATE

@@ -1,0 +1,23 @@
+// RUN: test_correctness %s --bijection_inputs=reduce:0 --bijection_outputs=reduce
+// RUN: fusion_to_mlir %s | emitters_opt -cse -xla-gpu-simplify-arith -canonicalize | FileCheck %s --dump-input=always
+
+add {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %p0, f32[] %p1)
+}
+fusion {
+  %p0 = f32[100,256,2] parameter(0)
+  %c0 = f32[] constant(0)
+  ROOT %reduce = f32[100,2] reduce(%p0, %c0), dimensions={1}, to_apply=%add
+}
+
+// Normally, we would attempt to vectorize this to a vector size of 4, but this
+// would result in exceeding the maximum number of shared rows (we'd end up with
+// 256 shared rows). To get to 32 shared rows, we disable vectorization (-> 64
+// shared rows) and also halve the number of threads.
+
+// CHECK: gpu.thread_id x {xla.range = [0 : index, 63 : index]}
+// CHECK-NOT: vector<
+// CHECK: allocate_shared : tensor<32x3xf32>
+// CHECK: shuffle_reduce(%{{.*}}) to 16 combiner=@add_add

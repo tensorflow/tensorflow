@@ -17,7 +17,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -32,9 +31,10 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -43,15 +43,16 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
+#include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/fusions/mlir/type_util.h"
-#include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace gpu {
@@ -81,49 +82,6 @@ EpilogueSpecification EpilogueSpecification::FromIdentityIndexing(
   return result;
 }
 
-EpilogueSpecification EpilogueSpecification::FromOutputIndexing(
-    const HloFusionAnalysis& analysis,
-    const std::vector<const HloInstruction*>& heroes,
-    const std::vector<const HloInstruction*>& roots,
-    const KernelFusionInterface& fusion, mlir::MLIRContext* mlir_context) {
-  EpilogueSpecification result;
-
-  absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
-      root_to_hero;
-  for (auto [root, hero] :
-       llvm::zip(analysis.fusion_roots(), analysis.fusion_heroes())) {
-    root_to_hero[&root.instruction()] = &hero.instruction();
-  }
-  absl::flat_hash_map<const HloInstruction*, int> root_to_index;
-  for (auto [index, root] : llvm::enumerate(analysis.fusion_roots())) {
-    root_to_index[&root.instruction()] = root_to_index.size();
-  }
-
-  result.root_indexing.reserve(roots.size());
-  for (auto* root : roots) {
-    auto indexing = fusion.ComputeThreadIdToOutputIndexing(root_to_index[root],
-                                                           mlir_context);
-    if (result.index_ranges.empty()) {
-      result.index_ranges.reserve(indexing->GetDimensionCount() +
-                                  indexing->GetSymbolCount());
-      for (const auto& dim : indexing->GetDimensionBounds()) {
-        result.index_ranges.push_back(dim.upper + 1);
-      }
-      for (const auto& sym : indexing->GetSymbolBounds()) {
-        result.index_ranges.push_back(sym.upper + 1);
-      }
-    }
-    auto* hero = root_to_hero[root];
-    auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
-        {*hero, &analysis.fusion()}, {*root, &analysis.fusion()}, mlir_context);
-    result.root_indexing.push_back(
-        ComposeIndexingMaps(*indexing, epilogue_indexing));
-  }
-  result.heroes = heroes;
-  result.roots = roots;
-  return result;
-}
-
 std::string PartitionedComputation::Subgraph::ToString(int indentation) const {
   std::string indent(indentation, ' ');
   std::ostringstream ss;
@@ -146,15 +104,6 @@ std::string PartitionedComputation::ToString(int indentation) const {
   ss << "PartitionedComputation " << computation_->name() << ":";
   for (const Subgraph& subgraph : subgraphs_) {
     ss << "\n" << subgraph.ToString(indentation);
-  }
-  return ss.str();
-}
-
-std::string PartitionedComputations::ToString() const {
-  std::ostringstream ss;
-  ss << "PartitionedComputations:";
-  for (const auto& partitioned_computation : partitioned_computations_) {
-    ss << "\n" << partitioned_computation.ToString();
   }
   return ss.str();
 }

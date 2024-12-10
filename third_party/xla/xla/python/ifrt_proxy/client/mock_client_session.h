@@ -24,6 +24,7 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/test_utils.h"
 
 namespace xla {
 namespace ifrt {
@@ -35,6 +36,23 @@ class MockClientSession final : public ClientSession {
               (override));
   MOCK_METHOD(void, Finish, (const absl::Status& s), (override));
 };
+
+MATCHER_P(IfrtRequestOfType, req_type_param, "") {
+  const std::unique_ptr<IfrtRequest>& req = arg;
+  const IfrtRequest::RequestCase& req_type = req_type_param;
+  return req->request_case() == req_type;
+}
+
+ACTION_P(MockClientCaptureAndReturn, requests_queue_param,
+         response_proto_param) {
+  auto response = std::make_unique<IfrtResponse>(response_proto_param);
+  TestQueue<IfrtRequest>* requests_queue = requests_queue_param;
+  const std::unique_ptr<IfrtRequest>& req = arg0;
+  requests_queue->Push(*req);
+  response->mutable_response_metadata()->set_op_id(
+      arg0->request_metadata().op_id());
+  return Future<ClientSession::Response>(std::move(response));
+}
 
 ACTION_P(MockClientSessionReturnResponse, response_proto) {
   auto response = std::make_unique<IfrtResponse>(response_proto);

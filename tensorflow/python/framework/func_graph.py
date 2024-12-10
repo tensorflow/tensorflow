@@ -15,7 +15,7 @@
 """FuncGraph and related functionality."""
 
 import traceback
-from typing import Any, Callable, Hashable
+from typing import Any, Callable, ContextManager, Hashable
 import weakref
 
 from tensorflow.core.function import trace_type
@@ -442,63 +442,7 @@ class FuncGraph(ops.Graph):
   def as_default(self):
     outer_cm = super().as_default()
 
-    @tf_contextlib.contextmanager
-    def inner_cm():
-      """Context manager for copying distribute.Strategy scope information."""
-      # pylint: disable=protected-access
-      # TODO(b/112906995, nareshmodi): distribution strategy depends on
-      # inheriting this stack from the default graph even in eager mode. Maybe
-      # it should be part of the eager context? This would also allow us to
-      # remove a get_default_graph() call from the function cache lookup.
-      graph = ops.get_default_graph()
-      old_strategy_stack = self._distribution_strategy_stack
-      self._distribution_strategy_stack = list(
-          graph._distribution_strategy_stack)
-
-      # We ignore device placements from any outer scopes while tracing the
-      # function when possible, to avoid hard-coding them in the function
-      # graph. "Default" placements come from the PartitionedCallOp's placement,
-      # so that the same trace of the Python function may be placed on several
-      # different devices and saved functions may be placed on new devices when
-      # restored.
-      # However, we need to preserve the outer device stack in the following
-      # cases in non eager context:
-      # 1. device stack is callable
-      # 2. When using distribution strategy with legacy graph mode.
-      old_device_stack = self._device_function_stack
-      if (not context.executing_eagerly() and
-          (device_stack_has_callable(graph._device_function_stack) or
-           (self._distribution_strategy_stack and
-            not ops.executing_eagerly_outside_functions()))):
-        # Hard-code devices from device functions in the function body
-        self._device_function_stack = graph._device_function_stack.copy()
-
-      old_creator_stack = self._variable_creator_stack
-      self._variable_creator_stack = graph._variable_creator_stack
-      # Inherit the graph key, since this is used for matching variables in
-      # optimizers.
-      old_graph_key = self._graph_key
-      self._graph_key = graph._graph_key
-      # pylint: enable=protected-access
-
-      old_scope_exit_callbacks = self._scope_exit_callbacks
-      self._scope_exit_callbacks = []
-
-      with outer_cm as g:
-        try:
-          yield g
-        finally:
-          try:
-            for fn in self._scope_exit_callbacks:
-              fn()
-          finally:
-            self._scope_exit_callbacks = old_scope_exit_callbacks
-            self._distribution_strategy_stack = old_strategy_stack
-            self._device_function_stack = old_device_stack
-            self._variable_creator_stack = old_creator_stack
-            self._graph_key = old_graph_key
-
-    return inner_cm()
+    return _func_graph_as_default_inner_cm(self, outer_cm)
 
   @property
   def outer_graph(self):
@@ -917,6 +861,63 @@ class FuncGraph(ops.Graph):
     self._scope_exit_callbacks.append(fn)
 
 
+@tf_contextlib.contextmanager
+def _func_graph_as_default_inner_cm(
+    func_graph: FuncGraph, outer_cm: ContextManager[ops.Graph]):
+  """Context manager for copying distribute.Strategy scope information."""
+  # pylint: disable=protected-access
+  # TODO(b/112906995, nareshmodi): distribution strategy depends on
+  # inheriting this stack from the default graph even in eager mode. Maybe
+  # it should be part of the eager context? This would also allow us to
+  # remove a get_default_graph() call from the function cache lookup.
+  graph = ops.get_default_graph()
+  old_strategy_stack = func_graph._distribution_strategy_stack
+  func_graph._distribution_strategy_stack = list(
+      graph._distribution_strategy_stack)
+
+  # We ignore device placements from any outer scopes while tracing the
+  # function when possible, to avoid hard-coding them in the function
+  # graph. "Default" placements come from the PartitionedCallOp's placement,
+  # so that the same trace of the Python function may be placed on several
+  # different devices and saved functions may be placed on new devices when
+  # restored.
+  # However, we need to preserve the outer device stack in the following
+  # cases in non eager context:
+  # 1. device stack is callable
+  # 2. When using distribution strategy with legacy graph mode.
+  old_device_stack = func_graph._device_function_stack
+  if (not context.executing_eagerly() and
+      (device_stack_has_callable(graph._device_function_stack) or
+       (func_graph._distribution_strategy_stack and
+        not ops.executing_eagerly_outside_functions()))):
+    # Hard-code devices from device functions in the function body
+    func_graph._device_function_stack = graph._device_function_stack.copy()
+
+  old_creator_stack = func_graph._variable_creator_stack
+  func_graph._variable_creator_stack = graph._variable_creator_stack
+  # Inherit the graph key, since this is used for matching variables in
+  # optimizers.
+  old_graph_key = func_graph._graph_key
+  func_graph._graph_key = graph._graph_key
+
+  old_scope_exit_callbacks = func_graph._scope_exit_callbacks
+  func_graph._scope_exit_callbacks = []
+
+  with outer_cm as g:
+    try:
+      yield g
+    finally:
+      try:
+        for fn in func_graph._scope_exit_callbacks:
+          fn()
+      finally:
+        func_graph._scope_exit_callbacks = old_scope_exit_callbacks
+        func_graph._distribution_strategy_stack = old_strategy_stack
+        func_graph._device_function_stack = old_device_stack
+        func_graph._variable_creator_stack = old_creator_stack
+        func_graph._graph_key = old_graph_key
+
+
 def func_graph_from_py_func(name,
                             python_func,
                             args,
@@ -1111,24 +1112,6 @@ def func_graph_from_py_func(name,
         deps_control_manager.collective_manager_ids_used)
 
   return func_graph
-
-
-def maybe_captured(tensor):
-  """If t is a captured value placeholder, returns the original captured value.
-
-  Args:
-    tensor: Tensor.
-
-  Returns:
-    A tensor, potentially from a different Graph/FuncGraph.
-  """
-  if (not isinstance(tensor, ops.EagerTensor) and
-      tensor.op.graph.building_function and tensor.op.type == "Placeholder"):
-    for input_t, placeholder_t in tensor.op.graph.captures:
-      if tensor == placeholder_t:
-        return maybe_captured(input_t)
-  # pylint: enable=protected-access
-  return tensor
 
 
 def device_stack_has_callable(device_stack):

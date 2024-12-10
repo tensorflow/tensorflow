@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -66,7 +67,7 @@ namespace {
 namespace m = match;
 
 bool IsConvCustomCall(const HloInstruction* instr) {
-  return instr->opcode() == HloOpcode::kCustomCall &&
+  return HloPredicateIsOp<HloOpcode::kCustomCall>(instr) &&
          (instr->custom_call_target() == kCudnnConvForwardCallTarget ||
           instr->custom_call_target() ==
               kCudnnConvBiasActivationForwardCallTarget);
@@ -160,7 +161,7 @@ bool IsLosslesslyConvertibleTo(const HloInstruction* instr,
                                                instr->shape().element_type());
   }
 
-  if (instr->opcode() == HloOpcode::kConstant) {
+  if (HloPredicateIsOp<HloOpcode::kConstant>(instr)) {
     if (!instr->shape().IsArray()) {
       return false;
     }
@@ -182,9 +183,8 @@ bool IsLosslesslyConvertibleTo(const HloInstruction* instr,
     return instr->literal() == *converted2;
   }
 
-  if (instr->opcode() == HloOpcode::kBroadcast ||
-      instr->opcode() == HloOpcode::kReshape ||
-      instr->opcode() == HloOpcode::kTranspose) {
+  if (HloPredicateIsOp<HloOpcode::kBroadcast, HloOpcode::kReshape,
+                       HloOpcode::kTranspose>(instr)) {
     return IsLosslesslyConvertibleTo(instr->operand(0), dst_ty);
   }
 
@@ -475,9 +475,10 @@ bool AppliesMaxReduce(HloInstruction* op) {
          ShapeUtil::IsScalar(op->operand(1)->shape()) &&
          op->operand(1)->IsConstant() &&
          op->operand(1)->literal().GetAsDouble({}) <= 0. &&
-         reduce_comp_root->opcode() == HloOpcode::kMaximum &&
-         reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
-         reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter;
+         HloPredicateIsOp<HloOpcode::kMaximum>(reduce_comp_root) &&
+         HloPredicateIsOp<HloOpcode::kParameter>(
+             reduce_comp_root->operand(0)) &&
+         HloPredicateIsOp<HloOpcode::kParameter>(reduce_comp_root->operand(1));
 }
 
 // Recursively captures and serializes the graph of pointwise operations
@@ -562,7 +563,7 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
         graph_string.OpInGraph(operand0->unique_id(), "relu") &&
         AppliesMaxReduce(op)) {
       if (graph_string.AppendOp("amax", op, {operand0})) {
-        aux_outputs.emplace_back(op);
+        aux_outputs.push_back(op);
         num_nonlinear_users++;
       }
       continue;
@@ -585,7 +586,7 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
                 m::Reduce(&op, m::Abs(m::Op(&operand0)), m::Op())) &&
           AppliesMaxReduce(op)) {
         if (graph_string.AppendOp("amax", op, {operand0})) {
-          aux_outputs.emplace_back(op);
+          aux_outputs.push_back(op);
           num_nonlinear_users++;
         }
         continue;
@@ -664,13 +665,13 @@ CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
 absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
                                  se::CudaComputeCapability cc,
                                  se::dnn::VersionInfo dnn_version,
-                                 int32_t toolkit_version) {
+                                 const se::SemanticVersion& toolkit_version) {
   bool changed = false;
 
   if (dnn_version < se::dnn::VersionInfo(8, 9, 0)) {
     return false;
   }
-  if (toolkit_version < 12000) {
+  if (toolkit_version < se::SemanticVersion{12, 0, 0}) {
     return false;
   }
   if (!cc.IsAtLeast(se::CudaComputeCapability::HOPPER)) {
@@ -727,10 +728,11 @@ absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
           CaptureConvGraph(
               instr, convolution, wide_input, wide_filter, input_scale,
               filter_scale,
-              input_scale_op ? input_scale_op->opcode() == HloOpcode::kMultiply
-                             : false,
+              input_scale_op
+                  ? HloPredicateIsOp<HloOpcode::kMultiply>(input_scale_op)
+                  : false,
               filter_scale_op
-                  ? filter_scale_op->opcode() == HloOpcode::kMultiply
+                  ? HloPredicateIsOp<HloOpcode::kMultiply>(filter_scale_op)
                   : false));
       TF_ASSIGN_OR_RETURN(auto gpu_config,
                           convolution->backend_config<GpuBackendConfig>());
@@ -832,15 +834,16 @@ absl::StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
     PrimitiveType bias_ty =
         primitive_util::IsFloatingPointType(conv_ty) ? conv_ty : F32;
     bool addend_may_be_rank1_bias =
-        addend->opcode() == HloOpcode::kBroadcast &&
+        HloPredicateIsOp<HloOpcode::kBroadcast>(addend) &&
         addend->dimensions().size() == 1 &&
         addend->dimensions(0) ==
             conv->convolution_dimension_numbers().output_feature_dimension() &&
         IsLosslesslyConvertibleTo(addend, bias_ty);
 
-    bool addend_may_be_rank0_bias = addend->opcode() == HloOpcode::kBroadcast &&
-                                    addend->dimensions().empty() &&
-                                    IsLosslesslyConvertibleTo(addend, bias_ty);
+    bool addend_may_be_rank0_bias =
+        HloPredicateIsOp<HloOpcode::kBroadcast>(addend) &&
+        addend->dimensions().empty() &&
+        IsLosslesslyConvertibleTo(addend, bias_ty);
 
     absl::InlinedVector<HloInstruction*, 4> new_operands(
         conv->operands().begin(), conv->operands().end());
@@ -915,8 +918,8 @@ absl::StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
     // alpha is f32 except for f64 convs, where it's f64.  See
     // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
     HloInstruction* before_reshape = side_input;
-    while (before_reshape->opcode() == HloOpcode::kReshape ||
-           before_reshape->opcode() == HloOpcode::kTranspose) {
+    while (HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kTranspose>(
+        before_reshape)) {
       before_reshape = before_reshape->mutable_operand(0);
     }
 
@@ -969,8 +972,8 @@ absl::StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
           if (instr == before_reshape) {
             return base;
           }
-          CHECK(instr->opcode() == HloOpcode::kReshape ||
-                instr->opcode() == HloOpcode::kTranspose)
+          CHECK((HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kTranspose>(
+              instr)))
               << "Must be reshape or transpose: " << instr->ToString();
           return comp->AddInstruction(instr->CloneWithNewOperands(
               instr->shape(), {clone(instr->operand(0))}));

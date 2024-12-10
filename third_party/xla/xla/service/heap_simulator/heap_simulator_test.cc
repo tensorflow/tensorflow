@@ -29,23 +29,24 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
-#include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -2079,6 +2080,21 @@ TEST_F(IntervalTreeTest, BufferIntervalTreeMemoryUsedInInterval) {
       /*start=*/18, /*end=*/23);
   std::vector<int64_t> expected_memory_used_by_time = {48, 48, 48, 48, 48, 16};
   EXPECT_THAT(memory_used_by_time, ContainerEq(expected_memory_used_by_time));
+}
+
+TEST_F(IntervalTreeTest, BufferIntervalTreeHeapSize) {
+  // Buffer 1: memory block [0, 16), time interval [15, 26]
+  // Buffer 2: memory block [16, 48), time interval [17, 24]
+  // Buffer 3: memory block [32, 64), time interval [20, 22]
+  BufferIntervalTree tree;
+  tree.Add(15, 26, HeapSimulator::Chunk::FromOffsetEnd(0, 16));
+  tree.Add(17, 24, HeapSimulator::Chunk::FromOffsetEnd(16, 48));
+  tree.Add(20, 22, HeapSimulator::Chunk::FromOffsetEnd(32, 64));
+  EXPECT_THAT(tree.HeapSizeInInterval(15, 16), 16);
+  EXPECT_THAT(tree.HeapSizeInInterval(15, 19), 48);
+  EXPECT_THAT(tree.HeapSizeInInterval(15, 22), 64);
+  EXPECT_THAT(tree.HeapSizeInInterval(23, 24), 48);
+  EXPECT_THAT(tree.HeapSizeInInterval(25, 26), 16);
 }
 
 class SlicedBufferIntervalTest : public ::testing::Test {

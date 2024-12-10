@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
+#include "xla/tsl/protobuf/status.pb.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -67,7 +68,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -82,8 +82,8 @@ using WorkerConfig = experimental::WorkerConfig;
 // Moves the element into the response. If the tensor contains a single
 // CompressedElement variant, the move will be zero-copy. Otherwise, the tensor
 // data will be serialized as TensorProtos.
-Status MoveElementToResponse(std::vector<Tensor>&& element,
-                             GetElementResponse& resp) {
+absl::Status MoveElementToResponse(std::vector<Tensor>&& element,
+                                   GetElementResponse& resp) {
   if (element.size() != 1 || element[0].dtype() != DT_VARIANT ||
       !TensorShapeUtils::IsScalar(element[0].shape())) {
     for (const auto& component : element) {
@@ -170,7 +170,7 @@ DataServiceWorkerImpl::~DataServiceWorkerImpl() {
   heartbeat_cv_.notify_one();
 }
 
-Status DataServiceWorkerImpl::Start(
+absl::Status DataServiceWorkerImpl::Start(
     const std::string& worker_address,
     const std::vector<DataTransferServerInfo>& transfer_servers) {
   VLOG(3) << "Starting tf.data service worker at address " << worker_address;
@@ -226,7 +226,7 @@ void DataServiceWorkerImpl::Stop() {
                                        1000);
 }
 
-Status DataServiceWorkerImpl::ValidateWorkerConfig() const {
+absl::Status DataServiceWorkerImpl::ValidateWorkerConfig() const {
   const bool any_tag_is_empty = absl::c_any_of(
       config_.worker_tags(),
       [](const std::string& worker_tag) { return worker_tag.empty(); });
@@ -255,7 +255,7 @@ DataServiceWorkerImpl::CreateDispatcherClient() const TF_LOCKS_EXCLUDED(mu_) {
   return dispatcher;
 }
 
-Status DataServiceWorkerImpl::GetElementResult(
+absl::Status DataServiceWorkerImpl::GetElementResult(
     const GetElementRequest* request, struct GetElementResult* result) {
   Task* task = nullptr;
   {
@@ -310,15 +310,15 @@ Status DataServiceWorkerImpl::GetElementResult(
   return absl::OkStatus();
 }
 
-Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
-                                          ProcessTaskResponse* response) {
+absl::Status DataServiceWorkerImpl::ProcessTask(
+    const ProcessTaskRequest* request, ProcessTaskResponse* response) {
   mutex_lock l(mu_);
   const TaskDef& task = request->task();
   VLOG(3) << "Received request to process task " << task.task_id();
   return ProcessTaskInternal(task);
 }
 
-Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
+absl::Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<Task>& task = tasks_[task_def.task_id()];
   if (task) {
@@ -333,7 +333,7 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
   return absl::OkStatus();
 }
 
-Status DataServiceWorkerImpl::EnsureTaskInitialized(
+absl::Status DataServiceWorkerImpl::EnsureTaskInitialized(
     DataServiceWorkerImpl::Task& task) {
   if (task.task_def.worker_address() != worker_address_) {
     return errors::Internal(absl::Substitute(
@@ -367,7 +367,7 @@ absl::StatusOr<DatasetDef> DataServiceWorkerImpl::GetDatasetDef(
       return task_def.dataset_def();
     case TaskDef::kPath: {
       DatasetDef def;
-      Status s = ReadDatasetDef(task_def.path(), def);
+      absl::Status s = ReadDatasetDef(task_def.path(), def);
       if (!s.ok()) {
         LOG(INFO) << "Failed to read dataset from " << task_def.path() << ": "
                   << s << ". Falling back to reading from dispatcher.";
@@ -476,8 +476,8 @@ void DataServiceWorkerImpl::StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_) {
   }
 }
 
-Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
-                                         GetElementResponse* response) {
+absl::Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
+                                               GetElementResponse* response) {
   VLOG(3) << "Received GetElement request for task " << request->task_id();
   struct GetElementResult result;
   TF_RETURN_IF_ERROR(GetElementResult(request, &result));
@@ -491,7 +491,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
   return absl::OkStatus();
 }
 
-Status DataServiceWorkerImpl::GetWorkerTasks(
+absl::Status DataServiceWorkerImpl::GetWorkerTasks(
     const GetWorkerTasksRequest* request, GetWorkerTasksResponse* response) {
   mutex_lock l(mu_);
   for (const auto& it : tasks_) {
@@ -504,7 +504,7 @@ Status DataServiceWorkerImpl::GetWorkerTasks(
   return absl::OkStatus();
 }
 
-Status DataServiceWorkerImpl::GetSnapshotTaskProgresses(
+absl::Status DataServiceWorkerImpl::GetSnapshotTaskProgresses(
     const GetSnapshotTaskProgressesRequest* request,
     GetSnapshotTaskProgressesResponse* response) {
   for (const auto& snapshot_task_progress : GetSnapshotTaskProgress()) {
@@ -525,7 +525,7 @@ void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
         return;
       }
     }
-    Status s = SendTaskUpdates();
+    absl::Status s = SendTaskUpdates();
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send task updates to dispatcher: " << s;
       mutex_lock l(mu_);
@@ -540,7 +540,7 @@ void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
   }
 }
 
-Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
+absl::Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<TaskProgress> task_progress;
   {
     mutex_lock l(mu_);
@@ -585,14 +585,14 @@ void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
         continue;
       }
     }
-    Status s = Heartbeat();
+    absl::Status s = Heartbeat();
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send heartbeat to dispatcher: " << s;
     }
   }
 }
 
-Status DataServiceWorkerImpl::Heartbeat() {
+absl::Status DataServiceWorkerImpl::Heartbeat() {
   WorkerHeartbeatRequest request = BuildWorkerHeartbeatRequest();
   TF_ASSIGN_OR_RETURN(WorkerHeartbeatResponse response,
                       dispatcher_->WorkerHeartbeat(request));
@@ -699,7 +699,7 @@ void DataServiceWorkerImpl::UpdateTasks(const WorkerHeartbeatResponse& response)
       if (deleted_tasks_.contains(task.task_id())) {
         continue;
       }
-      Status s = ProcessTaskInternal(task);
+      absl::Status s = ProcessTaskInternal(task);
       if (!s.ok() && !errors::IsAlreadyExists(s)) {
         LOG(WARNING) << "Failed to start processing task " << task.task_id()
                      << ": " << s;
@@ -723,7 +723,7 @@ void DataServiceWorkerImpl::UpdateTasks(const WorkerHeartbeatResponse& response)
 }
 
 // TODO(yangchen): Figure out why `mutex_lock`s here are needed for sanitizers.
-Status DataServiceWorkerImpl::UpdateSnapshotWriters(
+absl::Status DataServiceWorkerImpl::UpdateSnapshotWriters(
     const WorkerHeartbeatResponse& response) TF_LOCKS_EXCLUDED(mu_) {
   absl::flat_hash_set<SnapshotTask> assigned_snapshot_task_keys;
   for (const SnapshotTaskDef& snapshot_task : response.snapshot_tasks()) {

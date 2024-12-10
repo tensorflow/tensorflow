@@ -13,9 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
 #include "xla/error_spec.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
@@ -84,6 +90,61 @@ XLA_TEST_F(SortTest, SortTwiceWithSameComparator) {
 
   EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{0.0, 0.0}));
 }
+
+class SortManyInputsTest : public SortTest,
+                           public ::testing::WithParamInterface<int> {
+ public:
+  static std::string Name(const ::testing::TestParamInfo<int>& info) {
+    auto num_inputs = info.param;
+    return absl::StrFormat("Sort%dInputs", num_inputs);
+  }
+};
+
+XLA_TEST_P(SortManyInputsTest, SortManyInputs) {
+  int num_inputs = GetParam();
+  std::string_view hlo_text_module_template = R"(
+    HloModule sort
+
+    compare {
+      ${COMPARE_DECLARATIONS}
+      ROOT lt = pred[] compare(p0, p1), direction=LT
+    }
+
+    ENTRY e {
+      ${SORT_DECLARATIONS}
+      ROOT sort = (${SORT_SHAPE}) sort(${SORT_PARAMS}), dimensions={0}, 
+        to_apply=compare
+    }
+  )";
+
+  // Prepare values for template substitutions.
+  std::string sort_decls = "";
+  std::vector<std::string> param_names;
+  param_names.reserve(num_inputs * 2);
+  for (int i = 0; i < num_inputs; ++i) {
+    sort_decls += absl::StrFormat("p%d = f32[32,64] parameter(%d)\n", i, i);
+    param_names.emplace_back(absl::StrCat("p", i));
+  }
+  std::string sort_params = absl::StrJoin(param_names, ", ");
+  std::string sort_shape =
+      absl::StrJoin(std::vector<std::string>(num_inputs, "f32[32,64]"), ",");
+  std::string compare_decls = "";
+  for (int i = 0; i < num_inputs * 2; ++i) {
+    compare_decls += absl::StrFormat("p%d = f32[] parameter(%d)\n", i, i);
+  }
+  std::string compare_params = absl::StrJoin(param_names, ", ");
+
+  // Finalize HLO text.
+  std::string hlo_text_module = absl::StrReplaceAll(
+      hlo_text_module_template, {{"${SORT_DECLARATIONS}", sort_decls},
+                                 {"${SORT_SHAPE}", sort_shape},
+                                 {"${SORT_PARAMS}", sort_params},
+                                 {"${COMPARE_DECLARATIONS}", compare_decls}});
+  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{0.0, 0.0}));
+}
+
+INSTANTIATE_TEST_SUITE_P(ManyInputs, SortManyInputsTest,
+                         ::testing::Values(17, 20), SortManyInputsTest::Name);
 
 }  // namespace
 }  // namespace xla

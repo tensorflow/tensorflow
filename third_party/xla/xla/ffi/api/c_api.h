@@ -54,6 +54,7 @@ typedef struct XLA_FFI_Extension_Base {
   XLA_FFI_Extension_Type type;
   struct XLA_FFI_Extension_Base* next;
 } XLA_FFI_Extension_Base;
+
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension_Base, next);
 
 //===----------------------------------------------------------------------===//
@@ -81,7 +82,7 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension_Base, next);
 // Minor changes include:
 // * Adding a new field to the XLA_FFI_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define XLA_FFI_API_MINOR 0
+#define XLA_FFI_API_MINOR 1
 
 struct XLA_FFI_Api_Version {
   size_t struct_size;
@@ -194,6 +195,8 @@ typedef enum {
   XLA_FFI_DataType_C128 = 18,
   XLA_FFI_DataType_TOKEN = 17,
   XLA_FFI_DataType_F8E5M2 = 19,
+  XLA_FFI_DataType_F8E3M4 = 29,
+  XLA_FFI_DataType_F8E4M3 = 28,
   XLA_FFI_DataType_F8E4M3FN = 20,
   XLA_FFI_DataType_F8E4M3B11FNUZ = 23,
   XLA_FFI_DataType_F8E5M2FNUZ = 24,
@@ -248,7 +251,7 @@ typedef enum {
 typedef struct XLA_FFI_ExecutionContext XLA_FFI_ExecutionContext;
 
 //===----------------------------------------------------------------------===//
-// Primitives.
+// Primitives
 //===----------------------------------------------------------------------===//
 
 // TypeId uniquely identifies a user-defined type in a given XLA FFI instance.
@@ -276,6 +279,51 @@ struct XLA_FFI_Array {
   size_t size;
   void* data;
 };
+
+//===----------------------------------------------------------------------===//
+// Future
+//===----------------------------------------------------------------------===//
+
+// XLA FFI future is a mechanism to signal a result of asynchronous computation
+// (FFI handler) to the XLA runtime. It is similar to `std::future<void>` in C++
+// standard library, and implemented on top of `tsl::AsyncValue` in XLA runtime.
+//
+// XLA FFI users should use `Future` and `Promise` types defined in `xla::ffi`
+// namespace (see `ffi/api/ffi.h`), instead of using this API directly.
+typedef struct XLA_FFI_Future XLA_FFI_Future;
+
+struct XLA_FFI_Future_Create_Args {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_Future* future;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Future_Create_Args, extension_start);
+
+typedef XLA_FFI_Error* XLA_FFI_Future_Create(XLA_FFI_Future_Create_Args* args);
+
+struct XLA_FFI_Future_SetAvailable_Args {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_Future* future;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Future_SetAvailable_Args, future);
+
+typedef XLA_FFI_Error* XLA_FFI_Future_SetAvailable(
+    XLA_FFI_Future_SetAvailable_Args* args);
+
+struct XLA_FFI_Future_SetError_Args {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+  XLA_FFI_Future* future;
+  XLA_FFI_Error* error;  // ownership is transferred to the XLA runtime
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Future_SetError_Args, error);
+
+typedef XLA_FFI_Error* XLA_FFI_Future_SetError(
+    XLA_FFI_Future_SetError_Args* args);
 
 //===----------------------------------------------------------------------===//
 // Call frame
@@ -366,6 +414,11 @@ struct XLA_FFI_CallFrame {
   XLA_FFI_Args args;
   XLA_FFI_Rets rets;
   XLA_FFI_Attrs attrs;
+
+  // XLA FFI handler implementation can use `future` to signal a result of
+  // asynchronous computation to the XLA runtime. XLA runtime will keep all
+  // arguments, results and attributes alive until `future` is completed.
+  XLA_FFI_Future* future;  // out
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_CallFrame, attrs);
@@ -535,6 +588,51 @@ typedef XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
     XLA_FFI_DeviceMemory_Free_Args* args);
 
 //===----------------------------------------------------------------------===//
+// ThreadPool
+//===----------------------------------------------------------------------===//
+
+// A function pointer for a task to be scheduled on a thread pool. XLA runtime
+// will call this function with a user-defined `data` pointer on one of the
+// runtime-managed threads. For XLA:CPU backends the task will be invoked on
+// a thread pool that runs all compute tasks (Eigen thread pool).
+//
+// IMPORTANT: Users must not rely on any particular execution order or the
+// number of available threads. Tasks can be executed in the caller thread, or
+// in a thread pool with size `1`, and it is unsafe to assume that all scheduled
+// tasks can be executed in parallel.
+typedef void XLA_FFI_Task(void* data);
+
+struct XLA_FFI_ThreadPool_Schedule_Args {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+
+  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_Task* task;
+  void* data;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ThreadPool_Schedule_Args, data);
+
+// Schedules a task to be executed on a thread pool managed by XLA runtime.
+// Returns an error if thread pool is not available.
+typedef XLA_FFI_Error* XLA_FFI_ThreadPool_Schedule(
+    XLA_FFI_ThreadPool_Schedule_Args* args);
+
+struct XLA_FFI_ThreadPool_NumThreads_Args {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+
+  XLA_FFI_ExecutionContext* ctx;
+  int64_t* num_threads;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ThreadPool_NumThreads_Args, num_threads);
+
+// Returns the number of threads in the thread pool managed by XLA runtime.
+typedef XLA_FFI_Error* XLA_FFI_ThreadPool_NumThreads(
+    XLA_FFI_ThreadPool_NumThreads_Args* args);
+
+//===----------------------------------------------------------------------===//
 // Metadata extension
 //===----------------------------------------------------------------------===//
 
@@ -543,14 +641,14 @@ struct XLA_FFI_Metadata {
   XLA_FFI_Api_Version api_version;
   XLA_FFI_Handler_Traits traits;
 };
+
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Metadata, traits);
 
 struct XLA_FFI_Metadata_Extension {
-  size_t struct_size;
-  XLA_FFI_Extension_Type type;
-  XLA_FFI_Extension_Base* next;
+  XLA_FFI_Extension_Base extension_base;
   XLA_FFI_Metadata* metadata;
 };
+
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Metadata_Extension, metadata);
 
 //===----------------------------------------------------------------------===//
@@ -577,6 +675,11 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_State_Get);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceMemory_Allocate);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceMemory_Free);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ThreadPool_Schedule);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ThreadPool_NumThreads);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_Create);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_SetAvailable);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_SetError);
 };
 
 #undef _XLA_FFI_API_STRUCT_FIELD

@@ -1,0 +1,38 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  param0 = f32[200] parameter(0)
+  param1 = f32[400] parameter(1)
+  param2 = f32[300] parameter(2)
+  ROOT concat = f32[900] concatenate(param0, param1, param2), dimensions={0}
+}
+// CHECK-DAG: #[[MAP:.*]] = #xla.indexing_map<"(th_x, bl_x) -> (bl_x * 128 + th_x)
+// CHECK-DAG: #[[LOOPMAP_1:.*]] = #xla.indexing_map<"(th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1] -> (bl_x * 128 + th_x)
+// CHECK-DAG: #[[LOOPMAP_2:.*]] = #xla.indexing_map<"(th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1] -> (bl_x * 128 + th_x + 200)
+// CHECK-DAG: #[[LOOPMAP_3:.*]] = #xla.indexing_map<"(th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1] -> (bl_x * 128 + th_x + 600)
+
+// CHECK:       func.func @main
+// CHECK-SAME:    %[[ARG_0:[a-zA-Z0-9]*]]: {{[^,]*}},
+// CHECK-SAME:    %[[ARG_1:[a-zA-Z0-9]*]]: {{[^,]*}},
+// CHECK-SAME:    %[[ARG_2:[a-zA-Z0-9]*]]: {{[^,]*}},
+// CHECK-SAME:    %[[OUTPUT:[a-zA-Z0-9]*]]: {{[^,]*}}
+
+// CHECK: %[[THREAD_ID:.*]] = gpu.thread_id x
+// CHECK: %[[BLOCK_ID:.*]] = gpu.block_id x
+
+// CHECK: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in #[[LOOPMAP_1]]
+// CHECK:   xla.apply_indexing #[[MAP]]
+// CHECK:   %[[VAL_1:.*]] = xla.pure_call @fusion_param0
+// CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[VAL_1:.*]] into {{.*}}[%[[RA]]]
+
+// CHECK: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in #[[LOOPMAP_2]]
+// CHECK:   xla.apply_indexing #[[MAP]]
+// CHECK:   %[[VAL_2:.*]] = xla.pure_call @fusion_param1
+// CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[VAL_2:.*]] into {{.*}}[%[[RA]]]
+
+// CHECK: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in #[[LOOPMAP_3]]
+// CHECK:   xla.apply_indexing #[[MAP]]
+// CHECK:   %[[VAL_3:.*]] = xla.pure_call @fusion_param2
+// CHECK:   %[[INSERTED_3:.*]] = tensor.insert %[[VAL_3:.*]] into {{.*}}[%[[RA]]]

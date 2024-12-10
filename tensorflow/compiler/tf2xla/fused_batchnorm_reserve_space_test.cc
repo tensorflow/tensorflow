@@ -42,7 +42,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-Status GetTestDevice(Session* session, string* test_device) {
+absl::Status GetTestDevice(Session* session, string* test_device) {
   std::vector<DeviceAttributes> devices;
   TF_RETURN_IF_ERROR(session->ListDevices(&devices));
 

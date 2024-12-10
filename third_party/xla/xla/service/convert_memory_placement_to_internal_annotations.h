@@ -16,29 +16,7 @@
 #ifndef XLA_SERVICE_CONVERT_MEMORY_PLACEMENT_TO_INTERNAL_ANNOTATIONS_H_
 #define XLA_SERVICE_CONVERT_MEMORY_PLACEMENT_TO_INTERNAL_ANNOTATIONS_H_
 
-#include <optional>
-#include <string>
-#include <vector>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/strings/string_view.h"
-#include "xla/service/hlo_pass_interface.h"
-
-namespace xla {
-
-class ConvertMemoryPlacementToInternalAnnotations : public HloModulePass {
- public:
-  ConvertMemoryPlacementToInternalAnnotations() = default;
-
-  absl::string_view name() const override {
-    return "convert-memory-placement-to-internal-annotations";
-  }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/convert_memory_placement_to_internal_annotations.h"
 
 #endif  // XLA_SERVICE_CONVERT_MEMORY_PLACEMENT_TO_INTERNAL_ANNOTATIONS_H_

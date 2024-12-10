@@ -23,13 +23,17 @@ limitations under the License.
 #include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -43,14 +47,25 @@ using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
 
-class RemapPlanTest : public test_util::DeviceTest {};
+class RemapPlanTest : public test_util::DeviceTest {
+ public:
+  ArraySpec GetDummySpec() {
+    return ArraySpec{
+        /*dtype=*/DType(DType::kS32),
+        /*shape=*/Shape({4, 3}),
+        /*sharding=*/
+        ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                     /*shape=*/Shape({4, 3}),
+                                     /*shard_shape=*/Shape({2, 3}))};
+  }
+};
 
 TEST_P(RemapPlanTest, ToFromProto) {
   RemapPlan plan;
 
   Shape shape({20, 20});
   Shape shard_shape({5, 20});
-  DeviceList devices = GetDevices({0, 1, 2, 3});
+  tsl::RCReference<DeviceList> devices = GetDevices({0, 1, 2, 3});
   std::shared_ptr<const Sharding> sharding =
       ConcreteEvenSharding::Create(devices, MemoryKind(), /*shape=*/shape,
                                    /*shard_shape=*/shard_shape);
@@ -93,7 +108,7 @@ TEST_P(RemapPlanTest, ToFromProto) {
     const auto* sharding_copy =
         llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
     ASSERT_NE(sharding_copy, nullptr);
-    EXPECT_EQ(sharding_copy->devices(), devices);
+    EXPECT_EQ(*sharding_copy->devices(), *devices);
     EXPECT_EQ(sharding_copy->shape(), shape);
     EXPECT_EQ(sharding_copy->shard_shape(), shard_shape);
   }
@@ -103,13 +118,13 @@ TEST_P(RemapPlanTest, ToFromProto) {
     const auto* sharding_copy =
         llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
     ASSERT_NE(sharding_copy, nullptr);
-    EXPECT_EQ(sharding_copy->devices(), devices);
+    EXPECT_EQ(*sharding_copy->devices(), *devices);
     EXPECT_EQ(sharding_copy->shape(), shape);
     EXPECT_EQ(sharding_copy->shard_shape(), shard_shape);
   }
 }
 
-TEST_P(RemapPlanTest, InvalidInputDtype) {
+TEST_P(RemapPlanTest, EmptyMappings) {
   RemapPlan plan;
   plan.input_specs.push_back(
       ArraySpec{/*dtype=*/DType(DType::kS32),
@@ -127,7 +142,45 @@ TEST_P(RemapPlanTest, InvalidInputDtype) {
                                              /*shard_shape=*/Shape({2, 3}))});
   EXPECT_THAT(plan.Validate(),
               StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Input must have the same dtype")));
+                       HasSubstr("Must have at least one mapping")));
+}
+
+TEST_P(RemapPlanTest, MixedDtype) {
+  RemapPlan plan;
+
+  ArraySpec array_spec_s32{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3}))};
+  ArraySpec array_spec_f32{
+      /*dtype=*/DType(DType::kF32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3}))};
+
+  plan.input_specs.push_back(array_spec_s32);
+  plan.input_specs.push_back(array_spec_f32);
+  plan.output_specs.push_back(array_spec_f32);
+  plan.output_specs.push_back(array_spec_s32);
+
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/0,
+                         /*out_array=*/1,
+                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/1,
+                         /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+
+  TF_EXPECT_OK(plan.Validate());
 }
 
 TEST_P(RemapPlanTest, InvalidOutputDtype) {
@@ -146,6 +199,50 @@ TEST_P(RemapPlanTest, InvalidOutputDtype) {
                 ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                              /*shape=*/Shape({2, 3}),
                                              /*shard_shape=*/Shape({2, 3}))});
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/0,
+                         /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+  EXPECT_THAT(plan.Validate(),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Input and output must have the same dtype")));
+}
+
+TEST_P(RemapPlanTest, InvalidOutputDtypeFromMixedInputDtypes) {
+  RemapPlan plan;
+  ArraySpec array_spec_s32{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({4, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                   /*shape=*/Shape({4, 3}),
+                                   /*shard_shape=*/Shape({2, 3}))};
+  ArraySpec array_spec_f32{
+      /*dtype=*/DType(DType::kF32),
+      /*shape=*/Shape({4, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                   /*shape=*/Shape({4, 3}),
+                                   /*shard_shape=*/Shape({2, 3}))};
+  plan.input_specs.push_back(array_spec_s32);
+  plan.input_specs.push_back(array_spec_f32);
+  plan.output_specs.push_back(array_spec_f32);
+
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/0,
+                         /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/1,
+                         /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{1, 2, 1}},
+                         /*to=*/{RemapPlan::Interval{1, 2, 1}}});
+
   EXPECT_THAT(plan.Validate(),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Input and output must have the same dtype")));
@@ -405,6 +502,73 @@ TEST_P(RemapPlanTest, InvalidOutputDevices) {
           absl::StatusCode::kInvalidArgument,
           HasSubstr(
               "Output array 0 devices and sharding devices do not match")));
+}
+
+TEST_P(RemapPlanTest, CheckOneInputToOneOutput) {
+  ArraySpec dummy_spec = GetDummySpec();
+
+  RemapPlan plan;
+  plan.input_specs.push_back(dummy_spec);
+  plan.output_specs.push_back(dummy_spec);
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  *plan.mappings = {RemapPlan::Mapping{/*in_array=*/0,
+                                       /*out_array=*/0,
+                                       /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                                       /*to=*/{RemapPlan::Interval{0, 2, 1}}}};
+
+  TF_EXPECT_OK(
+      plan.CheckArrayCopySemantics(xla::ifrt::ArrayCopySemantics::kReuseInput));
+  TF_EXPECT_OK(plan.CheckArrayCopySemantics(
+      xla::ifrt::ArrayCopySemantics::kDonateInput));
+}
+
+TEST_P(RemapPlanTest, CheckOneInputToMultipleOutputs) {
+  ArraySpec dummy_spec = GetDummySpec();
+
+  RemapPlan plan;
+  plan.input_specs = {dummy_spec};
+  plan.output_specs = {dummy_spec, dummy_spec};
+
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  *plan.mappings = {RemapPlan::Mapping{/*in_array=*/0,
+                                       /*out_array=*/0,
+                                       /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                                       /*to=*/{RemapPlan::Interval{0, 2, 1}}},
+                    RemapPlan::Mapping{/*in_array=*/0,
+                                       /*out_array=*/1,
+                                       /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                                       /*to=*/{RemapPlan::Interval{0, 2, 1}}}};
+
+  TF_EXPECT_OK(
+      plan.CheckArrayCopySemantics(xla::ifrt::ArrayCopySemantics::kReuseInput));
+  TF_EXPECT_OK(plan.CheckArrayCopySemantics(
+      xla::ifrt::ArrayCopySemantics::kDonateInput));
+}
+
+TEST_P(RemapPlanTest, CheckMultipleInputsToOneOutput) {
+  ArraySpec dummy_spec = GetDummySpec();
+
+  RemapPlan plan;
+  plan.input_specs = {dummy_spec, dummy_spec};
+  plan.output_specs = {dummy_spec};
+
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  *plan.mappings = {RemapPlan::Mapping{/*in_array=*/0,
+                                       /*out_array=*/0,
+                                       /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                                       /*to=*/{RemapPlan::Interval{0, 2, 1}}},
+                    RemapPlan::Mapping{/*in_array=*/1,
+                                       /*out_array=*/0,
+                                       /*from=*/{RemapPlan::Interval{0, 2, 1}},
+                                       /*to=*/{RemapPlan::Interval{0, 2, 1}}}};
+
+  EXPECT_THAT(
+      plan.CheckArrayCopySemantics(xla::ifrt::ArrayCopySemantics::kReuseInput),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("kDonateInput is required if multiple inputs are "
+                         "mapped to one output")));
+  TF_EXPECT_OK(plan.CheckArrayCopySemantics(
+      xla::ifrt::ArrayCopySemantics::kDonateInput));
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, RemapPlanTest,

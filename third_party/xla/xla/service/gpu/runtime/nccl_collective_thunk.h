@@ -32,15 +32,17 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/rendezvous.h"
@@ -48,13 +50,10 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
-
-class NcclClique;
 
 struct NcclCollectiveConfig {
   int64_t operand_count;
@@ -106,16 +105,13 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
   return config;
 }
 
-// This wraps the ncclCommHandle object along with other information
-// that could be useful.
-struct NcclCommHandleWrapper {
-  NcclCommHandleWrapper(NcclApi::NcclCommHandle handle, bool is_local)
-      : comm_handle(handle), is_local(is_local) {}
+// Handle to a communicator object with its `is_local` property.
+struct CommunicatorHandle {
+  CommunicatorHandle(Communicator* comm, bool is_local)
+      : comm(comm), is_local(is_local) {}
 
-  // Communicator handle.
-  NcclApi::NcclCommHandle comm_handle;
-  // Whether this comm is a node-local comm.
-  bool is_local;
+  Communicator* comm;  // communicator object
+  bool is_local;       // whether this comm is a node-local comm
 };
 
 //===----------------------------------------------------------------------===//
@@ -128,8 +124,7 @@ class NcclCollectiveDoneThunk;
 // Thunk base class for NCCL collective operations.
 class NcclCollectiveThunk : public Thunk {
  public:
-  NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info, NcclApi* nccl_api,
-                      bool is_sync);
+  NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync);
 
   struct Buffer {
     int64_t element_count;
@@ -169,14 +164,13 @@ class NcclCollectiveThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  NcclApi* nccl_api() const { return nccl_api_; }
   std::shared_ptr<AsyncEvents> async_events() const { return async_events_; }
   void set_async_events(std::shared_ptr<AsyncEvents> async_events) {
     async_events_ = async_events;
   }
 
-  NcclStreamId nccl_stream_id() const {
-    return xla::gpu::GetStreamId(IsAsync(), GetAsyncStreamKind());
+  CollectiveStreamId nccl_stream_id() const {
+    return xla::gpu::GetCollectiveStreamId(IsAsync(), GetAsyncStreamKind());
   }
 
   ExecutionStreamId nccl_execution_stream_id() const {
@@ -185,9 +179,9 @@ class NcclCollectiveThunk : public Thunk {
   }
 
  protected:
-  virtual absl::Status RunNcclCollective(
-      const ExecuteParams& params, se::Stream& stream,
-      NcclCommHandleWrapper comm_wrapper) = 0;
+  virtual absl::Status RunNcclCollective(const ExecuteParams& params,
+                                         se::Stream& stream,
+                                         CommunicatorHandle comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const {
     return AsyncStreamKind::kCollective;
@@ -205,7 +199,6 @@ class NcclCollectiveThunk : public Thunk {
 
  private:
   bool IsAsync() const { return async_events_ != nullptr; }
-  NcclApi* nccl_api_;
   std::shared_ptr<AsyncEvents> async_events_;
 
   // After a first call to this particular instance of a NCCL collective thunk
@@ -237,7 +230,7 @@ class NcclCollectiveDoneThunk : public Thunk {
   ExecutionStreamId nccl_execution_stream_id() const {
     return ExecutionStreamId(
         execution_stream_id().value() +
-        xla::gpu::GetStreamId(true, async_stream_kind_).value());
+        xla::gpu::GetCollectiveStreamId(true, async_stream_kind_).value());
   }
 
  private:
@@ -283,10 +276,10 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 
 //===----------------------------------------------------------------------===//
 
-absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
-    const Thunk::CollectiveExecuteParams& params,
+absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
+    GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, NcclStreamId stream_id,
+    CollectiveOpGroupMode group_mode, CollectiveStreamId stream_id,
     AsyncStreamKind stream_kind);
 
 absl::StatusOr<size_t> GetNumLocalParticipants(
@@ -294,13 +287,12 @@ absl::StatusOr<size_t> GetNumLocalParticipants(
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode);
 
-// Returns a nccl comm handle and a flag indicating if
-// it's a local communicator.
-absl::StatusOr<NcclCommHandleWrapper> GetNcclComm(
-    const Thunk::CollectiveExecuteParams& params,
+// Returns a nccl comm and a flag indicating if it's a local communicator.
+absl::StatusOr<CommunicatorHandle> GetNcclComm(
+    GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
     const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, NcclStreamId stream_id,
+    CollectiveOpGroupMode group_mode, CollectiveStreamId stream_id,
     AsyncStreamKind stream_kind);
 
 struct DeviceBufferPair {
@@ -326,9 +318,10 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 // communicator to enable zero-copy collectives.
 //
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
-absl::Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
+absl::Status MaybeRegisterBuffers(GpuCollectives* collectives,
+                                  se::StreamExecutor* executor,
                                   const std::vector<DeviceBufferPair>& buffers,
-                                  NcclApi::NcclCommHandle comm);
+                                  Communicator* comm);
 
 }  // namespace gpu
 }  // namespace xla

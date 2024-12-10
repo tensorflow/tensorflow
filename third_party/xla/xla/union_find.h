@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_UNION_FIND_H_
 #define XLA_UNION_FIND_H_
 
-namespace tensorflow {
+namespace xla {
 
 // Union-Find data structure.
 // Each cluster has an associated value; when merging clusters we can control
@@ -25,7 +25,8 @@ namespace tensorflow {
 template <typename T>
 class UnionFind {
  public:
-  UnionFind() : rank_(0), size_(1), parent_(nullptr) {}
+  explicit UnionFind(const T& value = T())
+      : rank_(0), size_(1), parent_(nullptr), value_(value) {}
 
   // Returns the number of elements in a cluster.
   int Size() { return FindRoot()->size_; }
@@ -76,6 +77,6 @@ UnionFind<T>* UnionFind<T>::FindRoot() {
   return parent_;
 }
 
-}  // namespace tensorflow
+}  // namespace xla
 
 #endif  // XLA_UNION_FIND_H_

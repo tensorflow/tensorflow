@@ -33,7 +33,7 @@ namespace device_utils {
 //   Note that lowercase "cpu" and "gpu" are currently supported only for
 //   legacy reasons:
 //   https://cs.opensource.google/tensorflow/tensorflow/+/master:tensorflow/python/framework/device_spec.py;l=46;drc=d3a378f9665d8eee827c74cb9ecbee81e4c288dd
-Status ValidateDeviceType(StringPiece type);
+absl::Status ValidateDeviceType(StringPiece type);
 
 }  // namespace device_utils
 }  // namespace tensorflow

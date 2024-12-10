@@ -28,9 +28,7 @@ namespace shlo_ref {
 namespace {
 
 using testing::Each;
-using testing::ElementsAre;
 using testing::ElementsAreArray;
-using testing::Eq;
 using testing::FloatEq;
 using testing::Pointwise;
 

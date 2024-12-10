@@ -28,7 +28,8 @@ class Graph;
 // Graph->GraphDef->Graph.  This cleans up the graph (e.g. adds
 // edges from the source and to the sink node, resolves back edges
 // by name), and makes sure the resulting graph is valid.
-Status GraphDefBuilderToGraph(const GraphDefBuilder& builder, Graph* graph);
+absl::Status GraphDefBuilderToGraph(const GraphDefBuilder& builder,
+                                    Graph* graph);
 
 }  // namespace tensorflow
 

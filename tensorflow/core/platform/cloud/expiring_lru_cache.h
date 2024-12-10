@@ -21,11 +21,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/tsl/platform/cloud/expiring_lru_cache.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/cloud/expiring_lru_cache.h"
 
 namespace tensorflow {
 using tsl::ExpiringLRUCache;  // NOLINT(misc-unused-using-decls)

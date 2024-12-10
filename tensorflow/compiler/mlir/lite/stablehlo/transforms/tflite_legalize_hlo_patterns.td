@@ -28,6 +28,12 @@ def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
 def CreateTFLCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
 
+def : Pat<
+  (MHLO_ConstantOp:$output $value),
+  (Arith_ConstantOp $value),
+  [(TFL_TensorOf<[AnyType]> $output)]>;
+
+
 //===----------------------------------------------------------------------===//
 // data movement
 //===----------------------------------------------------------------------===//
@@ -214,6 +220,10 @@ def : Pat<
   (TFL_RightShiftOp $l, $r)>;
 
 def : Pat<
+  (MHLO_Atan2Op $l, $r),
+  (TFL_Atan2Op $l, $r)>;
+
+def : Pat<
   (MHLO_RemOp $l, $r),
   (TFL_FloorModOp $l, $r)>;
 
@@ -222,22 +232,58 @@ foreach pair = [
   [MHLO_MaxOp, TFL_MaximumOp],
   [MHLO_MinOp, TFL_MinimumOp],
   [MHLO_PowOp, TFL_PowOp],
-  [MHLO_Atan2Op, TFL_Atan2Op],
 ] in {
   def : Pat<
     (pair[0] $l, $r),
-    (pair[1] $l, $r)>;
+    (pair[1] $l, $r)>; 
+
+  def : Pat<
+    (pair[0] 
+      (MHLO_BroadcastInDimOp:$output
+        $bcast_operand,
+        $broadcast_dimensions),
+      $r),
+    (pair[1] $bcast_operand, $r),
+    [(IsTFLStyleBroadcast $broadcast_dimensions, $output)]>; 
+
+  def : Pat<
+    (pair[0] 
+      $l,
+      (MHLO_BroadcastInDimOp:$output
+        $bcast_operand,
+        $broadcast_dimensions)),
+    (pair[1] $l, $bcast_operand),
+    [(IsTFLStyleBroadcast $broadcast_dimensions, $output)]>; 
 }
 
 // Binary ops with fused activiation attr.
 foreach pair = [
   [MHLO_DivOp, TFL_DivOp],
+  [MHLO_AddOp, TFL_AddOp],
   [MHLO_MulOp, TFL_MulOp],
   [MHLO_SubtractOp, TFL_SubOp],
 ] in {
   def : Pat<
     (pair[0] $l, $r),
     (pair[1] $l, $r, TFL_AF_None)>;
+
+  def : Pat<
+    (pair[0] 
+      (MHLO_BroadcastInDimOp:$output
+        $bcast_operand,
+        $broadcast_dimensions),
+      $r),
+    (pair[1] $bcast_operand, $r, TFL_AF_None),
+    [(IsTFLStyleBroadcast $broadcast_dimensions, $output)]>; 
+
+  def : Pat<
+    (pair[0] 
+      $l,
+      (MHLO_BroadcastInDimOp:$output
+        $bcast_operand,
+        $broadcast_dimensions)),
+    (pair[1] $l, $bcast_operand, TFL_AF_None),
+    [(IsTFLStyleBroadcast $broadcast_dimensions, $output)]>; 
 }
 
 
@@ -280,9 +326,13 @@ def LowerCbrt : Pat<(MHLO_CbrtOp $opr),
       TFL_AF_None)),
       [(F32Tensor $opr)]>;
 
+// Pattern to legacyze mhlo.abs(complex) to tfl.complex_abs.
+def : Pat<(MHLO_AbsOp MHLO_ComplexTensor:$arg), (TFL_ComplexAbsOp $arg)>;
+
+// Pattern to match non-complex abs.
+def : Pat<(MHLO_AbsOp MHLO_PredIntFpOrQuantizedTensor:$arg), (TFL_AbsOp $arg)>;
 
 foreach pair = [
-  [MHLO_AbsOp, TFL_AbsOp],
   [MHLO_BitcastConvertOp, TFL_BitcastOp],
   [MHLO_CeilOp, TFL_CeilOp],
   [MHLO_CosineOp, TFL_CosOp],
@@ -372,7 +422,7 @@ def : Pat<
 //   return floor(x) + 1
 // else
 //   return floor(x)
-def Round : Pat<(MHLO_SelectOp
+def Phase1_Round : Pat<(MHLO_SelectOp
             (MHLO_OrOp
               (MHLO_CompareOp (MHLO_SubtractOp:$frac
                                $input,
@@ -420,7 +470,7 @@ def Round : Pat<(MHLO_SelectOp
 //    if ((rem[i] < 0) != (arg0[i] < 0) && arg0[i] != 0)
 //       rem[i] += arg1[i]
 // return rem
-def : Pat<(MHLO_SelectOp
+def Phase1_FloorMod : Pat<(MHLO_SelectOp
             (MHLO_AndOp
               (MHLO_CompareOp
                 (MHLO_CompareOp:$rltz
@@ -453,7 +503,7 @@ def : Pat<(MHLO_SelectOp
 //    if (rem[i] < 0 && rem[i] != 0)
 //       rem[i] += cst
 // return rem
-def : Pat<(MHLO_SelectOp
+def Phase1_FloorMod2 : Pat<(MHLO_SelectOp
             (MHLO_AndOp
               (MHLO_CompareOp:$rltz
                 (MHLO_RemOp:$rem $arg, (MHLO_ConstantOp $cst)),
@@ -499,7 +549,7 @@ def : Pat<(MHLO_SelectOp
 // the same function in this case the sign function. Named values like 'div'
 // refer to the same value produced by the same function, in this case division.
 // Mathematical symbols do not indicate a re-use of the value.
-def : Pat<(MHLO_RoundOp
+def Phase1_FloorDiv : Pat<(MHLO_RoundOp
             (MHLO_SelectOp
               (MHLO_AndOp
                 (MHLO_CompareOp
@@ -555,7 +605,7 @@ def : Pat<(MHLO_RoundOp
 // the same function in this case the sign function. Named values like 'div'
 // refer to the same value produced by the same function, in this case division.
 // Mathematical symbols do not indicate a re-use of the value.
-def : Pat<(MHLO_RoundOp
+def Phase1_FloorDiv2 : Pat<(MHLO_RoundOp
             (MHLO_SelectOp
               (MHLO_AndOp
                 (MHLO_CompareOp
@@ -613,7 +663,7 @@ def : Pat<(MHLO_RoundOp
 // the same function in this case the sign function. Named values like 'div'
 // refer to the same value produced by the same function, in this case division.
 // Mathematical symbols do not indicate a re-use of the value.
-def : Pat<(MHLO_RoundOp
+def Phase1_FloorDiv3 : Pat<(MHLO_RoundOp
             (MHLO_SelectOp
               (MHLO_AndOp
                 (MHLO_CompareOp
@@ -675,7 +725,7 @@ def : Pat<(MHLO_RoundOp
 // the same function in this case the sign function. Named values like 'div'
 // refer to the same value produced by the same function, in this case division.
 // Mathematical symbols do not indicate a re-use of the value.
-def : Pat<(MHLO_RoundOp
+def Phase1_FloorDiv4 : Pat<(MHLO_RoundOp
             (MHLO_SelectOp
               (MHLO_AndOp
                 (MHLO_CompareOp
@@ -707,6 +757,42 @@ def : Pat<(MHLO_RoundOp
            (SameValue $rem, $rem2),
            (FloatOrDefaultCompare $compare_type, $cst_zero),
            (FloatOrDefaultCompare $compare_type1, $cst_sgn)]>;
+
+// Semantically equivalant to above, just uses sub(x, 1) instead of
+// add(x, -1).
+def Phase1_FloorDiv5 : Pat<
+          (MHLO_RoundOp
+            (MHLO_SelectOp
+              (MHLO_AndOp
+                (MHLO_CompareOp
+                  (MHLO_RemOp:$rem
+                    $arg0,
+                    (MHLO_ConstantOp:$cstv_op $cstv)),
+                  (MHLO_ConstantOp $cst_zero),
+                  MHLO_ComparisonDirectionValue<"NE">,
+                  $compare_type),
+                (MHLO_CompareOp
+                  (MHLO_ConstantOp $cst_sgn),
+                  (MHLO_SignOp $rem1),
+                  MHLO_ComparisonDirectionValue<"NE">,
+                  $compare_type1)),
+              (MHLO_SubtractOp
+                (MHLO_DivOp:$div
+                  (MHLO_SubtractOp $arg0, $rem2),
+                  $cstv_op_2),
+                (MHLO_ConstantOp $cst_1)),
+              $div1)),
+          (TFL_FloorDivOp $arg0, $cstv_op),
+          [(ValueEquals<"0.0"> $cst_zero),
+           (ValueEquals<"1.0"> $cst_1),
+           (TensorIsSign $cstv, $cst_sgn),
+           (SameValue $cstv_op, $cstv_op_2),
+           (SameValue $div, $div1),
+           (SameValue $rem, $rem1),
+           (SameValue $rem, $rem2),
+           (FloatOrDefaultCompare $compare_type, $cst_zero),
+           (FloatOrDefaultCompare $compare_type1, $cst_sgn)]>;
+
 
 
 //===----------------------------------------------------------------------===//

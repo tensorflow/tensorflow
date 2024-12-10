@@ -117,7 +117,8 @@ std::optional<flatbuffers::Offset<tflite::Operator>> CreateFlatBufferOperator(
     Operation *mlir_op, uint32_t opcode_index,
     const std::vector<int32_t> &operands, const std::vector<int32_t> &results,
     const std::vector<int32_t> &intermediates,
-    flatbuffers::FlatBufferBuilder *fbb);
+    flatbuffers::FlatBufferBuilder *fbb,
+    std::optional<int> debug_metadata_index = -1);
 
 // Populates the array of mlir::NamedAttributes corresponding to the given
 // tflite::FlatbufferOptionsUnion.

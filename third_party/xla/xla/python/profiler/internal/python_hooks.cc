@@ -21,13 +21,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "xla/tsl/profiler/utils/time_utils.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/time_utils.h"
-#include "tsl/profiler/utils/xplane_builder.h"
-#include "tsl/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/xplane_utils.h"
 
 namespace xla {
 namespace profiler {
@@ -60,7 +60,7 @@ std::string GetEventName(PyObject* co_filename, PyObject* co_name,
                       " ", function);
 }
 
-std::string GetEventName(PyMethodDef* method, PyObject* module) {
+std::string GetEventName(std::string_view method_name, PyObject* module) {
   // Python stack does not have a filename/line_no for native calls.
   // Use module name and function/method name instead.
   std::string filename;
@@ -75,8 +75,8 @@ std::string GetEventName(PyMethodDef* method, PyObject* module) {
   } else {
     filename = "<unknown>";
   }
-  if (method && method->ml_name) {
-    return absl::StrCat("$", filename, " ", method->ml_name);
+  if (!method_name.empty()) {
+    return absl::StrCat("$", filename, " ", method_name);
   }
   return "$<unknown>";
 }
@@ -125,7 +125,7 @@ std::string PythonTraceEntry::Name() const {
   if (co_filename) {
     return GetEventName(co_filename, co_name, co_firstlineno);
   }
-  return GetEventName(method_def, m_module);
+  return GetEventName(method_name, m_module);
 }
 
 PythonHooks* PythonHooks::GetSingleton() {

@@ -1,6 +1,6 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -21,13 +21,13 @@ cc_library(
         "//xla/tsl/distributed_runtime/rpc:grpc_client_cq_tag",
         "//xla/tsl/distributed_runtime/rpc:grpc_state",
         "//xla/tsl/distributed_runtime/rpc:grpc_util",
+        "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -42,12 +42,12 @@ cc_library(
         "//xla/tsl/distributed_runtime/rpc:async_service_interface",
         "//xla/tsl/distributed_runtime/rpc:grpc_call",
         "//xla/tsl/distributed_runtime/rpc:grpc_util",
+        "//xla/tsl/protobuf:coordination_service_cc_grpc_proto",
+        "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/protobuf:coordination_service_cc_grpc_proto",
-        "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
     ] + tsl_grpc_cc_dependencies(),
 )

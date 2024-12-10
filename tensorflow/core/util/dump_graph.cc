@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
@@ -73,9 +74,9 @@ struct GraphDumperConfig {
   // The dumper and suffix configured.
   struct Config {
     bool IsSet() const { return dumper != nullptr; }
-    std::function<Status(const Graph& graph,
-                         const FunctionLibraryDefinition* flib_def,
-                         WritableFile*)>
+    std::function<absl::Status(const Graph& graph,
+                               const FunctionLibraryDefinition* flib_def,
+                               WritableFile*)>
         dumper = nullptr;
     string suffix = ".pbtxt";
   } config TF_GUARDED_BY(mu);
@@ -94,7 +95,8 @@ GraphDumperConfig& GetGraphDumperConfig() {
 
 string GetDumpGraphFormatLowerCase() {
   string fmt;
-  Status status = tsl::ReadStringFromEnvVar("TF_DUMP_GRAPH_FMT", "TXT", &fmt);
+  absl::Status status =
+      tsl::ReadStringFromEnvVar("TF_DUMP_GRAPH_FMT", "TXT", &fmt);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to read TF_DUMP_GRAPH_FMT: " << status;
     return "txt";
@@ -119,33 +121,34 @@ class StderrWritableFile : public WritableFile {
  public:
   StderrWritableFile() = default;
 
-  Status Append(StringPiece data) override {
+  absl::Status Append(StringPiece data) override {
     fprintf(stderr, "%.*s", static_cast<int>(data.size()), data.data());
     return absl::OkStatus();
   }
 
-  Status Close() override { return absl::OkStatus(); }
+  absl::Status Close() override { return absl::OkStatus(); }
 
-  Status Flush() override {
+  absl::Status Flush() override {
     fflush(stderr);
     return absl::OkStatus();
   }
 
-  Status Name(StringPiece* result) const override {
+  absl::Status Name(StringPiece* result) const override {
     *result = "stderr";
     return absl::OkStatus();
   }
 
-  Status Sync() override { return absl::OkStatus(); }
+  absl::Status Sync() override { return absl::OkStatus(); }
 
-  Status Tell(int64_t* position) override {
+  absl::Status Tell(int64_t* position) override {
     return errors::Unimplemented("Stream not seekable");
   }
 };
 
-Status CreateWritableFile(Env* env, const string& dirname, const string& name,
-                          const string& suffix, string* filepath,
-                          std::unique_ptr<WritableFile>* file) {
+absl::Status CreateWritableFile(Env* env, const string& dirname,
+                                const string& name, const string& suffix,
+                                string* filepath,
+                                std::unique_ptr<WritableFile>* file) {
   string dir;
   if (!dirname.empty()) {
     dir = dirname;
@@ -182,8 +185,8 @@ Status CreateWritableFile(Env* env, const string& dirname, const string& name,
   return env->NewWritableFile(*filepath, file);
 }
 
-Status WriteProtoToUniqueFile(const tensorflow::protobuf::Message& proto,
-                              WritableFile* file) {
+absl::Status WriteProtoToUniqueFile(const tensorflow::protobuf::Message& proto,
+                                    WritableFile* file) {
   string s;
   string format = GetDumpGraphFormatLowerCase();
   if (format == "txt" &&
@@ -204,8 +207,8 @@ Status WriteProtoToUniqueFile(const tensorflow::protobuf::Message& proto,
   return file->Close();
 }
 
-Status WriteProtoToUniqueFile(const tensorflow::protobuf::MessageLite& proto,
-                              WritableFile* file) {
+absl::Status WriteProtoToUniqueFile(
+    const tensorflow::protobuf::MessageLite& proto, WritableFile* file) {
   string s;
   if (!SerializeToStringDeterministic(proto, &s)) {
     return errors::Internal("Failed to serialize proto to string.");
@@ -221,29 +224,29 @@ Status WriteProtoToUniqueFile(const tensorflow::protobuf::MessageLite& proto,
 }  // anonymous namespace
 
 string DumpToFile(const string& name, const string& dirname,
-                  const string& suffix, const string& type_name,
-                  std::function<Status(WritableFile*)> dumper) {
+                  const string& suffix, absl::string_view type_name,
+                  std::function<absl::Status(WritableFile*)> dumper) {
   string filepath;
   std::unique_ptr<WritableFile> file;
-  Status status = CreateWritableFile(Env::Default(), dirname, name, suffix,
-                                     &filepath, &file);
+  absl::Status status = CreateWritableFile(Env::Default(), dirname, name,
+                                           suffix, &filepath, &file);
   if (!status.ok()) {
     return StrCat("(failed to create writable file: ", status.ToString(), ")");
   }
 
   status = dumper(file.get());
   if (!status.ok()) {
-    return StrCat("(failed to dump ", type_name, " to '", filepath,
-                  "': ", status.ToString(), ")");
+    return absl::StrCat("(failed to dump ", type_name, " to '", filepath,
+                        "': ", status.ToString(), ")");
   }
   LOG(INFO) << "Dumped " << type_name << " to " << filepath;
   return filepath;
 }
 
 void SetGraphDumper(
-    std::function<Status(const Graph& graph,
-                         const FunctionLibraryDefinition* flib_def,
-                         WritableFile*)>
+    std::function<absl::Status(const Graph& graph,
+                               const FunctionLibraryDefinition* flib_def,
+                               WritableFile*)>
         dumper,
     string suffix) {
   GraphDumperConfig& dumper_config = GetGraphDumperConfig();

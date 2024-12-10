@@ -1,0 +1,24 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+add {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %sum = f32[] add(%p0, %p1)
+}
+scatter {
+  %operand = f32[10,5]  parameter(0)
+  %indices = u32[24,1] parameter(1)
+  %update = f32[24,2,3] parameter(2)
+
+  ROOT %scatter = f32[10,5] scatter(%operand, %indices, %update),
+      update_window_dims={1,2},
+      inserted_window_dims={},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      to_apply=add
+}
+// CHECK: %[[PARAM:.*]] = xla.pure_call @scatter_indices
+// CHECK: %[[INDEX:.*]] = arith.index_castui %[[PARAM]]
+// CHECK: arith.cmpi ule, %[[INDEX]]

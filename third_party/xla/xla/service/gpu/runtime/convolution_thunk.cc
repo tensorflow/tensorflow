@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -27,11 +28,10 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
-#if TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/stream_executor_util.h"
-#endif  // TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/service/gpu/stream_executor_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -87,8 +87,10 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   RunConvOptions opts;
   opts.runner_cache = &GetOrCreateRunner(params.stream, &runner_created);
 
-#if TENSORFLOW_USE_ROCM
-  if (runner_created) {
+  if (runner_created && std::holds_alternative<se::RocmComputeCapability>(
+                            params.stream->parent()
+                                ->GetDeviceDescription()
+                                .gpu_compute_capability())) {
     TF_ASSIGN_OR_RETURN(
         GpuConvParams conv_params,
         GetGpuConvParams(config_, operand_se_buffers, result_se_buffers));
@@ -116,7 +118,6 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
         conv_params.output_buf, config_.conv_desc, &scratch_allocator,
         &profile_results);
   }
-#endif  // TENSORFLOW_USE_ROCM
 
   TF_RETURN_IF_ERROR(RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),
                                 absl::MakeSpan(result_se_buffers), scratch,

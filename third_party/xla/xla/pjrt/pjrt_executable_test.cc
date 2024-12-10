@@ -93,12 +93,13 @@ TEST(ExecuteOptionsTest, SendRecvNotSupported) {
                "ExecuteOptions with send/recv calbacks is not serializable"));
 }
 
-TEST(ExecuteOptionsTest, ApplyOptionsCanParseStrings) {
+TEST(ExecuteOptionsTest, ApplyOptionsCanParseStringsAndEnums) {
   using OptionOverride = std::variant<std::string, bool, int64_t, double>;
   std::vector<std::pair<std::string, OptionOverride>> env_override_options;
   env_override_options = {
       {"xla_gpu_use_runtime_fusion", std::string("True")},
       {"xla_gpu_graph_min_graph_size", std::string("2")},
+      {"xla_gpu_disable_async_collectives", std::string("2")},
       {"xla_gpu_redzone_scratch_max_megabytes", std::string("3400")},
       {"xla_gpu_auto_spmd_partitioning_memory_budget_ratio", 0.9},
       {"xla_gpu_pgle_profile_file_or_directory_path", std::string("abc")}};
@@ -112,6 +113,8 @@ TEST(ExecuteOptionsTest, ApplyOptionsCanParseStrings) {
   EXPECT_FLOAT_EQ(
       debug_options.xla_gpu_auto_spmd_partitioning_memory_budget_ratio(), 0.9);
   EXPECT_EQ(debug_options.xla_gpu_pgle_profile_file_or_directory_path(), "abc");
+  EXPECT_EQ(debug_options.xla_gpu_disable_async_collectives().size(), 1);
+  EXPECT_EQ(debug_options.xla_gpu_disable_async_collectives()[0], 2);
 }
 
 TEST(CompiledMemoryStatsTest, Serialization) {

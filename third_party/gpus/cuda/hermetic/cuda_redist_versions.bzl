@@ -58,6 +58,18 @@ CUDA_REDIST_JSON_DICT = {
         "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.0.json",
         "87740b01676b3d18982982ab96ec7fa1a626d03a96df070a6b0f258d01ff5fab",
     ],
+    "12.6.1": [
+        "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.1.json",
+        "22ddfeb81a6f9cee4a708a2e3b4db1c36c7db0a1daa1f33f9c7f2f12a1e790de",
+    ],
+    "12.6.2": [
+        "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.2.json",
+        "8056da1f5acca8e613da1349d9b8782b774ad0254e3eddcc95734ded4d33f2df",
+    ],
+    "12.6.3": [
+        "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.3.json",
+        "9c598598457a6463eb92889080c16b2b9dc04150e501b8bfc1536d403ba70aaf",
+    ],
 }
 
 CUDNN_REDIST_JSON_DICT = {
@@ -93,20 +105,34 @@ CUDNN_REDIST_JSON_DICT = {
         "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.3.0.json",
         "d17d9a7878365736758550294f03e633a0b023bec879bf173349bfb34781972e",
     ],
+    "9.4.0": [
+        "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.4.0.json",
+        "6eeaafc5cc3d4bb2f283e6298e4c55d4c59d7c83c5d9fd8721a2c0e55aee4e54",
+    ],
+    "9.5.0": [
+        "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.5.0.json",
+        "3939f0533fdd0d3aa7edd1ac358d43da18e438e5d8f39c3c15bb72519bad7fb5",
+    ],
+    "9.5.1": [
+        "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.5.1.json",
+        "a5484eef575bbb1fd4f96136cf12244ebc194b661f5ae9ed3b8aaa07e06434b1",
+    ],
+    "9.6.0": [
+        "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.6.0.json",
+        "6dd9a931d981fe5afc7e7ed0c422a4035b1411db4e28a39cf2429e62e3efcd3e",
+    ],
 }
 
-# The versions are different for x86 and aarch64 architectures because only
-# NCCL release versions 2.20.3 and 2.20.5 have the wheels for aarch64.
 CUDA_12_NCCL_WHEEL_DICT = {
     "x86_64-unknown-linux-gnu": {
-        "version": "2.21.5",
-        "url": "https://files.pythonhosted.org/packages/df/99/12cd266d6233f47d00daf3a72739872bdc10267d0383508b0b9c84a18bb6/nvidia_nccl_cu12-2.21.5-py3-none-manylinux2014_x86_64.whl",
-        "sha256": "8579076d30a8c24988834445f8d633c697d42397e92ffc3f63fa26766d25e0a0",
+        "version": "2.23.4",
+        "url": "https://files.pythonhosted.org/packages/ed/1f/6482380ec8dcec4894e7503490fc536d846b0d59694acad9cf99f27d0e7d/nvidia_nccl_cu12-2.23.4-py3-none-manylinux2014_x86_64.whl",
+        "sha256": "b097258d9aab2fa9f686e33c6fe40ae57b27df60cedbd15d139701bb5509e0c1",
     },
     "aarch64-unknown-linux-gnu": {
-        "version": "2.20.5",
-        "url": "https://files.pythonhosted.org/packages/c1/bb/d09dda47c881f9ff504afd6f9ca4f502ded6d8fc2f572cacc5e39da91c28/nvidia_nccl_cu12-2.20.5-py3-none-manylinux2014_aarch64.whl",
-        "sha256": "1fc150d5c3250b170b29410ba682384b14581db722b2531b0d8d33c595f33d01",
+        "version": "2.23.4",
+        "url": "https://files.pythonhosted.org/packages/c8/3a/0112397396dec37ffc8edd7836d48261b4d14ca60ec8ed7bc857cce1d916/nvidia_nccl_cu12-2.23.4-py3-none-manylinux2014_aarch64.whl",
+        "sha256": "aa946c8327e22ced28e7cef508a334673abc42064ec85f02d005ba1785ea4cec",
     },
 }
 
@@ -120,18 +146,30 @@ CUDA_11_NCCL_WHEEL_DICT = {
 
 CUDA_NCCL_WHEELS = {
     "11.8": CUDA_11_NCCL_WHEEL_DICT,
+    "12.1.0": CUDA_12_NCCL_WHEEL_DICT,
     "12.1.1": CUDA_12_NCCL_WHEEL_DICT,
     "12.2.0": CUDA_12_NCCL_WHEEL_DICT,
     "12.3.1": CUDA_12_NCCL_WHEEL_DICT,
     "12.3.2": CUDA_12_NCCL_WHEEL_DICT,
     "12.4.0": CUDA_12_NCCL_WHEEL_DICT,
-    "12.1.0": CUDA_12_NCCL_WHEEL_DICT,
+    "12.4.1": CUDA_12_NCCL_WHEEL_DICT,
     "12.5.0": CUDA_12_NCCL_WHEEL_DICT,
     "12.5.1": CUDA_12_NCCL_WHEEL_DICT,
     "12.6.0": CUDA_12_NCCL_WHEEL_DICT,
+    "12.6.1": CUDA_12_NCCL_WHEEL_DICT,
+    "12.6.2": CUDA_12_NCCL_WHEEL_DICT,
 }
 
 REDIST_VERSIONS_TO_BUILD_TEMPLATES = {
+    "nvidia_driver": {
+        "repo_name": "cuda_driver",
+        "version_to_template": {
+            "560": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
+            "555": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
+            "550": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
+            "545": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
+        },
+    },
     "cuda_nccl": {
         "repo_name": "cuda_nccl",
         "version_to_template": {

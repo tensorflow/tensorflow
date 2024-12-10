@@ -23,7 +23,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
-include "mlir/Dialect/Quant/QuantOpsBase.td"
+include "mlir/Dialect/Quant/IR/QuantBase.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
@@ -1135,7 +1135,7 @@ in the batch dimensions and broadcasting.
       `inputs[0]`: required: input LHS
       `inputs[1]`: required: input RHS
       `adjoint_lhs`: optional: Transpose LHS (default false)
-      `adjoint_lhs`: optional: Transpose LHS (default false)
+      `adjoint_rhs`: optional: Transpose RHS (default false)
   }];
 
   let arguments = (ins
@@ -1199,6 +1199,8 @@ def TFL_GatherOp : TFL_Op<"gather", [
   let hasOptions = 1;
 
   let hasVerifier = 1;
+
+  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     // DynamicRangeQuantizedOpInterface:
@@ -1641,6 +1643,7 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
     [Pure,
      TFL_OperandHasRank<0, 1>,
      TFL_OperandHasRankAtLeast<1, 2>,
+     AffineQuantizedOpInterface,
      DynamicRangeQuantizedOpInterface,
      QuantizableResult
     ]> {
@@ -1652,7 +1655,7 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$lookup,
-    TFL_TensorOf<[F32, I8, UI8, QI4]>:$value
+    TFL_TensorOf<[F32, I8, UI8, QI8, QUI8, QI4]>:$value
    );
 
   let results = (outs TFL_TensorOf<[F32, I8, UI8]>:$output);
@@ -1660,6 +1663,9 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
   let hasFolder = 1;
 
   let extraClassDeclaration = [{
+    // AffineQuantizedOpInterface:
+    int GetChannelDimIndex() { return 0; }
+    int GetQuantizationDimIndex() { return 0; }
     // DynamicRangeQuantizedOpInterface:
     std::vector<int> GetQuantizableOperandIndices() { return {1}; }
   }];
@@ -2417,6 +2423,8 @@ equivalent to setting:
   let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_SumOp: TFL_Op<"sum", [
@@ -2443,6 +2451,8 @@ def TFL_SumOp: TFL_Op<"sum", [
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
+
+  let hasFolder = 1;
 
   // TODO(b/215655380): Re-enable this once there is 16-bit MLIR quantizer.
   //
@@ -2721,6 +2731,8 @@ def TFL_PadOp : TFL_Op<"pad", [
   let hasOptions = 1;
 
   let hasFolder = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 def TFL_PadV2Op : TFL_Op<"padv2", [
@@ -3146,6 +3158,8 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
       TODO: Add support for multiple elements.
   }];
 
+  let hasFolder = 1;
+
   let arguments = (
     ins
     TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, QI8, TFL_Quint8, I1]>:$input,
@@ -3270,7 +3284,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   let description = [{
     Computes element-wise softmax activations with the following formula
 
-      exp(input) / tf.reduce_sum(exp(input * beta), dim)
+      exp(input * beta) / tf.reduce_sum(exp(input * beta), dim)
   }];
 
   let arguments = (
@@ -3967,7 +3981,7 @@ def TFL_CastOp : TFL_Op<"cast", [
 
   let hasFolder = 1;
 }
-// LINT.ThenChange(//tensorflow/compiler/mlir/lite/transforms/while_loop_outline.cc)
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/transforms/tf_legalizations/while_loop_outline_pass.cc)
 
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
                      SameOperandsAndResultsScale,
@@ -4076,13 +4090,13 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[I1, I8, I32, I64, F32]>:$operand,
-    TFL_TensorOf<[I1, I8, I32, I64, F32]>:$update,
+    TFL_TensorOf<[I1, I8, I32, I64, F32, F16]>:$operand,
+    TFL_TensorOf<[I1, I8, I32, I64, F32, F16]>:$update,
     TFL_I32OrI64Tensor:$start_indices
   );
 
   let results = (
-    outs TFL_TensorOf<[I1, I8, I32, I64, F32]>:$output);
+    outs TFL_TensorOf<[I1, I8, I32, I64, F32, F16]>:$output);
 
   let hasFolder = 1;
 }

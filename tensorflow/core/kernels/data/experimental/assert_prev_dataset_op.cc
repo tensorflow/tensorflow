@@ -69,7 +69,8 @@ absl::StatusOr<const DatasetBase*> GetPreviousDataset(
 }
 
 // Checks `dataset`'s op name against that in `assertions`.
-Status CheckOpName(const DatasetBase& dataset, const NameAttrList& assertions) {
+absl::Status CheckOpName(const DatasetBase& dataset,
+                         const NameAttrList& assertions) {
   if (!MatchesAnyVersion(assertions.name(), dataset.type_string())) {
     return errors::InvalidArgument("Asserted transformation matching '",
                                    assertions.name(), "', but found '",
@@ -91,8 +92,8 @@ absl::StatusOr<NodeDef> GetDatasetNode(const DatasetBase& dataset,
 }
 
 // Checks `dataset`'s attrs against those in `assertions`.
-Status CheckAttributes(const DatasetBase& dataset,
-                       const NameAttrList& assertions) {
+absl::Status CheckAttributes(const DatasetBase& dataset,
+                             const NameAttrList& assertions) {
   if (assertions.attr().empty()) return absl::OkStatus();
   TF_ASSIGN_OR_RETURN(NodeDef node, GetDatasetNode(dataset, assertions.name()));
   std::vector<std::string> attrs_not_found;
@@ -121,8 +122,8 @@ Status CheckAttributes(const DatasetBase& dataset,
 }
 
 // Checks `dataset`'s op name and attrs against those in `transformation`.
-Status CheckTransformation(const DatasetBase& dataset,
-                           const tstring& transformation) {
+absl::Status CheckTransformation(const DatasetBase& dataset,
+                                 const tstring& transformation) {
   TF_ASSIGN_OR_RETURN(NameAttrList assertions, GetAssertions(transformation));
   TF_RETURN_IF_ERROR(CheckOpName(dataset, assertions));
   TF_RETURN_IF_ERROR(CheckAttributes(dataset, assertions));
@@ -166,19 +167,20 @@ class AssertPrevDatasetOp::Dataset : public DatasetBase {
     return input_->Cardinality(options);
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* transformations_node = nullptr;
@@ -194,7 +196,7 @@ class AssertPrevDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       const DatasetBase* current_dataset = dataset();
       for (int i = 0; i < dataset()->transformations_.size(); ++i) {
         absl::StatusOr<const DatasetBase*> previous_dataset =
@@ -205,8 +207,8 @@ class AssertPrevDatasetOp::Dataset : public DatasetBase {
               " transformations but encountered only ", i, ".");
         }
 
-        Status s = CheckTransformation(**previous_dataset,
-                                       dataset()->transformations_[i]);
+        absl::Status s = CheckTransformation(**previous_dataset,
+                                             dataset()->transformations_[i]);
         if (!s.ok()) {
           return errors::InvalidArgument(
               "Failure checking transformations at offset ", i, ": ",
@@ -218,9 +220,9 @@ class AssertPrevDatasetOp::Dataset : public DatasetBase {
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
     }
 
@@ -231,14 +233,14 @@ class AssertPrevDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       return absl::OkStatus();
     }

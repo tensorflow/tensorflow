@@ -23,8 +23,8 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -1099,6 +1099,21 @@ TEST(ShapeUtilTest, MakeShapeWithDescendingLayoutAndSamePhysicalLayout) {
                            F32, {128, 24, 48, 48, 4}, {4, 3, 2, 1, 0}));
 }
 
+TEST(ShapeUtilTest,
+     MakeShapeWithDescendingLayoutAndSamePhysicalLayoutWithDynamicDims) {
+  Shape shape =
+      ShapeUtil::MakeShape(F32, {128, 24, Shape::kUnboundedSize, 48, 48},
+                           {false, false, true, false, false});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({2, 4, 3, 1, 0});
+  Shape new_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape);
+  Shape expected_shape =
+      ShapeUtil::MakeShape(F32, {128, 24, 48, 48, Shape::kUnboundedSize},
+                           {false, false, false, false, true});
+  *expected_shape.mutable_layout() = LayoutUtil::MakeLayout({4, 3, 2, 1, 0});
+  EXPECT_EQ(new_shape, expected_shape);
+}
+
 TEST(ShapeUtilTest, DeduceTransposeDimensionsForBitcast) {
   Shape input_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3}, {1, 0});
   Shape output_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {3, 5}, {0, 1});
@@ -1224,6 +1239,14 @@ TEST(ShapeUtilTest, Int4ShapeSize) {
   layout->set_element_size_in_bits(4);
   EXPECT_EQ(ShapeUtil::ArrayDataSize(int4_shape2), 9216 * 6144 / 2);
   EXPECT_EQ(ShapeUtil::ArraySize(int4_shape2), 9216 * 6144 / 2);
+
+  // Changing the type should clear element_size_in_bits.
+  Shape pred_shape = ShapeUtil::ChangeElementType(int4_shape, PRED);
+  EXPECT_EQ(pred_shape.layout().element_size_in_bits(), 0);
+  Shape u8_shape = ShapeUtil::ChangeElementType(int4_shape, U8);
+  EXPECT_EQ(u8_shape.layout().element_size_in_bits(), 0);
+  Shape u4_shape = ShapeUtil::ChangeElementType(int4_shape, U4);
+  EXPECT_EQ(u4_shape.layout().element_size_in_bits(), 4);
 }
 
 TEST(XlaShapeUtilTest, ZeroSize) {
@@ -1392,138 +1415,14 @@ TEST(ShapeUtilTest, DecomposeBitcastToTrt) {
   EXPECT_FALSE(decomposition_trt.IsTranspose2Identity());
 }
 
-TEST(NormalizedLogicalTransposeShapeTest, NoTranspose) {
-  Shape transposed =
-      ShapeUtil::MakeShapeWithDenseLayout(F32, {64, 1, 128}, {2, 1, 0});
-  absl::InlinedVector<int64_t, 3> permutation;
-  // After normalization, it becomes the identity permutation.
-  EXPECT_EQ(std::nullopt, ShapeUtil::GetNormalizedLogicalTransposeShape(
-                              transposed, {0, 2, 1}, permutation));
+TEST(ShapeUtilTest, ReorderDimensionsTest) {
+  EXPECT_EQ(ShapeUtil::ReorderLogicalDimensions(
+                ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 3, 12, 17},
+                                                    {1, 2, 0, 3}),
+                {0, 2, 1, 3})
+                .ToString(true),
+            "f32[16,12,3,17]{2,1,0,3}");
 }
-
-TEST(NormalizedLogicalTransposeShapeTest, NoTranspose2) {
-  Shape transposed =
-      ShapeUtil::MakeShapeWithDenseLayout(F32, {32, 64, 128}, {0, 1, 2});
-  absl::InlinedVector<int64_t, 3> permutation;
-  // The output shape doesn't have the default layout.
-  EXPECT_EQ(std::nullopt, ShapeUtil::GetNormalizedLogicalTransposeShape(
-                              transposed, {0, 2, 1}, permutation));
-}
-
-TEST(NormalizedLogicalTransposeShapeTest, Simple) {
-  Shape transposed =
-      ShapeUtil::MakeShapeWithDenseLayout(F32, {64, 128}, {1, 0});
-  absl::InlinedVector<int64_t, 3> permutation;
-  EXPECT_EQ(std::make_optional(absl::InlinedVector<int64_t, 3>{1, 64, 128}),
-            ShapeUtil::GetNormalizedLogicalTransposeShape(transposed, {1, 0},
-                                                          permutation));
-  EXPECT_EQ(permutation, (absl::InlinedVector<int64_t, 3>{0, 2, 1}));
-}
-
-TEST(NormalizedLogicalTransposeShapeTest, Simple2) {
-  Shape output_shape =
-      ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 16, 32768}, {2, 1, 0});
-  absl::InlinedVector<int64_t, 3> permutation;
-  EXPECT_EQ(std::make_optional(absl::InlinedVector<int64_t, 3>{8, 16, 32768}),
-            ShapeUtil::GetNormalizedLogicalTransposeShape(
-                output_shape, {0, 2, 1}, permutation));
-  EXPECT_EQ(permutation, (absl::InlinedVector<int64_t, 3>{0, 2, 1}));
-}
-
-TEST(NormalizedLogicalTransposeShapeTest, Simple3) {
-  Shape output_shape =
-      ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 32768, 8}, {2, 1, 0});
-  absl::InlinedVector<int64_t, 3> permutation;
-  EXPECT_EQ(std::make_optional(absl::InlinedVector<int64_t, 3>{16, 32768, 8}),
-            ShapeUtil::GetNormalizedLogicalTransposeShape(
-                output_shape, {2, 1, 0}, permutation));
-  EXPECT_EQ(permutation, (absl::InlinedVector<int64_t, 3>{2, 1, 0}));
-}
-
-TEST(NormalizedLogicalTransposeShapeTest, NormalizedShapeRank4) {
-  Shape transposed =
-      ShapeUtil::MakeShapeWithDenseLayout(F32, {16, 32768, 8, 4}, {3, 2, 1, 0});
-  std::vector<int64_t> dimensions = {2, 0, 3, 1};
-  absl::InlinedVector<int64_t, 3> permutation;
-  EXPECT_EQ(
-      std::make_optional(absl::InlinedVector<int64_t, 3>{16, 32768, 8, 4}),
-      ShapeUtil::GetNormalizedLogicalTransposeShape(transposed, dimensions,
-                                                    permutation));
-  EXPECT_EQ(permutation, (absl::InlinedVector<int64_t, 3>{2, 0, 3, 1}));
-}
-
-TEST(NormalizedLogicalTransposeShapeTest, LargeView) {
-  Shape output_shape = ShapeUtil::MakeShapeWithDenseLayout(
-      F32, {8, 16, 32, 32, 32}, {4, 3, 2, 1, 0});
-  absl::InlinedVector<int64_t, 3> permutation;
-  EXPECT_EQ(std::make_optional(absl::InlinedVector<int64_t, 3>{8, 16, 32768}),
-            ShapeUtil::GetNormalizedLogicalTransposeShape(
-                output_shape, {0, 4, 1, 2, 3}, permutation));
-  EXPECT_EQ(permutation, (absl::InlinedVector<int64_t, 3>{0, 2, 1}));
-}
-
-TEST(NormalizedLogicalTransposeShapeTest, LargeSizeOverflowTest) {
-  Shape output_shape =
-      ShapeUtil::MakeShapeWithDenseLayout(BF16, {4096, 4096, 128}, {2, 1, 0});
-  absl::InlinedVector<int64_t, 3> permutation;
-  EXPECT_EQ(std::nullopt, ShapeUtil::GetNormalizedLogicalTransposeShape(
-                              output_shape, {0, 1, 2}, permutation));
-}
-
-TEST(NormalizedLogicalTransposeShapeTest, BatchedLogical) {
-  Shape transposed =
-      ShapeUtil::MakeShapeWithDenseLayout(F32, {64, 32, 3}, {2, 1, 0});
-  std::vector<int64_t> dimensions = {2, 0, 1};
-  absl::InlinedVector<int64_t, 3> permutation;
-  EXPECT_EQ(std::make_optional(absl::InlinedVector<int64_t, 3>{1, 64, 96}),
-            ShapeUtil::GetNormalizedLogicalTransposeShape(
-                transposed, dimensions, permutation));
-  EXPECT_EQ(permutation, (absl::InlinedVector<int64_t, 3>{0, 2, 1}));
-}
-
-TEST(NormalizedLogicalTransposeShapeTest, LogicalWithDegenerateDims) {
-  Shape transposed = ShapeUtil::MakeShapeWithDenseLayout(
-      F32, {1, 32, 1, 64, 1, 3, 1}, {6, 5, 4, 3, 2, 1, 0});
-  std::vector<int64_t> dimensions = {6, 1, 4, 5, 2, 3, 0};
-  absl::InlinedVector<int64_t, 3> permutation;
-  EXPECT_EQ(std::make_optional(absl::InlinedVector<int64_t, 3>{32, 64, 3}),
-            ShapeUtil::GetNormalizedLogicalTransposeShape(
-                transposed, dimensions, permutation));
-  EXPECT_EQ(permutation, (absl::InlinedVector<int64_t, 3>{0, 2, 1}));
-}
-
-TEST(NormalizedLogicalTransposeShapeTest, LogicalWithDegenerateLastDim) {
-  Shape transposed =
-      ShapeUtil::MakeShapeWithDenseLayout(F32, {32, 64, 1}, {2, 1, 0});
-  std::vector<int64_t> dimensions = {2, 1, 0};
-  absl::InlinedVector<int64_t, 3> permutation;
-  EXPECT_EQ(std::make_optional(absl::InlinedVector<int64_t, 3>{1, 32, 64}),
-            ShapeUtil::GetNormalizedLogicalTransposeShape(
-                transposed, dimensions, permutation));
-  EXPECT_EQ(permutation, (absl::InlinedVector<int64_t, 3>{0, 2, 1}));
-}
-
-TEST(NormalizedLogicalTransposeShapeTest, Large) {
-  Shape transposed =
-      ShapeUtil::MakeShapeWithDenseLayout(F32, {8, 65, 31, 31}, {3, 2, 1, 0});
-  absl::InlinedVector<int64_t, 3> permutation;
-  EXPECT_EQ(std::make_optional(absl::InlinedVector<int64_t, 3>{8, 65, 961}),
-            ShapeUtil::GetNormalizedLogicalTransposeShape(
-                transposed, {0, 3, 1, 2}, permutation));
-  EXPECT_EQ(permutation, (absl::InlinedVector<int64_t, 3>{0, 2, 1}));
-}
-
-TEST(NormalizedLogicialTransposeShapeTest, LogicalTranspose) {
-  Shape transposed =
-      ShapeUtil::MakeShapeWithDenseLayout(F32, {13, 12, 10, 11}, {3, 2, 1, 0});
-  std::vector<int64_t> dimensions = {3, 2, 0, 1};
-  absl::InlinedVector<int64_t, 3> permutation;
-  EXPECT_EQ(std::make_optional(absl::InlinedVector<int64_t, 3>{13, 12, 110}),
-            ShapeUtil::GetNormalizedLogicalTransposeShape(
-                transposed, dimensions, permutation));
-  EXPECT_EQ(permutation, (absl::InlinedVector<int64_t, 3>{2, 1, 0}));
-}
-
 
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {
   EXPECT_FALSE(ShapeUtil::ReshapeIsBitcast(

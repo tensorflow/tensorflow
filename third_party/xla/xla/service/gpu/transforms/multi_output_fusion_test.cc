@@ -42,23 +42,16 @@ namespace gpu {
 namespace m = ::xla::match;
 
 class MultiOutputFusionTest : public HloTestBase {
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
-    return [&](const Shape& shape) {
-      constexpr int64_t kPointerSize = 8;
-      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-    };
-  }
-
  public:
   MultiOutputFusion mof_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                         ShapeSizeBytesFunction()};
+                         HloCostAnalysis::DefaultShapeSize};
 
   void CheckMultiOutputFusion(absl::string_view hlo,
                               std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(
         hlo,
         MultiOutputFusion{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                          ShapeSizeBytesFunction()},
+                          HloCostAnalysis::DefaultShapeSize},
         expected);
   }
 };
@@ -1372,7 +1365,7 @@ ENTRY %reproducer (param_0.1090: f64[64,64], param_1.1377: f64[64,64], param_2.1
   EXPECT_FALSE(mof_.Run(module.get()).value());
 }
 
-TEST_F(MultiOutputFusionTest, NoFusionToAvoidCodeDuplication) {
+TEST_F(MultiOutputFusionTest, NoProblemWithCodeDuplication) {
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule module
 
@@ -1529,9 +1522,7 @@ ENTRY main {
 }
   )")
                     .value();
-  auto& debug_options = module->mutable_config().mutable_debug_options();
-  debug_options.set_xla_gpu_mlir_emitter_level(3);
-  EXPECT_FALSE(mof_.Run(module.get()).value());
+  EXPECT_TRUE(mof_.Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, DoNotFuseRoot) {
@@ -1762,11 +1753,9 @@ TEST_F(MultiOutputFusionTest, OverlappingRead) {
 }
 
 class TransposeMultiOutputFusionTest : public MultiOutputFusionTest {
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         MultiOutputFusionTest::GetDebugOptionsForTest();
-    // Only the MLIR transpose emitter supports unpadded 2D transposes.
-    debug_options.set_xla_gpu_mlir_emitter_level(3);
     return debug_options;
   }
 };

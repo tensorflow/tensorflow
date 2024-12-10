@@ -265,96 +265,15 @@ tf_cc_test(
     ],
 )
 
-cc_library(
-    name = "graph_decompose_pass",
-    srcs = ["integration/graph_decompose_pass.cc"],
-    hdrs = ["integration/graph_decompose_pass.h"],
-    deps = [
-        ":tfr_decompose_ctx",
-        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
-        "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/common_runtime:device_set",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-    alwayslink = 1,
-)
-
-tf_py_strict_test(
-    name = "graph_decompose_test",
-    size = "small",
-    srcs = ["integration/graph_decompose_test.py"],
-    data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    tags = [
-        "no_windows",  # TODO(b/170752141)
-        "nomac",  # TODO(b/170752141)
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:load_library",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:nn_ops",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-cc_library(
-    name = "node_expansion_pass",
-    srcs = ["integration/node_expansion_pass.cc"],
-    hdrs = ["integration/node_expansion_pass.h"],
-    deps = [
-        ":tfr_decompose_ctx",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime/eager:core_no_xla",
-        "//tensorflow/core/common_runtime/eager:custom_device",
-        "//tensorflow/core/common_runtime/eager:eager_op_rewrite_registry",
-        "//tensorflow/core/common_runtime/eager:eager_operation",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-    ],
-    alwayslink = 1,
-)
-
-tf_py_strict_test(
-    name = "node_expansion_test",
-    size = "small",
-    srcs = ["integration/node_expansion_test.py"],
-    data = ["//tensorflow/compiler/mlir/tfr/resources:decomposition_lib"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    tags = [
-        "no_windows",  # TODO(b/170752141)
-        "nomac",  # TODO(b/170752141)
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:load_library",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:nn_ops",
-        "//tensorflow/python/ops:resource_variable_ops_gen",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
 tf_python_pybind_extension(
     name = "tfr_wrapper",
     srcs = ["python/tfr_wrapper.cc"],
     enable_stub_generation = True,
     pytype_srcs = [
         "tfr_wrapper.pyi",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
     ],
     deps = [
         ":tfr",

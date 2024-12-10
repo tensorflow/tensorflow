@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -38,74 +39,25 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
-
-absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
-    const Shape& shape, absl::Span<const int64_t> batch_dims,
-    absl::Span<const int64_t> contracting_dims) {
-  std::vector<int64_t> non_contracting_dims;
-  // This is O(rank**2), but we expect rank to be small.
-  for (int64_t dim = 0; dim < shape.rank(); ++dim) {
-    bool is_batch = absl::c_count(batch_dims, dim) != 0;
-    bool is_contracting = absl::c_count(contracting_dims, dim) != 0;
-    TF_RET_CHECK(!(is_batch && is_contracting));
-    if (!(is_batch || is_contracting)) non_contracting_dims.push_back(dim);
-  }
-
-  TF_RET_CHECK(batch_dims.size() + contracting_dims.size() +
-                   non_contracting_dims.size() ==
-               shape.rank());
-  return non_contracting_dims;
-}
-
-const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
-    const HloInstruction& dot, const int operand_number) {
-  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
-  if (operand_number == 0) {
-    return dimension_numbers.lhs_batch_dimensions();
-  }
-  return dimension_numbers.rhs_batch_dimensions();
-}
-
-absl::StatusOr<int64_t> ContractingDimensionIndex(const HloInstruction& dot,
-                                                  const int operand_number) {
-  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
-  if (operand_number == 0) {
-    TF_RET_CHECK(dimension_numbers.lhs_contracting_dimensions().size() == 1);
-    return dimension_numbers.lhs_contracting_dimensions(0);
-  }
-  TF_RET_CHECK(dimension_numbers.rhs_contracting_dimensions().size() == 1);
-  return dimension_numbers.rhs_contracting_dimensions(0);
-}
-
-absl::StatusOr<int64_t> NonContractingDimensionIndex(const HloInstruction& dot,
-                                                     const int operand_number) {
-  TF_ASSIGN_OR_RETURN(int64_t contracting_dim,
-                      ContractingDimensionIndex(dot, operand_number));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<int64_t> non_contracting_dims,
-      GetNonContractingDims(dot.operand(operand_number)->shape(),
-                            BatchDimensionsForOperand(dot, operand_number),
-                            {contracting_dim}));
-  TF_RET_CHECK(non_contracting_dims.size() == 1);
-  return non_contracting_dims.front();
-}
 
 absl::StatusOr<Shape> GetBatchRowColumnShape(
     const Shape& shape, absl::Span<const int64_t> batch_dims,
@@ -301,13 +253,13 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     double alpha_real, double alpha_imag, double beta,
     PrecisionConfig::Algorithm precision_algorithm,
     std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-    bool grad_y) {
+    bool grad_y, const se::GpuComputeCapability& gpu_version) {
   return GemmConfig::For(lhs_shape, lhs_batch_dims, lhs_contracting_dims,
                          rhs_shape, rhs_batch_dims, rhs_contracting_dims,
                          /*c_shape=*/output_shape, /*bias_shape_ptr=*/nullptr,
                          output_shape, alpha_real, alpha_imag, beta,
                          precision_algorithm, algorithm, compute_precision,
-                         grad_x, grad_y);
+                         grad_x, grad_y, gpu_version);
 }
 
 /*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
@@ -319,7 +271,7 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     double alpha_imag, double beta,
     PrecisionConfig::Algorithm precision_algorithm,
     std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-    bool grad_y) {
+    bool grad_y, const se::GpuComputeCapability& gpu_version) {
   absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_row_dims,
@@ -358,20 +310,21 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                       MatrixLayout::For(output_shape, output_batch_dims,
                                         output_row_dims, output_col_dims));
   Shape c_matrix_shape = c_shape;
-  if (primitive_util::IsF8Type(lhs_shape.element_type()) &&
-      primitive_util::IsF8Type(output_shape.element_type()) && beta == 0.0) {
+  // hipBlasLt does not yet support the C matrix to be BF16 for fp8 matmul
+  // with fp8 output. Thus only do this for CUDA side.
+  if (std::holds_alternative<se::CudaComputeCapability>(gpu_version) &&
+      primitive_util::IsF8Type(lhs_shape.element_type()) &&
+      primitive_util::IsF8Type(output_shape.element_type()) && (beta == 0.0)) {
     // By default, if c is not present (i.e., beta is 0), c_shape will be the
     // output shape. cublasLT requires a valid c_shape to be passed, even if c
-    // is not present, and normally setting it to the output shape is fine. But
-    // for matmuls with FP8 inputs and outputs, C must instead have the same
-    // dtype as the vector bias if present, and either BF16 or F16 otherwise. So
-    // we set the dtype of C here.
-#if GOOGLE_CUDA
-    // hipBlasLt does not yet support the C matrix to be BF16 for fp8 matmul
-    // with fp8 output. Thus only do this for CUDA side.
+    // is not present, and normally setting it to the output shape is fine.
+    // But for matmuls with FP8 inputs and outputs, C must instead have the
+    // same dtype as the vector bias if present, and either BF16 or F16
+    // otherwise. So we set the dtype of C here. hipBlasLt does not yet
+    // support the C matrix to be BF16 for fp8 matmul with fp8 output. Thus
+    // only do this for CUDA side.
     c_matrix_shape.set_element_type(
         bias_shape_ptr != nullptr ? bias_shape_ptr->element_type() : BF16);
-#endif
   }
 
   TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
@@ -453,14 +406,15 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
 }  // namespace
 
 /*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
-    const HloInstruction* gemm) {
+    const HloInstruction* gemm, const se::GpuComputeCapability& gpu_version) {
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       gemm->backend_config<GpuBackendConfig>());
-  return For(gemm, gpu_config.gemm_backend_config());
+  return For(gemm, gpu_config.gemm_backend_config(), gpu_version);
 }
 
 /*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
-    const HloInstruction* gemm, const GemmBackendConfig& config) {
+    const HloInstruction* gemm, const GemmBackendConfig& config,
+    const se::GpuComputeCapability& gpu_version) {
   std::optional<int64_t> algorithm;
   if (config.algorithm_case() != GemmBackendConfig::ALGORITHM_NOT_SET) {
     algorithm = config.selected_algorithm();
@@ -484,8 +438,8 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
   if (has_vector_bias) {
     int vector_bias_index = has_matrix_bias ? 3 : 2;
     if (primitive_util::IsF8Type(lhs_shape.element_type())) {
-      // FP8 gemms have 4 scales as inputs which come before the vector bias.
-      vector_bias_index += 4;
+      // FP8 gemms have 2 scales as inputs which come before the vector bias.
+      vector_bias_index += 2;
     }
     vector_bias_shape = gemm->operand(vector_bias_index)->shape();
   }
@@ -509,7 +463,7 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
       /*bias_shape_ptr=*/
       vector_bias_shape ? &vector_bias_shape.value() : nullptr, output_shape,
       config.alpha_real(), config.alpha_imag(), config.beta(),
-      precision_algorithm, algorithm, precision, grad_x, grad_y);
+      precision_algorithm, algorithm, precision, grad_x, grad_y, gpu_version);
 }
 
 absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(

@@ -24,25 +24,25 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
+#include "tensorflow/compiler/mlir/lite/types.pb.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
-#include "tensorflow/lite/toco/types.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
 absl::Status ConvertGraphDefToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
-    const GraphDebugInfo& debug_info, const GraphDef& input,
-    std::string* result) {
+    const tflite::ModelFlags& model_flags,
+    tflite::ConverterFlags& converter_flags, const GraphDebugInfo& debug_info,
+    const GraphDef& input, std::string* result) {
   auto context = std::make_unique<mlir::MLIRContext>();
   GraphImportConfig specs;
   mlir::quant::QuantizationSpecs quant_specs;
@@ -56,7 +56,7 @@ absl::Status ConvertGraphDefToTFLiteFlatBuffer(
 
   // Populate quantization specs.
   TF_RETURN_IF_ERROR(internal::PopulateQuantizationSpecs(
-      model_flags, toco_flags, &quant_specs, &node_names, &node_dtypes,
+      model_flags, converter_flags, &quant_specs, &node_names, &node_dtypes,
       &node_shapes, &node_mins, &node_maxs));
 
   TF_RETURN_IF_ERROR(
@@ -79,41 +79,42 @@ absl::Status ConvertGraphDefToTFLiteFlatBuffer(
   specs.graph_as_function = false;
   specs.upgrade_legacy = true;
   specs.unconditionally_use_set_output_shapes = true;
-  internal::WarningUnusedFlags(model_flags, toco_flags);
+  internal::WarningUnusedFlags(model_flags, converter_flags);
 
   // Register all custom ops, including user-specified custom ops.
-  TF_RETURN_IF_ERROR(internal::RegisterAllCustomOps(toco_flags));
+  TF_RETURN_IF_ERROR(internal::RegisterAllCustomOps(converter_flags));
 
   TF_ASSIGN_OR_RETURN(auto module, ConvertGraphdefToMlir(input, debug_info,
                                                          specs, context.get()));
 
   mlir::TFL::PassConfig pass_config(quant_specs);
-  bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
+  bool emit_builtin_tflite_ops = !converter_flags.force_select_tf_ops();
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-  pass_config.unfold_batch_matmul = toco_flags.unfold_batchmatmul();
-  pass_config.lower_tensor_list_ops = toco_flags.lower_tensor_list_ops();
+  pass_config.unfold_batch_matmul = converter_flags.unfold_batchmatmul();
+  pass_config.lower_tensor_list_ops = converter_flags.lower_tensor_list_ops();
   pass_config.legalize_custom_tensor_list_ops =
-      toco_flags.legalize_custom_tensor_list_ops();
+      converter_flags.legalize_custom_tensor_list_ops();
   // Disable the unfolding of the 16x16 TF::BatchMatMulOp to avoid the
   // conversion to an unsupported 16x16 TFL::FullyConnectedOp.
-  if (toco_flags.inference_type() == toco::IODataType::QUANTIZED_INT16) {
+  if (converter_flags.inference_type() == tflite::IODataType::QUANTIZED_INT16) {
     pass_config.unfold_batch_matmul = false;
   }
   pass_config.unfold_large_splat_constant =
-      toco_flags.unfold_large_splat_constant();
+      converter_flags.unfold_large_splat_constant();
   pass_config.enable_dynamic_update_slice =
-      toco_flags.enable_dynamic_update_slice();
-  pass_config.preserve_assert_op = toco_flags.preserve_assert_op();
+      converter_flags.enable_dynamic_update_slice();
+  pass_config.preserve_assert_op = converter_flags.preserve_assert_op();
   pass_config.guarantee_all_funcs_one_use =
-      toco_flags.guarantee_all_funcs_one_use();
-  pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
+      converter_flags.guarantee_all_funcs_one_use();
+  pass_config.enable_stablehlo_conversion =
+      converter_flags.convert_to_stablehlo();
   pass_config.canonicalizing_inf_as_min_max_float =
-      toco_flags.canonicalizing_inf_as_min_max_float();
+      converter_flags.canonicalizing_inf_as_min_max_float();
 
   // StableHLO Quantizer is not supported for GraphDef inputs, so
   // quantization_py_function_lib is set to nullptr.
   return internal::ConvertMLIRToTFLiteFlatBuffer(
-      model_flags, toco_flags, std::move(context), std::move(module),
+      model_flags, converter_flags, std::move(context), std::move(module),
       pass_config,
       /*saved_model_tags=*/{}, result,
       /*quantization_py_function_lib=*/nullptr);

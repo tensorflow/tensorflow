@@ -15,34 +15,39 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_process_state.h"
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
-#include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/device_id_utils.h"
+#include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_id_utils.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_init.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_simple_allocator.h"
-#include "tensorflow/core/common_runtime/pool_allocator.h"
-#include "tensorflow/core/common_runtime/shared_counter.h"
+#include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/numa.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -192,9 +197,9 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
         se, numa_node, pluggable_device_host_alloc_visitors_[numa_node],
         pluggable_device_host_free_visitors_[numa_node]);
     int64_t pluggable_device_host_mem_limit_in_mb = -1;
-    Status status = ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
-                                        1LL << 17 /*128GB max by default*/,
-                                        &pluggable_device_host_mem_limit_in_mb);
+    absl::Status status = ReadInt64FromEnvVar(
+        "TF_GPU_HOST_MEM_LIMIT_IN_MB", 1LL << 17 /*128GB max by default*/,
+        &pluggable_device_host_mem_limit_in_mb);
     if (!status.ok()) {
       LOG(ERROR) << "GetPluggableDeviceHostAllocator: " << status.message();
     }

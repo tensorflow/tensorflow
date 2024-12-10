@@ -20,16 +20,10 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/check.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/cpu/cpu_client.h"
-#include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
-#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -62,9 +56,9 @@ using ::testing::Return;
 
 class IfrtCallOpTest : public OpsTestBase {
  protected:
-  Status Init(int64_t program_id, int num_inputs, DataType input_type,
-              const std::vector<int>& variable_arg_indices,
-              const std::vector<DataType>& output_type_list) {
+  absl::Status Init(int64_t program_id, int num_inputs, DataType input_type,
+                    const std::vector<int>& variable_arg_indices,
+                    const std::vector<DataType>& output_type_list) {
     TF_CHECK_OK(NodeDefBuilder("op", "IfrtCall")
                     .Input(FakeInput(num_inputs, input_type))
                     .Attr("program_id", program_id)

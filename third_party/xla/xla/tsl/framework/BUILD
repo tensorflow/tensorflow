@@ -4,20 +4,20 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
+load("//xla/tsl:tsl.bzl", "if_windows", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
-    "@local_tsl//tsl/platform:build_config.bzl",
+    "//xla/tsl/platform:build_config.bzl",
     "tsl_cc_test",
 )
 load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "//xla/tsl/platform:build_config_root.bzl",
     "if_static",
 )
 load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "//xla/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
-load("//xla/tsl:tsl.bzl", "if_windows", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -118,7 +118,7 @@ cc_library(
     ] + if_static(
         extra_deps = [
             ":allocator_registry_impl",
-            "@local_tsl//tsl/lib/gtl:inlined_vector",
+            "//xla/tsl/lib/gtl:inlined_vector",
             "@local_tsl//tsl/platform:strcat",
             "@local_tsl//tsl/platform:stringprintf",
             "@local_tsl//tsl/platform:env",
@@ -131,7 +131,7 @@ cc_library(
             "@local_tsl//tsl/platform:types",
         ],
         otherwise = [
-            "@local_tsl//tsl/lib/gtl:inlined_vector",
+            "//xla/tsl/lib/gtl:inlined_vector",
             "@local_tsl//tsl/platform:logging",
             "@local_tsl//tsl/platform:platform_port",
             "@local_tsl//tsl/platform:strcat",
@@ -158,14 +158,15 @@ cc_library(
         "//xla:__subpackages__",
         "//tensorflow/core:__subpackages__",
         "@local_tsl//tsl:__subpackages__",
+        "//tensorflow/python/profiler/internal:__pkg__",
     ]),
     deps = [
         ":numeric_types",
         ":type_traits",
+        "//xla/tsl/lib/gtl:inlined_vector",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/lib/gtl:inlined_vector",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:mutex",
@@ -195,6 +196,7 @@ cc_library(
         ":metrics",
         ":shared_counter",
         "//xla/tsl/lib/core:bits",
+        "//xla/tsl/profiler/utils:trace_filter_utils",
         "//xla/tsl/protobuf:bfc_memory_map_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -204,10 +206,8 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:stacktrace",
-        "@local_tsl//tsl/platform:str_util",
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
@@ -233,7 +233,7 @@ cc_library(
         "device_id_manager.h",
     ],
     deps = [
-        "@local_tsl//tsl/lib/gtl:int_type",
+        "//xla/tsl/lib/gtl:int_type",
     ] + if_static([
         ":device_id_impl",
     ]),
@@ -248,9 +248,9 @@ cc_library(
     ],
     deps = [
         ":device_type",
+        "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/gtl:int_type",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
@@ -273,6 +273,7 @@ cc_library(
         "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
@@ -317,7 +318,7 @@ cc_library(
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
     deps = [
-        "@local_tsl//tsl/lib/monitoring:counter",
+        "//xla/tsl/lib/monitoring:counter",
     ],
 )
 
@@ -365,8 +366,8 @@ cc_library(
     ),
     visibility = ["//visibility:public"],
     deps = [
+        "//xla/tsl/lib/gtl:flatmap",
         "@com_google_absl//absl/memory",
-        "@local_tsl//tsl/lib/gtl:flatmap",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:hash",
         "@local_tsl//tsl/platform:logging",
@@ -467,10 +468,10 @@ tsl_cc_test(
         ":device_id_impl",
         ":device_id_utils",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/util:device_name_utils",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

@@ -105,7 +105,7 @@ _test_size_override = {
         "//conditions:default": [
             "@local_tsl//tsl/platform:env",
             "@local_tsl//tsl/platform:status",
-            "@local_tsl//tsl/platform:subprocess",
+            "@local_xla//xla/tsl/platform:subprocess",
             "@local_xla//xla/tsl/util:command_line_flags",
         ],
         "//tensorflow:android": [
@@ -180,6 +180,7 @@ py_strict_library(
         "//tensorflow/python/framework:convert_to_constants",
         "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
+        "@ml_dtypes",
     ],
 )
 
@@ -225,8 +226,10 @@ cc_library(
     deps = [
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -238,7 +241,6 @@ cc_test(
         ":matchers",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],

@@ -20,7 +20,7 @@ limitations under the License.
 #include <string_view>
 
 #include "absl/status/statusor.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::ffi {
 

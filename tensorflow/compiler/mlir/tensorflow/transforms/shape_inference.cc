@@ -83,10 +83,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -1117,8 +1117,8 @@ bool ShapeInference::RefineResultType(Operation* op, Value result,
 // Infers the shape from a (Stateful)PartitionedCall operation by looking up
 // the called function and propagating the return type.
 bool ShapeInference::InferShapeForCall(CallOpInterface call_op) {
-  func::FuncOp func =
-      dyn_cast_or_null<func::FuncOp>(call_op.resolveCallable(&symbol_table_));
+  func::FuncOp func = dyn_cast_or_null<func::FuncOp>(
+      call_op.resolveCallableInTable(&symbol_table_));
   if (!func) return false;
 
   DCOMMENT("Infer shape for call " << func.getName());
@@ -1266,7 +1266,7 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     xla_call_module_context_->appendDialectRegistry(registry);
 
     auto l = tensorflow::XlaCallModuleLoader::Create(
-        xla_call_module_context_.get(), op.getVersion(), op.getModule().str(),
+        xla_call_module_context_.get(), op.getVersion(), op.getModule(),
         std::move(disabled_checks), std::move(platforms),
         /*num_invocation_args=*/op.getArgs().size(),
         op.getHasTokenInputOutput());
@@ -2976,8 +2976,8 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
          while_op.ResolveBodyFunction(&symbol_table_)},
         max_iterations);
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
-    if (auto func =
-            dyn_cast<func::FuncOp>(call_op.resolveCallable(&symbol_table_))) {
+    if (auto func = dyn_cast<func::FuncOp>(
+            call_op.resolveCallableInTable(&symbol_table_))) {
       PropagateConstantToCallee(call_op, func, module);
       FailureOr<bool> failure_or_converged = PropagateShapeToFunctions(
           module, call_op.getArgOperands().getTypes(), {func}, max_iterations);

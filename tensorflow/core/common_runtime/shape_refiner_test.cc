@@ -162,7 +162,7 @@ TEST_F(ShapeRefinerTest, BadShapes) {
   TF_ASSERT_OK(m.AddNode(b.node()));
   // The shape of the inputs are not compatible, so we should expect
   // an error.
-  Status s = m.AddNode(mm.node());
+  absl::Status s = m.AddNode(mm.node());
   ASSERT_FALSE(s.ok());
   ASSERT_TRUE(absl::StrContains(s.message(),
                                 "Dimensions must be equal, but are 1 and 2"));
@@ -830,14 +830,14 @@ TEST_F(ShapeRefinerTest, ConstantValueVisitNodeTwice) {
 
 namespace {
 
-Status TensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
+absl::Status TensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
   shape_inference::ShapeHandle out;
   TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0 /* input_idx */, &out));
   c->set_output(0, out);
   return absl::OkStatus();
 }
 
-Status PartialTensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
+absl::Status PartialTensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
   shape_inference::ShapeHandle out;
   const Tensor* t = c->input_tensor(0);
   if (t == nullptr || t->NumElements() != 1) {

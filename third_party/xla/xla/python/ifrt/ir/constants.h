@@ -25,6 +25,10 @@ namespace ifrt {
 // apart from atom program FuncOps (callee of `ifrt.Call`).
 inline constexpr llvm::StringLiteral kIfrtFunctionAttrName = "ifrt.function";
 
+// Name of UnitAttr on FuncOp to indicate it's a VIFRT IR function, telling it
+// apart from atom program FuncOps.
+inline constexpr llvm::StringLiteral kVifrtFunctionAttrName = "vifrt.function";
+
 // Name of UnitAttr on FuncOp to indicate it's an IFRT IR function that
 // only reshards arrays. While functions with kIfrtFunctionAttrName attribute
 // cannot be `ifrt.Call`ed, kIfrtReshardFunctionAttrName can be called.
@@ -48,10 +52,31 @@ inline constexpr llvm::StringLiteral kIfrtDevicesAttrName = "ifrt.devices";
 inline constexpr llvm::StringLiteral kIfrtNumDevicesAttrName =
     "ifrt.num_devices";
 inline constexpr llvm::StringLiteral kIfrtShardingAttrName = "ifrt.sharding";
+inline constexpr llvm::StringLiteral kIfrtMemoryKindAttrName =
+    "ifrt.memory_kind";
 inline constexpr llvm::StringLiteral kIfrtEntryFunctionAttrName =
     "ifrt.entry_function";
 
 inline constexpr llvm::StringLiteral kCalleeMainFuncName = "main";
+
+// Name of StringAttr used to store the HloSharding.
+inline constexpr llvm::StringLiteral kHloShardingAttrName = "mhlo.sharding";
+// Name of StringAttr used to store memory kind.
+inline constexpr llvm::StringLiteral kHloMemoryKindAttrName =
+    "mhlo.memory_kind";
+// Name of StringAttr used to store layout mode.
+inline constexpr llvm::StringLiteral kHloLayoutAttrName = "mhlo.layout_mode";
+
+inline constexpr llvm::StringLiteral kIfrtModuleTypeAttrName =
+    "ifrt.module_type";
+
+inline constexpr llvm::StringLiteral kIfrtModuleTypeXla = "xla";
+inline constexpr llvm::StringLiteral kIfrtModuleTypeMpmdReshard =
+    "mpmd_reshard";
+
+// String value used as a default value for an optional `mlir::StringAttr` when
+// converting to and from VIFRT.
+inline constexpr llvm::StringLiteral kVifrtDefaultString = "vifrt.default";
 
 }  // namespace ifrt
 }  // namespace xla

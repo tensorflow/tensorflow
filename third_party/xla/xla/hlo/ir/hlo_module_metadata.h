@@ -21,6 +21,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
@@ -65,6 +68,9 @@ class HloModuleMetadata {
     module_metadata_.add_partitioned_module_ids(id);
   }
   absl::Status set_custom_metadata(const ::tsl::protobuf::Message& message);
+  // Adds a (key, value) pair metric if none was already set. Otherwise, it
+  // updates the existing value.
+  absl::Status set_key_value_metric(const std::string& key, int64_t value);
 
   absl::StatusOr<int64_t> current_pass_id() {
     TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,

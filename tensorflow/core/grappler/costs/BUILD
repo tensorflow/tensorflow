@@ -27,7 +27,6 @@ alias(
 tf_proto_library(
     name = "op_performance_data",
     srcs = ["op_performance_data.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core/framework:attr_value_proto",
@@ -417,7 +416,6 @@ tf_cc_test(
 # py_proto_library(
 #     name = "op_performance_data_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":op_performance_data"],
 # )

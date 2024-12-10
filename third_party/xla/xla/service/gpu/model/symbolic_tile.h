@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -28,8 +29,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
-#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map.h"
 
 namespace xla {
 namespace gpu {
@@ -62,51 +62,52 @@ class ConstraintExpression {
     }
   };
 
+ private:
   using ConjointConstraints = llvm::SmallVector<Constraint, 2>;
-  // Takes the conjunction of the constraints of `first` and `second`.
-  static ConstraintExpression And(ConstraintExpression first,
-                                  ConstraintExpression second);
+  explicit ConstraintExpression(bool is_satisfiable)
+      : is_satisfiable_(is_satisfiable) {}
 
-  // Takes the disjunction of the constraints of `first` and `second`.
-  static ConstraintExpression Or(ConstraintExpression first,
-                                 ConstraintExpression second);
+ public:
+  // Constructs a `ConstraintExpression` from a single `Constraint`.
+  explicit ConstraintExpression(const Constraint& constraint)
+      : disjoint_conjoint_constraints_({{constraint}}) {}
 
-  // Produces the unsatisfiable constraint expression.
-  static ConstraintExpression GetUnsatisfiableConstraintExpression() {
-    ConstraintExpression unsatisfiable;
-    unsatisfiable.is_satisfiable_ = false;
-    return unsatisfiable;
+  // Constructs a `ConstraintExpression` that is always satisfied.
+  static ConstraintExpression GetAlwaysSatisfied() {
+    return ConstraintExpression(true);
   }
 
-  // Convenience util to take the disjunction of `this` and unwrapped
-  // `ConjointConstraints`.
-  void Or(ConjointConstraints conjunction);
+  // Constructs a `ConstraintExpression` that is unsatisfiable.
+  static ConstraintExpression GetUnsatisfiable() {
+    return ConstraintExpression(false);
+  }
 
-  // Convenience util to take the conjunction of `this` and unwrapped
-  // `ConjointConstraints`.
-  void And(ConjointConstraints conjunction);
+  // Takes the conjunction of the constraints of `first` and `second`.
+  friend ConstraintExpression operator&&(const ConstraintExpression& first,
+                                         const ConstraintExpression& second);
 
-  // Whether the constraints can be satisfied. When this is set to `false`,
-  // the domain of the `TileConstraints` must be considered empty.
+  // Takes the disjunction of the constraints of `first` and `second`.
+  friend ConstraintExpression operator||(const ConstraintExpression& first,
+                                         const ConstraintExpression& second);
+
+  // Whether the constraints can be satisfied.
   bool is_satisfiable() const { return is_satisfiable_; }
 
   // Returns `true` if the constraint expression is marked satisfiable and does
-  // not contain any constraint. We expect this to be the case for a default
-  // constructed `ConstraintExpression`.
+  // not contain any constraint.
   bool IsAlwaysSatisfied() const {
     return is_satisfiable_ && disjoint_conjoint_constraints_.empty();
   }
 
-  // Accessor for the underlying disjoint conjunctions of constraints. This is
-  // expected to be empty if `is_satisfiable()` is `false`.
-  absl::Span<ConjointConstraints const> DisjointConjointConstraints() const {
-    return disjoint_conjoint_constraints_;
-  }
+  // Returns `true` if the constraint expression is satisfied by the provided
+  // dim_values, and `false` otherwise.  The caller is responsible for ensuring
+  // that the number of provided dim_values is sufficient to verify the
+  // constraints.
+  bool IsSatisfiedBy(absl::Span<const int64_t> dim_values) const;
 
-  std::string ToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+  std::string ToString() const;
 
-  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
+  void Print(std::ostream& out) const;
 
   // Simplifies the constraint expression.
   //
@@ -120,33 +121,68 @@ class ConstraintExpression {
   // ConstraintExpression canonically always satisfied.
   void Simplify();
 
+ private:
   // This allows GUnit to print the expression.
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const ConstraintExpression& expr) {
     sink.Append(expr.ToString());
   }
 
-  // TODO(bchetioui): add a util to verify constraints here later.
- private:
+  template <typename H>
+  friend H AbslHashValue(H h, const Constraint& constraint) {
+    llvm::hash_code expr_hash = mlir::hash_value(constraint.expr);
+    return H::combine(std::move(h), static_cast<size_t>(expr_hash),
+                      constraint.interval);
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ConjointConstraints& conjoint_constraints) {
+    for (const auto& constraint : conjoint_constraints) {
+      h = H::combine(std::move(h), constraint);
+    }
+    return h;
+  }
+
+  // When this is set to `false`, disjoint_conjoint_constraints_ must be empty.
   bool is_satisfiable_ = true;
   llvm::SmallVector<ConjointConstraints, 2> disjoint_conjoint_constraints_;
 };
 
-template <typename H>
-H AbslHashValue(H h, const ConstraintExpression::Constraint& constraint) {
-  llvm::hash_code expr_hash = mlir::hash_value(constraint.expr);
-  return H::combine(std::move(h), static_cast<size_t>(expr_hash),
-                    constraint.interval);
+// Logical operators between `ConstraintExpression` and `Constraint`.
+inline ConstraintExpression operator&&(
+    const ConstraintExpression::Constraint& first,
+    const ConstraintExpression& second) {
+  return ConstraintExpression(first) && second;
 }
 
-template <typename H>
-H AbslHashValue(
-    H h,
-    const ConstraintExpression::ConjointConstraints& conjoint_constraints) {
-  for (const auto& constraint : conjoint_constraints) {
-    h = H::combine(std::move(h), constraint);
-  }
-  return h;
+inline ConstraintExpression operator&&(
+    const ConstraintExpression& first,
+    const ConstraintExpression::Constraint& second) {
+  return first && ConstraintExpression(second);
+}
+
+inline ConstraintExpression operator&&(
+    const ConstraintExpression::Constraint& first,
+    const ConstraintExpression::Constraint& second) {
+  return ConstraintExpression(first) && ConstraintExpression(second);
+}
+
+inline ConstraintExpression operator||(
+    const ConstraintExpression::Constraint& first,
+    const ConstraintExpression& second) {
+  return ConstraintExpression(first) || second;
+}
+
+inline ConstraintExpression operator||(
+    const ConstraintExpression& first,
+    const ConstraintExpression::Constraint& second) {
+  return first || ConstraintExpression(second);
+}
+
+inline ConstraintExpression operator||(
+    const ConstraintExpression::Constraint& first,
+    const ConstraintExpression::Constraint& second) {
+  return ConstraintExpression(first) || ConstraintExpression(second);
 }
 
 // Tiling in the simpler case, when we don't have dynamic offsets (see the
@@ -278,12 +314,9 @@ class SymbolicTile {
   static std::optional<SymbolicTile> FromIndexingMap(IndexingMap indexing_map);
 
   // For printing in tests.
-  std::string RtVarsToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
-  std::string ToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+  std::string ToString() const;
 
-  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
+  void Print(std::ostream& out) const;
 
   mlir::AffineMap offset_map() const;
   mlir::AffineMap size_map() const;

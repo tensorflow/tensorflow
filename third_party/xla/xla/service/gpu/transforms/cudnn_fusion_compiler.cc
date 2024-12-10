@@ -48,7 +48,7 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
-#include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/shape_util.h"
@@ -216,6 +216,7 @@ class GemmDimensionAdapter {
   struct Result {
     std::vector<int64_t> sizes;
     std::vector<int64_t> strides;
+    std::optional<std::vector<std::pair<int64_t, int64_t>>> slices;
   };
 
   std::optional<Result> DimensionsAndStrides(
@@ -260,6 +261,9 @@ class GemmDimensionAdapter {
     Result result;
     result.sizes.reserve(dim_indices.size());
     result.strides.reserve(dim_indices.size());
+    result.slices = std::vector<std::pair<int64_t, int64_t>>{};
+    result.slices->reserve(dim_indices.size());
+    bool slicing_is_present = false;
 
     for (const int index : dim_indices) {
       const auto* spec = analysis_.IterSpec(scope, &hlo, index);
@@ -267,6 +271,7 @@ class GemmDimensionAdapter {
         result.sizes.push_back(1);
         result.strides.push_back(
             result.strides.empty() ? 1 : result.strides.back());
+        result.slices->push_back({0, 1});
         continue;
       } else {
         if (spec->size() == 1) {
@@ -310,6 +315,12 @@ class GemmDimensionAdapter {
         }
         result.sizes.push_back(spec->front().count);
         result.strides.push_back(spec->front().stride);
+        result.slices->push_back(
+            {spec->front().slice_start,
+             spec->front().slice_start + spec->front().sliced_count});
+        if (spec->front().count != spec->front().sliced_count) {
+          slicing_is_present = true;
+        }
       }
     }
     if (lhs_noncontracting_split_ > 1 &&
@@ -324,6 +335,23 @@ class GemmDimensionAdapter {
       result.strides[kBatchDimensionIndex] =
           result.strides[kOutputLHSNonContractingDimensionIndex] *
           result.sizes[kOutputLHSNonContractingDimensionIndex];
+    }
+
+    // 0 (kBatchDimensionIndex) is always the batch dimension;
+    // 1 and 2 are the non-batch ones. cuDNN relies on strides to determine
+    // layouts and gets confused when both strides of non-batch dimensions
+    // are equal to 1 - this is the case for tensors with 1-sized dimension
+    // like [A,1]. The stride of the 1-sized dimension does not matter for
+    // correctness because there is no iteration along this dimension, but
+    // setting it to A and representing the tensor as its equivalent [1,A]
+    // helps cuDNN.
+    if (result.strides[1] == 1 && result.strides[2] == 1) {
+      const int one_sized_dim_idx = (result.sizes[1] == 1) ? 1 : 2;
+      result.strides[one_sized_dim_idx] = result.sizes[1] * result.sizes[2];
+    }
+
+    if (!slicing_is_present) {
+      result.slices.reset();
     }
     return result;
   }
@@ -418,6 +446,11 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
             .set_data_type(*data_type)
             .set_name(std::string(parameter.name()))
             .set_uid(se::gpu::CuDnnTensorUID(parameter.parameter_number())));
+    if (dims.slices.has_value()) {
+      hlo_to_cudnn[&parameter] = graph.slice(
+          hlo_to_cudnn[&parameter],
+          graph::Slice_attributes().set_slices(dims.slices.value()));
+    }
     return true;
   };
   for (const TritonFusionAnalysis::Scope scope :
@@ -447,10 +480,10 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       VLOG(3) << "Unimplemented data type: " << hlo->shape().element_type();
       return std::nullopt;
     }
-    if (hlo->opcode() == HloOpcode::kParameter) {
+    if (HloPredicateIsOp<HloOpcode::kParameter>(hlo)) {
       CHECK(hlo_to_cudnn.contains(hlo));
       continue;
-    } else if (hlo->opcode() == HloOpcode::kCustomCall) {
+    } else if (HloPredicateIsOp<HloOpcode::kCustomCall>(hlo)) {
       if (hlo->user_count() != 1 ||
           !IsWorkspaceAllocationRoot(*hlo->users()[0])) {
         VLOG(3) << "Custom calls are only expected to be used for workspace "
@@ -458,7 +491,7 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
         return std::nullopt;
       }
       continue;
-    } else if (hlo->opcode() == HloOpcode::kTuple) {
+    } else if (HloPredicateIsOp<HloOpcode::kTuple>(hlo)) {
       if (!IsWorkspaceAllocationRoot(*hlo)) {
         VLOG(3) << "Tuples are only expected at outputs for workspace "
                    "allocation.";
@@ -466,19 +499,18 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       }
       continue;
     } else if (FusionLevel(fusion) >= 2 &&
-               hlo->opcode() == HloOpcode::kConstant) {
+               HloPredicateIsOp<HloOpcode::kConstant>(hlo)) {
       if (const auto const_tensor = HandleConstantHloToCudnnGraph(*hlo, graph);
           const_tensor.has_value()) {
         hlo_to_cudnn[hlo] = const_tensor.value();
       } else {
         return std::nullopt;
       }
-    } else if (hlo->opcode() == HloOpcode::kReshape ||
-               hlo->opcode() == HloOpcode::kBitcast ||
-               hlo->opcode() == HloOpcode::kTranspose ||
-               hlo->opcode() == HloOpcode::kCopy ||
+    } else if (HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kBitcast,
+                                HloOpcode::kTranspose, HloOpcode::kCopy>(hlo) ||
                (FusionLevel(fusion) >= 2 &&
-                hlo->opcode() == HloOpcode::kBroadcast)) {
+                (HloPredicateIsOp<HloOpcode::kBroadcast, HloOpcode::kSlice>(
+                    hlo)))) {
       // All these are accounted for separately as transformations of strides.
       hlo_to_cudnn[hlo] = operand(0);
     } else if (hlo->IsElementwise()) {
@@ -487,7 +519,7 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       if (!compute_dtype.has_value()) {
         return std::nullopt;
       }
-      if (hlo->opcode() == HloOpcode::kClamp) {
+      if (HloPredicateIsOp<HloOpcode::kClamp>(hlo)) {
         const auto clamp =
             HandleClampToCudnnGraph(*hlo, graph, hlo_to_cudnn,
                                     data_type.value(), compute_dtype.value());
@@ -530,7 +562,7 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
         } else if (hlo->operand_count() == 2) {
           hlo_to_cudnn[hlo] = graph.pointwise(operand(0), operand(1), attrs);
         } else if (hlo->operand_count() == 3) {
-          if (hlo->opcode() != HloOpcode::kSelect) {
+          if (HloPredicateIsNotOp<HloOpcode::kSelect>(hlo)) {
             VLOG(3) << "Unexpected ternary operation: " << hlo->ToString();
             return std::nullopt;
           }
@@ -542,7 +574,7 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
           return std::nullopt;
         }
       }
-    } else if (hlo->opcode() == HloOpcode::kDot) {
+    } else if (HloPredicateIsOp<HloOpcode::kDot>(hlo)) {
       const auto compute_dtype =
           GetComputeDataType(hlo->shape().element_type());
       if (!compute_dtype.has_value()) {

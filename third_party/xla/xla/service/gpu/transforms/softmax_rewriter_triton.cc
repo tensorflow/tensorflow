@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -37,22 +37,32 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_fix.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/fusions/triton/triton_support.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
+#include "xla/service/gpu/transforms/reduction_dimension_grouper.h"
+#include "xla/service/gpu/transforms/reduction_splitter.h"
+#include "xla/service/gpu/transforms/tree_reduction_rewriter.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -114,104 +124,6 @@ inline bool HasOneUse(const HloInstruction* instr) {
   return instr->user_count() == 1;
 }
 
-// Supports two types of broadcast of parameters. Either to one batch
-// dim, or one reduction dim. For example the following cases are supported:
-//
-// Case #1:
-// p = f32[a] parameter(0)
-// b = f32[a,x] broadcast(p), dimensions={0}
-//
-// Case #2:
-// p = f32[a] parameter(0)
-// b = f32[x,a] broadcast(p), dimensions={1}
-//
-// Case #3:
-// p = f32[a,b] parameter(0)
-// b = f32[x,a,b] broadcast(p), dimensions={1,2}
-//
-// Other broadcast tiling patterns are currently unsupported.
-// See b/328049138 for details.
-//
-// Unsupported case #1:
-// p = f32[a] parameter(0)
-// b = f32[x,a,y] broadcast(p), dimensions={1}
-//
-// Unsupported case #2:
-// p = f32[a,b] parameter(0)
-// b = f32[x,a,y,b] broadcast(p), dimensions={1,3}
-//
-// Unsupported case #3:
-// p = f32[a] parameter(0)
-// b = f32[x,y,a] broadcast(p), dimensions={2}
-//
-// Unsupported case #4:
-// p = f32[a,b] parameter(0)
-// b = f32[a,x,b] broadcast(p), dimensions={0,2}
-bool IsBatchOrReductionDimBroadcast(const HloInstruction& hlo) {
-  CHECK_EQ(hlo.opcode(), HloOpcode::kBroadcast)
-      << "Expected broadcast " << hlo.ToShortString();
-  CHECK_EQ(hlo.operand(0)->opcode(), HloOpcode::kParameter)
-      << "Expected parameter " << hlo.operand(0)->ToShortString();
-
-  const HloBroadcastInstruction* broadcast =
-      Cast<HloBroadcastInstruction>(&hlo);
-
-  const HloParameterInstruction* parameter =
-      Cast<HloParameterInstruction>(hlo.operand(0));
-
-  // Support only one dim broadcast.
-  if (parameter->shape().dimensions_size() + 1 !=
-      broadcast->shape().dimensions_size()) {
-    return false;
-  }
-
-  // It is enough to ensure that the broadcast does not preserve both last, and
-  // first dimensions of the parameter at the same time. Otherwise the broadcast
-  // is the unsupported case #4.
-  //
-  // Preserve the first dim:
-  //   p = f32[a,b] parameter(0)
-  //   b1 = f32[a,b,c] broadcast(p), dimensions={0,1}
-  bool preserve_first_dim = broadcast->dimensions().front() == 0;
-  // Preserve the last dim:
-  //   p = f32[a,b] parameter(0)
-  //   b1 = f32[c,a,b] broadcast(p), dimensions={1,2}
-  bool preserve_last_dim = broadcast->dimensions().back() ==
-                           broadcast->shape().dimensions_size() - 1;
-  // We do not want to preserve both first and last dim, as it means the
-  // broadcast is not expanding on outermost dims.
-  return !(preserve_first_dim && preserve_last_dim);
-}
-
-bool IsBroadcastOfAScalar(const HloInstruction& hlo) {
-  CHECK_EQ(hlo.opcode(), HloOpcode::kBroadcast)
-      << "Expected broadcast " << hlo.ToShortString();
-  return ShapeUtil::IsScalar(hlo.operand(0)->shape());
-}
-
-bool IsSingleRowParameterBroadcast(const HloInstruction& hlo) {
-  CHECK_EQ(hlo.opcode(), HloOpcode::kBroadcast)
-      << "Expected broadcast " << hlo.ToShortString();
-  CHECK_EQ(hlo.operand(0)->opcode(), HloOpcode::kParameter)
-      << "Expected parameter " << hlo.operand(0)->ToShortString();
-
-  const HloBroadcastInstruction* broadcast =
-      Cast<HloBroadcastInstruction>(&hlo);
-  const HloParameterInstruction* parameter =
-      Cast<HloParameterInstruction>(hlo.operand(0));
-
-  if (parameter->shape().dimensions_size() != 1) {
-    return false;
-  }
-  return broadcast->dimensions()[0] == broadcast->shape().dimensions_size() - 1;
-}
-
-bool IsSupportedBroadcastOfParameter(const HloInstruction& hlo) {
-  return IsBroadcastOfParameter(hlo) &&
-         (IsBatchOrReductionDimBroadcast(hlo) || IsBroadcastOfAScalar(hlo) ||
-          IsSingleRowParameterBroadcast(hlo));
-}
-
 // Chooses which operand to use for fusion processing. Taking in a unary or
 // binary instruction, returns the first non-splat operand. If none is
 // present, returns any operand.
@@ -219,11 +131,9 @@ HloInstruction* ChooseOperandForFusionProcessing(HloInstruction* instr) {
   CHECK_GT(instr->operand_count(), 0);
   CHECK_LE(instr->operand_count(), 2);
 
-  // TODO(b/326217416): Extend the broadcast of splat constants/parameters to a
-  // broadcast of any op.
   if (instr->operand_count() > 1 &&
       (IsBroadcastOfScalarConstant(*instr->operand(0)) ||
-       IsSupportedBroadcastOfParameter(*instr->operand(0)))) {
+       IsBroadcastOfParameter(*instr->operand(0)))) {
     return instr->mutable_operand(1);
   }
   return instr->mutable_operand(0);
@@ -242,7 +152,7 @@ bool IsTriviallyFusible(HloInstruction* instr,
     return false;
   }
 
-  if (instr->opcode() == HloOpcode::kBitcast &&
+  if (HloPredicateIsOp<HloOpcode::kBitcast>(instr) &&
       BitcastIsTilingNoop(instr, gpu_version)) {
     return true;
   }
@@ -266,12 +176,10 @@ bool IsTriviallyFusible(HloInstruction* instr,
 
     // For simplicity we only fuse elementwise binary ops with splat operands
     // if they contain one non-splat operand.
-    // TODO(b/326217416): Extend the broadcast of splat constants/parameters to
-    // a broadcast of any op.
     if ((IsBroadcastOfScalarConstant(*operand_0) ||
-         IsSupportedBroadcastOfParameter(*operand_0)) ^
+         IsBroadcastOfParameter(*operand_0)) ^
         (IsBroadcastOfScalarConstant(*operand_1) ||
-         IsSupportedBroadcastOfParameter(*operand_1))) {
+         IsBroadcastOfParameter(*operand_1))) {
       return static_cast<bool>(
           IsTritonSupportedInstruction(*instr, gpu_version));
     }
@@ -374,7 +282,7 @@ absl::StatusOr<HloFusionInstruction*> MakeFusionForDiamondChain(
       create_computation(operand);
       new_operands.push_back(old_to_new_mapping[operand]);
     }
-    if (instr->opcode() == HloOpcode::kParameter) {
+    if (HloPredicateIsOp<HloOpcode::kParameter>(instr)) {
       old_to_new_mapping[instr] =
           builder.AddInstruction(HloInstruction::CreateParameter(
               param, instr->shape(), absl::StrCat("parameter_", param)));
@@ -407,13 +315,95 @@ absl::StatusOr<HloFusionInstruction*> MakeFusionForDiamondChain(
   return xla::Cast<HloFusionInstruction>(softmax_fusion);
 }
 
-absl::StatusOr<bool> MaybeFuseDiamondChainImpl(
-    const DiamondChainDescriptor& diamond_chain,
-    GpuPerformanceModelWithIndexingAnalysis& indexing_performance_model) {
-  TF_ASSIGN_OR_RETURN(HloFusionInstruction * softmax_fusion,
-                      MakeFusionForDiamondChain(diamond_chain));
-  HloInstruction* root = diamond_chain.root;
+// Runs an HLO pipeline to convert the `module` to the stage as it would look
+// like in the main XLA:GPU compilation pipeline if the normalization diamond
+// were not fused by SoftmaxRewriterTriton.
+//
+// Before the FusionPipeline, this function runs passes that are relevant to the
+// instructions in the normalization diamond and are placed between
+// SoftmaxRewriterTriton and PriorityFusion in the main compilation pipeline:
+// passes that rewrite and split reductions.
+absl::Status RunFusionPipeline(
+    HloModule* module, const se::DeviceDescription& device_info,
+    const HloCostAnalysis::ShapeSizeFunction& shape_size) {
+  HloPassPipeline reduction_pipeline("reduction_pipeline");
+  // Passes that run after SoftmaxRewriterTriton and before PriorityFusion and
+  // transform reductions.
+  reduction_pipeline.AddPass<ReductionDimensionGrouper>();
+  reduction_pipeline.AddPass<HloPassFix<ReductionSplitter>>(
+      device_info,
+      /*ignore_small_reduce_dims=*/false);
+  reduction_pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(device_info);
 
+  TF_RETURN_IF_ERROR(reduction_pipeline.Run(module).status());
+
+  return FusionPipeline(module->config().debug_options(), shape_size,
+                        /*thread_pool=*/nullptr, device_info)
+      .Run(module)
+      .status();
+}
+
+// Returns a run time estimate for instructions in the `fusion` if they were
+// fused without SoftmaxRewriterTriton.
+//
+// This can help us understand how effective are ReductionSplitter and
+// PriorityFusion for this fusion.
+//
+// In the bigger module, the instructions in the normalization diamond will be
+// fused with other instructions around it, so it's not an exact estimate, but
+// should be a good enough approximation.
+absl::StatusOr<absl::Duration>
+EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
+    const HloFusionInstruction* fusion,
+    const se::DeviceDescription& device_info,
+    const HloCostAnalysis::ShapeSizeFunction& shape_size) {
+  auto new_module = ExtractComputationIntoNewModule(
+      *fusion->fused_instructions_computation());
+
+  // After this call, the `new_module` will have instruction fused without
+  // SoftmaxRewriterTriton.
+  TF_RETURN_IF_ERROR(
+      RunFusionPipeline(new_module.get(), device_info, shape_size));
+
+  VLOG(10) << "priority fusion module: " << new_module->ToString();
+
+  HloComputation* entry_computation = new_module->entry_computation();
+  GpuHloCostAnalysis::Options cost_analysis_options{
+      shape_size,
+      /*per_second_rates=*/{},
+      /*min_latencies_seconds=*/{},
+      /*count_multiple_input_accesses=*/true};
+  GpuHloCostAnalysis cost_analysis(cost_analysis_options, device_info);
+  TF_RETURN_IF_ERROR(entry_computation->Accept(&cost_analysis));
+
+  absl::Duration total_run_time = absl::ZeroDuration();
+
+  for (const HloInstruction* instr : entry_computation->instructions()) {
+    total_run_time += GpuPerformanceModel::EstimateRunTimeForInstruction(
+                          instr, device_info, &cost_analysis,
+                          GpuPerformanceModelOptions::Default())
+                          .exec_time;
+  }
+
+  return total_run_time;
+}
+
+// Returns an empty `FusionDecision` if the normalization diamond should be
+// fused together. In that case, also chooses and tests the best block level
+// parameters. Otherwise, returns a `FusionDecision` with an explanation why the
+// normalization diamond should not be fused.
+//
+// If `use_cost_model_to_evaluate_fusions` is set to `true`, the function will
+// also use the Cost Model to estimate the run time of the fused and unfused
+// versions of the normalization diamond. If the fused version is slower,
+// returns a `FusionDecision` to indicate that the function should not happen.
+absl::StatusOr<FusionDecision>
+DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
+    HloFusionInstruction* softmax_fusion,
+    GpuPerformanceModelWithIndexingAnalysis& indexing_performance_model,
+    const se::DeviceDescription& device_info,
+    const HloCostAnalysis::ShapeSizeFunction& shape_size,
+    bool use_cost_model_to_evaluate_fusions) {
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(softmax_fusion);
 
   TF_ASSIGN_OR_RETURN(
@@ -422,15 +412,31 @@ absl::StatusOr<bool> MaybeFuseDiamondChainImpl(
 
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&tiled_runtime_data_or)) {
-    softmax_fusion->DetachFromOperandsAndUsers();
-    TF_RETURN_IF_ERROR(
-        softmax_fusion->parent()->RemoveInstruction(softmax_fusion));
-    VLOG(5) << "SymbolicTileAnalysis failed: " << fusion_decision->Explain();
-    return false;
+    return FusionDecision::Forbid(absl::StrCat("SymbolicTileAnalysis failed: ",
+                                               fusion_decision->Explain()));
   }
 
   TiledRunTimeData tiled_runtime_data =
       std::get<TiledRunTimeData>(std::move(tiled_runtime_data_or));
+
+  if (use_cost_model_to_evaluate_fusions) {
+    TF_ASSIGN_OR_RETURN(absl::Duration run_time_without_softmax_rewriter,
+                        EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
+                            softmax_fusion, device_info, shape_size));
+
+    VLOG(5) << "run time estimate if normalization diamond fused together: "
+            << tiled_runtime_data.runtime_data.exec_time;
+    VLOG(5)
+        << "run time estimate if normalization diamond is not fused together: "
+        << run_time_without_softmax_rewriter;
+
+    if (run_time_without_softmax_rewriter <
+        tiled_runtime_data.runtime_data.exec_time) {
+      return FusionDecision::Forbid(
+          "Run time estimate for without applying the custom normalization "
+          "rewrite is faster.");
+    }
+  }
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       softmax_fusion->backend_config<GpuBackendConfig>());
@@ -438,6 +444,36 @@ absl::StatusOr<bool> MaybeFuseDiamondChainImpl(
        ->mutable_block_level_fusion_config() =
       tiled_runtime_data.block_level_parameters.ToBlockLevelFusionConfig();
   TF_RETURN_IF_ERROR(softmax_fusion->set_backend_config(backend_config));
+  VLOG(5) << "Fusing with backend config: " << backend_config.DebugString();
+
+  return FusionDecision::Allow();
+}
+
+absl::StatusOr<bool> MaybeFuseDiamondChainImpl(
+    const DiamondChainDescriptor& diamond_chain,
+    GpuPerformanceModelWithIndexingAnalysis& indexing_performance_model,
+    const se::DeviceDescription& device_info,
+    const HloCostAnalysis::ShapeSizeFunction& shape_size,
+    bool use_cost_model_to_evaluate_fusions) {
+  TF_ASSIGN_OR_RETURN(HloFusionInstruction * softmax_fusion,
+                      MakeFusionForDiamondChain(diamond_chain));
+  HloInstruction* root = diamond_chain.root;
+
+  VLOG(5) << "MaybeFuseDiamondChainImpl: " << softmax_fusion->ToString();
+
+  TF_ASSIGN_OR_RETURN(
+      FusionDecision fusion_decision,
+      DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
+          softmax_fusion, indexing_performance_model, device_info, shape_size,
+          use_cost_model_to_evaluate_fusions));
+
+  if (!fusion_decision.CanFuse()) {
+    VLOG(5) << "Not fusing: " << fusion_decision.Explain();
+    softmax_fusion->DetachFromOperandsAndUsers();
+    TF_RETURN_IF_ERROR(
+        softmax_fusion->parent()->RemoveInstruction(softmax_fusion));
+    return false;
+  }
 
   if (root->IsRoot()) {
     root->parent()->set_root_instruction(softmax_fusion);
@@ -447,22 +483,21 @@ absl::StatusOr<bool> MaybeFuseDiamondChainImpl(
     TF_RETURN_IF_ERROR(
         root->parent()->ReplaceInstruction(root, softmax_fusion));
   }
-
-  VLOG(5) << softmax_fusion->ToString();
   return true;
 }
 
 // Returns `true` if the diamond chain passed as a parameter can be tiled
 // correctly using `SymbolicTileAnalysis`.
 absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamondChain(
-    const DiamondChainDescriptor& diamond_chain) {
+    const DiamondChainDescriptor& diamond_chain,
+    const se::DeviceDescription& device_info) {
   TF_ASSIGN_OR_RETURN(HloFusionInstruction * softmax_fusion,
                       MakeFusionForDiamondChain(diamond_chain));
   mlir::MLIRContext context;
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or_error =
       SymbolicTileAnalysis::AnalyzeComputation(
           *softmax_fusion->called_computation(), &context,
-          TritonEmitterConstraints::GetBuilder());
+          TritonEmitterConstraints::GetBuilder(device_info));
 
   bool can_tile = std::holds_alternative<SymbolicTileAnalysis>(
       symbolic_tile_analysis_or_error);
@@ -479,33 +514,42 @@ FusionDecision ShouldFuseReduction(const HloInstruction& reduce,
                                    const se::GpuComputeCapability& cc) {
   if (CodegenDecision is_supported = IsTritonSupportedInstruction(reduce, cc);
       !is_supported) {
-    return FusionDecision(is_supported.Explain());
+    return FusionDecision::Forbid(is_supported.Explain());
+  }
+
+  if (reduce.dimensions().size() != 1 ||
+      reduce.dimensions(0) != reduce.operand(0)->shape().rank() - 1) {
+    return FusionDecision::Forbid(
+        "The reductions in the diamond must reduce 1 dimension and that "
+        "dimension must be the last dimension of the operand.");
   }
 
   // Ensure that the reduction's identity is either a constant or a supported
   // convert of a constant.
   const HloInstruction* identity = reduce.operand(1);
   bool should_fuse_identity =
-      identity->opcode() == HloOpcode::kConstant ||
-      (identity->opcode() == HloOpcode::kConvert &&
+      HloPredicateIsOp<HloOpcode::kConstant>(identity) ||
+      (HloPredicateIsOp<HloOpcode::kConvert>(identity) &&
        identity->operand(0)->opcode() == HloOpcode::kConstant &&
        IsTritonSupportedInstruction(*identity, cc));
   if (!should_fuse_identity) {
-    return "Reduction identity is not a constant or a supported convert of a "
-           "constant.";
+    return FusionDecision::Forbid(
+        "Reduction identity is not a constant or a supported convert of a "
+        "constant.");
   }
 
-  return {};
+  return FusionDecision::Allow();
 }
 
 DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
     HloInstruction* instr, const se::GpuComputeCapability& cc) {
   if (!instr->IsElementwiseBinary()) {
-    return "Root is not elementwise binary.";
+    return FusionDecision::Forbid("Root is not elementwise binary.");
   }
 
   if (!IsTritonSupportedInstruction(*instr, cc)) {
-    return "Root is not supported for Triton instruction.";
+    return FusionDecision::Forbid(
+        "Root is not supported for Triton instruction.");
   }
 
   HloInstruction* producer;
@@ -514,18 +558,21 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
 
   if (!TrivialEdge(&broadcast, instr->mutable_operand(1), HloOpcode::kBroadcast,
                    cc)) {
-    return "Could not find a trivial connection from root to a broadcast.";
+    return FusionDecision::Forbid(
+        "Could not find a trivial connection from root to a broadcast.");
   }
 
   if (!TrivialEdge(&reduce, broadcast->mutable_operand(0), HloOpcode::kReduce,
                    cc)) {
-    return "Could not find a trivial connection from matched broadcast to a "
-           "reduction.";
+    return FusionDecision::Forbid(
+        "Could not find a trivial connection from matched broadcast to a "
+        "reduction.");
   }
 
   if (!(HasDefaultLayout(broadcast->shape()) &&
         HasDefaultLayout(reduce->shape()))) {
-    return "Broadcast or reduce have non-default layouts.";
+    return FusionDecision::Forbid(
+        "Broadcast or reduce have non-default layouts.");
   }
 
   if (FusionDecision should_fuse_reduction = ShouldFuseReduction(*reduce, cc);
@@ -538,24 +585,26 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
   // convert of a constant.
   const HloInstruction* identity = reduce->operand(1);
   bool should_fuse_identity =
-      identity->opcode() == HloOpcode::kConstant ||
-      (identity->opcode() == HloOpcode::kConvert &&
+      HloPredicateIsOp<HloOpcode::kConstant>(identity) ||
+      (HloPredicateIsOp<HloOpcode::kConvert>(identity) &&
        identity->operand(0)->opcode() == HloOpcode::kConstant &&
        IsTritonSupportedInstruction(*identity, cc));
   if (!should_fuse_identity) {
-    return "Reduction identity is not a constant or a supported convert of a "
-           "constant.";
+    return FusionDecision::Forbid(
+        "Reduction identity is not a constant or a supported convert of a "
+        "constant.");
   }
 
   if (!HasOneUse(broadcast) || !HasOneUse(reduce)) {
-    return "More than one use of broadcast or reduce.";
+    return FusionDecision::Forbid("More than one use of broadcast or reduce.");
   }
 
   producer = reduce->mutable_operand(0);
 
   if (absl::c_linear_search(broadcast->dimensions(),
                             broadcast->shape().rank() - 1)) {
-    return "Broadcast is not along the reduction dimension.";
+    return FusionDecision::Forbid(
+        "Broadcast is not along the reduction dimension.");
   }
 
   while (IsTriviallyFusible(producer, cc)) {
@@ -563,16 +612,16 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
   }
 
   if (!HasDefaultLayout(producer->shape())) {
-    return "Producer has non-default layout.";
+    return FusionDecision::Forbid("Producer has non-default layout.");
   }
 
   if (!IsTriviallyConnectedProducerOf(producer, instr->mutable_operand(0),
                                       cc)) {
-    return "Producer is not trivially connected.";
+    return FusionDecision::Forbid("Producer is not trivially connected.");
   }
 
   if (producer != instr->operand(0) && instr->operand(0)->user_count() != 1) {
-    return "Unsupported root-producer connection.";
+    return FusionDecision::Forbid("Unsupported root-producer connection.");
   }
 
   VLOG(5) << "Matched Softmax diamond with: ";
@@ -590,7 +639,8 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
 absl::StatusOr<std::vector<DiamondChainDescriptor>> FindAllFusibleDiamonds(
     HloModule& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
-    const se::GpuComputeCapability& cc) {
+    const se::DeviceDescription& device_info) {
+  const se::GpuComputeCapability& cc = device_info.gpu_compute_capability();
   std::vector<DiamondChainDescriptor> matched_diamonds;
 
   for (HloComputation* comp :
@@ -606,9 +656,9 @@ absl::StatusOr<std::vector<DiamondChainDescriptor>> FindAllFusibleDiamonds(
             /*root=*/instr, /*producer=*/std::get<HloInstruction*>(producer)};
         // We filter out the diamond chains that cannot be tiled correctly using
         // `SymbolicTileAnalysis`.
-        TF_ASSIGN_OR_RETURN(
-            bool can_tile_diamond_chain,
-            CanSymbolicTileAnalysisTileDiamondChain(diamond_chain));
+        TF_ASSIGN_OR_RETURN(bool can_tile_diamond_chain,
+                            CanSymbolicTileAnalysisTileDiamondChain(
+                                diamond_chain, device_info));
         if (can_tile_diamond_chain) {
           matched_diamonds.push_back(diamond_chain);
         } else {
@@ -626,7 +676,7 @@ absl::StatusOr<std::vector<DiamondChainDescriptor>> FindAllFusibleDiamonds(
     }
   }
 
-  return std::move(matched_diamonds);
+  return matched_diamonds;
 }
 
 // Returns the size of the reduction dimension of the input diamond.
@@ -634,7 +684,7 @@ int64_t GetReductionDimensionSizeForDiamond(
     const DiamondChainDescriptor& diamond_chain) {
   HloInstruction* diamond_root = diamond_chain.root;
   HloInstruction* instr = diamond_root->mutable_operand(1);
-  while (instr->opcode() != HloOpcode::kReduce) {
+  while (HloPredicateIsNotOp<HloOpcode::kReduce>(instr)) {
     instr = ChooseOperandForFusionProcessing(instr);
   }
 
@@ -677,9 +727,9 @@ absl::StatusOr<std::vector<DiamondChainDescriptor>>
 SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
     HloModule& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) const {
-  const se::GpuComputeCapability& cc = device_info_.gpu_compute_capability();
-  TF_ASSIGN_OR_RETURN(std::vector<DiamondChainDescriptor> matched_diamonds,
-                      FindAllFusibleDiamonds(module, execution_threads, cc));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DiamondChainDescriptor> matched_diamonds,
+      FindAllFusibleDiamonds(module, execution_threads, device_info_));
 
   if (matched_diamonds.empty()) {
     return std::vector<DiamondChainDescriptor>();
@@ -704,6 +754,7 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
   std::vector<DiamondChainDescriptor> diamond_chains;
   diamond_chains.reserve(matched_diamonds.size());
 
+  const se::GpuComputeCapability& cc = device_info_.gpu_compute_capability();
   HloInstruction* current_fusion_producer =
       FindFirstNonFusibleDiamondProducer(matched_diamonds.front().producer, cc);
   int current_reduce_dimension_size =
@@ -757,8 +808,9 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
   // `SymbolicTileAnalysis`.
   std::vector<DiamondChainDescriptor> filtered_diamond_chains;
   for (const DiamondChainDescriptor& diamond_chain : diamond_chains) {
-    TF_ASSIGN_OR_RETURN(bool can_tile_diamond_chain,
-                        CanSymbolicTileAnalysisTileDiamondChain(diamond_chain));
+    TF_ASSIGN_OR_RETURN(
+        bool can_tile_diamond_chain,
+        CanSymbolicTileAnalysisTileDiamondChain(diamond_chain, device_info_));
     if (can_tile_diamond_chain) {
       filtered_diamond_chains.push_back(diamond_chain);
     }
@@ -772,7 +824,9 @@ absl::StatusOr<bool> SoftmaxRewriterTriton::MaybeFuseDiamondChain(
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
       &device_info_, &fusion_analysis_cache, shape_size_, &mlir_context_);
 
-  return MaybeFuseDiamondChainImpl(diamond_chain, indexing_performance_model);
+  return MaybeFuseDiamondChainImpl(diamond_chain, indexing_performance_model,
+                                   device_info_, shape_size_,
+                                   use_cost_model_to_evaluate_fusions_);
 }
 
 absl::StatusOr<bool> SoftmaxRewriterTriton::Run(

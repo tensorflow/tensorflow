@@ -15,18 +15,22 @@ limitations under the License.
 
 #include "xla/python/weakref_lru_cache.h"
 
+#include <Python.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>  // NOLINT
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
-#include "absl/container/node_hash_map.h"
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -35,7 +39,6 @@ limitations under the License.
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/lru_cache.h"
-#include "xla/python/nb_helpers.h"
 
 namespace nb = nanobind;
 
@@ -44,63 +47,99 @@ namespace {
 
 // Minimal wrapper to expose a nb::dict_iterator's value as something
 // hashable with Abseil.
-class HashablePyDictValue {
- protected:
-  using Iter = nb::detail::dict_iterator;
+class HashablePyDictEntry {
+ public:
+  explicit HashablePyDictEntry(std::pair<nb::handle, nb::handle> entry)
+      : entry_(entry) {}
 
   template <typename H>
-  friend H AbslHashValue(H h, const HashablePyDictValue& value) {
-    auto kv = *value.iter_;
-    return H::combine(std::move(h), xla::nb_hash(kv.first),
-                      xla::nb_hash(kv.second));
+  friend H AbslHashValue(H h, const HashablePyDictEntry& v) {
+    return H::combine(std::move(h), nb::hash(v.entry_.first),
+                      nb::hash(v.entry_.second));
   }
 
-  explicit HashablePyDictValue(const Iter& iter) : iter_(iter) {}
-
-  Iter iter_;
+  std::pair<nb::handle, nb::handle> entry_;
 };
 
 // Similarly, a minimalist adaptor around the nb::detail::dict_iterator
 // itself. Note that the iterator "is" also a Value. Does not meet the full
 // standard iterator requirements, only enough to support H::combine_unordered.
-class HashablePyDictIter : protected HashablePyDictValue {
+class HashablePyDictIter {
  public:
   using iterator_category = std::input_iterator_tag;
 
-  explicit HashablePyDictIter(const Iter& iter) : HashablePyDictValue(iter) {}
+  explicit HashablePyDictIter(nb::detail::dict_iterator& iter) : iter_(iter) {}
 
   // Minimal set of iterator operations.
-  const HashablePyDictValue& operator*() const { return *this; }
+  HashablePyDictEntry operator*() const { return HashablePyDictEntry(*iter_); }
   bool operator!=(const HashablePyDictIter& rhs) const {
     return iter_ != rhs.iter_;
   }
   void operator++() { ++iter_; }
+
+ private:
+  nb::detail::dict_iterator& iter_;
+};
+
+struct HashableKey {
+  nb::object context;
+  nb::args args;
+  nb::kwargs kwargs;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const HashableKey& key) {
+    // Note: Despite the fact this is an ABSL hash function, it's safe to call
+    // functions that may throw exceptions such as nb::hash(), because it is
+    // used by an LRUCache, which uses a std::unordered_map, which is
+    // exception-safe.
+    h = H::combine(std::move(h), nb::hash(key.context), nb::hash(key.args));
+    nb::detail::dict_iterator begin = key.kwargs.begin();
+    nb::detail::dict_iterator end = key.kwargs.end();
+    h = H::combine_unordered(std::move(h), HashablePyDictIter(begin),
+                             HashablePyDictIter(end));
+    h = H::combine(std::move(h), key.kwargs.size());
+    return h;
+  }
 };
 
 }  // namespace
 
 class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
  public:
-  struct Key {
-    nb::object context;
-    nb::args args;
-    nb::kwargs kwargs;
+  class Key {
+   public:
+    Key(nb::object context, nb::args args, nb::kwargs kwargs)
+        : context_(std::move(context)),
+          args_(std::move(args)),
+          kwargs_(std::move(kwargs)),
+          cached_hash_(absl::HashOf(HashableKey{context_, args_, kwargs_})) {}
 
     bool operator==(const Key& other) const {
-      return context.equal(other.context) && args.equal(other.args) &&
-             kwargs.equal(other.kwargs);
+      return context_.equal(other.context_) && args_.equal(other.args_) &&
+             kwargs_.equal(other.kwargs_);
     }
 
     template <typename H>
     friend H AbslHashValue(H h, const Key& key) {
-      h = H::combine(std::move(h), xla::nb_hash(key.context),
-                     xla::nb_hash(key.args));
-      h = H::combine_unordered(std::move(h),
-                               HashablePyDictIter(key.kwargs.begin()),
-                               HashablePyDictIter(key.kwargs.end()));
-      h = H::combine(std::move(h), key.kwargs.size());
-      return h;
+      return H::combine(std::move(h), key.cached_hash_);
     }
+
+    nb::object context() const { return context_; }
+    nb::args args() const { return args_; }
+    nb::kwargs kwargs() const { return kwargs_; }
+
+    int tp_traverse(visitproc visit, void* arg) const {
+      Py_VISIT(context_.ptr());
+      Py_VISIT(args_.ptr());
+      Py_VISIT(kwargs_.ptr());
+      return 0;
+    }
+
+   private:
+    nb::object context_;
+    nb::args args_;
+    nb::kwargs kwargs_;
+    size_t cached_hash_;
   };
 
   struct CacheEntry {
@@ -108,6 +147,11 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     nb::object result;
     absl::Notification completed;
     std::thread::id thread_id = std::this_thread::get_id();
+
+    int tp_traverse(visitproc visit, void* arg) const {
+      Py_VISIT(result.ptr());
+      return 0;
+    }
   };
 
   struct CacheInfo {
@@ -117,79 +161,76 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     int64_t currsize;
   };
 
-  struct UnboundWeakrefCacheEntry {
-    nb::handle object;
-    WeakrefLRUCache* cache;
+  struct WeakrefCacheKey {
+    nb::weakref ref;
     size_t cached_hash;
-  };
-
-  struct WeakrefCacheEntry {
-    nb::weakref weakref;
-    size_t cached_hash;
-  };
-
-  struct WeakrefKeyHash {
-    using is_transparent = void;
-
-    size_t operator()(const UnboundWeakrefCacheEntry& v) const {
-      return v.cached_hash;
-    }
-    size_t operator()(const WeakrefCacheEntry& v) const {
-      return v.cached_hash;
-    }
-  };
-
-  struct WeakrefKeyEq {
-    using is_transparent = void;
-    bool operator()(const WeakrefCacheEntry& lhs,
-                    const WeakrefCacheEntry& rhs) const {
-      return lhs.weakref.equal(rhs.weakref);
-    }
-    bool operator()(const WeakrefCacheEntry& lhs,
-                    const UnboundWeakrefCacheEntry& rhs) const {
-      PyObject* obj = PyWeakref_GET_OBJECT(lhs.weakref.ptr());
-      if (obj == Py_None) {
-        return false;
-      }
-      return nb::borrow<nb::object>(obj).equal(rhs.object);
-    }
   };
 
   using Cache = xla::LRUCache<Key, std::shared_ptr<CacheEntry>>;
+
+  struct WeakrefCacheValue {
+    std::shared_ptr<Cache> cache;
+  };
+
+  struct WeakrefKeyHash {
+    size_t operator()(const WeakrefCacheKey& v) const { return v.cached_hash; }
+  };
+
+  struct WeakrefKeyEq {
+    bool operator()(const WeakrefCacheKey& lhs,
+                    const WeakrefCacheKey& rhs) const {
+      return lhs.ref.equal(rhs.ref);
+    }
+  };
+
   WeakrefLRUCache(nb::callable cache_context_fn, nb::callable fn,
                   int64_t maxsize)
       : cache_context_fn_(cache_context_fn), fn_(fn), lru_list_(maxsize) {}
 
-  std::shared_ptr<Cache> GetCache(const UnboundWeakrefCacheEntry& key) {
-    auto it = entries_.find(key);
-    if (it != entries_.end()) {
-      return (it->second);
+  std::shared_ptr<Cache> GetCache(WeakrefCacheKey key) {
+    WeakrefCacheValue& value = entries_[key];
+    if (!value.cache) {
+      value.cache = std::make_shared<Cache>(&lru_list_);
     }
-    nb::weakref weakref(
-        key.object,
-        nb::cpp_function([this_weak = weak_from_this(),
-                          cached_hash = key.cached_hash](nb::handle weakref) {
-          auto cache = this_weak.lock();
-          if (cache == nullptr) {
-            return;
-          }
-          auto it = cache->entries_.find(
-              WeakrefCacheEntry{nb::borrow<nb::weakref>(weakref), cached_hash});
-          // Create temp-var to avoid re-entrant erase.
-          auto tmp = std::move(it->second);
-          cache->entries_.erase(it);
-        }));
-    return (entries_
-                .emplace(WeakrefCacheEntry{std::move(weakref), key.cached_hash},
-                         std::make_shared<Cache>(&lru_list_))
-                .first->second);
+    return value.cache;
   }
 
   nb::object Call(nb::object weakref_key, nb::args args,
                   nb::kwargs kwargs) ABSL_NO_THREAD_SAFETY_ANALYSIS {
     nb::object context = cache_context_fn_();
-    std::shared_ptr<Cache> cache_ptr = GetCache(UnboundWeakrefCacheEntry{
-        weakref_key, this, static_cast<size_t>(xla::nb_hash(weakref_key))});
+
+    // We precompute all of the hash values needed by the various maps rather
+    // than computing them during the std::unordered_map insertions. At the very
+    // least, MSVC's std::unordered_map has undefined behavior if the hash
+    // function throws an exception
+    // (https://learn.microsoft.com/en-us/cpp/standard-library/unordered-map-class?view=msvc-170#emplace).
+    Key key(context, args, kwargs);
+    size_t wrcache_hash = static_cast<size_t>(nb::hash(weakref_key));
+
+    // No hash computations after this point.
+
+    auto weakref_gc_callback = nb::cpp_function(
+        [this_weak = weak_from_this(), wrcache_hash](nb::handle weakref) {
+          auto cache = this_weak.lock();
+          if (cache == nullptr) {
+            return;
+          }
+          // The object the reference referred to is now in the process of being
+          // destroyed, so we cannot refer to its contents. Python weakref
+          // objects compare based on identity if the object they refer to is
+          // gone, so the hash lookup will work fine.
+          auto it = cache->entries_.find(
+              WeakrefCacheKey{nb::borrow<nb::weakref>(weakref), wrcache_hash});
+          if (it == cache->entries_.end()) {
+            return;
+          }
+          // Create temp-var to avoid re-entrant erase.
+          auto tmp = std::move(it->second);
+          cache->entries_.erase(it);
+        });
+    nb::weakref weakref = nb::weakref(weakref_key, weakref_gc_callback);
+    WeakrefCacheKey wrcache_key{weakref, wrcache_hash};
+    std::shared_ptr<Cache> cache_ptr = GetCache(wrcache_key);
     Cache& cache = *cache_ptr;
     ++total_queries_;
 
@@ -209,7 +250,6 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
       // released if that happens.
       absl::Cleanup unlock = [this]()
                                  ABSL_UNLOCK_FUNCTION(mu_) { mu_.Unlock(); };
-      Key key{context, args, kwargs};
       entry = cache.GetOrCreateIfAbsent(key, [&inserted](const Key& key) {
         inserted = true;
         return std::make_shared<CacheEntry>();
@@ -245,11 +285,11 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
   std::vector<nb::object> GetKeys() {
     std::vector<nb::object> results;
     mu_.Lock();
-    for (const auto& wr_key : entries_) {
-      for (const auto& rest : *wr_key.second) {
+    for (const auto& wr_entry : entries_) {
+      for (const auto& rest : *wr_entry.second.cache) {
         nb::tuple result =
-            nb::make_tuple(wr_key.first.weakref, rest.first.context,
-                           rest.first.args, rest.first.kwargs);
+            nb::make_tuple(*wr_entry.first.ref, rest.first.context(),
+                           rest.first.args(), rest.first.kwargs());
         results.push_back(std::move(result));
       }
     }
@@ -267,8 +307,9 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
   void Clear() {
     total_queries_ = misses_ = 0;
     std::vector<std::shared_ptr<Cache>> deferred_deletes;
+    deferred_deletes.reserve(entries_.size());
     for (auto& entry : entries_) {
-      deferred_deletes.push_back(std::move(entry.second));
+      deferred_deletes.push_back(std::move(entry.second.cache));
     }
     entries_.clear();
     deferred_deletes.clear();
@@ -277,18 +318,55 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
   nb::callable cache_context_fn_;
   nb::callable fn_;
   Cache::LRUList lru_list_;
-  absl::node_hash_map<WeakrefCacheEntry, std::shared_ptr<Cache>, WeakrefKeyHash,
-                      WeakrefKeyEq>
+  std::unordered_map<WeakrefCacheKey, WeakrefCacheValue, WeakrefKeyHash,
+                     WeakrefKeyEq>
       entries_;
   int64_t misses_ = 0;
   int64_t total_queries_ = 0;
   absl::Mutex mu_;
+
+  static int tp_traverse(PyObject* self, visitproc visit, void* arg) {
+    WeakrefLRUCache* cache = nb::inst_ptr<WeakrefLRUCache>(self);
+    Py_VISIT(Py_TYPE(self));
+    Py_VISIT(cache->cache_context_fn_.ptr());
+    Py_VISIT(cache->fn_.ptr());
+    for (const auto& [wr_key, wr_value] : cache->entries_) {
+      Py_VISIT(wr_key.ref.ptr());
+      for (const auto& [key, cache_value] : *wr_value.cache) {
+        int rval = key.tp_traverse(visit, arg);
+        if (rval != 0) {
+          return rval;
+        }
+        if (cache_value.value.has_value()) {
+          cache_value.value->get()->tp_traverse(visit, arg);
+        }
+      }
+    }
+    return 0;
+  }
+
+  static int tp_clear(PyObject* self) {
+    WeakrefLRUCache* cache = nb::inst_ptr<WeakrefLRUCache>(self);
+    cache->Clear();
+    cache->cache_context_fn_.reset();
+    cache->fn_.reset();
+    return 0;
+  }
+
+  static PyType_Slot slots_[];
+};
+
+/* static */ PyType_Slot WeakrefLRUCache::slots_[] = {
+    {Py_tp_traverse, (void*)WeakrefLRUCache::tp_traverse},
+    {Py_tp_clear, (void*)WeakrefLRUCache::tp_clear},
+    {0, nullptr},
 };
 
 void BuildWeakrefLRUCacheAPI(nb::module_& m) {
   auto weakref_lru_cache =
       nb::class_<WeakrefLRUCache>(m, "WeakrefLRUCache",
-                                  nb::is_weak_referenceable())
+                                  nb::is_weak_referenceable(),
+                                  nb::type_slots(WeakrefLRUCache::slots_))
           .def("__call__", &WeakrefLRUCache::Call)
           .def("cache_keys", &WeakrefLRUCache::GetKeys)
           .def("cache_info", &WeakrefLRUCache::GetCacheInfo)

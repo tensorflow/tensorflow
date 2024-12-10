@@ -17,6 +17,7 @@ limitations under the License.
 #include <cassert>
 #include <cinttypes>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <limits>
@@ -33,10 +34,58 @@ limitations under the License.
 
 namespace tflite {
 
+const char* AllocTypeName(TfLiteAllocationType type) {
+  switch (type) {
+    case kTfLiteMemNone:
+      return "kTfLiteMemNone";
+    case kTfLiteMmapRo:
+      return "kTfLiteMmapRo";
+    case kTfLiteDynamic:
+      return "kTfLiteDynamic";
+    case kTfLiteArenaRw:
+      return "kTfLiteArenaRw";
+    case kTfLiteArenaRwPersistent:
+      return "kTfLiteArenaRwPersistent";
+    case kTfLitePersistentRo:
+      return "kTfLitePersistentRo";
+    case kTfLiteCustom:
+      return "kTfLiteCustom";
+    case kTfLiteVariantObject:
+      return "kTfLiteVariantObject";
+  }
+  return "(invalid)";
+}
+
+SubgraphDelegationMetadata GetNodeDelegationMetadata(const Subgraph& subgraph) {
+  SubgraphDelegationMetadata metadata;
+  metadata.is_node_delegated.resize(subgraph.nodes_size());
+  metadata.replaced_by_node.resize(subgraph.nodes_size());
+  metadata.has_delegate_applied = false;
+
+  for (size_t node_index = 0; node_index < subgraph.nodes_size();
+       node_index++) {
+    metadata.is_node_delegated[node_index] = false;
+    metadata.replaced_by_node[node_index] = -1;
+
+    const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
+        subgraph.node_and_registration(static_cast<int>(node_index));
+    const TfLiteNode& node = node_and_reg->first;
+    auto* const delegate = node.delegate;
+
+    if (delegate != nullptr) {
+      metadata.has_delegate_applied = true;
+      auto* params = static_cast<TfLiteDelegateParams*>(node.builtin_data);
+      for (int nid : TfLiteIntArrayView(params->nodes_to_replace)) {
+        metadata.is_node_delegated[nid] = true;
+        metadata.replaced_by_node[nid] = node_index;
+      }
+    }
+  }
+  return metadata;
+}
+
 namespace {
 // Just forward declarations.
-const char* AllocTypeName(TfLiteAllocationType type);
-
 void PrintIntVector(const std::vector<int>& v,
                     bool collapse_consecutives = true,
                     bool add_newline = false);
@@ -350,28 +399,6 @@ const char* TensorTypeName(TfLiteType type) {
   return "(invalid)";
 }
 
-const char* AllocTypeName(TfLiteAllocationType type) {
-  switch (type) {
-    case kTfLiteMemNone:
-      return "kTfLiteMemNone";
-    case kTfLiteMmapRo:
-      return "kTfLiteMmapRo";
-    case kTfLiteDynamic:
-      return "kTfLiteDynamic";
-    case kTfLiteArenaRw:
-      return "kTfLiteArenaRw";
-    case kTfLiteArenaRwPersistent:
-      return "kTfLiteArenaRwPersistent";
-    case kTfLitePersistentRo:
-      return "kTfLitePersistentRo";
-    case kTfLiteCustom:
-      return "kTfLiteCustom";
-    case kTfLiteVariantObject:
-      return "kTfLiteVariantObject";
-  }
-  return "(invalid)";
-}
-
 std::string TruncateString(const char* str, int size_limit,
                            bool truncate_at_end = false) {
   if (str == nullptr) return "(nil)";
@@ -470,27 +497,8 @@ void PrintInterpreterState(const Interpreter* interpreter,
     subgraph.DumpMemoryPlannerDebugInfo();
 
     // Going to print out all nodes (i.e. op kernels) in this subgraph.
-    std::vector<bool> replaced_node_bits;
-    std::vector<size_t> replaced_by_node;
-    replaced_node_bits.resize(subgraph.nodes_size());
-    replaced_by_node.resize(subgraph.nodes_size());
-    bool has_delegate_applied = false;
-    for (size_t node_index = 0; node_index < subgraph.nodes_size();
-         node_index++) {
-      replaced_node_bits[node_index] = false;
-      const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
-          subgraph.node_and_registration(static_cast<int>(node_index));
-      const TfLiteNode& node = node_and_reg->first;
-      auto* const delegate = node.delegate;
-      if (delegate != nullptr) {
-        has_delegate_applied = true;
-        auto* params = static_cast<TfLiteDelegateParams*>(node.builtin_data);
-        for (int nid : TfLiteIntArrayView(params->nodes_to_replace)) {
-          replaced_node_bits[nid] = true;
-          replaced_by_node[nid] = node_index;
-        }
-      }
-    }
+    SubgraphDelegationMetadata delegation_metadata =
+        GetNodeDelegationMetadata(subgraph);
     for (size_t node_index = 0; node_index < subgraph.nodes_size();
          node_index++) {
       const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
@@ -503,9 +511,10 @@ void PrintInterpreterState(const Interpreter* interpreter,
       TfLiteIntArray empty_int_array;
       empty_int_array.size = 0;
       if (node.delegate == nullptr) {
-        if (replaced_node_bits[node_index]) {
+        if (delegation_metadata.is_node_delegated[node_index]) {
           delegated_status = "(delegated by node ";
-          delegated_status.append(std::to_string(replaced_by_node[node_index]));
+          delegated_status.append(
+              std::to_string(delegation_metadata.replaced_by_node[node_index]));
           delegated_status.append(")");
           is_node_delegated = true;
         } else {
@@ -563,7 +572,7 @@ void PrintInterpreterState(const Interpreter* interpreter,
            subgraph.execution_plan().size());
     PrintIntVector(subgraph.execution_plan(), /*collapse_consecutives=*/true,
                    /*add_newline=*/true);
-    if (has_delegate_applied) {
+    if (delegation_metadata.has_delegate_applied) {
       printf("Among these nodes in the execution plan:\n");
       for (int node_id : subgraph.execution_plan()) {
         const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =

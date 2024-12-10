@@ -659,7 +659,7 @@ class TextFileInitializer(TableInitializerBase):
   ...   key_dtype=tf.string, key_index=tf.lookup.TextFileIndex.WHOLE_LINE,
   ...   value_dtype=tf.int64, value_index=tf.lookup.TextFileIndex.LINE_NUMBER)
   >>> table = tf.lookup.StaticHashTable(init, -1)
-  >>> table.lookup(tf.constant('palmer 30')).numpy()
+  >>> print(table.lookup(tf.constant('palmer 30')).numpy())
   2
   """
 
@@ -1822,7 +1822,7 @@ class MutableHashTable(LookupInterface):
   array([ 7, 8, -1])
   >>> sorted(table.export()[0].numpy())
   [b'a', b'b']
-  >>> sorted(table.export()[1].numpy())
+  >>> [a.item() for a in sorted(table.export()[1].numpy())]
   [7, 8]
   """
 

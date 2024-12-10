@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_GTL_FLATSET_H_
 #define TENSORFLOW_CORE_LIB_GTL_FLATSET_H_
 
-#include "tsl/lib/gtl/flatset.h"
+#include "xla/tsl/lib/gtl/flatset.h"
 
 namespace tensorflow {
 namespace gtl {

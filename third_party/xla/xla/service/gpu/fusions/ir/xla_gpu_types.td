@@ -20,7 +20,7 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
 include "xla/service/gpu/fusions/ir/xla_gpu_dialect.td"
-include "xla/service/gpu/fusions/ir/xla_gpu_attrs.td"
+include "xla/codegen/ir/xla_attrs.td"
 
 class XLAGPU_Type<string name, string typeMnemonic, list<Trait> traits = []>
     : TypeDef<XlaGpuDialect, name, traits> {
@@ -33,7 +33,7 @@ def XLAGPU_IndexedVectorType : XLAGPU_Type<"IndexedVector", "indexed_vector",
   let parameters = (ins
     ArrayRefParameter<"int64_t">:$shape,
     "mlir::Type":$elementType,
-    XLAGPU_IndexingMapAttr:$indexing_map_attr
+    XLA_IndexingMapAttr:$indexing_map_attr
   );
   let hasCustomAssemblyFormat = 1;
   let extraClassDeclaration = [{

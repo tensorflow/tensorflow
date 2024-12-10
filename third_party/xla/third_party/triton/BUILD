@@ -10,14 +10,14 @@ load("//tools/build_defs/testing:bzl_library.bzl", "bzl_library")
 #         "llvm_integration/**",
 #         "temporary/**",
 #     ]),
-#     visibility = ["//third_party/triton:__subpackages__"],
+#     visibility = ["//visibility:public"],
 # )
 # copybara:uncomment_end
 
 filegroup(
     name = "workspace",
     srcs = ["workspace.bzl"],
-    visibility = ["//platforms/xla/experimental/tools/triton:__subpackages__"],
+    visibility = ["//visibility:public"],
 )
 
 bzl_library(

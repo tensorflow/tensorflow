@@ -16,32 +16,76 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <limits>
 #include <string_view>
 
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/notification.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "tsl/platform/logging.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace internal {
 
-void AwaitAndLogIfStuck(std::atomic<int32_t>& ack, absl::Notification& ready,
-                        std::string_view name, size_t num_threads,
+// Waits for the rendezvous to be ready with a timeout. Returns true if the
+// rendezvous is ready, false if the timeout is exceeded.
+static bool WaitForReadyWithTimeout(RendezvousStateSynchronization& state,
+                                    absl::Duration timeout) {
+  absl::MutexLock lock(&state.mutex);
+
+  // Keep checking if the rendezvous is ready inside a loop and update TraceMe
+  // annotation to track the rendezvous progress.
+  while (state.ready.load() == false) {
+    size_t num_pending = state.num_threads - state.ack.load();
+
+    tsl::profiler::TraceMe trace([&] {
+      if (num_pending == 0) {
+        return absl::StrFormat("Wait for rendezvous callback");
+      } else {
+        return absl::StrFormat("Wait %d of %d", num_pending, state.num_threads);
+      }
+    });
+
+    bool timed_out = state.cv.WaitWithTimeout(&state.mutex, timeout);
+    bool ready = state.ready.load();
+
+    // We are done and ready.
+    if (ready) return true;
+
+    // We are done with waiting because the timeout is exceeded.
+    if (timed_out && !ready) {
+      return false;
+    }
+
+    // Otherwise we keep waiting.
+  }
+
+  return state.ready.load();
+}
+
+void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
+                        std::string_view name,
                         absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout) {
-  if (ready.WaitForNotificationWithTimeout(warn_stuck_timeout)) {
+  // Wait for `warn_stuck_timeout` for the rendezvous to be ready.
+  if (WaitForReadyWithTimeout(state, warn_stuck_timeout)) {
     return;
   }
+
+  // If we are stuck, log a warning and add a trace annotation.
+  tsl::profiler::TraceMe trace([&] {
+    return absl::StrFormat("Stuck Waiting for %d of %d",
+                           state.num_threads - state.ack, state.num_threads);
+  });
 
   // Check if all rendezvous participants arrived to the rendezvous point and
   // incremented `ack` counter. We still can be stuck because the leader is
   // waiting for completion of rendezvous callback, but it must not be confused
   // with participants not arriving to the rendezvous point.
-  bool is_all_participants_arrived = ack.load() == num_threads;
+  bool is_all_participants_arrived = state.ack.load() == state.num_threads;
 
   if (is_all_participants_arrived) {
     LOG(ERROR) << absl::StreamFormat(
@@ -49,21 +93,26 @@ void AwaitAndLogIfStuck(std::atomic<int32_t>& ack, absl::Notification& ready,
         "stuck. All %d threads joined the rendezvous, however the leader has "
         "not marked the rendezvous as completed. Leader can be deadlocked "
         "inside the rendezvous callback.",
-        name, absl::ToInt64Seconds(warn_stuck_timeout), num_threads);
+        name, absl::ToInt64Seconds(warn_stuck_timeout), state.num_threads);
 
   } else {
     LOG(ERROR) << absl::StreamFormat(
         "This thread has been waiting for `%s` for %d seconds and may be "
         "stuck. Expected %d threads to join the rendezvous, but not all of "
         "them arrived on time.",
-        name, absl::ToInt64Seconds(warn_stuck_timeout), num_threads);
+        name, absl::ToInt64Seconds(warn_stuck_timeout), state.num_threads);
   }
 
-  if (ready.WaitForNotificationWithTimeout(terminate_timeout)) {
+  // Wait for `terminate_timeout` for the rendezvous to be ready before killing
+  // the process.
+  if (WaitForReadyWithTimeout(state, terminate_timeout)) {
     LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
                   "Perhaps the timeout is too short.";
     return;
   }
+
+  // Check again if all participants arrived to the rendezvous point.
+  is_all_participants_arrived = state.ack.load() == state.num_threads;
 
   if (is_all_participants_arrived) {
     LOG(FATAL) << absl::StreamFormat(
@@ -71,14 +120,14 @@ void AwaitAndLogIfStuck(std::atomic<int32_t>& ack, absl::Notification& ready,
         "ensure a consistent program state. All %d threads joined the "
         "rendezvous, however the leader has not marked the rendezvous as "
         "completed. Leader can be deadlocked inside the rendezvous callback.",
-        name, absl::ToInt64Seconds(terminate_timeout), num_threads);
+        name, absl::ToInt64Seconds(terminate_timeout), state.num_threads);
 
   } else {
     LOG(FATAL) << absl::StreamFormat(
         "Termination timeout for `%s` of %d seconds exceeded. Exiting to "
         "ensure a consistent program state. Expected %d threads to join the "
         "rendezvous, but not all of them arrived on time.",
-        name, absl::ToInt64Seconds(terminate_timeout), num_threads);
+        name, absl::ToInt64Seconds(terminate_timeout), state.num_threads);
   }
 }
 

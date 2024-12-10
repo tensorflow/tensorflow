@@ -44,9 +44,12 @@ class TfDataServiceGpuTest(
   def test_pinned(self, pinned, data_transfer_protocol, compression):
     cpus = config.list_logical_devices("CPU")
     gpus = config.list_logical_devices("GPU")
+    if not gpus:
+      self.skipTest("GPUs must be present to check GPU-pinnedness.")
 
     num_elements = 10
     cluster = self.make_test_cluster(num_workers=1)
+
     with ops.device_v2(cpus[0].name):
       ds = self.make_distributed_range_dataset(
           num_elements=num_elements,
@@ -55,16 +58,12 @@ class TfDataServiceGpuTest(
           compression=("AUTO" if compression else None),
       )
 
-    ds = ds.map(gen_experimental_dataset_ops.check_pinned)
+    with ops.device_v2(gpus[0].name):
+      ds = ds.map(gen_experimental_dataset_ops.check_pinned)
 
     options = options_lib.Options()
     options.experimental_service.pinned = pinned
     ds = ds.with_options(options)
-
-    if not gpus:
-      with self.assertRaisesRegex(errors.FailedPreconditionError, "cuda"):
-        self.assertDatasetProduces(ds, list(range(num_elements)))
-      return
 
     if not pinned or data_transfer_protocol != "grpc" or compression:
       with self.assertRaisesRegex(errors.InvalidArgumentError, "not pinned"):

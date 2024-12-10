@@ -14,7 +14,5 @@ those to this list.
 """
 
 temporary_patch_list = [
-    "//third_party/triton:temporary/highestPowOf2Divisor-underflow-fix.patch",
-    "//third_party/triton:temporary/fp8_fix.patch",
     # Add new patches just above this line
 ]

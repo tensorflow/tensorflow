@@ -16,30 +16,33 @@ limitations under the License.
 #ifndef XLA_TOOLS_HLO_OPT_OPT_LIB_H_
 #define XLA_TOOLS_HLO_OPT_OPT_LIB_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/compiler.h"
-#include "xla/service/executable.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/types.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 
 namespace xla {
 
-// Platform-specific provider of `hlo-opt` functionality.
+// Platform-independent provider of `hlo-opt` functionality.
 class OptProvider {
  public:
+  OptProvider() : pass_registry_() { RegisterAllHardwareIndependentPasses(); }
+
+  virtual ~OptProvider() = default;
+
   // Generates textual output for a given stage on a given platform, returns
   // empty optional if the stage is not supported.
   virtual absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view stage);
-
-  virtual ~OptProvider() = default;
 
   // Returns a set of stages supported by the opt provider.
   virtual std::set<std::string> SupportedStages();
@@ -49,26 +52,46 @@ class OptProvider {
       std::string platform, std::unique_ptr<OptProvider> translate_provider);
 
   // Gets a provider for a given platform.
-  static absl::StatusOr<OptProvider *> ProviderForPlatform(
+  static absl::StatusOr<OptProvider*> GetProviderForPlatform(
       std::string platform);
 
+  // Runs input passes on a input module and returns the optimized module
+  // string.
+  absl::StatusOr<std::optional<std::string>> BuildAndRunTransformPipeline(
+      std::unique_ptr<HloModule> input_module,
+      const std::string& input_pass_names);
+
+  // Registers all passes and pipelines provided by this provider.
+  virtual void RegisterProviderPasses(HloModule& module);
+
+  // Returns a string of all registered pass names.
+  virtual std::string GetRegisteredPassNames();
+
  protected:
-  // Returns platform name associated with the provider.
-  virtual std::string GetPlatformName() = 0;
+  // Map of pass names to pass registration functions. The pass registration
+  // function takes a HloPassPipeline and adds the corresponding pass to it.
+  absl::flat_hash_map<std::string, std::function<void(HloPassPipeline&)>>
+      pass_registry_;
 
-  // Returns a stream executor for the provider (could be nullptr).
-  virtual absl::StatusOr<se::StreamExecutor *> GetExecutor();
+  // Adds an entry of pass name vs pass registration function to registry.
+  template <typename T, typename... Args>
+  void RegisterPass(Args... args) {
+    pass_registry_.insert(std::make_pair(
+        std::string(T(std::forward<Args>(args)...).name()),
+        [args...](HloPassPipeline& p) {
+          p.AddPass<T>(std::forward<decltype(std::as_const(args))>(
+              std::as_const(args))...);
+        }));
+  }
 
-  // Generates executable from a given input module.
-  absl::StatusOr<std::unique_ptr<Executable>> GetExecutable(
-      std::unique_ptr<HloModule> input_module);
+  // Registers all hardware independent passes.
+  void RegisterAllHardwareIndependentPasses();
 
-  // Generates optimized HLO.
-  absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedHlo(
-      std::unique_ptr<HloModule> input_module);
-
-  // Gets a compiler associated with the provider.
-  virtual absl::StatusOr<Compiler *> GetCompiler();
+  // Returns a string of all registered pass names. Helper function for
+  // GetRegisteredPassNames, avoids duplicating code for each provider.
+  std::string GetRegisteredPassNamesHelper(
+      const absl::flat_hash_map<
+          std::string, std::function<void(HloPassPipeline&)>>& pass_registry_);
 };
 
 }  // namespace xla

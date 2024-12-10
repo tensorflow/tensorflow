@@ -48,7 +48,7 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
                              CancellationManager* cancel_mgr,
                              const StatusCallback& done) override;
 
-  void StartAbort(const Status& s) override;
+  void StartAbort(const absl::Status& s) override;
 
  protected:
   // Returns the cached group iff there's an entry for this group_key in the
@@ -56,7 +56,7 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
   GroupRec* GetCachedGroup(int32_t group_key) TF_LOCKS_EXCLUDED(group_mu_);
 
   // Updates group_table_ with contents of resp.
-  Status UpdateGroupCache(const CompleteGroupResponse& resp)
+  absl::Status UpdateGroupCache(const CompleteGroupResponse& resp)
       TF_LOCKS_EXCLUDED(group_mu_);
 
   // Finds the GroupRec that corresponds to cp->group_key and also
@@ -75,8 +75,8 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
       TF_LOCKS_EXCLUDED(instance_mu_);
 
   // Updates instance_table_ with contents of resp.
-  Status UpdateInstanceCache(CollectiveParams* cp,
-                             const CompleteInstanceResponse& resp)
+  absl::Status UpdateInstanceCache(CollectiveParams* cp,
+                                   const CompleteInstanceResponse& resp)
       TF_LOCKS_EXCLUDED(instance_mu_, group_mu_);
 
   // Finish populating *cp.  Semantics are like those of

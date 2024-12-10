@@ -21,8 +21,8 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/xla.pb.h"
 
 namespace xla {

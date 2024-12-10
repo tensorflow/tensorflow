@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/STLExtras.h"
@@ -54,10 +55,15 @@ DynamicSliceThunk::DynamicSliceThunk(
     std::vector<std::optional<Shape>> orig_shapes,
     std::vector<std::optional<Shape>> sliced_shapes,
     std::vector<std::optional<uint64_t>> offset_byte_sizes)
-    : Thunk(Kind::kAddressComputation, thunk_info),
+    : Thunk(Kind::kDynamicSlice, thunk_info),
       embedded_thunk_(std::make_unique<SequentialThunk>(
           ThunkInfo(), std::move(*embedded_thunk))),
-      fake_allocations_(std::move(fake_allocations)) {
+      arguments_(arguments),
+      fake_allocations_(std::move(fake_allocations)),
+      offsets_(offsets),
+      orig_shapes_(orig_shapes),
+      sliced_shapes_(sliced_shapes),
+      offset_byte_sizes_(offset_byte_sizes) {
   // Zip all arguments together to create a list of SliceDef.
   for (auto [arg, offsets, orig_shape, sliced_shape, offset_byte_size] :
        llvm::zip_equal(arguments, offsets, orig_shapes, sliced_shapes,
@@ -176,13 +182,6 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
                 << "]: constant offset = " << *const_offset;
         offset_value(argument_idx, offset_idx) = *const_offset;
 
-      } else if (std::holds_alternative<LoopIter>(offset)) {
-        // Get slice offset from the current loop iteration.
-        TF_ASSIGN_OR_RETURN(int64_t iter, WhileThunk::CurrentLoopIteration());
-        VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
-                << "]: loop iteration offset = " << iter;
-        offset_value(argument_idx, offset_idx) = iter;
-
       } else {
         // Transfer slice offset value from device to host.
         auto alloc_slice = std::get<BufferAllocation::Slice>(offset);
@@ -216,6 +215,10 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
       int64_t start_index =
           std::min(std::max(offset_value(argument_idx, offset_idx), int64_t{0}),
                    src_dim - dst_dim);
+      VLOG(2) << "arg idx: " << argument_idx << " offset_idx " << offset_idx
+              << " with offset_value " << offset_value(argument_idx, offset_idx)
+              << " start_idx: " << start_index << " src_dim: " << src_dim
+              << " dst_dim:" << dst_dim;
       slice_starts.push_back(start_index);
     }
 
@@ -252,5 +255,10 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
+void DynamicSliceThunk::ForAllThunks(
+    absl::FunctionRef<void(const Thunk*)> fn) const {
+  fn(this);
+  embedded_thunk_->ForAllThunks(fn);
+}
 }  // namespace gpu
 }  // namespace xla

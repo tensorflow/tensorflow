@@ -37,16 +37,16 @@ class CustomGradientTest
   void SetUp() override {
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
-    Status s = StatusFromTF_Status(status.get());
+    absl::Status s = StatusFromTF_Status(status.get());
     CHECK_EQ(errors::OK, s.code()) << s.message();
   }
 };
 
 class PassThroughGradientFunction : public GradientFunction {
  public:
-  Status Compute(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_outputs,
-                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
+  absl::Status Compute(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> grad_outputs,
+                       absl::Span<AbstractTensorHandle*> grad_inputs) override {
     CHECK_EQ(grad_outputs.size(), 1);
     CHECK_EQ(grad_inputs.size(), 1);
     grad_inputs[0] = grad_outputs[0];
@@ -65,9 +65,9 @@ class PassThroughGradientFunction : public GradientFunction {
 //     return grads[0]
 //   return tf.exp(input), grad
 // outputs = [f(inputs[0])]
-Status ExpWithPassThroughGrad(AbstractContext* ctx,
-                              absl::Span<AbstractTensorHandle* const> inputs,
-                              absl::Span<AbstractTensorHandle*> outputs) {
+absl::Status ExpWithPassThroughGrad(
+    AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+    absl::Span<AbstractTensorHandle*> outputs) {
   Tape tape(/*persistent=*/false);
   tape.Watch(inputs[0]);  // Watch x.
   AbstractTensorHandle* exp_output;
@@ -90,7 +90,7 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
   AbstractContextPtr ctx;
   {
     AbstractContext* ctx_raw = nullptr;
-    Status s =
+    absl::Status s =
         BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.message();
     ctx.reset(ctx_raw);
@@ -99,7 +99,8 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
   AbstractTensorHandlePtr x;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 1.0f, &x_raw);
+    absl::Status s =
+        TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 1.0f, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
@@ -110,9 +111,9 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
   // y = exp(x)
   // outputs = tape.gradient(y, x)
   std::vector<AbstractTensorHandle*> outputs(1);
-  Status s = RunModel(ExpWithPassThroughGrad, ctx.get(), {x.get()},
-                      absl::MakeSpan(outputs),
-                      /*use_function=*/!std::get<2>(GetParam()));
+  absl::Status s = RunModel(ExpWithPassThroughGrad, ctx.get(), {x.get()},
+                            absl::MakeSpan(outputs),
+                            /*use_function=*/!std::get<2>(GetParam()));
   ASSERT_EQ(errors::OK, s.code()) << s.message();
 
   TF_Tensor* result_tensor;

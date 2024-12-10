@@ -30,13 +30,13 @@ limitations under the License.
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tsl/platform/cuda_libdevice_path.h"
 
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
@@ -152,6 +152,7 @@ class GpuKernelToBlobPass
       int arch = arch_pair.second;
       int cc_major = arch / 10;
       int cc_minor = arch % 10;
+      tensorflow::se::CudaComputeCapability cc{cc_major, cc_minor};
 
       // Generate PTX code.
       // Module may be changed by CompileToPtx.
@@ -160,12 +161,9 @@ class GpuKernelToBlobPass
         target->Options.AllowFPOpFusion =
             llvm::FPOpFusion::FPOpFusionMode::Fast;
       };
-      TF_ASSIGN_OR_RETURN(
-          std::string ptx,
-          xla::gpu::nvptx::CompileToPtx(
-              llvm_module_copy.get(),
-              tensorflow::se::CudaComputeCapability{cc_major, cc_minor},
-              options, enable_fusion));
+      TF_ASSIGN_OR_RETURN(std::string ptx, xla::gpu::nvptx::CompileToPtx(
+                                               llvm_module_copy.get(), cc,
+                                               options, enable_fusion));
       if (print_ptx_) {
         llvm::dbgs() << "Generated PTX code for module '"
                      << gpu_module.getName() << "' on architecture sm_" << arch
@@ -176,8 +174,7 @@ class GpuKernelToBlobPass
       // Compile PTX code with ptxas if requested and possible and fall back to
       // a compute image, otherwise.
       if (!is_compute_profile) {
-        auto gpu_asm = tensorflow::se::CompileGpuAsmUsingPtxAs(
-            cc_major, cc_minor, ptx.c_str(), gpu_asm_opts);
+        auto gpu_asm = tensorflow::se::CompileGpuAsm(cc, ptx, gpu_asm_opts);
         if (gpu_asm.ok()) {
           images.push_back(
               {absl::StrCat("sm_", arch), std::move(gpu_asm.value())});

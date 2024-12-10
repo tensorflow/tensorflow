@@ -235,37 +235,59 @@ bool HasSameStridedShape(TFL::Conv3DOp op, ArrayRef<int64_t> pre_pad_shape) {
 
 using ::llvm::cast;
 
-// Return true if the product of dimension values of a subsection of the
-// tensor is equal to the non-contracting dimension after a reshape
-bool BroadcastDimsProductEqual(Value input, Value output,
-                               size_t agg_start_idx) {
+// Predicate to check if the product of last few dimensions in LHS is equal to
+// the last dimension in RHS.
+// agg_start_idx is the index in LHS from where the subsection will start.
+bool ContractingDimsProductEqual(Value input, Value output,
+                                 size_t agg_start_idx) {
   ArrayRef<int64_t> input_shape =
       mlir::cast<ShapedType>(input.getType()).getShape();
   ArrayRef<int64_t> output_shape =
       mlir::cast<ShapedType>(output.getType()).getShape();
 
-  int64_t agg_value = 1;
-  for (size_t i = agg_start_idx; i < input_shape.size() - 1; ++i) {
+  int agg_value = 1;
+  for (size_t i = agg_start_idx; i < input_shape.size(); ++i) {
     agg_value *= input_shape[i];
   }
 
-  return (agg_value == output_shape[agg_start_idx]);
+  return (agg_value == output_shape[output_shape.size() - 1]);
+}
+
+// Return true if the product of dimension values of a subsection of the
+// tensor is equal to the non-contracting dimension after a reshape
+bool NonBroadcastingNonContractingDimsProductEqual(Value original,
+                                                   Value updated, bool is_lhs,
+                                                   size_t agg_start_idx,
+                                                   size_t agg_end_idx = 0) {
+  ArrayRef<int64_t> original_shape =
+      mlir::cast<ShapedType>(original.getType()).getShape();
+  ArrayRef<int64_t> updated_shape =
+      mlir::cast<ShapedType>(updated.getType()).getShape();
+
+  int64_t agg_value = 1;
+  // If the end_index is not supplied, we'll assume that the contracting
+  // dimension count is one and skip the one contracting dimension.
+  if (agg_end_idx == 0) {
+    if (is_lhs) {
+      agg_end_idx = original_shape.size() - 2;
+    } else {
+      agg_end_idx = original_shape.size() - 1;
+    }
+  }
+  for (size_t i = agg_start_idx; i <= agg_end_idx; ++i) {
+    agg_value *= original_shape[i];
+  }
+
+  if (is_lhs) {
+    return (agg_value == updated_shape[updated_shape.size() - 2]);
+  } else {
+    return (agg_value == updated_shape[updated_shape.size() - 1]);
+  }
 }
 
 // Returns whether the given type `a` is broadcast-compatible with `b`.
 bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
   return OpTrait::util::getBroadcastedType(a, b) != Type();
-}
-
-// Returns whether the resultant type of any broadcastable operation with
-// operands `a` and `b` matches `expected_output`. Returns false if `a` is not
-// broadcast-compatible with `b`.
-bool OperandsBroadcastToOutputType(Type a, Type b, Type expected_output) {
-  Type output_element_type =
-      mlir::cast<ShapedType>(expected_output).getElementType();
-  Type broadcasted_type =
-      OpTrait::util::getBroadcastedType(a, b, output_element_type);
-  return broadcasted_type != Type() && broadcasted_type == expected_output;
 }
 
 // Returns whether if `type1` dimensions are the same as the ending dimensions
@@ -439,6 +461,22 @@ bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
   }
 
   return true;
+}
+
+// Returns 1.0 or -1.0 if binary_op is AddOp or SubOp respectively. Also sets
+// the element type of the returned constant to the same of the `base` argument.
+// This is used when fusing an Add or a Sub into the bias parameter of a
+// convolution.
+Value GetBiasMultiplier(OpBuilder &builder, Value binary_op,
+                        DenseFPElementsAttr base) {
+  ShapedType shaped_type =
+      RankedTensorType::get({}, base.getType().getElementType());
+
+  float multiplier =
+      (llvm::isa<mlir::TFL::AddOp>(binary_op.getDefiningOp()) ? 1.0 : -1.0);
+
+  auto constant_attr = DenseFPElementsAttr::get(shaped_type, multiplier);
+  return builder.create<arith::ConstantOp>(binary_op.getLoc(), constant_attr);
 }
 
 // Expand Attribute 'a' to 4D with all 1s except 1 dimension.
@@ -917,8 +955,8 @@ struct SqueezeReshapesAroundBroadcastOp
         GetI32ElementsAttr(new_reshape_shape_i32, &rewriter));
 
     auto new_inner_reshape_op = rewriter.create<TFL::ReshapeOp>(
-        inner_reshape_op->getLoc(),
-        inner_reshape_input, new_reshape_shape_value);
+        inner_reshape_op->getLoc(), inner_reshape_input,
+        new_reshape_shape_value);
 
     // Create a new reshape_op to replace the old inner reshape_op.
     rewriter.replaceOp(inner_reshape_op, new_inner_reshape_op.getResult());
@@ -1847,145 +1885,6 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
   }
 };
 
-// If the operand to a broadcastable op is a splat constant, try to replace it
-// with a 0-d constant, e.g. before this optimization,
-//   %cst = arith.constant dense<1.0> : tensor<16x16x4xf32>
-//   %0 = "tfl.conv_2d"...
-//   %1 = "tfl.add"(%0, %cst) : (tensor<16x16x4xf32>, tensor<16x16x4xf32>)
-// After this optimization:
-//   %cst = arith.constant dense<1.0> : tensor<f32>
-//   %0 = "tfl.conv_2d"...
-//   %1 = "tfl.add"(%0, %cst) : (tensor<16x16x4xf32>, tensor<f32>)
-// This pattern can enable more fusing opportunities when the binary op is
-// following conv ops.
-template <typename BinaryOpType>
-struct ScalarizeSplatConstantForBroadcastableOps
-    : public OpRewritePattern<BinaryOpType> {
-  using OpRewritePattern<BinaryOpType>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(BinaryOpType binary_op,
-                                PatternRewriter &rewriter) const override {
-    DenseElementsAttr splat_elements_attr;
-    if (!IsScalarizableSplatConstant(binary_op.getRhs(),
-                                     &splat_elements_attr)) {
-      return failure();
-    }
-
-    constexpr int kSplatOperandIndex = 1;
-    auto result_type = mlir::cast<ShapedType>(binary_op.getResult().getType());
-    mlir::Value non_splat_operand =
-        binary_op.getOperand(1 - kSplatOperandIndex);
-    auto non_splat_operand_type =
-        mlir::cast<ShapedType>(non_splat_operand.getType());
-    // If the other operand's shape does not equal to the result shape, then we
-    // cannot scalarize the splat constant because the result shape relies on
-    // the splat constant op's shape for broadcasting.
-    if (!non_splat_operand_type.hasStaticShape() ||
-        non_splat_operand_type.getShape() != result_type.getShape() ||
-        non_splat_operand_type.getRank() > 4) {
-      return failure();
-    }
-
-    // If non-splat operand is not fusable affine ops, then no need to apply
-    // this transformation.
-    if (!CanFuseAffineOp(non_splat_operand.getDefiningOp(), binary_op)) {
-      return failure();
-    }
-
-    // Creates a new scalar constant op using the splat value.
-    mlir::Value splat_operand = binary_op.getOperand(kSplatOperandIndex);
-    auto scalar_elements_attr = DenseElementsAttr::get(
-        RankedTensorType::get({},
-                              splat_elements_attr.getType().getElementType()),
-        splat_elements_attr.getSplatValue<mlir::Attribute>());
-
-    auto scalar_constant_op = rewriter.create<arith::ConstantOp>(
-        splat_operand.getLoc(), scalar_elements_attr.getType(),
-        scalar_elements_attr);
-
-    binary_op.setOperand(kSplatOperandIndex, scalar_constant_op);
-    return success();
-  }
-
- private:
-  // Returns true if this value is a splat constant op which can be scalarized.
-  // Also returns the elements attr if this value is indeed a splat constant.
-  bool IsScalarizableSplatConstant(mlir::Value value,
-                                   DenseElementsAttr *elements_attr) const {
-    if (!matchPattern(value, m_Constant(elements_attr))) {
-      return false;
-    }
-    auto element_type =
-        mlir::cast<ShapedType>(value.getType()).getElementType();
-    // Ignore per-axis quantized constants because after converting to scalar,
-    // we will lose per-axis qantization parameter.
-    if (mlir::isa<quant::UniformQuantizedPerAxisType>(element_type)) {
-      return false;
-    }
-    if (IsScalar(value)) {
-      return false;
-    }
-    return elements_attr->isSplat();
-  }
-
-  // If this type is a scalar shaped type.
-  bool IsScalar(mlir::Value value) const {
-    auto type = mlir::dyn_cast<ShapedType>(value.getType());
-    if (!type) {
-      return false;
-    }
-    if (!type.hasStaticShape()) {
-      return false;
-    }
-    return type.getNumElements() == 1;
-  }
-
-  // Returns true if we can fuse an affine op with consuming binary op.
-  bool CanFuseAffineOp(Operation *affine_op, Operation *binary_op) const {
-    if (!isa_and_nonnull<TFL::Conv2DOp, TFL::DepthwiseConv2DOp,
-                         TFL::FullyConnectedOp>(affine_op)) {
-      return false;
-    }
-    DenseElementsAttr value;
-    // Check that bias are constants if not none.
-    Value bias = affine_op->getOperand(2);
-    if (!mlir::isa<NoneType>(bias.getType()) &&
-        !matchPattern(bias, m_Constant(&value))) {
-      return false;
-    }
-    // If the binary op is mul/div, also check that filter is constant.
-    if (isa<TFL::MulOp, TFL::DivOp>(binary_op) &&
-        !matchPattern(affine_op->getOperand(1), m_Constant(&value))) {
-      return false;
-    }
-
-    // We can only fuse F32/BF16.
-    auto is_fusable_type = [](Type t) {
-      Type element_type = t;
-      if (auto shaped_type = mlir::dyn_cast<ShapedType>(t)) {
-        element_type = shaped_type.getElementType();
-      }
-      return element_type.isBF16() || element_type.isF32();
-    };
-    for (Type t : binary_op->getOperandTypes()) {
-      if (!is_fusable_type(t)) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-};
-
-using ScalarizeSplatConstantForSub =
-    ScalarizeSplatConstantForBroadcastableOps<TFL::SubOp>;
-using ScalarizeSplatConstantForAdd =
-    ScalarizeSplatConstantForBroadcastableOps<TFL::AddOp>;
-using ScalarizeSplatConstantForMul =
-    ScalarizeSplatConstantForBroadcastableOps<TFL::MulOp>;
-using ScalarizeSplatConstantForDiv =
-    ScalarizeSplatConstantForBroadcastableOps<TFL::DivOp>;
-
 // Remove Reshape before FullyConnected when `keep_num_dims=false` and Reshape
 // does not alter the last dimension as FullyConnected will collapse all other
 // dimensions into a single dimension. For example,
@@ -2608,6 +2507,105 @@ struct UndoBroadcastFullyConnectedBiasAddWithQDQs
   }
 };
 
+// Move Reshape after FullyConnected to before FullyConnected when possible.
+// For some cases where Reshape-FC-Reshape pattern can not be fused, moving
+// Reshape after to before FC may help remove one Reshape op by folding
+// (Reshape-Reshape)-FC.
+struct MoveReshapeAfterFullyConnected
+    : public OpRewritePattern<TFL::ReshapeOp> {
+  explicit MoveReshapeAfterFullyConnected(MLIRContext *context)
+      : OpRewritePattern<TFL::ReshapeOp>(context, /*benefit=*/0) {}
+
+  LogicalResult matchAndRewrite(TFL::ReshapeOp reshape,
+                                PatternRewriter &rewriter) const override {
+    auto fc = llvm::dyn_cast_or_null<TFL::FullyConnectedOp>(
+        reshape.getInput().getDefiningOp());
+
+    if (!fc || fc.getNumResults() != 1 || !fc.getResult(0).hasOneUse()) {
+      return failure();
+    }
+    if (auto before = fc.getInput().getDefiningOp();
+        !before || !mlir::isa<TFL::ReshapeOp>(before)) {
+      return failure();
+    }
+
+    auto input_ty =
+        mlir::dyn_cast_or_null<RankedTensorType>(fc.getInput().getType());
+    auto fc_ty = mlir::dyn_cast_or_null<RankedTensorType>(fc.getType(0));
+    auto reshape_ty =
+        mlir::dyn_cast_or_null<RankedTensorType>(reshape.getResult().getType());
+    if (!input_ty || !fc_ty || !reshape_ty || !input_ty.hasStaticShape() ||
+        !fc_ty.hasStaticShape() || !reshape_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    if (reshape_ty.getRank() < 2 ||
+        reshape_ty.getShape().back() != fc_ty.getShape().back()) {
+      // The movable Reshape after must satisfy:
+      // 1. Reshape output's rank >= 2. (FC does not support 1D tensor input).
+      // 2. FC and Reshape outputs' shape are both (..., N).
+      return failure();
+    }
+
+    llvm::SmallVector<int32_t> new_input_shape(reshape_ty.getShape());
+    new_input_shape.pop_back();
+    new_input_shape.push_back(input_ty.getShape().back());
+
+    auto reshape_before = rewriter.create<TFL::ReshapeOp>(
+        fc.getLoc(), fc.getInput(),
+        rewriter.create<arith::ConstantOp>(
+            fc->getLoc(), GetI32ElementsAttr(new_input_shape, &rewriter)));
+
+    rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
+        reshape,
+        RankedTensorType::get(reshape_ty.getShape(),
+                              reshape_ty.getElementType()),
+        reshape_before, fc.getFilter(), fc.getBias(),
+        fc.getFusedActivationFunction(), fc.getWeightsFormat(),
+        /*keep_num_dims=*/true, fc.getAsymmetricQuantizeInputsAttr());
+    return success();
+  }
+};
+
+// When FullyConnected is followed by a Reshape op, the shape of the
+// FullyConnected's output doesn't matter. Enabling FC's keep_num_dims in such
+// case is valid and may help downstream runtime e.g. GPU delegate do better
+// layout planning.
+struct EnableFullyConnectedKeepNumDimsBeforeReshape
+    : public OpRewritePattern<TFL::ReshapeOp> {
+  explicit EnableFullyConnectedKeepNumDimsBeforeReshape(MLIRContext *context)
+      : OpRewritePattern<TFL::ReshapeOp>(context, /*benefit=*/0) {}
+
+  LogicalResult matchAndRewrite(TFL::ReshapeOp reshape,
+                                PatternRewriter &rewriter) const override {
+    auto fc = llvm::dyn_cast_or_null<TFL::FullyConnectedOp>(
+        reshape.getInput().getDefiningOp());
+
+    if (!fc || fc.getNumResults() != 1 || fc.getKeepNumDims() ||
+        !fc->hasOneUse()) {
+      return failure();
+    }
+
+    auto input_ty =
+        mlir::dyn_cast_or_null<RankedTensorType>(fc.getInput().getType());
+    auto fc_ty = mlir::dyn_cast_or_null<RankedTensorType>(fc.getType(0));
+    if (!input_ty || !fc_ty || input_ty.getRank() == 2) {
+      return failure();
+    }
+
+    llvm::SmallVector<int64_t> new_fc_shape(input_ty.getShape());
+    new_fc_shape.pop_back();
+    new_fc_shape.push_back(fc_ty.getShape().back());
+
+    rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
+        fc, RankedTensorType::get(new_fc_shape, fc_ty.getElementType()),
+        fc.getInput(), fc.getFilter(), fc.getBias(),
+        fc.getFusedActivationFunction(), fc.getWeightsFormat(),
+        /*keep_num_dims=*/true, fc.getAsymmetricQuantizeInputsAttr());
+    return success();
+  }
+};
+
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
                                  RewritePatternSet *patterns) {
@@ -2626,7 +2624,11 @@ void OptimizePass::runOnOperation() {
   RewritePatternSet phase_0_patterns(&getContext());
   phase_0_patterns
       .add<SqueezeReshapesAroundBroadcastOp, RemoveReshapeAfterFullyConnected,
-           RemoveReshapeBeforeFullyConnected, ConvertTFLBroadcastToMulOp>(ctx);
+           RemoveReshapeBeforeFullyConnected,
+           FuseOutputReshape_BatchMatMulWithFlattenedContractingDims,
+           FuseSqueezingLhsReshapeIntoFC_Output,
+           FuseReshapesAroundBatchMatMulLHS, FuseReshapesAroundBatchMatMulLHS1,
+           FuseInputReshape_BatchMatMulWithFlattenedRhsDims>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus
@@ -2651,8 +2653,6 @@ void OptimizePass::runOnOperation() {
   TFL::populateWithGenerated(phase_2_patterns);
   phase_2_patterns.add<
       UndoBroadcastFullyConnectedBiasAddWithQDQs, FuseLogSoftmax,
-      ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
-      ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
       FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
       FuseFullyConnectedAndMul, FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
       FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
@@ -2663,23 +2663,15 @@ void OptimizePass::runOnOperation() {
       RemoveReshapeBeforeFullyConnected, FuseUnpackAndConcatToReshape,
       OptimizeTopK, FuseAddAndStridedSlice,
       FuseReshapeAndTransposeAroundBatchMatmul,
-      FuseTransposeReshapeIntoBatchMatmul>(ctx);
+      FuseTransposeReshapeIntoBatchMatmul, MoveReshapeAfterFullyConnected,
+      EnableFullyConnectedKeepNumDimsBeforeReshape, ConvertTFLBroadcastToMulOp>(
+      ctx);
   if (!GetOptions().disable_fuse_mul_and_fc) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }
   if (GetOptions().enable_canonicalization)
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
-}
-
-// Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
-    const OptimizePassOptions &options) {
-  return std::make_unique<OptimizePass>(options);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass() {
-  return std::make_unique<OptimizePass>();
 }
 
 }  // namespace TFL

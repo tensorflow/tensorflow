@@ -92,7 +92,7 @@ CreateSimpleOptimizedFunctionGraphInfo() {
   NodeDef node_def;
   TF_RETURN_IF_ERROR(NodeDefBuilder("A", "OneOutput").Finalize(&node_def));
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
-  Status status;
+  absl::Status status;
   graph->AddNode(node_def, &status);
   TF_RETURN_IF_ERROR(status);
 

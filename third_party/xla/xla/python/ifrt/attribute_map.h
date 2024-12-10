@@ -93,6 +93,11 @@ class AttributeMap {
   std::string DebugString(size_t max_string_length = 64,
                           size_t max_int64_list_size = 16) const;
 
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const AttributeMap& attribute_map) {
+    sink.Append(attribute_map.DebugString());
+  }
+
  private:
   Map map_;
 };

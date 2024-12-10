@@ -27,14 +27,15 @@ limitations under the License.
 #include <vector>
 
 #include "ruy/denormal.h"  // from @ruy
+#include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
-#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/signature_runner.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -64,6 +65,9 @@ static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
               "Float 16 type must be 16 bits.");
 
 namespace tflite {
+
+const int& Interpreter::kTensorsReservedCapacity = 128;
+const int& Interpreter::kTensorsCapacityHeadroom = 16;
 
 namespace {
 

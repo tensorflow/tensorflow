@@ -34,8 +34,9 @@ namespace tensorflow {
 namespace gradients {
 namespace {
 
-static Status SafeConj(AbstractContext* ctx, AbstractTensorHandle* const input,
-                       AbstractTensorHandle** output, const char* name) {
+static absl::Status SafeConj(AbstractContext* ctx,
+                             AbstractTensorHandle* const input,
+                             AbstractTensorHandle** output, const char* name) {
   auto dtype = input->DataType();
   if (DataTypeIsFloating(BaseType(dtype)) ||
       DataTypeIsInteger(BaseType(dtype))) {
@@ -50,9 +51,9 @@ static Status SafeConj(AbstractContext* ctx, AbstractTensorHandle* const input,
 
 class AddGradientFunction : public GradientFunction {
  public:
-  Status Compute(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_outputs,
-                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
+  absl::Status Compute(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> grad_outputs,
+                       absl::Span<AbstractTensorHandle*> grad_inputs) override {
     // TODO(b/161805092): Support broadcasting.
 
     DCHECK(grad_outputs[0]);
@@ -71,9 +72,9 @@ class ExpGradientFunction : public GradientFunction {
   explicit ExpGradientFunction(AbstractTensorHandle* exp) : exp_(exp) {
     exp->Ref();
   }
-  Status Compute(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_outputs,
-                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
+  absl::Status Compute(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> grad_outputs,
+                       absl::Span<AbstractTensorHandle*> grad_inputs) override {
     AbstractTensorHandle* conj_output;
     std::string name = "Conj_Exp_Grad";
     TF_RETURN_IF_ERROR(SafeConj(ctx, exp_.get(), &conj_output, name.c_str()));
@@ -95,9 +96,9 @@ class SqrtGradientFunction : public GradientFunction {
   explicit SqrtGradientFunction(AbstractTensorHandle* sqrt) : sqrt_(sqrt) {
     sqrt->Ref();
   }
-  Status Compute(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_outputs,
-                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
+  absl::Status Compute(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> grad_outputs,
+                       absl::Span<AbstractTensorHandle*> grad_inputs) override {
     std::string name = "Sqrt_Grad";
     TF_RETURN_IF_ERROR(SqrtGrad(ctx, sqrt_.get(), grad_outputs[0],
                                 &grad_inputs[0], name.c_str()));
@@ -121,9 +122,9 @@ class MatMulGradientFunction : public GradientFunction {
     }
   }
 
-  Status Compute(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_outputs,
-                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
+  absl::Status Compute(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> grad_outputs,
+                       absl::Span<AbstractTensorHandle*> grad_inputs) override {
     /* Given upstream grad U and a matmul op A*B, the gradients are:
      *
      *    dA = U * B.T
@@ -217,9 +218,9 @@ class MatMulGradientFunction : public GradientFunction {
 
 class NegGradientFunction : public GradientFunction {
  public:
-  Status Compute(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_outputs,
-                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
+  absl::Status Compute(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> grad_outputs,
+                       absl::Span<AbstractTensorHandle*> grad_inputs) override {
     /* Given upstream grad U and a Neg op Y = -X, the gradients are:
      *
      *    dX =  -U
@@ -236,9 +237,9 @@ class NegGradientFunction : public GradientFunction {
 
 class SubGradientFunction : public GradientFunction {
  public:
-  Status Compute(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_outputs,
-                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
+  absl::Status Compute(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> grad_outputs,
+                       absl::Span<AbstractTensorHandle*> grad_inputs) override {
     /* Given upstream grad U and a Sub op A-B, the gradients are:
      *
      *    dA =  U
@@ -273,9 +274,9 @@ class MulGradientFunction : public GradientFunction {
     }
   }
 
-  Status Compute(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_outputs,
-                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
+  absl::Status Compute(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> grad_outputs,
+                       absl::Span<AbstractTensorHandle*> grad_inputs) override {
     /* Given upstream grad U and a mul op A*B, the gradients are:
      *
      *    dA = U * B
@@ -320,9 +321,9 @@ class Log1pGradientFunction : public GradientFunction {
     }
   }
 
-  Status Compute(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_outputs,
-                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
+  absl::Status Compute(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> grad_outputs,
+                       absl::Span<AbstractTensorHandle*> grad_inputs) override {
     // TODO(vnvo2409): Add control dependency
     /* Given upstream grad U and a Log1p op: Y = log(1 + X), the gradients are:
      *
@@ -391,9 +392,9 @@ class DivNoNanGradientFunction : public GradientFunction {
     }
   }
 
-  Status Compute(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_outputs,
-                 absl::Span<AbstractTensorHandle*> grad_inputs) override {
+  absl::Status Compute(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> grad_outputs,
+                       absl::Span<AbstractTensorHandle*> grad_inputs) override {
     // TODO(vnvo2409): Add shape broadcasting
     /* Given upstream grad U and a Div op: Z = X/Y, the gradients are:
      *

@@ -1,8 +1,8 @@
-// RUN: mlir_fusions_opt -allow-unregistered-dialect %s -split-input-file \
-// RUN:  -xla-gpu-vectorize-loads-stores -canonicalize -cse \
-// RUN: | FileCheck %s
-#map = #xla_gpu.indexing_map<(d0)[s0] -> (d0 * 2 + s0),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+// RUN: emitters_opt -allow-unregistered-dialect %s -split-input-file \
+// RUN:  -xla-gpu-vectorize-loads-stores -cse -canonicalize | FileCheck %s
+
+#map = #xla.indexing_map<"(d0)[s0] -> (d0 * 2 + s0),"
+  "domain: d0 in [0, 63], s0 in [0, 1]">
 func.func @simple_read(%arg0: tensor<128xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -11,7 +11,7 @@ func.func @simple_read(%arg0: tensor<128xf32>) -> (f32) {
   %cst = arith.constant 0.0 : f32
   %outer = scf.for %i = %c0 to %c64 step %c1 iter_args(%iter = %cst) -> f32 {
     %inner = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter1 = %iter) -> f32 {
-      %idx = xla_gpu.apply_indexing #map(%i)[%j]
+      %idx = xla.apply_indexing #map(%i)[%j]
       %extracted = tensor.extract %arg0[%idx] : tensor<128xf32>
       %added = arith.addf %iter1, %extracted : f32
       scf.yield %added : f32
@@ -20,7 +20,7 @@ func.func @simple_read(%arg0: tensor<128xf32>) -> (f32) {
   }
   return %outer : f32
 }
-// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 2), domain: d0 in [0, 63]>
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0) -> (d0 * 2), domain: d0 in [0, 63]">
 // CHECK-LABEL: @simple_read
 // CHECK-SAME:     (%[[ARG0:.*]]: tensor
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
@@ -28,7 +28,7 @@ func.func @simple_read(%arg0: tensor<128xf32>) -> (f32) {
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
 // CHECK-DAG:   %[[C64:.*]] = arith.constant 64 : index
 // CHECK:       scf.for %[[I:.*]] = %[[C0]] to %[[C64]] step %[[C1]] iter_args(%[[ITER:.*]] =
-// CHECK:         %[[BASE:.*]] = xla_gpu.apply_indexing #[[$MAP]](%[[I]])
+// CHECK:         %[[BASE:.*]] = xla.apply_indexing #[[$MAP]](%[[I]])
 // CHECK-NEXT:    %[[V:.*]] = vector.transfer_read %[[ARG0]][%[[BASE]]]
 // CHECK-NEXT:    scf.for %[[J:.*]] = %[[C0]]
 // CHECK-NEXT:      vector.extract %[[V]][%[[J]]]
@@ -36,8 +36,78 @@ func.func @simple_read(%arg0: tensor<128xf32>) -> (f32) {
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0)[s0] -> (d0 * 2 + s0 + 1),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+#map = #xla.indexing_map<"(d0)[s0] -> (d0 * 4 + s0),"
+  "domain: d0 in [0, 63], s0 in [0, 3]">
+func.func @simple_read(%arg0: tensor<256xf16>) -> (f16) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %c64 = arith.constant 64 : index
+  %cst = arith.constant 0.0 : f16
+  %outer = scf.for %i = %c0 to %c64 step %c1 iter_args(%iter = %cst) -> f16 {
+    %inner = scf.for %j = %c0 to %c4 step %c1 iter_args(%iter1 = %iter) -> f16 {
+      %idx = xla.apply_indexing #map(%i)[%j]
+      %extracted = tensor.extract %arg0[%idx] : tensor<256xf16>
+      %added = arith.addf %iter1, %extracted : f16
+      scf.yield %added : f16
+    }
+    scf.yield %inner : f16
+  }
+  return %outer : f16
+}
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0) -> (d0 * 4), domain: d0 in [0, 63]">
+// CHECK-LABEL: @simple_read
+// CHECK-SAME:     (%[[ARG0:.*]]: tensor
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG:   %[[C64:.*]] = arith.constant 64 : index
+// CHECK:       scf.for %[[I:.*]] = %[[C0]] to %[[C64]] step %[[C1]] iter_args(%[[ITER:.*]] =
+// CHECK:         %[[BASE:.*]] = xla.apply_indexing #[[$MAP]](%[[I]])
+// CHECK-NEXT:    %[[V:.*]] = vector.transfer_read %[[ARG0]][%[[BASE]]]
+// CHECK-NEXT:    scf.for %[[J:.*]] = %[[C0]]
+// CHECK-NEXT:      vector.extract %[[V]][%[[J]]]
+// CHECK-NEXT:      addf
+
+// -----
+
+#map = #xla.indexing_map<"(d0)[s0] -> (d0 * 8 + s0),"
+  "domain: d0 in [0, 63], s0 in [0, 7]">
+func.func @simple_read(%arg0: tensor<512xi8>) -> (i8) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+  %c64 = arith.constant 64 : index
+  %cst = arith.constant 0 : i8
+  %outer = scf.for %i = %c0 to %c64 step %c1 iter_args(%iter = %cst) -> i8 {
+    %inner = scf.for %j = %c0 to %c8 step %c1 iter_args(%iter1 = %iter) -> i8 {
+      %idx = xla.apply_indexing #map(%i)[%j]
+      %extracted = tensor.extract %arg0[%idx] : tensor<512xi8>
+      %added = arith.addi %iter1, %extracted : i8
+      scf.yield %added : i8
+    }
+    scf.yield %inner : i8
+  }
+  return %outer : i8
+}
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0) -> (d0 * 8), domain: d0 in [0, 63]">
+// CHECK-LABEL: @simple_read
+// CHECK-SAME:     (%[[ARG0:.*]]: tensor
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C8:.*]] = arith.constant 8 : index
+// CHECK-DAG:   %[[C64:.*]] = arith.constant 64 : index
+// CHECK:       scf.for %[[I:.*]] = %[[C0]] to %[[C64]] step %[[C1]] iter_args(%[[ITER:.*]] =
+// CHECK:         %[[BASE:.*]] = xla.apply_indexing #[[$MAP]](%[[I]])
+// CHECK-NEXT:    %[[V:.*]] = vector.transfer_read %[[ARG0]][%[[BASE]]]
+// CHECK-NEXT:    scf.for %[[J:.*]] = %[[C0]]
+// CHECK-NEXT:      vector.extract %[[V]][%[[J]]]
+// CHECK-NEXT:      addi
+
+// -----
+
+#map = #xla.indexing_map<"(d0)[s0] -> (d0 * 2 + s0 + 1),"
+  "domain: d0 in [0, 63], s0 in [0, 1]">
 func.func @misaligned_indexing_map(%arg0: tensor<128xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -46,7 +116,7 @@ func.func @misaligned_indexing_map(%arg0: tensor<128xf32>) -> (f32) {
   %cst = arith.constant 0.0 : f32
   %outer = scf.for %i = %c0 to %c63 step %c1 iter_args(%iter = %cst) -> f32 {
     %inner = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter1 = %iter) -> f32 {
-      %idx = xla_gpu.apply_indexing #map(%i)[%j]
+      %idx = xla.apply_indexing #map(%i)[%j]
       %extracted = tensor.extract %arg0[%idx] : tensor<128xf32>
       %added = arith.addf %iter1, %extracted : f32
       scf.yield %added : f32
@@ -60,8 +130,8 @@ func.func @misaligned_indexing_map(%arg0: tensor<128xf32>) -> (f32) {
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0)[s0] -> (d0 * 3 + s0),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+#map = #xla.indexing_map<"(d0)[s0] -> (d0 * 3 + s0),"
+  "domain: d0 in [0, 63], s0 in [0, 1]">
 func.func @misaligned_indexing_map_2(%arg0: tensor<128xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -70,7 +140,7 @@ func.func @misaligned_indexing_map_2(%arg0: tensor<128xf32>) -> (f32) {
   %cst = arith.constant 0.0 : f32
   %outer = scf.for %i = %c0 to %c63 step %c1 iter_args(%iter = %cst) -> f32 {
     %inner = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter1 = %iter) -> f32 {
-      %idx = xla_gpu.apply_indexing #map(%i)[%j]
+      %idx = xla.apply_indexing #map(%i)[%j]
       %extracted = tensor.extract %arg0[%idx] : tensor<128xf32>
       %added = arith.addf %iter1, %extracted : f32
       scf.yield %added : f32
@@ -84,8 +154,8 @@ func.func @misaligned_indexing_map_2(%arg0: tensor<128xf32>) -> (f32) {
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0)[s0] -> (3 * d0 + s0),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+#map = #xla.indexing_map<"(d0)[s0] -> (3 * d0 + s0),"
+  "domain: d0 in [0, 63], s0 in [0, 1]">
 func.func @misaligned_shape(%arg0: tensor<192xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -94,7 +164,7 @@ func.func @misaligned_shape(%arg0: tensor<192xf32>) -> (f32) {
   %cst = arith.constant 0.0 : f32
   %outer = scf.for %i = %c0 to %c64 step %c1 iter_args(%iter = %cst) -> f32 {
     %inner = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter1 = %iter) -> f32 {
-      %idx = xla_gpu.apply_indexing #map(%i)[%j]
+      %idx = xla.apply_indexing #map(%i)[%j]
       %extracted = tensor.extract %arg0[%idx] : tensor<192xf32>
       %added = arith.addf %iter1, %extracted : f32
       scf.yield %added : f32
@@ -108,8 +178,8 @@ func.func @misaligned_shape(%arg0: tensor<192xf32>) -> (f32) {
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0)[s0] -> (d0 + s0 * 2),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+#map = #xla.indexing_map<"(d0)[s0] -> (d0 + s0 * 2),"
+  "domain: d0 in [0, 63], s0 in [0, 1]">
 func.func @wrong_stride(%arg0: tensor<128xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -118,7 +188,7 @@ func.func @wrong_stride(%arg0: tensor<128xf32>) -> (f32) {
   %cst = arith.constant 0.0 : f32
   %outer = scf.for %i = %c0 to %c63 step %c1 iter_args(%iter = %cst) -> f32 {
     %inner = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter1 = %iter) -> f32 {
-      %idx = xla_gpu.apply_indexing #map(%i)[%j]
+      %idx = xla.apply_indexing #map(%i)[%j]
       %extracted = tensor.extract %arg0[%idx] : tensor<128xf32>
       %added = arith.addf %iter1, %extracted : f32
       scf.yield %added : f32
@@ -134,15 +204,15 @@ func.func @wrong_stride(%arg0: tensor<128xf32>) -> (f32) {
 
 // We could vectorize this as a float vector load of double the size, but we
 // don't currently.
-#map = #xla_gpu.indexing_map<(d0)[s0] -> (2 * d0 + s0),
-                             domain: d0 in [0, 127], s0 in [0, 1]>
+#map = #xla.indexing_map<"(d0)[s0] -> (2 * d0 + s0),"
+  "domain: d0 in [0, 127], s0 in [0, 1]">
 func.func @simple_read_complex(%arg0: tensor<128xcomplex<f32>>, %i: index) -> (complex<f32>) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
   %cst = complex.constant [0.0 : f32, 0.0 : f32] : complex<f32>
   %loop = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter = %cst) -> complex<f32> {
-    %idx = xla_gpu.apply_indexing #map(%i)[%j]
+    %idx = xla.apply_indexing #map(%i)[%j]
     %extracted = tensor.extract %arg0[%idx] : tensor<128xcomplex<f32>>
     %added = complex.add %iter, %extracted : complex<f32>
     scf.yield %added : complex<f32>
@@ -250,10 +320,11 @@ func.func @write_not_yielded(%arg0: tensor<64xf32>) -> tensor<64xf32> {
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0, d1)[s0] -> (d1 * 2 + d0 + s0 * 512),
-                             domain: d0 in [0, 7], d1 in [0, 255], s0 in [0, 7]>
-#map1 = #xla_gpu.indexing_map<(d0, d1, d2)[s0] -> (d0 * 32 + d2 * 2 + d1 + s0 * 512),
-                             domain: d0 in [0, 7], d1 in [0, 1], d2 in [0, 255], s0 in [0, 7]>
+#map = #xla.indexing_map<"(d0, d1)[s0] -> (d1 * 2 + d0 + s0 * 512),"
+  "domain: d0 in [0, 7], d1 in [0, 255], s0 in [0, 7]">
+#map1 = #xla.indexing_map<
+  "(d0, d1, d2)[s0] -> (d0 * 32 + d2 * 2 + d1 + s0 * 512),"
+  "domain: d0 in [0, 7], d1 in [0, 1], d2 in [0, 255], s0 in [0, 7]">
 func.func @multiple(%arg0: tensor<131072xf32>, %arg1: tensor<4096xbf16>,
       %arg2: tensor<32xf32>, %arg3: tensor<131072xf32>,
       %arg4: index) -> (tensor<131072xf32>, f32) {
@@ -265,8 +336,8 @@ func.func @multiple(%arg0: tensor<131072xf32>, %arg1: tensor<4096xbf16>,
   %extracted1 = tensor.extract %arg2[%arg4] : tensor<32xf32>
   %0:2 = scf.for %i = %c0 to %c8 step %c1 iter_args(%iter0 = %arg3, %iter1 = %cst) -> (tensor<131072xf32>, f32) {
     %1:2 = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter2 = %iter0, %iter3 = %iter1) -> (tensor<131072xf32>, f32) {
-      %2 = xla_gpu.apply_indexing #map(%j, %arg4)[%i]
-      %idx = xla_gpu.apply_indexing #map1(%i, %j, %arg4)[%i]
+      %2 = xla.apply_indexing #map(%j, %arg4)[%i]
+      %idx = xla.apply_indexing #map1(%i, %j, %arg4)[%i]
       %extracted2 = tensor.extract %arg0[%idx] : tensor<131072xf32>
       %extracted3 = tensor.extract %arg1[%2] : tensor<4096xbf16>
       %3 = arith.extf %extracted3 : bf16 to f32
@@ -280,14 +351,14 @@ func.func @multiple(%arg0: tensor<131072xf32>, %arg1: tensor<4096xbf16>,
   }
   return %0#0, %0#1 : tensor<131072xf32>, f32
 }
-// CHECK-DAG: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0)[s0] -> (d0 * 2 + s0 * 512), domain: d0 in [0, 255], s0 in [0, 7]>
-// CHECK-DAG: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0] -> (d0 * 32 + d1 * 2 + s0 * 512), domain: d0 in [0, 7], d1 in [0, 255], s0 in [0, 7]>
+// CHECK-DAG: #[[$MAP:.*]] = #xla.indexing_map<"(d0, d1) -> (d0 * 2 + d1 * 512), domain: d0 in [0, 255], d1 in [0, 7]">
+// CHECK-DAG: #[[$MAP1:.*]] = #xla.indexing_map<"(d0, d1, d2) -> (d0 * 32 + d1 * 2 + d2 * 512), domain: d0 in [0, 7], d1 in [0, 255], d2 in [0, 7]">
 // CHECK-LABEL: @multiple
 // CHECK-SAME: (%[[ARG0:.*]]: tensor{{.*}}, %[[ARG1:.*]]: tensor{{.*}}, %[[ARG2:.*]]: tensor{{.*}}, %[[ARG3:.*]]: tensor{{.*}}, %[[ARG4:.*]]: index)
 // CHECK:      %[[C0:.*]] = arith.constant 0 : index
 // CHECK:      scf.for %[[I:.*]] = %[[C0]]
-// CHECK-DAG:  %[[BASE:.*]] = xla_gpu.apply_indexing #[[$MAP]](%[[ARG4]])[%[[I]]]
-// CHECK-DAG:  %[[IDX:.*]] = xla_gpu.apply_indexing #[[$MAP1]](%[[I]], %[[ARG4]])[%[[I]]]
+// CHECK-DAG:  %[[BASE:.*]] = xla.apply_indexing #[[$MAP]](%[[ARG4]], %[[I]])
+// CHECK-DAG:  %[[IDX:.*]] = xla.apply_indexing #[[$MAP1]](%[[I]], %[[ARG4]], %[[I]])
 // CHECK:      %[[READ1:.*]] = vector.transfer_read %[[ARG1]][%[[BASE]]]
 // CHECK:      %[[READ2:.*]] = vector.transfer_read %[[ARG0]][%[[IDX]]]
 // CHECK:      %[[INNER:.*]]:2 = scf.for %[[J:.*]] = %[[C0]] {{.*}} iter_args(%[[F:.*]] = {{.*}}, %[[V:.*]] = {{.*}}) -> (f32, vector<2xf32>)
@@ -304,8 +375,8 @@ func.func @multiple(%arg0: tensor<131072xf32>, %arg1: tensor<4096xbf16>,
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0)[s0] -> ((d0 * 4) mod 64 + s0),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+#map = #xla.indexing_map<"(d0)[s0] -> ((d0 * 4) mod 64 + s0),"
+  "domain: d0 in [0, 63], s0 in [0, 1]">
 func.func @remainder_with_modulo(%arg0: tensor<128xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -314,7 +385,7 @@ func.func @remainder_with_modulo(%arg0: tensor<128xf32>) -> (f32) {
   %cst = arith.constant 0.0 : f32
   %outer = scf.for %i = %c0 to %c63 step %c1 iter_args(%iter = %cst) -> f32 {
     %inner = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter1 = %iter) -> f32 {
-      %idx = xla_gpu.apply_indexing #map(%i)[%j]
+      %idx = xla.apply_indexing #map(%i)[%j]
       %extracted = tensor.extract %arg0[%idx] : tensor<128xf32>
       %added = arith.addf %iter1, %extracted : f32
       scf.yield %added : f32
@@ -323,17 +394,17 @@ func.func @remainder_with_modulo(%arg0: tensor<128xf32>) -> (f32) {
   }
   return %outer : f32
 }
-// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0) -> ((d0 mod 16) * 4),
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0) -> ((d0 mod 16) * 4),
 // CHECK-LABEL: @remainder_with_modulo
 // CHECK: %[[C0:.*]] = arith.constant 0 : index
 // CHECK: scf.for %[[I:.*]] = %[[C0]]
-// CHECK: %[[BASE:.*]] = xla_gpu.apply_indexing #[[$MAP]](%[[I]]
+// CHECK: %[[BASE:.*]] = xla.apply_indexing #[[$MAP]](%[[I]]
 // CHECK: vector.transfer_read {{.*}}[%[[BASE]]]
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0)[s0] -> ((d0 * 4) mod 65 + s0),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+#map = #xla.indexing_map<"(d0)[s0] -> ((d0 * 4) mod 65 + s0),"
+  "domain: d0 in [0, 63], s0 in [0, 1]">
 func.func @remainder_with_modulo_misaligned(%arg0: tensor<128xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -342,7 +413,7 @@ func.func @remainder_with_modulo_misaligned(%arg0: tensor<128xf32>) -> (f32) {
   %cst = arith.constant 0.0 : f32
   %outer = scf.for %i = %c0 to %c63 step %c1 iter_args(%iter = %cst) -> f32 {
     %inner = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter1 = %iter) -> f32 {
-      %idx = xla_gpu.apply_indexing #map(%i)[%j]
+      %idx = xla.apply_indexing #map(%i)[%j]
       %extracted = tensor.extract %arg0[%idx] : tensor<128xf32>
       %added = arith.addf %iter1, %extracted : f32
       scf.yield %added : f32
@@ -356,10 +427,10 @@ func.func @remainder_with_modulo_misaligned(%arg0: tensor<128xf32>) -> (f32) {
 
 // -----
 
-#map0 = #xla_gpu.indexing_map<(d0) -> (d0 + 5),
-                              domain: d0 in [0, 63]>
-#map1 = #xla_gpu.indexing_map<(d0)[s0] -> (d0 * 2 + s0),
-                              domain: d0 in [0, 63], s0 in [0, 1]>
+#map0 = #xla.indexing_map<"(d0) -> (d0 + 5),"
+  "domain: d0 in [0, 63]">
+#map1 = #xla.indexing_map<"(d0)[s0] -> (d0 * 2 + s0),"
+  "domain: d0 in [0, 63], s0 in [0, 1]">
 module {
   func.func @apply_indexing_sequence(%arg0: tensor<128xf32>) -> (f32) {
     %c0 = arith.constant 0 : index
@@ -368,9 +439,9 @@ module {
     %c63 = arith.constant 63 : index
     %cst = arith.constant 0.0 : f32
     %outer = scf.for %i = %c0 to %c63 step %c1 iter_args(%iter = %cst) -> f32 {
-      %offset = xla_gpu.apply_indexing #map0(%i)
+      %offset = xla.apply_indexing #map0(%i)
       %inner = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter1 = %iter) -> f32 {
-        %idx = xla_gpu.apply_indexing #map1(%offset)[%j]
+        %idx = xla.apply_indexing #map1(%offset)[%j]
         %extracted = tensor.extract %arg0[%idx] : tensor<128xf32>
         %added = arith.addf %iter1, %extracted : f32
         scf.yield %added : f32
@@ -381,19 +452,19 @@ module {
   }
 }
 
-// CHECK: #[[$MAP0:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 2 + 10),
-// CHECK-SAME:                                  domain: d0 in [0, 63]>
+// CHECK: #[[$MAP0:.*]] = #xla.indexing_map<"(d0) -> (d0 * 2 + 10),
+// CHECK-SAME:                                  domain: d0 in [0, 63]">
 // CHECK-LABEL: @apply_indexing_sequence
-// CHECK: %[[BASE:.*]] = xla_gpu.apply_indexing #[[$MAP0]]
+// CHECK: %[[BASE:.*]] = xla.apply_indexing #[[$MAP0]]
 // CHECK: vector.transfer_read {{.*}}[%[[BASE]]]
 
 // -----
 
 
-#map0 = #xla_gpu.indexing_map<(d0) -> (d0 + 5),
-                              domain: d0 in [0, 63]>
-#map1 = #xla_gpu.indexing_map<(d0)[s0] -> (d0 * 2 + s0),
-                              domain: d0 in [0, 63], s0 in [0, 1]>
+#map0 = #xla.indexing_map<"(d0) -> (d0 + 5),"
+  "domain: d0 in [0, 63]">
+#map1 = #xla.indexing_map<"(d0)[s0] -> (d0 * 2 + s0),"
+  "domain: d0 in [0, 63], s0 in [0, 1]">
 module {
   func.func @apply_indexing_sequence_same_block(%arg0: tensor<128xf32>) -> (f32) {
     %c0 = arith.constant 0 : index
@@ -405,8 +476,8 @@ module {
       %inner = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter1 = %iter) -> f32 {
         // Usually, this will be hoisted by LICM or folded, so we do not detect
         // this pattern.
-        %offset = xla_gpu.apply_indexing #map0(%i)
-        %idx = xla_gpu.apply_indexing #map1(%offset)[%j]
+        %offset = xla.apply_indexing #map0(%i)
+        %idx = xla.apply_indexing #map1(%offset)[%j]
         %extracted = tensor.extract %arg0[%idx] : tensor<128xf32>
         %added = arith.addf %iter1, %extracted : f32
         scf.yield %added : f32

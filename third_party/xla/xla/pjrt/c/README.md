@@ -15,8 +15,9 @@ opaque to the frameworks.
 
 *   [PJRT C API header](https://github.com/openxla/xla/blob/main/xla/pjrt/c/pjrt_c_api.h)
 *   [PJRT C API changelog](https://github.com/openxla/xla/blob/main/xla/pjrt/c/CHANGELOG.md)
-*   [PJRT integration guide](https://github.com/openxla/xla/blob/main/xla/pjrt/c/docs/pjrt_integration_guide.md)
-*   [PJRT design docs](https://drive.google.com/corp/drive/folders/18M944-QQPk1E34qRyIjkqDRDnpMa3miN)
+*   [PJRT C++ API Overview](https://github.com/openxla/xla/blob/main/xla/docs/pjrt/cpp_api_overview.md)
+*   [PJRT integration guide](https://github.com/openxla/xla/blob/main/xla/docs/pjrt/pjrt_integration.md)
+*   [PJRT design docs](https://drive.google.com/drive/folders/18M944-QQPk1E34qRyIjkqDRDnpMa3miN)
 *   [PJRT API ABI versioning and compatibility](https://docs.google.com/document/d/1TKB5NyGtdzrpgw5mpyFjVAhJjpSNdF31T6pjPl_UT2o/edit)
 *   [PJRT Plugin Mechanism design doc](https://docs.google.com/document/d/1Qdptisz1tUPGn1qFAVgCV2omnfjN01zoQPwKLdlizas/edit)
 *   [OpenXLA/IREE PJRT plugin implementation](https://github.com/openxla/openxla-pjrt-plugin)

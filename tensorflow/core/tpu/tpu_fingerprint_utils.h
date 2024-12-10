@@ -23,8 +23,8 @@ limitations under the License.
 
 namespace tensorflow {
 // Computes a fingerprint of the contents of `library`.
-Status FingerprintFunctionLibrary(const FunctionLibraryDefinition& library,
-                                  uint64_t& fingerprint);
+absl::Status FingerprintFunctionLibrary(
+    const FunctionLibraryDefinition& library, uint64_t& fingerprint);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TPU_TPU_FINGERPRINT_UTILS_H_

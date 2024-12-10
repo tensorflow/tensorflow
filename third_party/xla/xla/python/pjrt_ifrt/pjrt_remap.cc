@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -52,17 +53,13 @@ PjRtCompatibleClientRemapArrays(
           arrays[i]->DebugString());
     }
   }
-  if (plan.input_specs.size() > 1) {
-    if (semantics != ArrayCopySemantics::kDonateInput) {
-      return InvalidArgument(
-          "kDonateInput is required if multiple inputs are used");
-    }
-  }
+  TF_RETURN_IF_ERROR(plan.CheckArrayCopySemantics(semantics));
 
   const int num_outputs = plan.output_specs.size();
   std::vector<PjRtArray::PjRtBuffers> out_buffers_list(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
-    out_buffers_list[i].resize(plan.output_specs[i].sharding->devices().size());
+    out_buffers_list[i].resize(
+        plan.output_specs[i].sharding->devices()->size());
   }
 
   for (const RemapPlan::Mapping& mapping : *plan.mappings) {

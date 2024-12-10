@@ -16,13 +16,16 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_COLLECTOR_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUPTI_COLLECTOR_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <list>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -39,6 +42,31 @@ struct CuptiTracerCollectorOptions {
   uint64_t max_annotation_strings = 1024 * 1024;
   // Number of GPUs involved.
   uint32_t num_gpus;
+};
+// This struct will be used to store the PM Sampling data.
+// Same as CUDA 12.6.2 extras/CUPTI/samples/pm_sampling/pm_sampling.h
+struct SamplerRange {
+  size_t range_index;
+  uint64_t start_timestamp_ns;
+  uint64_t end_timestamp_ns;
+  // Instead of map<std::string, double> in the above sample code, we use to
+  // vector<double> to save memory.
+  std::vector<double> metric_values;
+};
+
+// This is to hold multiple PM Sampling data with one std::string vector for
+// holding the names.
+class PmSamples {
+ public:
+  PmSamples(std::vector<std::string> metrics,
+            std::vector<SamplerRange> sampler_ranges)
+      : metrics_(std::move(metrics)),
+        sampler_ranges_(std::move(sampler_ranges)) {}
+  void PopulateCounterLine(tsl::profiler::XPlaneBuilder* plane);
+
+ private:
+  std::vector<std::string> metrics_;
+  std::vector<SamplerRange> sampler_ranges_;
 };
 
 class CuptiTraceCollector {
@@ -57,8 +85,8 @@ class CuptiTraceCollector {
   // After CuptiTracer stop, collected per-thread callback data from threads
   // will be send here. Default behavior are: a) create merged annotation map
   // (for later activity event usage), and b) direct add all event by calling
-  // AddEvent(). If need_callback_events is false, only annotation map
-  // will be merged, all events will be dropped.
+  // AddEvent(). If need_callback_events is false, only annotation map and scope
+  // range id tree will be merged, all events will be dropped.
   virtual void OnTracerCollectedCallbackData(
       std::vector<CallbackAnnotationsAndEvents> callback_events,
       bool need_callback_events);
@@ -91,6 +119,8 @@ class CuptiTraceCollector {
 
  protected:
   CuptiTracerCollectorOptions options_;
+  // map of child_scope_id -> parent_scope_id
+  ScopeRangeIdTree scope_range_id_tree_;
 
  private:
   AnnotationMap annotation_map_;

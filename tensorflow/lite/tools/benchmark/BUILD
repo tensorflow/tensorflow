@@ -160,6 +160,7 @@ cc_library(
     }),
     deps = [
         ":benchmark_model_lib",
+        ":benchmark_params",
         ":benchmark_utils",
         ":profiling_listener",
         "//tensorflow/core/example:example_protos_cc_impl",
@@ -172,6 +173,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/profiling:model_runtime_info",
         "//tensorflow/lite/profiling:profile_summary_formatter",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools:logging",

@@ -37,16 +37,17 @@ limitations under the License.
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/aggregate_profile.h"
+#include "xla/python/profiler/profile_data.h"
 #include "xla/python/profiler_utils.h"
 #include "xla/python/xplane_to_profile_instructions.h"
+#include "xla/tsl/profiler/rpc/client/capture_profile.h"
+#include "xla/tsl/profiler/rpc/profiler_server.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/profiler/rpc/client/capture_profile.h"
-#include "tsl/profiler/rpc/profiler_server.h"
 
 namespace xla {
 
@@ -197,6 +198,14 @@ void BuildProfilerSubmodule(nb::module_& m) {
              xla::ThrowIfError(sess->session->CollectData(&xspace));
              std::string xspace_str = xspace.SerializeAsString();
              return nb::bytes(xspace_str.data(), xspace_str.size());
+           })
+      .def("stop_and_get_profile_data",
+           [](ProfilerSessionWrapper* sess)
+               -> tensorflow::profiler::python::ProfileData {
+             auto xspace = std::make_shared<tensorflow::profiler::XSpace>();
+             // Disables the ProfilerSession
+             xla::ThrowIfError(sess->session->CollectData(xspace.get()));
+             return tensorflow::profiler::python::ProfileData(xspace);
            })
       .def("export",
            [](ProfilerSessionWrapper* sess, nb::bytes xspace,

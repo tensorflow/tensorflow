@@ -525,7 +525,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest, SimpleTestQuantizedInt8) {
                                      247,
                                      247,
                                  },
-                                 /*max_abs_error=*/3.f)));
+                                 /*max_abs_err=*/3.f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
 }
 
@@ -557,7 +557,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest, MultipleNumBatchQuantizedInt8) {
                       73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73,
                       73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73,
                   },
-                  /*max_abs_error=*/0.64f)));
+                  /*max_abs_err=*/0.64f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2, 10}));
 }
 
@@ -584,7 +584,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest, RegressionTestQuantizedInt8) {
                                      73, 73, 73, 73, 73, 73, 73, 73, 73, 73,
                                      73, 73, 73, 73, 73, 73, 73, 73, 73, 73,
                                  },
-                                 /*max_abs_error=*/0.64f)));
+                                 /*max_abs_err=*/0.64f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 10}));
 }
 
@@ -621,7 +621,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest,
           {74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74,
            74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74,
            74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74},
-          /*max_abs_error=*/0.15f)));
+          /*max_abs_err=*/0.15f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6, 8}));
 }
 
@@ -651,7 +651,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest,
           {74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74,
            74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74,
            74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74},
-          /*max_abs_error=*/0.15f)));
+          /*max_abs_err=*/0.15f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6, 8}));
 }
 
@@ -688,7 +688,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest,
           {74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74,
            74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74,
            74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74},
-          /*max_abs_error=*/0.15f)));
+          /*max_abs_err=*/0.15f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6, 8}));
 }
 
@@ -719,7 +719,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest,
           {74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74,
            74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74,
            74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74, 74},
-          /*max_abs_error=*/0.15f)));
+          /*max_abs_err=*/0.15f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6, 8}));
 }
 
@@ -750,7 +750,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest, QuantizedInt8BroadcastWeights) {
                                      193, 193, 193,  //
                                      247, 247, 247,  //
                                  },
-                                 /*max_abs_error=*/3.f)));
+                                 /*max_abs_err=*/3.f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 3}));
 }
 
@@ -790,7 +790,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest, QuantizedInt8BroadcastBigWeights) {
                       193, 193, 193, 1425, 1425, 1425, 2118, 2118, 2118,  //
                       247, 247, 247, 1511, 1511, 1511, 2222, 2222, 2222   //
                   },
-                  /*max_abs_error=*/10.0f)));
+                  /*max_abs_err=*/10.0f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 9}));
 }
 
@@ -838,7 +838,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest, QuantizedInt8BroadcastInputs) {
                                      23, 23, 23,   //
                                      57, 57, 57,   //
                                  },
-                                 /*max_abs_error=*/1.5f)));
+                                 /*max_abs_err=*/1.5f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 3}));
 }
 
@@ -881,7 +881,7 @@ TEST_P(HybridSymmetricBatchMatMulOpTest, SimpleTestQuantizedInt8) {
                                      247,
                                      247,
                                  },
-                                 /*max_abs_error=*/1.5f)));
+                                 /*max_abs_err=*/1.5f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
 }
 
@@ -913,7 +913,7 @@ TEST_P(HybridSymmetricBatchMatMulOpTest, QuantizedInt8BroadcastWeights) {
                                      193, 193, 193,  //
                                      247, 247, 247,  //
                                  },
-                                 /*max_abs_error=*/1.5f)));
+                                 /*max_abs_err=*/1.5f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 3}));
 }
 
@@ -954,7 +954,7 @@ TEST_P(HybridSymmetricBatchMatMulOpTest, QuantizedInt8BroadcastBigWeights) {
                       193, 193, 193, 1425, 1425, 1425, 2118, 2118, 2118,  //
                       247, 247, 247, 1511, 1511, 1511, 2222, 2222, 2222   //
                   },
-                  /*max_abs_error=*/10.0f)));
+                  /*max_abs_err=*/10.0f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 9}));
 }
 
@@ -1003,7 +1003,7 @@ TEST_P(HybridSymmetricBatchMatMulOpTest, QuantizedInt8BroadcastInputs) {
                                      23, 23, 23,   //
                                      57, 57, 57,   //
                                  },
-                                 /*max_abs_error=*/1.5f)));
+                                 /*max_abs_err=*/1.5f)));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 3}));
 }
 

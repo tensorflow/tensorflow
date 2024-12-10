@@ -79,7 +79,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 54
+#define PJRT_API_MINOR 57
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -214,9 +214,9 @@ struct PJRT_Plugin_Attributes_Args {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Plugin_Attributes_Args, attributes);
 
-// Returns an array of plugin attributes which are key-value pairs. One example
-// attribute is the minimum supported StableHLO version.
-// TODO(b/280349977): standardize the list of attributes.
+// Returns an array of plugin attributes which are key-value pairs. Common keys
+// include `xla_version`, `stablehlo_current_version`, and
+// `stablehlo_minimum_version`.
 typedef PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args);
 
 // ---------------------------------- Events -----------------------------------
@@ -644,6 +644,10 @@ typedef enum {
   // 2-bit integer types
   PJRT_Buffer_Type_S2,
   PJRT_Buffer_Type_U2,
+
+  // More truncated 8 bit floating-point formats.
+  PJRT_Buffer_Type_F8E4M3,
+  PJRT_Buffer_Type_F8E3M4,
 } PJRT_Buffer_Type;
 
 typedef enum {
@@ -1755,6 +1759,20 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_IsDeleted_Args, is_deleted);
 // True if and only if PJRT_Buffer_Delete has previously been called.
 typedef PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
 
+struct PJRT_Buffer_CopyRawToHost_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Buffer* buffer;
+  void* dst;
+  int64_t offset;
+  int64_t transfer_size;
+  PJRT_Event* event;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyRawToHost_Args, event);
+
+typedef PJRT_Error* PJRT_Buffer_CopyRawToHost(
+    PJRT_Buffer_CopyRawToHost_Args* args);
+
 struct PJRT_Buffer_CopyToDevice_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -2118,7 +2136,7 @@ typedef PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 #define _PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
 
 // Please modify PJRT_Api_STRUCT_SIZE if the last field of PJRT_Api is changed.
-typedef struct {
+typedef struct PJRT_Api {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
 
@@ -2246,11 +2264,11 @@ typedef struct {
 
   _PJRT_API_STRUCT_FIELD(PJRT_ExecuteContext_Create);
   _PJRT_API_STRUCT_FIELD(PJRT_ExecuteContext_Destroy);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyRawToHost);
 } PJRT_Api;
 
 enum {
-  PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_TopologyDescription)
+  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_CopyRawToHost)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

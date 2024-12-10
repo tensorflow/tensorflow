@@ -12,17 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"  // IWYU pragma: keep
 
 namespace mlir {
 namespace odml {
 #define GEN_PASS_DEF_LIFTCALLSITELOCCALLERPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 namespace {
 
@@ -36,14 +37,18 @@ class LiftCallSiteLocCallerPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LiftCallSiteLocCallerPass);
 
   void runOnOperation() override {
-    getOperation()->walk([](func::FuncOp func_op) {
-      for (Operation& op : func_op.getOps()) {
-        if (!mlir::isa<CallSiteLoc>(op.getLoc())) {
-          continue;
+    getOperation()->walk([](mlir::Operation* op) {
+      while (true) {
+        auto loc = mlir::dyn_cast_or_null<CallSiteLoc>(op->getLoc());
+        if (loc == nullptr) {
+          return;
         }
 
-        auto loc = op.getLoc().dyn_cast<CallSiteLoc>();
-        op.setLoc(loc.getCaller());
+        if (llvm::isa<mlir::UnknownLoc>(loc.getCallee())) {
+          op->setLoc(loc.getCaller());
+        } else {
+          op->setLoc(loc.getCallee());
+        }
       }
     });
   }

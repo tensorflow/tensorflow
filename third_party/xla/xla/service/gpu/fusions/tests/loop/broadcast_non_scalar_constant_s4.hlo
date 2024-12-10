@@ -1,0 +1,19 @@
+// RUN: fusion_to_mlir %s | emitters_opt --xla-gpu-test-optimize \
+// RUN:   --inline="default-pipeline='cse'" | FileCheck %s
+// RUN: test_correctness %s --bijection_outputs=broadcast
+
+bcast {
+  x = s4[3]{0} constant({-2, -3, -4})
+  ROOT broadcast = s4[3,31]{1,0} broadcast(x), dimensions={0}
+}
+
+ENTRY main {
+  ROOT res = s4[3,31]{1,0} fusion(), kind=kLoop, calls=bcast
+}
+
+// CHECK: func.func @main(%[[ARG0:.*]]: tensor<3x31xi4>
+// CHECK:   xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]], %[[RB:.*]]) in
+// CHECK-SAME: iter_args(%[[ITER:.*]] = %[[ARG0]])
+// CHECK:     %[[CST:.*]] = arith.constant dense<[-2, -3, -4]>
+// CHECK:     %[[EXTRACTED:.*]] = tensor.extract %[[CST]][%[[RA]]]
+// CHECK:     %[[INSERTED:.*]] = tensor.insert %[[EXTRACTED]] into %[[ITER]][%[[RA]], %[[RB]]]

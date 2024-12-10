@@ -199,6 +199,47 @@ LogicalResult LegalizeDynamicSliceOp::matchAndRewrite(
 }
 
 //===----------------------------------------------------------------------===//
+// mhlo.real_dynamic_slice
+//===----------------------------------------------------------------------===//
+
+class LegalizeRealDynamicSliceOp
+    : public OpConversionPattern<mhlo::RealDynamicSliceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::RealDynamicSliceOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final;
+};
+
+LogicalResult LegalizeRealDynamicSliceOp::matchAndRewrite(
+    mhlo::RealDynamicSliceOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter& rewriter) const {
+  auto start_indices_type =
+      mlir::cast<RankedTensorType>(op.getStartIndices().getType());
+  auto end_indices_type =
+      mlir::cast<RankedTensorType>(op.getLimitIndices().getType());
+
+  if (start_indices_type.getNumDynamicDims() != 0 ||
+      end_indices_type.getNumDynamicDims() != 0) {
+    return rewriter.notifyMatchFailure(
+        op,
+        "Start indices and limit indices must not have dynamic dimensions.");
+  }
+
+  auto zero = rewriter.getIntegerAttr(rewriter.getI32Type(), 0);
+  auto no_offset = rewriter.getBoolAttr(false);
+
+  rewriter.replaceOpWithNewOp<TFL::StridedSliceOp>(
+      op, op.getType(), op.getOperand(),
+      BuildTFLCastOp(rewriter, op.getStartIndices()),
+      BuildTFLCastOp(rewriter, op.getLimitIndices()),
+      BuildTFLCastOp(rewriter, op.getStrides()), zero, zero, zero, zero, zero,
+      no_offset);
+  return success();
+};
+
+//===----------------------------------------------------------------------===//
 // mhlo.dynamic_update_slice
 //===----------------------------------------------------------------------===//
 
@@ -227,9 +268,10 @@ void PopulateLegalizeSlicePatterns(MLIRContext* ctx,
                                    RewritePatternSet& patterns,
                                    ConversionTarget& target) {
   patterns.add<LegalizeSliceOp, LegalizeDynamicSliceOp,
-               LegalizeDynamicUpdateSliceOp>(ctx);
+               LegalizeDynamicUpdateSliceOp, LegalizeRealDynamicSliceOp>(ctx);
 
-  target.addIllegalOp<mhlo::SliceOp, mhlo::DynamicUpdateSliceOp>();
+  target.addIllegalOp<mhlo::SliceOp, mhlo::DynamicUpdateSliceOp,
+                      mhlo::RealDynamicSliceOp>();
   target.addDynamicallyLegalOp<mhlo::DynamicSliceOp>(IsDynamicSliceLegal);
 }
 

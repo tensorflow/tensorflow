@@ -289,7 +289,6 @@ TFTPU_CAPI_EXPORT void TpuCompiler_DefaultDeviceShapeRepresentation(
 TFTPU_CAPI_EXPORT void TpuExecutable_ExecuteAsyncOnStream(
     SE_Executable* executable, SE_ExecutableRunOptions* se_options,
     SE_ExecutionInput** se_arguments, int se_arguments_size,
-    SE_HloExecutionProfile* hlo_execution_profile,
     SE_ExecutionOutput* se_output, TF_Status* status);
 
 // This frees the XLA_ShapeIndex* array allocated when se_output is returned by

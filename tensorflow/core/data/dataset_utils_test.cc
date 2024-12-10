@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/data/dataset_utils.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/util/determinism_test_util.h"
 #include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/dataset_test_base.h"
@@ -28,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/data/test_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset.pb.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -125,7 +131,7 @@ TEST(DatasetUtilsTest, AddToFunctionLibraryWithConflictingSignatures) {
       /*ret_def=*/{{"ret", "arg"}, {"ret2", "arg"}});
 
   FunctionLibraryDefinition flib_0(OpRegistry::Global(), fdef_base);
-  Status s = AddToFunctionLibrary(&flib_0, fdef_to_add);
+  absl::Status s = AddToFunctionLibrary(&flib_0, fdef_to_add);
   EXPECT_EQ(error::Code::INVALID_ARGUMENT, s.code());
   EXPECT_EQ(
       "Cannot add function '0' because a different function with the same "
@@ -199,19 +205,19 @@ TEST(DatasetUtilsTest, BoolConstructor) {
 
 class TestSplitProvider : public SplitProvider {
  public:
-  Status GetNext(Tensor* split, bool* end_of_splits) override {
+  absl::Status GetNext(Tensor* split, bool* end_of_splits) override {
     return absl::OkStatus();
   }
 
-  Status Reset() override { return absl::OkStatus(); }
+  absl::Status Reset() override { return absl::OkStatus(); }
 
-  Status Save(std::function<std::string(std::string)> key_name_fn,
-              IteratorStateWriter* writer) override {
+  absl::Status Save(std::function<std::string(std::string)> key_name_fn,
+                    IteratorStateWriter* writer) override {
     return absl::OkStatus();
   }
 
-  Status Restore(std::function<std::string(std::string)> key_name_fn,
-                 IteratorStateReader* reader) override {
+  absl::Status Restore(std::function<std::string(std::string)> key_name_fn,
+                       IteratorStateReader* reader) override {
     return absl::OkStatus();
   }
 };

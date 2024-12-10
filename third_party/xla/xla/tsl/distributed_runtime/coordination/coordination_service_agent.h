@@ -28,8 +28,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/status.h"
-#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 class CoordinationServiceConfig;
@@ -72,6 +72,11 @@ class CoordinationServiceAgent {
   virtual ~CoordinationServiceAgent() = default;
 
   // Initialize coordination service agent.
+  virtual absl::Status Initialize(
+      tsl::Env* env, std::string_view job_name, int task_id,
+      const tensorflow::CoordinationServiceConfig& configs,
+      std::unique_ptr<CoordinationClient> leader_client,
+      StatusCallback error_fn, bool recoverable) = 0;
   virtual absl::Status Initialize(
       tsl::Env* env, std::string_view job_name, int task_id,
       const tensorflow::CoordinationServiceConfig& configs,
@@ -246,8 +251,8 @@ class CoordinationServiceAgent {
   //       for the same barrier, (2) one of the participating tasks is not in
   //       the cluster, or (3) task making the request is not included in the
   //       list of participating tasks.
-  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state. Or the
-  //       same barrier_id was already used previously.
+  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state, or the
+  //       same barrier id is still being invoked.
   virtual absl::Status WaitAtBarrier(
       std::string_view barrier_id, absl::Duration timeout,
       const std::vector<tensorflow::CoordinatedTask>& tasks) = 0;
@@ -262,7 +267,7 @@ class CoordinationServiceAgent {
   // CANCELLED error status.
   // Possible service errors:
   //   - Internal: Coordination service has shut down.
-  //   - FailedPrecondition: Barrier has already been passed.
+  //   - FailedPrecondition: Barrier is non-existent or not ongoing.
   virtual absl::Status CancelBarrier(std::string_view barrier_id) = 0;
   virtual void CancelBarrierAsync(std::string_view barrier_id,
                                   StatusCallback done) = 0;

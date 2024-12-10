@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/python/ifrt/ir/sharding_param.pb.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -70,6 +73,15 @@ void PopulateDevices(llvm::ArrayRef<int> permutation,
                       out_devices, base + i * expanding_cum_dim_size);
     }
   }
+}
+
+void PrintInternalV1(llvm::raw_ostream& os, const ShardingParam& sharding) {
+  PrintDims(os, sharding.dim_shards());
+  os << " to [";
+  llvm::interleaveComma(
+      llvm::ArrayRef<int>(sharding.minor_to_major().permutation), os);
+  os << "] on ";
+  PrintDims<int>(os, sharding.minor_to_major().axis_sizes);
 }
 
 }  // namespace
@@ -121,7 +133,12 @@ void ShardingParam::MinorToMajor::ToDeviceList(
 
 mlir::FailureOr<ShardingParam> ShardingParam::Parse(
     mlir::AsmParser& ods_parser) {
-  llvm::SmallVector<int64_t, 4> dim_shards;
+  // V1 is the current ShardingParam format.
+  return ParseV1(ods_parser);
+}
+
+mlir::FailureOr<ShardingParam> ShardingParam::ParseV1(
+    mlir::AsmParser& ods_parser) {
   MinorToMajor minor_to_major;
 
   auto parseIntoPermutation = [&]() -> mlir::ParseResult {
@@ -135,6 +152,7 @@ mlir::FailureOr<ShardingParam> ShardingParam::Parse(
   };
 
   llvm::SmallVector<int64_t, 4> axis_sizes_64;
+  llvm::SmallVector<int64_t> dim_shards;
   if (ods_parser.parseDimensionList(dim_shards, false, false) ||
       ods_parser.parseKeyword("to") ||
       ods_parser.parseCommaSeparatedList(mlir::AsmParser::Delimiter::Square,
@@ -148,7 +166,17 @@ mlir::FailureOr<ShardingParam> ShardingParam::Parse(
   for (int64_t size : axis_sizes_64) {
     minor_to_major.axis_sizes.push_back(size);
   }
-  return ShardingParam(dim_shards, minor_to_major);
+  // The copy here is necessary because parseDimensionList expects a
+  // llvm::SmallVector<int64_t>, whereas ShardingParam expects a
+  // std::vector<int64_t>. ShardingParam has Python bindings, so we do not want
+  // its constructor to expose a SmallVector.
+  return ShardingParam(std::vector(dim_shards.begin(), dim_shards.end()),
+                       std::move(minor_to_major));
+}
+
+void ShardingParam::PrintV1(mlir::AsmPrinter& ods_printer,
+                            const ShardingParam& sharding) {
+  PrintInternalV1(ods_printer.getStream(), sharding);
 }
 
 absl::Status ShardingParam::verify() const {
@@ -267,18 +295,37 @@ llvm::hash_code hash_value(ShardingParam sharding) {
 }
 
 mlir::AsmPrinter& operator<<(mlir::AsmPrinter& os, ShardingParam sharding) {
-  os.getStream() << sharding;
+  // V1 if the current ShardingParam version.
+  PrintInternalV1(os.getStream(), sharding);
   return os;
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, ShardingParam sharding) {
-  PrintDims(os, sharding.dim_shards());
-  os << " to [";
-  llvm::interleaveComma(
-      llvm::ArrayRef<int>(sharding.minor_to_major().permutation), os);
-  os << "] on ";
-  PrintDims<int>(os, sharding.minor_to_major().axis_sizes);
+  // V1 if the current ShardingParam version.
+  PrintInternalV1(os, sharding);
   return os;
+}
+
+absl::StatusOr<ShardingParam> ShardingParam::FromProto(
+    const ShardingParamProto& proto) {
+  ShardingParam::MinorToMajor minor_to_major;
+  minor_to_major.permutation.append(proto.permutation().begin(),
+                                    proto.permutation().end());
+  minor_to_major.axis_sizes.append(proto.axis_sizes().begin(),
+                                   proto.axis_sizes().end());
+  std::vector<int64_t> dim_shards(proto.dim_shards().begin(),
+                                  proto.dim_shards().end());
+  return ShardingParam(std::move(dim_shards), std::move(minor_to_major));
+}
+
+absl::StatusOr<ShardingParamProto> ShardingParam::ToProto() const {
+  ShardingParamProto proto;
+  proto.mutable_dim_shards()->Add(dim_shards().begin(), dim_shards().end());
+  proto.mutable_permutation()->Add(minor_to_major().permutation.begin(),
+                                   minor_to_major().permutation.end());
+  proto.mutable_axis_sizes()->Add(minor_to_major().axis_sizes.begin(),
+                                  minor_to_major().axis_sizes.end());
+  return proto;
 }
 
 }  // namespace ifrt

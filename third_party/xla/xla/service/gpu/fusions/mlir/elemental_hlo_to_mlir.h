@@ -22,16 +22,18 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/TypeRange.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
-#include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -69,17 +71,6 @@ absl::Status SubgraphToMlirFunction(
     const PartitionedComputation::Subgraph& subgraph, mlir::func::FuncOp& func,
     const CallTargetProvider& call_target_provider);
 
-mlir::Value UnrealizedConversionCast(mlir::Type type, mlir::Value value,
-                                     mlir::ImplicitLocOpBuilder& b);
-mlir::SmallVector<mlir::Value, 2> UnrealizedConversionCast(
-    mlir::TypeRange types, mlir::ValueRange values,
-    mlir::ImplicitLocOpBuilder& b);
-
-// Creates an affine.apply op for the given expression and values.
-mlir::Value ApplyAffineExpr(mlir::AffineExpr expr, mlir::ValueRange dims,
-                            mlir::ValueRange symbols,
-                            mlir::ImplicitLocOpBuilder& b);
-
 // Creates an `apply_indexing` op for the given map.
 llvm::SmallVector<mlir::Value, 3> ApplyIndexing(IndexingMap map,
                                                 mlir::ValueRange dims,
@@ -111,6 +102,16 @@ mlir::ValueRange EmitLoopNest(
     mlir::function_ref<llvm::SmallVector<mlir::Value>(
         mlir::ValueRange iter_args, mlir::ValueRange dim_values,
         mlir::ValueRange symbol_values)>
+        create_body,
+    bool vectorize = false);
+
+// Same as EmitLoopNest, but uses xla_gpu.loop.
+mlir::ValueRange EmitXlaLoopOp(
+    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange dim_values,
+    mlir::ValueRange iter_args_inits, const IndexingMap& indexing_map,
+    mlir::function_ref<llvm::SmallVector<mlir::Value>(
+        mlir::ValueRange ivs, mlir::ValueRange map_results,
+        mlir::ValueRange iter_args)>
         create_body,
     bool vectorize = false);
 

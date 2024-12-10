@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/tools/benchmark/benchmark_model.h"
 
+#include <cstdint>
+#include <memory>
+
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
@@ -74,7 +77,8 @@ TEST(BenchmarkModelTest, InitializeAndRun) {
   TF_ASSERT_OK(benchmark_model::InitializeSession(1, filename_pb, &session,
                                                   &loaded_graph_def));
   std::unique_ptr<StatSummarizer> stats;
-  stats.reset(new tensorflow::StatSummarizer(*(loaded_graph_def.get())));
+  stats =
+      std::make_unique<tensorflow::StatSummarizer>(*(loaded_graph_def.get()));
   int64_t time;
   int64_t num_runs = 0;
   TF_ASSERT_OK(benchmark_model::TimeMultipleRuns(
@@ -99,7 +103,8 @@ TEST(BenchmarkModeTest, TextProto) {
   TF_ASSERT_OK(benchmark_model::InitializeSession(1, filename_txt, &session,
                                                   &loaded_graph_def));
   std::unique_ptr<StatSummarizer> stats;
-  stats.reset(new tensorflow::StatSummarizer(*(loaded_graph_def.get())));
+  stats =
+      std::make_unique<tensorflow::StatSummarizer>(*(loaded_graph_def.get()));
   int64_t time;
   int64_t num_runs = 0;
   TF_ASSERT_OK(benchmark_model::TimeMultipleRuns(

@@ -19,10 +19,13 @@ limitations under the License.
 // See https://jax.readthedocs.io/en/latest/pytrees.html for the documentation
 // about pytree.
 
+#include <Python.h>
+
 #include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -49,7 +52,7 @@ enum class PyTreeKind {
 };
 
 // Registry of custom node types.
-class PyTreeRegistry : public std::enable_shared_from_this<PyTreeRegistry> {
+class PyTreeRegistry {
  public:
   PyTreeRegistry(bool enable_none, bool enable_tuple, bool enable_namedtuple,
                  bool enable_list, bool enable_dict);
@@ -69,21 +72,34 @@ class PyTreeRegistry : public std::enable_shared_from_this<PyTreeRegistry> {
     nanobind::callable to_iterable;
     // A function with signature: (aux_data, iterable) -> object
     nanobind::callable from_iterable;
+    // A function with signature: (aux_data, iterable(keypath, leaf)) -> object
+    std::optional<nanobind::callable> to_iterable_with_keys;
 
     // Helper that calls to_iterable and validates that it returns a pair
     // of an iterable and an aux_data object
     std::pair<nanobind::iterable, nanobind::object> ToIterable(
         nanobind::handle o) const;
+    // Helper that calls to_iterable_with_keys and validates that it returns a
+    // pair of an iterable of key-leaf pairs and an aux_data object. If
+    // to_iterable_with_keys is not available, return a dummy key for each leaf,
+    // similar to the current jax.tree_util.FlattenedIndexKey.
+    std::pair<std::vector<std::pair<nanobind::object, nanobind::object>>,
+              nanobind::object>
+    ToIterableWithKeys(nanobind::handle o) const;
 
     // For dataclasses.
     std::vector<nanobind::str> data_fields;
     std::vector<nanobind::str> meta_fields;
+
+    int tp_traverse(visitproc visit, void* arg);
   };
 
   // Registers a new custom type. Objects of `type` will be treated as container
   // node types in PyTrees.
-  void Register(nanobind::object type, nanobind::callable to_iterable,
-                nanobind::callable from_iterable);
+  void Register(
+      nanobind::object type, nanobind::callable to_iterable,
+      nanobind::callable from_iterable,
+      std::optional<nanobind::callable> to_iterable_with_keys = std::nullopt);
   // Same, but for dataclasses.
   void RegisterDataclass(nanobind::object type,
                          std::vector<nanobind::str> data_fields,
@@ -99,6 +115,8 @@ class PyTreeRegistry : public std::enable_shared_from_this<PyTreeRegistry> {
   // Flattens a pytree one level, returning either a tuple of the leaves and
   // the node data, or None, if the entry is a leaf.
   nanobind::object FlattenOneLevel(nanobind::handle x) const;
+
+  static PyType_Slot slots_[];
 
  private:
   struct TypeHash {
@@ -125,10 +143,65 @@ class PyTreeRegistry : public std::enable_shared_from_this<PyTreeRegistry> {
                       TypeEq>
       registrations_;
   bool enable_namedtuple_;
+
+  static int tp_traverse(PyObject* self, visitproc visit, void* arg);
+  static int tp_clear(PyObject* self);
 };
 
-// Returns the default pytree registry.
-std::shared_ptr<PyTreeRegistry> DefaultPyTreeRegistry();
+class SequenceKey {
+ public:
+  explicit SequenceKey(int idx) : idx_(idx) {};
+  std::string ToReprString() const;
+  std::string ToString() const;
+  bool Equals(const nanobind::object& other);
+  int idx() const { return idx_; }
+  static nanobind::tuple MatchArgs(nanobind::handle unused);
+
+ private:
+  int idx_;
+};
+
+class DictKey {
+ public:
+  explicit DictKey(nanobind::object key) : key_(key) {};
+  std::string ToReprString() const;
+  std::string ToString() const;
+  bool Equals(const nanobind::object& other);
+  nanobind::object key() const { return key_; }
+  static nanobind::tuple MatchArgs(nanobind::handle unused);
+  static PyType_Slot slots_[];
+
+ private:
+  nanobind::object key_;
+  static int tp_traverse(PyObject* self, visitproc visit, void* arg);
+  static int tp_clear(PyObject* self);
+};
+
+class GetAttrKey {
+ public:
+  explicit GetAttrKey(nanobind::str name) : name_(name) {};
+  std::string ToReprString() const;
+  std::string ToString() const;
+  bool Equals(const nanobind::object& other);
+  nanobind::str name() const { return name_; }
+  static nanobind::tuple MatchArgs(nanobind::handle unused);
+
+ private:
+  nanobind::str name_;
+};
+
+class FlattenedIndexKey {
+ public:
+  explicit FlattenedIndexKey(int key) : key_(key) {};
+  std::string ToReprString() const;
+  std::string ToString() const;
+  bool Equals(const nanobind::object& other);
+  int key() const { return key_; }
+  static nanobind::tuple MatchArgs(nanobind::handle unused);
+
+ private:
+  int key_;
+};
 
 // A PyTreeDef describes the tree structure of a PyTree. A PyTree is a tree of
 // Python values, where the interior nodes are tuples, lists, dictionaries, or
@@ -139,16 +212,15 @@ class PyTreeDef {
   // PyTreeDef. It is the caller's responsibility to enforce this.
   explicit PyTreeDef(PyTreeRegistry* registry) : registry_(registry) {}
 
-  explicit PyTreeDef(std::shared_ptr<PyTreeRegistry> registry)
+  explicit PyTreeDef(nb_class_ptr<PyTreeRegistry> registry)
       : registry_(registry.get()), registry_ref_(std::move(registry)) {}
 
   // Flattens a Pytree into a list of leaves and a PyTreeDef.
   // Returns references to the flattened objects, which might be temporary
   // objects in the case of custom pytype handlers.
   static std::pair<std::vector<nanobind::object>, nb_class_ptr<PyTreeDef>>
-  Flatten(nanobind::handle x,
-          std::optional<nanobind::callable> leaf_predicate = std::nullopt,
-          std::shared_ptr<PyTreeRegistry> registry = nullptr);
+  Flatten(nanobind::handle x, nb_class_ptr<PyTreeRegistry> registry,
+          std::optional<nanobind::callable> leaf_predicate = std::nullopt);
 
   // Flattens a Pytree into a list of `leaves` and a PyTreeDef (this).
   // `leaves` owns references to the flattened objects, which might be
@@ -160,6 +232,10 @@ class PyTreeDef {
                std::optional<nanobind::callable> leaf_predicate = std::nullopt);
   void Flatten(nanobind::handle handle, nanobind::list& leaves,
                std::optional<nanobind::callable> leaf_predicate = std::nullopt);
+
+  void FlattenWithPath(
+      nanobind::handle handle, nanobind::list& leaves,
+      std::optional<nanobind::callable> leaf_predicate = std::nullopt);
 
   // Tests whether the given list is a flat list of leaves.
   static bool AllLeaves(PyTreeRegistry* registry, const nanobind::iterable& x);
@@ -179,7 +255,7 @@ class PyTreeDef {
   nb_class_ptr<PyTreeDef> Compose(const PyTreeDef& inner) const;
 
   // Makes a Tuple PyTreeDef out of a vector of PyTreeDefs.
-  static nb_class_ptr<PyTreeDef> Tuple(std::shared_ptr<PyTreeRegistry> registry,
+  static nb_class_ptr<PyTreeDef> Tuple(nb_class_ptr<PyTreeRegistry> registry,
                                        nanobind::list defs);
 
   // The returned PyTreeDefs hold a reference to the registry.
@@ -225,16 +301,17 @@ class PyTreeDef {
   void SerializeTo(jax::PyTreeDefProto& result) const;
 
   static nb_class_ptr<PyTreeDef> DeserializeFrom(
-      std::shared_ptr<PyTreeRegistry> registry,
-      const jax::PyTreeDefProto& input);
+      nb_class_ptr<PyTreeRegistry> registry, const jax::PyTreeDefProto& input);
 
   std::optional<std::pair<nanobind::object, nanobind::object>> GetNodeData()
       const;
 
   static nb_class_ptr<PyTreeDef> MakeFromNodeDataAndChildren(
-      std::shared_ptr<PyTreeRegistry> registry,
+      nb_class_ptr<PyTreeRegistry> registry,
       std::optional<std::pair<nanobind::object, nanobind::object>> node_data,
       nanobind::iterable children);
+
+  static PyType_Slot slots_[];
 
  private:
   void SetNumLeavesAndNumNodes();
@@ -265,6 +342,8 @@ class PyTreeDef {
 
     // Number of leaf and interior nodes in the subtree rooted at this node.
     int num_nodes = 0;
+
+    int tp_traverse(visitproc visit, void* arg) const;
   };
   template <typename H>
   friend H AbslHashValue(H h, const Node& n);
@@ -284,16 +363,20 @@ class PyTreeDef {
 
   template <typename T>
   void FlattenImpl(nanobind::handle handle, T& leaves,
-                   const std::optional<nanobind::callable>& leaf_predicate);
+                   const std::optional<nanobind::callable>& leaf_predicate,
+                   std::optional<std::vector<nanobind::object>>& keypath);
 
   template <typename T>
   nanobind::object UnflattenImpl(T leaves) const;
+
+  static int tp_traverse(PyObject* self, visitproc visit, void* arg);
+  static int tp_clear(PyObject* self);
 
   // Pytree registry. Not owned.
   PyTreeRegistry* registry_;
   // If this class holds a reference to `registry`, it is held by
   // `registry_ref_`.
-  std::shared_ptr<PyTreeRegistry> registry_ref_;
+  nb_class_ptr<PyTreeRegistry> registry_ref_;
 
   // Nodes, in a post-order traversal. We use an ordered traversal to minimize
   // allocations, and post-order corresponds to the order we need to rebuild the

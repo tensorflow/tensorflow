@@ -27,12 +27,14 @@ limitations under the License.
 // are available at runtime but should be competitive in speed with approaches
 // that compile in the proto definitions.
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
+#include "absl/types/variant.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/util/proto/decode.h"
 #include "tensorflow/core/util/proto/descriptors.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
@@ -60,23 +63,19 @@ const bool kFailOnDecodeError = true;
 
 // Used to store the default value of a protocol message field, casted to the
 // type of the output tensor.
-//
-// TODO(paskin): Use absl::variant once TensorFlow gets absl dependencies.
 struct DefaultValue {
   DataType dtype = DataType::DT_INVALID;
-  union Value {
-    bool v_bool;           // DT_BOOL
-    double v_double;       // DT_DOUBLE
-    float v_float;         // DT_FLOAT
-    int8 v_int8;           // DT_INT8
-    int32 v_int32;         // DT_INT32
-    int64_t v_int64;       // DT_INT64
-    const char* v_string;  // DT_STRING
-    uint8 v_uint8;         // DT_UINT8
-    uint8 v_uint32;        // DT_UINT32
-    uint8 v_uint64;        // DT_UINT64
-  };
-  Value value;
+  absl::variant<bool,     // DT_BOOL
+                double,   // DT_DOUBLE
+                float,    // DT_FLOAT
+                int8,     // DT_INT8
+                int32,    // DT_INT32
+                int64_t,  // DT_INT64
+                tstring,  // DT_STRING
+                uint8,    // DT_UINT8
+                uint32,   // DT_UINT32
+                uint64>   // DT_UINT64
+      value;
 };
 
 // Initializes a DefaultValue object.  This generic template handles numeric
@@ -87,35 +86,36 @@ struct DefaultValue {
 //   value: the default value as obtained from the FieldDescriptor
 //   result: the object to initialize
 template <typename T>
-Status InitDefaultValue(DataType dtype, const T value, DefaultValue* result) {
+absl::Status InitDefaultValue(DataType dtype, const T value,
+                              DefaultValue* result) {
   result->dtype = dtype;
   switch (dtype) {
     case DT_BOOL:
-      result->value.v_bool = static_cast<bool>(value);
+      result->value = static_cast<bool>(value);
       break;
     case DT_DOUBLE:
-      result->value.v_double = static_cast<double>(value);
+      result->value = static_cast<double>(value);
       break;
     case DT_FLOAT:
-      result->value.v_float = static_cast<float>(value);
+      result->value = static_cast<float>(value);
       break;
     case DT_INT8:
-      result->value.v_int8 = static_cast<int8>(value);
+      result->value = static_cast<int8>(value);
       break;
     case DT_INT32:
-      result->value.v_int32 = static_cast<int32>(value);
+      result->value = static_cast<int32>(value);
       break;
     case DT_INT64:
-      result->value.v_int64 = static_cast<int64_t>(value);
+      result->value = static_cast<int64_t>(value);
       break;
     case DT_UINT8:
-      result->value.v_uint8 = static_cast<uint8>(value);
+      result->value = static_cast<uint8>(value);
       break;
     case DT_UINT32:
-      result->value.v_uint32 = static_cast<uint32>(value);
+      result->value = static_cast<uint32>(value);
       break;
     case DT_UINT64:
-      result->value.v_uint64 = static_cast<uint64>(value);
+      result->value = static_cast<uint64>(value);
       break;
     default:
       // We should never get here, given the type checking that occurs earlier.
@@ -127,27 +127,23 @@ Status InitDefaultValue(DataType dtype, const T value, DefaultValue* result) {
 }
 
 template <>
-Status InitDefaultValue(DataType dtype, const char* value,
-                        DefaultValue* result) {
+absl::Status InitDefaultValue(DataType dtype, const tstring value,
+                              DefaultValue* result) {
   // These are sanity checks that should never trigger given the code that
   // leads here.
   if (TF_PREDICT_FALSE(dtype != DT_STRING)) {
     return errors::InvalidArgument(
         "Cannot cast field to anything but DT_STRING");
   }
-  if (TF_PREDICT_FALSE(value == nullptr)) {
-    return errors::InvalidArgument("Null default string value.");
-  }
   result->dtype = DT_STRING;
-  result->value.v_string = value;
-  return OkStatus();
+  result->value = value;
+  return absl::OkStatus();
 }
 
 // Initializes a default value from the output data type and the field
 // descriptor.
-Status InitDefaultValueFromFieldDescriptor(DataType dtype,
-                                           const FieldDescriptor* field_desc,
-                                           DefaultValue* result) {
+absl::Status InitDefaultValueFromFieldDescriptor(
+    DataType dtype, const FieldDescriptor* field_desc, DefaultValue* result) {
   switch (field_desc->type()) {
     case WireFormatLite::TYPE_DOUBLE:
       return InitDefaultValue(dtype, field_desc->default_value_double(),
@@ -177,17 +173,16 @@ Status InitDefaultValueFromFieldDescriptor(DataType dtype,
                               result);
     case WireFormatLite::TYPE_BYTES:
     case WireFormatLite::TYPE_STRING:
-      // Manipulating default string values as C-style pointers should be OK
-      // for typical code-generated protocol messages.  It is possible in
-      // principle to register a message descriptor on the fly, and these
-      // pointers may not be stable if that descriptor has a weird
-      // implementation.  (But the return type of default_value_string() is
-      // const string&, so it'd have to be very weird.)
-      return InitDefaultValue(dtype, field_desc->default_value_string().c_str(),
-                              result);
+      // Storing default string values by reference should be OK for typical
+      // code-generated protocol messages.  It is possible in principle to
+      // register a message descriptor on the fly, and these references may not
+      // be stable if that descriptor has a weird implementation.
+      return InitDefaultValue(
+          dtype, tstring().assign_as_view(field_desc->default_value_string()),
+          result);
     case WireFormatLite::TYPE_GROUP:
     case WireFormatLite::TYPE_MESSAGE:
-      return InitDefaultValue(dtype, "", result);
+      return InitDefaultValue(dtype, tstring(), result);
       // default: intentionally omitted in order to enable static checking.
   }
   return absl::OkStatus();
@@ -253,7 +248,7 @@ class CountCollector {
   explicit CountCollector(int32* count) : count_ptr_(count) {}
 
   // Reads (in this case counts) a single value.
-  Status ReadValue(CodedInputStream* input, const FieldInfo& field) {
+  absl::Status ReadValue(CodedInputStream* input, const FieldInfo& field) {
     // Only repeated fields can have count > 1.
     if (*count_ptr_ == 0 || field.is_repeated) {
       (*count_ptr_)++;
@@ -267,8 +262,8 @@ class CountCollector {
   }
 
   // Reads (in this case counts) a length-delimited list of values.
-  Status ReadPackedValues(CodedInputStream* input, const FieldInfo& field,
-                          size_t buf_size) {
+  absl::Status ReadPackedValues(CodedInputStream* input, const FieldInfo& field,
+                                size_t buf_size) {
     if (buf_size == 0) {
       return absl::OkStatus();
     }
@@ -291,7 +286,7 @@ class CountCollector {
 
     // Dispatch to the appropriately typed field reader based on the schema
     // type.
-    Status st;
+    absl::Status st;
     switch (field.type) {
       case WireFormatLite::TYPE_DOUBLE:
         st = CountPackedFixed<double>(buf, buf_size);
@@ -372,7 +367,7 @@ class CountCollector {
   // Counts the number of packed varints in an array. The end of a varint is
   // signaled by a value < 0x80, so counting them requires parsing the
   // bytestream. It is the caller's responsibility to ensure that len > 0.
-  Status CountPackedVarint(const uint8* buf, size_t len) {
+  absl::Status CountPackedVarint(const uint8* buf, size_t len) {
     const uint8* bound = buf + len;
     int count;
 
@@ -401,7 +396,7 @@ class CountCollector {
   // Counts the number of fixed-size values in a packed field. This can be done
   // without actually parsing anything.
   template <typename T>
-  Status CountPackedFixed(const uint8* unused_buf, size_t len) {
+  absl::Status CountPackedFixed(const uint8* unused_buf, size_t len) {
     int count = len / sizeof(T);
     if (count * sizeof(T) != len) {
       return errors::DataLoss(
@@ -488,7 +483,7 @@ class DenseCollector {
   // Always inlining gave a ~50% speedup on microbenchmarks at one point.
   // TODO(nix): try removing it to see if that still holds.
   // TODO(jsimsa): ABSL_ATTRIBUTE_ALWAYS_INLINE
-  Status ReadValue(CodedInputStream* input, const FieldInfo& field) {
+  absl::Status ReadValue(CodedInputStream* input, const FieldInfo& field) {
     // For required and optional fields, we overwrite values[0] with
     // the latest one in the wire stream.
     // See https://developers.google.com/protocol-buffers/docs/encoding#optional
@@ -506,8 +501,8 @@ class DenseCollector {
   }
 
   // Reads and stores a length-delimited list of values.
-  Status ReadPackedValues(CodedInputStream* input, const FieldInfo& field,
-                          const size_t buf_size) {
+  absl::Status ReadPackedValues(CodedInputStream* input, const FieldInfo& field,
+                                const size_t buf_size) {
     const void* buf;
     int unused_max_buf_size;
     input->GetDirectBufferPointerInline(&buf, &unused_max_buf_size);
@@ -538,28 +533,28 @@ class DenseCollector {
 
   // Fills in any missing values in the output array with defaults. Dispatches
   // to the appropriately typed field default based on the runtime type tag.
-  Status FillWithDefaults() {
+  absl::Status FillWithDefaults() {
     switch (default_value_.dtype) {
       case DataType::DT_BOOL:
-        return FillDefault<bool>(default_value_.value.v_bool);
+        return FillDefault(absl::get<bool>(default_value_.value));
       case DataType::DT_FLOAT:
-        return FillDefault<float>(default_value_.value.v_float);
+        return FillDefault(absl::get<float>(default_value_.value));
       case DataType::DT_DOUBLE:
-        return FillDefault<double>(default_value_.value.v_double);
+        return FillDefault(absl::get<double>(default_value_.value));
       case DataType::DT_INT8:
-        return FillDefault<int8>(default_value_.value.v_int8);
+        return FillDefault(absl::get<int8>(default_value_.value));
       case DataType::DT_INT32:
-        return FillDefault<int32>(default_value_.value.v_int32);
+        return FillDefault(absl::get<int32>(default_value_.value));
       case DataType::DT_INT64:
-        return FillDefault<int64_t>(default_value_.value.v_int64);
+        return FillDefault(absl::get<int64_t>(default_value_.value));
       case DataType::DT_STRING:
-        return FillDefault<tstring>(default_value_.value.v_string);
+        return FillDefault(absl::get<tstring>(default_value_.value));
       case DataType::DT_UINT8:
-        return FillDefault<uint8>(default_value_.value.v_uint8);
+        return FillDefault(absl::get<uint8>(default_value_.value));
       case DataType::DT_UINT32:
-        return FillDefault<uint32>(default_value_.value.v_uint32);
+        return FillDefault(absl::get<uint32>(default_value_.value));
       case DataType::DT_UINT64:
-        return FillDefault<uint64>(default_value_.value.v_uint64);
+        return FillDefault(absl::get<uint64>(default_value_.value));
       default:
         // There are many tensorflow dtypes not handled here, but they
         // should not come up unless type casting is added to the Op.
@@ -574,7 +569,7 @@ class DenseCollector {
   // uses next_repeat_index_ which counts the number of parsed values for the
   // field.
   template <class T>
-  Status FillDefault(const T& default_value) {
+  absl::Status FillDefault(const T& default_value) {
     for (int i = next_repeat_index_; i < max_repeat_count_; i++) {
       reinterpret_cast<T*>(datap_)[i] = default_value;
     }
@@ -650,7 +645,7 @@ class DecodeProtoOp : public OpKernel {
             auto ext_field = *ext_it;
             ++ext_it;
 
-            ext_name_to_field.insert({ext_name, ext_field});
+            ext_name_to_field.try_emplace(ext_name, ext_field);
             if (ext_name == name) {
               fd = ext_field;
               break;
@@ -844,7 +839,7 @@ class DecodeProtoOp : public OpKernel {
       counters.emplace_back(&field_sizes[i]);
     }
 
-    Status st = Collect(&input, absl::MakeSpan(counters));
+    absl::Status st = Collect(&input, absl::MakeSpan(counters));
     if (st.ok() && !input.ConsumedEntireMessage()) {
       st = errors::DataLoss("CountFields: Failed to consume entire buffer");
     }
@@ -933,7 +928,7 @@ class DecodeProtoOp : public OpKernel {
       // Fill in output tensors from the wire.
       CodedInputStream input(reinterpret_cast<const uint8*>(buf.c_str()),
                              buf.size());
-      Status st = Collect(&input, absl::MakeSpan(collectors));
+      absl::Status st = Collect(&input, absl::MakeSpan(collectors));
       if (st.ok() && !input.ConsumedEntireMessage()) {
         st = errors::DataLoss(
             "AccumulateFields: Failed to consume entire buffer");
@@ -957,8 +952,8 @@ class DecodeProtoOp : public OpKernel {
 
   // Traverses a serialized protobuf, dispatching values to the collectors.
   template <class CollectorClass>
-  Status Collect(CodedInputStream* input,
-                 absl::Span<CollectorClass> collectors) {
+  absl::Status Collect(CodedInputStream* input,
+                       absl::Span<CollectorClass> collectors) {
     // At the beginning of each loop, the last field number that was seen,
     // regardless of whether it was collected or not, or -1 if no field has
     // been seen before.
@@ -1038,9 +1033,10 @@ class DecodeProtoOp : public OpKernel {
 
   // Collects values for a single field.
   template <class CollectorClass>
-  Status CollectField(const FieldInfo& field,
-                      WireFormatLite::WireType wire_type,
-                      CodedInputStream* input, CollectorClass* collector) {
+  absl::Status CollectField(const FieldInfo& field,
+                            WireFormatLite::WireType wire_type,
+                            CodedInputStream* input,
+                            CollectorClass* collector) {
     // The wire format library defines the same constants used in
     // descriptor.proto. This static_cast is safe because they are guaranteed to
     // stay in sync.

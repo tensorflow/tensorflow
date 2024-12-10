@@ -23,8 +23,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
@@ -63,7 +63,7 @@ namespace xla::gpu {
 class CustomKernelFusionRewriter : public HloModulePass {
  public:
   explicit CustomKernelFusionRewriter(
-      const se::DeviceDescription* device,
+      const se::DeviceDescription* device, int kernel_index = 0,
       const CustomKernelFusionPatternRegistry* patterns =
           CustomKernelFusionPatternRegistry::Default());
 
@@ -78,6 +78,7 @@ class CustomKernelFusionRewriter : public HloModulePass {
 
  private:
   const se::DeviceDescription* device_;
+  const int kernel_index_;
   const CustomKernelFusionPatternRegistry* patterns_;
 };
 

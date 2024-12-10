@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -111,7 +112,7 @@ std::vector<tensorflow::Tensor> RunConvertor(PyObject* args) {
   return input_run;
 }
 
-tensorflow::Status Run(
+absl::Status Run(
     SavedModel* saved_model,
     const tensorflow::tfrt_stub::GraphExecutionRunOptions& run_options,
     absl::string_view name, const std::vector<tensorflow::Tensor>& inputs,

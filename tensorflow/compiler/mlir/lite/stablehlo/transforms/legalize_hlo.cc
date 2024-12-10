@@ -39,7 +39,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -68,7 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/hlo_matchers.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -85,7 +85,7 @@ namespace {
 #define DEBUG_TYPE "tf-legalize-hlo"
 
 #define GEN_PASS_DEF_LEGALIZEHLOTOTFPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 class LegalizeHloToTf : public impl::LegalizeHloToTfPassBase<LegalizeHloToTf> {
   /// Performs the legalization to the TF dialect.
@@ -2791,14 +2791,43 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
       ++offset;
     }
 
-    // Transpose the operand to handle non-iota start index map.
+    // Verify that operand_batching_dims and start_indices_batching_dims are
+    // leading dimensions of the operand and start_indices, respectively, and
+    // that all batching dimensions are trivial.
+    llvm::ArrayRef<int64_t> operand_batching_dims =
+        gather_op.getDimensionNumbers().getOperandBatchingDims();
+    llvm::ArrayRef<int64_t> start_indices_batching_dims =
+        gather_op.getDimensionNumbers().getStartIndicesBatchingDims();
+    if (operand_batching_dims.size() != start_indices_batching_dims.size()) {
+      return rewriter.notifyMatchFailure(
+          gather_op,
+          "different size for operand and start_indices batching dims");
+    }
+    for (int64_t i = 0; i < operand_batching_dims.size(); ++i) {
+      if (operand_batching_dims[i] != i ||
+          start_indices_batching_dims[i] != i ||
+          operand_type.getShape()[i] != 1 ||
+          start_indices_type.getShape()[i] != 1) {
+        return rewriter.notifyMatchFailure(gather_op,
+                                           "unsupported batching dims");
+      }
+    }
+    const int64_t num_batch_dims = operand_batching_dims.size();
+
+    // Transpose the operand to handle non-iota start index map, such that
+    // the start index dimensions are in order and follow the batching
+    // dimensions.
     llvm::SmallVector<int64_t, 4> transpose_dimensions;
     llvm::SmallVector<int64_t, 4> transpose_shape;
-    for (auto s : start_index_map) {
+    for (int64_t i = 0; i < num_batch_dims; ++i) {
+      transpose_dimensions.push_back(i);
+      transpose_shape.push_back(operand_type.getShape()[i]);
+    }
+    for (int64_t s : start_index_map) {
       transpose_dimensions.push_back(s);
       transpose_shape.push_back(operand_type.getShape()[s]);
     }
-    for (int64_t i = 0, e = operand_type.getRank(); i < e; ++i) {
+    for (int64_t i = num_batch_dims, e = operand_type.getRank(); i < e; ++i) {
       if (llvm::count(start_index_map, i) == 0) {
         transpose_dimensions.push_back(i);
         transpose_shape.push_back(operand_type.getShape()[i]);
@@ -2809,6 +2838,13 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     operand = rewriter.create<mhlo::TransposeOp>(
         gather_op.getLoc(), operand_type, operand,
         rewriter.getI64TensorAttr(transpose_dimensions));
+
+    // Reshape away the batching dimensions (trivial) from the operand.
+    operand_type = RankedTensorType::get(
+        operand_type.getShape().drop_front(num_batch_dims),
+        operand_type.getElementType());
+    operand = rewriter.create<mhlo::ReshapeOp>(gather_op->getLoc(),
+                                               operand_type, operand);
 
     // Check whether we need to append a transpose op after the gather nd.
     bool need_transpose_after = false;

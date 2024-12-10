@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <string>
@@ -144,10 +145,11 @@ absl::StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
 
 }  // namespace
 
-Status ConvertTfMlirToRuntimeExecutable(
+absl::Status ConvertTfMlirToRuntimeExecutable(
     const TfrtCompileOptions& options, mlir::ModuleOp module,
-    absl::FunctionRef<Status(mlir::PassManager&, mlir::ModuleOp,
-                             const tensorflow::TfrtPipelineOptions& options)>
+    absl::FunctionRef<
+        absl::Status(mlir::PassManager&, mlir::ModuleOp,
+                     const tensorflow::TfrtPipelineOptions& options)>
         emit_executable,
     tfrt_stub::ModelRuntimeContext& model_context,
     tfrt_stub::FallbackState* fallback_state,
@@ -274,11 +276,11 @@ Status ConvertTfMlirToRuntimeExecutable(
   return status;
 }
 
-Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
-                          mlir::ModuleOp module, tfrt::BefBuffer* bef_buffer,
-                          tfrt_stub::ModelRuntimeContext& model_context,
-                          tfrt_stub::FallbackState* fallback_state,
-                          std::vector<std::string>* added_xla_function_names) {
+absl::Status ConvertTfMlirToBef(
+    const TfrtCompileOptions& options, mlir::ModuleOp module,
+    tfrt::BefBuffer* bef_buffer, tfrt_stub::ModelRuntimeContext& model_context,
+    tfrt_stub::FallbackState* fallback_state,
+    std::vector<std::string>* added_xla_function_names) {
   return ConvertTfMlirToRuntimeExecutable(
       options, module,
       [bef_buffer](mlir::PassManager& pm, mlir::ModuleOp module,
@@ -345,13 +347,23 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->min_num_batch_threads = options.min_num_batch_threads;
   pipeline_options->min_max_enqueued_batches = options.min_max_enqueued_batches;
   pipeline_options->batch_padding_policy = options.batch_padding_policy;
+  pipeline_options->num_batch_threads =
+      options.batch_options.num_batch_threads();
+  pipeline_options->max_batch_size = options.batch_options.max_batch_size();
+  pipeline_options->batch_timeout_micros =
+      options.batch_options.batch_timeout_micros();
+  pipeline_options->allowed_batch_sizes = llvm::ArrayRef<int64_t>(
+      std::vector<int64_t>(options.batch_options.allowed_batch_sizes().begin(),
+                           options.batch_options.allowed_batch_sizes().end()));
+  pipeline_options->max_enqueued_batches =
+      options.batch_options.max_enqueued_batches();
   pipeline_options->merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
 
   return pipeline_options;
 }
 
-tensorflow::Status AddXlaFunctions(
+absl::Status AddXlaFunctions(
     tfrt_stub::FallbackState* fallback_state, mlir::ModuleOp mlir_module,
     std::vector<std::string>* added_xla_function_names) {
   if (fallback_state != nullptr) {

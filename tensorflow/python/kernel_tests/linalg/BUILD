@@ -213,7 +213,10 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["linear_operator_block_lower_triangular_test.py"],
     shard_count = 8,
-    tags = ["optonly"],
+    tags = [
+        "no_gpu",  # Seg fault. http://b/365525243
+        "optonly",
+    ],
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",

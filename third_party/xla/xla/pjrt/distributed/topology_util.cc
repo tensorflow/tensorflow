@@ -245,9 +245,6 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
       if (gpu_topology.platform_version().empty()) {
         gpu_topology.set_platform_version(device.name());
       }
-      if (gpu_topology.core_count_per_chip() == 0) {
-        gpu_topology.set_core_count_per_chip(device.core_count());
-      }
       slice_id_to_node_ids[device.slice_index()].insert(
           local_topology.node_id());
       device_ids.push_back(device.global_device_id());

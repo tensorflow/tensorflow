@@ -73,7 +73,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:errors",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
-        "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
     ],
 )

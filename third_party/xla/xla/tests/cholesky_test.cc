@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/array2d.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/lib/matrix.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/matrix.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"

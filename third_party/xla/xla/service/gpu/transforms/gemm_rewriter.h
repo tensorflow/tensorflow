@@ -15,14 +15,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_GEMM_REWRITER_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_GEMM_REWRITER_H_
 
-#include <cstdint>
-
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace xla {
 namespace gpu {
@@ -77,7 +76,8 @@ struct GemmRewriterOptions {
 
 class GemmRewriter : public HloModulePass {
  public:
-  GemmRewriter(se::GpuComputeCapability gpu_version, int32_t toolkit_version,
+  GemmRewriter(se::GpuComputeCapability gpu_version,
+               se::SemanticVersion toolkit_version,
                GemmRewriterOptions options = {});
   absl::string_view name() const override { return "cublas-gemm-rewriter"; }
 
@@ -88,7 +88,7 @@ class GemmRewriter : public HloModulePass {
 
  private:
   se::GpuComputeCapability gpu_version_;
-  int32_t toolkit_version_;
+  se::SemanticVersion toolkit_version_;
   GemmRewriterOptions options_;
 };
 

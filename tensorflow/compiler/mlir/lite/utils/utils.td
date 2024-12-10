@@ -19,12 +19,123 @@ include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/IR/PatternBase.td"
 
+////////////////////////////////////////////////////////////////////////////////
+///////////////// TENSOR RANK UTILITIES ////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+// Checks if the rank of the value is less than or equal to the rank of the
+// other value.
+def IsRankLessThanEqualTo : Constraint<CPred<
+  "$0.getType().cast<ShapedType>().getRank() <= "
+  "$1.getType().cast<ShapedType>().getRank()">>;
+
+// Checks if the value has rank at most 'n'.
+class HasRankAtMost<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////// DENSE UTILITIES /////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+def DenseFPElementsAttrPred : CPred<"$_self.isa<DenseFPElementsAttr>()">;
+def DenseIntElementsAttrPred : CPred<"$_self.isa<DenseIntElementsAttr>()">;
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////// SPLAT CONSTANT UTILITIES /////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+def DenseElementsAttrIsSplatPred
+    : CPred<"$_self.cast<DenseElementsAttr>().isSplat()">;
+
+class DenseFPElementsAttrSplatValueEqualToPred<string val>
+    : CPred<"$_self.cast<DenseFPElementsAttr>().getSplatValue<FloatAttr>()"
+            ".getValueAsDouble() == " # val>;
+
+class DenseFPElementsAttrSplatValueEqualToPredWithTolerance<string val, string tolerance>
+    : CPred<"std::abs($_self.cast<DenseFPElementsAttr>().getSplatValue<FloatAttr>()"
+            ".getValueAsDouble() - " # val # ") <= "#tolerance>;
+
+class DenseIntElementsAttrSplatValueEqualToPred<string val>
+    : CPred<"$_self.isa<DenseIntElementsAttr>() && "
+            "$_self.cast<DenseIntElementsAttr>().getElementType()"
+            "  .isa<IntegerType>() && "
+            "$_self.cast<DenseIntElementsAttr>().isSplat() && "
+            "$_self.cast<DenseIntElementsAttr>().getSplatValue<IntegerAttr>()"
+            "  .getValue().getSExtValue() == " # val>;
+
+// AttrConstraint to match a floating point dense elements attribute with a
+// splat value equals to `Value`.
+class FPSplatConstAttr<string Value> : AttrConstraint<And<[
+    DenseFPElementsAttrPred, DenseElementsAttrIsSplatPred,
+    DenseFPElementsAttrSplatValueEqualToPred<Value>]>>;
+
+class FPSplatConstAttrWithTolerance<string Value, string Tolerance> :
+    AttrConstraint<And<[
+        DenseFPElementsAttrPred, DenseElementsAttrIsSplatPred,
+        DenseFPElementsAttrSplatValueEqualToPredWithTolerance<Value, Tolerance>]>>;
+
+// AttrConstraint to match a dense elements attribute with a splat value equal
+// to `Value`.
+class IntSplatConstAttr<string value> : AttrConstraint<
+    DenseIntElementsAttrSplatValueEqualToPred<value>>;
+
+// A constant tensor that has elements with the same value.
+def SplatElementsAttr : ElementsAttrBase<DenseElementsAttrIsSplatPred,
+  "splat tensor attr">;
+
+// A constant tensor that has elements with the same floating point value.
+def SplatFPElementsAttr : ElementsAttrBase<
+  And<[DenseFPElementsAttrPred, DenseElementsAttrIsSplatPred]>,
+  "f32 splat tensor attr">;
+
+// A constant tensor that has elements with the same integer value.
+def SplatIntElementsAttr : ElementsAttrBase<
+  And<[DenseIntElementsAttrPred, DenseElementsAttrIsSplatPred]>,
+  "integer splat tensor attr">;
+
+// Extracts the scalar constant value.
+def GetScalarElementsAttrFromSplat : NativeCodeCall<
+    "DenseElementsAttr::get("
+    " RankedTensorType::get({},"
+        " $0.cast<mlir::DenseElementsAttr>().getType().getElementType()),"
+    " $0.cast<mlir::DenseElementsAttr>().getSplatValue<mlir::Attribute>())">;
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////// OP BROADCASTING UTILITIES ////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+def OperandsBroadcastToOutputType : Constraint<CPred<
+  "TFL::OperandsBroadcastToOutputType($0.getType(), $1.getType(), "
+                                     "$2.getType())">>;
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////// TENSOR SHAPE UTILITIES ///////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+def HasSameStaticShapes : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().hasStaticShape() && "
+          "$1.getType().cast<ShapedType>().hasStaticShape() && "
+          "$0.getType().cast<ShapedType>().getShape() =="
+          "$1.getType().cast<ShapedType>().getShape()">,
+    "have the same static shape">;
+
 def CreateNoneValue : NativeCodeCall<
   "$_builder.create<TFL::NoValueOp>($0.getLoc(), $_builder.getUnitAttr())">;
 
 // Returns shape of a ranked tensor.
 // if called without a ranked tensor it will fail.
 def GetShape: NativeCodeCall<"GetShape($0)">;
+
+// Return the resultant shape if the shape of the supplied attribute/value is
+// expanded by n leading 1s'.
+class GetExpandedShapeAttr<int n> : NativeCodeCall<
+  "GetExpandedShapeAttr($0, " # n # ")">;
+
+// Return the resultant shape type if the shape of the supplied attribute/value
+// is expanded by n leading 1s'.
+class GetExpandedShapeType<int n> : NativeCodeCall<
+  "GetExpandedShapeType($0, " # n # ")">;
 
 // Constraint that values in list attribute are all ones.
 def IsAllOnesConstant : Constraint<CPred<"TFL::IsAllOnesConstant($0)">>;

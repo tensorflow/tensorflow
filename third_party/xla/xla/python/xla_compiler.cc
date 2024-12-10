@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/xla_compiler.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -45,22 +46,29 @@ limitations under the License.
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/array.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
 #include "xla/debug_options_flags.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/status_casters.h"
+#include "xla/python/dlpack.h"
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
@@ -69,15 +77,10 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/service/name_uniquer.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
@@ -232,9 +235,8 @@ absl::StatusOr<Shape> MakeShapeWithDenseLayout(
     *shape.mutable_layout() = LayoutUtil::MakeLayout(*minor_to_major);
     TF_RETURN_IF_ERROR(
         LayoutUtil::ValidateLayoutForShape(shape.layout(), shape));
-  } else {
-    shape.clear_layout();
   }
+
   return shape;
 }
 
@@ -415,6 +417,65 @@ void DefRepeatedEnumProperty(nb::class_<T>& cls, const char* name,
           elems->Add(nb::cast<int>(e.attr("value")));
         }
       });
+}
+
+template <typename T>
+Array<T> NDArrayToArray(nb::ndarray<T, nb::c_contig> ndarray) {
+  std::vector<int64_t> shapes;
+  shapes.reserve(ndarray.ndim());
+  for (int i = 0; i < ndarray.ndim(); ++i) {
+    shapes.push_back(ndarray.shape(i));
+  }
+  xla::Array<int64_t> array(shapes);
+  array.Each([&](absl::Span<const int64_t> indices, int64_t* val) {
+    int64_t offset = indices.back();
+    int64_t multiplier = 1;
+    for (int i = ndarray.ndim() - 1; i > 0; --i) {
+      multiplier *= ndarray.shape(i);
+      offset += indices[i - 1] * multiplier;
+    }
+    *val = *(ndarray.data() + offset);
+  });
+  return array;
+}
+
+absl::StatusOr<HloSharding> SubgroupWithTileAssignmentHelper(
+    nb::ndarray<int64_t, nb::c_contig> tile_assignment,
+    absl::Span<const OpSharding::Type> subgroup_types) {
+  return HloSharding::Subgroup(NDArrayToArray(tile_assignment), subgroup_types);
+}
+
+nb::ndarray<> LiteralToNdarray(Literal& obj) {
+  const Shape& shape = obj.shape();
+
+  if (!shape.has_layout()) {
+    throw XlaRuntimeError(
+        "Creating an array is only supported for Literals with a layout.");
+  }
+
+  const Layout& layout = shape.layout();
+
+  if (!layout.tiles().empty()) {
+    throw XlaRuntimeError(
+        "Creating an array from a tiled Literal is not supported.");
+  }
+
+  if (!LayoutUtil::IsDenseArray(shape)) {
+    throw XlaRuntimeError(
+        "Creating an array is only supported for dense Literals.");
+  }
+
+  xla::PrimitiveType primitive_type = shape.element_type();
+  nb::dlpack::dtype dtype =
+      ValueOrThrow(PrimitiveTypeToNbDLDataType(primitive_type));
+
+  absl::Span<const int64_t> dimensions = shape.dimensions();
+  std::vector<size_t> unsigned_dimensions(dimensions.begin(), dimensions.end());
+  auto strides = StridesForShape(primitive_type, dimensions, layout);
+
+  return nb::ndarray<>(obj.untyped_data(), unsigned_dimensions.size(),
+                       unsigned_dimensions.data(), {}, strides.data(), dtype,
+                       nb::device::cpu::value, 0);
 }
 
 }  // namespace
@@ -640,7 +701,35 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
            [](const ShapeIndex& shape_ind) { return absl::HashOf(shape_ind); });
 
   // Literals
-  nb::class_<Literal>(m, "Literal").def("__repr__", &Literal::ToString);
+  nb::class_<Literal>(m, "Literal")
+      .def(nb::init<const Shape&>())
+      .def("__repr__", &Literal::ToString)
+      .def(
+          "__array__",
+          [](std::shared_ptr<Literal> obj, std::optional<nb::object> dtype,
+             std::optional<bool> copy) {
+            // Provides the interface required by numpy to create a np.ndarray.
+            // Currently don't support the __dl_pack__ interface but can be
+            // added with very little effort it if needed.
+
+            nb::ndarray<nb::numpy> np_array(LiteralToNdarray(*obj));
+
+            if (dtype.has_value()) {
+              throw XlaRuntimeError(
+                  "Passing of dtype to __array__ not currently supported.");
+            }
+
+            if (copy.has_value() && *copy) {
+              // when a copy is requested we _must_ return a copy:
+              // https://numpy.org/doc/2.1/reference/generated/numpy.ndarray.__array__.html
+              return np_array.cast(nb::rv_policy::copy);
+            }
+
+            return np_array.cast(nb::rv_policy::reference_internal,
+                                 nb::cast(obj));
+          },
+          nb::arg("dtype").none() = nb::none(),
+          nb::arg("copy").none() = nb::none());
 
   nb::class_<XlaComputation>(m, "XlaComputation")
       .def("__init__",
@@ -1067,6 +1156,11 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       },
       nb::arg("platform"));
 
+  nb::enum_<DebugOptions::AutotuneCacheMode>(m, "AutotuneCacheMode")
+      .value("UNSPECIFIED", DebugOptions::AUTOTUNE_CACHE_MODE_UNSPECIFIED)
+      .value("UPDATE", DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE)
+      .value("READ", DebugOptions::AUTOTUNE_CACHE_MODE_READ);
+
   nb::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
       .def_prop_rw("xla_backend_optimization_level",
@@ -1213,7 +1307,10 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                    &DebugOptions::xla_gpu_per_fusion_autotune_cache_dir,
                    [](DebugOptions* self, std::string value) {
                      self->set_xla_gpu_per_fusion_autotune_cache_dir(value);
-                   });
+                   })
+      .def_prop_rw("xla_gpu_experimental_autotune_cache_mode",
+                   &DebugOptions::xla_gpu_experimental_autotune_cache_mode,
+                   &DebugOptions::set_xla_gpu_experimental_autotune_cache_mode);
 
   nb::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(nb::init<>())
@@ -1253,6 +1350,12 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                        : std::nullopt;
           },
           &ExecutableBuildOptions::set_device_assignment)
+      .def_prop_rw("exec_time_optimization_effort",
+                   &ExecutableBuildOptions::exec_time_optimization_effort,
+                   &ExecutableBuildOptions::set_exec_time_optimization_effort)
+      .def_prop_rw("memory_fitting_effort",
+                   &ExecutableBuildOptions::memory_fitting_effort,
+                   &ExecutableBuildOptions::set_memory_fitting_effort)
       .def_prop_rw("use_spmd_partitioning",
                    &ExecutableBuildOptions::use_spmd_partitioning,
                    &ExecutableBuildOptions::set_use_spmd_partitioning)
@@ -1385,6 +1488,11 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def_static("manual", [] { return HloSharding::Manual(); })
       .def_static("replicate", [] { return HloSharding::Replicate(); })
       .def_static("unknown", [] { return HloSharding::Unknown(); })
+      .def_static(
+          "subgroup_with_device_ordering",
+          xla::ValueOrThrowWrapper(SubgroupWithTileAssignmentHelper),
+          nb::arg("tile_assignment"),
+          nb::arg("subgroup_types") = absl::Span<const xla::OpSharding::Type>())
       .def("__eq__", [](const xla::HloSharding& a,
                         const xla::HloSharding& b) { return a == b; })
       .def("__hash__",
@@ -1438,6 +1546,10 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .value("DEFAULT", PrecisionConfig::DEFAULT)
       .value("HIGH", PrecisionConfig::HIGH)
       .value("HIGHEST", PrecisionConfig::HIGHEST);
+
+  nb::enum_<ResultAccuracy::Mode>(m, "ResultAccuracy_Mode")
+      .value("DEFAULT", ResultAccuracy::DEFAULT)
+      .value("HIGHEST", ResultAccuracy::HIGHEST);
 
   nb::enum_<FftType>(m, "FftType")
       .value("FFT", FftType::FFT)

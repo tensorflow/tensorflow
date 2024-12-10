@@ -15,11 +15,13 @@ limitations under the License.
 #ifndef XLA_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 #define XLA_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <optional>
 #include <stack>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -66,9 +68,12 @@ struct PythonTraceEntry {
                    PyCFunctionObject* py_c_function)
       : start_time_ns(start),
         end_time_ns(end),
-        method_def(py_c_function->m_ml),
         m_module(py_c_function->m_module) {
     Py_XINCREF(m_module);
+    if (auto* method_def = py_c_function->m_ml;
+        method_def != nullptr && method_def->ml_name != nullptr) {
+      method_name = method_def->ml_name;
+    }
   }
 
   ~PythonTraceEntry() {
@@ -83,11 +88,11 @@ struct PythonTraceEntry {
     co_firstlineno = other.co_firstlineno;
     co_filename = other.co_filename;
     co_name = other.co_name;
-    method_def = other.method_def;
+    method_name = std::move(other.method_name);
     m_module = other.m_module;
     other.co_filename = nullptr;
     other.co_name = nullptr;
-    other.method_def = nullptr;
+    other.method_name = "";
     other.m_module = nullptr;
   }
 
@@ -98,7 +103,7 @@ struct PythonTraceEntry {
   PyObject* co_filename = nullptr;
   PyObject* co_name = nullptr;
   int co_firstlineno = 0;
-  PyMethodDef* method_def = nullptr;
+  std::string method_name;
   PyObject* m_module = nullptr;
 
   PythonTraceEntry(const PythonTraceEntry& other) = delete;

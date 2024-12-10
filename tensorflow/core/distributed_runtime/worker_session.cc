@@ -76,13 +76,14 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     }
   }
 
-  Status GetEagerClientCache(
+  absl::Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
     return wrapped_->GetEagerClientCache(eager_client_cache);
   }
 
-  Status GetCoordinationClientCache(std::unique_ptr<CoordinationClientCache>*
-                                        coordination_client_cache) override {
+  absl::Status GetCoordinationClientCache(
+      std::unique_ptr<CoordinationClientCache>* coordination_client_cache)
+      override {
     return wrapped_->GetCoordinationClientCache(coordination_client_cache);
   }
 
@@ -141,12 +142,12 @@ WorkerSession::WorkerSession(
       borrowed_device_mgr_(nullptr),
       remote_device_mgr_(std::move(remote_device_mgr)) {
   // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/tsl/platform/default", this is
-  // currently a no-op.
+  // provided). For builds using "tensorflow/compiler/xla/tsl/platform/default",
+  // this is currently a no-op.
   worker_session_created->GetCell()->Set(true);
 }
 
-Status WorkerSession::UpdateWorkerCacheAndDevices(
+absl::Status WorkerSession::UpdateWorkerCacheAndDevices(
     std::unique_ptr<WorkerCacheInterface> new_worker_cache,
     std::vector<std::unique_ptr<Device>> added_remote_devices,
     const std::vector<Device*>& removed_remote_devices) {
@@ -190,14 +191,14 @@ WorkerSession::WorkerSession(
       borrowed_device_mgr_(borrowed_device_mgr),
       remote_device_mgr_(std::move(remote_device_mgr)) {
   // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/tsl/platform/default", this is
-  // currently a no-op.
+  // provided). For builds using "tensorflow/compiler/xla/tsl/platform/default",
+  // this is currently a no-op.
   worker_session_created->GetCell()->Set(true);
 }
 
 WorkerSession::~WorkerSession() {
   if (graph_mgr_) {
-    Status s = graph_mgr_->DeregisterAll();
+    absl::Status s = graph_mgr_->DeregisterAll();
     if (!s.ok()) {
       LOG(WARNING) << "Error during worker session deletion: " << s;
     }

@@ -27,9 +27,9 @@ namespace graph_transforms {
 
 // Renames all nodes not uses as graph inputs or outputs to short numerical
 // forms.
-Status ObfuscateNames(const GraphDef& input_graph_def,
-                      const TransformFuncContext& context,
-                      GraphDef* output_graph_def) {
+absl::Status ObfuscateNames(const GraphDef& input_graph_def,
+                            const TransformFuncContext& context,
+                            GraphDef* output_graph_def) {
   std::unordered_set<string> required_nodes;
   for (const string& input : context.input_names) {
     required_nodes.insert(input);
@@ -89,7 +89,7 @@ Status ObfuscateNames(const GraphDef& input_graph_def,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("obfuscate_names", ObfuscateNames);

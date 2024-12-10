@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/compression_utils.h"
 
-#include <limits>
+#include <cstddef>
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -61,8 +64,8 @@ class Iov {
   size_t num_bytes_;
 };
 
-Status CompressElement(const std::vector<Tensor>& element,
-                       CompressedElement* out) {
+absl::Status CompressElement(const std::vector<Tensor>& element,
+                             CompressedElement* out) {
   // First pass: preprocess the non`memcpy`able tensors.
   size_t num_string_tensors = 0;
   size_t num_string_tensor_strings = 0;
@@ -135,8 +138,8 @@ Status CompressElement(const std::vector<Tensor>& element,
   return absl::OkStatus();
 }
 
-Status UncompressElement(const CompressedElement& compressed,
-                         std::vector<Tensor>* out) {
+absl::Status UncompressElement(const CompressedElement& compressed,
+                               std::vector<Tensor>* out) {
   if (compressed.version() != kCompressedElementVersion) {
     return errors::Internal("Unsupported compressed element version: ",
                             compressed.version());

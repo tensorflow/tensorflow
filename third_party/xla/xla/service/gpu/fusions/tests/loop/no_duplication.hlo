@@ -1,0 +1,26 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize | FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  %param = f32[6]{0} parameter(0)
+  %slice0.1 = f32[5]{0} slice(f32[6]{0} %param), slice={[0:5]}
+  %slice0.2 = f32[5]{0} slice(f32[6]{0} %param), slice={[1:6]}
+  %add0 = f32[5]{0} add(f32[5]{0} %slice0.1, f32[5]{0} %slice0.2)
+  %slice1.1 = f32[4]{0} slice(f32[5]{0} %add0), slice={[0:4]}
+  %slice1.2 = f32[4]{0} slice(f32[5]{0} %add0), slice={[1:5]}
+  %add1 = f32[4]{0} add(f32[4]{0} %slice1.1, f32[4]{0} %slice1.2)
+  %slice2.1 = f32[3]{0} slice(f32[4]{0} %add1), slice={[0:3]}
+  %slice2.2 = f32[3]{0} slice(f32[4]{0} %add1), slice={[1:4]}
+  %add2 = f32[3]{0} add(f32[3]{0} %slice2.1, f32[3]{0} %slice2.2)
+  %slice3.1 = f32[2]{0} slice(f32[3]{0} %add2), slice={[0:2]}
+  %slice3.2 = f32[2]{0} slice(f32[3]{0} %add2), slice={[1:3]}
+  ROOT %add3 = f32[2]{0} add(f32[2]{0} %slice3.1, f32[2]{0} %slice3.2)
+}
+ENTRY entry_computation {
+  p0 = f32[] parameter(0)
+  add = f32[] add(p0, p0)
+  broadcast = f32[6]{0} broadcast(add), dimensions={}
+  ROOT %fusion = f32[2]{0} fusion(broadcast), kind=kLoop, calls=fusion
+}
+// CHECK-COUNT-4: arith.add
+// CHECK-NOT: arith.add

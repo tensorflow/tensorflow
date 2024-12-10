@@ -23,17 +23,19 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
+#include "xla/cpu_function_runtime.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter.h"
-#include "xla/service/cpu/target_machine_features_fake.h"
+#include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_ordering.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/logical_buffer.h"
@@ -66,9 +68,8 @@ class IrEmitter2Test : public HloTestBase {
             backend().compiler()->BufferSizeBytesFunction(),
             [](LogicalBuffer::Color) { return /*alignment=*/1; }));
 
-    target_machine_ =
-        std::make_unique<TargetMachineFeaturesWithFakeAlignmentLogic>(
-            [](int64_t size) { return 1; });
+    target_machine_ = std::make_unique<TargetMachineFeaturesStub>(
+        [](int64_t size) { return 1; });
 
     nested_ir_emitter_ = absl::WrapUnique(
         new IrEmitter(nullptr, hlo, *buffer_assignment_, &module, {}, {}, {},
@@ -97,7 +98,7 @@ class IrEmitter2Test : public HloTestBase {
   // alive for the duration of the test, because IrEmitter2 does not take
   // ownership of them.
   std::unique_ptr<BufferAssignment> buffer_assignment_;
-  std::unique_ptr<TargetMachineFeaturesWithFakeAlignmentLogic> target_machine_;
+  std::unique_ptr<TargetMachineFeaturesStub> target_machine_;
   std::unique_ptr<IrEmitter> nested_ir_emitter_;
 };
 
@@ -138,7 +139,9 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
   EXPECT_NE(prototype.results[0].EmitReadArrayElement(index, &b), nullptr);
   EXPECT_NE(prototype.results[1].EmitReadArrayElement(index, &b), nullptr);
 
-  ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
+  // clang-format off
+  ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()),
+                            absl::StrCat(R"(
     CHECK: define ptr @test(ptr %0) #0 {
 
     CHECK-NEXT: getelementptr inbounds nuw %SE_HOST_KernelCallFrame, {{.*}} i32 0
@@ -160,7 +163,7 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK-NEXT: getelementptr inbounds nuw %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 0, i32 0
-    CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0:.+]], !dereferenceable ![[DEREF_BYTES:.*]], !align ![[ALIGNMENT:.+]]
+    CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0:.+]], !dereferenceable ![[DEREF_BYTES:.+]], !align ![[ALIGNMENT:.+]]
 
     CHECK-NEXT: getelementptr inbounds nuw %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
@@ -199,8 +202,7 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK: }
 
     #0 = { uwtable "frame-pointer"="all" "prefer-vector-width"="256" }
-    CHECK-DAG: ![[DEREF_BYTES]] = !{i64 32}
-    CHECK-DAG: ![[ALIGNMENT]] = !{i64 16}
+    CHECK-DAG: ![[ALIGNMENT]] = !{i64 )", cpu_function_runtime::MinAlign(), R"(}
     CHECK-DAG: ![[SCOPE0]] = !{}
     CHECK-DAG: ![[SCOPE1]] = !{![[RES0:.+]], ![[RES1:.+]]}
     CHECK-DAG: ![[SCOPE2]] = !{![[RES0]]}
@@ -208,6 +210,15 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK-DAG: ![[RES0]] = !{!"{{.*}}, offset:512, {{.*}}", ![[DOMAIN:.+]]}
     CHECK-DAG: ![[RES1]] = !{!"{{.*}}, offset:768, {{.*}}", ![[DOMAIN]]}
     CHECK-DAG: ![[DOMAIN]] = !{!"XLA host kernel test AA domain"}
+  )")));
+  // clang-format on
+
+  // Match for dereferenceable metadata in separate check, because depending on
+  // the alignment value, it may be the same scope as align, and may be a
+  // separate one. It's impossible to match both these cases in one FileCheck.
+  ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
+    CHECK:      {{.+}} = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES:.+]],
+    CHECK: ![[DEREF_BYTES]] = !{i64 32}
   )"));
 }
 

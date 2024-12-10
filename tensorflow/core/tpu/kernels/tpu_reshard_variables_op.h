@@ -38,9 +38,9 @@ class TPUReshardVariablesOpKernel : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override;
 
  private:
-  Status DoWork(OpKernelContext* context);
-  Status DoTpuExecute(OpKernelContext* context, const Tensor& format_key,
-                      tpu::CompilationCacheFetchTarget fetch_target);
+  absl::Status DoWork(OpKernelContext* context);
+  absl::Status DoTpuExecute(OpKernelContext* context, const Tensor& format_key,
+                            tpu::CompilationCacheFetchTarget fetch_target);
 
   int64_t num_vars_;
 };

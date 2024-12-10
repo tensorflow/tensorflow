@@ -429,11 +429,17 @@ REGISTER_OP("_BatchFunctionFallback")
     // same batch, i.e., no low priority input padding high priority batches.
     // Low priority inputs get scheduled only as part of low priority only
     // batches as described above.
+    // priority_merge: High and low priority inputs are queued separately but
+    // when a batch needs to be scheduled, the two queues are treated as one
+    // merged flat list of inputs with high priority inputs at the front of the
+    // list of tasks to use for the next batch. If all inputs are of the same
+    // priority, the behavior is the same as disabling prioritization.
     .Attr(
         "mixed_priority_policy: "
         "{'low_priority_padding_with_max_batch_size', "
         "'low_priority_padding_with_next_allowed_batch_size', "
-        "'priority_isolation'} = 'low_priority_padding_with_max_batch_size'")
+        "'priority_isolation', "
+        "'priority_merge'} = 'low_priority_padding_with_max_batch_size'")
     // See the description of the batch_padding_policy attribute of
     // BatchFunction in core/ops/batch_ops.cc.
     .Attr(

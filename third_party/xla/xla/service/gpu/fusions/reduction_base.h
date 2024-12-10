@@ -18,10 +18,11 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/reduction_utils.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -38,13 +39,9 @@ struct ReductionGroups {
   std::vector<bool> is_reduction_root;
 };
 
-ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
-                                        bool for_mlir);
+ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis);
 
-int RowReductionGetRowsPerWarp(int reduced_dimension_size);
-
-int GetVectorSizeForMlir(const HloFusionAnalysis& analysis,
-                         const ReductionDimensions& reduction_dimensions,
+int GetVectorSizeForMlir(const HloFusionAnalysis& analysis, int64_t minor_dim,
                          int num_threads);
 
 void AddGroupIdConstraint(IndexingMap& map, int64_t root_index,

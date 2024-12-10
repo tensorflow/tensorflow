@@ -261,7 +261,7 @@ class FlatBufferModelBase {
 
   void ByteSwapTFLiteModel(const tflite::Model* tfl_model,
                            bool from_big_endian) {
-    bool buffer_swapped[tfl_model->buffers()->size()] = {};
+    std::vector<bool> buffer_swapped(tfl_model->buffers()->size(), false);
     for (size_t subgraph_idx = 0; subgraph_idx < tfl_model->subgraphs()->size();
          subgraph_idx++) {
       const tflite::SubGraph* subgraph =
@@ -316,7 +316,7 @@ class FlatBufferModelBase {
 
   void ByteSwapTFLiteModelT(tflite::ModelT* tfl_modelt, bool from_big_endian) {
     size_t bytes_per_elem = 0;
-    bool buffer_swapped[tfl_modelt->buffers.size()] = {};
+    std::vector<bool> buffer_swapped(tfl_modelt->buffers.size(), false);
     for (size_t subgraph_idx = 0; subgraph_idx < tfl_modelt->subgraphs.size();
          subgraph_idx++) {
       tflite::SubGraphT* subgraph =
@@ -386,9 +386,20 @@ class FlatBufferModelBase {
       size_t allocation_size =
           std::min(allocation->bytes(),
                    static_cast<size_t>(FLATBUFFERS_MAX_BUFFER_SIZE - 1));
+      flatbuffers::Verifier::Options options;
+      // TODO(b/366118885): Remove after the root cause of the crash on Windows
+      // is found.
+#if defined(_WIN32)
+      options.assert = true;
+#if defined(FLATBUFFER_VERIFIER_HAS_CHECK_BUFFER_ALIGNMENT)
+      // `check_buf_alignment` is not supported in all implementations of
+      // `flatbuffers::Verifier`.
+      options.check_buf_alignment = true;
+#endif
+#endif
       flatbuffers::Verifier base_verifier(
-          reinterpret_cast<const uint8_t*>(allocation->base()),
-          allocation_size);
+          reinterpret_cast<const uint8_t*>(allocation->base()), allocation_size,
+          options);
       if (!VerifyModelBuffer(base_verifier)) {
         TF_LITE_REPORT_ERROR(error_reporter,
                              "The model is not a valid Flatbuffer buffer");
@@ -495,7 +506,7 @@ class FlatBufferModelBase {
     std::map<std::string, std::string> keys_values;
     if (!model || !model->metadata() || !model->buffers()) return keys_values;
 
-    for (int i = 0; i < model->metadata()->size(); ++i) {
+    for (size_t i = 0; i < model->metadata()->size(); ++i) {
       auto metadata = model->metadata()->Get(i);
       auto buf = metadata->buffer();
       if (buf >= model->buffers()->size()) continue;

@@ -18,6 +18,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_GRAPH_REWRITE_DISTRIBUTED_TPU_REWRITE_HELPERS_H_
 #define TENSORFLOW_CORE_TPU_GRAPH_REWRITE_DISTRIBUTED_TPU_REWRITE_HELPERS_H_
 
+#include <functional>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/device.h"
@@ -40,17 +44,17 @@ class DistributedTPURewriteHelpers {
   // system_spec_string to identify the TPU_SYSTEM on replica 0, task 0 of the
   // job that contains the TPU hardware.
   // TODO(b/110910013): Possibly remove the tpu system device.
-  static Status GetSystemDevice(const string& system_spec_string,
-                                const DeviceSet& device_set,
-                                DeviceNameUtils::ParsedName* system_spec,
-                                Device** system_device);
+  static absl::Status GetSystemDevice(const string& system_spec_string,
+                                      const DeviceSet& device_set,
+                                      DeviceNameUtils::ParsedName* system_spec,
+                                      Device** system_device);
 
   // Given a parsed system spec (e.g., the one returned above from
   // GetSystemDeviceName), return in host_devices the TPU_SYSTEM:0 device on
   // every host in the spec's job. If the spec does not include an explicit job,
   // "localhost" is used.  Returns an error if system_spec matches devices from
   // a multiple jobs or replicas.
-  static Status GetHostSystemDevices(
+  static absl::Status GetHostSystemDevices(
       const DeviceNameUtils::ParsedName& system_spec,
       const DeviceSet& device_set, std::vector<Device*>* host_system_devices);
 
@@ -62,10 +66,10 @@ class DistributedTPURewriteHelpers {
   // the same number of TPU devices.
   // Returns an error if system_spec matches devices from a multiple jobs or
   // replicas.
-  static Status GetTPUDevices(const DeviceNameUtils::ParsedName& system_spec,
-                              const DeviceSet& device_set,
-                              int* num_tpus_per_host,
-                              std::vector<std::vector<Device*>>* tpu_devices);
+  static absl::Status GetTPUDevices(
+      const DeviceNameUtils::ParsedName& system_spec,
+      const DeviceSet& device_set, int* num_tpus_per_host,
+      std::vector<std::vector<Device*>>* tpu_devices);
 
   // Perform 'action' on every node in 'graph' of type
   // 'node_type'. This function is designed for use with configuration
@@ -86,15 +90,15 @@ class DistributedTPURewriteHelpers {
     Node* dst;
     int dst_input;
   };
-  static Status ForConfigurationNodeMatchingType(
+  static absl::Status ForConfigurationNodeMatchingType(
       const string& node_type, Graph* graph, const DeviceSet& device_set,
       const std::function<
-          Status(const NodeDef& configuration_node_def,
-                 const string& configuration_device_name,
-                 const std::vector<Device*>& host_devices,
-                 const std::vector<Node*>& input_dependencies,
-                 const std::vector<OutputDependency>& output_dependencies,
-                 Graph* graph)>& action);
+          absl::Status(const NodeDef& configuration_node_def,
+                       const string& configuration_device_name,
+                       const std::vector<Device*>& host_devices,
+                       const std::vector<Node*>& input_dependencies,
+                       const std::vector<OutputDependency>& output_dependencies,
+                       Graph* graph)>& action);
 };
 
 }  // namespace tensorflow

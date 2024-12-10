@@ -935,7 +935,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
     sparse, result = sparse_lookup(dataset)
 
-    # All replicas return identical reults.
+    # All replicas return identical results.
     for replica in range(strategy.num_replicas_in_sync):
       self.assertIsInstance(sparse[replica], sparse_tensor.SparseTensor)
       self.assertAllEqual(sparse[replica].indices, [[0, 0], [1, 0], [1, 1]])
@@ -985,7 +985,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
     output = sparse_lookup(dataset)
 
-    # All replicas return identical reults.
+    # All replicas return identical results.
     for replica in range(strategy.num_replicas_in_sync):
       self.assertIsInstance(output["sparse"][replica],
                             sparse_tensor.SparseTensor)
@@ -1100,7 +1100,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
     composite, result = test_fn(test_composite)
 
-    # All replicas return identical reults.
+    # All replicas return identical results.
     for replica in range(strategy.num_replicas_in_sync):
       self.assertIsInstance(composite[replica], TestComposite)
       self.assertAllEqual(composite[replica].values[0], a)

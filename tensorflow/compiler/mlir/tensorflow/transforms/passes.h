@@ -502,8 +502,6 @@ CreateConvertToLegacyCompileAndReplicateAttributesPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUPartitionedOpConversionPass();
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUValidateInputsPass();
-
 // Creates a pass that cleans up `_replication_info` attribute on operations
 // that are inside a cluster.
 std::unique_ptr<OperationPass<ModuleOp>>
@@ -671,7 +669,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPURESOURCEREADSWRITESPARTITIONINGPASS
 #define GEN_PASS_DECL_TPUSPACETODEPTHPASS
 #define GEN_PASS_DECL_TPUUPDATEEMBEDDINGENQUEUEOPINPUTSPASS
-#define GEN_PASS_DECL_TPUVALIDATEINPUTSPASS
 #define GEN_PASS_DECL_TENSORARRAYOPSDECOMPOSITIONPASS
 #define GEN_PASS_DECL_TENSORDEVICECOPYCONVERSIONPASS
 #define GEN_PASS_DECL_TENSORFLOWOPTIMIZEPASS

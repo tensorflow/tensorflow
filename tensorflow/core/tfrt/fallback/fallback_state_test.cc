@@ -14,12 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 
+#include <memory>
 #include <utility>
+#include <variant>
+#include <vector>
 
+#include "absl/base/nullability.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -30,6 +36,46 @@ namespace {
 using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 using ::testing::Not;
+
+TEST(FallbackStateTest, CreateWithCpuDeviceVector) {
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_ASSERT_OK(DeviceFactory::AddCpuDevices(
+      session_options, "/job:localhost/replica:0/task:0", &devices));
+
+  std::variant<std::vector<std::unique_ptr<Device>>,
+               absl::Nonnull<DynamicDeviceMgr*>>
+      device_variant = std::move(devices);
+
+  auto fallback_state = std::make_unique<tfrt_stub::FallbackState>(
+      session_options, std::move(device_variant), fdef_lib);
+
+  const auto& device_manager = fallback_state->device_manager();
+  EXPECT_GT(device_manager.NumDevices(), 0);
+  EXPECT_EQ(device_manager.NumDeviceType("CPU"), 1);
+}
+
+TEST(FallbackStateTest, CreateWithDynamicDeviceMgr) {
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_ASSERT_OK(DeviceFactory::AddCpuDevices(
+      session_options, "/job:localhost/replica:0/task:0", &devices));
+  auto static_device_mgr =
+      std::make_unique<DynamicDeviceMgr>(std::move(devices));
+
+  absl::Nonnull<DynamicDeviceMgr*> device_mgr_ptr(static_device_mgr.get());
+
+  auto fallback_state = std::make_unique<tfrt_stub::FallbackState>(
+      session_options, device_mgr_ptr, fdef_lib);
+  const auto& device_manager = fallback_state->device_manager();
+
+  EXPECT_GT(device_manager.NumDevices(), 0);
+  EXPECT_EQ(device_manager.NumDeviceType("CPU"), 1);
+}
 
 TEST(FallbackStateTest, CreateRendezvous) {
   // Given a FallbackState, when a function is launched by function library
@@ -75,9 +121,10 @@ TEST(FallbackStateTest, CreateGraphExecutionState) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto graph_execution_state,
-      fallback_state->CreateGraphExecutionState(std::move(graphdef)));
+  TF_ASSERT_OK_AND_ASSIGN(auto graph_execution_state,
+                          fallback_state->CreateGraphExecutionState(
+                              std::move(graphdef), /*run_placer=*/true,
+                              /*enable_tf2xla_mlir_bridge=*/false));
 }
 
 TEST(FallbackStateTest, CreateWithMockGpuDevice) {

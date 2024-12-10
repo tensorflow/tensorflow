@@ -36,16 +36,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
-#include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -54,8 +52,6 @@ namespace gpu {
 
 // Use the "reserved" keys for these properties so lookups are fast.
 static constexpr absl::string_view kIRSizeKey = HloCostAnalysis::kReserved0Key;
-static constexpr absl::string_view kBasicBlockSplitCountKey =
-    HloCostAnalysis::kReserved1Key;
 
 // TODO TJ consider adding these in the fast lookup path
 static constexpr absl::string_view kCollAlgoScaleRatioKey =
@@ -71,9 +67,6 @@ absl::Status GpuHloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(HloCostAnalysis::Preprocess(hlo));
 
   current_properties_[kIRSizeKey] = 1;
-  current_properties_[kBasicBlockSplitCountKey] =
-      ElementalIrEmitter::OpInvalidatesCache(hlo);
-
   return absl::OkStatus();
 }
 
@@ -127,7 +120,6 @@ absl::Status GpuHloCostAnalysis::FusionCalculateUtilizations(
   elementwise_use_roots_[root].insert(root);
 
   current_properties_[kFlopsKey] = 0;
-  current_properties_[kBasicBlockSplitCountKey] = 0;
   current_properties_[kIRSizeKey] = 0;
 
   for (const HloInstruction* instr : instructions) {
@@ -148,8 +140,6 @@ absl::Status GpuHloCostAnalysis::FusionCalculateUtilizations(
     current_properties_[kFlopsKey] +=
         cur_instr_utilization * instr_props[kFlopsKey];
     current_properties_[kIRSizeKey] += cur_instr_times_emitted;
-    current_properties_[kBasicBlockSplitCountKey] +=
-        cur_instr_times_emitted * ElementalIrEmitter::OpInvalidatesCache(instr);
 
     for (int operand_idx = 0; operand_idx < instr->operand_count();
          ++operand_idx) {
@@ -213,23 +203,8 @@ bool GpuHloCostAnalysis::ProducerConsumerMergedTooLarge(
   }
   VLOG(5) << producer.name() << " would be emitted by " << consumer.name()
           << " x" << producer_replication;
-  int64_t n_splits = producer_replication * IrBasicBlockSplitCount(producer) +
-                     IrBasicBlockSplitCount(consumer);
-  VLOG(5) << "Basic block split counts: " << IrBasicBlockSplitCount(producer)
-          << ", " << IrBasicBlockSplitCount(consumer) << " -> " << n_splits;
   int64_t merged_ir_size =
       (IrSize(producer) * producer_replication + IrSize(consumer));
-  // The MLIR emitters don't have the problem with cache invalidation, so we
-  // don't need to evaluate basic block split counts.
-  if (producer.GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_mlir_emitter_level() < 4) {
-    if (n_splits > kMaxBasicBlockSplitsPerFusion) {
-      return true;
-    }
-    merged_ir_size *= (1 << n_splits);
-  }
   VLOG(5) << "IR sizes: " << IrSize(producer) << ", " << IrSize(consumer)
           << " -> " << merged_ir_size;
   return merged_ir_size > kMaxIRSize;
@@ -495,13 +470,7 @@ bool GpuHloCostAnalysis::KeyToCopyFromSubcomputation(
     absl::string_view key) const {
   return !absl::StartsWith(key, kBytesAccessedKey) &&
          !absl::StartsWith(key, kUtilizationKey) &&
-         !absl::StartsWith(key, kIRSizeKey) &&
-         !absl::StartsWith(key, kBasicBlockSplitCountKey);
-}
-
-float GpuHloCostAnalysis::IrBasicBlockSplitCount(
-    const HloInstruction& hlo) const {
-  return GetPropertyForHlo(hlo, kBasicBlockSplitCountKey, hlo_properties_);
+         !absl::StartsWith(key, kIRSizeKey);
 }
 
 float GpuHloCostAnalysis::IrSize(const HloInstruction& hlo) const {

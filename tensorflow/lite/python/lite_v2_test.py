@@ -402,11 +402,13 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         return tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
 
     x = _FakeQuantArgsLayer()(input_tensor)
-    x = tf.keras.layers.Conv2D(1, (3, 3))(x)
+    x = tf.keras.layers.Conv2D(1, (3, 3), bias_initializer='ones')(x)
     x = _FakeQuantArgsLayer()(x)
     # Exclude the quantization of the following Dense layer by not putting
     # fake quant layer after the dense layer.
-    output_tensor = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    output_tensor = tf.keras.layers.Dense(
+        1, activation='sigmoid', bias_initializer='ones'
+    )(x)
     model = tf.keras.Model(input_tensor, output_tensor)
     model.save(saved_model_dir)
     return saved_model_dir
@@ -1589,6 +1591,24 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         metadata.options.modelOptimizationModes,
     )
 
+  def testSerializeDebugMetadata(self):
+    root = self._getSimpleVariableModel()
+    input_data = tf.constant(1.0, shape=[1])
+    concrete_func = root.f.get_concrete_function(input_data)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func], root
+    )
+    converter.serialize_debug_metadata = True
+    tflite_model = flatbuffer_utils.convert_bytearray_to_object(
+        converter.convert()
+    )
+
+    # Check the debug metadata.
+    metadata_names = [m.name for m in tflite_model.metadata]
+    self.assertIn(b'debug_metadata', metadata_names)
+
 
 class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
@@ -2098,16 +2118,20 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
     converter.experimental_enable_resource_variables = enable_resource_variables
 
-    if not enable_resource_variables:
-      with self.assertRaises(convert.ConverterError) as error:
-        tflite_model = converter.convert()
-      self.assertIn(
-          'is not immutable, try removing mutable variables in your model since'
-          ' mutable variables are currently not supported through this'
-          ' converter',
-          str(error.exception),
-      )
-      return
+    # TODO(b/355497070): Remove this check once the
+    # CreateFreezeGlobalTensorsPass is migrated to the new TFL::Pass
+    # in the converter.
+
+    # if not enable_resource_variables:
+    #   with self.assertRaises(convert.ConverterError) as error:
+    #     tflite_model = converter.convert()
+    #   self.assertIn(
+    #       'is not immutable, try removing mutable variables in your model
+    #       ' since mutable variables are currently not supported through this'
+    #       ' converter',
+    #       str(error.exception),
+    #   )
+    #   return
 
     # Enable resource variables.
     tflite_model = converter.convert()
@@ -3025,9 +3049,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   ):
     num_filters = 1024
     conv_name = 'sequential/conv2d/Conv2D'
-    model = tf.keras.models.Sequential(
-        [tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')]
-    )
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Conv2D(
+            num_filters, (3, 3), activation='relu', bias_initializer='ones'
+        )
+    ])
     model.build(input_shape=(1, 32, 32, 3))
     saved_model_dir = self.create_tempdir()
     save.save(model, saved_model_dir.full_path)
@@ -3376,7 +3402,9 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     conv_name = 'sequential/conv2d/Conv2D'
     model = tf.keras.models.Sequential([
         tf.keras.Input(shape=(32, 32, 3)),
-        tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu'),
+        tf.keras.layers.Conv2D(
+            num_filters, (3, 3), activation='relu', bias_initializer='ones'
+        ),
     ])
     model.build()
 

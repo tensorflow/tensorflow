@@ -25,6 +25,11 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/tf_op_utils.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/timespan.h"
+#include "xla/tsl/profiler/utils/tpu_xplane_utils.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -33,11 +38,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/utils/tf_op_utils.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tsl/profiler/utils/timespan.h"
-#include "tsl/profiler/utils/tpu_xplane_utils.h"
-#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -281,11 +281,14 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
   StepEvents device_step_events;
   XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&device_trace);
   std::optional<int> tpu_core_id = tsl::profiler::GetTensorCoreId(plane.Name());
+  std::optional<int> sc_core_id = tsl::profiler::GetSparseCoreId(plane.Name());
   plane.ForEachLine([&](const XLineVisitor& line) {
     int64_t line_id = line.Id();
     if (line_id == kThreadIdStepInfo ||
         (tpu_core_id.has_value() &&
-         line.Name() == tsl::profiler::kStepLineName)) {
+         line.Name() == tsl::profiler::kStepLineName) ||
+        (sc_core_id.has_value() &&
+         line.Name() == tsl::profiler::kSparseCoreStepLineName)) {
       StepEvents step_marker_events = ConvertDeviceStepInfoToStepMarkers(line);
       UnionCombineStepEvents(step_marker_events, &device_step_events);
     } else if (IsDerivedThreadId(line_id)) {
@@ -299,6 +302,10 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
         // the common step numbers.
         stream_step_events =
             ConvertTpuDeviceTraceXLineToStepEvents(*tpu_core_id, line);
+        IntersectCombineStepEvents(stream_step_events, &device_step_events);
+      } else if (sc_core_id.has_value()) {
+        stream_step_events = ConvertTpuDeviceTraceXLineToStepEvents(
+            kSparseCoreIndexStart + *sc_core_id, line);
         IntersectCombineStepEvents(stream_step_events, &device_step_events);
       } else {
         stream_step_events =

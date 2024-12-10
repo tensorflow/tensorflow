@@ -65,7 +65,18 @@ cc_library(
             ":cusparse_headers",
             ":curand_headers",
             ":cupti_headers",
-            ":nvml_headers"],
+            ":nvml_headers",
+            ":nvjitlink_headers"],
+)
+
+# This target is needed by the `cuda_library` rule. We can't implicitly
+# depend on `:cuda_headers` directly since the user may explicit depend
+# on `:cuda_headers` and duplicated dependencies are not allowed in Bazel.
+# There is also no good way to deduplicate dependencies, but an alias works
+# just fine.
+alias(
+    name = "implicit_cuda_headers_dependency",
+    actual = ":cuda_headers",
 )
 
 cc_library(
@@ -79,8 +90,16 @@ cc_library(
 )
 
 alias(
-  name = "cuda_driver",
-  actual = "@cuda_cudart//:cuda_driver",
+  name = "cuda_runtime",
+  actual = ":cudart_static",
+)
+
+alias(
+    name = "cuda_driver",
+    actual = select({
+        "@cuda_driver//:forward_compatibility": "@cuda_driver//:nvidia_driver",
+        "//conditions:default": "@cuda_cudart//:cuda_driver",
+    }),
 )
 
 alias(
@@ -136,6 +155,11 @@ alias(
 alias(
   name = "curand_headers",
   actual = "@cuda_curand//:headers",
+)
+
+alias(
+  name = "nvjitlink_headers",
+  actual = "@cuda_nvjitlink//:headers",
 )
 
 alias(

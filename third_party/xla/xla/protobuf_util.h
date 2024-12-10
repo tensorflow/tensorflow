@@ -56,11 +56,6 @@ class ProtobufHashWrapper {
   }
 };
 
-// Registers a function that may either expand a dirpath or forward the original
-// dirpath along as-is.
-void RegisterDirectoryExpander(
-    const std::function<std::string(std::string)>& expander);
-
 }  // namespace protobuf_util
 }  // namespace xla
 

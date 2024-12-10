@@ -1,5 +1,5 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -126,9 +126,11 @@ cc_library(
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",
         "//xla/hlo/ir:hlo",
-        "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
@@ -156,14 +158,20 @@ cc_library(
         "//xla/ffi/api:c_api_internal",
         "//xla/hlo/ir:hlo",
         "//xla/service:platform_util",
-        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -175,6 +183,7 @@ cc_library(
     hdrs = ["attribute_map.h"],
     deps = [
         ":call_frame",
+        "//xla:util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -182,6 +191,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -198,14 +208,16 @@ xla_cc_test(
         ":ffi_api",
         "//xla:xla_data_proto_cc",
         "//xla/ffi/api:c_api",
-        "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -220,11 +232,11 @@ cc_library(
     hdrs = ["type_id_registry.h"],
     deps = [
         "//xla:util",
+        "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/lib/gtl:int_type",
     ],
 )
 

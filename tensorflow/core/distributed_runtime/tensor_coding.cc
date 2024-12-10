@@ -50,8 +50,8 @@ void TensorResponse::InitAlloc(DeviceBase* d, const AllocatorAttributes& aa) {
   allocator_ = device_->GetAllocator(alloc_attrs_);
 }
 
-Status TensorResponse::InitFrom(RecvTensorResponse* response) {
-  Status s;
+absl::Status TensorResponse::InitFrom(RecvTensorResponse* response) {
+  absl::Status s;
   meta_.Swap(response);
   if (on_host_) {
     if (!tensor_.FromProto(allocator_, meta_.tensor())) {
@@ -79,7 +79,7 @@ void TensorResponse::InitPartial(const RecvTensorResponse& response,
   tensor_ = std::move(t);
 }
 
-Status TensorResponse::ParseFrom(Source* source) {
+absl::Status TensorResponse::ParseFrom(Source* source) {
   if (!on_host_) {
     protobuf::io::CodedInputStream input(source->contents());
 
@@ -87,7 +87,7 @@ Status TensorResponse::ParseFrom(Source* source) {
     if (!meta_.ParseFromCodedStream(&input) || !input.ConsumedEntireMessage()) {
       return errors::InvalidArgument("Cannot parse tensor from response");
     }
-    Status s =
+    absl::Status s =
         device_->MakeTensorFromProto(meta_.tensor(), alloc_attrs_, &tensor_);
     // Reduce memory usage for big tensors.
     {

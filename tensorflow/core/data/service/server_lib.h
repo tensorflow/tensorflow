@@ -50,7 +50,7 @@ class GrpcDataServerBase {
   virtual ~GrpcDataServerBase() = default;
 
   // Starts the server running asynchronously.
-  Status Start();
+  absl::Status Start();
 
   // Stops the server. This will block until all outstanding requests complete.
   void Stop();
@@ -69,7 +69,7 @@ class GrpcDataServerBase {
   void AddProfilerServiceToBuilder(::grpc::ServerBuilder& builder);
   // Starts the service. This will be called after building the service, so
   // bound_port() will return the actual bound port.
-  virtual Status StartServiceInternal() = 0;
+  virtual absl::Status StartServiceInternal() = 0;
   virtual void StopServiceInternal() {}
 
   int bound_port() { return bound_port_; }
@@ -106,19 +106,19 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
   ~DispatchGrpcDataServer() override;
 
   // Returns the number of workers registered with the dispatcher.
-  Status NumWorkers(int* num_workers);
+  absl::Status NumWorkers(int* num_workers);
   // Returns the number of active (non-finished) iterations running on the
   // dispatcher.
   size_t NumActiveIterations();
   // Returns information about all the streams for the snapshot at `path`.
-  Status SnapshotStreams(const std::string& path,
-                         std::vector<SnapshotStreamInfoWrapper>* streams);
+  absl::Status SnapshotStreams(const std::string& path,
+                               std::vector<SnapshotStreamInfoWrapper>* streams);
 
   ServerStateExport ExportState() const override;
 
  protected:
   void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;
-  Status StartServiceInternal() override;
+  absl::Status StartServiceInternal() override;
   void StopServiceInternal() override;
 
  private:
@@ -147,18 +147,18 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
   ~WorkerGrpcDataServer() override;
 
   // Returns the number of tasks currently being executed by the worker.
-  Status NumTasks(int* num_tasks);
+  absl::Status NumTasks(int* num_tasks);
 
   // Returns the progresses of the snapshot tasks currently being executed by
   // the worker.
-  Status SnapshotTaskProgresses(
+  absl::Status SnapshotTaskProgresses(
       std::vector<SnapshotTaskProgressWrapper>* snapshot_task_progresses);
 
   ServerStateExport ExportState() const override;
 
  protected:
   void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;
-  Status StartServiceInternal() override;
+  absl::Status StartServiceInternal() override;
   void StopServiceInternal() override;
 
  private:
@@ -175,12 +175,13 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
 };
 
 // Creates a dispatch tf.data server and stores it in `out_server`.
-Status NewDispatchServer(const experimental::DispatcherConfig& config,
-                         std::unique_ptr<DispatchGrpcDataServer>& out_server);
+absl::Status NewDispatchServer(
+    const experimental::DispatcherConfig& config,
+    std::unique_ptr<DispatchGrpcDataServer>& out_server);
 
 // Creates a worker tf.data server and stores it in `out_server`.
-Status NewWorkerServer(const experimental::WorkerConfig& config,
-                       std::unique_ptr<WorkerGrpcDataServer>& out_server);
+absl::Status NewWorkerServer(const experimental::WorkerConfig& config,
+                             std::unique_ptr<WorkerGrpcDataServer>& out_server);
 
 }  // namespace data
 }  // namespace tensorflow

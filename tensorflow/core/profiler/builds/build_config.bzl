@@ -1,7 +1,7 @@
 """Provides a redirection point for platform specific implementations of Starlark utilities."""
 
 load(
-    "@local_tsl//tsl/profiler/builds:build_config.bzl",
+    "@local_xla//xla/tsl/profiler/builds:build_config.bzl",
     _if_profiler_oss = "if_profiler_oss",
     _tf_profiler_alias = "tf_profiler_alias",
     _tf_profiler_copts = "tf_profiler_copts",

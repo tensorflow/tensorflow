@@ -17,7 +17,7 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -38,7 +38,7 @@ namespace {
 #define DEBUG_TYPE "unfold-splat-constant-pass"
 
 #define GEN_PASS_DEF_UNFOLDSPLATCONSTANTPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 // Undo the MHLO::BroadcastInDimOp folding pattern on splat tensor.
 // TODO(b/295966255): Remove this pass after moving MHLO folders to a separate

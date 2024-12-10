@@ -23,7 +23,6 @@ package(
 tf_proto_library(
     name = "types_proto",
     srcs = ["types.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
@@ -34,7 +33,6 @@ tf_proto_library(
 tf_proto_library(
     name = "toco_flags_proto",
     srcs = ["toco_flags.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto",
@@ -51,7 +49,6 @@ tf_proto_library(
 tf_proto_library(
     name = "model_flags_proto",
     srcs = ["model_flags.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [":types_proto"],
     visibility = ["//visibility:public"],
@@ -522,21 +519,18 @@ tf_cc_test(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "model_flags_proto_py",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":model_flags_proto"],
 # )
 #
 # py_proto_library(
 #     name = "toco_flags_proto_py",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":toco_flags_proto"],
 # )
 #
 # py_proto_library(
 #     name = "types_proto_py",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":toco_flags_proto"],
 # )

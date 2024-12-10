@@ -37,7 +37,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -282,11 +282,6 @@ class PjRtCApiClient : public PjRtClient {
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
 
-  // TODO(b/244756954): Rethink this function altogether
-  PjRtRuntimeType runtime_type() const override {
-    return PjRtRuntimeType::kTfrt;
-  }
-
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
@@ -412,13 +407,6 @@ class PjRtCApiClient : public PjRtClient {
         "this feature.");
   }
 
-  absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    return Unimplemented(
-        "PJRT C API does not support CreateHostToDeviceChannelHandle. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
-        "this feature.");
-  }
-
   absl::Status Defragment() override {
     return Unimplemented(
         "PJRT C API does not support Defragment. Please report an issue at "
@@ -528,11 +516,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
   PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                             int64_t transfer_size) override {
-    return PjRtFuture<>(Unimplemented(
-        "PJRT C API does not support CopyRawToHost. Please report an issue at "
-        "https://github.com/google/jax/issues if you need this feature."));
-  }
+                             int64_t transfer_size) override;
 
   void Delete() override;
 
@@ -826,6 +810,11 @@ class CApiCopyToDeviceStream : public CopyToDeviceStream {
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     absl::string_view device_type,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {},
+    std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
+
+absl::StatusOr<std::unique_ptr<PjRtClient>> WrapClientAroundCApi(
+    const PJRT_Api* c_api,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {},
     std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
 

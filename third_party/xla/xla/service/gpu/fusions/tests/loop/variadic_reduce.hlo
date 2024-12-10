@@ -11,7 +11,7 @@ add {
   ROOT t = (f32[], f32[]) tuple(add, mul)
 }
 
-fused_computation {
+fusion {
   param_0 = f32[3,4,5] parameter(0)
   param_1 = f32[3,4,5] parameter(1)
   c = f32[] constant(0)
@@ -20,12 +20,13 @@ fused_computation {
 }
 
 // CHECK: func @main(
-// CHECK:   %[[TID_X:.*]] = gpu.thread_id x
-// CHECK:   %[[SCALARS_0:.*]], %[[SCALARS_1:.*]] = xla_gpu.pure_call @fused_computation_d_1
-// CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[SCALARS_0]] into %{{.*}}[%[[TID_X]]]
-// CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS_1]] into %{{.*}}[%[[TID_X]]]
-// CHECK:   return %[[INSERTED_1]], %[[INSERTED_2]]
+// CHECK:   %[[L1:.*]], %[[L2:.*]] = xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
+// CHECK:     %[[SCALARS_0:.*]], %[[SCALARS_1:.*]] = xla.pure_call @fusion_d_1
+// CHECK:     %[[INSERTED_1:.*]] = tensor.insert %[[SCALARS_0]] into %{{.*}}[%[[RA]]]
+// CHECK:     %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS_1]] into %{{.*}}[%[[RA]]]
+// CHECK:     xla.yield %[[INSERTED_1]], %[[INSERTED_2]]
+// CHECK:   return %[[L1]], %[[L2]]
 
-// CHECK: func private @fused_computation_d_1
+// CHECK: func private @fusion_d_1
 // CHECK:   %[[RET:.*]]:2 = func.call @add_t
 // CHECK:   yield %[[RET]]#0, %[[RET]]#1

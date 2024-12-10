@@ -13,20 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/cuda_driver.h"
-
+#include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
-namespace gpu {
+namespace cuda {
 
 void CheckCuda(CUresult result, const char* file, int line) {
   TF_CHECK_OK(cuda::ToStatus(result));
@@ -43,36 +41,12 @@ void CheckCuda(cudaError_t result, const char* file, int line) {
 
 #define CHECK_CUDA(result) CheckCuda(result, __FILE__, __LINE__)
 
-TEST(CudaDriverTest, ScopedActivateContextTest) {
-  CHECK_CUDA(cuInit(0));
-  CUdevice device;
-  CHECK_CUDA(cuDeviceGet(&device, 0));
-  CUcontext context0, context1;
-  CHECK_CUDA(cuCtxCreate(&context0, 0, device));
-  CHECK_CUDA(cuCtxCreate(&context1, 0, device));
-  GpuContext se_context1(context1, /*device_ordinal=*/101);
-  {
-    ScopedActivateContext scope(&se_context1);
-    CUcontext c;
-    CHECK_CUDA(cuCtxGetCurrent(&c));
-    EXPECT_EQ(c, context1);
-  }
-  CHECK_CUDA(cuCtxSetCurrent(context0));
-  // ScopedActivateContext must correctly set the CUDA context even if some
-  // other code changes the context between the two scopes.
-  {
-    ScopedActivateContext scope(&se_context1);
-    CUcontext c;
-    CHECK_CUDA(cuCtxGetCurrent(&c));
-    EXPECT_EQ(c, context1);
-  }
-}
+class CudaDriverTest : public ::testing::Test {
+ protected:
+  static void SetUpTestSuite() { CHECK_CUDA(cuInit(0)); }
+};
 
-}  // namespace gpu
-
-namespace cuda {
-
-TEST(CudaDriverTest, DriverVersionParsingTest) {
+TEST_F(CudaDriverTest, DriverVersionParsingTest) {
   // Tests that the driver version can be right after 'Kernel Module',
   // or later as well.
   auto driver_version = Diagnostician::FindKernelModuleVersion(
@@ -87,7 +61,6 @@ TEST(CudaDriverTest, DriverVersionParsingTest) {
   TF_CHECK_OK(driver_version.status());
   EXPECT_EQ("571.0.0", cuda::DriverVersionToString(driver_version.value()));
 }
-
 }  // namespace cuda
 
 }  // namespace stream_executor

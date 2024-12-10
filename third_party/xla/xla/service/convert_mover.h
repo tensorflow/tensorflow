@@ -16,35 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CONVERT_MOVER_H_
 #define XLA_SERVICE_CONVERT_MOVER_H_
 
-#include <functional>
-#include <utility>
-
-#include "xla/service/hlo_pass_interface.h"
-
-namespace xla {
-
-// Moves narrowing conversions up the graph and widening conversions down the
-// graph, when we can do so with no effect on numerics. Motivations:
-//
-//  - It's preferable to spend more of our time in lower precision and less of
-//    our time in higher precision.
-//
-//  - Moving these converts exposes optimization opportunities. For example, in
-//    reshape(convert-big-to-small(reshape(convert-small-to-big(x)))), we can
-//    commute one of the converts with one of the reshapes.  This leaves us with
-//    convert(convert(reshape(reshape))), which can probably be simplified
-//    further by algsimp.
-class ConvertMover : public HloModulePass {
- public:
-  ConvertMover() = default;
-
-  absl::string_view name() const override { return "convert-mover"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/convert_mover.h"
 
 #endif  // XLA_SERVICE_CONVERT_MOVER_H_

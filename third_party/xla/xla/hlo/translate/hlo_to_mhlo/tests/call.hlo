@@ -1,0 +1,37 @@
+// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations -split-input-file -hlo-flatten-computation-args-result %s -o - | FileCheck %s
+
+HloModule CallWithBackendConfig
+
+// Test single result call with backend config
+
+%g.1 (Arg_0.3: s32[8,2]) -> s32[8,2] {
+  %Arg_0.3 = s32[8,2]{1,0} parameter(0)
+  ROOT %multiply.4 = s32[8,2]{1,0} multiply(s32[8,2]{1,0} %Arg_0.3, s32[8,2]{1,0} %Arg_0.3)
+}
+
+ENTRY %main.1 (Arg_0.1: s32[8,2]) -> s32[8,2] {
+  %Arg_0.1 = s32[8,2]{1,0} parameter(0)
+  // CHECK: call @g.1(%arg0) {mhlo.frontend_attributes = {backend_config = "{\22flag_configs\22:[],\22scoped_memory_configs\22:[],\22device_type\22:\22DEVICE_TYPE_HOST\22,\22used_scoped_memory_configs\22:[]}"}} : (tensor<8x2xi32>) -> tensor<8x2xi32>
+  %call.5 = s32[8,2]{1,0} call(s32[8,2]{1,0} %Arg_0.1), to_apply=%g.1, backend_config={"flag_configs":[],"scoped_memory_configs":[],"device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+  ROOT %custom-call = s32[8,2]{1,0} custom-call(s32[8,2]{1,0} %call.5), custom_call_target="MoveToHost"
+}
+
+// -----
+
+HloModule CallWithBackendConfigMultipleResults
+
+%g.1 (Arg_0.3: s32[8,2]) -> (s32[8,2]{1,0}, s32[8,2]{1,0})  {
+  %Arg_0.3 = s32[8,2]{1,0} parameter(0)
+  %multiply.4 = s32[8,2]{1,0} multiply(s32[8,2]{1,0} %Arg_0.3, s32[8,2]{1,0} %Arg_0.3)
+  ROOT %tuple = (s32[8,2]{1,0}, s32[8,2]{1,0}) tuple(%multiply.4, %multiply.4)
+}
+
+ENTRY %main.1 (Arg_0.1: s32[8,2]) -> s32[8,2] {
+  %Arg_0.1 = s32[8,2]{1,0} parameter(0)
+  // CHECK:      %[[CALL:.*]]:2 = call @g.1(%arg0) {mhlo.frontend_attributes = {backend_config = "{\22flag_configs\22:[],\22scoped_memory_configs\22:[],\22device_type\22:\22DEVICE_TYPE_HOST\22,\22used_scoped_memory_configs\22:[]}"}} : (tensor<8x2xi32>) -> (tensor<8x2xi32>, tensor<8x2xi32>)
+  // CHECK-NEXT: %[[HOST:.*]] = mhlo.custom_call @MoveToHost(%[[CALL]]#0) {backend_config = ""} : (tensor<8x2xi32>) -> tensor<8x2xi32>
+  // CHECK-NEXT: return %[[HOST]] : tensor<8x2xi32>
+  %call.5 = (s32[8,2]{1,0}, s32[8,2]{1,0}) call(s32[8,2]{1,0} %Arg_0.1), to_apply=%g.1, backend_config={"flag_configs":[],"scoped_memory_configs":[],"device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+  %get-tuple-element.0 = s32[8,2]{1,0} get-tuple-element((s32[8,2]{1,0}, s32[8,2]{1,0}) %call.5), index=0
+  ROOT %custom-call = s32[8,2]{1,0} custom-call(s32[8,2]{1,0} %get-tuple-element.0), custom_call_target="MoveToHost"
+}

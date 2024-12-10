@@ -60,13 +60,70 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
+using AttributesMap = ffi::CallFrameBuilder::AttributesMap;
+
+absl::StatusOr<AttributesMap> ParseAttributes(
+    absl::string_view backend_config) {
+  AttributesMap attributes;
+  if (!backend_config.empty() && backend_config != "{}") {
+    // Parse backend config into an MLIR dictionary.
+    mlir::MLIRContext mlir_context;
+    mlir::Attribute attr = mlir::parseAttribute(backend_config, &mlir_context);
+    if (auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr)) {
+      // Convert the MLIR dictionary to FFI attributes.
+      TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
+    } else {
+      return Internal(
+          "Unsupported backend config. Expected a string parsable into "
+          "dictionary attribute");
+    }
+
+    VLOG(3) << absl::StreamFormat("  attributes: %s", backend_config);
+  }
+
+  return attributes;
+}
+
+// Call `instantiate` callback if passed. This function needs its own copy of
+// attributes, that's what AttributesBuilder expects, there's no way around it.
+absl::Status InstantiateHandlerState(absl::string_view target_name,
+                                     ffi::ExecutionState* execution_state,
+                                     AttributesMap attributes) {
+  // Find the registered FFI handler for this target.
+  auto handler = ffi::FindHandler(target_name, "Host");
+  if (!handler.ok()) {
+    return NotFound(
+        "No registered implementation for FFI custom call to %s for Host",
+        target_name);
+  }
+
+  // Initialize FFI handler state if it has an instantiate callback.
+  if (handler->bundle.instantiate) {
+    // At FFI handler instantiation time, we don't have any arguments or results
+    ffi::CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+
+    ffi::CallFrameBuilder::AttributesBuilder attrs;
+    attrs.Append(std::move(attributes));
+
+    builder.AddAttributes(attrs.Build());
+    ffi::CallFrame instantiate_call_frame = builder.Build();
+
+    ffi::CallOptions options;
+    options.execution_state = execution_state;
+    TF_RETURN_IF_ERROR(Call(handler->bundle.instantiate, instantiate_call_frame,
+                            options, XLA_FFI_ExecutionStage_INSTANTIATE));
+  }
+
+  return absl::OkStatus();
+}
+
 // Builds a call frame prototype for typed-FFI custom calls with dummy device
 // memory addresses. This is called once when creating the CustomCall thunk,
 // then the thunk will need to update the addresses at runtime.
 absl::StatusOr<ffi::CallFrame> BuildCallFrameForTypedFFI(
     const CustomCallApiVersion version,
     const CustomCallThunk::OpBuffers& op_buffers,
-    const absl::string_view backend_config) {
+    const absl::string_view backend_config, AttributesMap attributes) {
   ffi::CallFrameBuilder builder(
       /*num_args=*/op_buffers.arguments_buffers.size(),
       /*num_rets=*/op_buffers.results_buffers.size());
@@ -95,56 +152,14 @@ absl::StatusOr<ffi::CallFrame> BuildCallFrameForTypedFFI(
                          shape.dimensions());
   }
 
-  // Add attributes.
-  if (!backend_config.empty() && backend_config != "{}") {
-    // Parse backend config into an MLIR dictionary.
-    mlir::MLIRContext mlir_context;
-    ffi::CallFrameBuilder::FlatAttributesMap attributes;
-    mlir::Attribute attr = mlir::parseAttribute(backend_config, &mlir_context);
-    if (auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr)) {
-      TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
-    } else {
-      return Internal(
-          "Unsupported backend config. Expected a string parsable into "
-          "dictionary attribute");
-    }
-    // Convert the MLIR dictionary to FFI attributes.
+  // Add attributes if any.
+  if (!attributes.empty()) {
     ffi::CallFrameBuilder::AttributesBuilder attrs;
     attrs.Append(std::move(attributes));
     builder.AddAttributes(attrs.Build());
-    VLOG(3) << absl::StreamFormat("  attributes: %s", backend_config);
   }
+
   return builder.Build();
-}
-
-absl::Status InstantiateHandlerState(absl::string_view target_name,
-                                     ffi::ExecutionState* execution_state) {
-  // Find the registered FFI handler for this target.
-  auto handler = ffi::FindHandler(target_name, "Host");
-  if (!handler.ok()) {
-    return NotFound(
-        "No registered implementation for FFI custom call to %s for Host",
-        target_name);
-  }
-
-  // Initialize FFI handler state if it has an instantiate callback.
-  if (handler->bundle.instantiate) {
-    // At FFI handler instantiation time, we don't have any arguments or
-    // results or access to the underlying device (stream, etc.)
-    ffi::CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
-
-    // TODO(abanas): Add attributes support. All attributes should be accessible
-    // at all phases, namely instantiation and execution. Also add tests for CPU
-    // and GPU backends (GPU supports it, but tests are missing there).
-    ffi::CallFrame instantiate_call_frame = builder.Build();
-
-    ffi::CallOptions options;
-    options.execution_state = execution_state;
-    TF_RETURN_IF_ERROR(Call(handler->bundle.instantiate, instantiate_call_frame,
-                            options, XLA_FFI_ExecutionStage_INSTANTIATE));
-  }
-
-  return absl::OkStatus();
 }
 
 }  // namespace
@@ -153,33 +168,38 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     Info info, absl::string_view target_name, OpBuffers op_buffers,
     absl::string_view backend_config, CustomCallApiVersion api_version) {
   std::optional<ffi::CallFrame> call_frame;
-  if (api_version == CustomCallApiVersion::API_VERSION_TYPED_FFI) {
-    TF_ASSIGN_OR_RETURN(
-        call_frame,
-        BuildCallFrameForTypedFFI(api_version, op_buffers, backend_config));
+  auto execution_state = std::make_unique<ffi::ExecutionState>();
 
-    // TODO(abanas): Pass execution state to thunk.
-    auto execution_state = std::make_unique<ffi::ExecutionState>();
-    TF_RETURN_IF_ERROR(
-        InstantiateHandlerState(target_name, execution_state.get()));
+  if (api_version == CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+    TF_ASSIGN_OR_RETURN(AttributesMap attributes,
+                        ParseAttributes(backend_config));
+
+    TF_RETURN_IF_ERROR(InstantiateHandlerState(
+        target_name, execution_state.get(), attributes));
+
+    TF_ASSIGN_OR_RETURN(call_frame, BuildCallFrameForTypedFFI(
+                                        api_version, op_buffers, backend_config,
+                                        std::move(attributes)));
   }
 
-  return absl::WrapUnique(new CustomCallThunk(
-      std::move(info), target_name, std::move(op_buffers), api_version,
-      std::move(backend_config), std::move(call_frame)));
+  return absl::WrapUnique(
+      new CustomCallThunk(std::move(info), target_name, std::move(op_buffers),
+                          api_version, std::move(backend_config),
+                          std::move(call_frame), std::move(execution_state)));
 }
 
-CustomCallThunk::CustomCallThunk(Info info, absl::string_view target_name,
-                                 OpBuffers op_buffers,
-                                 CustomCallApiVersion api_version,
-                                 absl::string_view backend_config,
-                                 std::optional<ffi::CallFrame> call_frame)
+CustomCallThunk::CustomCallThunk(
+    Info info, absl::string_view target_name, OpBuffers op_buffers,
+    CustomCallApiVersion api_version, absl::string_view backend_config,
+    std::optional<ffi::CallFrame> call_frame,
+    std::unique_ptr<ffi::ExecutionState> execution_state)
     : Thunk(Kind::kCustomCall, std::move(info)),
       target_name_(target_name),
       op_buffers_(std::move(op_buffers)),
       api_version_(api_version),
       backend_config_(std::move(backend_config)),
-      call_frame_(std::move(call_frame)) {}
+      call_frame_(std::move(call_frame)),
+      execution_state_(std::move(execution_state)) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::Execute(
     const ExecuteParams& params) {
@@ -244,18 +264,10 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
   ffi::CallOptions call_options = {
       custom_call_params->device_ordinal,
       ffi::CallOptions::CpuOptions{custom_call_params->intra_op_thread_pool},
-      /*called_computation=*/nullptr,
-      custom_call_params->ffi_execution_context};
+      /*called_computation=*/nullptr, custom_call_params->ffi_execution_context,
+      execution_state_.get()};
 
-  // Call the function and check execution status.
-  auto status = ffi::Call(handler->bundle.execute, call_frame, call_options);
-  if (!status.ok()) {
-    // Overwrite the returned error code to kInternal to match the original CPU
-    // implementation.
-    // TODO(penporn): Use TF_RETURN_IF_ERROR when thunks is the only runtime.
-    return Internal("%s", status.message());
-  }
-  return OkExecuteEvent();
+  return ffi::CallAsync(handler->bundle.execute, call_frame, call_options);
 }
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(

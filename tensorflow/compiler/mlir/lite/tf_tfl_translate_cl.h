@@ -74,6 +74,6 @@ extern llvm::cl::opt<bool> post_training_quantization;
 // TF to stablehlo pass flags
 extern llvm::cl::opt<bool> enable_stablehlo_conversion;
 
-// Wether serialize stablehlo ops or not
+// Whether serialize stablehlo ops or not
 extern llvm::cl::opt<bool> serialize_stablehlo_ops;
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_TRANSLATE_CL_H_

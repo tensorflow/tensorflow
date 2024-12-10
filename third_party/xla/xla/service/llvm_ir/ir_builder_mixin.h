@@ -442,7 +442,7 @@ class IrBuilderMixin {
   }
 
  private:
-  llvm::IRBuilder<>* mixin_builder() {
+  llvm::IRBuilderBase* mixin_builder() {
     return static_cast<Derived*>(this)->builder();
   }
 };

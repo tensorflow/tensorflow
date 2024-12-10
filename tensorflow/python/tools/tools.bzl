@@ -98,7 +98,7 @@ def saved_model_compile_aot(
         Note, this increases the set of dependencies for binaries using
         the AOT library at both build and runtime.  For example,
         the resulting object files may have external dependencies on
-        multithreading libraries like nsync.
+        multithreading libraries like Abseil.
       force_without_xla_support_flag: Whether to compile even when
         `--define=with_xla_support=true` is not set.  If `False`, and the
         define is not passed when building, then the created `cc_library`
@@ -132,6 +132,7 @@ def saved_model_compile_aot(
             "{}_makefile.inc".format(name),
         ],
         cmd = (
+            "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
             "$(location {}) aot_compile_cpu ".format(
                 clean_dep("//tensorflow/python/tools:saved_model_cli"),
             ) +

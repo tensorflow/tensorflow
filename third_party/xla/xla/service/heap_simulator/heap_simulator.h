@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 
@@ -412,7 +412,13 @@ class BufferIntervalTree {
   // inclusive.
   std::vector<int64_t> MemoryUsedInInterval(int64_t start, int64_t end) const;
 
+  // Returns an integer denoting the largest occupied memory location in the
+  // heap within the time interval [start, end].
+  int64_t HeapSizeInInterval(int64_t start, int64_t end) const;
+
  private:
+  // The BufferIntervalTreeNode objects inside the result vector are guaranteed
+  // to be non-null.
   std::vector<const BufferIntervalTreeNode*> NodesOverlappingInTime(
       int64_t start, int64_t end) const;
 

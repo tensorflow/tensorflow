@@ -49,10 +49,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       "optimal_seconds";
   static inline constexpr absl::string_view kUtilizationKey = "utilization";
 
-  // Keys reserved for use by subclasses.  These get the same special "fast
+  // Key reserved for use by subclasses.  This gets the same special "fast
   // path" treatment in Properties as the other keys above.
   static inline constexpr absl::string_view kReserved0Key = "reserved0";
-  static inline constexpr absl::string_view kReserved1Key = "reserved1";
 
   // A data structure like hash_map<string, float> for storing info about an HLO
   // instruction or computation.
@@ -101,8 +100,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
           operand0_bytes_accessed_(0),
           operand1_bytes_accessed_(0),
           output_root_bytes_accessed_(0),
-          reserved0_(0),
-          reserved1_(0) {
+          reserved0_(0) {
       DCHECK_EQ(kOperand0UtilizationKey, GetOperandUtilizationKey(0, {}));
       DCHECK_EQ(kOperand1UtilizationKey, GetOperandUtilizationKey(1, {}));
       DCHECK_EQ(kOperand0BytesAccessedKey, GetOperandBytesAccessedKey(0, {}));
@@ -144,9 +142,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       if (property == kReserved0Key) {
         return reserved0_;
       }
-      if (property == kReserved1Key) {
-        return reserved1_;
-      }
 
       auto it = named_props_.lazy_emplace(property, [&](const auto& ctor) {
         ctor(std::string(property), 0.f);
@@ -187,9 +182,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       }
       if (property == kReserved0Key) {
         return reserved0_;
-      }
-      if (property == kReserved1Key) {
-        return reserved1_;
       }
 
       auto it = named_props_.find(property);
@@ -234,10 +226,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       if (reserved0_ != 0) {
         fn(kReserved0Key, reserved0_);
       }
-      if (reserved1_ != 0) {
-        fn(kReserved1Key, reserved1_);
-      }
-
       for (const auto& [k, v] : named_props_) {
         if (v != 0) {
           fn(k, v);
@@ -346,12 +334,11 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
           " operand1_bytes_accessed: %f\n"
           " output_root_bytes_accessed: %f\n"
           " reserved0: %f\n"
-          " reserved1: %f\n"
           "}",
           flops_, transcendentals_, bytes_accessed_, optimal_seconds_,
           utilization_, operand0_utilization_, operand1_utilization_,
           operand0_bytes_accessed_, operand1_bytes_accessed_,
-          output_root_bytes_accessed_, reserved0_, reserved1_);
+          output_root_bytes_accessed_, reserved0_);
     }
 
    private:
@@ -381,9 +368,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
     float output_root_bytes_accessed_;
 
-    // Fields reserved for use by subclasses.
+    // Field reserved for use by subclasses.
     float reserved0_;
-    float reserved1_;
 
     absl::flat_hash_map<std::string, float> named_props_;
   };
@@ -391,6 +377,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // shape_size is a function which returns the size in bytes of the top-level
   // buffer of a shape.
   using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
+
+  static constexpr int64_t kDefaultPointerSize = 8;
+  static int64_t DefaultShapeSize(const Shape& shape);
 
   // A struct to encapsulate hardware-related options. This includes the shape
   // size function, which is used to encode hardware-specific padding and per
@@ -400,11 +389,16 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     // Function which computes the size of the top-level of a given shape (not
     // including nested elements, if any). If null then bytes_accessed methods
     // return an error.
-    ShapeSizeFunction shape_size;
+    ShapeSizeFunction shape_size = DefaultShapeSize;
     // How much of each property can be processed per second. E.g. if the
     // property is bytes accessed, this is the number of bytes that can be
     // processed per second. Is empty if no rates have been set.
     Properties per_second_rates = {};
+    // The minimum amount of time (in seconds) required to process per each
+    // property. Hardware design choices (e.g., clock speeds, memory access
+    // latencies) impose a lower bound on the duration of any operation, even
+    // the simplest ones.
+    Properties min_latencies_seconds;
     // Operations like broadcast with reused inputs are not handled
     // efficiently on some platforms. Depending on the goal of the analysis
     // we may need to count or ignore them.
@@ -414,11 +408,17 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     void set_flops_per_second(float value) {
       per_second_rates[kFlopsKey] = value;
     }
+    void set_flops_min_latency_second(float value) {
+      min_latencies_seconds[kFlopsKey] = value;
+    }
     void set_transcendentals_per_second(float value) {
       per_second_rates[kTranscendentalsKey] = value;
     }
     void set_bytes_per_second(float value) {
       per_second_rates[kBytesAccessedKey] = value;
+    }
+    void set_bytes_min_latency_second(float value) {
+      min_latencies_seconds[kBytesAccessedKey] = value;
     }
 
     // Returns the specified per-second rate used by cost analysis.
@@ -426,19 +426,26 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       return per_second_rates[key];
     }
 
+    float min_latency_seconds(absl::string_view key) const {
+      return min_latencies_seconds[key];
+    }
+
     std::string ToString() const {
       return absl::StrFormat(
           "HloCostAnalysis::Options{\n"
           " per_second_rates: %s\n"
+          " min_latency_seconds: %s\n"
           " count_multiple_input_accesses: %d\n"
           "}",
-          per_second_rates.ToString(), count_multiple_input_accesses);
+          per_second_rates.ToString(), min_latencies_seconds.ToString(),
+          count_multiple_input_accesses);
     }
   };
 
   explicit HloCostAnalysis(const Options& options);
-  explicit HloCostAnalysis(ShapeSizeFunction shape_size,
-                           const Properties& per_second_rates = {});
+  explicit HloCostAnalysis(ShapeSizeFunction shape_size = DefaultShapeSize,
+                           const Properties& per_second_rates = {},
+                           const Properties& min_latency_seconds = {});
 
   // For all element-wise instruction we call HandleElementwiseOp. If necessary,
   // override HandleElementwiseOp instead.
@@ -471,6 +478,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   absl::Status HandleCopy(const HloInstruction* copy) override;
   absl::Status HandleDomain(const HloInstruction* domain) override;
   absl::Status HandleDot(const HloInstruction* dot) override;
+  absl::Status HandleRaggedDot(const HloInstruction* dot) override;
   absl::Status HandleConvolution(const HloInstruction* convolution) override;
   absl::Status HandleFft(const HloInstruction* fft) override;
   absl::Status HandleTriangularSolve(const HloInstruction* hlo) override;
@@ -484,6 +492,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   absl::Status HandleAllReduceStart(const HloInstruction* hlo) override;
   absl::Status HandleAllReduceDone(const HloInstruction* hlo) override;
   absl::Status HandleAllToAll(const HloInstruction* hlo) override;
+  absl::Status HandleRaggedAllToAll(const HloInstruction* hlo) override;
   absl::Status HandleCollectiveBroadcast(const HloInstruction* hlo) override;
   absl::Status HandleCollectivePermute(const HloInstruction* hlo) override;
   absl::Status HandleCollectivePermuteStart(const HloInstruction* hlo) override;
@@ -593,6 +602,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Returns the specified per-second rate used by cost analysis.
   float per_second_rate(absl::string_view key) const {
     return options_.per_second_rate(key);
+  }
+  // Returns the specified minimum latency used by cost analysis.
+  float min_latency_seconds(absl::string_view key) const {
+    return options_.min_latency_seconds(key);
   }
 
   // Return the key that is used to index into Properties for the specified

@@ -19,10 +19,10 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/status.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/xla_builder.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/custom_call_target_registry.h"
@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -76,7 +75,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemm) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
@@ -89,7 +88,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemm) {
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -136,7 +135,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWithWorkspace) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
@@ -153,7 +152,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWithWorkspace) {
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -201,7 +200,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
@@ -218,7 +217,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -267,7 +266,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotRoot) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
@@ -280,7 +279,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotRoot) {
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -329,7 +328,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandHasMultipleUsers) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
@@ -344,7 +343,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandHasMultipleUsers) {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[P0]], [[P1]])
-    ; CHECK-DAG:     kind=kCustom, calls=%address-computation,
+    ; CHECK-DAG:     kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK-DAG:     backend_config={
     ; CHECK-DAG:       "kind":"__custom_fusion",
     ; CHECK-DAG:       "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -414,7 +413,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsHaveMultipleUsers) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     %address-computation{{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
@@ -424,7 +423,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsHaveMultipleUsers) {
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
     ; CHECK:     }
-    ; CHECK:     %address-computation{{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
@@ -477,7 +476,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmSlicingNotParameter) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
@@ -493,7 +492,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmSlicingNotParameter) {
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[2,8,8]{2,1,0} slice([[P0]]), slice={[0:2], [0:8], [0:8]}
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
     ; CHECK:       [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[S0]], [[P1]])
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -644,7 +643,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmDuplicateOperand) {
   })";
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK:       [[P0:%[^ ]+]] = f32[200,100]{1,0} parameter(0)
     ; CHECK:       [[S0:%[^ ]+]] = f32[100,100]{1,0} slice([[P0]]), slice={[0:100], [0:100]}
     ; CHECK-NOT:   slice
@@ -654,7 +653,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmDuplicateOperand) {
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f32[100,100]{1,0}, s8[80000]{0}) fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -701,7 +700,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[0:1], [0:8], [0:8]}
@@ -716,7 +715,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder) {
     ; CHECK-DAG:   [[A0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[A1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[A0]], [[A1]])
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -763,7 +762,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
@@ -778,7 +777,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
     ; CHECK-DAG:   [[A0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
     ; CHECK-DAG:   [[A1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[A0]], [[A1]])
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -825,7 +824,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P2:%[^ ]+]] = f32[100,100]{1,0} parameter(2)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[100,100]{1,0} parameter(1)
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[200,100]{1,0} parameter(0)
@@ -841,7 +840,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
     ; CHECK:       [[CONCAT:%[^ ]+]] = f32[200,100]{1,0} concatenate([[GTE0]], [[GTE1]]), dimensions={0}
     ; CHECK:       [[S:%[^ ]+]] = f32[100,100]{1,0} slice([[CONCAT]]), slice={[99:199], [0:100]}
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f32[100,100]{1,0}, s8[120000]{0}) fusion([[CONCAT]], [[GTE0]], [[S]])
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -886,7 +885,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[0:1], [0:8], [0:8]}
     ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
@@ -898,7 +897,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK-DAG:   [[A0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[A0]])
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -948,7 +947,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
                                         computation.proto(), hlo_config));
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK:       [[P0:%[^ ]+]] = f32[256]{0} parameter(0)
     ; CHECK:       [[S0:%[^ ]+]] = f32[128]{0} slice([[P0]]), slice={[0:128]}
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[128]{0} custom-call([[S0]]),
@@ -960,7 +959,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
     ; CHECK:       [[C0:%[^ ]+]] = f32[] constant(42)
     ; CHECK:       [[BC:%[^ ]+]] = f32[256]{0} broadcast([[C0]])
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[128]{0} fusion([[BC]])
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -973,8 +972,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
                             expected);
 }
 
-void Callback_Void(se::gpu::GpuStreamHandle stream, void** buffers,
-                   const char* /*opaque*/, size_t /*opaque_len*/) {}
+void Callback_Void(void* stream, void** buffers, const char* /*opaque*/,
+                   size_t /*opaque_len*/) {}
 
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Void, "gpu");
 
@@ -1002,7 +1001,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
   // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK:       [[P0:%[^ ]+]] = f32[256]{0} parameter(0)
     ; CHECK:       [[S0:%[^ ]+]] = f32[128]{0} slice([[P0]]), slice={[0:128]}
     ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[128]{0} custom-call([[S0]]),
@@ -1013,7 +1012,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
     ; CHECK:       [[C0:%[^ ]+]] = f32[] constant(42)
     ; CHECK:       [[BC:%[^ ]+]] = f32[256]{0} broadcast([[C0]])
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[128]{0} fusion([[BC]])
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -1062,7 +1061,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
   // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[8,8]{1,0} parameter(0)
     ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[4,8]{1,0} slice([[P0]]), slice={[0:4], [0:8]}
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[256]{0} parameter(1)
@@ -1074,7 +1073,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
 
     ; CHECK:     ENTRY %{{.*}} {
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[128]{0} fusion(
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -1134,7 +1133,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
   // TF_CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   const char* expected = R"(
-    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:     %dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P2:%[^ ]+]] = (f32[1024]{0}, f32[8]{0}) parameter(2)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[256]{0} parameter(1)
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[8,8]{1,0} parameter(0)
@@ -1154,7 +1153,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
 
     ; CHECK:     ENTRY %{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = (f32[8]{0}, (f32[128]{0}, f32[256]{0}), f32[1024]{0}, f32[4,8]{1,0}) fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
@@ -1236,7 +1235,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemm) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     address-computation {{.*}} {
+    ; CHECK:     dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(3)
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(1)
@@ -1251,7 +1250,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemm) {
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
@@ -1300,7 +1299,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     address-computation {{.*}} {
+    ; CHECK:     dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(3)
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(1)
@@ -1320,7 +1319,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
@@ -1370,7 +1369,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWorkspaceIgnored) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     address-computation {{.*}} {
+    ; CHECK:     dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(3)
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(1)
@@ -1389,7 +1388,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWorkspaceIgnored) {
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
@@ -1440,7 +1439,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmNotRoot) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     address-computation {{.*}} {
+    ; CHECK:     dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(3)
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(1)
@@ -1455,7 +1454,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmNotRoot) {
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
@@ -1519,7 +1518,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemm) {
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[4,8,8]{2,1,0} fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
@@ -1572,7 +1571,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmNotRoot) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     address-computation {{.*}} {
+    ; CHECK:     dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(3)
     ; CHECK-DAG:   [[P2:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(4)
@@ -1590,7 +1589,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmNotRoot) {
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = f16[4,8,8]{2,1,0} fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
@@ -1647,7 +1646,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
   )";
 
   const char* expected = R"(
-    ; CHECK:     address-computation {{.*}} {
+    ; CHECK:     dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(3)
     ; CHECK-DAG:   [[P2:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(4)
@@ -1669,7 +1668,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = (f16[4,8,8]{2,1,0}, s8[256]{0}) fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
@@ -1721,7 +1720,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
     })";
 
   const char* expected = R"(
-    ; CHECK:     address-computation {{.*}} {
+    ; CHECK:     dynamic-slice-fusion{{.*}} {
     ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[8,8]{1,0} parameter(0)
     ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[8,8]{1,0} parameter(1)
     ; CHECK-DAG:   [[P2:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(2)
@@ -1739,7 +1738,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
 
     ; CHECK:     ENTRY %main{{.*}} {
     ; CHECK:       [[FUSION:%[^ ]+]] = (f16[4,8,8]{2,1,0}, s8[256]{0}) fusion
-    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
@@ -1773,13 +1772,13 @@ TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSConstantOffset) {
   )";
 
   const char* expected = R"(
-  // CHECK: %address-computation{{.+}} {
+  // CHECK: %dynamic-slice-fusion{{.+}} {
   // CHECK:   %[[RS:.+]] = f16[64,128]{1,0} reduce-scatter({{.+}})
   // CHECK:   ROOT %{{.+}} = f16[128,128]{1,0} dynamic-update-slice(%{{.+}}, %[[RS]], %{{.+}}, %{{.+}})
   // CHECK: }
   // CHECK: ENTRY {{.+}} {
   // CHECK-NOT: reduce-scatter
-  // CHECK:   ROOT %{{.+}} = {{.+}} fusion(%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}), kind=kCustom, calls=%address-computation, {{.+}}"name":"dynamic_address_computation"
+  // CHECK:   ROOT %{{.+}} = {{.+}} fusion(%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}), kind=kCustom, calls=%dynamic-slice-fusion, {{.+}}"name":"dynamic_address_computation"
   // CHECK: }
   )";
   RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
@@ -1856,13 +1855,13 @@ TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSLoopIterationOffset) {
     ROOT tuple.54 = (f32[128,128]{1,0}, f32[128,128,128]{2,1,0}) tuple(get-tuple-element.50, get-tuple-element.51)
   })";
   const char* expected = R"(
-  // CHECK: %address-computation{{.*}}{
+  // CHECK: %dynamic-slice-fusion{{.*}}{
   // CHECK:   {{.+}} = {{.*}}reduce-scatter({{.+}})
   // CHECK:   {{.+}} = {{.*}}dynamic-update-slice({{.+}})
   // CHECK: }
   // CHECK: Body{{.+}}{
   // CHECK-NOT: {{.+}} = {{.*}}reduce-scatter({{.+}})
-  // CHECK:   {{.+}} = {{.+}}fusion({{.+}}), kind=kCustom, calls=%address-computation{{.*}}"name":"dynamic_address_computation"
+  // CHECK:   {{.+}} = {{.+}}fusion({{.+}}), kind=kCustom, calls=%dynamic-slice-fusion{{.*}}"name":"dynamic_address_computation"
   // CHECK: }
   )";
   RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
@@ -1931,7 +1930,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmLoopIteration) {
   // CHECK:   %[[PARAM:.+]] = {{.+}} parameter(0)
   // CHECK:   %[[LOOP_ITER:.+]] = u32[] get-tuple-element(%[[PARAM]]), index=3
   // CHECK:   %[[OFFSET:.+]] = u32[] select({{.+}})
-  // CHECK:   %[[ADDRESS_COMPUTATION:.+]] = {{.+}} fusion({{.+}}, {{.+}}, {{.+}}, %[[OFFSET]], %{{.+}}), kind=kCustom, calls=%address-computation, {{.+}}"name":"dynamic_address_computation"
+  // CHECK:   %[[ADDRESS_COMPUTATION:.+]] = {{.+}} fusion({{.+}}, {{.+}}, {{.+}}, %[[OFFSET]], %{{.+}}), kind=kCustom, calls=%dynamic-slice-fusion, {{.+}}"name":"dynamic_address_computation"
   // CHECK:   ROOT %tuple = {{.+}} tuple(%{{.+}}, %{{.+}}, %[[ADDRESS_COMPUTATION]], %{{.+}})
   // CHECK: }
   // CHECK: ENTRY %test{{.+}}{
@@ -2041,7 +2040,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmLaxScan) {
 )";
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   const char* expected = R"(
-  // CHECK: %address-computation{{.*}} {{.+}} {
+  // CHECK: %dynamic-slice-fusion{{.*}} {{.+}} {
   // CHECK:   {{.+}} = {{.+}}dynamic-slice
   // CHECK:   {{.+}} = {{.+}}custom-call
   // CHECK:   {{.+}} = {{.+}}dynamic-update-slice
@@ -2050,13 +2049,96 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmLaxScan) {
   // CHECK:   %[[PARAM:.+]] = {{.+}} parameter(0)
   // CHECK:   %[[LOOP_ITER:.+]] = s32[] get-tuple-element(%[[PARAM]]), index=0
   // CHECK:   %[[OFFSET:.+]] = s32[] select({{.+}})
-  // CHECK:   %[[ADDRESS_COMPUTATION:.+]] = {{.+}} fusion({{.+}}, %[[OFFSET]], %{{.+}}), kind=kCustom, calls=%address-computation{{.+}}"name":"dynamic_address_computation"
+  // CHECK:   %[[ADDRESS_COMPUTATION:.+]] = {{.+}} fusion({{.+}}, %[[OFFSET]], %{{.+}}), kind=kCustom, calls=%dynamic-slice-fusion{{.+}}"name":"dynamic_address_computation"
   // CHECK:   %[[GTE:.+]] = {{.+}} get-tuple-element(%[[ADDRESS_COMPUTATION]]), index=0
   // CHECK:   ROOT %{{.+}} = {{.+}} tuple(%{{.+}}, %[[GTE]], %{{.+}})
   // CHECK: }
   // CHECK: ENTRY %main{{.+}}{
   // CHECK:   %{{.+}} = {{.+}} while(%{{.+}}), condition=%{{.+}}, body=%Body{{.*}}, backend_config={"known_trip_count":{"n":"128"}}
   // CHECK: }
+  )";
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+}
+
+// Remove this when tuple support is added to dynamic slice fusion
+TEST_F(DynamicSliceFusionRewriterTest, DUSReduceScatterTupleNoTransform) {
+  const char* hlo = R"(
+  HloModule test, replica_count=2
+
+  add {
+    param_0 = f16[] parameter(0)
+    param_1 = f16[] parameter(1)
+    ROOT add.1 = f16[] add(param_0, param_1)
+  }
+
+  ENTRY main.9 {
+    param_0 = f16[128,128]{1,0} parameter(0)
+    param_1 = f16[128,128]{1,0} parameter(1)
+    param_2 = f16[128,128]{1,0} parameter(2)
+    constant_20 = u32[] constant(20)
+    constant_0 = u32[] constant(0)
+    reduce-scatter = (f16[64,128]{1,0}, f16[64,128]{1,0}) reduce-scatter(param_0, param_2), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
+    rs1 = get-tuple-element(reduce-scatter), index=0
+    ROOT loop_dynamic_update_slice_fusion = f16[128,128]{1,0} dynamic-update-slice(param_1, rs1, constant_20, constant_0)
+  })";
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"),
+                            std::nullopt);
+}
+
+TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterSlice) {
+  const char* hlo = R"(
+  HloModule jit_slice, replica_count=2
+
+  add {
+    a = s32[] parameter(0)
+    b = s32[] parameter(1)
+    ROOT add = add(a,b)
+  }
+
+  ENTRY %main.9 {
+    p0 = s32[2,8,32]{2,1,0} parameter(0)
+    slice = s32[1,8,32]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:32]}
+    bc = s32[8,32]{1,0} bitcast(%slice)
+    ROOT rs = s32[4,32] reduce-scatter(bc), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
+  })";
+  const char* expected = R"(
+  // CHECK: dynamic-slice-fusion{{.*}} {
+  // CHECK:   %[[p0:.+]] = {{.+}} parameter(0)
+  // CHECK:   %[[slice:.+]] = {{.+}} slice(%[[p0]]), slice={[1:2], [0:8], [0:32]}
+  // CHECK:   %[[bc:.+]] = {{.+}} bitcast(%[[slice]])
+  // CHECK:   ROOT {{.+}} = {{.+}} reduce-scatter(%[[bc]])
+  // CHECK: }
+  )";
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+}
+
+TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDynamicSlice) {
+  const char* hlo = R"(
+  HloModule jit_slice, replica_count=2
+
+  add {
+    a = s32[] parameter(0)
+    b = s32[] parameter(1)
+    ROOT add = add(a,b)
+  }
+
+  ENTRY %main.9 {
+    p0 = s32[2,8,32]{2,1,0} parameter(0)
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    slice = s32[1,8,32]{2,1,0} dynamic-slice(p0, c1, c0, c0), dynamic_slice_sizes={1,8,32}
+    bc = s32[8,32]{1,0} bitcast(%slice)
+    ROOT rs = s32[4,32] reduce-scatter(bc), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
+  })";
+  const char* expected = R"(
+  // CHECK: add
+  // CHECK: dynamic-slice-fusion{{.*}} {
+  // CHECK:   %[[p0:.+]] = {{.+}} parameter(0)
+  // CHECK:   %[[slice:.+]] = {{.+}} dynamic-slice(%[[p0]], {{.+}}), dynamic_slice_sizes={1,8,32}
+  // CHECK:   %[[bc:.+]] = {{.+}} bitcast(%[[slice]])
+  // CHECK:   ROOT {{.+}} = {{.+}} reduce-scatter(%[[bc]])
+  // CHECK: }
+  // CHECK: ENTRY
   )";
   RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }

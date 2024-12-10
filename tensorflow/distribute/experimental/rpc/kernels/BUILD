@@ -1,4 +1,4 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_xla//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
@@ -20,7 +20,6 @@ cc_library(
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_cc_grpc_proto",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_cc",
         "@com_github_grpc_grpc//:grpc++",
-        "@local_xla//xla/stream_executor/platform",
     ],
     alwayslink = 1,
 )
@@ -66,7 +65,6 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_xla//xla/stream_executor/platform",
     ],
     alwayslink = 1,
 )

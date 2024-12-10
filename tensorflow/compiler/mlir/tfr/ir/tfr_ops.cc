@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.h"
 
 #include <algorithm>
-#include <iterator>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -29,7 +31,7 @@ limitations under the License.
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project

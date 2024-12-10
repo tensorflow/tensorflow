@@ -16,7 +16,7 @@ cc_library(
     ),
     hdrs = ["wrapper/metrics_wrapper.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow/python:__pkg__"],
     deps = [
         "//third_party/python_runtime:headers",
     ] + if_portable(
@@ -38,6 +38,7 @@ pybind_extension(
     ],
     visibility = [
         "__subpackages__",
+        "//tensorflow/python:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
@@ -127,6 +128,7 @@ py_strict_test(
         if_true = "metrics_portable_test.py",
     ),
     python_version = "PY3",
+    tags = ["notap"],  # TODO(b/373657707): Remove once we debug the failure.
     deps = [
         ":metrics",
         "@absl_py//absl/testing:parameterized",

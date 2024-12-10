@@ -48,7 +48,7 @@ namespace xla {
 // stream (e.g., a transfer or compute kernel) the buffer's definition event.
 //
 // After the operation that populates the value of a buffer has been enqueued on
-// 'stream', RecordOnStream(stream) should also be called to trigger the
+// 'stream', SetSequencingEvent() should also be called to trigger the
 // definition event after the operation has completed.
 //
 // After the buffer is read on 'stream' another event should be added so that
@@ -78,7 +78,7 @@ class BufferSequencingEvent {
 
   // Adds synchronization events to 'stream' that wait for this event to be
   // defined on 'stream'. Does nothing if the event is already known to have
-  // occurred by the tail of 'stream'. If RecordOnStream has not yet been
+  // occurred by the tail of 'stream'. If SetSequencingEvent has not yet been
   // called, blocks the calling thread until the event has been recorded.
   void WaitForEventOnStream(se::Stream* stream);
 
@@ -87,14 +87,9 @@ class BufferSequencingEvent {
   // GpuStreamHandle (e.g. a cudaStream_t).
   absl::Status WaitForEventOnExternalStream(std::intptr_t stream);
 
-  // Returns true if the event is known to have occurred by the tail of
-  // 'stream'. If RecordOnStream has not yet been called, blocks the calling
-  // thread until the event has been recorded.
-  bool DefinedOn(se::Stream* stream);
-
   // Returns true if the event is known by the host to have already occurred. If
-  // RecordOnStream has not yet been called, blocks the calling thread until the
-  // event has been recorded.
+  // SetSequencingEvent has not yet been called, blocks the calling thread
+  // until the event has been recorded.
   bool IsComplete();
 
   // Compares the sequence numbers of two recorded events. It is illegal to call
@@ -128,8 +123,10 @@ class BufferSequencingEvent {
 
   bool IsDefined() {
     absl::MutexLock lock(&mu_);
-    return defined_status_.IsConcrete();
+    return IsDefinedNoLock();
   }
+
+  bool IsDefinedNoLock() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void SetDefinedStatus(absl::Status status) {
     {
@@ -150,6 +147,19 @@ class BufferSequencingEvent {
     absl::MutexLock lock(&mu_);
     return defined_status_.IsConcrete() && !defined_status_.get().ok();
   }
+
+  // Returns true if either:
+  // 1. The event IsPredeterminedError
+  // Or:
+  // 2. The event is known to have occurred by the tail of 'stream'.
+  // If SetSequencingEvent and SetDefinedStatus has not yet been called,
+  // blocks the calling thread until either of those 2 happens.
+  // This is checking the above 2 conditions with a single lock. This is needed
+  // in case a buffer is set as an error buffer in a different thread after
+  // IsPredeterminedError() check and before DefinedOn() check, in which case
+  // DefinedOn() would indefinitely wait since the event is never recorded when
+  // the buffer is predetermined error.
+  bool IsPredeterminedErrorOrDefinedOn(se::Stream* stream);
 
  private:
   bool EventHasBeenRecorded() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);

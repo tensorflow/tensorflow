@@ -18,9 +18,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
-#include "tsl/profiler/backends/cpu/annotation_stack.h"
 
 namespace tsl {
 namespace profiler {

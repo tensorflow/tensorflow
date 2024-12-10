@@ -52,8 +52,10 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/optional_debug_tools.h"
+#include "tensorflow/lite/profiling/model_runtime_info.h"
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
@@ -237,6 +239,29 @@ class OutputSaver : public BenchmarkListener {
  private:
   BenchmarkInterpreterRunner* const interpreter_runner_;
   const BenchmarkParams* params_ = nullptr;
+};
+
+// Dumps the Model Runtime Info if enabled when export_model_runtime_info is
+// set to true.
+class ModelRuntimeInfoListener : public BenchmarkListener {
+ public:
+  explicit ModelRuntimeInfoListener(Interpreter* interpreter)
+      : interpreter_(interpreter) {}
+
+  // At this stage, the graph is fully modified with delegates.
+  // So the interpreter can be used to capture the ModelRuntimeDetails.
+  void OnBenchmarkStart(const BenchmarkParams& params) override {
+    const std::string output_file_path =
+        params.Get<std::string>("model_runtime_info_output_file");
+    const auto status =
+        profiling::GenerateModelRuntimeInfo(*interpreter_, output_file_path);
+    if (status != kTfLiteOk) {
+      TFLITE_LOG(ERROR) << "Failed to generate model runtime info: " << status;
+    }
+  }
+
+ private:
+  Interpreter* const interpreter_ = nullptr;  // not own the memory.
 };
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
@@ -570,7 +595,10 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("profiling_output_csv_file",
                           BenchmarkParam::Create<std::string>(""));
-
+  default_params.AddParam("export_model_runtime_info",
+                          BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("model_runtime_info_output_file",
+                          BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("print_preinvoke_state",
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("print_postinvoke_state",
@@ -667,6 +695,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
                               "op_profiling_output_mode instead] File path to "
                               "export profile data as CSV, if not set "
                               "prints to stdout."),
+      CreateFlag<bool>("export_model_runtime_info", &params_,
+                       "Enable Model Runtime Info Export"),
+      CreateFlag<std::string>("model_runtime_info_output_file", &params_,
+                              "Proto File to export model runtime info to"),
       CreateFlag<bool>(
           "print_preinvoke_state", &params_,
           "print out the interpreter internals just before calling Invoke. The "
@@ -758,6 +790,10 @@ void BenchmarkTfLiteModel::LogParams() {
                       verbose);
   LOG_BENCHMARK_PARAM(std::string, "profiling_output_csv_file",
                       "CSV File to export profiling data to", verbose);
+  LOG_BENCHMARK_PARAM(bool, "export_model_runtime_info",
+                      "Enable Model Runtime Info Export", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "model_runtime_info_output_file",
+                      "Proto File to export model runtime info to", verbose);
   LOG_BENCHMARK_PARAM(bool, "print_preinvoke_state",
                       "Print pre-invoke interpreter state", verbose);
   LOG_BENCHMARK_PARAM(bool, "print_postinvoke_state",
@@ -1064,6 +1100,11 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   AddOwnedListener(MayCreateProfilingListener());
   AddOwnedListener(std::unique_ptr<BenchmarkListener>(
       new InterpreterStatePrinter(interpreter_.get())));
+
+  if (params_.Get<bool>("export_model_runtime_info")) {
+    AddOwnedListener(std::unique_ptr<BenchmarkListener>(
+        new ModelRuntimeInfoListener(interpreter_.get())));
+  }
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 

@@ -25,6 +25,7 @@ import tempfile
 import traceback
 import zipfile
 
+import ml_dtypes
 import numpy as np
 import tensorflow as tf
 
@@ -130,6 +131,12 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
     # Not the best strings, but they will do for some basic testing.
     letters = list(string.ascii_uppercase)
     return np.random.choice(letters, size=shape).astype(dtype)
+  elif dtype == tf.bfloat16:
+    value = (max_value - min_value) * np.random.random_sample(shape) + min_value
+    # There is no bfloat16 type in numpy. Uses ml_dtypes.bfloat16 for Eigen.
+    dtype = ml_dtypes.bfloat16
+  else:
+    raise ValueError("Unsupported dtype: %s" % dtype)
   return np.dtype(dtype).type(value) if np.isscalar(value) else value.astype(
       dtype)
 
@@ -149,6 +156,12 @@ def create_scalar_data(dtype, min_value=-100, max_value=100):
   elif dtype == np.bytes_:
     l = np.random.randint(1, 6)
     value = "".join(np.random.choice(list(string.ascii_uppercase), size=l))
+  elif dtype == tf.bfloat16:
+    value = (max_value - min_value) * np.random.random() + min_value
+    # There is no bfloat16 type in numpy. Uses ml_dtypes.bfloat16 for Eigen.
+    dtype = ml_dtypes.bfloat16
+  else:
+    raise ValueError("Unsupported dtype: %s" % dtype)
   return np.array(value, dtype=dtype)
 
 
@@ -170,7 +183,12 @@ def format_result(t):
   """Convert a tensor to a format that can be used in test specs."""
   if t.dtype.kind not in [np.dtype(np.bytes_).kind, np.dtype(np.object_).kind]:
     # Output 9 digits after the point to ensure the precision is good enough.
-    values = ["{:.9f}".format(value) for value in list(t.flatten())]
+    # bfloat16 promotes the value to string, not float. so we need to
+    # convert it to float explicitly.
+    if t.dtype == ml_dtypes.bfloat16:
+      values = ["{:.9f}".format(float(value)) for value in list(t.flatten())]
+    else:
+      values = ["{:.9f}".format(value) for value in list(t.flatten())]
     return ",".join(values)
   else:
     # SerializeAsHexString returns bytes in PY3, so decode if appropriate.

@@ -242,7 +242,7 @@ def draw_graphdef_as_graphviz(graphdef, dot_output_filename):
 
     print("  }", file=f)
 
-    # Step 3: Alignement of the legend with the graph.
+    # Step 3: Alignment of the legend with the graph.
     print("\n  edge[style=\"invisible\", dir=\"none\"];", file=f)
     for dtype in dtype_index.keys():
       for node_name in nodes_with_no_inputs:

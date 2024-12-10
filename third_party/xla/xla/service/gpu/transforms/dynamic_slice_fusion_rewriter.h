@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 namespace gpu {
@@ -70,7 +70,7 @@ namespace gpu {
 class DynamicSliceFusionRewriter : public HloModulePass {
  public:
   absl::string_view name() const override {
-    return "address-computation-fusion-rewriter";
+    return "dynamic-slice-fusion-rewriter";
   }
 
   explicit DynamicSliceFusionRewriter(std::string platform_name)

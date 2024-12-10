@@ -171,7 +171,6 @@ tf_cuda_library(
     cuda_deps = [
         "@local_config_cuda//cuda:cudnn_header",
         "@local_xla//xla/stream_executor/cuda:cuda_platform",
-        "@local_xla//xla/stream_executor/gpu:gpu_stream",
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         ":gpu_runtime_hermetic_cuda_deps",
     ],
@@ -202,7 +201,6 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor/gpu:gpu_init_impl",
         "@local_xla//xla/tsl/framework:device_id_utils",
     ] + if_google(
@@ -229,7 +227,9 @@ tf_cuda_library(
         }) + if_cuda_or_rocm([
             "@local_xla//xla/service:gpu_plugin_impl",  # for registering cuda compiler.
         ]),
-    ),
+    ) + if_cuda_or_rocm([
+        "@local_tsl//tsl/platform:dso_loader",
+    ]),
     alwayslink = 1,
 )
 
@@ -247,7 +247,6 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:stream_executor",
         "@eigen_archive//:eigen3",
-        "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
     ] + if_static([":gpu_runtime_impl"]),
 )

@@ -24,7 +24,7 @@ namespace {
 
 class InPlaceOpTest : public HloTestBase {
   // Don't override any flags.
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     return GetDebugOptionsFromFlags();
   }
 };

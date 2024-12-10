@@ -19,7 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
-#include "tsl/lib/monitoring/sampler.h"
+#include "xla/tsl/lib/monitoring/sampler.h"
 
 namespace tensorflow {
 namespace tfrt_metrics {

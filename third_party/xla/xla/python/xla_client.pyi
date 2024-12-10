@@ -23,6 +23,7 @@ import numpy
 
 from . import xla_extension as _xla
 from .xla_extension import ArrayImpl as ArrayImpl
+from .xla_extension import AutotuneCacheMode as AutotuneCacheMode
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
@@ -45,6 +46,7 @@ from .xla_extension import OpSharding as OpSharding
 from .xla_extension import PjRtLayout as PjRtLayout
 from .xla_extension import PmapSharding as PmapSharding
 from .xla_extension import PrimitiveType as PrimitiveType
+from .xla_extension import ArrayCopySemantics as ArrayCopySemantics
 from .xla_extension import profiler as profiler
 from .xla_extension import Shape as Shape
 from .xla_extension import Sharding as Sharding
@@ -59,6 +61,9 @@ _version: int
 mlir_api_version: int
 
 bfloat16: type[numpy.generic]
+# TODO: Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+# float8_e3m4: type[numpy.generic]
+# float8_e4m3: type[numpy.generic]
 float8_e4m3fn: type[numpy.generic]
 float8_e4m3b11fnuz: type[numpy.generic]
 float8_e4m3fnuz: type[numpy.generic]
@@ -70,13 +75,6 @@ _NameValueMapping = Mapping[str, Union[str, int, list[int], float, bool]]
 
 def dtype_to_etype(dtype: numpy.dtype) -> PrimitiveType:
   ...
-
-def execute_with_python_values(executable: LoadedExecutable, arguments: Sequence[Any],
-                               backend: Client) -> Sequence[numpy.ndarray]: ...
-
-def execute_with_python_values_replicated(
-    executable: LoadedExecutable, arguments: Sequence[Sequence[Any]],
-    backend: Client) -> Sequence[Sequence[numpy.ndarray]]: ...
 
 def shape_from_pyval(pyval: Any, layout: Sequence[int] | None = None) -> Any: ...
 
@@ -101,6 +99,7 @@ def make_gpu_client(
     platform_name: str | None = ...,
     allowed_devices: set[int] | None = ...,
     mock: bool | None = ...,
+    mock_gpu_topology: str | None = ...,
 ) -> Client:
   ...
 
@@ -217,6 +216,12 @@ class PrecisionConfig:
   Precision = _xla.PrecisionConfig_Precision
   operand_precision: list[_xla.PrecisionConfig_Precision]
 
+class ResultAccuracy:
+  mode: _xla.ResultAccuracy_Mode
+  atol: float
+  rtol: float
+  ulps: int
+
 class GatherDimensionNumbers:
   offset_dims: list[int]
   collapsed_slice_dims: list[int]
@@ -241,13 +246,14 @@ def make_replica_groups(
 ) -> list[ReplicaGroup]:
   ...
 
-def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
+def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...) -> _xla.WeakrefLRUCache:
   ...
 
 def batched_copy_array_to_devices_with_sharding(
     arrays: Sequence[ArrayImpl],
     devices: Sequence[list[Device]],
     sharding: Sequence[Any],
+    array_copy_semantics: Sequence[ArrayCopySemantics],
 ) -> Sequence[ArrayImpl]: ...
 
 def batched_device_put(

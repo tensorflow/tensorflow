@@ -24,7 +24,6 @@ limitations under the License.
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -36,11 +35,10 @@ limitations under the License.
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "shardy/dialect/sdy/ir/dialect.h"
-#include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -48,9 +46,6 @@ limitations under the License.
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/refine_polymorphic_shapes.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
-#include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
-#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -59,34 +54,6 @@ namespace nb = nanobind;
 
 namespace xla {
 namespace {
-
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseModule(
-    mlir::MLIRContext* context, std::string_view str) {
-  mlir::OwningOpRef<mlir::ModuleOp> module;
-  context->loadDialect<mlir::func::FuncDialect>();
-  context->loadDialect<mlir::mhlo::MhloDialect>();
-  context->loadDialect<mlir::chlo::ChloDialect>();
-  context->loadDialect<mlir::sparse_tensor::SparseTensorDialect>();
-  context->loadDialect<mlir::stablehlo::StablehloDialect>();
-  context->loadDialect<mlir::sdy::SdyDialect>();
-
-  mlir::DialectRegistry registry;
-  mlir::func::registerAllExtensions(registry);
-  context->appendDialectRegistry(registry);
-
-  mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
-  module = mlir::parseSourceString<mlir::ModuleOp>(
-      llvm::StringRef(str.data(), str.size()), context);
-  if (!module) {
-    return diagnostic_handler.ConsumeStatus();
-  }
-  if (failed(module->verifyInvariants())) {
-    VLOG(1) << "MLIR verification failed.";
-    module->dump();
-    return diagnostic_handler.ConsumeStatus();
-  }
-  return module;
-}
 
 std::string PrintModule(mlir::ModuleOp module) {
   std::string s;
@@ -146,14 +113,10 @@ absl::StatusOr<XlaComputation> PyMlirModuleToXlaComputation(
     std::string_view mlir_module, bool use_tuple_args, bool return_tuple) {
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                      ParseModule(&context, mlir_module));
+                      ParseMlirModuleString(mlir_module, context));
   XlaComputation computation;
-  mlir::PassManager pm(&context);
-  // SDY dialect may be part of the module which XLA doesn't know about. Export
-  // it.
-  xla::sdy::addSdyRoundTripExportPipeline(pm);
-  TF_RETURN_IF_ERROR(tsl::StatusScopedDiagnosticHandler(&context).consumeStatus(
-      pm.run(*module)));
+  // SDY dialect may be part of the module which XLA doesn't know about.
+  TF_RETURN_IF_ERROR(ExportShardyForHloRoundTrip(*module));
   TF_RETURN_IF_ERROR(MlirToXlaComputation(*module, computation, use_tuple_args,
                                           return_tuple,
                                           /*use_shardy=*/false));
@@ -165,13 +128,13 @@ absl::StatusOr<nb::bytes> PyMhloToStablehlo(std::string_view mlir_module) {
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   // JAX can be customized in a way that involves operations from custom
   // dialects showing up in JAX IR.
-  // `ParseModule` won't know about these dialects, but that's fine since we
-  // just want to convert MHLO ops to StableHLO ops here and leave everything
-  // else unchanged.
+  // `ParseMlirModuleString` won't know about these dialects, but that's fine
+  // since we just want to convert MHLO ops to StableHLO ops here and leave
+  // everything else unchanged.
   // In order to achieve that, we're allowing unregistered dialects here.
   context.allowUnregisteredDialects(true);
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                      ParseModule(&context, mlir_module));
+                      ParseMlirModuleString(mlir_module, context));
   mlir::PassManager pm(&context);
   if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
@@ -192,8 +155,8 @@ absl::StatusOr<nb::bytes> PyStablehloToMhlo(const nb::bytes& mlir_module) {
   context.allowUnregisteredDialects(true);
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
-      ParseModule(&context,
-                  std::string_view(mlir_module.c_str(), mlir_module.size())));
+      ParseMlirModuleString(
+          std::string_view(mlir_module.c_str(), mlir_module.size()), context));
   mlir::PassManager pm(&context);
   if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
@@ -212,7 +175,7 @@ absl::StatusOr<nb::bytes> PySerializePortableArtifact(
   mlir::MLIRContext context;
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                      ParseModule(&context, mlir_module));
+                      ParseMlirModuleString(mlir_module, context));
 
   // Serialize portable artifact
   TF_ASSIGN_OR_RETURN(

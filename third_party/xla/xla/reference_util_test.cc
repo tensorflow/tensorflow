@@ -16,13 +16,14 @@ limitations under the License.
 #include "xla/reference_util.h"
 
 #include <cmath>
+#include <cstdint>
 #include <memory>
 
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/padding.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/builder/padding.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/test.h"

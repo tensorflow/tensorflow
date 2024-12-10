@@ -14,17 +14,21 @@
 
 #include "xla/python/ifrt_proxy/common/array_util.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt_proxy/common/array_util.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -149,6 +153,54 @@ void* ArrayMemRegion::zeroth_element() const {
   // ArrayMemRegion cannot yet be constructed for situations where the
   // zeroth element pointer is different from mem_region_start_.
   return mem_region_start_;
+}
+
+absl::StatusOr<std::unique_ptr<std::string>> SerializeStringHostBuffer(
+    absl::Span<const absl::Cord> cords) {
+  proto::StringArrayContents string_array_proto;
+  for (const auto& c : cords) {
+    string_array_proto.add_strings(std::string(c));
+  }
+  return std::make_unique<std::string>(string_array_proto.SerializeAsString());
+}
+
+absl::StatusOr<std::vector<absl::Cord>> DeserializeStringHostBufferFromString(
+    const std::string& serialized_string_buffer) {
+  proto::StringArrayContents string_array_proto;
+  if (!string_array_proto.ParseFromString(serialized_string_buffer)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse serialized string buffer");
+  }
+
+  std::vector<absl::Cord> result;
+  result.reserve(string_array_proto.strings_size());
+  for (const auto& s : string_array_proto.strings()) {
+    result.push_back(absl::Cord(s));
+  }
+  return result;
+}
+
+absl::Status DeserializeFromCordIntoPreallocatedStringHostBuffer(
+    const absl::Cord& serialized_string_buffer,
+    absl::Cord* preallocated_buffer) {
+  proto::StringArrayContents string_array_proto;
+
+#if defined(PLATFORM_GOOGLE)
+  if (!string_array_proto.ParseFromCord(serialized_string_buffer)) {
+#else
+  if (!string_array_proto.ParseFromString(  // No absl::Cord support in OSS.
+          std::string(serialized_string_buffer))) {
+#endif
+    return absl::InvalidArgumentError(
+        "Failed to parse serialized string buffer");
+  }
+
+  auto* current_cord = preallocated_buffer;
+  for (const auto& s : string_array_proto.strings()) {
+    *current_cord = s;
+    ++current_cord;
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace proxy

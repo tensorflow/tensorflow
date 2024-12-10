@@ -42,11 +42,11 @@ namespace functor {
 
 template <typename Tidx, typename T>
 struct BincountFunctor<CPUDevice, Tidx, T, true> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<Tidx, 1>::ConstTensor& arr,
-                        const typename TTypes<T, 1>::ConstTensor& weights,
-                        typename TTypes<T, 1>::Tensor& output,
-                        const Tidx num_bins) {
+  static absl::Status Compute(OpKernelContext* context,
+                              const typename TTypes<Tidx, 1>::ConstTensor& arr,
+                              const typename TTypes<T, 1>::ConstTensor& weights,
+                              typename TTypes<T, 1>::Tensor& output,
+                              const Tidx num_bins) {
     Tensor all_nonneg_t;
     TF_RETURN_IF_ERROR(context->allocate_temp(
         DT_BOOL, TensorShape({}), &all_nonneg_t, AllocatorAttributes()));
@@ -87,11 +87,11 @@ struct BincountFunctor<CPUDevice, Tidx, T, true> {
 
 template <typename Tidx, typename T>
 struct BincountFunctor<CPUDevice, Tidx, T, false> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<Tidx, 1>::ConstTensor& arr,
-                        const typename TTypes<T, 1>::ConstTensor& weights,
-                        typename TTypes<T, 1>::Tensor& output,
-                        const Tidx num_bins) {
+  static absl::Status Compute(OpKernelContext* context,
+                              const typename TTypes<Tidx, 1>::ConstTensor& arr,
+                              const typename TTypes<T, 1>::ConstTensor& weights,
+                              typename TTypes<T, 1>::Tensor& output,
+                              const Tidx num_bins) {
     Tensor all_nonneg_t;
     TF_RETURN_IF_ERROR(context->allocate_temp(
         DT_BOOL, TensorShape({}), &all_nonneg_t, AllocatorAttributes()));
@@ -170,11 +170,11 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
 
 template <typename Tidx, typename T, bool binary_output>
 struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<Tidx, 2>::ConstTensor& in,
-                        const typename TTypes<T, 2>::ConstTensor& weights,
-                        typename TTypes<T, 2>::Tensor& out,
-                        const Tidx num_bins) {
+  static absl::Status Compute(OpKernelContext* context,
+                              const typename TTypes<Tidx, 2>::ConstTensor& in,
+                              const typename TTypes<T, 2>::ConstTensor& weights,
+                              typename TTypes<T, 2>::Tensor& out,
+                              const Tidx num_bins) {
     std::atomic<int> err_neg_val = 0;
     const int num_rows = out.dimension(0);
     const int num_cols = in.dimension(1);
@@ -325,7 +325,7 @@ class DenseBincountOp : public OpKernel {
       const int64_t num_rows = data.dim_size(0);
       auto weight_matrix =
           (weights.NumElements() == 0)
-              ? weights.shaped<T, 2>(gtl::InlinedVector<int64_t, 2>(2, 0))
+              ? weights.shaped<T, 2>(absl::InlinedVector<int64_t, 2UL>(2, 0))
               : weights.matrix<T>();
       OP_REQUIRES_OK(
           ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));

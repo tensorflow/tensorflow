@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
@@ -181,6 +182,16 @@ absl::StatusOr<HloInstruction*> MakeDotHlo(
     absl::Span<HloInstruction* const> sparse_meta = {},
     const OpMetadata* metadata = nullptr);
 
+// Creates a RaggedDot HLO instruction and adds it to the computation containing
+// `lhs`, `rhs`, and `group_sizes` (all must be in the same computation). An
+// optional preferred_element_type can be specified to override the element
+// type.
+absl::StatusOr<HloInstruction*> MakeRaggedDotHlo(
+    HloInstruction* lhs, HloInstruction* rhs, HloInstruction* group_sizes,
+    const RaggedDotDimensionNumbers& dim_numbers,
+    const PrecisionConfig& precision_config,
+    std::optional<PrimitiveType> preferred_element_type);
+
 // Creates a Map HLO instruction and adds it to the computation containing the
 // operands. All operands must be in the same computation.
 absl::StatusOr<HloInstruction*> MakeMapHlo(
@@ -256,6 +267,11 @@ absl::StatusOr<HloInstruction*> MakeSelectHlo(
 // Forwards the first operand if operands.size() == 1, or creates a tuple
 // instruction with all the operands. Crashes if `operands` is empty.
 HloInstruction* MaybeMakeTuple(absl::Span<HloInstruction* const> operands);
+
+// Creates a HloComputation in the destination module from a builder's
+// XlaComputation.
+absl::StatusOr<HloComputation*> XlaComputationToHloComputation(
+    XlaComputation& src_comp, HloModule* dest_module);
 
 // Creates a Sort HLO instruction and adds it to the computation containing the
 // operands. All operands must be in the same computation. Also creates a

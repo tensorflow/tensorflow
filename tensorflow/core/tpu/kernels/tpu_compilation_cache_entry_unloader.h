@@ -42,7 +42,7 @@ class TpuCompilationCacheEntryUnloader : public ResourceBase {
   ~TpuCompilationCacheEntryUnloader() override {
     absl::MutexLock lock(&mu_);
     for (int64_t uid : cache_entry_uids_) {
-      Status s = cache_->MarkEntryForEviction(uid);
+      absl::Status s = cache_->MarkEntryForEviction(uid);
       if (!s.ok()) {
         LOG(WARNING) << "MarkEntryForEviction in "
                         "~CompilationCacheEntryUnloader fails with error "

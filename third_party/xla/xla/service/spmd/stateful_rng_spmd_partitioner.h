@@ -24,8 +24,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 
 namespace xla {
@@ -54,13 +54,16 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
       int64_t threshold_for_windowed_einsum_mib = 100000,
       bool windowed_einsum_use_multiple_streams = false,
       bool skip_checking_windowed_einsum_users = false,
-      bool disable_ag_rewrite_for_multiple_consumers = false)
-      : spmd::SpmdPartitioner(num_partitions, num_replicas,
-                              GetSpmdPartitionerOptions(
-                                  threshold_for_windowed_einsum_mib,
-                                  windowed_einsum_use_multiple_streams,
-                                  skip_checking_windowed_einsum_users,
-                                  disable_ag_rewrite_for_multiple_consumers)) {}
+      bool disable_ag_rewrite_for_multiple_consumers = false,
+      std::optional<int64_t> total_bytes_windowed_einsum_threshold =
+          std::nullopt)
+      : spmd::SpmdPartitioner(
+            num_partitions, num_replicas,
+            GetSpmdPartitionerOptions(threshold_for_windowed_einsum_mib,
+                                      windowed_einsum_use_multiple_streams,
+                                      skip_checking_windowed_einsum_users,
+                                      disable_ag_rewrite_for_multiple_consumers,
+                                      total_bytes_windowed_einsum_threshold)) {}
 
  protected:
   std::unique_ptr<spmd::SpmdPartitioningVisitor> CreateVisitor(
@@ -87,7 +90,9 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
       int64_t threshold_for_windowed_einsum_mib,
       bool windowed_einsum_use_multiple_streams = false,
       bool skip_checking_windowed_einsum_users = false,
-      bool disable_ag_rewrite_for_multiple_consumers = false) {
+      bool disable_ag_rewrite_for_multiple_consumers = false,
+      std::optional<int64_t> total_bytes_windowed_einsum_threshold =
+          std::nullopt) {
     spmd::SpmdPartitionerOptions options;
     options.allow_module_signature_change = true;
     options.threshold_for_windowed_einsum_mib =
@@ -97,6 +102,8 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
         skip_checking_windowed_einsum_users;
     options.disable_ag_rewrite_for_multiple_consumers =
         disable_ag_rewrite_for_multiple_consumers;
+    options.total_bytes_windowed_einsum_threshold =
+        total_bytes_windowed_einsum_threshold;
     return options;
   }
 };

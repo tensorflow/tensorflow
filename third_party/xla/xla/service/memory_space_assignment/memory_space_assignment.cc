@@ -38,6 +38,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -46,9 +48,7 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/algorithm.h"
 #include "xla/service/memory_space_assignment/allocation.h"
@@ -347,6 +347,37 @@ MemorySpaceAssignment::Run(HloModule* module,
                                                           alias_analysis);
 }
 
+absl::Status MemorySpaceAssignment::VerifyAllocations() const {
+  BufferIntervalTree interval_tree;
+  // Checks the chunks that overlap with a given allocation in time do not
+  // overlap with the allocation's chunk in the memory range. If they do, we
+  // throw an error, otherwise we add the allocation's chunk to the interval
+  // tree and return an OK status.
+  auto add_allocation_and_verify =
+      [&](const Allocation* allocation) -> absl::Status {
+    for (const HeapSimulator::Chunk& overlapping_chunk :
+         interval_tree.ChunksOverlappingInTime(allocation->start_time(),
+                                               allocation->end_time() - 1)) {
+      CHECK(!allocation->chunk().OverlapsWith(overlapping_chunk))
+          << "Chunks are overlapping at Allocation level (before fixing the "
+             "schedule): "
+          << allocation->ToString()
+          << " overlaps with allocated chunk: " << overlapping_chunk.ToString();
+    }
+    interval_tree.Add(allocation->start_time(), allocation->end_time() - 1,
+                      allocation->chunk());
+    return absl::OkStatus();
+  };
+  // Verify that all alternate memory allocations are free of overlapping
+  // Allocations in time and space, and add them to interval_tree one by one.
+  for (const auto& allocation : allocations_) {
+    if (allocation->memory_space() == MemorySpace::kAlternate) {
+      TF_RETURN_IF_ERROR(add_allocation_and_verify(allocation.get()));
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::unique_ptr<PresetAssignments>>
 MemorySpaceAssignment::RunMemorySpaceAssignment(
     const HloLiveRange& hlo_live_range,
@@ -365,13 +396,29 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   }
 
   TF_RETURN_IF_ERROR(Process(hlo_live_range));
+  if (options_.verify) {
+    TF_RETURN_IF_ERROR(VerifyAllocations());
+  }
+  // DEBUG_LOG_ALLOCATIONS_AT
+  //
+  // Uncomment the following to log the alternate memory allocations that MSA
+  // made at a given schedule time.
+  //
+  // AllocationSequenceDebugging::LogAltMemAllocationsAt(
+  //     allocations_, /*time*/1);
   ScheduleAsynchronousCopies();
   TF_RETURN_IF_ERROR(SimplifyGraph());
   TF_RETURN_IF_ERROR(FixSchedule());
   TF_RETURN_IF_ERROR(ExportAndColorBuffers());
+  std::vector<int64_t> alt_mem_bytes_occupied;
+  // alt_mem_bytes_occupied is used for logging in the RuntimeSimulator below.
+  // We only populate it in VerifyAndExportHeapSimulatorTrace if the
+  // RuntimeSimulator is present.
+  TF_RETURN_IF_ERROR(VerifyAndExportHeapSimulatorTrace(
+      runtime_simulator.has_value() ? &alt_mem_bytes_occupied : nullptr));
   if (runtime_simulator.has_value()) {
-    float estimated_time =
-        runtime_simulator->SimulateElapsedTime(module_, allocations_);
+    float estimated_time = runtime_simulator->SimulateElapsedTime(
+        module_, allocations_, &alt_mem_bytes_occupied);
     VLOG(1) << "Estimated elapsed time with async copies (sec): "
             << estimated_time;
   }
@@ -391,8 +438,6 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
           << stats.num_sliced_prefetch_slices;
   VLOG(1) << "Number of evictions: " << stats.num_evictions
           << ", in bytes: " << stats.eviction_bytes;
-
-  TF_RETURN_IF_ERROR(VerifyAndExportHeapSimulatorTrace());
 
   return std::move(preset_assignments_);
 }
@@ -1003,7 +1048,8 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
   return absl::OkStatus();
 }
 
-absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
+absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
+    std::vector<int64_t>* alt_mem_bytes_occupied) {
   VLOG(1) << "Verifying...";
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module_));
@@ -1179,6 +1225,12 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
   int64_t max_memory_usage = 0;
   int64_t prev_time = 0;
   int64_t prev_memory_usage = 0;
+  if (alt_mem_bytes_occupied) {
+    // Populate alt_mem_bytes_occupied with -1, for each instruction.
+    alt_mem_bytes_occupied->resize(
+        hlo_live_range->flattened_instruction_sequence().instructions().size(),
+        -1);
+  }
   for (const auto& event : events) {
     int64_t time;
     bool is_free;
@@ -1215,8 +1267,23 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
     }
     prev_memory_usage = std::max(prev_memory_usage, memory_usage);
     max_memory_usage = std::max(max_memory_usage, memory_usage);
-    VLOG(4) << "Memory usage: " << memory_usage << " at time: " << time;
+    if (alt_mem_bytes_occupied) {
+      // Update known alt mem usage.
+      (*alt_mem_bytes_occupied)[time] = memory_usage;
+    }
   }
+  if (alt_mem_bytes_occupied) {
+    // Replace the -1s in alt_mem_bytes_occupied with the previous alt memory
+    // usage.
+    int64_t prev_bytes = 0;
+    for (int64_t i = 0; i < alt_mem_bytes_occupied->size(); ++i) {
+      if ((*alt_mem_bytes_occupied)[i] == -1) {
+        (*alt_mem_bytes_occupied)[i] = prev_bytes;
+      }
+      prev_bytes = (*alt_mem_bytes_occupied)[i];
+    }
+  }
+
   VLOG(1) << "Max memory usage ignoring fragmentation: " << max_memory_usage;
 
   return absl::OkStatus();

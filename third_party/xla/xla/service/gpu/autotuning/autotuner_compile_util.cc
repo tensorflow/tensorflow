@@ -94,6 +94,8 @@ AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
   opts_.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
   // Avoid using GPU graphs as we don't want to measure graph construction time.
   opts_.clear_xla_gpu_enable_command_buffer();
+  // Avoid using async dot as we don't want to measure event overheads.
+  opts_.set_xla_gpu_async_dot(false);
   opts_.set_xla_embed_ir_in_executable(false);
   opts_.set_xla_gpu_kernel_cache_file("");
 }

@@ -18,7 +18,10 @@ limitations under the License.
 
 #include <string_view>
 
-namespace stream_executor::gpu::internal {
+#include "xla/stream_executor/kernel_spec.h"
+
+namespace stream_executor::gpu {
+namespace internal {
 
 // This is a collection of gpu kernels for writing simple StreamExecutor tests.
 //
@@ -97,6 +100,14 @@ void* GetIncAndCmpKernel();
 // StreamExecutor arguments packing for custom C++ types.
 void* GetAddI32Ptrs3Kernel();
 
-}  // namespace stream_executor::gpu::internal
+}  // namespace internal
+
+// Returns an in-process kernel loader spec for the `AddI32` kernel above.
+MultiKernelLoaderSpec GetAddI32KernelSpec();
+
+// Returns a PTX kernel loader spec for the `AddI32` PTX kernel above.
+MultiKernelLoaderSpec GetAddI32PtxKernelSpec();
+
+}  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_H_

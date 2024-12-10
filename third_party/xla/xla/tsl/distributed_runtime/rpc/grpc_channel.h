@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "grpcpp/grpcpp.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
-#include "tsl/protobuf/rpc_options.pb.h"
+#include "xla/tsl/protobuf/rpc_options.pb.h"
 
 namespace tsl {
 using tensorflow::RPCOptions;

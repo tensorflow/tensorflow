@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_GRAPH_TO_FUNC_H_
 #define TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_GRAPH_TO_FUNC_H_
 
+#include <string>
+
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/status.h"
 

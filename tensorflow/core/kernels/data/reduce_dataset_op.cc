@@ -41,7 +41,7 @@ ReduceDatasetOp::ReduceDatasetOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
 }
 
-Status ReduceDatasetOp::DoCompute(OpKernelContext* ctx) {
+absl::Status ReduceDatasetOp::DoCompute(OpKernelContext* ctx) {
   tsl::profiler::TraceMe traceme(
       [&] {
         return tsl::profiler::TraceMeEncode("ReduceDatasetOp::DoCompute",

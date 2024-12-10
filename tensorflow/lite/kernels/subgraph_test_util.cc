@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdlib.h>
-
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <numeric>
 #include <random>
 #include <string>
 #include <vector>
@@ -743,21 +744,26 @@ void SubgraphBuilder::BuildCompositeSubgraph(Subgraph* subgraph,
   const auto& outputs = decomposition->outputs();
   const int decomposition_tensor_count = inputs.size() + outputs.size();
 
+  std::vector<int> subgraph_inputs(inputs.size());
+  std::iota(begin(subgraph_inputs), end(subgraph_inputs), 0);
+  std::vector<int> subgraph_outputs(outputs.size());
+  std::iota(begin(subgraph_outputs), end(subgraph_outputs), inputs.size());
+
   int first_new_tensor_index;
   ASSERT_EQ(
       subgraph->AddTensors(decomposition_tensor_count, &first_new_tensor_index),
       kTfLiteOk);
   ASSERT_EQ(first_new_tensor_index, 0);
-  ASSERT_EQ(subgraph->SetInputs(inputs), kTfLiteOk);
-  ASSERT_EQ(subgraph->SetOutputs(outputs), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetInputs(subgraph_inputs), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs(subgraph_outputs), kTfLiteOk);
 
   for (size_t i = 0; i < inputs.size(); ++i) {
     const TfLiteTensor* src = decomposition->tensor(inputs[i]);
-    SetupTensor(subgraph, inputs[i], src->type);
+    SetupTensor(subgraph, i, src->type);
   }
   for (size_t i = 0; i < outputs.size(); ++i) {
     const TfLiteTensor* src = decomposition->tensor(outputs[i]);
-    SetupTensor(subgraph, outputs[i], src->type);
+    SetupTensor(subgraph, inputs.size() + i, src->type);
   }
 
   TfLiteStablehloCompositeParams* params =
@@ -772,8 +778,9 @@ void SubgraphBuilder::BuildCompositeSubgraph(Subgraph* subgraph,
   composite_reg->builtin_code = kTfLiteBuiltinStablehloComposite;
 
   int node_index;
-  subgraph->AddNodeWithParameters(inputs, outputs, {}, nullptr, 0, params,
-                                  composite_reg, &node_index);
+  subgraph->AddNodeWithParameters(subgraph_inputs, subgraph_outputs, {},
+                                  nullptr, 0, params, composite_reg,
+                                  &node_index);
 }
 
 void SubgraphBuilder::BuildLargeLessEqualCondSubgraph(Subgraph* subgraph,

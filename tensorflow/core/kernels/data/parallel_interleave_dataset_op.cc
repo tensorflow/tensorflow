@@ -273,22 +273,23 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     return kUnknownCardinality;
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     std::vector<std::pair<size_t, Node*>> inputs;
-    std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>> list_inputs;
+    std::vector<std::pair<size_t, absl::Span<Node* const>>> list_inputs;
     int input_index = 0;
 
     Node* input_node;
@@ -375,7 +376,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // TODO(jsimsa): Register cancellation callback once the implementation is
     // refactored not to hold mu_ while calling `GetNext` on the input.
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       interleave_depth_ = ctx->interleave_depth();
 
@@ -418,9 +419,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       std::shared_ptr<Result> result;
       {
         mutex_lock l(*mu_);
@@ -490,8 +491,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                                           dataset()->cycle_length_))});
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(*mu_);
@@ -533,8 +534,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       {
         mutex_lock l(*mu_);
         DCHECK(!threads_started_);
@@ -630,7 +631,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       explicit Result(IteratorContext* ctx)
           : checkpoint(MemoryCheckpoint{ctx->id_registry()}) {}
 
-      Status status;
+      absl::Status status;
       int64_t id = -1;
       std::vector<Tensor> return_values;
       MemoryCheckpoint checkpoint;
@@ -1132,7 +1133,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> inputs;
       // TODO(aaudibert): Refactor the implementation to move calls of
       // `GetNext` out of the scope of `mu_`.
-      Status status = input_impl_->GetNext(ctx, &inputs, &end_of_input_);
+      absl::Status status = input_impl_->GetNext(ctx, &inputs, &end_of_input_);
       checkpoint_->Merge(ctx->checkpoint());
       if (!status.ok()) {
         AddErrorResult(ctx, element, status);
@@ -1164,8 +1165,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     // Adds an error result for the given element.
-    void AddErrorResult(IteratorContext* ctx, Element& element, Status status)
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    void AddErrorResult(IteratorContext* ctx, Element& element,
+                        absl::Status status) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       auto result = std::make_shared<Result>(ctx);
       result->status = status;
       element.results.push_back(std::move(result));
@@ -1275,9 +1276,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status WriteStatusLocked(IteratorStateWriter* writer,
-                             const string& iterator_name, size_t idx,
-                             const Status& status)
+    absl::Status WriteStatusLocked(IteratorStateWriter* writer,
+                                   const string& iterator_name, size_t idx,
+                                   const absl::Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           iterator_name, CodeKey(idx), static_cast<int64_t>(status.code())));
@@ -1289,9 +1290,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status ReadStatusLocked(IteratorStateReader* reader,
-                            const string& iterator_name, size_t idx,
-                            Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    absl::Status ReadStatusLocked(IteratorStateReader* reader,
+                                  const string& iterator_name, size_t idx,
+                                  absl::Status* status)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       int64_t code_int;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(iterator_name, CodeKey(idx), &code_int));
@@ -1301,7 +1303,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         tstring error_message;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             iterator_name, ErrorMessageKey(idx), &error_message));
-        *status = Status(code, error_message);
+        *status = absl::Status(code, error_message);
       } else {
         *status = absl::OkStatus();
       }
@@ -1316,9 +1318,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::StrCat(kResultsSuffix, "[", idx, "]", kErrorMessageSuffix);
     }
 
-    Status WriteElement(SerializationContext* ctx,
-                        std::shared_ptr<Element> element,
-                        const string& key_prefix, IteratorStateWriter* writer)
+    absl::Status WriteElement(SerializationContext* ctx,
+                              std::shared_ptr<Element> element,
+                              const string& key_prefix,
+                              IteratorStateWriter* writer)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (element->iterator ||
           (ctx->symbolic_checkpoint() && !element->results.empty())) {
@@ -1365,8 +1368,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status WriteCurrentElements(SerializationContext* ctx,
-                                IteratorStateWriter* writer)
+    absl::Status WriteCurrentElements(SerializationContext* ctx,
+                                      IteratorStateWriter* writer)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurrentElementsSize,
                                              current_elements_.size()));
@@ -1384,8 +1387,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status WriteFutureElements(SerializationContext* ctx,
-                               IteratorStateWriter* writer)
+    absl::Status WriteFutureElements(SerializationContext* ctx,
+                                     IteratorStateWriter* writer)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kFutureElementsSize,
                                              future_elements_.size()));
@@ -1403,9 +1406,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status ReadElement(IteratorContext* ctx, IteratorStateReader* reader,
-                       int idx, const string& key_prefix,
-                       std::shared_ptr<Element>* out) {
+    absl::Status ReadElement(IteratorContext* ctx, IteratorStateReader* reader,
+                             int idx, const string& key_prefix,
+                             std::shared_ptr<Element>* out) {
       int64_t element_uninitialized;
       TF_RETURN_IF_ERROR(reader->ReadScalar(key_prefix, kElementUninitialized,
                                             &element_uninitialized));
@@ -1478,8 +1481,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status ReadCurrentElements(IteratorContext* ctx,
-                               IteratorStateReader* reader) {
+    absl::Status ReadCurrentElements(IteratorContext* ctx,
+                                     IteratorStateReader* reader) {
       int64_t size;
       {
         mutex_lock l(*mu_);
@@ -1516,8 +1519,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status ReadFutureElements(IteratorContext* ctx,
-                              IteratorStateReader* reader) {
+    absl::Status ReadFutureElements(IteratorContext* ctx,
+                                    IteratorStateReader* reader) {
       int64_t size;
       {
         mutex_lock l(*mu_);
@@ -1541,11 +1544,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status ReadElementsParallel(
+    absl::Status ReadElementsParallel(
         IteratorContext* ctx, IteratorStateReader* reader, int64_t size,
         const string& name, std::vector<std::shared_ptr<Element>>* elements) {
       elements->resize(size);
-      Status s = absl::OkStatus();
+      absl::Status s = absl::OkStatus();
       BlockingCounter counter(size);
       for (int idx = 0; idx < size; ++idx) {
         thread_pool_->Schedule([this, ctx, reader, idx, name, &s, &counter,
@@ -1559,7 +1562,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           const auto& key_prefix =
               absl::StrCat(prefix(), "::", name, "::", idx);
           IteratorContext ctx_copy(ctx);
-          Status ret_status =
+          absl::Status ret_status =
               ReadElement(&ctx_copy, reader, idx, key_prefix, &elem);
           mutex_lock l(*mu_);
           ctx->MergeCheckpoint(ctx_copy.checkpoint());

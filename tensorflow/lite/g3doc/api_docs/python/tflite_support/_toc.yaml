@@ -1,0 +1,629 @@
+toc:
+- section:
+  - path: /lite/api_docs/python/tflite_support
+    title: Overview
+  - section:
+    - path: /lite/api_docs/python/tflite_support/metadata
+      title: Overview
+    - path: /lite/api_docs/python/tflite_support/metadata/MetadataDisplayer
+      title: MetadataDisplayer
+    - path: /lite/api_docs/python/tflite_support/metadata/MetadataPopulator
+      title: MetadataPopulator
+    - path: /lite/api_docs/python/tflite_support/metadata/convert_to_json
+      title: convert_to_json
+    - path: /lite/api_docs/python/tflite_support/metadata/get_metadata_buffer
+      title: get_metadata_buffer
+    - path: /lite/api_docs/python/tflite_support/metadata/get_path_to_datafile
+      title: get_path_to_datafile
+    title: metadata
+  - section:
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated
+      title: Overview
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AssociatedFile
+      title: AssociatedFile
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AssociatedFileAddDescription
+      title: AssociatedFileAddDescription
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AssociatedFileAddLocale
+      title: AssociatedFileAddLocale
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AssociatedFileAddName
+      title: AssociatedFileAddName
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AssociatedFileAddType
+      title: AssociatedFileAddType
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AssociatedFileAddVersion
+      title: AssociatedFileAddVersion
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AssociatedFileEnd
+      title: AssociatedFileEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AssociatedFileStart
+      title: AssociatedFileStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AssociatedFileT
+      title: AssociatedFileT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AssociatedFileType
+      title: AssociatedFileType
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AudioProperties
+      title: AudioProperties
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AudioPropertiesAddChannels
+      title: AudioPropertiesAddChannels
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AudioPropertiesAddSampleRate
+      title: AudioPropertiesAddSampleRate
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AudioPropertiesEnd
+      title: AudioPropertiesEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AudioPropertiesStart
+      title: AudioPropertiesStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/AudioPropertiesT
+      title: AudioPropertiesT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BertTokenizerOptions
+      title: BertTokenizerOptions
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BertTokenizerOptionsAddVocabFile
+      title: BertTokenizerOptionsAddVocabFile
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BertTokenizerOptionsEnd
+      title: BertTokenizerOptionsEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BertTokenizerOptionsStart
+      title: BertTokenizerOptionsStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BertTokenizerOptionsStartVocabFileVector
+      title: BertTokenizerOptionsStartVocabFileVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BertTokenizerOptionsT
+      title: BertTokenizerOptionsT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BoundingBoxProperties
+      title: BoundingBoxProperties
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BoundingBoxPropertiesAddCoordinateType
+      title: BoundingBoxPropertiesAddCoordinateType
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BoundingBoxPropertiesAddIndex
+      title: BoundingBoxPropertiesAddIndex
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BoundingBoxPropertiesAddType
+      title: BoundingBoxPropertiesAddType
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BoundingBoxPropertiesEnd
+      title: BoundingBoxPropertiesEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BoundingBoxPropertiesStart
+      title: BoundingBoxPropertiesStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BoundingBoxPropertiesStartIndexVector
+      title: BoundingBoxPropertiesStartIndexVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BoundingBoxPropertiesT
+      title: BoundingBoxPropertiesT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/BoundingBoxType
+      title: BoundingBoxType
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ColorSpaceType
+      title: ColorSpaceType
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/Content
+      title: Content
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ContentAddContentProperties
+      title: ContentAddContentProperties
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ContentAddContentPropertiesType
+      title: ContentAddContentPropertiesType
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ContentAddRange
+      title: ContentAddRange
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ContentEnd
+      title: ContentEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ContentProperties
+      title: ContentProperties
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ContentPropertiesCreator
+      title: ContentPropertiesCreator
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ContentStart
+      title: ContentStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ContentT
+      title: ContentT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/CoordinateType
+      title: CoordinateType
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/CustomMetadata
+      title: CustomMetadata
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/CustomMetadataAddData
+      title: CustomMetadataAddData
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/CustomMetadataAddName
+      title: CustomMetadataAddName
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/CustomMetadataEnd
+      title: CustomMetadataEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/CustomMetadataStart
+      title: CustomMetadataStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/CustomMetadataStartDataVector
+      title: CustomMetadataStartDataVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/CustomMetadataT
+      title: CustomMetadataT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/FeatureProperties
+      title: FeatureProperties
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/FeaturePropertiesEnd
+      title: FeaturePropertiesEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/FeaturePropertiesStart
+      title: FeaturePropertiesStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/FeaturePropertiesT
+      title: FeaturePropertiesT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ImageProperties
+      title: ImageProperties
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ImagePropertiesAddColorSpace
+      title: ImagePropertiesAddColorSpace
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ImagePropertiesAddDefaultSize
+      title: ImagePropertiesAddDefaultSize
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ImagePropertiesEnd
+      title: ImagePropertiesEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ImagePropertiesStart
+      title: ImagePropertiesStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ImagePropertiesT
+      title: ImagePropertiesT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ImageSize
+      title: ImageSize
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ImageSizeAddHeight
+      title: ImageSizeAddHeight
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ImageSizeAddWidth
+      title: ImageSizeAddWidth
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ImageSizeEnd
+      title: ImageSizeEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ImageSizeStart
+      title: ImageSizeStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ImageSizeT
+      title: ImageSizeT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadata
+      title: ModelMetadata
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadataAddAssociatedFiles
+      title: ModelMetadataAddAssociatedFiles
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadataAddAuthor
+      title: ModelMetadataAddAuthor
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadataAddDescription
+      title: ModelMetadataAddDescription
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadataAddLicense
+      title: ModelMetadataAddLicense
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadataAddMinParserVersion
+      title: ModelMetadataAddMinParserVersion
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadataAddName
+      title: ModelMetadataAddName
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadataAddSubgraphMetadata
+      title: ModelMetadataAddSubgraphMetadata
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadataAddVersion
+      title: ModelMetadataAddVersion
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadataEnd
+      title: ModelMetadataEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadataStart
+      title: ModelMetadataStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadataStartAssociatedFilesVector
+      title: ModelMetadataStartAssociatedFilesVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadataStartSubgraphMetadataVector
+      title: ModelMetadataStartSubgraphMetadataVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ModelMetadataT
+      title: ModelMetadataT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/NormalizationOptions
+      title: NormalizationOptions
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/NormalizationOptionsAddMean
+      title: NormalizationOptionsAddMean
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/NormalizationOptionsAddStd
+      title: NormalizationOptionsAddStd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/NormalizationOptionsEnd
+      title: NormalizationOptionsEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/NormalizationOptionsStart
+      title: NormalizationOptionsStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/NormalizationOptionsStartMeanVector
+      title: NormalizationOptionsStartMeanVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/NormalizationOptionsStartStdVector
+      title: NormalizationOptionsStartStdVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/NormalizationOptionsT
+      title: NormalizationOptionsT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ProcessUnit
+      title: ProcessUnit
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ProcessUnitAddOptions
+      title: ProcessUnitAddOptions
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ProcessUnitAddOptionsType
+      title: ProcessUnitAddOptionsType
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ProcessUnitEnd
+      title: ProcessUnitEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ProcessUnitOptions
+      title: ProcessUnitOptions
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ProcessUnitOptionsCreator
+      title: ProcessUnitOptionsCreator
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ProcessUnitStart
+      title: ProcessUnitStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ProcessUnitT
+      title: ProcessUnitT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/RegexTokenizerOptions
+      title: RegexTokenizerOptions
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/RegexTokenizerOptionsAddDelimRegexPattern
+      title: RegexTokenizerOptionsAddDelimRegexPattern
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/RegexTokenizerOptionsAddVocabFile
+      title: RegexTokenizerOptionsAddVocabFile
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/RegexTokenizerOptionsEnd
+      title: RegexTokenizerOptionsEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/RegexTokenizerOptionsStart
+      title: RegexTokenizerOptionsStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/RegexTokenizerOptionsStartVocabFileVector
+      title: RegexTokenizerOptionsStartVocabFileVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/RegexTokenizerOptionsT
+      title: RegexTokenizerOptionsT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ScoreCalibrationOptions
+      title: ScoreCalibrationOptions
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ScoreCalibrationOptionsAddDefaultScore
+      title: ScoreCalibrationOptionsAddDefaultScore
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ScoreCalibrationOptionsAddScoreTransformation
+      title: ScoreCalibrationOptionsAddScoreTransformation
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ScoreCalibrationOptionsEnd
+      title: ScoreCalibrationOptionsEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ScoreCalibrationOptionsStart
+      title: ScoreCalibrationOptionsStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ScoreCalibrationOptionsT
+      title: ScoreCalibrationOptionsT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ScoreThresholdingOptions
+      title: ScoreThresholdingOptions
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ScoreThresholdingOptionsAddGlobalScoreThreshold
+      title: ScoreThresholdingOptionsAddGlobalScoreThreshold
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ScoreThresholdingOptionsEnd
+      title: ScoreThresholdingOptionsEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ScoreThresholdingOptionsStart
+      title: ScoreThresholdingOptionsStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ScoreThresholdingOptionsT
+      title: ScoreThresholdingOptionsT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ScoreTransformationType
+      title: ScoreTransformationType
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SentencePieceTokenizerOptions
+      title: SentencePieceTokenizerOptions
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SentencePieceTokenizerOptionsAddSentencePieceModel
+      title: SentencePieceTokenizerOptionsAddSentencePieceModel
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SentencePieceTokenizerOptionsAddVocabFile
+      title: SentencePieceTokenizerOptionsAddVocabFile
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SentencePieceTokenizerOptionsEnd
+      title: SentencePieceTokenizerOptionsEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SentencePieceTokenizerOptionsStart
+      title: SentencePieceTokenizerOptionsStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SentencePieceTokenizerOptionsStartSentencePieceModelVector
+      title: SentencePieceTokenizerOptionsStartSentencePieceModelVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SentencePieceTokenizerOptionsStartVocabFileVector
+      title: SentencePieceTokenizerOptionsStartVocabFileVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SentencePieceTokenizerOptionsT
+      title: SentencePieceTokenizerOptionsT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/Stats
+      title: Stats
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/StatsAddMax
+      title: StatsAddMax
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/StatsAddMin
+      title: StatsAddMin
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/StatsEnd
+      title: StatsEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/StatsStart
+      title: StatsStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/StatsStartMaxVector
+      title: StatsStartMaxVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/StatsStartMinVector
+      title: StatsStartMinVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/StatsT
+      title: StatsT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadata
+      title: SubGraphMetadata
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataAddAssociatedFiles
+      title: SubGraphMetadataAddAssociatedFiles
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataAddCustomMetadata
+      title: SubGraphMetadataAddCustomMetadata
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataAddDescription
+      title: SubGraphMetadataAddDescription
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataAddInputProcessUnits
+      title: SubGraphMetadataAddInputProcessUnits
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataAddInputTensorGroups
+      title: SubGraphMetadataAddInputTensorGroups
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataAddInputTensorMetadata
+      title: SubGraphMetadataAddInputTensorMetadata
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataAddName
+      title: SubGraphMetadataAddName
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataAddOutputProcessUnits
+      title: SubGraphMetadataAddOutputProcessUnits
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataAddOutputTensorGroups
+      title: SubGraphMetadataAddOutputTensorGroups
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataAddOutputTensorMetadata
+      title: SubGraphMetadataAddOutputTensorMetadata
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataEnd
+      title: SubGraphMetadataEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataStart
+      title: SubGraphMetadataStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataStartAssociatedFilesVector
+      title: SubGraphMetadataStartAssociatedFilesVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataStartCustomMetadataVector
+      title: SubGraphMetadataStartCustomMetadataVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataStartInputProcessUnitsVector
+      title: SubGraphMetadataStartInputProcessUnitsVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataStartInputTensorGroupsVector
+      title: SubGraphMetadataStartInputTensorGroupsVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataStartInputTensorMetadataVector
+      title: SubGraphMetadataStartInputTensorMetadataVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataStartOutputProcessUnitsVector
+      title: SubGraphMetadataStartOutputProcessUnitsVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataStartOutputTensorGroupsVector
+      title: SubGraphMetadataStartOutputTensorGroupsVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataStartOutputTensorMetadataVector
+      title: SubGraphMetadataStartOutputTensorMetadataVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/SubGraphMetadataT
+      title: SubGraphMetadataT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorGroup
+      title: TensorGroup
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorGroupAddName
+      title: TensorGroupAddName
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorGroupAddTensorNames
+      title: TensorGroupAddTensorNames
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorGroupEnd
+      title: TensorGroupEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorGroupStart
+      title: TensorGroupStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorGroupStartTensorNamesVector
+      title: TensorGroupStartTensorNamesVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorGroupT
+      title: TensorGroupT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadata
+      title: TensorMetadata
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadataAddAssociatedFiles
+      title: TensorMetadataAddAssociatedFiles
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadataAddContent
+      title: TensorMetadataAddContent
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadataAddDescription
+      title: TensorMetadataAddDescription
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadataAddDimensionNames
+      title: TensorMetadataAddDimensionNames
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadataAddName
+      title: TensorMetadataAddName
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadataAddProcessUnits
+      title: TensorMetadataAddProcessUnits
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadataAddStats
+      title: TensorMetadataAddStats
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadataEnd
+      title: TensorMetadataEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadataStart
+      title: TensorMetadataStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadataStartAssociatedFilesVector
+      title: TensorMetadataStartAssociatedFilesVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadataStartDimensionNamesVector
+      title: TensorMetadataStartDimensionNamesVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadataStartProcessUnitsVector
+      title: TensorMetadataStartProcessUnitsVector
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/TensorMetadataT
+      title: TensorMetadataT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ValueRange
+      title: ValueRange
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ValueRangeAddMax
+      title: ValueRangeAddMax
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ValueRangeAddMin
+      title: ValueRangeAddMin
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ValueRangeEnd
+      title: ValueRangeEnd
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ValueRangeStart
+      title: ValueRangeStart
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/ValueRangeT
+      title: ValueRangeT
+    - path: /lite/api_docs/python/tflite_support/metadata_schema_py_generated/import_numpy
+      title: import_numpy
+    title: metadata_schema_py_generated
+  - section:
+    - path: /lite/api_docs/python/tflite_support/metadata_writers
+      title: Overview
+    - section:
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/audio_classifier
+        title: Overview
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/audio_classifier/MetadataWriter
+        title: MetadataWriter
+      - section:
+        - path: /lite/api_docs/python/tflite_support/metadata_writers/audio_classifier/metadata_writer
+          title: Overview
+        - path: /lite/api_docs/python/tflite_support/metadata_writers/audio_classifier/metadata_writer/MetadataWriter
+          title: MetadataWriter
+        title: metadata_writer
+      title: audio_classifier
+    - section:
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/bert_nl_classifier
+        title: Overview
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/bert_nl_classifier/MetadataWriter
+        title: MetadataWriter
+      title: bert_nl_classifier
+    - section:
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/image_classifier
+        title: Overview
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/image_classifier/MetadataWriter
+        title: MetadataWriter
+      title: image_classifier
+    - section:
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/image_segmenter
+        title: Overview
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/image_segmenter/MetadataWriter
+        title: MetadataWriter
+      title: image_segmenter
+    - section:
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info
+        title: Overview
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/AssociatedFileMd
+        title: AssociatedFileMd
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/BertInputTensorsMd
+        title: BertInputTensorsMd
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/BertTokenizerMd
+        title: BertTokenizerMd
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/CategoryTensorMd
+        title: CategoryTensorMd
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/ClassificationTensorMd
+        title: ClassificationTensorMd
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/GeneralMd
+        title: GeneralMd
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/InputAudioTensorMd
+        title: InputAudioTensorMd
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/InputImageTensorMd
+        title: InputImageTensorMd
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/InputTextTensorMd
+        title: InputTextTensorMd
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/LabelFileMd
+        title: LabelFileMd
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/RegexTokenizerMd
+        title: RegexTokenizerMd
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/ScoreCalibrationMd
+        title: ScoreCalibrationMd
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/SentencePieceTokenizerMd
+        title: SentencePieceTokenizerMd
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/metadata_info/TensorMd
+        title: TensorMd
+      title: metadata_info
+    - section:
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/nl_classifier
+        title: Overview
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/nl_classifier/MetadataWriter
+        title: MetadataWriter
+      title: nl_classifier
+    - section:
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/object_detector
+        title: Overview
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/object_detector/MetadataWriter
+        title: MetadataWriter
+      title: object_detector
+    - section:
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/writer_utils
+        title: Overview
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/writer_utils/compute_flat_size
+        title: compute_flat_size
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/writer_utils/get_input_tensor_names
+        title: get_input_tensor_names
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/writer_utils/get_input_tensor_shape
+        title: get_input_tensor_shape
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/writer_utils/get_input_tensor_types
+        title: get_input_tensor_types
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/writer_utils/get_output_tensor_names
+        title: get_output_tensor_names
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/writer_utils/get_output_tensor_types
+        title: get_output_tensor_types
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/writer_utils/get_tokenizer_associated_files
+        title: get_tokenizer_associated_files
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/writer_utils/load_file
+        title: load_file
+      - path: /lite/api_docs/python/tflite_support/metadata_writers/writer_utils/save_file
+        title: save_file
+      title: writer_utils
+    title: metadata_writers
+  - section:
+    - path: /lite/api_docs/python/tflite_support/task
+      title: Overview
+    - section:
+      - path: /lite/api_docs/python/tflite_support/task/audio
+        title: Overview
+      - path: /lite/api_docs/python/tflite_support/task/audio/AudioClassifier
+        title: AudioClassifier
+      - path: /lite/api_docs/python/tflite_support/task/audio/AudioClassifierOptions
+        title: AudioClassifierOptions
+      - path: /lite/api_docs/python/tflite_support/task/audio/AudioEmbedder
+        title: AudioEmbedder
+      - path: /lite/api_docs/python/tflite_support/task/audio/AudioEmbedderOptions
+        title: AudioEmbedderOptions
+      - path: /lite/api_docs/python/tflite_support/task/audio/AudioFormat
+        title: AudioFormat
+      - path: /lite/api_docs/python/tflite_support/task/audio/AudioRecord
+        title: AudioRecord
+      - path: /lite/api_docs/python/tflite_support/task/audio/TensorAudio
+        title: TensorAudio
+      title: audio
+    - section:
+      - path: /lite/api_docs/python/tflite_support/task/core
+        title: Overview
+      - path: /lite/api_docs/python/tflite_support/task/core/BaseOptions
+        title: BaseOptions
+      title: core
+    - section:
+      - path: /lite/api_docs/python/tflite_support/task/processor
+        title: Overview
+      - path: /lite/api_docs/python/tflite_support/task/processor/BertCluAnnotationOptions
+        title: BertCluAnnotationOptions
+      - path: /lite/api_docs/python/tflite_support/task/processor/BoundingBox
+        title: BoundingBox
+      - path: /lite/api_docs/python/tflite_support/task/processor/CategoricalSlot
+        title: CategoricalSlot
+      - path: /lite/api_docs/python/tflite_support/task/processor/Category
+        title: Category
+      - path: /lite/api_docs/python/tflite_support/task/processor/ClassificationOptions
+        title: ClassificationOptions
+      - path: /lite/api_docs/python/tflite_support/task/processor/ClassificationResult
+        title: ClassificationResult
+      - path: /lite/api_docs/python/tflite_support/task/processor/Classifications
+        title: Classifications
+      - path: /lite/api_docs/python/tflite_support/task/processor/CluRequest
+        title: CluRequest
+      - path: /lite/api_docs/python/tflite_support/task/processor/CluResponse
+        title: CluResponse
+      - path: /lite/api_docs/python/tflite_support/task/processor/ColoredLabel
+        title: ColoredLabel
+      - path: /lite/api_docs/python/tflite_support/task/processor/ConfidenceMask
+        title: ConfidenceMask
+      - path: /lite/api_docs/python/tflite_support/task/processor/Detection
+        title: Detection
+      - path: /lite/api_docs/python/tflite_support/task/processor/DetectionOptions
+        title: DetectionOptions
+      - path: /lite/api_docs/python/tflite_support/task/processor/DetectionResult
+        title: DetectionResult
+      - path: /lite/api_docs/python/tflite_support/task/processor/Embedding
+        title: Embedding
+      - path: /lite/api_docs/python/tflite_support/task/processor/EmbeddingOptions
+        title: EmbeddingOptions
+      - path: /lite/api_docs/python/tflite_support/task/processor/EmbeddingResult
+        title: EmbeddingResult
+      - path: /lite/api_docs/python/tflite_support/task/processor/FeatureVector
+        title: FeatureVector
+      - path: /lite/api_docs/python/tflite_support/task/processor/Mention
+        title: Mention
+      - path: /lite/api_docs/python/tflite_support/task/processor/MentionedSlot
+        title: MentionedSlot
+      - path: /lite/api_docs/python/tflite_support/task/processor/NearestNeighbor
+        title: NearestNeighbor
+      - path: /lite/api_docs/python/tflite_support/task/processor/OutputType
+        title: OutputType
+      - path: /lite/api_docs/python/tflite_support/task/processor/Pos
+        title: Pos
+      - path: /lite/api_docs/python/tflite_support/task/processor/QaAnswer
+        title: QaAnswer
+      - path: /lite/api_docs/python/tflite_support/task/processor/QuestionAnswererResult
+        title: QuestionAnswererResult
+      - path: /lite/api_docs/python/tflite_support/task/processor/SearchOptions
+        title: SearchOptions
+      - path: /lite/api_docs/python/tflite_support/task/processor/SearchResult
+        title: SearchResult
+      - path: /lite/api_docs/python/tflite_support/task/processor/Segmentation
+        title: Segmentation
+      - path: /lite/api_docs/python/tflite_support/task/processor/SegmentationOptions
+        title: SegmentationOptions
+      - path: /lite/api_docs/python/tflite_support/task/processor/SegmentationResult
+        title: SegmentationResult
+      title: processor
+    - section:
+      - path: /lite/api_docs/python/tflite_support/task/text
+        title: Overview
+      - path: /lite/api_docs/python/tflite_support/task/text/BertCluAnnotator
+        title: BertCluAnnotator
+      - path: /lite/api_docs/python/tflite_support/task/text/BertCluAnnotatorOptions
+        title: BertCluAnnotatorOptions
+      - path: /lite/api_docs/python/tflite_support/task/text/BertNLClassifier
+        title: BertNLClassifier
+      - path: /lite/api_docs/python/tflite_support/task/text/BertNLClassifierOptions
+        title: BertNLClassifierOptions
+      - path: /lite/api_docs/python/tflite_support/task/text/BertQuestionAnswerer
+        title: BertQuestionAnswerer
+      - path: /lite/api_docs/python/tflite_support/task/text/BertQuestionAnswererOptions
+        title: BertQuestionAnswererOptions
+      - path: /lite/api_docs/python/tflite_support/task/text/NLClassifier
+        title: NLClassifier
+      - path: /lite/api_docs/python/tflite_support/task/text/NLClassifierOptions
+        title: NLClassifierOptions
+      - path: /lite/api_docs/python/tflite_support/task/text/TextEmbedder
+        title: TextEmbedder
+      - path: /lite/api_docs/python/tflite_support/task/text/TextEmbedderOptions
+        title: TextEmbedderOptions
+      - path: /lite/api_docs/python/tflite_support/task/text/TextSearcher
+        title: TextSearcher
+      - path: /lite/api_docs/python/tflite_support/task/text/TextSearcherOptions
+        title: TextSearcherOptions
+      title: text
+    - section:
+      - path: /lite/api_docs/python/tflite_support/task/vision
+        title: Overview
+      - path: /lite/api_docs/python/tflite_support/task/vision/ImageClassifier
+        title: ImageClassifier
+      - path: /lite/api_docs/python/tflite_support/task/vision/ImageClassifierOptions
+        title: ImageClassifierOptions
+      - path: /lite/api_docs/python/tflite_support/task/vision/ImageEmbedder
+        title: ImageEmbedder
+      - path: /lite/api_docs/python/tflite_support/task/vision/ImageEmbedderOptions
+        title: ImageEmbedderOptions
+      - path: /lite/api_docs/python/tflite_support/task/vision/ImageSearcher
+        title: ImageSearcher
+      - path: /lite/api_docs/python/tflite_support/task/vision/ImageSearcherOptions
+        title: ImageSearcherOptions
+      - path: /lite/api_docs/python/tflite_support/task/vision/ImageSegmenter
+        title: ImageSegmenter
+      - path: /lite/api_docs/python/tflite_support/task/vision/ImageSegmenterOptions
+        title: ImageSegmenterOptions
+      - path: /lite/api_docs/python/tflite_support/task/vision/ObjectDetector
+        title: ObjectDetector
+      - path: /lite/api_docs/python/tflite_support/task/vision/ObjectDetectorOptions
+        title: ObjectDetectorOptions
+      - path: /lite/api_docs/python/tflite_support/task/vision/TensorImage
+        title: TensorImage
+      title: vision
+    title: task
+  title: tflite_support

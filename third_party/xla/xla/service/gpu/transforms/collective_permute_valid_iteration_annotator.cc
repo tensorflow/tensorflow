@@ -12,10 +12,10 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
 
+#include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/while_loop_analysis.h"
 
 namespace xla {
 
@@ -71,7 +71,7 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
   bool changed = false;
   for (HloComputation* comp : module->computations(execution_threads)) {
     for (HloInstruction* inst : comp->instructions()) {
-      if (inst->opcode() != HloOpcode::kCollectivePermute) {
+      if (HloPredicateIsNotOp<HloOpcode::kCollectivePermute>(inst)) {
         continue;
       }
 

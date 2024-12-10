@@ -29,8 +29,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/SmallVector.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -67,7 +68,7 @@ absl::Status VerifyTiledHloInstructionConstructorPreconditions(
     return absl::InvalidArgumentError(absl::StrFormat(
         "tile_offsets_indexing must have the same number of results as the "
         "rank of the hlo shape. tile_offsets_indexing = %s, hlo = %s",
-        tile_offsets_indexing->ToString(), hlo->ToString()));
+        ToString(*tile_offsets_indexing), hlo->ToString()));
   }
 
   return absl::OkStatus();
@@ -97,8 +98,9 @@ std::string TiledHloInstruction::ToString() const {
   ss << "\ttile_sizes: (" << absl::StrJoin(tile_sizes_, ", ") << ")\n";
   ss << "\ttile_strides: (" << absl::StrJoin(tile_strides_, ", ") << ")\n";
   ss << "\ttile_offsets_indexing: "
-     << (tile_offsets_indexing_.has_value() ? tile_offsets_indexing_->ToString()
-                                            : "nullopt");
+     << (tile_offsets_indexing_.has_value()
+             ? ::xla::ToString(*tile_offsets_indexing_)
+             : "nullopt");
   return ss.str();
 }
 

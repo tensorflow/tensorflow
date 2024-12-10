@@ -1,11 +1,8 @@
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-optimize-loops | FileCheck %s
+// RUN: emitters_opt %s -split-input-file -xla-gpu-optimize-loops | FileCheck %s
 
-#map = #xla_gpu.indexing_map<(d0) -> (d0 floordiv 8),
-                              domain: d0 in [0, 31]>
-#map1 = #xla_gpu.indexing_map<(d0) -> (d0 mod 8),
-                              domain: d0 in [0, 31]>
-#map2 = #xla_gpu.indexing_map<(d0, d1)[s0] -> (d1 * 2 + d0 + s0 * 512),
-                              domain: d0 in [0, 1], d1 in [0, 255], s0 in [0, 7]>
+#map = #xla.indexing_map<"(d0) -> (d0 floordiv 8), domain: d0 in [0, 31]">
+#map1 = #xla.indexing_map<"(d0) -> (d0 mod 8), domain: d0 in [0, 31]">
+#map2 = #xla.indexing_map<"(d0, d1)[s0] -> (d1 * 2 + d0 + s0 * 512), domain: d0 in [0, 1], d1 in [0, 255], s0 in [0, 7]">
 module {
   func.func @fully_unroll(%arg0: tensor<4x8x4096xf32>, %arg1: tensor<4096xbf16>,
       %arg2: tensor<4x8xf32>, %arg3: tensor<4096xbf16>,
@@ -24,23 +21,23 @@ module {
     %1 = arith.cmpi eq, %0, %c0 : index
     %2 = arith.divui %thread_id_x, %c32 : index
     %3 = arith.cmpi ult, %thread_id_x, %c8 : index
-    %4 = xla_gpu.apply_indexing #map(%block_id_x)
-    %5 = xla_gpu.apply_indexing #map1(%block_id_x)
+    %4 = xla.apply_indexing #map(%block_id_x)
+    %5 = xla.apply_indexing #map1(%block_id_x)
     %extracted = tensor.extract %arg2[%4, %5] : tensor<4x8xf32>
     %6 = arith.mulf %extracted, %cst : f32
     %7 = arith.addf %6, %cst : f32
     %8 = math.rsqrt %7 : f32
     %9:2 = scf.for %arg7 = %c0 to %c8 step %c1 iter_args(%arg8 = %arg6, %arg9 = %cst) -> (tensor<4x8x4096xf32>, f32) {
-      %18 = xla_gpu.apply_indexing #map2(%c0, %thread_id_x)[%arg7]
+      %18 = xla.apply_indexing #map2(%c0, %thread_id_x)[%arg7]
       %19 = vector.transfer_read %arg1[%18], %cst_1 {in_bounds = [true]} : tensor<4096xbf16>, vector<2xbf16>
-      %20 = xla_gpu.apply_indexing #map2(%c0, %thread_id_x)[%arg7]
+      %20 = xla.apply_indexing #map2(%c0, %thread_id_x)[%arg7]
       %21 = vector.transfer_read %arg3[%20], %cst_1 {in_bounds = [true]} : tensor<4096xbf16>, vector<2xbf16>
-      %22 = xla_gpu.apply_indexing #map2(%c0, %thread_id_x)[%arg7]
+      %22 = xla.apply_indexing #map2(%c0, %thread_id_x)[%arg7]
       %23 = vector.transfer_read %arg4[%4, %5, %22], %cst_1 {in_bounds = [true]} : tensor<4x8x4096xbf16>, vector<2xbf16>
-      %24 = xla_gpu.apply_indexing #map2(%c0, %thread_id_x)[%arg7]
+      %24 = xla.apply_indexing #map2(%c0, %thread_id_x)[%arg7]
       %25 = vector.transfer_read %arg0[%4, %5, %24], %cst {in_bounds = [true]} : tensor<4x8x4096xf32>, vector<2xf32>
       %26:2 = scf.for %arg10 = %c0 to %c2 step %c1 iter_args(%arg11 = %arg8, %arg12 = %arg9) -> (tensor<4x8x4096xf32>, f32) {
-        %27 = xla_gpu.apply_indexing #map2(%arg10, %thread_id_x)[%arg7]
+        %27 = xla.apply_indexing #map2(%arg10, %thread_id_x)[%arg7]
         %28 = vector.extract %25[%arg10] : f32 from vector<2xf32>
         %29 = vector.extract %23[%arg10] : bf16 from vector<2xbf16>
         %30 = arith.extf %29 : bf16 to f32
@@ -127,14 +124,14 @@ module {
   }
 }
 
-// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 + 1),
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0) -> (d0 + 1),
 // CHECK-LABEL: @pipeline_extract
 // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:  %[[C30:.*]] = arith.constant 30 : index
 // CHECK:      %[[VAL0:.*]] = tensor.extract %[[ARG0:.*]][%[[C0]]]
 // CHECK:      scf.for %[[I:.*]] = %[[C0]] {{.*}} iter_args(%[[ITER:.*]] = {{.*}}, %[[VAL:.*]] = %[[VAL0]])
 // CHECK-DAG:  %[[NEXT_I_EXISTS:.*]] = arith.cmpi ult, %[[I]], %[[C30]]
-// CHECK-DAG:  %[[NEXT_I:.*]] = xla_gpu.apply_indexing #[[$MAP]](%[[I]]
+// CHECK-DAG:  %[[NEXT_I:.*]] = xla.apply_indexing #[[$MAP]](%[[I]]
 // CHECK:      %[[NEXT_VAL:.*]] = scf.if %[[NEXT_I_EXISTS]]
 // CHECK-NEXT:   tensor.extract %[[ARG0]][%[[NEXT_I]]]
 // CHECK-NEXT:   yield
@@ -154,7 +151,7 @@ module {
     %cst = arith.constant dense<[0.0, 0.0]> : vector<2xf32>
     %cst0  = arith.constant 0.0 : f32
     %ret = scf.for %i = %c0 to %c17 step %c1 iter_args (%iter = %cst) -> (vector<2xf32>) {
-      %base = xla_gpu.apply_indexing #xla_gpu.indexing_map<(d0) -> (d0 * 2), domain: d0 in [0, 15]>(%i)
+      %base = xla.apply_indexing #xla.indexing_map<"(d0) -> (d0 * 2), domain: d0 in [0, 15]">(%i)
       %val = vector.transfer_read %arg[%base], %cst0 : tensor<34xf32>, vector<2xf32>
       %log = math.log %val : vector<2xf32>
       %add = arith.addf %log, %iter : vector<2xf32>
@@ -164,17 +161,17 @@ module {
   }
 }
 
-// CHECK-DAG: #[[$MAP0:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 2),
-// CHECK-DAG: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 + 1),
+// CHECK-DAG: #[[$MAP0:.*]] = #xla.indexing_map<"(d0) -> (d0 * 2),
+// CHECK-DAG: #[[$MAP1:.*]] = #xla.indexing_map<"(d0) -> (d0 + 1),
 // CHECK-LABEL: @pipeline_transfer
 // CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:  %[[C16:.*]] = arith.constant 16 : index
-// CHECK:      %[[BASE0:.*]] = xla_gpu.apply_indexing #[[$MAP0]](%[[C0]]
+// CHECK:      %[[BASE0:.*]] = xla.apply_indexing #[[$MAP0]](%[[C0]]
 // CHECK:      %[[VAL0:.*]] = vector.transfer_read %[[ARG0:.*]][%[[BASE0]]]
 // CHECK:      scf.for %[[I:.*]] = %[[C0]] {{.*}} iter_args(%[[ITER:.*]] = {{.*}}, %[[VAL:.*]] = %[[VAL0]])
 // CHECK-DAG:  %[[NEXT_I_EXISTS:.*]] = arith.cmpi ult, %[[I]], %[[C16]]
-// CHECK-DAG:  %[[NEXT_I:.*]] = xla_gpu.apply_indexing #[[$MAP1]](%[[I]]
-// CHECK-DAG:  %[[NEXT_BASE:.*]] = xla_gpu.apply_indexing #[[$MAP0]](%[[NEXT_I]]
+// CHECK-DAG:  %[[NEXT_I:.*]] = xla.apply_indexing #[[$MAP1]](%[[I]]
+// CHECK-DAG:  %[[NEXT_BASE:.*]] = xla.apply_indexing #[[$MAP0]](%[[NEXT_I]]
 // CHECK:      %[[NEXT_VAL:.*]] = scf.if %[[NEXT_I_EXISTS]]
 // CHECK-NEXT:   vector.transfer_read %[[ARG0]][%[[NEXT_BASE]]]
 // CHECK-NEXT:   yield

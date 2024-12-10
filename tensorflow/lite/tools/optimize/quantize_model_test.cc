@@ -17,11 +17,13 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
@@ -157,6 +159,27 @@ TEST_P(QuantizeConvModelTest, QuantizationSucceeds) {
   const uint8_t* buffer = builder_.GetBufferPointer();
   const Model* output_model = GetModel(buffer);
   ASSERT_TRUE(output_model);
+}
+
+TEST_P(QuantizeConvModelTest, AvoidQuantOpForExternalStates) {
+  auto status =
+      QuantizeModel(&builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
+                    /*allow_float=*/true, /*disable_per_channel=*/true,
+                    &error_reporter_, /*handle_external_state=*/true);
+  EXPECT_EQ(status, kTfLiteOk);
+  for (const auto& subgraph : model_.subgraphs) {
+    for (int i = 0; i < subgraph->inputs.size(); ++i) {
+      TensorT* inputtensor = subgraph->tensors[subgraph->inputs[i]].get();
+      TensorT* outputtensor = subgraph->tensors[subgraph->inputs[i]].get();
+      if (i == 0) {
+        EXPECT_TRUE(inputtensor->type == TensorType_FLOAT32 &&
+                    outputtensor->type == TensorType_FLOAT32);
+      } else {
+        EXPECT_TRUE(inputtensor->type == TensorType_INT8 &&
+                    outputtensor->type == TensorType_INT8);
+      }
+    }
+  }
 }
 
 TEST_P(QuantizeConvModelTest, SkipUnspecifiedLayer) {

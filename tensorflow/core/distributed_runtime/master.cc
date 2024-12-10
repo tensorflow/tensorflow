@@ -31,9 +31,11 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/master.h"
 
+#include <memory>
 #include <unordered_set>
 #include <vector>
 
+#include "xla/tsl/protobuf/rpc_options.pb.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/remote_device.h"
@@ -55,7 +57,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {
 
@@ -136,7 +137,7 @@ MasterSession* Master::FindMasterSession(const string& handle) {
 
 class DeviceFinder {
  public:
-  static Status GetRemoteDevices(
+  static absl::Status GetRemoteDevices(
       const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env,
       WorkerCacheInterface* worker_cache,
       std::vector<std::unique_ptr<Device>>* out_remote) {
@@ -252,7 +253,7 @@ class DeviceFinder {
       // never be called.
       NewRemoteDevices(
           env_->env, worker_cache_, targets_[i],
-          [this, i](const Status& s, std::vector<Device*>* devices) {
+          [this, i](const absl::Status& s, std::vector<Device*>* devices) {
             WhenFound(i, s, devices);
           });
     }
@@ -263,7 +264,7 @@ class DeviceFinder {
   // responded.
   const int32 kLoggingPeriodMs = 10 * 1000;
 
-  Status Wait() {
+  absl::Status Wait() {
     mutex_lock l(mu_);
     // TODO(mrry): Propagate a timeout here, since `num_pending_` may
     // never become zero.
@@ -313,9 +314,9 @@ class DeviceFinder {
   // heard from this target or not.
   std::vector<string> targets_;
   std::vector<bool> seen_targets_ TF_GUARDED_BY(mu_);
-  Status status_;
+  absl::Status status_;
 
-  void WhenFound(int target_index, const Status& s,
+  void WhenFound(int target_index, const absl::Status& s,
                  std::vector<Device*>* devices) {
     mutex_lock l(mu_);
     seen_targets_[target_index] = true;
@@ -363,7 +364,7 @@ class DeviceFinder {
 void Master::CreateSession(const CreateSessionRequest* req,
                            CreateSessionResponse* resp, MyClosure done) {
   SchedClosure([this, req, resp, done]() {
-    Status status;
+    absl::Status status;
     WorkerCacheFactoryOptions worker_cache_factory_options;
     auto call_done = gtl::MakeCleanup([&status, &done] { done(status); });
     status = ValidateExternalGraphDefSyntax(req->graph_def());
@@ -427,7 +428,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
           DeviceFinder::GetRemoteDevices(req->config().device_filters(), env_,
                                          worker_cache, remote_devices.get());
       if (!status.ok()) return;
-      device_set.reset(new DeviceSet);
+      device_set = std::make_unique<DeviceSet>();
       for (auto&& d : *remote_devices) {
         device_set->AddDevice(d.get());
         DeviceNameUtils::ParsedName name = d->parsed_name();
@@ -505,7 +506,7 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
   }
 
   SchedClosure([session, req, resp, done]() {
-    Status status = ValidateExternalGraphDefSyntax(req->graph_def());
+    absl::Status status = ValidateExternalGraphDefSyntax(req->graph_def());
     if (status.ok()) {
       status = session->Extend(req, resp);
     }
@@ -516,8 +517,8 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
 
 void Master::PartialRunSetup(const PartialRunSetupRequest* req,
                              PartialRunSetupResponse* resp, MyClosure done) {
-  Status s = recent_request_ids_.TrackUnique(req->request_id(),
-                                             "PartialRunSetup (Master)", *req);
+  absl::Status s = recent_request_ids_.TrackUnique(
+      req->request_id(), "PartialRunSetup (Master)", *req);
   if (!s.ok()) {
     done(s);
     return;
@@ -529,7 +530,7 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
   }
 
   SchedClosure([session, req, resp, done]() {
-    Status s = session->PartialRunSetup(req, resp);
+    absl::Status s = session->PartialRunSetup(req, resp);
     session->Unref();
     done(s);
   });
@@ -537,8 +538,8 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
 
 void Master::RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
                      MutableRunStepResponseWrapper* resp, MyClosure done) {
-  Status s = recent_request_ids_.TrackUnique(req->request_id(),
-                                             "RunStep (Master)", req);
+  absl::Status s = recent_request_ids_.TrackUnique(req->request_id(),
+                                                   "RunStep (Master)", req);
   if (!s.ok()) {
     done(s);
     return;
@@ -551,7 +552,7 @@ void Master::RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
   }
 
   SchedClosure([this, start_time, session, opts, req, resp, done]() {
-    Status status = session->Run(opts, *req, resp);
+    absl::Status status = session->Run(opts, *req, resp);
     session->Unref();
     uint64 done_time = env_->env->NowMicros();
     done(status);
@@ -584,7 +585,7 @@ void Master::CloseSession(const CloseSessionRequest* req,
   // Session Close() blocks on thread shutdown. Therefore, we need to
   // delete it in non-critical thread.
   SchedClosure([session, done]() {
-    Status s = session->Close();
+    absl::Status s = session->Close();
     session->Unref();
     done(s);
   });
@@ -602,13 +603,13 @@ void Master::ListDevices(const ListDevicesRequest* req,
         return;
       }
       core::ScopedUnref ref(session);
-      Status s = session->ListDevices(resp);
+      absl::Status s = session->ListDevices(resp);
       done(s);
       return;
     }
     std::vector<std::unique_ptr<Device>> remote_devices;
-    Status s = DeviceFinder::GetRemoteDevices({}, env_, env_->worker_cache,
-                                              &remote_devices);
+    absl::Status s = DeviceFinder::GetRemoteDevices(
+        {}, env_, env_->worker_cache, &remote_devices);
     if (s.ok()) {
       for (Device* dev : env_->local_devices) {
         *(resp->add_local_device()) = dev->attributes();
@@ -637,7 +638,7 @@ void Master::CleanupWorkers(const ResetRequest& reset) {
       auto worker = env_->worker_cache->GetOrCreateWorker(worker_name);
       if (worker) {
         worker->CleanupAllAsync(
-            &req, &resp[i], [this, &n, worker_name, worker, c](Status s) {
+            &req, &resp[i], [this, &n, worker_name, worker, c](absl::Status s) {
               if (!s.ok()) {
                 LOG(ERROR) << "Worker CleanupAll failed: " << s;
               }
@@ -673,7 +674,7 @@ void Master::Reset(const ResetRequest* req, ResetResponse* resp,
   CleanupWorkers(*req);
 
   SchedClosure([sessions_to_close, done]() {
-    Status s;
+    absl::Status s;
     for (MasterSession* session : sessions_to_close) {
       s.Update(session->Close());
       session->Unref();
@@ -684,8 +685,8 @@ void Master::Reset(const ResetRequest* req, ResetResponse* resp,
 
 void Master::MakeCallable(const MakeCallableRequest* req,
                           MakeCallableResponse* resp, MyClosure done) {
-  Status s = recent_request_ids_.TrackUnique(req->request_id(),
-                                             "MakeCallable (Master)", *req);
+  absl::Status s = recent_request_ids_.TrackUnique(
+      req->request_id(), "MakeCallable (Master)", *req);
   if (!s.ok()) {
     done(s);
     return;
@@ -697,7 +698,7 @@ void Master::MakeCallable(const MakeCallableRequest* req,
   }
 
   SchedClosure([session, req, resp, done = std::move(done)]() {
-    Status s = session->MakeCallable(*req, resp);
+    absl::Status s = session->MakeCallable(*req, resp);
     session->Unref();
     done(s);
   });
@@ -705,8 +706,8 @@ void Master::MakeCallable(const MakeCallableRequest* req,
 
 void Master::RunCallable(CallOptions* opts, const RunCallableRequest* req,
                          RunCallableResponse* resp, MyClosure done) {
-  Status s = recent_request_ids_.TrackUnique(req->request_id(),
-                                             "RunCallable (Master)", *req);
+  absl::Status s = recent_request_ids_.TrackUnique(
+      req->request_id(), "RunCallable (Master)", *req);
   if (!s.ok()) {
     done(s);
     return;
@@ -718,7 +719,7 @@ void Master::RunCallable(CallOptions* opts, const RunCallableRequest* req,
   }
 
   SchedClosure([session, opts, req, resp, done = std::move(done)]() {
-    Status s = session->RunCallable(opts, *req, resp);
+    absl::Status s = session->RunCallable(opts, *req, resp);
     session->Unref();
     done(s);
   });
@@ -733,7 +734,7 @@ void Master::ReleaseCallable(const ReleaseCallableRequest* req,
   }
 
   SchedClosure([session, req, resp, done = std::move(done)]() {
-    Status s = session->ReleaseCallable(*req, resp);
+    absl::Status s = session->ReleaseCallable(*req, resp);
     session->Unref();
     done(s);
   });

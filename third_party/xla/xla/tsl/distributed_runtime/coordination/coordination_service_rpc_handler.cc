@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
-#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tsl {
 namespace {
@@ -66,7 +66,7 @@ void CoordinationServiceRpcHandler::RegisterTaskAsync(
   const uint64_t incarnation = request->incarnation();
   const uint64_t leader_incarnation = service_->GetServiceIncarnation();
   response->set_leader_incarnation(leader_incarnation);
-  done(service_->RegisterTask(task, incarnation));
+  service_->RegisterTaskAsync(task, incarnation, done);
 }
 
 void CoordinationServiceRpcHandler::HeartbeatAsync(
@@ -282,11 +282,14 @@ void CoordinationServiceRpcHandler::BarrierAsync(
   }
   std::vector<CoordinatedTask> tasks = {request->tasks().begin(),
                                         request->tasks().end()};
-  service_->BarrierAsync(
-      request->barrier_id(),
-      absl::Milliseconds(request->barrier_timeout_in_ms()),
-      request->source_task(), tasks,
-      [done = std::move(done)](const absl::Status& status) { done(status); });
+  service_->BarrierAsync(request->barrier_id(), request->counter(),
+                         absl::Milliseconds(request->barrier_timeout_in_ms()),
+                         request->source_task(), tasks,
+                         [done = std::move(done), response](
+                             const absl::Status& status, int64_t counter) {
+                           response->set_counter(counter);
+                           done(status);
+                         });
 }
 
 void CoordinationServiceRpcHandler::CancelBarrierAsync(
@@ -298,7 +301,8 @@ void CoordinationServiceRpcHandler::CancelBarrierAsync(
         absl::InternalError("Coordination service is not enabled.")));
     return;
   }
-  done(service_->CancelBarrier(request->barrier_id(), request->source_task()));
+  done(service_->CancelBarrier(request->barrier_id(), request->counter(),
+                               request->source_task()));
 }
 
 void CoordinationServiceRpcHandler::PollForErrorAsync(

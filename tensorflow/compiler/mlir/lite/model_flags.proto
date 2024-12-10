@@ -1,0 +1,225 @@
+// Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+syntax = "proto2";
+
+package tflite;
+
+import "tensorflow/compiler/mlir/lite/types.proto";
+
+message InputArrayShape {
+  // Dimensions of the tensor.
+  repeated int32 dims = 2;
+
+  // If true, the number of dimensions in the shape is unknown.
+  //
+  // If true, "dims.size()" must be 0.
+  optional bool unknown_rank = 3;
+}
+
+// Next ID to USE: 7.
+message InputArray {
+  // Name of the input arrays, i.e. the arrays from which input activations
+  // will be read.
+  optional string name = 1;
+
+  // Shape of the input.  For many applications the dimensions are {batch,
+  // height, width, depth}.  Often the batch is left "unspecified" by providing
+  // a value of -1.
+  //
+  // The last dimension is typically called 'depth' or 'channels'. For example,
+  // for an image model taking RGB images as input, this would have the value 3.
+  optional InputArrayShape shape = 6;
+
+  // mean_value and std_value parameters control the interpretation of raw input
+  // activation values (elements of the input array) as real numbers. The
+  // mapping is given by:
+  //
+  //    real_value = (raw_input_value - mean_value) / std_value
+  //
+  // In particular, the defaults (mean_value=0, std_value=1) yield
+  // real_value = raw_input_value. Often, non-default values are used in image
+  // models. For example, an image model taking uint8 image channel values as
+  // its raw inputs, in [0, 255] range, may use mean_value=128, std_value=128 to
+  // map them into the interval [-1, 1).
+  //
+  // Note: this matches exactly the meaning of mean_value and std_value in
+  // (TensorFlow via LegacyFedInput).
+  optional float mean_value = 3;
+  optional float std_value = 4 [default = 1.];
+
+  // Data type of the input.
+  //
+  // In many graphs, the input arrays already have defined data types,
+  // e.g. Placeholder nodes in a TensorFlow GraphDef have a dtype attribute.
+  // In those cases, it is not needed to specify this data_type flag.
+  // The purpose of this flag is only to define the data type of input
+  // arrays whose type isn't defined in the input graph file. For example,
+  // when specifying an arbitrary (not Placeholder) --input_array into
+  // a TensorFlow GraphDef.
+  //
+  // When this data_type is quantized (e.g. QUANTIZED_UINT8), the
+  // corresponding quantization parameters are the mean_value, std_value
+  // fields.
+  //
+  // It is also important to understand the nuance between this data_type
+  // flag and the inference_input_type in TocoFlags. The basic difference
+  // is that this data_type (like all ModelFlags) describes a property
+  // of the input graph, while inference_input_type (like all TocoFlags)
+  // describes an aspect of the toco transformation process and thus of
+  // the output file. The types of input arrays may be different between
+  // the input and output files if quantization or dequantization occurred.
+  // Such differences can only occur for real-number data i.e. only
+  // between FLOAT and quantized types (e.g. QUANTIZED_UINT8).
+  optional IODataType data_type = 5;
+}
+
+message RnnState {
+  optional string state_array = 1;
+  optional string back_edge_source_array = 2;
+  optional bool discardable = 5;
+  // size allows to specify a 1-D shape for the RNN state array.
+  // Will be expanded with 1's to fit the model.
+  // TODO(benoitjacob): should allow a generic, explicit shape.
+  optional int32 size = 3;
+  optional int32 num_dims = 4;
+}
+
+// An ArraysExtraInfo message stores a collection of additional Information
+// about arrays in a model, complementing the information in the model itself.
+// It is intentionally a separate message so that it may be serialized and
+// passed separately from the model. See --arrays_extra_info_file.
+//
+// A typical use case is to manually specify MinMax for specific arrays in a
+// model that does not already contain such MinMax information.
+message ArraysExtraInfo {
+  message Entry {
+    // Next ID to use: 8.
+    optional string name = 1;
+    optional string name_regexp = 7;
+    optional double min = 2;
+    optional double max = 3;
+    optional IODataType data_type = 4;
+    optional InputArrayShape shape = 5;
+    optional float constant_float_value = 6;
+  }
+  repeated Entry entries = 1;
+}
+
+// ModelFlags encodes properties of a model that, depending on the file
+// format, may or may not be recorded in the model file. The purpose of
+// representing these properties in ModelFlags is to allow passing them
+// separately from the input model file, for instance as command-line
+// parameters, so that we can offer a single uniform interface that can
+// handle files from different input formats.
+//
+// For each of these properties, and each supported file format, we
+// detail in comments below whether the property exists in the given file
+// format.
+//
+// Obsolete flags that have been removed:
+//   optional int32 input_depth = 3;
+//   optional int32 input_width = 4;
+//   optional int32 input_height = 5;
+//   optional int32 batch = 6 [ default = 1];
+//   optional float mean_value = 7;
+//   optional float std_value = 8 [default = 1.];
+//   optional int32 input_dims = 11 [ default = 4];
+//   repeated int32 input_shape = 13;
+//
+// Next ID to USE: 27.
+message ModelFlags {
+  // Information about the input arrays, i.e. the arrays from which input
+  // activations will be read.
+  repeated InputArray input_arrays = 1;
+
+  // Name of the output arrays, i.e. the arrays into which output activations
+  // will be written.
+  repeated string output_arrays = 2;
+
+  // Name of the control outputs.
+  repeated string control_output_arrays = 24;
+
+  // If true, the model accepts an arbitrary batch size. Mutually exclusive with
+  // the 'batch' field: at most one of these two fields can be set.
+  optional bool variable_batch = 10;
+
+  repeated RnnState rnn_states = 12;
+
+  // Checks applied to the model, typically after toco's comprehensive
+  // graph transformations.
+  // Next ID to USE: 4.
+  message ModelCheck {
+    // Use the name of a type of operator to check its counts.
+    // Use "Total" for overall operator counts.
+    // Use "Arrays" for overall array counts.
+    optional string count_type = 1 [default = "None"];
+    // A count of zero is a meaningful check, so negative used to mean disable.
+    optional int32 count_min = 2 [default = -1];
+    // If count_max < count_min, then count_min is only allowed value.
+    optional int32 count_max = 3 [default = -1];
+  }
+  repeated ModelCheck model_checks = 14;
+
+  // If true, will allow passing inexistent arrays in --input_arrays
+  // and --output_arrays. This makes little sense, is only useful to
+  // more easily get graph visualizations.
+  optional bool allow_nonexistent_arrays = 16;
+
+  // If true, will allow passing non-ascii-printable characters in
+  // --input_arrays and --output_arrays. By default (if false), only
+  // ascii printable characters are allowed, i.e. character codes
+  // ranging from 32 to 127. This is disallowed by default so as to
+  // catch common copy-and-paste issues where invisible unicode
+  // characters are unwittingly added to these strings.
+  optional bool allow_nonascii_arrays = 17;
+
+  // If set, this ArraysExtraInfo allows to pass extra information about arrays
+  // not specified in the input model file, such as extra MinMax information.
+  optional ArraysExtraInfo arrays_extra_info = 18;
+
+  // When set to false, toco will not change the input ranges and the output
+  // ranges of concat operator to the overlap of all input ranges.
+  optional bool change_concat_input_ranges = 19 [default = true];
+
+  // Filepath of the saved model to be converted. This value will be non-empty
+  // only when the saved model import path will be used. Otherwise, the graph
+  // def-based conversion will be processed.
+  optional string saved_model_dir = 20;
+
+  // SavedModel file format version of The saved model file to be converted.
+  // This value will be set only when the SavedModel import path will be used.
+  optional int32 saved_model_version = 21;
+
+  // Set of string saved model tags, formatted in the comma-separated value.
+  // This value will be set only when the SavedModel import path will be used.
+  repeated string saved_model_tags = 22;
+
+  // Names to be exported (default: export all) when the saved model import path
+  // is on. This value will be set only when the SavedModel import path will be
+  // used.
+  repeated string saved_model_exported_names = 23;
+
+  // Whether or not to use hlo import.
+  optional bool use_hlo_import = 25;
+
+  // The hlo file type enum.
+  enum HloFileType {
+    UNKNOWN = 0;
+    HLO_TEXT = 1;
+    HLO_PROTO = 2;
+  }
+
+  // Hlo file type, this will be used for hlo import.
+  optional HloFileType hlo_file_type = 26;
+}

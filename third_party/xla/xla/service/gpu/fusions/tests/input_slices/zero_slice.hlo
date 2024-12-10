@@ -1,0 +1,10 @@
+// RUN: test_correctness %s
+
+fusion {
+  %p0 = s32[0] parameter(0)
+  %p1 = s32[2] parameter(1)
+  %concatenate = s32[2] concatenate(p0, p1), dimensions={0}
+  %slice = s32[0] slice(%concatenate), slice={[0:0]}
+  %slice.1 = s32[2] slice(%concatenate), slice={[0:2]}
+  ROOT %tuple = (s32[0], s32[2]) tuple(%slice, %slice.1)
+}

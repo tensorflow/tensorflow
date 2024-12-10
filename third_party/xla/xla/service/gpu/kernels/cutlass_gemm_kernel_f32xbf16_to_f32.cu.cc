@@ -45,7 +45,7 @@ using GemmOperation = cutlass::gemm::device::GemmUniversal<
 
 XLA_GPU_DEFINE_CUTLASS_GEMM_TRAITS(F32xBf16ToF32<Arch::kDefault>,
                                    GemmOperation);
-template struct Adaptor<F32xBf16ToF32<Arch::kDefault>>;
-template struct DeviceKernel<F32xBf16ToF32<Arch::kDefault>>;
+template class Adaptor<F32xBf16ToF32<Arch::kDefault>>;
+template class DeviceKernel<F32xBf16ToF32<Arch::kDefault>>;
 
 }  // namespace xla::gpu::kernel::gemm_universal

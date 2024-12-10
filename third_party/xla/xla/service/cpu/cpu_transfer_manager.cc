@@ -16,12 +16,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_transfer_manager.h"
 
 #include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
-#include "absl/base/casts.h"
-#include "absl/status/statusor.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/compiler.h"

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -31,6 +32,8 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/core/graph/graph.h"
 
 #if !defined(DISABLE_MLIR)
 #include "tensorflow/compiler/mlir/python/mlir.h"
@@ -38,6 +41,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -66,7 +70,7 @@ EagerContext& GlobalEagerContext() {
   static EagerContext* global_ctx = []() {
     SessionOptions opts;
     std::vector<std::unique_ptr<Device>> devices;
-    Status&& device_init_status = DeviceFactory::AddDevices(
+    absl::Status&& device_init_status = DeviceFactory::AddDevices(
         opts, "/job:localhost/replica:0/task:0", &devices);
     CHECK(device_init_status.ok());  // Crash OK
 
@@ -94,14 +98,15 @@ absl::StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
 
   const FunctionDef* f = ctx.FindFunctionDef(std::string(name));
   if (f == nullptr) {
-    return Status(absl::StatusCode::kInvalidArgument,
-                  absl::StrCat("Could not find an attribute for key ", name));
+    return absl::Status(
+        absl::StatusCode::kInvalidArgument,
+        absl::StrCat("Could not find an attribute for key ", name));
   }
 
   return *f;
 }
 
-Status Runtime::CreateFunction(const FunctionDef& fdef) {
+absl::Status Runtime::CreateFunction(const FunctionDef& fdef) {
   const auto& fname = fdef.signature().name();
   if (this->eager_ctx_.FindFunctionByName(fname)) {
     TF_RETURN_WITH_CONTEXT_IF_ERROR(this->eager_ctx_.RemoveFunction(fname),
@@ -110,14 +115,14 @@ Status Runtime::CreateFunction(const FunctionDef& fdef) {
   return this->eager_ctx_.AddFunctionDef(fdef);
 }
 
-Status Runtime::CreateFunction(OpaqueTfgGraphFuncOp* fop) {
+absl::Status Runtime::CreateFunction(OpaqueTfgGraphFuncOp* fop) {
   mlir::tfg::GraphFuncOp fop_proper =
       *reinterpret_cast<mlir::tfg::GraphFuncOp*>(fop);
   return mlir::tfg::ConvertToFunctionDef(fop_proper,
                                          *this->eager_ctx_.FuncLibDef());
 }
 
-Status Runtime::CreateFunction(OpaqueTfFuncOp* fop) {
+absl::Status Runtime::CreateFunction(OpaqueTfFuncOp* fop) {
   mlir::func::FuncOp fop_proper = *reinterpret_cast<mlir::func::FuncOp*>(fop);
   const auto& fname = fop_proper.getName().str();
   GraphExportConfig config;
@@ -129,8 +134,9 @@ Status Runtime::CreateFunction(OpaqueTfFuncOp* fop) {
   return CreateFunction(fdef);
 }
 
-Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name,
-                                  Dialect dialect) {
+absl::Status Runtime::TransformFunction(StringPiece name,
+                                        StringPiece pipeline_name,
+                                        Dialect dialect) {
   // TODO(mdan): Use a longer-lived context.
   mlir::MLIRContext ctx;
   mlir::PassManager pm(&ctx);
@@ -140,9 +146,9 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name,
   // StringPiece doesn't seem to always be compatible with StringRef.
   if (mlir::failed(mlir::parsePassPipeline(std::string(pipeline_name), pm,
                                            error_stream))) {
-    return Status(absl::StatusCode::kInvalidArgument,
-                  absl::StrCat("locating pass pipeline ", pipeline_name, ": ",
-                               error_stream.str()));
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        absl::StrCat("locating pass pipeline ", pipeline_name,
+                                     ": ", error_stream.str()));
   }
 
   // For now, we roundtrip from proto. Once we have a permanent MLIR
@@ -161,9 +167,9 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name,
 
     mlir::StatusScopedDiagnosticHandler diagnostics_handler(&ctx);
     if (failed(pm.run(mlir_fn->get()))) {
-      return diagnostics_handler.Combine(
-          Status(absl::StatusCode::kInvalidArgument,
-                 absl::StrCat("running pass pipeline ", pipeline_name, ": ")));
+      return diagnostics_handler.Combine(absl::Status(
+          absl::StatusCode::kInvalidArgument,
+          absl::StrCat("running pass pipeline ", pipeline_name, ": ")));
     }
 
     for (auto fn : mlir_fn->get().getBody()->getOps<mlir::tfg::GraphFuncOp>()) {
@@ -175,21 +181,29 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name,
   }
 
   if (dialect == Dialect::TF) {
-    Status status;
+    absl::Status status;
     FunctionLibraryDefinition& flib_def = *this->eager_ctx_.FuncLibDef();
     std::unique_ptr<FunctionBody> fbody;
     status = FunctionDefToBodyHelper(*fn, AttrSlice(), &flib_def, &fbody);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(status, "importing function ", name);
 
-    auto mlir_fn = ConvertFunctionToMlir(fbody.get(), flib_def, &ctx);
+    tensorflow::GraphImportConfig specs;
+    specs.graph_func_name = fbody->record->fdef().signature().name();
+    specs.enable_shape_inference = false;
+    specs.graph_as_function = true;
+    for (const Node* control_ret_node : fbody->control_ret_nodes)
+      specs.control_outputs.push_back(control_ret_node->name());
+    absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> mlir_fn =
+        tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(*fbody->graph, {},
+                                                         flib_def, specs, &ctx);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(mlir_fn.status(), "importing function ",
                                     name);
 
     mlir::StatusScopedDiagnosticHandler diagnostics_handler(&ctx);
     if (failed(pm.run(mlir_fn->get()))) {
-      return diagnostics_handler.Combine(
-          Status(absl::StatusCode::kInvalidArgument,
-                 absl::StrCat("running pass pipeline ", pipeline_name, ": ")));
+      return diagnostics_handler.Combine(absl::Status(
+          absl::StatusCode::kInvalidArgument,
+          absl::StrCat("running pass pipeline ", pipeline_name, ": ")));
     }
 
     for (auto fn : mlir_fn->get().getBody()->getOps<mlir::func::FuncOp>()) {
@@ -200,7 +214,7 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name,
     return absl::OkStatus();
   }
 
-  return Status(
+  return absl::Status(
       absl::StatusCode::kInvalidArgument,
       absl::StrCat("Unsupported dialect: ", dialect,
                    ". Supported dialects are Dialect::TFG and Dialect::TF."));

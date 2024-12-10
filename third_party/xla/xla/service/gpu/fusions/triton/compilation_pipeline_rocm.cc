@@ -64,12 +64,13 @@ absl::Status CreateTritonPipeline(
   // @triton//:third_party/amd/backend/compiler.py
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createRewriteTensorPointerPass());
-  pm.addPass(mt::createCombineOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mt::createCombineOpsPass());
   pm.addPass(mt::createReorderBroadcastPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mt::createLoopUnrollPass());
 
   // Based on make_ttgir() in
   // @triton//:third_party/amd/backend/compiler.py
@@ -87,15 +88,19 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   if (block_level_parameters.num_stages == kAmdDoubleBuffering &&
       ccRocm.has_amd_matrix_core()) {
-    pm.addPass(mlir::createTritonAMDGPUStreamPipelinePass());
+    pm.addPass(mlir::createTritonAMDGPUStreamPipelinePass(
+        block_level_parameters.num_stages, /*stream_prefetch=*/true));
     pm.addPass(mlir::createCanonicalizerPass());
   }
+  pm.addPass(mt::createTritonAMDGPUInsertInstructionSchedHintsPass());
   pm.addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm.addPass(mt::gpu::createTritonGPUReduceDataDuplication());
   if (block_level_parameters.num_stages != kAmdDoubleBuffering) {
     pm.addPass(mt::gpu::createTritonGPUReorderInstructions());
   }
+  pm.addPass(mlir::createTritonAMDGPUCanonicalizePointersPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
 
@@ -119,7 +124,9 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
-  pm.addPass(mt::createConvertBuiltinFuncToLLVMPass());
+  pm.addPass(mt::createTritonAMDGPULowerInstructionSchedHintsPass(
+      ccRocm.gfx_version(), block_level_parameters.num_stages, "default"));
+  pm.addPass(mt::createConvertBuiltinFuncToLLVMPass(/*ftz=*/true));
   // There is no clusters in ROCm for now.
   out_cluster_info.clusterDimX = 1;
   out_cluster_info.clusterDimY = 1;

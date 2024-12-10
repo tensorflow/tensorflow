@@ -137,7 +137,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
       del args, kwargs
       if not frequent_send:
         time.sleep(1)
-        if (not maintenance_event.is_set()) and (random.randrange(0, 7) == 5):
+        if (not maintenance_event.is_set()) and (random.randrange(0, 11) == 5):
           maintenance_event.set()
           logging.info('Termination notice available.')
           return True
@@ -359,7 +359,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          grace_period=[0, 7],
+          grace_period=[0, 11],
           input_arg=['checkpoint', 'manager'],
           strategy_option=[
               'MS',
@@ -394,13 +394,22 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
       mpr = multi_process_runner.MultiProcessRunner(
           self.worker_fn,
           cluster_spec,
-          args=(checkpoint_dir, cluster_spec, input_arg, maintenance_event,
-                strategy_option, training_finished, True, training_restarted,
-                termination_config),
+          args=(
+              checkpoint_dir,
+              cluster_spec,
+              input_arg,
+              strategy_option,
+              maintenance_event,
+              training_finished,
+              True,
+              training_restarted,
+              termination_config,
+          ),
           kwargs={'api_wrapping_train': api_wrapping_train},
           rpc_layer=rpc_layer,
           return_output=True,
-          dependence_on_chief=has_chief)
+          dependence_on_chief=has_chief,
+      )
 
       logging.info('Cluster starting.')
       mpr.start()
@@ -457,7 +466,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
   def test_grace_period_continue_training(self, input_arg, strategy_option,
                                           api_wrapping_train):
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt/')
-    grace_period = 7
+    grace_period = 11
     if _is_oss():
       rpc_layer = 'grpc'
     else:
@@ -480,13 +489,22 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
       mpr = multi_process_runner.MultiProcessRunner(
           self.worker_fn,
           cluster_spec,
-          args=(checkpoint_dir, cluster_spec, input_arg, maintenance_event,
-                strategy_option, training_finished, False, training_restarted,
-                termination_config),
+          args=(
+              checkpoint_dir,
+              cluster_spec,
+              input_arg,
+              strategy_option,
+              maintenance_event,
+              training_finished,
+              False,
+              training_restarted,
+              termination_config,
+          ),
           kwargs={'api_wrapping_train': api_wrapping_train},
           rpc_layer=rpc_layer,
           return_output=True,
-          dependence_on_chief=has_chief)
+          dependence_on_chief=has_chief,
+      )
 
       logging.info('Cluster starting.')
       mpr.start()

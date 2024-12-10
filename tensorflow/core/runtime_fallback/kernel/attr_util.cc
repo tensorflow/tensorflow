@@ -17,9 +17,11 @@ limitations under the License.
 #include <assert.h>
 #include <stdlib.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"

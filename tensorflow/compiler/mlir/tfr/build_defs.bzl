@@ -1,9 +1,11 @@
 """BUILD extension for TF composition project."""
 
+load("@local_tsl//third_party/py/rules_pywrap:pywrap.bzl", "use_pywrap_rules")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library")
 
+# TODO(b/356020232): cleanup use_pywrap_rules once migration is done
 def gen_op_libraries(
         name,
         src,
@@ -22,7 +24,11 @@ def gen_op_libraries(
     if not src.endswith(".py") or name == src[:-3]:
         fail("'src' %s conflicts with op Python wrapper. Rename it to be different from 'name'." % src)
 
-    py_deps = [
+    py_deps = []
+    if use_pywrap_rules():
+        py_deps = ["//tensorflow/python:_pywrap_tensorflow"]
+
+    py_deps += [
         "//tensorflow/compiler/mlir/tfr:op_reg_gen",
         "//tensorflow/compiler/mlir/tfr:tfr_gen",
         "//tensorflow/compiler/mlir/tfr:composite",
@@ -42,7 +48,9 @@ def gen_op_libraries(
         name = registered_op,
         srcs = [],
         outs = [name + ".inc.cc"],
-        cmd = "$(location %s) --output=$@ --gen_register_op=true" % gen_op_lib_exec,
+        cmd =
+            "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
+            "$(location %s) --output=$@ --gen_register_op=true" % gen_op_lib_exec,
         tools = [":" + gen_op_lib_exec],
         tags = tags,
     )
@@ -105,7 +113,9 @@ def gen_op_libraries(
         name = name + "_mlir",
         srcs = [],
         outs = [name + ".mlir"],
-        cmd = "$(location %s) --output=$@ --gen_register_op=false" % gen_tfr_lib_exec,
+        cmd =
+            "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
+            "$(location %s) --output=$@ --gen_register_op=false" % gen_tfr_lib_exec,
         tools = [":" + gen_tfr_lib_exec],
         tags = tags,
     )

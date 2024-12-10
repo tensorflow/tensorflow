@@ -739,6 +739,11 @@ DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
     // prediction based on this.
     // Frequencies are stored in MHz in the DeviceProperties.
     gflops = device.num_cores() * device.frequency() * 1e-3;
+    if (gflops <= 0) {
+      LOG_EVERY_N(WARNING, 1000) << "Invalid device specifications for CPU: "
+                                 << device.ShortDebugString();
+      gflops = 1;  // Dummy value.
+    }
     if (gb_per_sec < 0) {
       if (device.bandwidth() > 0) {
         gb_per_sec = device.bandwidth() / 1e6;

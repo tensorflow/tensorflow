@@ -1162,7 +1162,12 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   }
   if (TF_PREDICT_TRUE(s.ok())) {
     if (TF_PREDICT_TRUE(!*end_of_sequence)) {
-      DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());
+      if (TF_PREDICT_FALSE(out_tensors->size() !=
+                           dataset()->output_dtypes().size())) {
+        return errors::Internal("Expected ", dataset()->output_dtypes().size(),
+                                " components but got ", out_tensors->size(),
+                                ".");
+      }
       RecordElement(ctx, out_tensors);
     } else {
       out_tensors->clear();

@@ -14,9 +14,9 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/hlo_pass_pipeline.h"
-#include "xla/service/while_loop_trip_count_annotator.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {

@@ -17,11 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 
-#ifdef TENSORFLOW_USE_ROCM
-#include "rocm/include/hip/hip_runtime.h"
-#endif
+#include "xla/stream_executor/kernel_spec.h"
 
-namespace stream_executor::gpu::internal {
+namespace stream_executor::gpu {
+namespace internal {
 
 // We want to be able to load those kernels by symbol name, so let's make them
 // C functions.
@@ -57,4 +56,17 @@ void* GetIncAndCmpKernel() { return reinterpret_cast<void*>(&IncAndCmp); }
 
 void* GetAddI32Ptrs3Kernel() { return reinterpret_cast<void*>(&AddI32Ptrs3); }
 
-}  // namespace stream_executor::gpu::internal
+}  // namespace internal
+
+MultiKernelLoaderSpec GetAddI32KernelSpec() {
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
+  return spec;
+}
+
+MultiKernelLoaderSpec GetAddI32PtxKernelSpec() {
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddCudaPtxInMemory(internal::kAddI32KernelPtx, "AddI32");
+  return spec;
+}
+}  // namespace stream_executor::gpu

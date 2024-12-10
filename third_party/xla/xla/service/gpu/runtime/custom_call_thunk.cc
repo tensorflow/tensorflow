@@ -43,10 +43,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#endif
-
 namespace xla {
 namespace gpu {
 
@@ -55,17 +51,17 @@ using xla::ffi::CallFrameBuilder;
 using xla::ffi::CallOptions;
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
-    ThunkInfo thunk_info, CustomCallTarget call_target,
+    ThunkInfo thunk_info, std::string target_name, CustomCallTarget call_target,
     std::vector<std::optional<Slice>> operands,
     std::vector<std::optional<Slice>> results, const std::string& opaque) {
-  return absl::WrapUnique(
-      new CustomCallThunk(thunk_info, std::move(call_target),
-                          std::move(operands), std::move(results), opaque));
+  return absl::WrapUnique(new CustomCallThunk(
+      thunk_info, std::move(target_name), std::move(call_target),
+      std::move(operands), std::move(results), opaque));
 }
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
-    ThunkInfo thunk_info, XLA_FFI_Handler_Bundle bundle,
-    std::vector<std::optional<Slice>> operands,
+    ThunkInfo thunk_info, std::string target_name,
+    XLA_FFI_Handler_Bundle bundle, std::vector<std::optional<Slice>> operands,
     std::vector<std::optional<Slice>> results, AttributesMap attributes,
     const HloComputation* called_computation) {
   auto execution_state = std::make_unique<ffi::ExecutionState>();
@@ -89,28 +85,31 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
   }
 
   return absl::WrapUnique(new CustomCallThunk(
-      thunk_info, bundle, std::move(operands), std::move(results),
-      std::move(attributes), std::move(execution_state), called_computation));
+      thunk_info, std::move(target_name), bundle, std::move(operands),
+      std::move(results), std::move(attributes), std::move(execution_state),
+      called_computation));
 }
 
-CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info,
+CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, std::string target_name,
                                  CustomCallTarget call_target,
                                  std::vector<std::optional<Slice>> operands,
                                  std::vector<std::optional<Slice>> results,
                                  const std::string& opaque)
     : Thunk(Thunk::kCustomCall, thunk_info),
+      target_name_(std::move(target_name)),
       operands_(std::move(operands)),
       results_(std::move(results)),
       call_target_(std::move(call_target)),
       opaque_(opaque) {}
 
 CustomCallThunk::CustomCallThunk(
-    ThunkInfo thunk_info, XLA_FFI_Handler_Bundle bundle,
-    std::vector<std::optional<Slice>> operands,
+    ThunkInfo thunk_info, std::string target_name,
+    XLA_FFI_Handler_Bundle bundle, std::vector<std::optional<Slice>> operands,
     std::vector<std::optional<Slice>> results, AttributesMap attributes,
     std::unique_ptr<ffi::ExecutionState> execution_state,
     const HloComputation* called_computation)
     : Thunk(Thunk::kCustomCall, thunk_info),
+      target_name_(std::move(target_name)),
       operands_(std::move(operands)),
       results_(std::move(results)),
       bundle_(bundle),
@@ -137,10 +136,8 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
     }
   }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  auto gpu_stream = se::gpu::AsGpuStreamValue(params.stream);
   XlaCustomCallStatus custom_call_status;
-  call_target_(gpu_stream, buffers.data(), opaque_.data(), opaque_.size(),
+  call_target_(params.stream, buffers.data(), opaque_.data(), opaque_.size(),
                &custom_call_status);
   auto message = CustomCallStatusGetMessage(&custom_call_status);
   if (message) {
@@ -148,46 +145,55 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
   } else {
     return absl::OkStatus();
   }
-#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return Unavailable(
-      "Custom calls on GPU are not supported in this configuration. Please "
-      "build with --config=cuda or --config=rocm");
-#endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 absl::Status CustomCallThunk::ExecuteFfiHandler(
-    XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
-    int32_t device_ordinal, se::Stream* stream,
-    se::DeviceMemoryAllocator* allocator,
+    XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage, se::Stream* stream,
     const ffi::ExecutionContext* execution_context,
     const BufferAllocations* buffer_allocations) {
   if (handler == nullptr) {
     return absl::InternalError("FFI execute handler is not set");
+  }
+  if (stage != XLA_FFI_ExecutionStage_PREPARE &&
+      !(buffer_allocations && stream)) {
+    return absl::InternalError("buffer allocations and stream are required");
   }
 
   // TODO(ezhulenev): This is not the most optimal approach, as we'll be doing
   // a lot of extra allocation on every call. We have to keep attributes
   // separate from arguments, as they do not change after thunk is constructed.
   CallFrameBuilder builder(operands_.size(), results_.size());
+  auto device_address =
+      [buffer_allocations](
+          BufferAllocation::Slice slice) -> se::DeviceMemoryBase {
+    return buffer_allocations ? buffer_allocations->GetDeviceAddress(slice)
+                              : se::DeviceMemoryBase{};
+  };
 
   for (auto& operand : operands_) {
-    if (!operand.has_value())
-      return Internal("FFI handlers do not support tokens (yet)!");
+    if (!operand.has_value()) {
+      builder.AddTokenArg();
+      continue;
+    }
+
     if (!operand->slice.allocation())
       return Internal("custom call argument missing buffer allocation");
 
-    builder.AddBufferArg(buffer_allocations->GetDeviceAddress(operand->slice),
+    builder.AddBufferArg(device_address(operand->slice),
                          operand->shape.element_type(),
                          operand->shape.dimensions());
   }
 
   for (auto& result : results_) {
-    if (!result.has_value())
-      return Internal("FFI handlers do not support tokens (yet)!");
+    if (!result.has_value()) {
+      builder.AddTokenRet();
+      continue;
+    }
+
     if (!result->slice.allocation())
       return Internal("custom call result missing buffer allocation");
 
-    builder.AddBufferRet(buffer_allocations->GetDeviceAddress(result->slice),
+    builder.AddBufferRet(device_address(result->slice),
                          result->shape.element_type(),
                          result->shape.dimensions());
   }
@@ -198,6 +204,13 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   builder.AddAttributes(attrs.Build());
   CallFrame call_frame = builder.Build();
 
+  int32_t device_ordinal = -1;
+  se::DeviceMemoryAllocator* allocator = nullptr;
+  if (stage != XLA_FFI_ExecutionStage_PREPARE) {
+    device_ordinal = buffer_allocations->device_ordinal();
+    allocator = buffer_allocations->memory_allocator();
+  }
+
   CallOptions options = {
       device_ordinal, CallOptions::GpuOptions{stream, allocator},
       called_computation_, execution_context, execution_state_.get()};
@@ -206,10 +219,14 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
 
 absl::Status CustomCallThunk::Prepare(const PrepareParams& params,
                                       ResourceRequests& resource_requests) {
-  if (bundle_ && bundle_->prepare) {
-    return absl::InternalError("FFI prepare stage is not yet supported");
+  if (!bundle_ || !bundle_->prepare) {
+    return absl::OkStatus();
   }
-  return absl::OkStatus();
+
+  return ExecuteFfiHandler(bundle_->prepare, XLA_FFI_ExecutionStage_PREPARE,
+                           /*stream=*/nullptr,
+                           /*execution_context=*/nullptr,
+                           /*buffer_allocations=*/nullptr);
 }
 
 absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
@@ -218,19 +235,15 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
   }
 
   return ExecuteFfiHandler(
-      bundle_->initialize, XLA_FFI_ExecutionStage_INITIALIZE,
-      params.buffer_allocations->device_ordinal(), params.stream,
-      params.buffer_allocations->memory_allocator(),
+      bundle_->initialize, XLA_FFI_ExecutionStage_INITIALIZE, params.stream,
       params.ffi_execution_context, params.buffer_allocations);
 }
 
 absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (bundle_.has_value()) {
-    return ExecuteFfiHandler(
-        bundle_->execute, XLA_FFI_ExecutionStage_EXECUTE,
-        params.buffer_allocations->device_ordinal(), params.stream,
-        params.buffer_allocations->memory_allocator(),
-        params.ffi_execution_context, params.buffer_allocations);
+    return ExecuteFfiHandler(bundle_->execute, XLA_FFI_ExecutionStage_EXECUTE,
+                             params.stream, params.ffi_execution_context,
+                             params.buffer_allocations);
   }
   return ExecuteCustomCall(params);
 }

@@ -1,3 +1,4 @@
+#include "absl/functional/any_invocable.h"
 /* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,12 +17,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_GPUSOLVER_REWRITER_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_GPUSOLVER_REWRITER_H_
 
+#include <memory>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/gpu_solver_context.h"
 
 namespace xla {
 namespace gpu {
@@ -29,7 +33,10 @@ namespace gpu {
 // Rewrites Cholesky calls into CustomCall HLOs that call into cuSolver.
 class GpusolverRewriter : public HloModulePass {
  public:
-  GpusolverRewriter();
+  explicit GpusolverRewriter(
+      absl::AnyInvocable<
+          absl::StatusOr<std::unique_ptr<stream_executor::GpuSolverContext>>()>
+          solver_context_creator);
   absl::string_view name() const override { return "gpusolver-rewriter"; }
 
   using HloPassInterface::Run;
@@ -39,6 +46,9 @@ class GpusolverRewriter : public HloModulePass {
 
  private:
   absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
+  absl::AnyInvocable<
+      absl::StatusOr<std::unique_ptr<stream_executor::GpuSolverContext>>()>
+      solver_context_creator_;
 };
 
 }  // namespace gpu

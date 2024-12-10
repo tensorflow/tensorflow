@@ -32,7 +32,6 @@ cc_library(
         "@local_config_nccl//:nccl",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:unbounded_work_queue",
-        "@local_xla//xla/stream_executor/cuda:cuda_activation",
         "//tensorflow/core/framework:tensor_proto_cc",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rccl",

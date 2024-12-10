@@ -15,10 +15,12 @@
 
 # buildifier: disable=out-of-order-load
 
+# Placeholder: load proto_library
+# Placeholder: load java_lite_proto_library
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
 
 # copybara:comment_begin(oss-only)
-load("@local_tsl//tsl/platform/default:build_config.bzl", "tf_proto_library_py")
+load("@local_xla//xla/tsl/platform/default:build_config.bzl", "tf_proto_library_py")
 # copybara:comment_end
 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")

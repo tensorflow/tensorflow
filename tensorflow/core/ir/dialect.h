@@ -74,7 +74,7 @@ class TFOp;
 }  // namespace mlir
 
 // Dialect main class is defined in ODS, we include it here.
-#include "tensorflow/core/ir/dialect.h.inc"
+#include "tensorflow/core/ir/dialect.h.inc"  // IWYU pragma: export
 // ODS-generated attribute classes.
 #define GET_ATTRDEF_CLASSES
 #include "tensorflow/core/ir/attributes.h.inc"

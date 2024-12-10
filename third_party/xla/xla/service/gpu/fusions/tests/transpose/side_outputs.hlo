@@ -1,0 +1,14 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  %p0 = f64[24,2,36] parameter(0)
+  %p1 = f64[36,2,24] parameter(1)
+  %tr = f64[36,2,24] transpose(%p0), dimensions={2,1,0}
+  %neg = f64[36,2,24] negate(%p1)
+  %log = f64[24,2,36] log(%p0)
+  ROOT %t = (f64[36,2,24], f64[36,2,24], f64[24,2,36])
+    tuple(%neg, %tr, %log)
+}
+// CHECK: xla_gpu.allocate_shared

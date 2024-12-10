@@ -188,7 +188,7 @@ class DatasetV2(
 
   >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
   >>> dataset = dataset.map(lambda x: x*2)
-  >>> list(dataset.as_numpy_iterator())
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [2, 4, 6]
 
   Common Terms:
@@ -593,7 +593,7 @@ class DatasetV2(
     3
 
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
-    >>> print(list(dataset.as_numpy_iterator()))
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 2, 3]
 
     `as_numpy_iterator()` will preserve the nested structure of dataset
@@ -752,7 +752,7 @@ class DatasetV2(
 
     >>> # Slicing a 1D tensor produces scalar tensor elements.
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 2, 3]
 
     >>> # Slicing a 2D tensor produces 1D tensor elements.
@@ -763,7 +763,8 @@ class DatasetV2(
     >>> # Slicing a tuple of 1D tensors produces tuple elements containing
     >>> # scalar tensors.
     >>> dataset = tf.data.Dataset.from_tensor_slices(([1, 2], [3, 4], [5, 6]))
-    >>> list(dataset.as_numpy_iterator())
+    >>> [(n0.item(), n1.item(), n2.item()) for n0, n1, n2 in
+    ...        dataset.as_numpy_iterator()]
     [(1, 3, 5), (2, 4, 6)]
 
     >>> # Dictionary structure is also preserved.
@@ -974,21 +975,29 @@ class DatasetV2(
   def range(*args, **kwargs) -> "DatasetV2":
     """Creates a `Dataset` of a step-separated range of values.
 
-    >>> list(Dataset.range(5).as_numpy_iterator())
+    >>> ds = Dataset.range(5)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [0, 1, 2, 3, 4]
-    >>> list(Dataset.range(2, 5).as_numpy_iterator())
+    >>> ds = Dataset.range(2, 5)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [2, 3, 4]
-    >>> list(Dataset.range(1, 5, 2).as_numpy_iterator())
+    >>> ds = Dataset.range(1, 5, 2)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [1, 3]
-    >>> list(Dataset.range(1, 5, -2).as_numpy_iterator())
+    >>> ds = Dataset.range(1, 5, -2)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     []
-    >>> list(Dataset.range(5, 1).as_numpy_iterator())
+    >>> ds = Dataset.range(5, 1)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     []
-    >>> list(Dataset.range(5, 1, -2).as_numpy_iterator())
+    >>> ds = Dataset.range(5, 1, -2)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [5, 3]
-    >>> list(Dataset.range(2, 5, output_type=tf.int32).as_numpy_iterator())
+    >>> ds = Dataset.range(2, 5, output_type=tf.int32)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [2, 3, 4]
-    >>> list(Dataset.range(1, 5, 2, output_type=tf.float32).as_numpy_iterator())
+    >>> ds = Dataset.range(1, 5, 2, output_type=tf.float32)
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [1.0, 3.0]
 
     Args:
@@ -1028,10 +1037,10 @@ class DatasetV2(
     >>> a = tf.data.Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
     >>> b = tf.data.Dataset.range(4, 7)  # ==> [ 4, 5, 6 ]
     >>> ds = tf.data.Dataset.zip(a, b)
-    >>> list(ds.as_numpy_iterator())
+    >>> [(i.item(), j.item()) for i, j in ds.as_numpy_iterator()]
     [(1, 4), (2, 5), (3, 6)]
     >>> ds = tf.data.Dataset.zip(b, a)
-    >>> list(ds.as_numpy_iterator())
+    >>> [(i.item(), j.item()) for i, j in ds.as_numpy_iterator()]
     [(4, 1), (5, 2), (6, 3)]
     >>>
     >>> # The `datasets` argument may contain an arbitrary number of datasets.
@@ -1039,17 +1048,17 @@ class DatasetV2(
     ...                                            #       [9, 10],
     ...                                            #       [11, 12] ]
     >>> ds = tf.data.Dataset.zip(a, b, c)
-    >>> for element in ds.as_numpy_iterator():
-    ...   print(element)
-    (1, 4, array([7, 8]))
-    (2, 5, array([ 9, 10]))
-    (3, 6, array([11, 12]))
+    >>> for i, j, k in ds.as_numpy_iterator():
+    ...   print(i.item(), j.item(), k)
+    1 4 [7 8]
+    2 5 [ 9 10]
+    3 6 [11 12]
     >>>
     >>> # The number of elements in the resulting dataset is the same as
     >>> # the size of the smallest dataset in `datasets`.
     >>> d = tf.data.Dataset.range(13, 15)  # ==> [ 13, 14 ]
     >>> ds = tf.data.Dataset.zip(a, d)
-    >>> list(ds.as_numpy_iterator())
+    >>> [(i.item(), j.item()) for i, j in ds.as_numpy_iterator()]
     [(1, 13), (2, 14)]
 
     Args:
@@ -1085,7 +1094,7 @@ class DatasetV2(
     >>> a = tf.data.Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
     >>> b = tf.data.Dataset.range(4, 8)  # ==> [ 4, 5, 6, 7 ]
     >>> ds = a.concatenate(b)
-    >>> list(ds.as_numpy_iterator())
+    >>> [a.item() for a in ds.as_numpy_iterator()]
     [1, 2, 3, 4, 5, 6, 7]
     >>> # The input dataset and dataset to be concatenated should have
     >>> # compatible element specs.
@@ -1122,7 +1131,7 @@ class DatasetV2(
     `tf.data.Dataset.counter` produces elements indefinitely.
 
     >>> dataset = tf.data.experimental.Counter().take(5)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 2, 3, 4]
     >>> dataset.element_spec
     TensorSpec(shape=(), dtype=tf.int64, name=None)
@@ -1130,13 +1139,13 @@ class DatasetV2(
     >>> dataset.element_spec
     TensorSpec(shape=(), dtype=tf.int32, name=None)
     >>> dataset = tf.data.experimental.Counter(start=2).take(5)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [2, 3, 4, 5, 6]
     >>> dataset = tf.data.experimental.Counter(start=2, step=5).take(5)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [2, 7, 12, 17, 22]
     >>> dataset = tf.data.experimental.Counter(start=10, step=-1).take(5)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [10, 9, 8, 7, 6]
 
     Args:
@@ -1159,7 +1168,7 @@ class DatasetV2(
   def fingerprint(self):
     """Computes the fingerprint of this `Dataset`.
 
-    If two datasets have the same fingerprint, it is guaranteeed that they
+    If two datasets have the same fingerprint, it is guaranteed that they
     would produce identical elements as long as the content of the upstream
     input files does not change and they produce data deterministically.
 
@@ -1244,7 +1253,7 @@ class DatasetV2(
 
     >>> dataset = tf.data.Dataset.range(3)
     >>> dataset = dataset.prefetch(2)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 2]
 
     Args:
@@ -1345,7 +1354,7 @@ class DatasetV2(
 
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
     >>> dataset = dataset.repeat(3)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 2, 3, 1, 2, 3, 1, 2, 3]
 
     Note: If the input dataset depends on global state (e.g. a random number
@@ -1375,8 +1384,8 @@ class DatasetV2(
 
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
     >>> dataset = dataset.enumerate(start=5)
-    >>> for element in dataset.as_numpy_iterator():
-    ...   print(element)
+    >>> for pos, element in dataset.as_numpy_iterator():
+    ...   print(tuple((pos.item(), element.item())))
     (5, 1)
     (6, 2)
     (7, 3)
@@ -1385,8 +1394,8 @@ class DatasetV2(
     >>> # structure of elements in the resulting dataset.
     >>> dataset = tf.data.Dataset.from_tensor_slices([(7, 8), (9, 10)])
     >>> dataset = dataset.enumerate()
-    >>> for element in dataset.as_numpy_iterator():
-    ...   print(element)
+    >>> for pos, element in dataset.as_numpy_iterator():
+    ...   print(tuple((pos.item(), element)))
     (0, array([7, 8], dtype=int32))
     (1, array([ 9, 10], dtype=int32))
 
@@ -1517,10 +1526,10 @@ class DatasetV2(
     >>> dataset = dataset.cache()
     >>> # The first time reading through the data will generate the data using
     >>> # `range` and `map`.
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 4, 9, 16]
     >>> # Subsequent iterations read from the cache.
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 4, 9, 16]
 
     When caching to a file, the cached data will persist across runs. Even the
@@ -1564,7 +1573,7 @@ class DatasetV2(
 
     >>> dataset = tf.data.Dataset.range(10)
     >>> dataset = dataset.take(3)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 2]
 
     Args:
@@ -1589,7 +1598,7 @@ class DatasetV2(
 
     >>> dataset = tf.data.Dataset.range(10)
     >>> dataset = dataset.skip(7)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [7, 8, 9]
 
     Args:
@@ -1617,13 +1626,13 @@ class DatasetV2(
 
     >>> A = tf.data.Dataset.range(10)
     >>> B = A.shard(num_shards=3, index=0)
-    >>> list(B.as_numpy_iterator())
+    >>> [a.item() for a in B.as_numpy_iterator()]
     [0, 3, 6, 9]
     >>> C = A.shard(num_shards=3, index=1)
-    >>> list(C.as_numpy_iterator())
+    >>> [a.item() for a in C.as_numpy_iterator()]
     [1, 4, 7]
     >>> D = A.shard(num_shards=3, index=2)
-    >>> list(D.as_numpy_iterator())
+    >>> [a.item() for a in D.as_numpy_iterator()]
     [2, 5, 8]
 
     This dataset operator is very useful when running distributed training, as
@@ -2174,7 +2183,7 @@ class DatasetV2(
 
     >>> dataset = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
     >>> dataset = dataset.map(lambda x: x + 1)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [2, 3, 4, 5, 6]
 
     The input signature of `map_func` is determined by the structure of each
@@ -2192,7 +2201,7 @@ class DatasetV2(
     >>> # `map_func` takes two arguments of type `tf.Tensor`. This function
     >>> # projects out just the first component.
     >>> result = dataset.map(lambda x_int, y_str: x_int)
-    >>> list(result.as_numpy_iterator())
+    >>> [a.item() for a in result.as_numpy_iterator()]
     [1, 2, 3]
 
     >>> # Each element is a dictionary mapping strings to `tf.Tensor` objects.
@@ -2359,7 +2368,7 @@ name=None))
     >>> dataset = tf.data.Dataset.from_tensor_slices(
     ...     [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
     >>> dataset = dataset.flat_map(tf.data.Dataset.from_tensor_slices)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
     `tf.data.Dataset.interleave()` is a generalization of `flat_map`, since
@@ -2460,7 +2469,7 @@ name=None))
     >>> dataset = dataset.interleave(
     ...     lambda x: Dataset.from_tensors(x).repeat(6),
     ...     cycle_length=2, block_length=4)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 1, 1, 1,
      2, 2, 2, 2,
      1, 1,
@@ -2531,13 +2540,13 @@ name=None))
 
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
     >>> dataset = dataset.filter(lambda x: x < 3)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 2]
     >>> # `tf.math.equal(x, y)` is required for equality comparison
     >>> def filter_fn(x):
     ...   return tf.math.equal(x, 1)
     >>> dataset = dataset.filter(filter_fn)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1]
 
     Args:
@@ -2565,7 +2574,7 @@ name=None))
     >>> def dataset_fn(ds):
     ...   return ds.filter(lambda x: x < 5)
     >>> dataset = dataset.apply(dataset_fn)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 2, 3, 4]
 
     Args:
@@ -2605,7 +2614,7 @@ name=None))
     Since windows are datasets, they can be iterated over:
 
     >>> for window in dataset:
-    ...   print(list(window.as_numpy_iterator()))
+    ...   print([a.item() for a in window.as_numpy_iterator()])
     [0, 1, 2]
     [3, 4, 5]
     [6]
@@ -2621,7 +2630,7 @@ name=None))
     >>> dataset = tf.data.Dataset.range(7).window(3, shift=1,
     ...                                           drop_remainder=True)
     >>> for window in dataset:
-    ...   print(list(window.as_numpy_iterator()))
+    ...   print([a.item() for a in window.as_numpy_iterator()])
     [0, 1, 2]
     [1, 2, 3]
     [2, 3, 4]
@@ -2636,7 +2645,7 @@ name=None))
     >>> dataset = tf.data.Dataset.range(7).window(3, shift=1, stride=2,
     ...                                           drop_remainder=True)
     >>> for window in dataset:
-    ...   print(list(window.as_numpy_iterator()))
+    ...   print([a.item() for a in window.as_numpy_iterator()])
     [0, 2, 4]
     [1, 3, 5]
     [2, 4, 6]
@@ -2667,7 +2676,7 @@ name=None))
      <...Dataset element_spec=TensorSpec(shape=(), dtype=tf.int32, name=None)>)
 
     >>> def to_numpy(ds):
-    ...   return list(ds.as_numpy_iterator())
+    ...   return [a.item() for a in ds.as_numpy_iterator()]
     >>>
     >>> for windows in dataset:
     ...   print(to_numpy(windows[0]), to_numpy(windows[1]))
@@ -2683,7 +2692,7 @@ name=None))
     ...                                               'c': [7, 8, 9]})
     >>> dataset = dataset.window(2)
     >>> def to_numpy(ds):
-    ...   return list(ds.as_numpy_iterator())
+    ...   return [a.item() for a in ds.as_numpy_iterator()]
     >>>
     >>> for windows in dataset:
     ...   print(tf.nest.map_structure(to_numpy, windows))
@@ -2744,23 +2753,23 @@ name=None))
     its internal state. The `initial_state` argument is used for the initial
     state and the final state is returned as the result.
 
-    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, _: x + 1).numpy()
+    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, _: x +
+    ...   1).numpy().item()
     5
-    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, y: x + y).numpy()
+    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, y: x +
+    ...   y).numpy().item()
     10
 
     Args:
       initial_state: An element representing the initial state of the
         transformation.
       reduce_func: A function that maps `(old_state, input_element)` to
-        `new_state`. It must take two arguments and return a new element
-        The structure of `new_state` must match the structure of
-        `initial_state`.
+        `new_state`. It must take two arguments and return a new element The
+        structure of `new_state` must match the structure of `initial_state`.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
       A dataset element corresponding to the final state of the transformation.
-
     """
 
     with ops.name_scope("initial_state"):
@@ -2954,7 +2963,7 @@ name=None))
     >>> elements = [ [1, 2, 3], [1, 2], [1, 2, 3, 4] ]
     >>> dataset = tf.data.Dataset.from_generator(lambda: elements, tf.int64)
     >>> dataset = dataset.unbatch()
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [1, 2, 3, 1, 2, 1, 2, 3, 4]
 
     Note: `unbatch` requires a data copy to slice up the batched tensor into
@@ -3398,7 +3407,7 @@ name=None))
     >>> initial_state = tf.constant(0, dtype=tf.int64)
     >>> scan_func = lambda state, i: (state + i, state + i)
     >>> dataset = dataset.scan(initial_state=initial_state, scan_func=scan_func)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 3, 6, 10, 15, 21, 28, 36, 45]
 
     Args:
@@ -3426,7 +3435,7 @@ name=None))
 
     >>> dataset = tf.data.Dataset.range(10)
     >>> dataset = dataset.take_while(lambda x: x < 5)
-    >>> list(dataset.as_numpy_iterator())
+    >>> [a.item() for a in dataset.as_numpy_iterator()]
     [0, 1, 2, 3, 4]
 
     Args:
@@ -3453,7 +3462,7 @@ name=None))
 
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 37, 2, 37, 2, 1])
     >>> dataset = dataset.unique()
-    >>> sorted(list(dataset.as_numpy_iterator()))
+    >>> sorted([a.item() for a in dataset.as_numpy_iterator()])
     [1, 2, 37]
 
     Note: This transformation only supports datasets which fit into memory

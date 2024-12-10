@@ -18,11 +18,12 @@ limitations under the License.
 #include <EGL/egl.h>
 #include <GLES3/gl31.h>
 
-#include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"

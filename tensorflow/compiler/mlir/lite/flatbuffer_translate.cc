@@ -24,8 +24,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -97,6 +97,7 @@ bool strip_debug_info;
 bool use_buffer_offset;
 bool emit_stablehlo_ops;
 bool disable_vhlo_to_stablehlo;
+bool serialize_debug_metadata;
 
 // NOLINTNEXTLINE
 static opt<bool, true> emit_builtin_tflite_ops_flag(
@@ -138,7 +139,7 @@ static opt<bool, true> use_buffer_offset_flag(
 // NOLINTNEXTLINE
 static opt<bool, true> emit_stablehlo_ops_flag(
     "emit-stablehlo-ops",
-    llvm::cl::desc("Wether serialize stablehlo ops or not"),
+    llvm::cl::desc("Whether serialize stablehlo ops or not"),
     llvm::cl::location(emit_stablehlo_ops), llvm::cl::init(false));
 
 // Flatbuffer import by default will also perform vhlo to stablehlo legalization
@@ -147,8 +148,14 @@ static opt<bool, true> emit_stablehlo_ops_flag(
 // NOLINTNEXTLINE
 static opt<bool, true> disable_vhlo_to_stablehlo_flag(
     "disable-vhlo-to-stablehlo",
-    llvm::cl::desc("Wether to deserialize to stablehlo ops or not"),
+    llvm::cl::desc("Whether to deserialize to stablehlo ops or not"),
     llvm::cl::location(disable_vhlo_to_stablehlo), llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+static opt<bool, true> serialize_debug_metadata_flag(
+    "serialize-debug-metadata",
+    llvm::cl::desc("Wether to serialize debug metadata or not"),
+    llvm::cl::location(serialize_debug_metadata), llvm::cl::init(false));
 
 namespace mlir {
 namespace {
@@ -195,11 +202,13 @@ static LogicalResult MlirToFlatBufferFileTranslateFunction(
         std::make_unique<tensorflow::OpOrArgLocNameMapper>();
   }
   tflite::FlatbufferExportOptions options;
-  options.toco_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
-  options.toco_flags.set_enable_select_tf_ops(emit_select_tf_ops);
-  options.toco_flags.set_allow_custom_ops(emit_custom_ops);
-  options.toco_flags.set_use_buffer_offset(use_buffer_offset);
+  options.converter_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
+  options.converter_flags.set_enable_select_tf_ops(emit_select_tf_ops);
+  options.converter_flags.set_allow_custom_ops(emit_custom_ops);
+  options.converter_flags.set_use_buffer_offset(use_buffer_offset);
   options.op_or_arg_name_mapper = op_or_arg_name_mapper.get();
+  options.converter_flags.set_serialize_debug_metadata(
+      serialize_debug_metadata);
   if (!tflite::MlirToFlatBufferTranslateFunction(
           module, options, &serialized_flatbuffer, emit_stablehlo_ops))
     return mlir::failure();
@@ -220,7 +229,7 @@ static TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(
 static TranslateFromMLIRRegistration MLIRToFlatBufferTranslate(
     "mlir-to-tflite-flatbuffer", "mlir-to-tflite-flatbuffer",
     MlirToFlatBufferFileTranslateFunction, [](DialectRegistry& registry) {
-      registry.insert<quant::QuantizationDialect,
+      registry.insert<quant::QuantDialect,
                       quantfork::QuantizationForkDialect>();
       mlir::RegisterAllTensorFlowDialects(registry);
       registry.insert<TFL::TensorFlowLiteDialect>();

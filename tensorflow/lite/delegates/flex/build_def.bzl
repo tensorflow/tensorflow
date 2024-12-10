@@ -3,7 +3,6 @@
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load(
     "//tensorflow:tensorflow.bzl",
-    "clean_dep",
     "if_android",
     "if_ios",
     "if_mobile",
@@ -17,6 +16,7 @@ load(
 )
 load(
     "//tensorflow/lite:build_def.bzl",
+    "clean_dep",
     "tflite_cc_shared_object",
     "tflite_copts",
     "tflite_jni_binary",

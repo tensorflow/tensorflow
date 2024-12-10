@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/thunk.h"
 
-#include <cstdint>
 #include <utility>
 
 #include "xla/executable_run_options.h"
@@ -27,43 +26,9 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-class ThunkExecuteStateTestHelper : public Thunk {
- public:
-  static ExecuteState CreateExecuteState(int64_t parallel_tasks) {
-    return ExecuteState(parallel_tasks);
-  }
-};
-
 TEST(ThunkTest, OkExecuteEventSingleton) {
   auto event = Thunk::OkExecuteEventSingleton();
   ASSERT_TRUE(event.IsConcrete());
-}
-
-TEST(ThunkExecuteStateTest, OneTask) {
-  auto execute_state =
-      ThunkExecuteStateTestHelper::CreateExecuteState(/*parallel_tasks=*/1);
-
-  // State should not be available right after construction.
-  EXPECT_FALSE(execute_state.event.IsAvailable());
-
-  // Notifying once should make the state available.
-  execute_state.Notify();
-  EXPECT_TRUE(execute_state.event.IsAvailable());
-}
-
-TEST(ThunkExecuteStateTest, MultipleTasks) {
-  int parallel_tasks = 10;
-  auto execute_state =
-      ThunkExecuteStateTestHelper::CreateExecuteState(parallel_tasks);
-
-  for (int i = 0; i < parallel_tasks; ++i) {
-    // State should not be available until all tasks are notified.
-    EXPECT_FALSE(execute_state.event.IsAvailable());
-    execute_state.Notify();
-  }
-
-  // All tasks are notified, state should be available.
-  EXPECT_TRUE(execute_state.event.IsAvailable());
 }
 
 TEST(ThunkTest, ExecuteSession) {

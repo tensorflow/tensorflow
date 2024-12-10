@@ -166,7 +166,7 @@ NodeDef* AddScalarConstNode(StringPiece v, MutableGraphView* graph) {
       graph);
 }
 
-Status GetScalarConstNodeValueHelper(
+absl::Status GetScalarConstNodeValueHelper(
     const NodeDef& node, DataType dtype,
     const std::function<void(const Tensor&)>& get_value) {
   if (node.op() != kConstOpName)
@@ -193,14 +193,14 @@ Status GetScalarConstNodeValueHelper(
 }
 
 template <>
-Status GetScalarConstNodeValue(const NodeDef& node, int64_t* value) {
+absl::Status GetScalarConstNodeValue(const NodeDef& node, int64_t* value) {
   return GetScalarConstNodeValueHelper(
       node, DT_INT64,
       [value](const Tensor& tensor) { *value = tensor.scalar<int64_t>()(); });
 }
 
 template <>
-Status GetScalarConstNodeValue(const NodeDef& node, bool* value) {
+absl::Status GetScalarConstNodeValue(const NodeDef& node, bool* value) {
   return GetScalarConstNodeValueHelper(
       node, DT_BOOL,
       [value](const Tensor& tensor) { *value = tensor.scalar<bool>()(); });
@@ -288,8 +288,8 @@ NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
   return graph.GetRegularFanin(input_port).node;
 }
 
-Status GetDatasetOutputTypesAttr(const NodeDef& node,
-                                 DataTypeVector* output_types) {
+absl::Status GetDatasetOutputTypesAttr(const NodeDef& node,
+                                       DataTypeVector* output_types) {
   // We don't name the output_types attr consistently, so should check for both.
   for (const string& attr_name : {"output_types", "Toutput_types"}) {
     if (node.attr().contains(attr_name)) {
@@ -342,7 +342,7 @@ void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
       ->MergeFrom(second.attr().at(attribute_name).list());
 }
 
-Status EnsureNodeNamesUnique(Graph* g) {
+absl::Status EnsureNodeNamesUnique(Graph* g) {
   // Modeled after Scope::Impl::GetUniqueName
   std::unordered_map<string, int> name_map;
 
@@ -363,8 +363,8 @@ Status EnsureNodeNamesUnique(Graph* g) {
   return absl::OkStatus();
 }
 
-Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
-                    NodeDef** fetch_node) {
+absl::Status GetFetchNode(const MutableGraphView& graph,
+                          const GrapplerItem& item, NodeDef** fetch_node) {
   if (item.fetch.size() != 1) {
     return errors::InvalidArgument(
         "Expected only one fetch node but there were ", item.fetch.size(), ": ",
@@ -454,7 +454,7 @@ bool HasDeterministicAttr(const string& op) {
   return kDeterministicAttrOps->contains(op);
 }
 
-Status SetMetadataName(const std::string& name, NodeDef* node) {
+absl::Status SetMetadataName(const std::string& name, NodeDef* node) {
   data::Metadata metadata;
   if (node->attr().contains("metadata")) {
     metadata.ParseFromString(node->attr().at("metadata").s());

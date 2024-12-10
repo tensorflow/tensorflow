@@ -24,15 +24,16 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/transforms/passes.h"
-#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
@@ -228,6 +229,35 @@ struct RewriteTruncExtShuffle : public OpRewritePattern<mlir::gpu::ShuffleOp> {
   }
 };
 
+static std::optional<Interval> GetSelectRange(mlir::Operation* sel) {
+  // Match |x| implemented as (x >= 0) ? x : (0 - x).
+  mlir::Value x = sel->getOperand(1);
+  auto m_x = mlir::matchers::m_Val(x);
+  if (!x.getType().isSignlessIntOrIndex() ||
+      !mlir::matchPattern(
+          sel, mlir::m_Op<mlir::arith::SelectOp>(
+                   mlir::m_Op<mlir::arith::CmpIOp>(m_x, mlir::m_Zero()), m_x,
+                   mlir::m_Op<mlir::arith::SubIOp>(mlir::m_Zero(), m_x)))) {
+    return std::nullopt;
+  }
+  if (sel->getOperand(0).getDefiningOp<mlir::arith::CmpIOp>().getPredicate() !=
+      CmpIPredicate::sge) {
+    return std::nullopt;
+  }
+  // Annotate |x| as >= 0.
+  Interval result{0,
+                  static_cast<int64_t>(
+                      (1ull << (x.getType().getIntOrFloatBitWidth() - 1)) - 1)};
+  std::optional<Interval> x_range = GetRange(x);
+  if (x_range.has_value()) {
+    Interval positive_range = x_range->max({0, 0});
+    Interval negative_range = -x_range->min({0, 0});
+    Interval abs_range = positive_range.Union(negative_range);
+    return result.Intersect(abs_range);
+  }
+  return result;
+}
+
 void AnnotateRanges(mlir::func::FuncOp func) {
   func->walk([](mlir::Operation* op) {
     if (op->getNumResults() != 1) {
@@ -262,6 +292,10 @@ void AnnotateRanges(mlir::func::FuncOp func) {
       } else {
         out_range = lhs_range * rhs_range;
       }
+    } else if (mlir::isa<mlir::arith::IndexCastOp>(op)) {
+      out_range = GetRange(op->getOperand(0));
+    } else if (mlir::isa<mlir::arith::SelectOp>(op)) {
+      out_range = GetSelectRange(op);
     }
 
     if (out_range) {

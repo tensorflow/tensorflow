@@ -32,18 +32,18 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/stack_frame.h"
 #include "tsl/platform/types.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 // Include appropriate platform-dependent parts of status.
 #if defined(PLATFORM_GOOGLE)
-#include "tsl/platform/google/status.h"  // IWYU pragma: export
+#include "xla/tsl/platform/google/status.h"  // IWYU pragma: export
 #else
-#include "tsl/platform/default/status.h"  // IWYU pragma: export
+#include "xla/tsl/platform/default/status.h"  // IWYU pragma: export
 #endif
 
 // TODO: b/323943471 - This macro should eventually be provided by Abseil.

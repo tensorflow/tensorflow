@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_NOW_SECONDS_ENV_H_
 #define TENSORFLOW_CORE_PLATFORM_CLOUD_NOW_SECONDS_ENV_H_
 
+#include "xla/tsl/platform/cloud/now_seconds_env.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/cloud/now_seconds_env.h"
 
 namespace tensorflow {
 using tsl::NowSecondsEnv;  // NOLINT(misc-unused-using-decls)

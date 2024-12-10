@@ -46,12 +46,12 @@ limitations under the License.
 #include "xla/service/local_service.h"
 #include "xla/service/platform_util.h"
 #include "xla/tools/hlo_extractor.h"
+#include "xla/tsl/platform/subprocess.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/subprocess.h"
-#include "tsl/protobuf/error_codes.pb.h"
 #if defined(PLATFORM_GOOGLE)
 #include "util/readline/readline.h"
 #endif

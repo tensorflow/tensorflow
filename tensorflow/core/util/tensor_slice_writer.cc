@@ -44,9 +44,9 @@ class TableBuilder : public TensorSliceWriter::Builder {
   void Add(StringPiece key, StringPiece val) override {
     builder_->Add(key, val);
   }
-  Status Finish(int64_t* file_size) override {
+  absl::Status Finish(int64_t* file_size) override {
     *file_size = -1;
-    Status s = builder_->Finish();
+    absl::Status s = builder_->Finish();
     if (s.ok()) {
       s = file_->Close();
       if (s.ok()) {
@@ -69,11 +69,11 @@ class TableBuilder : public TensorSliceWriter::Builder {
 };
 }  // anonymous namespace
 
-Status CreateTableTensorSliceBuilder(const string& name,
-                                     TensorSliceWriter::Builder** builder) {
+absl::Status CreateTableTensorSliceBuilder(
+    const string& name, TensorSliceWriter::Builder** builder) {
   *builder = nullptr;
   std::unique_ptr<WritableFile> f;
-  Status s = Env::Default()->NewWritableFile(name, &f);
+  absl::Status s = Env::Default()->NewWritableFile(name, &f);
   if (s.ok()) {
     *builder = new TableBuilder(name, f.release());
     return absl::OkStatus();
@@ -88,7 +88,7 @@ TensorSliceWriter::TensorSliceWriter(const string& filename,
       create_builder_(std::move(create_builder)),
       slices_(0) {
   Env* env = Env::Default();
-  Status status = env->CanCreateTempFile(filename_, &use_temp_file_);
+  absl::Status status = env->CanCreateTempFile(filename_, &use_temp_file_);
   if (!status.ok()) {
     LOG(ERROR) << "Failed to get CanCreateTempFile attribute: " << filename_;
     use_temp_file_ = true;
@@ -103,9 +103,9 @@ TensorSliceWriter::TensorSliceWriter(const string& filename,
   versions->set_min_consumer(TF_CHECKPOINT_VERSION_MIN_CONSUMER);
 }
 
-Status TensorSliceWriter::Finish() {
+absl::Status TensorSliceWriter::Finish() {
   Builder* b;
-  Status s = create_builder_(data_filename_, &b);
+  absl::Status s = create_builder_(data_filename_, &b);
   if (!s.ok()) {
     delete b;
     return s;
@@ -199,8 +199,8 @@ size_t TensorSliceWriter::MaxBytesPerElementOrZero(DataType dt) {
 }
 
 template <>
-Status TensorSliceWriter::SaveData(const tstring* data, int64_t num_elements,
-                                   SavedSlice* ss) {
+absl::Status TensorSliceWriter::SaveData(const tstring* data,
+                                         int64_t num_elements, SavedSlice* ss) {
   size_t size_bound = ss->ByteSize() + kTensorProtoHeaderBytes +
                       (num_elements * MaxBytesPerElement(DT_INT32));
   for (int64_t i = 0; i < num_elements; ++i) {

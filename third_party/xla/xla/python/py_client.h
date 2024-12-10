@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "nanobind/nanobind.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -107,6 +107,10 @@ class PyClient {
       return ifrt_client_->platform_name();
     }
   }
+  std::string_view raw_platform_name() const {
+    // TODO(parkers): Once platform_name() is the same, remove this.
+    return ifrt_client_->platform_name();
+  }
   std::string_view platform_version() const {
     return ifrt_client_->platform_version();
   }
@@ -126,6 +130,11 @@ class PyClient {
 
   std::vector<nb_class_ptr<PyDevice>> Devices();
   std::vector<nb_class_ptr<PyDevice>> LocalDevices();
+  // Returns all devices in the client. Private API; only use this method for
+  // implementing backend._get_all_devices().
+  // TODO(hyeontaek): Remove this method once we have a unified API for
+  // enumerating devices with different criteria.
+  std::vector<nb_class_ptr<PyDevice>> GetAllDevices();
   absl::StatusOr<nb_class_ptr<PyDevice>> DeviceFromLocalHardwareId(
       int local_hardware_id);
 

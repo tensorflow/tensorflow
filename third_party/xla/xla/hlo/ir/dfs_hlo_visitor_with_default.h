@@ -81,6 +81,9 @@ class DfsHloVisitorWithDefaultBase
   absl::Status HandleDot(HloInstructionPtr dot) override {
     return DefaultAction(dot);
   }
+  absl::Status HandleRaggedDot(HloInstructionPtr dot) override {
+    return DefaultAction(dot);
+  }
   absl::Status HandleConvolution(HloInstructionPtr convolution) override {
     return DefaultAction(convolution);
   }
@@ -118,6 +121,9 @@ class DfsHloVisitorWithDefaultBase
     return DefaultAction(hlo);
   }
   absl::Status HandleAllToAll(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  absl::Status HandleRaggedAllToAll(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
   absl::Status HandleCollectiveBroadcast(HloInstructionPtr hlo) override {
