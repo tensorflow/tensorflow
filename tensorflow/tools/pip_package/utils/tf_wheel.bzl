@@ -34,7 +34,7 @@ load(
     "WHEEL_COLLAB",
     "WHEEL_NAME",
 )
-load("//tensorflow:tensorflow.bzl", "VERSION", "WHEEL_VERSION")
+load("//tensorflow:tensorflow.bzl", "VERSION")
 
 def _get_wheel_platform_name(platform_name, platform_tag):
     macos_platform_version = "{}_".format(MACOSX_DEPLOYMENT_TARGET.replace(".", "_")) if MACOSX_DEPLOYMENT_TARGET else ""
@@ -49,13 +49,18 @@ def _get_wheel_platform_name(platform_name, platform_tag):
         platform_version = macos_platform_version,
     )
 
-def _get_full_wheel_name(platform_name, platform_tag):
+def _get_full_wheel_name(
+        platform_name,
+        platform_tag):
     python_version = HERMETIC_PYTHON_VERSION.replace(".", "")
-    return "{wheel_name}-{wheel_version}-cp{python_version}-cp{python_version}-{wheel_platform_tag}.whl".format(
+    return "{wheel_name}-{wheel_version}-0-cp{python_version}-cp{python_version}-{wheel_platform_tag}.whl".format(
         wheel_name = WHEEL_NAME,
-        wheel_version = WHEEL_VERSION.replace("-", "."),
+        wheel_version = VERSION,
         python_version = python_version,
-        wheel_platform_tag = _get_wheel_platform_name(platform_name, platform_tag),
+        wheel_platform_tag = _get_wheel_platform_name(
+            platform_name,
+            platform_tag,
+        ),
     )
 
 def _is_dest_file(basename, dest_files_suffixes):
@@ -85,40 +90,51 @@ def _tf_wheel_impl(ctx):
         wheel_name = full_wheel_name,
     ))
     wheel_dir = output_file.path[:output_file.path.rfind("/")]
-    args = ctx.actions.args()
-    args.add("--project-name", WHEEL_NAME)
-    args.add("--platform", _get_wheel_platform_name(
-        ctx.attr.platform_name,
-        ctx.attr.platform_tag,
-    ))
-    args.add("--collab", str(WHEEL_COLLAB))
-    args.add("--output-name", wheel_dir)
-    args.add("--version", VERSION)
+    args = [
+        "--project-name {}".format(WHEEL_NAME),
+        "--platform {}".format(_get_wheel_platform_name(
+            ctx.attr.platform_name,
+            ctx.attr.platform_tag,
+        )),
+        "--collab {}".format(str(WHEEL_COLLAB)),
+        "--output-name {}".format(wheel_dir),
+        "--version {}".format(VERSION),
+    ]
 
     headers = ctx.files.headers[:]
     for f in headers:
-        args.add("--headers=%s" % (f.path))
+        args.append("--headers {}".format(f.path))
 
     xla_aot = ctx.files.xla_aot_compiled[:]
     for f in xla_aot:
-        args.add("--xla_aot=%s" % (f.path))
+        args.append("--xla_aot {}".format(f.path))
 
     srcs = []
     for src in ctx.attr.source_files:
         for f in src.files.to_list():
             srcs.append(f)
             if _is_dest_file(f.basename, ctx.attr.dest_files_suffixes):
-                args.add("--dests=%s" % (f.path))
+                args.append("--dests {}".format(f.path))
             else:
-                args.add("--srcs=%s" % (f.path))
+                args.append("--srcs {}".format(f.path))
 
-    args.set_param_file_format("flag_per_line")
-    args.use_param_file("@%s", use_always = False)
-    ctx.actions.run(
-        arguments = [args],
+    args_as_string = ""
+    for arg in args:
+        args_as_string += arg + " "
+    rename_command = ""
+    if ctx.attr.platform_name == "win":
+        rename_command = "ren {wheel_dir}\\*.whl {wheel_file}"
+    else:
+        rename_command = "mv {wheel_dir}/*.whl {wheel_file}"
+    command = executable.path + " " + args_as_string + "\n" + rename_command.format(
+        wheel_dir = wheel_dir,
+        wheel_file = output_file.path,
+    )
+    ctx.actions.run_shell(
         inputs = srcs + headers + xla_aot,
+        command = command,
         outputs = [output_file],
-        executable = executable,
+        tools = [executable],
     )
     auditwheel_show_log = None
     if ctx.attr.platform_name == "linux":
