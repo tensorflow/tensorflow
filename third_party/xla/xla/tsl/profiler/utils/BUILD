@@ -298,6 +298,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":tf_xplane_visitor",
+        ":timespan",
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_utils",
