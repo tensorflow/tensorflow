@@ -47,6 +47,19 @@ type Session struct {
 	mu sync.Mutex
 }
 
+
+func NewSessionWithGPUOptions(graph *Graph, gpuOptions GPUOptions) (*Session, error) {
+    // Apply GPU options to session configuration.
+    config := tensorflow.ConfigProto{
+        GPUOptions: &tensorflow.GPUOptions{
+            AllowGrowth: gpuOptions.AllowGrowth,
+            AllocatorType: gpuOptions.AllocatorType,
+        },
+    }
+    return NewSessionWithConfig(graph, config)
+}
+
+
 // NewSession creates a new execution session with the associated graph.
 // options may be nil to use the default options.
 func NewSession(graph *Graph, options *SessionOptions) (*Session, error) {
