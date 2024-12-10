@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_THREADPOOL_DATASET_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_THREADPOOL_DATASET_OP_H_
 
+#include <cstdint>
+
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/platform/platform.h"
 
