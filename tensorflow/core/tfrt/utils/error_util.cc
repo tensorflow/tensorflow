@@ -20,8 +20,7 @@ limitations under the License.
 
 namespace tfrt {
 
-tfrt::ErrorCode ConvertTfErrorCodeToTfrtErrorCode(
-    const tensorflow::Status& status) {
+tfrt::ErrorCode ConvertTfErrorCodeToTfrtErrorCode(const absl::Status& status) {
   auto tf_error_code = status.code();
   switch (tf_error_code) {
     default:
@@ -34,11 +33,11 @@ tfrt::ErrorCode ConvertTfErrorCodeToTfrtErrorCode(
   }
 }
 
-tensorflow::Status CreateTfErrorStatus(const DecodedDiagnostic& error) {
+absl::Status CreateTfErrorStatus(const DecodedDiagnostic& error) {
   return error.status;
 }
 
-tensorflow::Status ToTfStatus(const tfrt::AsyncValue* av) {
+absl::Status ToTfStatus(const tfrt::AsyncValue* av) {
   CHECK(av != nullptr && av->IsAvailable())  // Crash OK
       << "Expected a ready async value.";
   if (av->IsError()) {
