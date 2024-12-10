@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/allocator.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/stacktrace.h"
-#include "tsl/platform/strcat.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -1098,18 +1098,18 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
       if (c->in_use()) {
         in_use_by_size[c->size]++;
       }
-      string buf = strings::StrCat(
-          (c->in_use() ? "InUse" : "Free "), " at ",
-          strings::Hex(reinterpret_cast<uint64>(c->ptr)), " of size ", c->size);
+      string buf = absl::StrCat((c->in_use() ? "InUse" : "Free "), " at ",
+                                absl::Hex(reinterpret_cast<uint64>(c->ptr)),
+                                " of size ", c->size);
 #ifdef TENSORFLOW_MEM_DEBUG
       if (ShouldRecordOpName()) {
-        strings::StrAppend(&buf, " by op ", c->op_name, " action_count ",
-                           c->action_count, " step ", c->step_id);
+        absl::StrAppend(&buf, " by op ", c->op_name, " action_count ",
+                        c->action_count, " step ", c->step_id);
       }
 #endif
-      strings::StrAppend(&buf, " next ", c->next);
+      absl::StrAppend(&buf, " next ", c->next);
       if (timing_counter_) {
-        strings::StrAppend(&buf, " freed_at_count ", c->freed_at_count);
+        absl::StrAppend(&buf, " freed_at_count ", c->freed_at_count);
       }
       LOG(INFO) << buf;
       h = c->next;
@@ -1137,8 +1137,8 @@ void BFCAllocator::MaybeWriteMemoryMap() {
   const char* gpu_memory_map_file = std::getenv("TF_BFC_MEMORY_DUMP");
   if (gpu_memory_map_file != nullptr) {
     std::unique_ptr<WritableFile> dump_file;
-    string file_name = strings::StrCat(gpu_memory_map_file, "_", Name(), ".",
-                                       Env::Default()->NowMicros());
+    string file_name = absl::StrCat(gpu_memory_map_file, "_", Name(), ".",
+                                    Env::Default()->NowMicros());
     absl::Status status =
         Env::Default()->NewWritableFile(file_name, &dump_file);
     if (!status.ok()) {

@@ -90,5 +90,18 @@ TEST(PtxCompileOptionsFromDebugOptionsTest,
       Field(&CompilationOptions::cancel_if_reg_spill, true));
 }
 
+TEST(PtxCompileOptionsFromDebugOptionsTest,
+     RegSpillAsErrorCanBeEnabledForAllKernels) {
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_fail_ptx_compilation_on_register_spilling(true);
+  EXPECT_THAT(
+      PtxCompileOptionsFromDebugOptions(debug_options,
+                                        /*is_autotuning_compilation=*/false),
+      Field(&CompilationOptions::cancel_if_reg_spill, true));
+  EXPECT_THAT(PtxCompileOptionsFromDebugOptions(
+                  debug_options, /*is_autotuning_compilation=*/true),
+              Field(&CompilationOptions::cancel_if_reg_spill, true));
+}
+
 }  // namespace
 }  // namespace xla::gpu
